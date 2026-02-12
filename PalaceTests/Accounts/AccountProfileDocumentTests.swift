@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Tests for Account+profileDocument.swift: getProfileDocument.
-//  Covers QAAtlas high-priority gap: getProfileDocument.
+//  Covers High-priority coverage gap: getProfileDocument.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

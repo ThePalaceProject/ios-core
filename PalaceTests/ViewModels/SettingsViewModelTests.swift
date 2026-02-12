@@ -678,7 +678,7 @@ final class SettingsViewModelSyncTests: XCTestCase {
         XCTAssertTrue(sut.enterLCPPassphraseManually)
     }
 
-    // MARK: - setCustomFeedURL Tests (QAAtlas Gap)
+    // MARK: - setCustomFeedURL Tests (Coverage Gap)
 
     func testSetCustomFeedURL_WithValidHttpsURL_ReturnsTrue() async {
         let result = sut.setCustomFeedURL("https://example.com/feed")
@@ -729,7 +729,7 @@ final class SettingsViewModelSyncTests: XCTestCase {
         XCTAssertNil(sut.customMainFeedURL)
     }
 
-    // MARK: - setCustomRegistryServer Tests (QAAtlas Gap)
+    // MARK: - setCustomRegistryServer Tests (Coverage Gap)
 
     func testSetCustomRegistryServer_WithValidURL_ReturnsTrue() async {
         let result = sut.setCustomRegistryServer("https://registry.example.com")
@@ -758,7 +758,7 @@ final class SettingsViewModelSyncTests: XCTestCase {
         XCTAssertNil(sut.customLibraryRegistryServer)
     }
 
-    // MARK: - resetToDefaults Tests (QAAtlas Gap)
+    // MARK: - resetToDefaults Tests (Coverage Gap)
 
     func testResetToDefaults_ClearsAllSettings() async {
         // Set non-default values

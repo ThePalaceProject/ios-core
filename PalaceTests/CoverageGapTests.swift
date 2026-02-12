@@ -1,8 +1,8 @@
 //
-//  QAAtlasCoverageGapTests.swift
+//  CoverageGapTests.swift
 //  PalaceTests
 //
-//  Addresses the top 20 high-priority coverage gaps identified by QAAtlas.
+//  Addresses the top 20 high-priority coverage gaps identified by Coverage.
 //  Each test group references the specific symbol and file from the gap report.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
@@ -30,7 +30,7 @@ final class AccountModelGapTests: XCTestCase {
 
     // MARK: - Gap 1: Account class
 
-    /// QAAtlas Gap: Account class missing tests — verify property mapping from OPDS2Publication
+    /// Coverage Gap: Account class missing tests — verify property mapping from OPDS2Publication
     func testAccount_initFromPublication_mapsPropertiesCorrectly() {
         let account = mockProvider.tppAccount
 
@@ -38,7 +38,7 @@ final class AccountModelGapTests: XCTestCase {
         XCTAssertFalse(account.name.isEmpty, "Account name should not be empty")
     }
 
-    /// QAAtlas Gap: Account class — verify hasSupportOption computed property
+    /// Coverage Gap: Account class — verify hasSupportOption computed property
     func testAccount_hasSupportOption_reflectsSupportAvailability() {
         let account = mockProvider.tppAccount
 
@@ -49,7 +49,7 @@ final class AccountModelGapTests: XCTestCase {
                        "hasSupportOption should match email/URL presence")
     }
 
-    /// QAAtlas Gap: Account class — verify loansUrl passthrough
+    /// Coverage Gap: Account class — verify loansUrl passthrough
     func testAccount_loansUrl_delegatesToDetails() {
         let account = mockProvider.tppAccount
 
@@ -59,7 +59,7 @@ final class AccountModelGapTests: XCTestCase {
 
     // MARK: - Gap 2: AccountDetails class
 
-    /// QAAtlas Gap: AccountDetails class — verify initialization from auth document
+    /// Coverage Gap: AccountDetails class — verify initialization from auth document
     func testAccountDetails_initFromAuthDoc_populatesAuthMethods() {
         let details = mockProvider.tppAccount.details
 
@@ -67,7 +67,7 @@ final class AccountModelGapTests: XCTestCase {
         XCTAssertFalse(details!.auths.isEmpty, "Should have at least one auth method")
     }
 
-    /// QAAtlas Gap: AccountDetails — verify defaultAuth selects non-OAuth when multiple auths
+    /// Coverage Gap: AccountDetails — verify defaultAuth selects non-OAuth when multiple auths
     func testAccountDetails_defaultAuth_prefersNonOAuth() {
         let details = mockProvider.tppAccount.details!
 
@@ -84,7 +84,7 @@ final class AccountModelGapTests: XCTestCase {
         }
     }
 
-    /// QAAtlas Gap: AccountDetails — verify setURL/getLicenseURL round-trip
+    /// Coverage Gap: AccountDetails — verify setURL/getLicenseURL round-trip
     func testAccountDetails_setAndGetLicenseURL_roundTrips() {
         let details = mockProvider.tppAccount.details!
         let testURL = URL(string: "https://example.com/test-license")!
@@ -96,7 +96,7 @@ final class AccountModelGapTests: XCTestCase {
                        "getLicenseURL should return the URL set via setURL")
     }
 
-    /// QAAtlas Gap: AccountDetails — verify eulaIsAccepted default
+    /// Coverage Gap: AccountDetails — verify eulaIsAccepted default
     func testAccountDetails_eulaIsAccepted_defaultsToFalse() {
         // Create fresh AccountDetails to test default
         let details = mockProvider.tppAccount.details!
@@ -110,7 +110,7 @@ final class AccountModelGapTests: XCTestCase {
         details.eulaIsAccepted = initial
     }
 
-    /// QAAtlas Gap: AccountDetails — verify syncPermissionGranted defaults to true
+    /// Coverage Gap: AccountDetails — verify syncPermissionGranted defaults to true
     func testAccountDetails_syncPermissionGranted_defaultBehavior() {
         let details = mockProvider.tppAccount.details!
         // syncPermissionGranted defaults to true
@@ -124,7 +124,7 @@ final class AccountModelGapTests: XCTestCase {
 
     // MARK: - Gap 3: Authentication class
 
-    /// QAAtlas Gap: Authentication NSCoding round-trip
+    /// Coverage Gap: Authentication NSCoding round-trip
     func testAuthentication_NSCoding_roundTrip() {
         let originalAuth = mockProvider.barcodeAuthentication
 
@@ -152,13 +152,13 @@ final class AccountModelGapTests: XCTestCase {
 
 final class AccountsManagerGapTests: XCTestCase {
 
-    /// QAAtlas Gap: AccountsManager class — verify account lookup by UUID
+    /// Coverage Gap: AccountsManager class — verify account lookup by UUID
     func testAccountsManager_accountByUUID_returnsNilForUnknownUUID() {
         let result = AccountsManager.shared.account("urn:uuid:nonexistent-12345")
         XCTAssertNil(result, "Looking up a nonexistent UUID should return nil")
     }
 
-    /// QAAtlas Gap: AccountsManager — verify currentAccountId persists
+    /// Coverage Gap: AccountsManager — verify currentAccountId persists
     func testAccountsManager_currentAccountId_persistsToUserDefaults() {
         let manager = AccountsManager.shared
         let currentId = manager.currentAccountId
@@ -170,7 +170,7 @@ final class AccountsManagerGapTests: XCTestCase {
         }
     }
 
-    /// QAAtlas Gap: AccountsManager — verify tppAccountUUID is accessible
+    /// Coverage Gap: AccountsManager — verify tppAccountUUID is accessible
     func testAccountsManager_tppAccountUUID_isNotEmpty() {
         let uuid = AccountsManager.shared.tppAccountUUID
         XCTAssertFalse(uuid.isEmpty, "TPP account UUID should not be empty")
@@ -182,7 +182,7 @@ final class AccountsManagerGapTests: XCTestCase {
 @MainActor
 final class SettingsViewModelGapTests: XCTestCase {
 
-    /// QAAtlas Gap: SettingsViewModel function missing tests — refreshAccountsList
+    /// Coverage Gap: SettingsViewModel function missing tests — refreshAccountsList
     func testSettingsViewModel_refreshAccountsList_updatesProperty() {
         let mockSettings = TPPSettingsMock()
         let viewModel = SettingsViewModel(settings: mockSettings)
@@ -212,7 +212,7 @@ final class AccountDetailViewModelGapTests: XCTestCase {
         super.tearDown()
     }
 
-    /// QAAtlas Gap: AccountDetailViewModel class — verify updateSync updates account details
+    /// Coverage Gap: AccountDetailViewModel class — verify updateSync updates account details
     func testAccountDetailViewModel_updateSync_setsPermission() {
         let account = mockProvider.tppAccount
         let details = account.details!
@@ -235,7 +235,7 @@ final class AccountDetailViewModelGapTests: XCTestCase {
 @MainActor
 final class ErrorDetailViewControllerGapTests: XCTestCase {
 
-    /// QAAtlas Gap: addField function — verify rendered content includes field labels and values
+    /// Coverage Gap: addField function — verify rendered content includes field labels and values
     func testErrorDetailVC_rendersFieldsCorrectly() async {
         let detail = await ErrorDetail.capture(
             title: "Download Failed",
@@ -256,7 +256,7 @@ final class ErrorDetailViewControllerGapTests: XCTestCase {
         XCTAssertTrue(rendered.contains("Could not download book"), "Rendered content should contain the error message value")
     }
 
-    /// QAAtlas Gap: addSection function — verify rendered content includes section headers
+    /// Coverage Gap: addSection function — verify rendered content includes section headers
     func testErrorDetailVC_rendersSectionsCorrectly() async {
         let detail = await ErrorDetail.capture(
             title: "Error",
@@ -276,7 +276,7 @@ final class ErrorDetailViewControllerGapTests: XCTestCase {
         XCTAssertTrue(rendered.contains("Activity Trail"), "Rendered content should contain Activity Trail section")
     }
 
-    /// QAAtlas Gap: addLine function — verify device context lines are rendered
+    /// Coverage Gap: addLine function — verify device context lines are rendered
     func testErrorDetailVC_rendersDeviceContextLines() async {
         let detail = await ErrorDetail.capture(
             title: "Error",
@@ -300,7 +300,7 @@ final class ErrorDetailViewControllerGapTests: XCTestCase {
 
 final class MyBooksDownloadCenterAdeptGapTests: XCTestCase {
 
-    /// QAAtlas Gap: adept download state — verify download state management for DRM books
+    /// Coverage Gap: adept download state — verify download state management for DRM books
     func testDownloadCenter_bookStateTransitions_forAdobeAdeptBooks() {
         let registry = TPPBookRegistryMock()
         let book = TPPBookMocker.mockBook(
@@ -319,14 +319,14 @@ final class MyBooksDownloadCenterAdeptGapTests: XCTestCase {
                        "Canceling an adept download should reset state to downloadNeeded")
     }
 
-    /// QAAtlas Gap: adept progress update — verify progress tracking infrastructure
+    /// Coverage Gap: adept progress update — verify progress tracking infrastructure
     func testDownloadCenter_downloadProgressPublisher_exists() {
         // Verify the download progress infrastructure exists and is accessible
         let center = MyBooksDownloadCenter.shared
         XCTAssertNotNil(center, "MyBooksDownloadCenter should be accessible")
     }
 
-    /// QAAtlas Gap: adept download completion — verify state for successful download
+    /// Coverage Gap: adept download completion — verify state for successful download
     func testDownloadCenter_bookStateTransitions_downloadSuccess() {
         let registry = TPPBookRegistryMock()
         let book = TPPBookMocker.mockBook(
@@ -350,7 +350,7 @@ final class MyBooksDownloadCenterAdeptGapTests: XCTestCase {
 
 final class AdobeCertificateGapTests: XCTestCase {
 
-    /// QAAtlas Gap: AdobeCertificate class — test expirationDate from timestamp
+    /// Coverage Gap: AdobeCertificate class — test expirationDate from timestamp
     func testAdobeCertificate_expirationDate_computesFromTimestamp() {
         let timestamp: UInt = 1704067200 // Jan 1, 2024 00:00:00 UTC
         let cert = AdobeCertificate(expireson: timestamp)
@@ -359,14 +359,14 @@ final class AdobeCertificateGapTests: XCTestCase {
         XCTAssertEqual(cert.expirationDate, Date(timeIntervalSince1970: Double(timestamp)))
     }
 
-    /// QAAtlas Gap: AdobeCertificate — test expirationDate nil when no timestamp
+    /// Coverage Gap: AdobeCertificate — test expirationDate nil when no timestamp
     func testAdobeCertificate_expirationDate_nilWhenNoTimestamp() {
         let cert = AdobeCertificate(expireson: nil)
         XCTAssertNil(cert.expirationDate,
                      "expirationDate should be nil when expireson is nil")
     }
 
-    /// QAAtlas Gap: AdobeCertificate — test hasExpired with past date
+    /// Coverage Gap: AdobeCertificate — test hasExpired with past date
     func testAdobeCertificate_hasExpired_trueForPastDate() {
         let pastTimestamp: UInt = 946684800 // Jan 1, 2000
         let cert = AdobeCertificate(expireson: pastTimestamp)
@@ -375,7 +375,7 @@ final class AdobeCertificateGapTests: XCTestCase {
                       "Certificate with past expiration should be expired")
     }
 
-    /// QAAtlas Gap: AdobeCertificate — test hasExpired with future date
+    /// Coverage Gap: AdobeCertificate — test hasExpired with future date
     func testAdobeCertificate_hasExpired_falseForFutureDate() {
         let futureTimestamp: UInt = 4102444800 // Jan 1, 2100
         let cert = AdobeCertificate(expireson: futureTimestamp)
@@ -384,7 +384,7 @@ final class AdobeCertificateGapTests: XCTestCase {
                        "Certificate with future expiration should not be expired")
     }
 
-    /// QAAtlas Gap: AdobeCertificate — test hasExpired false when no expiration
+    /// Coverage Gap: AdobeCertificate — test hasExpired false when no expiration
     func testAdobeCertificate_hasExpired_falseWhenNoExpiration() {
         let cert = AdobeCertificate(expireson: nil)
 
@@ -392,7 +392,7 @@ final class AdobeCertificateGapTests: XCTestCase {
                        "Certificate without expiration should not be considered expired")
     }
 
-    /// QAAtlas Gap: AdobeCertificate — test JSON decoding via init(data:)
+    /// Coverage Gap: AdobeCertificate — test JSON decoding via init(data:)
     func testAdobeCertificate_initFromData_decodesValidJSON() {
         let json = #"{"expireson": 1704067200}"#
         let data = json.data(using: .utf8)!
@@ -403,7 +403,7 @@ final class AdobeCertificateGapTests: XCTestCase {
         XCTAssertEqual(cert?.expireson, 1704067200)
     }
 
-    /// QAAtlas Gap: AdobeCertificate — test init(data:) with invalid JSON returns nil
+    /// Coverage Gap: AdobeCertificate — test init(data:) with invalid JSON returns nil
     func testAdobeCertificate_initFromData_returnsNilForInvalidJSON() {
         let invalidData = Data("not json".utf8)
 
@@ -415,13 +415,13 @@ final class AdobeCertificateGapTests: XCTestCase {
 
 final class AdobeDRMErrorGapTests: XCTestCase {
 
-    /// QAAtlas Gap: AdobeDRMError enum — test error case exists
+    /// Coverage Gap: AdobeDRMError enum — test error case exists
     func testAdobeDRMError_expiredCase_exists() {
         let error = AdobeDRMError.expiredDisplayUntilDate
         XCTAssertNotNil(error)
     }
 
-    /// QAAtlas Gap: AdobeDRMError — test errorDescription provides localized message
+    /// Coverage Gap: AdobeDRMError — test errorDescription provides localized message
     func testAdobeDRMError_errorDescription_isNotEmpty() {
         let error = AdobeDRMError.expiredDisplayUntilDate
         XCTAssertNotNil(error.errorDescription,
@@ -430,7 +430,7 @@ final class AdobeDRMErrorGapTests: XCTestCase {
                        "Error description should not be empty")
     }
 
-    /// QAAtlas Gap: AdobeDRMError — test conforms to LocalizedError
+    /// Coverage Gap: AdobeDRMError — test conforms to LocalizedError
     func testAdobeDRMError_conformsToLocalizedError() {
         let error: LocalizedError = AdobeDRMError.expiredDisplayUntilDate
         XCTAssertNotNil(error.errorDescription)
@@ -439,13 +439,13 @@ final class AdobeDRMErrorGapTests: XCTestCase {
 
 final class AdobeDRMServiceGapTests: XCTestCase {
 
-    /// QAAtlas Gap: AdobeDRMService class — test singleton exists
+    /// Coverage Gap: AdobeDRMService class — test singleton exists
     func testAdobeDRMService_shared_isAccessible() {
         let service = AdobeDRMService.shared
         XCTAssertNotNil(service, "AdobeDRMService shared instance should be accessible")
     }
 
-    /// QAAtlas Gap: AdobeDRMService — test isReady reflects DRM availability
+    /// Coverage Gap: AdobeDRMService — test isReady reflects DRM availability
     func testAdobeDRMService_isReady_returnsBoolean() {
         let service = AdobeDRMService.shared
         // In test environment, DRM may or may not be available

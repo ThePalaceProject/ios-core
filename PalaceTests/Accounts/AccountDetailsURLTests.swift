@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Tests for AccountDetails URL management: setURL and getLicenseURL.
-//  Covers QAAtlas high-priority gaps: getLicenseURL, setURL.
+//  Covers High-priority coverage gaps: getLicenseURL, setURL.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

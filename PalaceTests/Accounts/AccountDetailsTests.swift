@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Tests for Account, AccountDetails, Authentication, and related types.
-//  Covers high-priority gaps identified by QAAtlas.
+//  Covers high-priority coverage gaps.
 //
 //  Copyright 2026 The Palace Project. All rights reserved.
 //

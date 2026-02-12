@@ -1,8 +1,8 @@
 //
-//  QAAtlasCoverageGapTests2.swift
+//  CoverageGapTests2.swift
 //  PalaceTests
 //
-//  Additional QAAtlas coverage gap tests for AppTabRouter, TPPBook, TPPBadgeImage, DebugSettings.
+//  Additional Coverage coverage gap tests for AppTabRouter, TPPBook, TPPBadgeImage, DebugSettings.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -15,7 +15,7 @@ import XCTest
 @MainActor
 final class AppTabRouterGapTests: XCTestCase {
 
-    /// QAAtlas Gap: AppTab enum — verify hashability and all cases exist
+    /// Coverage Gap: AppTab enum — verify hashability and all cases exist
     func testAppTab_allCasesExistAndAreHashable() {
         let catalog: AppTab = .catalog
         let myBooks: AppTab = .myBooks
@@ -35,7 +35,7 @@ final class AppTabRouterGapTests: XCTestCase {
         XCTAssertTrue(set.contains(.settings))
     }
 
-    /// QAAtlas Gap: AppTabRouter — verify default selected is .catalog
+    /// Coverage Gap: AppTabRouter — verify default selected is .catalog
     func testAppTabRouter_defaultSelected_isCatalog() {
         let router = AppTabRouter()
 
@@ -43,7 +43,7 @@ final class AppTabRouterGapTests: XCTestCase {
                        "AppTabRouter default selected tab should be .catalog")
     }
 
-    /// QAAtlas Gap: AppTabRouter — verify selected can be changed
+    /// Coverage Gap: AppTabRouter — verify selected can be changed
     func testAppTabRouter_selected_canBeChanged() {
         let router = AppTabRouter()
 
@@ -60,7 +60,7 @@ final class AppTabRouterGapTests: XCTestCase {
         XCTAssertEqual(router.selected, .catalog)
     }
 
-    /// QAAtlas Gap: AppTabRouterHub — verify shared singleton exists
+    /// Coverage Gap: AppTabRouterHub — verify shared singleton exists
     func testAppTabRouterHub_shared_singletonExists() {
         let hub = AppTabRouterHub.shared
 
@@ -74,7 +74,7 @@ final class AppTabRouterGapTests: XCTestCase {
 
 final class TPPBookModelGapTests: XCTestCase {
 
-    /// QAAtlas Gap: TPPBook dictionaryRepresentation — produces non-empty dict
+    /// Coverage Gap: TPPBook dictionaryRepresentation — produces non-empty dict
     func testTPPBook_dictionaryRepresentation_producesNonEmptyDict() {
         let book = TPPBookMocker.mockBook(
             identifier: "dict-test-001",
@@ -91,7 +91,7 @@ final class TPPBookModelGapTests: XCTestCase {
         XCTAssertNotNil(dict[AcquisitionsKey])
     }
 
-    /// QAAtlas Gap: TPPBook dictionaryRepresentation — round-trip preserves key properties
+    /// Coverage Gap: TPPBook dictionaryRepresentation — round-trip preserves key properties
     func testTPPBook_dictionaryRepresentation_roundTripPreservesKeyProperties() {
         let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
         let inputDict: [String: Any] = [
@@ -116,7 +116,7 @@ final class TPPBookModelGapTests: XCTestCase {
         XCTAssertEqual(recreated?.categoryStrings, book.categoryStrings)
     }
 
-    /// QAAtlas Gap: TPPBook equality — same identifier yields equivalent Comparable result
+    /// Coverage Gap: TPPBook equality — same identifier yields equivalent Comparable result
     func testTPPBook_sameIdentifier_comparableEquivalent() {
         let book1 = TPPBookMocker.mockBook(identifier: "equal-001", title: "A")
         let book2 = TPPBookMocker.mockBook(identifier: "equal-001", title: "B")
@@ -126,7 +126,7 @@ final class TPPBookModelGapTests: XCTestCase {
         XCTAssertFalse(book2 < book1, "Same identifier: book2 should not be less than book1")
     }
 
-    /// QAAtlas Gap: TPPBook bookWithMetadata — returns book with updated metadata from source
+    /// Coverage Gap: TPPBook bookWithMetadata — returns book with updated metadata from source
     func testTPPBook_bookWithMetadata_returnsBookWithUpdatedMetadata() {
         let sourceBook = TPPBookMocker.mockBook(
             identifier: "metadata-source",
@@ -151,14 +151,14 @@ final class TPPBookModelGapTests: XCTestCase {
 
 final class TPPBadgeImageGapTests: XCTestCase {
 
-    /// QAAtlas Gap: TPPBadgeImage.audiobook — assetName returns "AudiobookBadge"
+    /// Coverage Gap: TPPBadgeImage.audiobook — assetName returns "AudiobookBadge"
     func testTPPBadgeImage_audiobook_assetNameReturnsAudiobookBadge() {
         let audiobook = TPPContentBadgeImageView.TPPBadgeImage.audiobook
 
         XCTAssertEqual(audiobook.assetName(), "AudiobookBadge")
     }
 
-    /// QAAtlas Gap: TPPBadgeImage — all badge cases are enumerable
+    /// Coverage Gap: TPPBadgeImage — all badge cases are enumerable
     func testTPPBadgeImage_allCases_areEnumerable() {
         // TPPBadgeImage is Int-backed; we enumerate known cases without calling .ebook.assetName()
         let audiobook: TPPContentBadgeImageView.TPPBadgeImage = .audiobook
@@ -181,7 +181,7 @@ final class DebugSettingsGapTests: XCTestCase {
         super.tearDown()
     }
 
-    /// QAAtlas Gap: DebugSettings — isBorrowErrorSimulationEnabled reflects simulatedBorrowError
+    /// Coverage Gap: DebugSettings — isBorrowErrorSimulationEnabled reflects simulatedBorrowError
     func testDebugSettings_isBorrowErrorSimulationEnabled_reflectsSimulatedBorrowError() {
         let settings = DebugSettings.shared
 
@@ -192,7 +192,7 @@ final class DebugSettingsGapTests: XCTestCase {
         XCTAssertTrue(settings.isBorrowErrorSimulationEnabled)
     }
 
-    /// QAAtlas Gap: DebugSettings — isTestHoldsEnabled reflects testHoldsConfiguration
+    /// Coverage Gap: DebugSettings — isTestHoldsEnabled reflects testHoldsConfiguration
     func testDebugSettings_isTestHoldsEnabled_reflectsTestHoldsConfiguration() {
         let settings = DebugSettings.shared
 
@@ -203,7 +203,7 @@ final class DebugSettingsGapTests: XCTestCase {
         XCTAssertTrue(settings.isTestHoldsEnabled)
     }
 
-    /// QAAtlas Gap: DebugSettings — isBadgeLoggingEnabled can be toggled
+    /// Coverage Gap: DebugSettings — isBadgeLoggingEnabled can be toggled
     func testDebugSettings_isBadgeLoggingEnabled_canBeToggled() {
         let settings = DebugSettings.shared
 
@@ -214,7 +214,7 @@ final class DebugSettingsGapTests: XCTestCase {
         XCTAssertFalse(settings.isBadgeLoggingEnabled)
     }
 
-    /// QAAtlas Gap: DebugSettings resetAll — clears all state
+    /// Coverage Gap: DebugSettings resetAll — clears all state
     func testDebugSettings_resetAll_clearsState() {
         let settings = DebugSettings.shared
 

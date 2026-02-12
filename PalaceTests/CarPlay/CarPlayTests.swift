@@ -425,7 +425,7 @@ class CarPlayNowPlayingTemplateTests: XCTestCase {
         XCTAssertNotNil(imageProvider, "Image provider should initialize without CarPlay connection")
     }
 
-    /// TC-002 (QAAtlas): Verify Now Playing template is configured only once.
+    /// TC-002 (Coverage Analysis): Verify Now Playing template is configured only once.
     /// Tests idempotent behavior - multiple calls should not reconfigure.
     func testCarPlayBridge_NowPlayingConfigurationIsIdempotent() {
         // Arrange
@@ -441,7 +441,7 @@ class CarPlayNowPlayingTemplateTests: XCTestCase {
     }
 }
 
-// MARK: - CarPlay Chapter List Tests (TC-003 from QAAtlas)
+// MARK: - CarPlay Chapter List Tests (TC-003 from Coverage Analysis)
 
 /// Tests for CarPlay chapter list display functionality.
 /// Verifies chapter availability handling and graceful degradation.

@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Tests for TPPLicensesService: acquirePublication, pathInZip.
-//  Covers QAAtlas high-priority gap: acquirePublication.
+//  Covers High-priority coverage gap: acquirePublication.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

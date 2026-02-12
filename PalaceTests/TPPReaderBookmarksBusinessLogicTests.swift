@@ -197,7 +197,7 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
         }
     }
 
-    // MARK: - addBookmark Tests (QAAtlas Gap)
+    // MARK: - addBookmark Tests (Coverage Gap)
 
     func testBookmarkAtIndex_WithValidIndex_ReturnsBookmark() {
         guard let bookmark1 = newBookmark(href: "Chapter1",

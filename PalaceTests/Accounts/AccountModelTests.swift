@@ -4,7 +4,7 @@
 //
 //  Tests for Account class initialization, loadLogo, loadAuthenticationDocument,
 //  and related model types (OPDS2SamlIDP, TPPSignedInStateProvider).
-//  Covers QAAtlas high-priority gaps: Account, loadAuthenticationDocument, loadLogo,
+//  Covers High-priority coverage gaps: Account, loadAuthenticationDocument, loadLogo,
 //  OPDS2SamlIDP, TPPSignedInStateProvider.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
