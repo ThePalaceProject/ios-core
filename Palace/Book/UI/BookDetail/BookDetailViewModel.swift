@@ -218,7 +218,10 @@ final class BookDetailViewModel: ObservableObject {
     
     downloadCenter.downloadProgressPublisher
       .filter { $0.0 == self.book.identifier }
-      .map { $0.1 }
+      .map { [weak self] update -> Double in
+        // Clamp to max-seen-so-far to prevent progress bar from sliding backwards
+        max(self?.downloadProgress ?? 0.0, update.1)
+      }
       .assign(to: &$downloadProgress)
   }
 

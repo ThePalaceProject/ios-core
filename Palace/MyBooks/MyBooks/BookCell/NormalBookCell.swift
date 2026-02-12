@@ -79,7 +79,8 @@ struct NormalBookCell: View {
     .onDisappear { model.isLoading = false }
     .onReceive(downloadProgressPublisher) { progress in
       accessibleWithAnimation(.easeInOut(duration: 0.15)) {
-        downloadProgress = progress
+        // Clamp to max-seen-so-far to prevent progress bar from sliding backwards
+        downloadProgress = max(downloadProgress, progress)
       }
     }
     .onAppear {
