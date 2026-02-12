@@ -274,6 +274,9 @@ actor ErrorLogExporter {
     let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
     let libraryName = AccountsManager.shared.currentAccount?.name ?? "No library selected"
+    let patronIdentifier = await MainActor.run {
+      TPPUserAccount.sharedAccount().authorizationIdentifier
+    }
     
     var deviceInfo = """
     ---
@@ -284,6 +287,7 @@ actor ErrorLogExporter {
     Palace Version: \(appVersion) (\(buildNumber))
     Library: \(libraryName)
     Device ID: \(deviceID)
+    Patron ID: \(patronIdentifier ?? "Not signed in")
     """
     
     // Add memory and storage info

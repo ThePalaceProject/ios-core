@@ -5,6 +5,7 @@ final class CatalogLoadingViewController: UIViewController, TPPLoadingViewContro
 
   override func viewDidLoad() {
     super.viewDidLoad()
+    title = NSLocalizedString("Loading", comment: "Loading screen title")
     view.backgroundColor = TPPConfiguration.backgroundColor()
   }
 

@@ -57,6 +57,7 @@ class TPPEncryptedPDFPageViewController: UIViewController {
 
   override func viewDidLoad() {
     super.viewDidLoad()
+    title = String(format: NSLocalizedString("Page %d", comment: "PDF page number title"), pageNumber + 1)
     view.backgroundColor = .systemBackground
 
     doubleTap.numberOfTapsRequired = 2

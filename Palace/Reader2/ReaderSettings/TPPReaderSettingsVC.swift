@@ -21,6 +21,7 @@ class TPPReaderSettingsVC: UIViewController {
   static func makeSwiftUIView(preferences: EPUBPreferences, delegate: TPPReaderSettingsDelegate) -> UIViewController {
     let readerSettings = TPPReaderSettings(preferences: preferences, delegate: delegate)
     let controller = UIHostingController(rootView: TPPReaderSettingsView(settings: readerSettings))
+    controller.title = NSLocalizedString("Reader Settings", comment: "Reader settings screen title")
     return controller
   }
 }

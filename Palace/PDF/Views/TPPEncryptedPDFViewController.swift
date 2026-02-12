@@ -33,11 +33,12 @@ class TPPEncryptedPDFViewController: UIPageViewController {
   }
   
   override func viewDidLoad() {
+    super.viewDidLoad()
+    title = NSLocalizedString("PDF Reader", comment: "PDF reader screen title")
     view.backgroundColor = .secondarySystemBackground
     dataSource = self
     currentPage = min(pageCount, max(0, currentPage))
     setViewControllers([pageViewController(page: currentPage)], direction: .forward, animated: false)
-    super.viewDidLoad()
   }
   
   func pageViewController(page: Int = 0) -> UIViewController {

@@ -13,7 +13,24 @@ import UIKit
     presentingViewController: UIViewController,
     book: TPPBook?)
   {
-    beginComposing(to: emailAddress, presentingViewController: presentingViewController, body: generateBody(book: book))
+    beginComposing(to: emailAddress, presentingViewController: presentingViewController, book: book, libraryUUID: nil)
+  }
+
+  /// Composes a problem report email using the patron ID for the specified library.
+  /// - Parameters:
+  ///   - emailAddress: The support email address.
+  ///   - presentingViewController: The view controller to present the mail composer from.
+  ///   - book: An optional book associated with the report.
+  ///   - libraryUUID: The UUID of the library being viewed. When nil, falls back to the active library.
+  @objc func beginComposing(
+    to emailAddress: String,
+    presentingViewController: UIViewController,
+    book: TPPBook?,
+    libraryUUID: String?)
+  {
+    let account = TPPUserAccount.sharedAccount(libraryUUID: libraryUUID ?? AccountsManager.shared.currentAccountId)
+    let patronID = account.authorizationIdentifier
+    beginComposing(to: emailAddress, presentingViewController: presentingViewController, body: generateBody(book: book, patronIdentifier: patronID))
   }
   
   func beginComposing(
@@ -45,7 +62,7 @@ import UIKit
     presentingViewController.present(mailComposeViewController, animated: true)
   }
   
-  func generateBody(book: TPPBook?) -> String {
+  func generateBody(book: TPPBook?, patronIdentifier: String? = nil) -> String {
     let nativeHeight = UIScreen.main.nativeBounds.height
     let systemVersion = UIDevice.current.systemVersion
     let idiom: String
@@ -71,13 +88,16 @@ import UIKit
     }
     
     let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-    let bodyWithoutBook = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(AccountsManager.shared.currentAccount?.name ?? "")"
-    let body: String
-    if let book = book {
-      body = bodyWithoutBook + "\nTitle: \(book.title)\nID: \(book.identifier)"
-    } else {
-      body = bodyWithoutBook
+    var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(AccountsManager.shared.currentAccount?.name ?? "")"
+    
+    if let patronIdentifier = patronIdentifier {
+      body += "\nPatron ID: \(patronIdentifier)"
     }
+    
+    if let book = book {
+      body += "\nTitle: \(book.title)\nID: \(book.identifier)"
+    }
+    
     return body
   }
 }

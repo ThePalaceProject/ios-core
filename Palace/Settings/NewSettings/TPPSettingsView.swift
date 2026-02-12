@@ -33,6 +33,7 @@ struct TPPSettingsView: View {
     if sideBarEnabled {
       NavigationView {
         listView
+          .navigationTitle(DisplayStrings.settings)
         detailView
       }
       .navigationViewStyle(.columns)

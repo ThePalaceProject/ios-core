@@ -113,9 +113,13 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
   private var registry = [String: TPPBookRegistryRecord]() {
     didSet {
+      // Capture snapshot while on sync queue to avoid concurrent read/write crash.
+      // Without this, the main thread block reads self.registry while sync queue
+      // barrier blocks may be writing to it, causing EXC_BAD_ACCESS.
+      let snapshot = registry
       DispatchQueue.main.async { [weak self] in
         guard let self else { return }
-        registrySubject.send(registry)
+        registrySubject.send(snapshot)
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
       }
     }
@@ -270,8 +274,10 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
       self.registry = newRegistry
       
-      // Capture states to emit on main thread
+      // Capture states and snapshot while on sync queue to avoid concurrent access
       let bookStates = newRegistry.map { ($0.key, $0.value.state) }
+      let snapshot = self.registry
+      let bookCount = snapshot.count
       // Capture account to clear loading state
       let loadedAccount = account
 
@@ -284,7 +290,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         }
         
         self.state = .loaded
-        self.registrySubject.send(self.registry)
+        self.registrySubject.send(snapshot)
         
         // Emit state events for ALL loaded books so ViewModels update their state
         // This ensures any cached models or views created before load get the correct state
@@ -293,7 +299,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         }
         
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-        Log.info(#file, "  📖 Registry loaded with \(self.registry.count) books")
+        Log.info(#file, "  📖 Registry loaded with \(bookCount) books")
       }
     }
   }
@@ -534,8 +540,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
           genericBookmarks: genericBookmarks
         )
         self.save()
+        let snapshot = self.registry
         DispatchQueue.main.async {
-          self.registrySubject.send(self.registry)
+          self.registrySubject.send(snapshot)
           // CRITICAL: Also publish state change so ViewModels receive it
           self.bookStateSubject.send((book.identifier, state))
           // Also post notification for views using legacy observation
@@ -553,8 +560,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         record.state = .unregistered
         self.save()
         
+        let snapshot = self.registry
         DispatchQueue.main.async {
-          self.registrySubject.send(self.registry)
+          self.registrySubject.send(snapshot)
           self.bookStateSubject.send((book.identifier, .unregistered))
           self.postStateNotification(bookIdentifier: book.identifier, state: .unregistered)
         }
@@ -577,8 +585,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         
         self.registry.removeValue(forKey: bookIdentifier)
         self.save()
+        let snapshot = self.registry
         DispatchQueue.main.async {
-          self.registrySubject.send(self.registry)
+          self.registrySubject.send(snapshot)
           // Publish state change for removed book
           self.bookStateSubject.send((bookIdentifier, .unregistered))
           self.postStateNotification(bookIdentifier: bookIdentifier, state: .unregistered)
@@ -616,8 +625,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
       )
       self.save()
       
+      let snapshot = self.registry
       DispatchQueue.main.async {
-        self.registrySubject.send(self.registry)
+        self.registrySubject.send(snapshot)
         // Publish state change if it changed
         if nextState != previousState {
           self.bookStateSubject.send((book.identifier, nextState))

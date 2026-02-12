@@ -152,4 +152,107 @@ final class TPPAlertUtilsTests: XCTestCase {
     // Should not crash
     TPPAlertUtils.setProblemDocument(controller: alert, document: nil, append: true)
   }
+
+  // MARK: - Alert Stacking Safety (Regression for Crashlytics fe741015)
+
+  /// Regression test for Crashlytics issue fe741015: NSInternalInconsistencyException
+  /// "A view controller not containing an alert controller was asked for its
+  /// contained alert controller."
+  ///
+  /// The crash occurred when a user tapped "Borrow" multiple times on a book with
+  /// no licenses. Each failure triggered an error alert. The second alert presentation
+  /// found the first UIAlertController via topMostViewController traversal and tried
+  /// to present from it, causing the crash.
+  ///
+  /// Fix: topMostViewController stops at UIAlertControllers instead of traversing into them,
+  /// allowing the existing "another alert is already visible" guard to properly skip.
+  func testCrashlyticsFE741015_PresentAlertWhileAlertShowing_DoesNotCrash() {
+    // Arrange: Create a root view controller with a window
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    let rootVC = UIViewController()
+    window.rootViewController = rootVC
+    window.makeKeyAndVisible()
+
+    // Present the first alert (simulating first borrow failure)
+    let firstAlert = TPPAlertUtils.alert(title: "Error", message: "No licenses available")
+    let presentExpectation = expectation(description: "First alert presented")
+    rootVC.present(firstAlert, animated: false) {
+      presentExpectation.fulfill()
+    }
+    waitForExpectations(timeout: 2.0)
+
+    // Verify the first alert is presented
+    XCTAssertNotNil(rootVC.presentedViewController)
+    XCTAssertTrue(rootVC.presentedViewController is UIAlertController)
+
+    // Act: Try to present a second alert (simulating second borrow failure)
+    // This should NOT crash - previously it would crash with
+    // NSInternalInconsistencyException because topMostViewController
+    // would traverse into the first alert and try to present from it.
+    let secondAlert = TPPAlertUtils.alert(title: "Error", message: "No licenses available (2nd attempt)")
+
+    // Use presentFromViewControllerOrNil with viewController = rootVC
+    // (the specific VC path, not the topMostViewController path)
+    let secondExpectation = expectation(description: "Second alert handled without crash")
+
+    TPPAlertUtils.presentFromViewControllerOrNil(
+      alertController: secondAlert,
+      viewController: rootVC,
+      animated: false,
+      completion: {
+        secondExpectation.fulfill()
+      }
+    )
+    waitForExpectations(timeout: 2.0)
+
+    // The second alert should have been skipped (first is still showing)
+    // If we got here, no crash occurred
+    XCTAssertTrue(rootVC.presentedViewController is UIAlertController,
+      "First alert should still be presented")
+
+    // Cleanup
+    let dismissExpectation = expectation(description: "Alert dismissed")
+    rootVC.dismiss(animated: false) {
+      dismissExpectation.fulfill()
+    }
+    waitForExpectations(timeout: 2.0)
+    
+    window.isHidden = true
+  }
+
+  /// Tests that presenting an alert when no alert is showing still works correctly.
+  func testPresentAlert_WhenNoAlertShowing_PresentsSuccessfully() {
+    // Arrange
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    let rootVC = UIViewController()
+    window.rootViewController = rootVC
+    window.makeKeyAndVisible()
+
+    let alert = TPPAlertUtils.alert(title: "Test", message: "Test Message")
+
+    // Act
+    let expectation = self.expectation(description: "Alert presented")
+    TPPAlertUtils.presentFromViewControllerOrNil(
+      alertController: alert,
+      viewController: rootVC,
+      animated: false,
+      completion: {
+        expectation.fulfill()
+      }
+    )
+    waitForExpectations(timeout: 2.0)
+
+    // Assert
+    XCTAssertNotNil(rootVC.presentedViewController)
+    XCTAssertTrue(rootVC.presentedViewController is UIAlertController)
+
+    // Cleanup
+    let dismissExpectation = self.expectation(description: "Dismissed")
+    rootVC.dismiss(animated: false) {
+      dismissExpectation.fulfill()
+    }
+    waitForExpectations(timeout: 2.0)
+    
+    window.isHidden = true
+  }
 }

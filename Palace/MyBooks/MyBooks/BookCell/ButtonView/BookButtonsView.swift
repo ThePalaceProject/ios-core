@@ -103,7 +103,7 @@ struct ActionButton<T: BookButtonProvider>: View {
   var body: some View {
     Button(action: {
       HapticFeedback.medium()
-      withAnimation {
+      withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) {
         onButtonTapped?(type) ?? provider.handleAction(for: type)
       }
     }) {

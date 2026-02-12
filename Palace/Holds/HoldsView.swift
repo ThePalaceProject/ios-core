@@ -29,7 +29,7 @@ struct HoldsView: View {
           ToolbarItem(placement: .navigationBarTrailing) {
             if model.showSearchSheet {
               Button(action: {
-                withAnimation {
+                withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) {
                   model.showSearchSheet = false
                   model.searchQuery = ""
                 }
@@ -160,7 +160,7 @@ struct HoldsView: View {
   
   private var trailingBarButton: some View {
     Button {
-      withAnimation { model.showSearchSheet.toggle() }
+      withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { model.showSearchSheet.toggle() }
     } label: {
       ImageProviders.MyBooksView.search
     }

@@ -68,4 +68,15 @@ final class ErrorLogExporterTests: XCTestCase {
     let exporter = ErrorLogExporter.shared
     XCTAssertNotNil(exporter)
   }
+  
+  // MARK: - Patron ID in Device Info Tests (PP-3651)
+  
+  /// Regression test for PP-3651: Collected logs should contain patron ID in device info
+  func testPP3651_collectLogsForPreview_containsPatronIDField() async {
+    let logData = await ErrorLogExporter.shared.collectLogsForPreview()
+    
+    // The device info section should include a "Patron ID" field
+    XCTAssertTrue(logData.deviceInfo.contains("Patron ID:"),
+                  "Device info in error logs should include a Patron ID field")
+  }
 }

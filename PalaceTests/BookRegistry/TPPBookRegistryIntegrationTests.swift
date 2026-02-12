@@ -1223,3 +1223,200 @@ final class TPPBookRegistryUpdateAndRemoveTests: XCTestCase {
     registry.removeBook(forIdentifier: book.identifier)
   }
 }
+
+// MARK: - TPPBookRegistry Thread Safety Tests
+
+/// Regression test for Crashlytics issue 30c41d7e: Concurrent read/write on registry dictionary.
+///
+/// The crash occurred when:
+/// 1. Sync queue barrier blocks wrote to `self.registry` (e.g., during updateBook after loans sync)
+/// 2. Main thread blocks read `self.registry` via `registrySubject.send(self.registry)`
+/// 3. Concurrent Dictionary read + write caused EXC_BAD_ACCESS
+///
+/// Fix: Capture snapshots of the registry dictionary while on the sync queue before
+/// dispatching to the main thread, preventing concurrent access.
+final class TPPBookRegistryThreadSafetyTests: XCTestCase {
+  
+  private var cancellables: Set<AnyCancellable>!
+  
+  override func setUp() {
+    super.setUp()
+    cancellables = []
+  }
+  
+  override func tearDown() {
+    cancellables = nil
+    super.tearDown()
+  }
+  
+  /// Regression test for Crashlytics issue 30c41d7e: Rapid registry mutations must not crash
+  /// when the registryPublisher is being observed on the main thread.
+  ///
+  /// This test reproduces the crash scenario where:
+  /// - Multiple books are added/updated/removed in rapid succession (simulating sync + load overlap)
+  /// - A subscriber reads the emitted registry snapshots on the main thread
+  /// - Without the snapshot fix, the concurrent read/write would cause EXC_BAD_ACCESS
+  func testCrashlytics30c41d7e_RapidRegistryMutations_DoNotCrashPublisher() {
+    let registry = TPPBookRegistry.shared
+    let bookCount = 20
+    let books = (0..<bookCount).map { i in
+      TPPBookMocker.mockBook(
+        identifier: "thread-safety-\(i)-\(UUID().uuidString)",
+        title: "Thread Safety Book \(i)",
+        distributorType: .EpubZip
+      )
+    }
+    
+    // Subscribe to registry publisher on main thread (this is the read side of the race)
+    var snapshotCount = 0
+    let publisherExpectation = self.expectation(description: "Publisher emits snapshots without crashing")
+    publisherExpectation.assertForOverFulfill = false
+    
+    registry.registryPublisher
+      .sink { records in
+        // Access the dictionary structure to ensure it's not corrupted
+        _ = records.count
+        _ = records.keys.map { $0 }
+        snapshotCount += 1
+        if snapshotCount >= bookCount {
+          publisherExpectation.fulfill()
+        }
+      }
+      .store(in: &cancellables)
+    
+    // Rapidly add books (this is the write side of the race)
+    for book in books {
+      registry.addBook(book, state: .downloadNeeded)
+    }
+    
+    // Wait for publisher to receive snapshots - if the race condition exists,
+    // this would crash with EXC_BAD_ACCESS before reaching here
+    waitForExpectations(timeout: 5.0)
+    
+    XCTAssertGreaterThanOrEqual(snapshotCount, bookCount,
+      "Publisher should have emitted at least \(bookCount) snapshots")
+    
+    // Now rapidly remove all books while still subscribed
+    let removeExpectation = self.expectation(description: "Books removed without crash")
+    removeExpectation.isInverted = false
+    
+    for book in books {
+      registry.removeBook(forIdentifier: book.identifier)
+    }
+    
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+      removeExpectation.fulfill()
+    }
+    waitForExpectations(timeout: 3.0)
+  }
+  
+  /// Regression test for the specific crash scenario: concurrent updateBook calls
+  /// from sync feed processing while registry publisher is observed.
+  func testCrashlytics30c41d7e_ConcurrentAddAndUpdate_DoNotCrash() {
+    let registry = TPPBookRegistry.shared
+    let book = TPPBookMocker.mockBook(
+      identifier: "concurrent-update-\(UUID().uuidString)",
+      title: "Concurrent Update Test",
+      distributorType: .EpubZip
+    )
+    
+    // Subscribe to both publishers (main thread reads)
+    var registrySnapshots: [[String: TPPBookRegistryRecord]] = []
+    var stateChanges: [(String, TPPBookState)] = []
+    
+    let expectation = self.expectation(description: "All operations complete without crash")
+    
+    registry.registryPublisher
+      .sink { records in
+        registrySnapshots.append(records)
+      }
+      .store(in: &cancellables)
+    
+    registry.bookStatePublisher
+      .sink { (bookId, state) in
+        stateChanges.append((bookId, state))
+      }
+      .store(in: &cancellables)
+    
+    // Add the book
+    registry.addBook(book, state: .downloadNeeded)
+    
+    // Immediately trigger rapid state changes (simulating sync processing)
+    registry.setState(.downloading, for: book.identifier)
+    registry.setState(.downloadSuccessful, for: book.identifier)
+    registry.setState(.used, for: book.identifier)
+    
+    // Update the book (simulating updateBook during sync)
+    registry.updateBook(book)
+    
+    // Remove and re-add (simulating load() replacing the registry)
+    registry.removeBook(forIdentifier: book.identifier)
+    registry.addBook(book, state: .holding)
+    
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+      expectation.fulfill()
+    }
+    waitForExpectations(timeout: 3.0)
+    
+    // If we get here without crashing, the thread safety fix is working
+    XCTAssertFalse(registrySnapshots.isEmpty, "Should have received registry snapshots")
+    XCTAssertFalse(stateChanges.isEmpty, "Should have received state changes")
+    
+    // Cleanup
+    registry.removeBook(forIdentifier: book.identifier)
+  }
+  
+  /// Tests that registry publisher snapshots are consistent (not corrupted by concurrent writes).
+  /// Each emitted snapshot should be a valid dictionary that can be iterated without crashes.
+  func testRegistryPublisher_EmitsConsistentSnapshots_DuringRapidMutations() {
+    let registry = TPPBookRegistry.shared
+    let iterations = 15
+    let books = (0..<iterations).map { i in
+      TPPBookMocker.mockBook(
+        identifier: "snapshot-consistency-\(i)-\(UUID().uuidString)",
+        title: "Consistency Test \(i)",
+        distributorType: .EpubZip
+      )
+    }
+    
+    var allSnapshotsValid = true
+    let expectation = self.expectation(description: "All snapshots are consistent")
+    expectation.assertForOverFulfill = false
+    
+    var completionCount = 0
+    
+    registry.registryPublisher
+      .sink { records in
+        // Verify snapshot is consistent: iterate all keys and values
+        for (key, record) in records {
+          if key.isEmpty || record.book.identifier.isEmpty {
+            allSnapshotsValid = false
+          }
+        }
+      }
+      .store(in: &cancellables)
+    
+    // Interleave adds and removes rapidly
+    for (i, book) in books.enumerated() {
+      registry.addBook(book, state: .downloadNeeded)
+      
+      // Remove every other book to create more mutations
+      if i > 0 && i % 2 == 0 {
+        registry.removeBook(forIdentifier: books[i - 1].identifier)
+        completionCount += 1
+      }
+    }
+    
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+      expectation.fulfill()
+    }
+    waitForExpectations(timeout: 3.0)
+    
+    XCTAssertTrue(allSnapshotsValid, "All emitted snapshots should have valid, non-empty keys and identifiers")
+    
+    // Cleanup remaining books
+    for book in books {
+      registry.removeBook(forIdentifier: book.identifier)
+    }
+  }
+}

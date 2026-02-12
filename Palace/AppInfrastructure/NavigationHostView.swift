@@ -13,6 +13,7 @@ struct NavigationHostView<Content: View>: View {
   var body: some View {
     NavigationStack(path: $coordinator.path) {
       rootView
+        .navigationTitle("")
         .onAppear { NavigationCoordinatorHub.shared.coordinator = coordinator }
         .fullScreenCover(item: $coordinator.presentedEPUBSample) { epubData in
           if let book = coordinator.resolveBook(for: BookRoute(id: epubData.bookId)) {

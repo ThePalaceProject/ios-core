@@ -197,11 +197,11 @@ private extension CatalogView {
   }
 
   func presentSearch() {
-    withAnimation { showSearch = true }
+    withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { showSearch = true }
   }
   
   func dismissSearch() {
-    withAnimation { 
+    withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { 
       showSearch = false
     }
   }

@@ -295,7 +295,7 @@ struct AccountDetailView: View {
             .padding(.bottom, Layout.barcodeBottomPadding)
         }
         
-        Button(action: { withAnimation { viewModel.showBarcode.toggle() } }) {
+        Button(action: { withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { viewModel.showBarcode.toggle() } }) {
           Text(viewModel.showBarcode ? DisplayStrings.hideBarcode : DisplayStrings.showBarcode)
             .foregroundColor(Color(TPPConfiguration.mainColor()))
         }
@@ -593,7 +593,8 @@ struct AccountDetailView: View {
     ProblemReportEmail.sharedInstance.beginComposing(
       to: email.rawValue,
       presentingViewController: topVC,
-      book: nil as TPPBook?
+      book: nil as TPPBook?,
+      libraryUUID: viewModel.selectedAccount?.uuid
     )
   }
   

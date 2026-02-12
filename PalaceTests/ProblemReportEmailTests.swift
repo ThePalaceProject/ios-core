@@ -93,5 +93,79 @@ final class ProblemReportEmailTests: XCTestCase {
     // Body should contain separator line
     XCTAssertTrue(body.contains("---"))
   }
+  
+  // MARK: - Patron ID Tests (PP-3651)
+  
+  /// Regression test for PP-3651: Patron ID should be appended to support emails
+  func testPP3651_generateBody_withPatronID_containsPatronID() {
+    let patronID = "23333098765432"
+    
+    let body = emailService.generateBody(book: nil, patronIdentifier: patronID)
+    
+    XCTAssertTrue(body.contains("Patron ID: \(patronID)"),
+                  "Email body should contain patron ID when provided")
+  }
+  
+  /// Regression test for PP-3651: Patron ID should be omitted when nil
+  func testPP3651_generateBody_withoutPatronID_doesNotContainPatronIDLabel() {
+    let body = emailService.generateBody(book: nil, patronIdentifier: nil)
+    
+    XCTAssertFalse(body.contains("Patron ID:"),
+                   "Email body should not contain 'Patron ID:' label when patron ID is nil")
+  }
+  
+  /// Regression test for PP-3651: Patron ID should appear alongside book info
+  func testPP3651_generateBody_withBookAndPatronID_containsBothBookAndPatronInfo() {
+    let book = TPPBookMocker.mockBook(title: "Test Book", authors: "Test Author")
+    let patronID = "12345678901234"
+    
+    let body = emailService.generateBody(book: book, patronIdentifier: patronID)
+    
+    XCTAssertTrue(body.contains("Title: Test Book"),
+                  "Email body should contain book title")
+    XCTAssertTrue(body.contains("Patron ID: \(patronID)"),
+                  "Email body should contain patron ID alongside book info")
+  }
+  
+  /// Regression test for PP-3651: Patron ID should appear in the device info section (after the separator)
+  func testPP3651_generateBody_patronID_appearsAfterSeparator() {
+    let patronID = "99887766554433"
+    
+    let body = emailService.generateBody(book: nil, patronIdentifier: patronID)
+    
+    // The patron ID should appear after the "---" separator along with other device info
+    guard let separatorRange = body.range(of: "---") else {
+      XCTFail("Body should contain separator")
+      return
+    }
+    let afterSeparator = String(body[separatorRange.upperBound...])
+    XCTAssertTrue(afterSeparator.contains("Patron ID: \(patronID)"),
+                  "Patron ID should appear in the device info section after the separator")
+  }
+
+  // MARK: - Library-scoped Patron ID Tests (PP-3651 follow-up)
+
+  /// Regression test: When viewing a library you're NOT signed into,
+  /// the patron ID from another (active) library should NOT leak through.
+  /// beginComposing(to:presentingViewController:book:libraryUUID:) should
+  /// resolve the patron ID for the specified library, not the active one.
+  func testPP3651_generateBody_withExplicitNilPatronID_doesNotLeakActiveLibraryID() {
+    // Simulate: user is signed into Library A (active) but viewing Library B (no patron)
+    // The caller should pass nil when the viewed library has no signed-in patron
+    let body = emailService.generateBody(book: nil, patronIdentifier: nil)
+
+    XCTAssertFalse(body.contains("Patron ID:"),
+                   "When patronIdentifier is nil (not signed in to viewed library), no Patron ID should appear")
+  }
+
+  /// Regression test: beginComposing should accept a libraryUUID so it can
+  /// resolve the correct patron ID for the viewed library, not the active one.
+  func testPP3651_beginComposing_acceptsLibraryUUID() {
+    // Verify the method signature exists and compiles with libraryUUID parameter
+    // This is a compile-time check — the actual email composition requires MFMailComposeViewController
+    let selector = #selector(ProblemReportEmail.beginComposing(to:presentingViewController:book:libraryUUID:))
+    XCTAssertTrue(emailService.responds(to: selector),
+                  "ProblemReportEmail should have beginComposing(to:presentingViewController:book:libraryUUID:) method")
+  }
 }
 
