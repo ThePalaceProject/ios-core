@@ -115,7 +115,9 @@ class TPPPDFPreviewGridController: UICollectionViewController {
   override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
     let page = self.pageNumber(for: indexPath.item)
     let key = NSNumber(value: page)
-    let cell = collectionView.dequeueReusableCell(withReuseIdentifier: cellId, for: indexPath) as! TPPPDFPreviewGridCell
+    guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: cellId, for: indexPath) as? TPPPDFPreviewGridCell else {
+      return collectionView.dequeueReusableCell(withReuseIdentifier: cellId, for: indexPath)
+    }
     cell.pageNumber = page
     cell.pageLabel.text = document?.label(page: page) ?? "\(page + 1)"
     if let image = previewCache.object(forKey: key) {

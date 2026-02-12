@@ -63,17 +63,18 @@ class TPPEncryptedPDFPageViewController: UIViewController {
     doubleTap.numberOfTapsRequired = 2
     doubleTap.addTarget(self, action: #selector(tappedToZoom))
     
-    scrollView = UIScrollView(frame: view.bounds)
-    scrollView!.minimumZoomScale = 1
-    scrollView!.maximumZoomScale = 4
-    scrollView!.delegate = self
-    scrollView!.backgroundColor = .secondarySystemBackground
-    view.addSubview(scrollView!)
-    scrollView!.autoPinEdgesToSuperviewEdges()
+    let sv = UIScrollView(frame: view.bounds)
+    sv.minimumZoomScale = 1
+    sv.maximumZoomScale = 4
+    sv.delegate = self
+    sv.backgroundColor = .secondarySystemBackground
+    view.addSubview(sv)
+    sv.autoPinEdgesToSuperviewEdges()
+    scrollView = sv
     
     pdfImageView.frame = view.bounds.insetBy(dx: contentInset * 2, dy: contentInset * 2)
-    scrollView!.addSubview(pdfImageView)
-    scrollView!.addGestureRecognizer(doubleTap)
+    sv.addSubview(pdfImageView)
+    sv.addGestureRecognizer(doubleTap)
 
     // Blank page
     if let pageSize = document.page(at: pageNumber)?.getBoxRect(.mediaBox).size {
@@ -81,8 +82,8 @@ class TPPEncryptedPDFPageViewController: UIViewController {
     }
     
     // The page is rendered after a short delay to avoid rendering when the user quickly scrolls through pages
-    timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false, block: { _ in
-      self.renderPageImage()
+    timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false, block: { [weak self] _ in
+      self?.renderPageImage()
     })
   }
   
