@@ -194,10 +194,28 @@ import UIKit
      - animated: Whether to animate the presentation of the alert or not.
      - completion: Callback passed on to UIViewcontroller::present().
    */
+  /// Maximum number of retry attempts for alert presentation when a view
+  /// controller is mid-transition or otherwise temporarily unable to present.
+  private static let maxAlertRetries = 3
+  
   class func presentFromViewControllerOrNil(alertController: UIAlertController?,
                                             viewController: UIViewController?,
                                             animated: Bool,
                                             completion: (() -> Void)?) {
+    presentFromViewControllerOrNil(
+      alertController: alertController,
+      viewController: viewController,
+      animated: animated,
+      completion: completion,
+      retryCount: 0
+    )
+  }
+  
+  private class func presentFromViewControllerOrNil(alertController: UIAlertController?,
+                                                    viewController: UIViewController?,
+                                                    animated: Bool,
+                                                    completion: (() -> Void)?,
+                                                    retryCount: Int) {
     guard let alertController = alertController else {
       return
     }
@@ -220,7 +238,6 @@ import UIKit
     DispatchQueue.main.async {
       guard let root = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else {
         Log.error(#file, "Cannot present alert: no root view controller available")
-        // Log the alert message so it's not lost
         if let msg = alertController.message {
           Log.error(#file, "Failed to present alert with message: \(msg)")
         }
@@ -232,11 +249,18 @@ import UIKit
       
       // Safety: never present from a UIAlertController
       guard !(top is UIAlertController) else {
-        Log.warn(#file, "Cannot present alert: top controller is a UIAlertController")
-        if let msg = alertController.message {
-          Log.warn(#file, "Skipped alert with message: \(msg)")
+        // Retry: the alert may dismiss shortly, allowing us to present
+        if retryCount < maxAlertRetries {
+          Log.debug(#file, "Top controller is a UIAlertController, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
+          retryPresentation(alertController: alertController, viewController: viewController,
+                            animated: animated, completion: completion, retryCount: retryCount)
+        } else {
+          Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: top controller is still a UIAlertController")
+          if let msg = alertController.message {
+            Log.warn(#file, "Dropped alert with message: \(msg)")
+          }
+          completion?()
         }
-        completion?()
         return
       }
       
@@ -256,35 +280,54 @@ import UIKit
         return
       }
       
-      // Don't present during view controller transitions
+      // Retry during view controller transitions instead of dropping the alert.
+      // Transitions are short-lived so a brief delay is sufficient.
       guard !top.isBeingPresented && !top.isBeingDismissed else {
-        Log.warn(#file, "Cannot present alert: view controller is in transition")
-        if let msg = alertController.message {
-          Log.warn(#file, "Skipped alert with message: \(msg)")
+        if retryCount < maxAlertRetries {
+          Log.debug(#file, "View controller is in transition, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
+          retryPresentation(alertController: alertController, viewController: viewController,
+                            animated: animated, completion: completion, retryCount: retryCount)
+        } else {
+          Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: view controller still in transition")
+          if let msg = alertController.message {
+            Log.warn(#file, "Dropped alert with message: \(msg)")
+          }
+          completion?()
         }
-        completion?()
         return
       }
       
       // If already presenting, try to present on top of the presented controller
       if let presented = top.presentedViewController {
-        // Check if the presented controller is another alert - don't stack alerts
+        // Check if the presented controller is another alert - retry instead of dropping
         if presented is UIAlertController {
-          Log.warn(#file, "Cannot present alert: another alert is already visible")
-          if let msg = alertController.message {
-            Log.warn(#file, "Skipped alert with message: \(msg)")
+          if retryCount < maxAlertRetries {
+            Log.debug(#file, "Another alert is visible, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
+            retryPresentation(alertController: alertController, viewController: viewController,
+                              animated: animated, completion: completion, retryCount: retryCount)
+          } else {
+            Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: another alert is still visible")
+            if let msg = alertController.message {
+              Log.warn(#file, "Dropped alert with message: \(msg)")
+            }
+            completion?()
           }
-          completion?()
           return
         }
         
         // Ensure presented view controller is in valid state
         guard presented.isViewLoaded, presented.view.window != nil else {
-          Log.warn(#file, "Cannot present alert: presented view controller not ready")
-          if let msg = alertController.message {
-            Log.error(#file, "Skipped alert with message: \(msg)")
+          if retryCount < maxAlertRetries {
+            Log.debug(#file, "Presented view controller not ready, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
+            retryPresentation(alertController: alertController, viewController: viewController,
+                              animated: animated, completion: completion, retryCount: retryCount)
+          } else {
+            Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: presented view controller not ready")
+            if let msg = alertController.message {
+              Log.error(#file, "Dropped alert with message: \(msg)")
+            }
+            completion?()
           }
-          completion?()
           return
         }
         
@@ -295,6 +338,25 @@ import UIKit
         top.present(alertController, animated: animated, completion: completion)
         if let msg = alertController.message { Log.info(#file, msg) }
       }
+    }
+  }
+  
+  /// Retries alert presentation after a short delay to allow transitions to complete.
+  private class func retryPresentation(alertController: UIAlertController,
+                                       viewController: UIViewController?,
+                                       animated: Bool,
+                                       completion: (() -> Void)?,
+                                       retryCount: Int) {
+    // Exponential backoff: 0.4s, 0.8s, 1.6s
+    let delay = 0.4 * pow(2.0, Double(retryCount))
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+      presentFromViewControllerOrNil(
+        alertController: alertController,
+        viewController: viewController,
+        animated: animated,
+        completion: completion,
+        retryCount: retryCount + 1
+      )
     }
   }
 
