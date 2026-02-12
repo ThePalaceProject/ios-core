@@ -2,15 +2,32 @@
 #
 # Jira Integration Script for Palace iOS
 # 
-# This script provides functions to interact with Jira:
-# - Extract ticket numbers from commit messages
-# - Add comments to Jira tickets
-# - Link commits to tickets
+# Full JIRA lifecycle management from the command line.
+# Designed so that AI agents (Cursor, Codex, etc.) can manage tickets
+# without needing ad-hoc curl calls or session-specific knowledge.
 #
-# Usage:
-#   ./jira-integration.sh comment PP-3605 "Your comment here"
-#   ./jira-integration.sh link-commit PP-3605 <commit-sha>
-#   ./jira-integration.sh add-fix-comment PP-3605 "Root cause" "Testing steps"
+# Capabilities:
+# - Search and view existing tickets
+# - Create new tickets (bug, task, story)
+# - Assign tickets, set story points
+# - Move tickets to sprints, transition status
+# - Add comments, link commits, add structured fix details
+#
+# Common workflows:
+#   # Find an existing ticket and update it
+#   ./jira-integration.sh search "download hang audiobook"
+#   ./jira-integration.sh view PP-3692
+#   ./jira-integration.sh assign PP-3692 me
+#   ./jira-integration.sh set-points PP-3692 5
+#   ./jira-integration.sh move-to-sprint PP-3692 current
+#   ./jira-integration.sh transition PP-3692 "Code Review"
+#   ./jira-integration.sh comment PP-3692 "Fix submitted in PR #760"
+#
+#   # Create a new ticket when one doesn't exist
+#   ./jira-integration.sh create bug "Summary here" "Description here"
+#
+#   # View sprint info
+#   ./jira-integration.sh get-sprints active
 #
 
 set -e
@@ -599,12 +616,593 @@ interactive_fix_comment() {
   add_fix_comment "$ticket" "$root_cause" "$testing_steps"
 }
 
+# ---------------------------------------------------------------------------
+# Ticket Management Commands (create, view, search, assign, points, sprint)
+# ---------------------------------------------------------------------------
+
+# Get current user's account ID
+get_myself() {
+  if ! load_config; then
+    return 1
+  fi
+
+  curl -s \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    "$JIRA_URL/rest/api/3/myself"
+}
+
+# Show current user info
+show_myself() {
+  local data
+  data=$(get_myself) || return 1
+
+  echo "$data" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+print(f\"Account ID: {d['accountId']}\")
+print(f\"Name:       {d['displayName']}\")
+print(f\"Email:      {d.get('emailAddress', 'N/A')}\")
+"
+}
+
+# Resolve a user reference to an accountId.
+# Accepts: "me", an email address, or a raw accountId.
+resolve_user() {
+  local user_ref="$1"
+
+  if [[ "$user_ref" == "me" ]]; then
+    get_myself | python3 -c "import json,sys; print(json.load(sys.stdin)['accountId'])"
+  elif [[ "$user_ref" == *"@"* ]]; then
+    # Search by email
+    local result
+    result=$(curl -s \
+      -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      --get --data-urlencode "query=$user_ref" \
+      "$JIRA_URL/rest/api/3/user/search")
+    echo "$result" | python3 -c "
+import json, sys
+users = json.load(sys.stdin)
+if users:
+    print(users[0]['accountId'])
+else:
+    sys.exit(1)
+" 2>/dev/null
+  else
+    # Assume it's already an accountId
+    echo "$user_ref"
+  fi
+}
+
+# Search for tickets by text or JQL
+# Uses the POST /rest/api/3/search/jql endpoint (Atlassian deprecated the GET endpoint)
+search_tickets() {
+  local query="$1"
+  local max_results="${2:-10}"
+
+  if ! load_config; then
+    return 1
+  fi
+
+  if [[ -z "$query" ]]; then
+    echo -e "${RED}❌ Usage: jira-integration.sh search <text|JQL> [max_results]${NC}"
+    return 1
+  fi
+
+  echo -e "${BLUE}🔍 Searching for: $query${NC}"
+
+  local jql
+  # If query looks like JQL (contains = or ORDER BY), use as-is
+  if [[ "$query" == *"="* || "$query" == *"ORDER"* || "$query" == *"order"* ]]; then
+    jql="$query"
+  else
+    # Text search within the project
+    local project_key="${JIRA_PROJECT_KEY:-PP}"
+    jql="project = $project_key AND text ~ \"$query\" ORDER BY updated DESC"
+  fi
+
+  local json_payload
+  json_payload=$(jq -n \
+    --arg jql "$jql" \
+    --argjson max "$max_results" \
+    '{
+      jql: $jql,
+      maxResults: $max,
+      fields: ["summary", "status", "assignee", "priority", "customfield_10016"]
+    }')
+
+  local response
+  response=$(curl -s \
+    -X POST \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$json_payload" \
+    "$JIRA_URL/rest/api/3/search/jql")
+
+  echo "$response" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if 'errorMessages' in d:
+    for e in d['errorMessages']:
+        print(f'  Error: {e}')
+    sys.exit(1)
+issues = d.get('issues', [])
+if not issues:
+    print('  No results found.')
+    sys.exit(0)
+print(f'  Found {len(issues)} result(s):')
+print()
+for issue in issues:
+    key = issue['key']
+    fields = issue['fields']
+    summary = fields.get('summary', '')
+    status = fields.get('status', {}).get('name', 'Unknown')
+    assignee = fields.get('assignee', {})
+    assignee_name = assignee.get('displayName', 'Unassigned') if assignee else 'Unassigned'
+    points = fields.get('customfield_10016', '-')
+    if points is not None and points != '-':
+        points = int(points) if float(points) == int(float(points)) else points
+    priority = fields.get('priority', {}).get('name', '-')
+    print(f'  {key}  [{status}]  {priority}  {points}pts  @{assignee_name}')
+    print(f'    {summary}')
+    print()
+" 2>/dev/null || {
+    echo -e "${RED}❌ Search failed${NC}"
+    echo "$response" | python3 -m json.tool 2>/dev/null || echo "$response"
+    return 1
+  }
+}
+
+# View a single ticket's details
+view_ticket() {
+  local ticket="$1"
+
+  if ! load_config; then
+    return 1
+  fi
+
+  if [[ -z "$ticket" ]]; then
+    echo -e "${RED}❌ Usage: jira-integration.sh view <ticket>${NC}"
+    return 1
+  fi
+
+  local response
+  response=$(curl -s \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    "$JIRA_URL/rest/api/3/issue/$ticket?fields=summary,status,assignee,priority,customfield_10016,issuetype,sprint,created,updated,description,labels")
+
+  local http_code
+  http_code=$(echo "$response" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'key' in d else 1)" 2>/dev/null && echo "200" || echo "404")
+
+  if [[ "$http_code" != "200" ]]; then
+    echo -e "${RED}❌ Ticket $ticket not found${NC}"
+    return 1
+  fi
+
+  echo "$response" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+f = d['fields']
+print(f\"Ticket:     {d['key']}\")
+print(f\"Type:       {f.get('issuetype', {}).get('name', '-')}\")
+print(f\"Summary:    {f.get('summary', '-')}\")
+print(f\"Status:     {f.get('status', {}).get('name', '-')}\")
+print(f\"Priority:   {f.get('priority', {}).get('name', '-')}\")
+a = f.get('assignee')
+print(f\"Assignee:   {a['displayName'] if a else 'Unassigned'}\")
+print(f\"Points:     {f.get('customfield_10016', '-')}\")
+labels = f.get('labels', [])
+print(f\"Labels:     {', '.join(labels) if labels else '-'}\")
+print(f\"Created:    {f.get('created', '-')[:10]}\")
+print(f\"Updated:    {f.get('updated', '-')[:10]}\")
+print(f\"URL:        ${JIRA_URL}/browse/{d['key']}\")
+
+# Print description (first 500 chars of plain text)
+desc = f.get('description')
+if desc:
+    def extract_text(node):
+        texts = []
+        if isinstance(node, dict):
+            if node.get('type') == 'text':
+                texts.append(node.get('text', ''))
+            for child in node.get('content', []):
+                texts.extend(extract_text(child))
+        return texts
+    text = ' '.join(extract_text(desc)).strip()
+    if text:
+        print(f\"\\nDescription:\\n  {text[:500]}{'...' if len(text) > 500 else ''}\")
+" 2>/dev/null
+}
+
+# Create a new Jira ticket
+# Usage: create_ticket <type> <summary> [description]
+# type: bug, task, story
+create_ticket() {
+  local issue_type="$1"
+  local summary="$2"
+  local description="${3:-}"
+
+  if ! load_config; then
+    return 1
+  fi
+
+  if [[ -z "$issue_type" || -z "$summary" ]]; then
+    echo -e "${RED}❌ Usage: jira-integration.sh create <bug|task|story> <summary> [description]${NC}"
+    return 1
+  fi
+
+  # Map type name to Jira issue type ID
+  local type_id
+  case "$(echo "$issue_type" | tr '[:upper:]' '[:lower:]')" in
+    bug)   type_id="10014" ;;
+    task)  type_id="10012" ;;
+    story) type_id="10009" ;;
+    *)
+      echo -e "${RED}❌ Unknown issue type: $issue_type. Use: bug, task, story${NC}"
+      return 1
+      ;;
+  esac
+
+  local project_key="${JIRA_PROJECT_KEY:-PP}"
+  echo -e "${BLUE}📝 Creating $issue_type in $project_key: $summary${NC}"
+
+  # Build description ADF if provided
+  local desc_json="null"
+  if [[ -n "$description" ]]; then
+    desc_json=$(jq -n --arg text "$description" '{
+      type: "doc",
+      version: 1,
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: $text }]
+        }
+      ]
+    }')
+  fi
+
+  local json_payload
+  json_payload=$(jq -n \
+    --arg project_key "$project_key" \
+    --arg type_id "$type_id" \
+    --arg summary "$summary" \
+    --argjson description "$desc_json" \
+    '{
+      fields: {
+        project: { key: $project_key },
+        issuetype: { id: $type_id },
+        summary: $summary
+      }
+    } | if $description != null then .fields.description = $description else . end')
+
+  local response
+  response=$(curl -s -w "\n%{http_code}" \
+    -X POST \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$json_payload" \
+    "$JIRA_URL/rest/api/3/issue")
+
+  local http_code
+  http_code=$(echo "$response" | tail -1)
+  local body
+  body=$(echo "$response" | sed '$d')
+
+  if [[ "$http_code" == "201" ]]; then
+    local ticket_key
+    ticket_key=$(echo "$body" | python3 -c "import json,sys; print(json.load(sys.stdin)['key'])")
+    echo -e "${GREEN}✅ Created $ticket_key${NC}"
+    echo -e "${GREEN}   $JIRA_URL/browse/$ticket_key${NC}"
+    # Return the key for scripting
+    echo "$ticket_key"
+    return 0
+  else
+    echo -e "${RED}❌ Failed to create ticket (HTTP $http_code)${NC}"
+    echo "$body" | python3 -m json.tool 2>/dev/null || echo "$body"
+    return 1
+  fi
+}
+
+# Assign a ticket to a user
+# Usage: assign_ticket <ticket> <user>
+# user: "me", an email address, or an accountId
+assign_ticket() {
+  local ticket="$1"
+  local user_ref="$2"
+
+  if ! load_config; then
+    return 1
+  fi
+
+  if [[ -z "$ticket" || -z "$user_ref" ]]; then
+    echo -e "${RED}❌ Usage: jira-integration.sh assign <ticket> <me|email|accountId>${NC}"
+    return 1
+  fi
+
+  echo -e "${BLUE}👤 Assigning $ticket to $user_ref...${NC}"
+
+  local account_id
+  account_id=$(resolve_user "$user_ref")
+  if [[ -z "$account_id" ]]; then
+    echo -e "${RED}❌ Could not resolve user: $user_ref${NC}"
+    return 1
+  fi
+
+  local http_code
+  http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    -X PUT \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"fields\": {\"assignee\": {\"accountId\": \"$account_id\"}}}" \
+    "$JIRA_URL/rest/api/3/issue/$ticket")
+
+  if [[ "$http_code" == "204" ]]; then
+    echo -e "${GREEN}✅ $ticket assigned${NC}"
+    return 0
+  else
+    echo -e "${RED}❌ Failed to assign $ticket (HTTP $http_code)${NC}"
+    return 1
+  fi
+}
+
+# Set story points on a ticket
+# Usage: set_points <ticket> <points>
+set_points() {
+  local ticket="$1"
+  local points="$2"
+
+  if ! load_config; then
+    return 1
+  fi
+
+  if [[ -z "$ticket" || -z "$points" ]]; then
+    echo -e "${RED}❌ Usage: jira-integration.sh set-points <ticket> <points>${NC}"
+    return 1
+  fi
+
+  echo -e "${BLUE}🎯 Setting $ticket to $points point(s)...${NC}"
+
+  # customfield_10016 = "Story point estimate" in this Jira instance
+  local http_code
+  http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    -X PUT \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"fields\": {\"customfield_10016\": $points}}" \
+    "$JIRA_URL/rest/api/3/issue/$ticket")
+
+  if [[ "$http_code" == "204" ]]; then
+    echo -e "${GREEN}✅ $ticket set to $points point(s)${NC}"
+    return 0
+  else
+    echo -e "${RED}❌ Failed to set points on $ticket (HTTP $http_code)${NC}"
+    return 1
+  fi
+}
+
+# List sprints for the PP board
+# Usage: get_sprints [active|future|closed]
+get_sprints() {
+  local state="${1:-active}"
+
+  if ! load_config; then
+    return 1
+  fi
+
+  # Board ID 4 = "PP board" (scrum board for The Palace Project)
+  local board_id=4
+  echo -e "${BLUE}📋 Sprints (state: $state):${NC}"
+
+  local response
+  response=$(curl -s \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    "$JIRA_URL/rest/agile/1.0/board/$board_id/sprint?state=$state")
+
+  echo "$response" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+sprints = d.get('values', [])
+if not sprints:
+    print('  No sprints found.')
+    sys.exit(0)
+for s in sprints:
+    start = s.get('startDate', '-')[:10] if s.get('startDate') else '-'
+    end = s.get('endDate', '-')[:10] if s.get('endDate') else '-'
+    print(f\"  {s['name']}  (id: {s['id']})  [{s['state']}]  {start} -> {end}\")
+" 2>/dev/null || {
+    echo -e "${RED}❌ Failed to fetch sprints${NC}"
+    echo "$response"
+    return 1
+  }
+}
+
+# Move a ticket to a sprint
+# Usage: move_to_sprint <ticket> <sprint_id|current>
+move_to_sprint() {
+  local ticket="$1"
+  local sprint_ref="$2"
+
+  if ! load_config; then
+    return 1
+  fi
+
+  if [[ -z "$ticket" || -z "$sprint_ref" ]]; then
+    echo -e "${RED}❌ Usage: jira-integration.sh move-to-sprint <ticket> <sprint_id|current>${NC}"
+    return 1
+  fi
+
+  local sprint_id
+  if [[ "$sprint_ref" == "current" || "$sprint_ref" == "active" ]]; then
+    # Find the active sprint
+    local board_id=4
+    sprint_id=$(curl -s \
+      -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      "$JIRA_URL/rest/agile/1.0/board/$board_id/sprint?state=active" \
+      | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['values'][0]['id'])" 2>/dev/null)
+
+    if [[ -z "$sprint_id" ]]; then
+      echo -e "${RED}❌ No active sprint found${NC}"
+      return 1
+    fi
+    echo -e "${BLUE}📌 Moving $ticket to active sprint (id: $sprint_id)...${NC}"
+  else
+    sprint_id="$sprint_ref"
+    echo -e "${BLUE}📌 Moving $ticket to sprint $sprint_id...${NC}"
+  fi
+
+  local http_code
+  http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    -X POST \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"issues\": [\"$ticket\"]}" \
+    "$JIRA_URL/rest/agile/1.0/sprint/$sprint_id/issue")
+
+  if [[ "$http_code" == "204" ]]; then
+    echo -e "${GREEN}✅ $ticket moved to sprint${NC}"
+    return 0
+  else
+    echo -e "${RED}❌ Failed to move $ticket to sprint (HTTP $http_code)${NC}"
+    return 1
+  fi
+}
+
+# Batch update: assign + points + sprint + transition in one call
+# Usage: batch_update <ticket> [--assign me] [--points 3] [--sprint current] [--transition "Code Review"]
+batch_update() {
+  local ticket="$1"
+  shift
+
+  if ! load_config; then
+    return 1
+  fi
+
+  if [[ -z "$ticket" ]]; then
+    echo -e "${RED}❌ Usage: jira-integration.sh batch-update <ticket> [--assign user] [--points N] [--sprint id|current] [--transition status]${NC}"
+    return 1
+  fi
+
+  local assign_ref="" points="" sprint_ref="" transition_status=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --assign)    assign_ref="$2"; shift 2 ;;
+      --points)    points="$2"; shift 2 ;;
+      --sprint)    sprint_ref="$2"; shift 2 ;;
+      --transition) transition_status="$2"; shift 2 ;;
+      *) echo -e "${YELLOW}⚠️  Unknown option: $1${NC}"; shift ;;
+    esac
+  done
+
+  echo -e "${BLUE}🔄 Batch updating $ticket...${NC}"
+  local had_error=0
+
+  # 1. Assign + points in a single PUT if both provided
+  if [[ -n "$assign_ref" || -n "$points" ]]; then
+    local fields_json="{"
+    local comma=""
+
+    if [[ -n "$assign_ref" ]]; then
+      local account_id
+      account_id=$(resolve_user "$assign_ref")
+      if [[ -n "$account_id" ]]; then
+        fields_json+="\"assignee\": {\"accountId\": \"$account_id\"}"
+        comma=","
+      else
+        echo -e "${RED}   ❌ Could not resolve user: $assign_ref${NC}"
+        had_error=1
+      fi
+    fi
+
+    if [[ -n "$points" ]]; then
+      fields_json+="${comma}\"customfield_10016\": $points"
+    fi
+
+    fields_json+="}"
+
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+      -X PUT \
+      -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"fields\": $fields_json}" \
+      "$JIRA_URL/rest/api/3/issue/$ticket")
+
+    if [[ "$http_code" == "204" ]]; then
+      [[ -n "$assign_ref" ]] && echo -e "${GREEN}   ✅ Assigned to $assign_ref${NC}"
+      [[ -n "$points" ]] && echo -e "${GREEN}   ✅ Set to $points point(s)${NC}"
+    else
+      echo -e "${RED}   ❌ Failed to update fields (HTTP $http_code)${NC}"
+      had_error=1
+    fi
+  fi
+
+  # 2. Move to sprint
+  if [[ -n "$sprint_ref" ]]; then
+    move_to_sprint "$ticket" "$sprint_ref" > /dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+      echo -e "${GREEN}   ✅ Moved to sprint${NC}"
+    else
+      echo -e "${RED}   ❌ Failed to move to sprint${NC}"
+      had_error=1
+    fi
+  fi
+
+  # 3. Transition
+  if [[ -n "$transition_status" ]]; then
+    transition_ticket "$ticket" "$transition_status" > /dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+      echo -e "${GREEN}   ✅ Transitioned to '$transition_status'${NC}"
+    else
+      echo -e "${RED}   ❌ Failed to transition to '$transition_status'${NC}"
+      had_error=1
+    fi
+  fi
+
+  if [[ "$had_error" -eq 0 ]]; then
+    echo -e "${GREEN}✅ $ticket fully updated${NC}"
+  else
+    echo -e "${YELLOW}⚠️  $ticket partially updated (some operations failed)${NC}"
+  fi
+  return $had_error
+}
+
 # Main command dispatcher
 main() {
   local command="$1"
   shift || true
   
   case "$command" in
+    # --- Ticket lifecycle ---
+    search)
+      search_tickets "$@"
+      ;;
+    view)
+      view_ticket "$@"
+      ;;
+    create)
+      create_ticket "$@"
+      ;;
+    assign)
+      assign_ticket "$@"
+      ;;
+    set-points)
+      set_points "$@"
+      ;;
+    move-to-sprint)
+      move_to_sprint "$@"
+      ;;
+    transition)
+      transition_ticket "$@"
+      ;;
+    batch-update)
+      batch_update "$@"
+      ;;
+    # --- Comments & linking ---
     comment)
       add_comment "$@"
       ;;
@@ -617,11 +1215,15 @@ main() {
     add-build-info)
       add_build_info "$@"
       ;;
-    transition)
-      transition_ticket "$@"
-      ;;
     interactive)
       interactive_fix_comment "$@"
+      ;;
+    # --- Utilities ---
+    get-sprints)
+      get_sprints "$@"
+      ;;
+    whoami)
+      show_myself
       ;;
     extract-ticket)
       extract_ticket "$@"
@@ -637,15 +1239,31 @@ main() {
       echo ""
       echo "Usage: $0 <command> [arguments]"
       echo ""
-      echo "Commands:"
+      echo "Ticket Lifecycle:"
+      echo "  search <text|JQL> [max]          Search for existing tickets"
+      echo "  view <ticket>                     View ticket details"
+      echo "  create <bug|task|story> <summary> [description]"
+      echo "                                    Create a new ticket"
+      echo "  assign <ticket> <me|email|id>     Assign ticket to a user"
+      echo "  set-points <ticket> <points>      Set story points"
+      echo "  move-to-sprint <ticket> <id|current>"
+      echo "                                    Move ticket to a sprint"
+      echo "  transition <ticket> <status>      Change status (e.g., 'Code Review', 'Done')"
+      echo "  batch-update <ticket> [--assign me] [--points 3] [--sprint current] [--transition status]"
+      echo "                                    Update multiple fields at once"
+      echo ""
+      echo "Comments & Linking:"
       echo "  comment <ticket> <text>           Add a comment to a ticket"
       echo "  link-commit <ticket> [sha]        Link a commit to a ticket"
       echo "  add-fix-comment <ticket> <root_cause> <testing_steps> [sha]"
       echo "                                    Add structured fix details"
       echo "  add-build-info <ticket> <build> [pr_num] [pr_title] [branch]"
       echo "                                    Add merge/build info to ticket"
-      echo "  transition <ticket> <status>      Move ticket to status (e.g., 'Code Review', 'Done')"
       echo "  interactive <ticket>              Interactive fix comment entry"
+      echo ""
+      echo "Utilities:"
+      echo "  get-sprints [active|future|closed] List sprints"
+      echo "  whoami                            Show current user info"
       echo "  extract-ticket <text>             Extract ticket number from text"
       echo "  get-link <ticket>                 Get Jira URL for ticket"
       echo "  check-config                      Verify configuration"

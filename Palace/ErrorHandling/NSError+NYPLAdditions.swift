@@ -10,17 +10,17 @@ import Foundation
 
 extension NSError {
 
-  /// The localized description and recovery suggestion, if present, separated
-  /// by a newline.
-  @objc var localizedDescriptionWithRecovery: String {
-    guard let suggestion = localizedRecoverySuggestion else {
-      return localizedDescription
-    }
+    /// The localized description and recovery suggestion, if present, separated
+    /// by a newline.
+    @objc var localizedDescriptionWithRecovery: String {
+        guard let suggestion = localizedRecoverySuggestion else {
+            return localizedDescription
+        }
 
-    guard !suggestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      return localizedDescription
-    }
+        guard !suggestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return localizedDescription
+        }
 
-    return localizedDescription + "\n\n" + suggestion
-  }
+        return localizedDescription + "\n\n" + suggestion
+    }
 }

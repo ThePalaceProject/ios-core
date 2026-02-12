@@ -10,12 +10,12 @@ import Foundation
 
 extension TPPBookLocation {
 
-  /// Page number in `TPPBookLocation` object
-  var pageNumber: Int? {
-    guard let locationData = locationString.data(using: .utf8),
-          let locationPage = try? JSONDecoder().decode(TPPPDFPage.self, from: locationData) else {
-      return nil
+    /// Page number in `TPPBookLocation` object
+    var pageNumber: Int? {
+        guard let locationData = locationString.data(using: .utf8),
+              let locationPage = try? JSONDecoder().decode(TPPPDFPage.self, from: locationData) else {
+            return nil
+        }
+        return locationPage.pageNumber
     }
-    return locationPage.pageNumber
-  }
 }

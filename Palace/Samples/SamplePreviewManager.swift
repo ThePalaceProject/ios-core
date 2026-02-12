@@ -2,58 +2,56 @@ import SwiftUI
 
 @MainActor
 final class SamplePreviewManager: ObservableObject {
-  static let shared = SamplePreviewManager()
+    static let shared = SamplePreviewManager()
 
-  @Published private(set) var currentBookID: String? = nil
-  @Published private(set) var toolbar: AudiobookSampleToolbar? = nil
+    @Published private(set) var currentBookID: String?
+    @Published private(set) var toolbar: AudiobookSampleToolbar?
 
-  private init() {}
+    private init() {}
 
-  func isShowingPreview(for book: TPPBook) -> Bool {
-    currentBookID == book.identifier && toolbar != nil
-  }
-
-  func toggle(for book: TPPBook) {
-    if isShowingPreview(for: book) {
-      close()
-      return
+    func isShowingPreview(for book: TPPBook) -> Bool {
+        currentBookID == book.identifier && toolbar != nil
     }
 
-    close()
+    func toggle(for book: TPPBook) {
+        if isShowingPreview(for: book) {
+            close()
+            return
+        }
 
-    guard let toolbarView = AudiobookSampleToolbar(book: book) else {
-      return
+        close()
+
+        guard let toolbarView = AudiobookSampleToolbar(book: book) else {
+            return
+        }
+
+        toolbar = toolbarView
+        currentBookID = book.identifier
+        try? toolbar?.player.playAudiobook()
     }
 
-    toolbar = toolbarView
-    currentBookID = book.identifier
-    try? toolbar?.player.playAudiobook()
-  }
-
-  func close() {
-    if let player = toolbar?.player {
-      player.pauseAudiobook()
+    func close() {
+        if let player = toolbar?.player {
+            player.pauseAudiobook()
+        }
+        toolbar = nil
+        currentBookID = nil
     }
-    toolbar = nil
-    currentBookID = nil
-  }
 }
 
 struct SamplePreviewBarView: View {
-  @ObservedObject private var manager = SamplePreviewManager.shared
+    @ObservedObject private var manager = SamplePreviewManager.shared
 
-  var body: some View {
-    SwiftUI.Group {
-      if let toolbar = manager.toolbar {
-        VStack(spacing: 0) {
-          Spacer(minLength: 0)
-          toolbar
+    var body: some View {
+        SwiftUI.Group {
+            if let toolbar = manager.toolbar {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    toolbar
+                }
+            } else {
+                EmptyView()
+            }
         }
-      } else {
-        EmptyView()
-      }
     }
-  }
 }
-
-

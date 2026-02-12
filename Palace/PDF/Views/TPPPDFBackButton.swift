@@ -10,23 +10,23 @@ import SwiftUI
 
 /// Preconfigured back button view
 struct TPPPDFBackButton: View {
-  
-  let action: () -> Void
-  
-  var body: some View {
-    Button(action: action) {
-      Image(systemName: "chevron.left")
-        .font(.system(size: 20, weight: .medium))
+
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 20, weight: .medium))
+        }
+        .toolbarButtonSize()
+        .accessibilityLabel(Strings.Generic.goBack)
     }
-    .toolbarButtonSize()
-    .accessibilityLabel(Strings.Generic.goBack)
-  }
 }
 
 struct TPPPDFBackButton_Previews: PreviewProvider {
-  static var previews: some View {
-    TPPPDFBackButton {
-      
+    static var previews: some View {
+        TPPPDFBackButton {
+
+        }
     }
-  }
 }

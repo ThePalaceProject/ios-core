@@ -6,14 +6,14 @@ import SQLite
  userVersion access allows us to migrate schemas going forward
  */
 extension Connection {
-  public var userVersion: Int {
-    get { return Int((try? scalar("PRAGMA user_version") as? Int64) ?? 0) }
-    set { try? run("PRAGMA user_version = \(newValue)") }
-  }
+    public var userVersion: Int {
+        get { return Int((try? scalar("PRAGMA user_version") as? Int64) ?? 0) }
+        set { try? run("PRAGMA user_version = \(newValue)") }
+    }
 }
 
 enum HTTPMethodType: String {
-  case GET, POST, HEAD, PUT, DELETE, OPTIONS, CONNECT
+    case GET, POST, HEAD, PUT, DELETE, OPTIONS, CONNECT
 }
 
 /**
@@ -22,256 +22,246 @@ enum HTTPMethodType: String {
  will retry any queued requests and purge them if necessary.
  */
 final class NetworkQueue: NSObject {
-  typealias Expression = SQLite.Expression
+    typealias Expression = SQLite.Expression
 
-  static let sharedInstance = NetworkQueue()
+    static let sharedInstance = NetworkQueue()
 
-  // For Objective-C classes
-  @objc class func shared() -> NetworkQueue
-  {
-    return NetworkQueue.sharedInstance
-  }
-
-  deinit {
-    NotificationCenter.default.removeObserver(self)
-  }
-
-  static let StatusCodes = [NSURLErrorTimedOut,
-                            NSURLErrorCannotFindHost,
-                            NSURLErrorCannotConnectToHost,
-                            NSURLErrorNetworkConnectionLost,
-                            NSURLErrorNotConnectedToInternet,
-                            NSURLErrorInternationalRoamingOff,
-                            NSURLErrorCallIsActive,
-                            NSURLErrorDataNotAllowed,
-                            NSURLErrorSecureConnectionFailed]
-  let MaxRetriesInQueue = 5
-
-  let serialQueue = DispatchQueue(label: Bundle.main.bundleIdentifier!
-                                  + "."
-                                  + String(describing: NetworkQueue.self))
-
-  private static let DBVersion = 1
-  private static let TableName = "offline_queue"
-
-  private var retryRequestCount = 0
-  private let path = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first ?? NSTemporaryDirectory()
-  
-  private let sqlTable = Table(NetworkQueue.TableName)
-  
-  private let sqlID = Expression<Int>("id")
-  private let sqlLibraryID = Expression<String>("library_identifier")
-  private let sqlUpdateID = Expression<String?>("update_identifier")
-  private let sqlUrl = Expression<String>("request_url")
-  private let sqlMethod = Expression<String>("request_method")
-  private let sqlParameters = Expression<Data?>("request_parameters")
-  private let sqlHeader = Expression<Data?>("request_header")
-  private let sqlRetries = Expression<Int>("retry_count")
-  private let sqlDateCreated = Expression<Data>("date_created")
-
-  
-  
-  // MARK: - Public Functions
-
-  @objc func addObserverForOfflineQueue() {
-    NotificationCenter.default.addObserver(self, selector: #selector(retryQueue), name: .TPPReachabilityChanged, object: nil)
-  }
-
-  func addRequest(_ libraryID: String,
-                  _ updateID: String?,
-                  _ requestUrl: URL,
-                  _ method: HTTPMethodType,
-                  _ parameters: Data?,
-                  _ headers: [String : String]?) -> Void
-  {
-    self.serialQueue.async {
-
-      // Serialize Data
-      let urlString = requestUrl.absoluteString
-      let methodString = method.rawValue
-      let dateCreated = NSKeyedArchiver.archivedData(withRootObject: Date())
-      
-      let headerData: Data?
-      if headers != nil {
-        headerData = NSKeyedArchiver.archivedData(withRootObject: headers!)
-      } else {
-        headerData = nil
-      }
-      
-      guard let db = self.startDatabaseConnection() else { return }
-      
-      // Update (not insert) if uniqueID and libraryID match existing row in table
-      let query = self.sqlTable.filter(self.sqlLibraryID == libraryID && self.sqlUpdateID == updateID)
-        .filter(self.sqlUpdateID != nil)
-      
-      do {
-        //Try to update row
-        let result = try db.run(query.update(self.sqlParameters <- parameters, self.sqlHeader <- headerData))
-        if result > 0 {
-          Log.debug(#file, "SQLite: Row Updated")
-        } else {
-          //Insert new row
-          try db.run(self.sqlTable.insert(self.sqlLibraryID <- libraryID, self.sqlUpdateID <- updateID, self.sqlUrl <- urlString, self.sqlMethod <- methodString, self.sqlParameters <- parameters, self.sqlHeader <- headerData, self.sqlRetries <- 0, self.sqlDateCreated <- dateCreated))
-          Log.debug(#file, "SQLite: Row Added")
-        }
-      } catch {
-        Log.error(#file, "SQLite Error: Could not insert or update row")
-      }
+    // For Objective-C classes
+    @objc static func shared() -> NetworkQueue {
+        return NetworkQueue.sharedInstance
     }
-  }
 
-  func migrate()
-  {
-    self.serialQueue.async {
-      guard let db = self.startDatabaseConnection() else {
-        Log.error(#file, "Failed to start database connection for a retry attempt.")
-        return
-      }
-      
-      let tableCount = Int((try? db.scalar("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = '\(NetworkQueue.TableName)'") as? Int64) ?? 0)
-      if tableCount < 1 {
-        self.createTable(db: db)
-        db.userVersion = NetworkQueue.DBVersion
-      } else {
-        var dbVersion = db.userVersion
-        // TODO: Consider optimizing migrations by checking if
-        // there's a breaking change between current version and target version
-        // If there is, we can probably immediately jump to current version,
-        // invoking createTable()
-        do {
-          while dbVersion < NetworkQueue.DBVersion { // Iterate
-            switch dbVersion {
-            case 0:
-              try db.run(self.sqlTable.drop(ifExists: true))
-              self.createTable(db: db)
-              dbVersion = NetworkQueue.DBVersion
-              db.userVersion = NetworkQueue.DBVersion
-            default:
-              break
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    static let StatusCodes = [NSURLErrorTimedOut,
+                              NSURLErrorCannotFindHost,
+                              NSURLErrorCannotConnectToHost,
+                              NSURLErrorNetworkConnectionLost,
+                              NSURLErrorNotConnectedToInternet,
+                              NSURLErrorInternationalRoamingOff,
+                              NSURLErrorCallIsActive,
+                              NSURLErrorDataNotAllowed,
+                              NSURLErrorSecureConnectionFailed]
+    let MaxRetriesInQueue = 5
+
+    let serialQueue = DispatchQueue(label: Bundle.main.bundleIdentifier!
+                                        + "."
+                                        + String(describing: NetworkQueue.self))
+
+    private static let DBVersion = 1
+    private static let TableName = "offline_queue"
+
+    private var retryRequestCount = 0
+    private let path = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first ?? NSTemporaryDirectory()
+
+    private let sqlTable = Table(NetworkQueue.TableName)
+
+    private let sqlID = Expression<Int>("id")
+    private let sqlLibraryID = Expression<String>("library_identifier")
+    private let sqlUpdateID = Expression<String?>("update_identifier")
+    private let sqlUrl = Expression<String>("request_url")
+    private let sqlMethod = Expression<String>("request_method")
+    private let sqlParameters = Expression<Data?>("request_parameters")
+    private let sqlHeader = Expression<Data?>("request_header")
+    private let sqlRetries = Expression<Int>("retry_count")
+    private let sqlDateCreated = Expression<Data>("date_created")
+
+    // MARK: - Public Functions
+
+    @objc func addObserverForOfflineQueue() {
+        NotificationCenter.default.addObserver(self, selector: #selector(retryQueue), name: .TPPReachabilityChanged, object: nil)
+    }
+
+    func addRequest(_ libraryID: String,
+                    _ updateID: String?,
+                    _ requestUrl: URL,
+                    _ method: HTTPMethodType,
+                    _ parameters: Data?,
+                    _ headers: [String: String]?) {
+        self.serialQueue.async {
+
+            // Serialize Data
+            let urlString = requestUrl.absoluteString
+            let methodString = method.rawValue
+            let dateCreated = NSKeyedArchiver.archivedData(withRootObject: Date())
+
+            let headerData: Data?
+            if headers != nil {
+                headerData = NSKeyedArchiver.archivedData(withRootObject: headers!)
+            } else {
+                headerData = nil
             }
-            dbVersion += 1
-          }
+
+            guard let db = self.startDatabaseConnection() else { return }
+
+            // Update (not insert) if uniqueID and libraryID match existing row in table
+            let query = self.sqlTable.filter(self.sqlLibraryID == libraryID && self.sqlUpdateID == updateID)
+                .filter(self.sqlUpdateID != nil)
+
+            do {
+                // Try to update row
+                let result = try db.run(query.update(self.sqlParameters <- parameters, self.sqlHeader <- headerData))
+                if result > 0 {
+                    Log.debug(#file, "SQLite: Row Updated")
+                } else {
+                    // Insert new row
+                    try db.run(self.sqlTable.insert(self.sqlLibraryID <- libraryID, self.sqlUpdateID <- updateID, self.sqlUrl <- urlString, self.sqlMethod <- methodString, self.sqlParameters <- parameters, self.sqlHeader <- headerData, self.sqlRetries <- 0, self.sqlDateCreated <- dateCreated))
+                    Log.debug(#file, "SQLite: Row Added")
+                }
+            } catch {
+                Log.error(#file, "SQLite Error: Could not insert or update row")
+            }
+        }
+    }
+
+    func migrate() {
+        self.serialQueue.async {
+            guard let db = self.startDatabaseConnection() else {
+                Log.error(#file, "Failed to start database connection for a retry attempt.")
+                return
+            }
+
+            let tableCount = Int((try? db.scalar("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = '\(NetworkQueue.TableName)'") as? Int64) ?? 0)
+            if tableCount < 1 {
+                self.createTable(db: db)
+                db.userVersion = NetworkQueue.DBVersion
+            } else {
+                var dbVersion = db.userVersion
+                // TODO: Consider optimizing migrations by checking if
+                // there's a breaking change between current version and target version
+                // If there is, we can probably immediately jump to current version,
+                // invoking createTable()
+                do {
+                    while dbVersion < NetworkQueue.DBVersion { // Iterate
+                        switch dbVersion {
+                        case 0:
+                            try db.run(self.sqlTable.drop(ifExists: true))
+                            self.createTable(db: db)
+                            dbVersion = NetworkQueue.DBVersion
+                            db.userVersion = NetworkQueue.DBVersion
+                        default:
+                            break
+                        }
+                        dbVersion += 1
+                    }
+                } catch {
+                    Log.error(#file, "SQLite Error: Could not migrate.")
+                }
+            }
+        }
+    }
+
+    // MARK: - Private Functions
+
+    private func createTable(db: Connection) {
+        do {
+            try db.run(self.sqlTable.create(ifNotExists: true) { t in
+                t.column(self.sqlID, primaryKey: true)
+                t.column(self.sqlLibraryID)
+                t.column(self.sqlUpdateID)
+                t.column(self.sqlUrl)
+                t.column(self.sqlMethod)
+                t.column(self.sqlParameters)
+                t.column(self.sqlHeader)
+                t.column(self.sqlRetries)
+                t.column(self.sqlDateCreated)
+            })
         } catch {
-          Log.error(#file, "SQLite Error: Could not migrate.")
+            Log.error(#file, "SQLite Error: Could not create table")
         }
-      }
     }
-  }
 
-  // MARK: - Private Functions
+    @objc private func retryQueue() {
+        self.serialQueue.async {
 
-  private func createTable(db: Connection)
-  {
-    do {
-      try db.run(self.sqlTable.create(ifNotExists: true) { t in
-        t.column(self.sqlID, primaryKey: true)
-        t.column(self.sqlLibraryID)
-        t.column(self.sqlUpdateID)
-        t.column(self.sqlUrl)
-        t.column(self.sqlMethod)
-        t.column(self.sqlParameters)
-        t.column(self.sqlHeader)
-        t.column(self.sqlRetries)
-        t.column(self.sqlDateCreated)
-      })
-    } catch {
-      Log.error(#file, "SQLite Error: Could not create table")
-    }
-  }
+            if self.retryRequestCount > 0 {
+                Log.debug(#file, "Retry requests are still in progress. Cancelling this attempt.")
+                return
+            }
 
-  @objc private func retryQueue()
-  {
-    self.serialQueue.async {
+            guard let db = self.startDatabaseConnection() else {
+                Log.error(#file, "Failed to start database connection for a retry attempt.")
+                return
+            }
 
-      if self.retryRequestCount > 0 {
-        Log.debug(#file, "Retry requests are still in progress. Cancelling this attempt.")
-        return
-      }
+            let expiredRows = self.sqlTable.filter(self.sqlRetries > self.MaxRetriesInQueue)
+            do {
+                try db.run(expiredRows.delete())
 
-      guard let db = self.startDatabaseConnection() else {
-        Log.error(#file, "Failed to start database connection for a retry attempt.")
-        return
-      }
+                self.retryRequestCount = try db.scalar(self.sqlTable.count)
+                Log.debug(#file, "Executing \"retry\" with \(self.retryRequestCount) row(s) in the table.")
 
-      let expiredRows = self.sqlTable.filter(self.sqlRetries > self.MaxRetriesInQueue)
-      do {
-        try db.run(expiredRows.delete())
-
-        self.retryRequestCount = try db.scalar(self.sqlTable.count)
-        Log.debug(#file, "Executing \"retry\" with \(self.retryRequestCount) row(s) in the table.")
-
-        for row in try db.prepare(self.sqlTable) {
-          Log.debug(#file, "Retrying row: \(row[self.sqlID])")
-          self.retry(db, requestRow: row)
+                for row in try db.prepare(self.sqlTable) {
+                    Log.debug(#file, "Retrying row: \(row[self.sqlID])")
+                    self.retry(db, requestRow: row)
+                }
+            } catch {
+                Log.error(#file, "SQLite Error: Failure to prepare table or run deletion")
+            }
         }
-      } catch {
-        Log.error(#file, "SQLite Error: Failure to prepare table or run deletion")
-      }
     }
-  }
 
-  private func retry(_ db: Connection, requestRow: Row)
-  {
-    do {
-      let ID = Int(requestRow[sqlID])
-      let newValue = Int(requestRow[sqlRetries]) + 1
-      try db.run(sqlTable.filter(sqlID == ID).update(sqlRetries <- newValue))
-    } catch {
-      Log.error(#file, "SQLite Error incrementing retry count")
-    }
-    
-    // Re-attempt network request
-    guard let url = URL(string: requestRow[sqlUrl]) else {
-      Log.error(#file, "SQLite: Invalid URL in queue row, skipping: \(requestRow[sqlUrl])")
-      deleteRow(db, id: requestRow[sqlID])
-      retryRequestCount -= 1
-      return
-    }
-    var urlRequest = URLRequest(url: url)
-    urlRequest.httpMethod = requestRow[sqlMethod]
-    urlRequest.httpBody = requestRow[sqlParameters]
-    urlRequest.applyCustomUserAgent()
-    
-    if let headerData = requestRow[sqlHeader],
-       let headers = NSKeyedUnarchiver.unarchiveObject(with: headerData) as? [String:String] {
-      for (headerKey, headerValue) in headers {
-        urlRequest.setValue(headerValue, forHTTPHeaderField: headerKey)
-      }
-    }
-    
-    let task = URLSession.shared.dataTask(with: urlRequest) { (data, response, error) in
-      self.serialQueue.async {
-        if let response = response as? HTTPURLResponse {
-          if response.statusCode == 200 {
-            Log.info(#file, "Queued Request Upload: Success")
-            self.deleteRow(db, id: requestRow[self.sqlID])
-          }
+    private func retry(_ db: Connection, requestRow: Row) {
+        do {
+            let ID = Int(requestRow[sqlID])
+            let newValue = Int(requestRow[sqlRetries]) + 1
+            try db.run(sqlTable.filter(sqlID == ID).update(sqlRetries <- newValue))
+        } catch {
+            Log.error(#file, "SQLite Error incrementing retry count")
         }
-        self.retryRequestCount -= 1
-      }
-    }
-    task.resume()
-  }
 
-  private func deleteRow(_ db: Connection, id: Int)
-  {
-    let rowToDelete = sqlTable.filter(sqlID == id)
-    if let _ = try? db.run(rowToDelete.delete()) {
-      Log.info(#file, "SQLite: deleted row from queue")
-    } else {
-      Log.error(#file, "SQLite Error: Could not delete row")
+        // Re-attempt network request
+        guard let url = URL(string: requestRow[sqlUrl]) else {
+            Log.error(#file, "SQLite: Invalid URL in queue row, skipping: \(requestRow[sqlUrl])")
+            deleteRow(db, id: requestRow[sqlID])
+            retryRequestCount -= 1
+            return
+        }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = requestRow[sqlMethod]
+        urlRequest.httpBody = requestRow[sqlParameters]
+        urlRequest.applyCustomUserAgent()
+
+        if let headerData = requestRow[sqlHeader],
+           let headers = NSKeyedUnarchiver.unarchiveObject(with: headerData) as? [String: String] {
+            for (headerKey, headerValue) in headers {
+                urlRequest.setValue(headerValue, forHTTPHeaderField: headerKey)
+            }
+        }
+
+        let task = URLSession.shared.dataTask(with: urlRequest) { (_, response, _) in
+            self.serialQueue.async {
+                if let response = response as? HTTPURLResponse {
+                    if response.statusCode == 200 {
+                        Log.info(#file, "Queued Request Upload: Success")
+                        self.deleteRow(db, id: requestRow[self.sqlID])
+                    }
+                }
+                self.retryRequestCount -= 1
+            }
+        }
+        task.resume()
     }
-  }
-  
-  private func startDatabaseConnection() -> Connection?
-  {
-    let db: Connection
-    do {
-      db = try Connection("\(path)/simplified.db")
-    } catch {
-      Log.error(#file, "SQLite: Could not start DB connection.")
-      return nil
+
+    private func deleteRow(_ db: Connection, id: Int) {
+        let rowToDelete = sqlTable.filter(sqlID == id)
+        if let _ = try? db.run(rowToDelete.delete()) {
+            Log.info(#file, "SQLite: deleted row from queue")
+        } else {
+            Log.error(#file, "SQLite Error: Could not delete row")
+        }
     }
-    return db
-  }
+
+    private func startDatabaseConnection() -> Connection? {
+        let db: Connection
+        do {
+            db = try Connection("\(path)/simplified.db")
+        } catch {
+            Log.error(#file, "SQLite: Could not start DB connection.")
+            return nil
+        }
+        return db
+    }
 }
