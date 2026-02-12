@@ -220,6 +220,102 @@ final class TPPAlertUtilsTests: XCTestCase {
     window.isHidden = true
   }
 
+  /// Tests the retry mechanism: when the first alert is dismissed after a short
+  /// delay, the second alert should eventually be presented via retry logic.
+  /// Previously, the second alert would simply be dropped.
+  func testRetryPresentation_AfterFirstAlertDismisses_PresentsSecond() {
+    // Arrange
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    let rootVC = UIViewController()
+    window.rootViewController = rootVC
+    window.makeKeyAndVisible()
+    
+    // Present first alert
+    let firstAlert = TPPAlertUtils.alert(title: "Error", message: "First error")
+    let firstPresented = expectation(description: "First alert presented")
+    rootVC.present(firstAlert, animated: false) {
+      firstPresented.fulfill()
+    }
+    waitForExpectations(timeout: 2.0)
+    
+    // Schedule the second alert — retry logic should queue it
+    let secondAlert = TPPAlertUtils.alert(title: "Error", message: "Second error")
+    let secondHandled = expectation(description: "Second alert handler called")
+    
+    TPPAlertUtils.presentFromViewControllerOrNil(
+      alertController: secondAlert,
+      viewController: rootVC,
+      animated: false,
+      completion: {
+        secondHandled.fulfill()
+      }
+    )
+    
+    // Dismiss the first alert after a brief delay, allowing retry to succeed
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+      rootVC.dismiss(animated: false, completion: nil)
+    }
+    
+    // The retry logic uses exponential backoff starting at 0.4s, so within ~1s
+    // the first alert should be dismissed and the retry should succeed
+    waitForExpectations(timeout: 5.0)
+    
+    // Cleanup
+    let dismissExpectation = expectation(description: "Dismissed")
+    rootVC.dismiss(animated: false) {
+      dismissExpectation.fulfill()
+    }
+    waitForExpectations(timeout: 2.0)
+    
+    window.isHidden = true
+  }
+  
+  /// Verifies the retry limit: after maxAlertRetries, the alert is dropped with completion called.
+  func testRetryPresentation_ExceedsMaxRetries_DropsAlertWithCompletion() {
+    // Arrange: present an alert that will NEVER be dismissed
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))
+    let rootVC = UIViewController()
+    window.rootViewController = rootVC
+    window.makeKeyAndVisible()
+    
+    let blockingAlert = TPPAlertUtils.alert(title: "Blocking", message: "I stay forever")
+    let blockingPresented = expectation(description: "Blocking alert presented")
+    rootVC.present(blockingAlert, animated: false) {
+      blockingPresented.fulfill()
+    }
+    waitForExpectations(timeout: 2.0)
+    
+    // Try to present a second alert — retries will all fail since blocking alert stays
+    let droppedAlert = TPPAlertUtils.alert(title: "Dropped", message: "I will be dropped")
+    let completionCalled = expectation(description: "Completion called after max retries")
+    
+    TPPAlertUtils.presentFromViewControllerOrNil(
+      alertController: droppedAlert,
+      viewController: rootVC,
+      animated: false,
+      completion: {
+        completionCalled.fulfill()
+      }
+    )
+    
+    // Exponential backoff: 0.4s + 0.8s + 1.6s = 2.8s for 3 retries, plus some buffer
+    waitForExpectations(timeout: 8.0)
+    
+    // The blocking alert should still be the presented one (not the dropped one)
+    XCTAssertTrue(rootVC.presentedViewController is UIAlertController)
+    XCTAssertEqual((rootVC.presentedViewController as? UIAlertController)?.message, "I stay forever",
+                   "The blocking alert should still be visible; dropped alert should not have replaced it")
+    
+    // Cleanup
+    let dismissExpectation = expectation(description: "Dismissed")
+    rootVC.dismiss(animated: false) {
+      dismissExpectation.fulfill()
+    }
+    waitForExpectations(timeout: 2.0)
+    
+    window.isHidden = true
+  }
+  
   /// Tests that presenting an alert when no alert is showing still works correctly.
   func testPresentAlert_WhenNoAlertShowing_PresentsSuccessfully() {
     // Arrange
