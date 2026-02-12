@@ -73,7 +73,7 @@ class TPPNetworkResponder: NSObject {
     retriedURLsLock.lock()
     defer { retriedURLsLock.unlock() }
     retriedURLs[urlString] = (retriedURLs[urlString] ?? 0) + 1
-    Log.debug(#file, "Marked URL as retried (\(retriedURLs[urlString]!)/\(maxRetryAttempts)): \(urlString)")
+    Log.debug(#file, "Marked URL as retried (\(retriedURLs[urlString] ?? 0)/\(maxRetryAttempts)): \(urlString)")
   }
   
   /// Clears retry tracking for a URL (called after successful completion)

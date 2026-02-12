@@ -7,8 +7,8 @@ import SQLite
  */
 extension Connection {
   public var userVersion: Int {
-    get { return Int(try! scalar("PRAGMA user_version") as! Int64) }
-    set { try! run("PRAGMA user_version = \(newValue)") }
+    get { return Int((try? scalar("PRAGMA user_version") as? Int64) ?? 0) }
+    set { try? run("PRAGMA user_version = \(newValue)") }
   }
 }
 
@@ -55,7 +55,7 @@ final class NetworkQueue: NSObject {
   private static let TableName = "offline_queue"
 
   private var retryRequestCount = 0
-  private let path = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first!
+  private let path = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true).first ?? NSTemporaryDirectory()
   
   private let sqlTable = Table(NetworkQueue.TableName)
   
@@ -128,7 +128,7 @@ final class NetworkQueue: NSObject {
         return
       }
       
-      let tableCount = Int(try! db.scalar("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = '\(NetworkQueue.TableName)'") as! Int64)
+      let tableCount = Int((try? db.scalar("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = '\(NetworkQueue.TableName)'") as? Int64) ?? 0)
       if tableCount < 1 {
         self.createTable(db: db)
         db.userVersion = NetworkQueue.DBVersion
@@ -221,7 +221,13 @@ final class NetworkQueue: NSObject {
     }
     
     // Re-attempt network request
-    var urlRequest = URLRequest(url: URL(string: requestRow[sqlUrl])!)
+    guard let url = URL(string: requestRow[sqlUrl]) else {
+      Log.error(#file, "SQLite: Invalid URL in queue row, skipping: \(requestRow[sqlUrl])")
+      deleteRow(db, id: requestRow[sqlID])
+      retryRequestCount -= 1
+      return
+    }
+    var urlRequest = URLRequest(url: url)
     urlRequest.httpMethod = requestRow[sqlMethod]
     urlRequest.httpBody = requestRow[sqlParameters]
     urlRequest.applyCustomUserAgent()
