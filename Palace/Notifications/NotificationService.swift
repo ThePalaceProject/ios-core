@@ -59,13 +59,13 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     super.init()
     
     // Update library token when the user changes library account.
-    NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPCurrentAccountDidChange, object: nil, queue: nil) { _ in
-      self.updateToken()
+    NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPCurrentAccountDidChange, object: nil, queue: .main) { [weak self] _ in
+      self?.updateToken()
     }
-    // Update library token when the user signes in (but has already added the library)
-    NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPIsSigningIn, object: nil, queue: nil) { notification in
+    // Update library token when the user signs in (but has already added the library)
+    NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPIsSigningIn, object: nil, queue: .main) { [weak self] notification in
       if let isSigningIn = notification.object as? Bool, !isSigningIn {
-        self.updateToken()
+        self?.updateToken()
       }
     }
   }

@@ -240,6 +240,7 @@ final class BookCellModelCache: ObservableObject {
     // Observe book state changes and invalidate models when registry state doesn't match model state.
     // This ensures UI always reflects the true state from the registry.
     bookRegistry.bookStatePublisher
+      .receive(on: DispatchQueue.main)
       .sink { [weak self] (identifier, newState) in
         guard let self, let entry = self.cache[identifier] else { return }
         
