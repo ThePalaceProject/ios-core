@@ -178,8 +178,8 @@ final class CatalogViewModel: ObservableObject {
             }
           }
           self.ungroupedBooks = []
-          let (_, entries) = Self.extractFacets(from: feedObjc)
-          self.facetGroups = []
+          let (groups, entries) = Self.extractFacets(from: feedObjc)
+          self.facetGroups = groups
           self.entryPoints = entries
           self.lanes = orderedTitles.map { title in
             let books = groupTitleToBooks[title] ?? []
@@ -251,7 +251,8 @@ final class CatalogViewModel: ObservableObject {
             }
           }
           self.ungroupedBooks = []
-          let (_, entries) = Self.extractFacets(from: feedObjc)
+          let (groups, entries) = Self.extractFacets(from: feedObjc)
+          self.facetGroups = groups
           self.entryPoints = entries
           self.lanes = orderedTitles.map { title in
             let books = groupTitleToBooks[title] ?? []
