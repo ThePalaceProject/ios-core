@@ -1,51 +1,49 @@
 import SwiftUI
 
 struct FacetToolbarView: View {
-  let title: String?
-  let showFilter: Bool
-  let onSort: (() -> Void)?
-  let onFilter: () -> Void
-  let currentSortTitle: String?
-  var appliedFiltersCount: Int = 0
+    let title: String?
+    let showFilter: Bool
+    let onSort: (() -> Void)?
+    let onFilter: () -> Void
+    let currentSortTitle: String?
+    var appliedFiltersCount: Int = 0
 
-  var body: some View {
-    HStack(spacing: 10) {
-      if let title {
-        Text(title)
-          .palaceFont(size: 18)
-          .bold()
-      }
-      Spacer()
-      if let onSort = onSort, let currentSortTitle = currentSortTitle {
-        Button(action: onSort) {
-          HStack(spacing: 2) {
-            ImageProviders.MyBooksView.sort
-            Text(currentSortTitle)
-          }
-          .palaceFont(size: 14)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(String(format: Strings.Generic.sortByFormat, currentSortTitle))
-      }
-      if showFilter {
-        Button(action: onFilter) {
-          HStack(spacing: 3) {
-            ImageProviders.MyBooksView.filter
-            if appliedFiltersCount > 0 {
-              Text("\(Strings.Catalog.filter) (\(appliedFiltersCount))")
-            } else {
-              Text(Strings.Catalog.filter)
+    var body: some View {
+        HStack(spacing: 10) {
+            if let title {
+                Text(title)
+                    .palaceFont(size: 18)
+                    .bold()
             }
-          }
-          .palaceFont(size: 14)
+            Spacer()
+            if let onSort = onSort, let currentSortTitle = currentSortTitle {
+                Button(action: onSort) {
+                    HStack(spacing: 2) {
+                        ImageProviders.MyBooksView.sort
+                        Text(currentSortTitle)
+                    }
+                    .palaceFont(size: 14)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(format: Strings.Generic.sortByFormat, currentSortTitle))
+            }
+            if showFilter {
+                Button(action: onFilter) {
+                    HStack(spacing: 3) {
+                        ImageProviders.MyBooksView.filter
+                        if appliedFiltersCount > 0 {
+                            Text("\(Strings.Catalog.filter) (\(appliedFiltersCount))")
+                        } else {
+                            Text(Strings.Catalog.filter)
+                        }
+                    }
+                    .palaceFont(size: 14)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(appliedFiltersCount > 0 ? String(format: Strings.Generic.filterWithCount, appliedFiltersCount) : Strings.Generic.filter)
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(appliedFiltersCount > 0 ? String(format: Strings.Generic.filterWithCount, appliedFiltersCount) : Strings.Generic.filter)
-      }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
-  }
 }
-
-

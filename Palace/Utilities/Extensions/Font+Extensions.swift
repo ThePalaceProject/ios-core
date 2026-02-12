@@ -10,21 +10,21 @@ import Foundation
 import SwiftUI
 
 extension Font {
-  init(uiFont: UIFont) {
-    self = Font(uiFont as CTFont)
-  }
+    init(uiFont: UIFont) {
+        self = Font(uiFont as CTFont)
+    }
 }
 
 extension Font {
-  static func palaceFont(size: CGFloat) -> Font {
-    Font.custom(TPPConfiguration.systemFontName(), size: size)
-  }
+    static func palaceFont(size: CGFloat) -> Font {
+        Font.custom(TPPConfiguration.systemFontName(), size: size)
+    }
 
-  static func semiBoldPalaceFont(size: CGFloat) -> Font {
-    Font.custom(TPPConfiguration.semiBoldSystemFontName(), size: size)
-  }
+    static func semiBoldPalaceFont(size: CGFloat) -> Font {
+        Font.custom(TPPConfiguration.semiBoldSystemFontName(), size: size)
+    }
 
-  static func boldPalaceFont(size: CGFloat) -> Font {
-    Font.custom(TPPConfiguration.boldSystemFontName(), size: size)
-  }
+    static func boldPalaceFont(size: CGFloat) -> Font {
+        Font.custom(TPPConfiguration.boldSystemFontName(), size: size)
+    }
 }

@@ -12,48 +12,48 @@ import SwiftUI
 typealias Action = () -> Void
 
 struct RefreshableScrollView: ViewModifier {
-  var onRefresh: Action
+    var onRefresh: Action
 
-  private var topPadding = 50.0
-  @State private var needRefresh: Bool = false
-  private let coordinatorSpaceName = "RefreshingView"
-  
-  init(_ refreshAction: @escaping Action) {
-    onRefresh = refreshAction
-  }
+    private var topPadding = 50.0
+    @State private var needRefresh: Bool = false
+    private let coordinatorSpaceName = "RefreshingView"
 
-  func body(content: Content) -> some View {
-    ScrollView {
-      refreshView
-      content
+    init(_ refreshAction: @escaping Action) {
+        onRefresh = refreshAction
     }
-    .coordinateSpace(name: coordinatorSpaceName)
-  }
-  
-  private var refreshView: some View {
-    GeometryReader { geometry in
-      if (geometry.frame(in: .named(coordinatorSpaceName)).midY > topPadding) {
-        Spacer()
-          .onAppear {
-            needRefresh = true
-          }
-      } else if (geometry.frame(in: .named(coordinatorSpaceName)).midY < 10) {
-        Spacer()
-          .onAppear {
-            if needRefresh {
-              needRefresh = false
-              onRefresh()
-            }
-          }
-      }
-      HStack {
-        Spacer()
-        if needRefresh {
-          ProgressView()
-            .scaleEffect(1.5)
+
+    func body(content: Content) -> some View {
+        ScrollView {
+            refreshView
+            content
         }
-        Spacer()
-      }
-    }.padding(.top, -topPadding)
-  }
+        .coordinateSpace(name: coordinatorSpaceName)
+    }
+
+    private var refreshView: some View {
+        GeometryReader { geometry in
+            if geometry.frame(in: .named(coordinatorSpaceName)).midY > topPadding {
+                Spacer()
+                    .onAppear {
+                        needRefresh = true
+                    }
+            } else if geometry.frame(in: .named(coordinatorSpaceName)).midY < 10 {
+                Spacer()
+                    .onAppear {
+                        if needRefresh {
+                            needRefresh = false
+                            onRefresh()
+                        }
+                    }
+            }
+            HStack {
+                Spacer()
+                if needRefresh {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                }
+                Spacer()
+            }
+        }.padding(.top, -topPadding)
+    }
 }
