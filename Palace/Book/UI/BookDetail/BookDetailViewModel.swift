@@ -35,6 +35,10 @@ final class BookDetailViewModel: ObservableObject {
   @Published var showSampleToolbar = false
   @Published var downloadProgress: Double = 0.0
   
+  /// Error alert to present via SwiftUI `.alert`, ensuring it shows
+  /// on top of the half sheet instead of being swallowed by UIKit.
+  @Published var downloadErrorAlert: AlertModel?
+  
   @Published var relatedBooksByLane: [String: BookLane] = [:]
   @Published var isLoadingRelatedBooks = false
   
@@ -218,8 +222,21 @@ final class BookDetailViewModel: ObservableObject {
     
     downloadCenter.downloadProgressPublisher
       .filter { $0.0 == self.book.identifier }
-      .map { $0.1 }
+      .map { [weak self] update -> Double in
+        // Clamp to max-seen-so-far to prevent progress bar from sliding backwards
+        max(self?.downloadProgress ?? 0.0, update.1)
+      }
       .assign(to: &$downloadProgress)
+    
+    // Subscribe to download errors so we can present them via SwiftUI .alert
+    // instead of UIKit (which can fail when a SwiftUI sheet is topmost).
+    downloadCenter.downloadErrorPublisher
+      .filter { [weak self] in $0.0 == self?.book.identifier }
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] (_, title, message) in
+        self?.downloadErrorAlert = AlertModel(title: title, message: message)
+      }
+      .store(in: &cancellables)
   }
 
   private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool) -> BookButtonState {

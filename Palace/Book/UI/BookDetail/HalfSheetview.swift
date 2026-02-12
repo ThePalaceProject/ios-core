@@ -9,6 +9,9 @@ protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
   var isManagingHold: Bool { get }
   var downloadProgress: Double { get }
   var book: TPPBook { get }
+  
+  /// Error alert to present via SwiftUI `.alert` on the half sheet.
+  var downloadErrorAlert: AlertModel? { get set }
 }
 
 extension HalfSheetProvider {
@@ -102,6 +105,18 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
     .presentationDragIndicator(.visible)
     .interactiveDismissDisabled(viewModel.isProcessing(for: .returning))
+    .alert(
+      item: Binding(
+        get: { viewModel.downloadErrorAlert },
+        set: { viewModel.downloadErrorAlert = $0 }
+      )
+    ) { errorAlert in
+      Alert(
+        title: Text(errorAlert.title),
+        message: Text(errorAlert.message),
+        dismissButton: .default(Text("OK"))
+      )
+    }
     .onAppear {
       originalState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
     }

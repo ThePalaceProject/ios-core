@@ -45,6 +45,7 @@ class BookCellModel: ObservableObject {
   
   @Published var image = UIImage()
   @Published var showAlert: AlertModel?
+  @Published var downloadErrorAlert: AlertModel?
   @Published var isLoading: Bool = false {
     didSet {
       statePublisher.send(isLoading)
@@ -226,6 +227,15 @@ class BookCellModel: ObservableObject {
         default:
           break
         }
+      }
+      .store(in: &cancellables)
+    
+    // Subscribe to download errors so the half sheet can present them via SwiftUI .alert
+    MyBooksDownloadCenter.shared.downloadErrorPublisher
+      .filter { [weak self] in $0.0 == self?.book.identifier }
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] (_, title, message) in
+        self?.downloadErrorAlert = AlertModel(title: title, message: message)
       }
       .store(in: &cancellables)
   }

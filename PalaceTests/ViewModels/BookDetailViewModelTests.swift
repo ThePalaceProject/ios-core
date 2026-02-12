@@ -8,6 +8,7 @@
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
+import Combine
 import XCTest
 @testable import Palace
 
@@ -826,6 +827,96 @@ final class BookDetailViewModelTests: XCTestCase {
     // Assert - Should maintain data during fetch
     XCTAssertEqual(viewModel.relatedBooksByLane.count, countBefore,
                    "Related books count should be preserved while fetching for the same book")
+  }
+  
+  // MARK: - Monotonic Download Progress Tests
+  
+  /// Verifies that downloadProgress never goes backwards when the publisher
+  /// sends a lower value (e.g., on retry, redirect, or race between download
+  /// tasks). The view model clamps to max-seen-so-far.
+  func testDownloadProgress_NeverGoesBackwards() {
+    let book = createTestBook()
+    let mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+    
+    let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
+    let publisher = MyBooksDownloadCenter.shared.downloadProgressPublisher
+    
+    // Collect all progress values the view model receives
+    var receivedValues: [Double] = []
+    let expectation = expectation(description: "Received all progress updates")
+    
+    let cancellable = viewModel.$downloadProgress
+      .dropFirst() // Skip initial 0.0
+      .sink { value in
+        receivedValues.append(value)
+        if receivedValues.count >= 3 {
+          expectation.fulfill()
+        }
+      }
+    
+    // Send: 0.5 → 0.3 (backwards!) → 0.8
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+      publisher.send((book.identifier, 0.5))
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+      publisher.send((book.identifier, 0.3)) // Should be clamped to 0.5
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+      publisher.send((book.identifier, 0.8))
+    }
+    
+    waitForExpectations(timeout: 3.0)
+    cancellable.cancel()
+    
+    // Verify: progress should be [0.5, 0.5, 0.8] — never 0.3
+    for i in 1..<receivedValues.count {
+      XCTAssertGreaterThanOrEqual(
+        receivedValues[i], receivedValues[i - 1],
+        "Progress went backwards at index \(i): \(receivedValues[i]) < \(receivedValues[i - 1])"
+      )
+    }
+    XCTAssertFalse(receivedValues.contains(0.3),
+                   "Progress should never contain the backwards value 0.3")
+  }
+  
+  /// Verifies that progress from a different book's identifier is ignored.
+  func testDownloadProgress_IgnoresDifferentBook() {
+    let book = createTestBook()
+    let mockRegistry = TPPBookRegistryMock()
+    mockRegistry.addBook(book, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+    
+    let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
+    let publisher = MyBooksDownloadCenter.shared.downloadProgressPublisher
+    
+    // Wait for any deferred init tasks to settle
+    let settleExpectation = expectation(description: "Let init settle")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+      settleExpectation.fulfill()
+    }
+    waitForExpectations(timeout: 1.0)
+    
+    // Record the baseline — should be 0.0 from init
+    let baseline = viewModel.downloadProgress
+    
+    // Now subscribe and send progress for a DIFFERENT book
+    let noUpdateExpectation = expectation(description: "No progress update for different book")
+    noUpdateExpectation.isInverted = true
+    
+    let cancellable = viewModel.$downloadProgress
+      .dropFirst() // Skip the current value replay
+      .sink { _ in
+        noUpdateExpectation.fulfill() // This should NOT fire
+      }
+    
+    publisher.send(("completely-different-book-id", 0.99))
+    
+    // Wait briefly to confirm no update arrived
+    waitForExpectations(timeout: 0.5)
+    cancellable.cancel()
+    
+    XCTAssertEqual(viewModel.downloadProgress, baseline, accuracy: 0.01,
+                   "Progress for a different book should be ignored")
   }
   
   // MARK: - Helper Methods for Regression Tests
