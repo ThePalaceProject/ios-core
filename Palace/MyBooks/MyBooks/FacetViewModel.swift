@@ -39,7 +39,7 @@ class FacetViewModel: ObservableObject {
   init(groupName: String, facets: [Facet]) {
     self.facets = facets
     self.groupName = groupName
-    activeSort = facets.first!
+    activeSort = facets.first ?? .title
     registerForNotifications()
     updateAccount()
   }

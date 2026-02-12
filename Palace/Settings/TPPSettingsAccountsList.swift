@@ -224,7 +224,7 @@ import SwiftUI
       return
     }
     showLoadingUI(loadState: .success)
-    var array = userAddedSecondaryAccounts!.map { $0.uuid }
+    var array = (userAddedSecondaryAccounts ?? []).map { $0.uuid }
     array.append(uuid)
     TPPSettings.shared.settingsAccountIdsList = array
   }

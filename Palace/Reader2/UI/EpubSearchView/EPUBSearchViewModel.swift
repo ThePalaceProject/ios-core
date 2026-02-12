@@ -104,12 +104,13 @@ final class EPUBSearchViewModel: ObservableObject {
         groupedResults[titleKey] = []
       }
 
-      if !groupedResults[titleKey]!.contains(where: { existingLocator in
-        existingLocator.href.isEquivalentTo(locator.href) &&
-        existingLocator.locations.progression == locator.locations.progression &&
-        existingLocator.locations.totalProgression == locator.locations.totalProgression
-      }) {
-        groupedResults[titleKey]!.append(locator)
+      if let existing = groupedResults[titleKey],
+         !existing.contains(where: { existingLocator in
+           existingLocator.href.isEquivalentTo(locator.href) &&
+           existingLocator.locations.progression == locator.locations.progression &&
+           existingLocator.locations.totalProgression == locator.locations.totalProgression
+         }) {
+        groupedResults[titleKey]?.append(locator)
       }
     }
 
