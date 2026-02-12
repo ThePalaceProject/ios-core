@@ -432,6 +432,20 @@ final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
   /// Verifies that the registry emits book state events after loading
   /// This was added to fix UI sync issues when reopening the app
   func testLoad_EmitsBookStateEventsForAllBooks() {
+    // Guard: load() requires a valid account to actually run.
+    // Without one, it returns immediately as a no-op, but allBooks may still
+    // contain stale books from other tests (e.g., thread safety tests that
+    // add books to the shared singleton). This would cause a false failure.
+    guard AccountsManager.shared.currentAccountId != nil else {
+      return
+    }
+    
+    // Drain pending main-thread events from previous tests to ensure
+    // the re-entrancy guard's loadingAccount has been cleared.
+    // Without this, testLoad_RapidCallsForSameAccount_DoesNotCrash
+    // may leave loadingAccount set, causing this test's load() to be skipped.
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
+    
     let expectation = XCTestExpectation(description: "Book state events emitted")
     
     var receivedStateUpdates = Set<String>()
@@ -451,7 +465,8 @@ final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
     
     wait(for: [expectation], timeout: 5.0)
     
-    // Check that we received state updates for books that were in the registry
+    // Check that we received state updates for books that were loaded from disk.
+    // After load(), allBooks reflects the disk state (not stale in-memory data).
     let registryCount = registry.allBooks.count
     if registryCount > 0 {
       XCTAssertFalse(receivedStateUpdates.isEmpty, "Should have received state updates for loaded books")
