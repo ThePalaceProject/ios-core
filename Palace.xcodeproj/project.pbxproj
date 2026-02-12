@@ -1084,6 +1084,8 @@
 		PLAYBOOTTEST0001SOURCES /* PlaybackBootstrapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */; };
 		PP3346A11B0000000000001B /* CatalogLaneRowViewAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3346A11A0000000000001A /* CatalogLaneRowViewAccessibilityTests.swift */; };
 		PP3583TRACKER00001TESTS /* AudiobookTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544E7132C8A14D400802EB9 /* AudiobookTrackerTests.swift */; };
+		PP3629BF000000000000001 /* CatalogLaneSortingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3629FR000000000000001 /* CatalogLaneSortingTests.swift */; };
+		PP3671BF000000000000001 /* TPPAccountListDataSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3671FR000000000000001 /* TPPAccountListDataSourceTests.swift */; };
 		QAAMT002T260955EF00000001 /* AccountModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAAMT001T260955EF00000001 /* AccountModelTests.swift */; };
 		QAAPD002T260955EF00000001 /* AccountProfileDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAAPD001T260955EF00000001 /* AccountProfileDocumentTests.swift */; };
 		QAAUT002T260955EF00000001 /* AccountDetailsURLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAAUT001T260955EF00000001 /* AccountDetailsURLTests.swift */; };
@@ -2029,6 +2031,8 @@
 		OBJC00012F2600020000001C /* ObjCExceptionCatcher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ObjCExceptionCatcher.h; sourceTree = "<group>"; };
 		PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackBootstrapperTests.swift; sourceTree = "<group>"; };
 		PP3346A11A0000000000001A /* CatalogLaneRowViewAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogLaneRowViewAccessibilityTests.swift; sourceTree = "<group>"; };
+		PP3629FR000000000000001 /* CatalogLaneSortingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogLaneSortingTests.swift; sourceTree = "<group>"; };
+		PP3671FR000000000000001 /* TPPAccountListDataSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSourceTests.swift; sourceTree = "<group>"; };
 		QAAMT001T260955EF00000001 /* AccountModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountModelTests.swift; sourceTree = "<group>"; };
 		QAAPD001T260955EF00000001 /* AccountProfileDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountProfileDocumentTests.swift; sourceTree = "<group>"; };
 		QAAUT001T260955EF00000001 /* AccountDetailsURLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDetailsURLTests.swift; sourceTree = "<group>"; };
@@ -6068,9 +6072,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 433;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
