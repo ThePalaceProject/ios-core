@@ -52,13 +52,13 @@ struct NormalBookCell: View {
                 .sheet(isPresented: $showHalfSheet, onDismiss: {
                     model.showHalfSheet = false
                     model.isManagingHold = false  // Reset managing hold state when sheet is dismissed
-                }) {
+                }, content: {
                     HalfSheetView(
                         viewModel: model,
                         backgroundColor: Color(model.book.dominantUIColor),
                         coverImage: $model.book.coverImage
                     )
-                }
+                })
                 .alert(item: $model.showAlert) { alert in
                     Alert(
                         title: Text(alert.title),

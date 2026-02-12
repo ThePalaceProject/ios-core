@@ -28,11 +28,11 @@ struct AccountDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .tabBar)
             .toolbarBackground(Color(UIColor.systemBackground), for: .tabBar)
-            .alert(viewModel.alertTitle, isPresented: $viewModel.showingAlert) {
+            .alert(viewModel.alertTitle, isPresented: $viewModel.showingAlert, actions: {
                 Button(Strings.Generic.ok, role: .cancel) {}
-            } message: {
+            }, message: {
                 Text(viewModel.alertMessage)
-            }
+            })
             .onAppear {
                 viewModel.refreshSignInState()
             }
@@ -174,19 +174,19 @@ struct AccountDetailView: View {
     @ViewBuilder
     private var reportIssueLink: some View {
         if viewModel.selectedAccount?.supportEmail != nil {
-            Button(action: handleReportIssue) {
+            Button(action: handleReportIssue, label: {
                 Text(DisplayStrings.reportIssue)
                     .font(.palaceFont(size: Typography.messageSize))
                     .foregroundColor(Color(TPPConfiguration.mainColor()))
                     .underline()
-            }
+            })
         } else if viewModel.selectedAccount?.supportURL != nil {
-            NavigationLink(destination: reportIssueWebView) {
+            NavigationLink(destination: reportIssueWebView, label: {
                 Text(DisplayStrings.reportIssue)
                     .font(.palaceFont(size: Typography.messageSize))
                     .foregroundColor(Color(TPPConfiguration.mainColor()))
                     .underline()
-            }
+            })
         }
     }
 
@@ -295,10 +295,10 @@ struct AccountDetailView: View {
                         .padding(.bottom, Layout.barcodeBottomPadding)
                 }
 
-                Button(action: { withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { viewModel.showBarcode.toggle() } }) {
+                Button(action: { withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { viewModel.showBarcode.toggle() } }, label: {
                     Text(viewModel.showBarcode ? DisplayStrings.hideBarcode : DisplayStrings.showBarcode)
                         .foregroundColor(Color(TPPConfiguration.mainColor()))
-                }
+                })
             }
         }
         .padding(.vertical, Layout.verticalPaddingSmall)
@@ -319,10 +319,10 @@ struct AccountDetailView: View {
             .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
 
             if !viewModel.isSignedIn && viewModel.businessLogic.selectedAuthentication?.supportsBarcodeScanner == true {
-                Button(action: { viewModel.scanBarcode() }) {
+                Button(action: { viewModel.scanBarcode() }, label: {
                     Image(systemName: "camera")
                         .foregroundColor(Color(TPPConfiguration.mainColor()))
-                }
+                })
                 .accessibilityLabel(Strings.Generic.scanBarcode)
             }
         }
@@ -355,10 +355,10 @@ struct AccountDetailView: View {
             }
 
             if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
-                Button(action: { viewModel.togglePINVisibility() }) {
+                Button(action: { viewModel.togglePINVisibility() }, label: {
                     Text(viewModel.isPINHidden ? DisplayStrings.show : DisplayStrings.hide)
                         .foregroundColor(Color(TPPConfiguration.mainColor()))
-                }
+                })
             }
         }
         .padding(.vertical, Layout.verticalPaddingInput)
@@ -366,7 +366,7 @@ struct AccountDetailView: View {
     }
 
     private var logInSignOutCell: some View {
-        Button(action: { viewModel.signIn() }) {
+        Button(action: { viewModel.signIn() }, label: {
             HStack {
                 if viewModel.isLoading {
                     ZStack {
@@ -387,7 +387,7 @@ struct AccountDetailView: View {
                     }
                 }
             }
-        }
+        })
         .disabled(!viewModel.canSignIn && !viewModel.isSignedIn)
         .accessibilityIdentifier(AccessibilityID.SignIn.signInButton)
     }
@@ -431,32 +431,32 @@ struct AccountDetailView: View {
     }
 
     private var registrationCell: some View {
-        Button(action: { viewModel.openRegistration() }) {
+        Button(action: { viewModel.openRegistration() }, label: {
             Text(DisplayStrings.signUpForCard)
                 .foregroundColor(Color(TPPConfiguration.mainColor()))
                 .horizontallyCentered()
-        }
+        })
     }
 
     private var advancedSettingsCell: some View {
-        NavigationLink(destination: AdvancedSettingsView(accountID: viewModel.businessLogic.libraryAccountID)) {
+        NavigationLink(destination: AdvancedSettingsView(accountID: viewModel.businessLogic.libraryAccountID), label: {
             Text(DisplayStrings.advanced)
                 .font(.system(.body))
-        }
+        })
     }
 
     private var privacyPolicyCell: some View {
-        NavigationLink(destination: privacyPolicyView) {
+        NavigationLink(destination: privacyPolicyView, label: {
             Text(DisplayStrings.privacyPolicy)
                 .font(.system(.body))
-        }
+        })
     }
 
     private var contentLicenseCell: some View {
-        NavigationLink(destination: contentLicenseView) {
+        NavigationLink(destination: contentLicenseView, label: {
             Text(DisplayStrings.contentLicenses)
                 .font(.system(.body))
-        }
+        })
     }
 
     @ViewBuilder
@@ -492,15 +492,15 @@ struct AccountDetailView: View {
     @ViewBuilder
     private var reportIssueCell: some View {
         if viewModel.selectedAccount?.supportEmail != nil {
-            Button(action: handleReportIssue) {
+            Button(action: handleReportIssue, label: {
                 Text(DisplayStrings.reportIssue)
                     .font(.system(.body))
-            }
+            })
         } else if viewModel.selectedAccount?.supportURL != nil {
-            NavigationLink(destination: reportIssueWebView) {
+            NavigationLink(destination: reportIssueWebView, label: {
                 Text(DisplayStrings.reportIssue)
                     .font(.system(.body))
-            }
+            })
         }
     }
 
@@ -519,22 +519,22 @@ struct AccountDetailView: View {
     }
 
     private var passwordResetCell: some View {
-        Button(action: { viewModel.resetPassword() }) {
+        Button(action: { viewModel.resetPassword() }, label: {
             Text(DisplayStrings.forgotPassword)
                 .font(.system(.body))
-        }
+        })
     }
 
     private func authMethodCell(auth: AccountDetails.Authentication) -> some View {
-        Button(action: { viewModel.selectAuthMethod(auth) }) {
+        Button(action: { viewModel.selectAuthMethod(auth) }, label: {
             Text(auth.methodDescription ?? "")
                 .font(.system(.body))
                 .foregroundColor(.primary)
-        }
+        })
     }
 
     private func samlIDPCell(idp: OPDS2SamlIDP) -> some View {
-        Button(action: { viewModel.selectSAMLIDP(idp) }) {
+        Button(action: { viewModel.selectSAMLIDP(idp) }, label: {
             HStack {
                 if viewModel.isLoading {
                     ProgressView()
@@ -546,7 +546,7 @@ struct AccountDetailView: View {
             }
             .font(.system(.body))
             .foregroundColor(.primary)
-        }
+        })
     }
 
     private func infoHeaderCell(text: String) -> some View {
@@ -559,12 +559,12 @@ struct AccountDetailView: View {
     // MARK: - Footer Views
 
     private var eulaFooter: some View {
-        NavigationLink(destination: eulaView) {
+        NavigationLink(destination: eulaView, label: {
             Text(DisplayStrings.eulaAgreement)
                 .font(.system(.caption))
                 .foregroundColor(.blue)
                 .underline()
-        }
+        })
         .padding(.top, Layout.verticalPaddingSmall)
     }
 

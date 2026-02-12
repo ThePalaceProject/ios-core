@@ -84,15 +84,15 @@ final class LicensesServiceTests: XCTestCase {
         // Create a temporary file with invalid LCP license content
         let tempDir = FileManager.default.temporaryDirectory
         let invalidLcpl = tempDir.appendingPathComponent("invalid_\(UUID().uuidString).lcpl")
-        try? "not a valid license".data(using: .utf8)?.write(to: invalidLcpl)
+        try? Data("not a valid license".utf8).write(to: invalidLcpl)
 
         let expectation = XCTestExpectation(description: "Completion called")
 
-        let task = sut.acquirePublication(from: invalidLcpl, progress: { _ in }) { localUrl, error in
+        let task = sut.acquirePublication(from: invalidLcpl, progress: { _ in }, completion: { localUrl, error in
             XCTAssertNil(localUrl, "Should not return a URL for invalid license")
             XCTAssertNotNil(error, "Should return an error for invalid license")
             expectation.fulfill()
-        }
+        })
 
         XCTAssertNil(task, "Should not return a task for invalid license")
 
@@ -107,11 +107,11 @@ final class LicensesServiceTests: XCTestCase {
 
         let expectation = XCTestExpectation(description: "Completion called")
 
-        let task = sut.acquirePublication(from: nonexistentURL, progress: { _ in }) { localUrl, error in
+        let task = sut.acquirePublication(from: nonexistentURL, progress: { _ in }, completion: { localUrl, error in
             XCTAssertNil(localUrl)
             XCTAssertNotNil(error)
             expectation.fulfill()
-        }
+        })
 
         XCTAssertNil(task)
 

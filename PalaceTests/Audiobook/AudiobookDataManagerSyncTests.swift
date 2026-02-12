@@ -145,9 +145,9 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
         )
 
         // Configure mock response
-        let successResponse = """
+        let successResponse = Data("""
     {"responses": [{"status": 200, "message": "OK", "id": "entry-1"}]}
-    """.data(using: .utf8)
+    """.utf8)
         mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(
             statusCode: 200,
             data: successResponse
@@ -183,9 +183,9 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
             duration: 45
         )
 
-        let successResponse = """
+        let successResponse = Data("""
     {"responses": [{"status": 200, "message": "OK", "id": "entry-1"}]}
-    """.data(using: .utf8)
+    """.utf8)
         mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(
             statusCode: 200,
             data: successResponse
@@ -222,12 +222,12 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
             timeTrackingUrl: trackingURL2, duringMinute: "2024-01-15T10:31Z", duration: 45
         )
 
-        let successResponse1 = """
+        let successResponse1 = Data("""
     {"responses": [{"status": 200, "message": "OK", "id": "entry-1"}]}
-    """.data(using: .utf8)
-        let successResponse2 = """
+    """.utf8)
+        let successResponse2 = Data("""
     {"responses": [{"status": 200, "message": "OK", "id": "entry-2"}]}
-    """.data(using: .utf8)
+    """.utf8)
 
         mockNetworkExecutor.responses[trackingURL1] = MockNetworkExecutorForSync.MockResponse(statusCode: 200, data: successResponse1)
         mockNetworkExecutor.responses[trackingURL2] = MockNetworkExecutorForSync.MockResponse(statusCode: 200, data: successResponse2)
@@ -260,9 +260,9 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
             duration: 45
         )
 
-        let successResponse = """
+        let successResponse = Data("""
     {"responses": [{"status": 200, "message": "OK", "id": "entry-123"}]}
-    """.data(using: .utf8)
+    """.utf8)
         mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(statusCode: 200, data: successResponse)
 
         dataManager.save(time: entry)
@@ -454,12 +454,12 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         )
 
         // Response indicates one success, one failure
-        let partialResponse = """
+        let partialResponse = Data("""
     {"responses": [
       {"status": 200, "message": "OK", "id": "entry-success"},
       {"status": 400, "message": "Invalid entry", "id": "entry-fail"}
     ]}
-    """.data(using: .utf8)
+    """.utf8)
         mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(statusCode: 200, data: partialResponse)
 
         dataManager.save(time: entry1)
@@ -543,7 +543,7 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
     /// that creating a manager and clearing its store results in empty queue
     func testLoadStore_withCorruptedJSON_doesNotCrash() {
         // Arrange - write corrupted JSON to test file (for documentation purposes)
-        let corruptedData = "{ invalid json content".data(using: .utf8)!
+        let corruptedData = Data("{ invalid json content".utf8)
         try? corruptedData.write(to: testStoreFile)
 
         // Act - creating manager should not crash
@@ -625,16 +625,16 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
 
     /// Test AudiobookDataManagerStore init with invalid data returns nil
     func testAudiobookDataManagerStoreInit_withInvalidData_returnsNil() {
-        let invalidData = "not json at all".data(using: .utf8)!
+        let invalidData = Data("not json at all".utf8)
         let store = AudiobookDataManagerStore(data: invalidData)
         XCTAssertNil(store, "Should return nil for invalid JSON")
     }
 
     /// Test AudiobookDataManagerStore init with partial data returns nil
     func testAudiobookDataManagerStoreInit_withPartialData_returnsNil() {
-        let partialData = """
+        let partialData = Data("""
     {"urls": {}}
-    """.data(using: .utf8)!  // Missing "queue" field
+    """.utf8)  // Missing "queue" field
 
         // This might succeed or fail depending on decoder behavior with missing fields
         // Adjust expectation based on actual behavior

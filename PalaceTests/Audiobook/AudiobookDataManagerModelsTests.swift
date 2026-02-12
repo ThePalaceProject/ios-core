@@ -201,7 +201,7 @@ final class AudiobookDataManagerModelsTests: XCTestCase {
     }
 
     func testAudiobookDataManagerStoreInit_fromData_invalidJson_returnsNil() {
-        let invalidData = "invalid".data(using: .utf8)!
+        let invalidData = Data("invalid".utf8)
 
         let store = AudiobookDataManagerStore(data: invalidData)
 

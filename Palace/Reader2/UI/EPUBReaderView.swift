@@ -70,13 +70,13 @@ struct EPUBReaderView: View {
         Button(action: {
             Log.debug(#file, "📕 EPUB sample close button tapped")
             coordinator.dismissEPUBSample()
-        }) {
+        }, label: {
             Image(systemName: "xmark.circle.fill")
                 .font(.system(size: 28))
                 .foregroundColor(.white)
                 .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                 .padding(16)
-        }
+        })
         .buttonStyle(.plain)
         .accessibilityLabel(Strings.Generic.closeSample)
     }

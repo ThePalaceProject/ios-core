@@ -121,13 +121,13 @@ final class TokenResponseTests: XCTestCase {
     // MARK: - JSON Decoding Tests
 
     func testDecode_WithValidJSON_ParsesCorrectly() throws {
-        let json = """
+        let json = Data("""
     {
       "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9",
       "token_type": "Bearer",
       "expires_in": 3600
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -140,13 +140,13 @@ final class TokenResponseTests: XCTestCase {
     }
 
     func testDecode_WithLargeExpiresIn_ParsesCorrectly() throws {
-        let json = """
+        let json = Data("""
     {
       "access_token": "token",
       "token_type": "Bearer",
       "expires_in": 31536000
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -158,13 +158,13 @@ final class TokenResponseTests: XCTestCase {
     }
 
     func testDecode_WithDifferentTokenType_ParsesCorrectly() throws {
-        let json = """
+        let json = Data("""
     {
       "access_token": "token",
       "token_type": "MAC",
       "expires_in": 3600
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -175,12 +175,12 @@ final class TokenResponseTests: XCTestCase {
     }
 
     func testDecode_WithMissingAccessToken_ThrowsError() {
-        let json = """
+        let json = Data("""
     {
       "token_type": "Bearer",
       "expires_in": 3600
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -189,12 +189,12 @@ final class TokenResponseTests: XCTestCase {
     }
 
     func testDecode_WithMissingExpiresIn_ThrowsError() {
-        let json = """
+        let json = Data("""
     {
       "access_token": "token",
       "token_type": "Bearer"
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -203,12 +203,12 @@ final class TokenResponseTests: XCTestCase {
     }
 
     func testDecode_WithMissingTokenType_ThrowsError() {
-        let json = """
+        let json = Data("""
     {
       "access_token": "token",
       "expires_in": 3600
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -217,7 +217,7 @@ final class TokenResponseTests: XCTestCase {
     }
 
     func testDecode_WithExtraFields_IgnoresExtraFields() throws {
-        let json = """
+        let json = Data("""
     {
       "access_token": "token",
       "token_type": "Bearer",
@@ -225,7 +225,7 @@ final class TokenResponseTests: XCTestCase {
       "refresh_token": "refresh-token",
       "scope": "read write"
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -237,13 +237,13 @@ final class TokenResponseTests: XCTestCase {
     }
 
     func testDecode_WithWrongTypeForExpiresIn_ThrowsError() {
-        let json = """
+        let json = Data("""
     {
       "access_token": "token",
       "token_type": "Bearer",
       "expires_in": "3600"
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -294,13 +294,13 @@ final class TokenResponseTests: XCTestCase {
     // MARK: - Edge Cases
 
     func testAccessToken_WithSpecialCharacters() throws {
-        let json = """
+        let json = Data("""
     {
       "access_token": "token+with/special=chars&more!",
       "token_type": "Bearer",
       "expires_in": 3600
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -311,13 +311,13 @@ final class TokenResponseTests: XCTestCase {
     }
 
     func testAccessToken_WithUnicodeCharacters() throws {
-        let json = """
+        let json = Data("""
     {
       "access_token": "token-\u{00e9}\u{00e8}\u{00ea}-unicode",
       "token_type": "Bearer",
       "expires_in": 3600
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -328,13 +328,13 @@ final class TokenResponseTests: XCTestCase {
     }
 
     func testExpiresIn_WithMaxInt32Value() throws {
-        let json = """
+        let json = Data("""
     {
       "access_token": "token",
       "token_type": "Bearer",
       "expires_in": 2147483647
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase

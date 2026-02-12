@@ -33,9 +33,9 @@ struct HoldsView: View {
                                     model.showSearchSheet = false
                                     model.searchQuery = ""
                                 }
-                            }) {
+                            }, label: {
                                 Text(Strings.Generic.cancel)
-                            }
+                            })
                         } else {
                             trailingBarButton
                         }

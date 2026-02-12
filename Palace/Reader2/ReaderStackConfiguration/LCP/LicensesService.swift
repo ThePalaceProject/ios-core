@@ -123,7 +123,7 @@ extension TPPLicensesService: URLSessionDownloadDelegate {
 
                 Task {
                     do {
-                        if let _ = try? await Archive(url: safeCopy, accessMode: .read) {
+                        if (try? await Archive(url: safeCopy, accessMode: .read)) != nil {
                             try await self.injectLicense(lcpl: lcpl, to: safeCopy, at: licensePathInZip)
 
                             completionHandler?(safeCopy, nil)

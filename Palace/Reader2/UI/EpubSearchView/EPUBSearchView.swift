@@ -25,11 +25,11 @@ struct EPUBSearchView: View {
             HStack {
                 Button(action: {
                     presentationMode.wrappedValue.dismiss()
-                }) {
+                }, label: {
                     Image(systemName: "chevron.left")
                         .foregroundColor(.primary)
                         .padding(.trailing, 8)
-                }
+                })
                 .accessibilityLabel(Strings.Generic.goBack)
                 Text(Strings.Generic.search)
                     .font(.headline)
@@ -52,11 +52,11 @@ struct EPUBSearchView: View {
             Button(action: {
                 searchQuery = ""
                 viewModel.cancelSearch()
-            }) {
+            }, label: {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundColor(Color.gray)
                     .padding(.leading, 5)
-            }
+            })
             .accessibilityLabel(Strings.Generic.clearSearch)
         }
         .padding()

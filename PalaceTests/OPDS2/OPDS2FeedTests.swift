@@ -294,8 +294,8 @@ final class OPDS2FeedTests: XCTestCase {
     }
 
     func testDetectOPDS2FromData() {
-        let json = "{\"metadata\":{}}".data(using: .utf8)!
-        let xml = "<?xml version=\"1.0\"?>".data(using: .utf8)!
+        let json = Data("{\"metadata\":{}}".utf8)
+        let xml = Data("<?xml version=\"1.0\"?>".utf8)
 
         XCTAssertEqual(OPDSFormat.detect(from: json), .opds2)
         XCTAssertEqual(OPDSFormat.detect(from: xml), .opds1)
@@ -311,7 +311,7 @@ final class OPDS2FeedTests: XCTestCase {
     }
     """
 
-        let data = json.data(using: .utf8)!
+        let data = Data(json.utf8)
         let feed1 = try OPDS2Feed.from(data: data)
         let feed2 = try OPDS2Feed.from(data: data)
 

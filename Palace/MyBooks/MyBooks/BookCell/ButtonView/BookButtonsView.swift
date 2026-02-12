@@ -106,7 +106,7 @@ struct ActionButton<T: BookButtonProvider>: View {
             withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) {
                 onButtonTapped?(type) ?? provider.handleAction(for: type)
             }
-        }) {
+        }, label: {
             ZStack {
                 if provider.isProcessing(for: type) {
                     ProgressView()
@@ -132,7 +132,7 @@ struct ActionButton<T: BookButtonProvider>: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(type.borderColor(isDarkBackground), lineWidth: type.hasBorder ? 2 : 0)
             )
-        }
+        })
         .disabled(provider.isProcessing(for: type))
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityString)

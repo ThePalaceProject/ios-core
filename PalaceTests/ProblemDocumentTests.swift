@@ -191,7 +191,7 @@ final class ProblemDocumentTests: XCTestCase {
 
     func testProblemDocument_fromResponseError_returnsNilWhenNoDocument() {
         let error = NSError(domain: "Test", code: 500, userInfo: nil)
-        let invalidData = "not json".data(using: .utf8)
+        let invalidData = Data("not json".utf8)
 
         let extracted = TPPProblemDocument.fromResponseError(error, responseData: invalidData)
 

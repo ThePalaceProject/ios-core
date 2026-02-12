@@ -40,9 +40,9 @@ struct MyBooksView: View {
                         model.showSearchSheet = false
                         model.resetFilter()
                         model.searchQuery = ""
-                    }) {
+                    }, label: {
                         Text(Strings.Generic.cancel)
-                    }
+                    })
                 } else {
                     trailingBarButton
                 }
@@ -175,18 +175,18 @@ struct MyBooksView: View {
     }
 
     private var leadingBarButton: some View {
-        Button(action: { model.selectNewLibrary.toggle() }) {
+        Button(action: { model.selectNewLibrary.toggle() }, label: {
             ImageProviders.MyBooksView.myLibraryIcon
-        }
+        })
         .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
         .accessibilityLabel(Strings.Generic.switchLibrary)
-        .actionSheet(isPresented: $model.selectNewLibrary) { libraryPicker }
+        .actionSheet(isPresented: $model.selectNewLibrary, content: { libraryPicker })
     }
 
     private var trailingBarButton: some View {
-        Button(action: { withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { model.showSearchSheet.toggle() } }) {
+        Button(action: { withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { model.showSearchSheet.toggle() } }, label: {
             ImageProviders.MyBooksView.search
-        }
+        })
         .accessibilityIdentifier(AccessibilityID.MyBooks.searchButton)
         .accessibilityLabel(Strings.Generic.searchBooks)
     }

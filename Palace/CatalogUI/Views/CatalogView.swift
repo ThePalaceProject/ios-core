@@ -48,9 +48,9 @@ private extension CatalogView {
                 .accessibilityIdentifier(AccessibilityID.Catalog.libraryLogo)
         }
         ToolbarItem(placement: .navigationBarLeading) {
-            Button(action: { showAccountDialog = true }) {
+            Button(action: { showAccountDialog = true }, label: {
                 ImageProviders.MyBooksView.myLibraryIcon
-            }
+            })
             .accessibilityIdentifier(AccessibilityID.Catalog.accountButton)
             .accessibilityLabel(Strings.Generic.switchLibrary)
             .actionSheet(isPresented: $showAccountDialog) { libraryPicker }
@@ -58,14 +58,14 @@ private extension CatalogView {
 
         ToolbarItem(placement: .navigationBarTrailing) {
             if showSearch {
-                Button(action: { dismissSearch() }) {
+                Button(action: { dismissSearch() }, label: {
                     Text(Strings.Generic.cancel)
-                }
+                })
                 .accessibilityIdentifier(AccessibilityID.Search.cancelButton)
             } else {
-                Button(action: { presentSearch() }) {
+                Button(action: { presentSearch() }, label: {
                     ImageProviders.MyBooksView.search
-                }
+                })
                 .accessibilityIdentifier(AccessibilityID.Catalog.searchButton)
                 .accessibilityLabel(Strings.Generic.searchCatalog)
             }
@@ -149,7 +149,7 @@ private extension CatalogView {
 
                 Button(action: {
                     Task { await viewModel.forceRefresh() }
-                }) {
+                }, label: {
                     HStack {
                         Image(systemName: "arrow.clockwise")
                         Text(Strings.Generic.reload)
@@ -159,7 +159,7 @@ private extension CatalogView {
                     .background(Color.blue)
                     .foregroundColor(.white)
                     .cornerRadius(8)
-                }
+                })
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
