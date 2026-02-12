@@ -304,7 +304,7 @@ final class NetworkClientTests: XCTestCase {
         }
 
         let url = URL(string: "https://example.com/basic-auth")!
-        let credentials = "user:password".data(using: .utf8)!.base64EncodedString()
+        let credentials = Data("user:password".utf8).base64EncodedString()
         var request = NetworkRequest(method: .GET, url: url)
         request.headers = ["Authorization": "Basic \(credentials)"]
 

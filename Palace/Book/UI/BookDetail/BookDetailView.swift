@@ -172,7 +172,7 @@ struct BookDetailView: View {
                     } else {
                         presentationMode.wrappedValue.dismiss()
                     }
-                }) {
+                }, label: {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 17, weight: .semibold))
@@ -180,7 +180,7 @@ struct BookDetailView: View {
                             .font(.system(size: 17))
                     }
                     .foregroundColor(headerColor.isDark ? .white : .black)
-                }
+                })
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -448,12 +448,12 @@ struct BookDetailView: View {
                                         if let book = lane.books[safe: index] {
                                             Button(action: {
                                                 viewModel.selectRelatedBook(book)
-                                            }) {
+                                            }, label: {
                                                 BookImageView(book: book, height: 160)
                                                     .padding()
                                                     .adaptiveShadow(radius: 5)
                                                     .transition(.opacity.combined(with: .scale))
-                                            }
+                                            })
                                             .accessibilityLabel(bookAccessibilityLabel(for: book))
                                         } else {
                                             RoundedRectangle(cornerRadius: 8)
@@ -712,7 +712,7 @@ struct BookDetailView: View {
                     } else {
                         presentationMode.wrappedValue.dismiss()
                     }
-                }) {
+                }, label: {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 17, weight: .semibold))
@@ -720,7 +720,7 @@ struct BookDetailView: View {
                             .font(.system(size: 17))
                     }
                     .foregroundColor(headerColor.isDark ? .white : .black)
-                }
+                })
                 .padding(.leading, 8)
                 .padding(.top, UIDevice.current.isIpad ? 8 : 0)
 

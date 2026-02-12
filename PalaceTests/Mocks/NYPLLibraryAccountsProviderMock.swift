@@ -61,9 +61,9 @@ class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider {
     }
 
     func createOPDS2Publication() -> OPDS2Publication {
-        let link = OPDS2Link(href: "href\(arc4random())",
-                             type: "type\(arc4random())",
-                             rel: "rel\(arc4random())",
+        let link = OPDS2Link(href: "href\(UInt32.random(in: 0...UInt32.max))",
+                             type: "type\(UInt32.random(in: 0...UInt32.max))",
+                             rel: "rel\(UInt32.random(in: 0...UInt32.max))",
                              templated: false,
                              displayNames: nil,
                              descriptions: nil)

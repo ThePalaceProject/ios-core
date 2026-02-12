@@ -138,7 +138,7 @@ final class LCPLibraryServiceTests: XCTestCase {
         let nonExistentURL = URL(fileURLWithPath: "/tmp/nonexistent.lcpl")
 
         // Just verify the method can be called without crashing
-        _ = service.fulfill(nonExistentURL, progress: { _ in }) { _, _ in }
+        _ = service.fulfill(nonExistentURL, progress: { _ in }, completion: { _, _ in })
         #else
         XCTAssertTrue(true, "LCP not enabled - test skipped")
         #endif
@@ -150,7 +150,7 @@ final class LCPLibraryServiceTests: XCTestCase {
         let invalidURL = URL(fileURLWithPath: "/tmp/invalid.lcpl")
 
         // Just verify the method can be called without crashing
-        _ = service.fulfill(invalidURL, progress: { _ in }) { _, _ in }
+        _ = service.fulfill(invalidURL, progress: { _ in }, completion: { _, _ in })
         #else
         XCTAssertTrue(true, "LCP not enabled - test skipped")
         #endif
@@ -179,7 +179,7 @@ final class LCPLibraryServiceTests: XCTestCase {
         let service = LCPLibraryService()
 
         // Create obviously invalid data (not a valid AES block)
-        let invalidData = "not encrypted data".data(using: .utf8)!
+        let invalidData = Data("not encrypted data".utf8)
 
         // Depending on implementation, this may return nil or crash
         // The production code should validate data before calling decrypt

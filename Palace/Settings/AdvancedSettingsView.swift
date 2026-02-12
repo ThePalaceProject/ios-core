@@ -24,23 +24,23 @@ struct AdvancedSettingsView: View {
     var body: some View {
         if let account {
             List {
-                Section {
-                    Button(action: { showDeleteAlert = true }) {
+                Section(content: {
+                    Button(action: { showDeleteAlert = true }, label: {
                         Text(DisplayStrings.deleteServerData)
                             .font(.system(.body))
                             .foregroundColor(.red)
-                    }
-                }
+                    })
+                })
             }
             .listStyle(GroupedListStyle())
             .navigationTitle(DisplayStrings.advanced)
             .navigationBarTitleDisplayMode(.inline)
-            .alert(DisplayStrings.deleteServerData, isPresented: $showDeleteAlert) {
+            .alert(DisplayStrings.deleteServerData, isPresented: $showDeleteAlert, actions: {
                 Button(Strings.Generic.delete, role: .destructive, action: disableSync)
                 Button(Strings.Generic.cancel, role: .cancel) {}
-            } message: {
+            }, message: {
                 Text(Strings.AccountDetail.deleteServerDataMessage(libraryName: account.name))
-            }
+            })
         } else {
             Text("Account unavailable")
                 .foregroundColor(.secondary)

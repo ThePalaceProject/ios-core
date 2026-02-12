@@ -181,7 +181,7 @@ final class TokenRefreshTests: XCTestCase {
     // MARK: - NYPLResult Tests
 
     func testNYPLResult_SuccessCase() {
-        let data = "test".data(using: .utf8)!
+        let data = Data("test".utf8)
         let response = HTTPURLResponse(url: URL(string: "https://test.com")!,
                                        statusCode: 200,
                                        httpVersion: nil,
@@ -217,7 +217,7 @@ final class TokenRefreshTests: XCTestCase {
     }
 
     func testNYPLResult_SuccessWithNilResponse() {
-        let data = "test".data(using: .utf8)!
+        let data = Data("test".utf8)
         let result: NYPLResult<Data> = .success(data, nil)
 
         switch result {
@@ -280,13 +280,13 @@ final class TokenRefreshTests: XCTestCase {
     // MARK: - JSON Decoding Integration Tests
 
     func testTokenResponse_DecodesFromJSON() throws {
-        let json = """
+        let json = Data("""
     {
       "access_token": "decoded-token",
       "token_type": "Bearer",
       "expires_in": 7200
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -362,17 +362,17 @@ final class TokenRefreshTests: XCTestCase {
 extension TokenRefreshTests {
 
     func testTokenResponse_DifferentTokenTypes() throws {
-        let bearerJSON = """
+        let bearerJSON = Data("""
     {"access_token": "token", "token_type": "Bearer", "expires_in": 3600}
-    """.data(using: .utf8)!
+    """.utf8)
 
-        let macJSON = """
+        let macJSON = Data("""
     {"access_token": "token", "token_type": "MAC", "expires_in": 3600}
-    """.data(using: .utf8)!
+    """.utf8)
 
-        let customJSON = """
+        let customJSON = Data("""
     {"access_token": "token", "token_type": "CustomType", "expires_in": 3600}
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase

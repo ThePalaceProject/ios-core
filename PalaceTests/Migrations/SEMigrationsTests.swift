@@ -79,8 +79,8 @@ final class SEMigrationsTests: XCTestCase {
         let prodFile = appSupport.appendingPathComponent("library_list_prod.json")
 
         // Create dummy files
-        try? "test".data(using: .utf8)?.write(to: betaFile)
-        try? "test".data(using: .utf8)?.write(to: prodFile)
+        try? Data("test".utf8).write(to: betaFile)
+        try? Data("test".utf8).write(to: prodFile)
 
         // Run with old version to trigger migrate2
         let originalVersion = TPPSettings.shared.appVersion

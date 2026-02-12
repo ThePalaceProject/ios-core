@@ -35,9 +35,9 @@ struct FacetView: View {
     private var sortView: some View {
         Button(action: {
             showAlert = true
-        }) {
+        }, label: {
             Text(model.activeSort.localizedString)
-        }
+        })
         .frame(width: 65, height: 30)
         .border(Color(TPPConfiguration.mainColor()), width: 1)
         .cornerRadius(2)

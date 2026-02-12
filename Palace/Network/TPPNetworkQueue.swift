@@ -247,7 +247,7 @@ final class NetworkQueue: NSObject {
 
     private func deleteRow(_ db: Connection, id: Int) {
         let rowToDelete = sqlTable.filter(sqlID == id)
-        if let _ = try? db.run(rowToDelete.delete()) {
+        if (try? db.run(rowToDelete.delete())) != nil {
             Log.info(#file, "SQLite: deleted row from queue")
         } else {
             Log.error(#file, "SQLite Error: Could not delete row")

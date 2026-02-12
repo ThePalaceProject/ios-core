@@ -21,10 +21,10 @@ struct BookListView: View {
     var body: some View {
         LazyVGrid(columns: gridLayout, spacing: 0) {
             ForEach(books, id: \.identifier) { book in
-                Button(action: { onSelect(book) }) {
+                Button(action: { onSelect(book) }, label: {
                     // Use cached model instead of creating new one each render
                     BookCell(model: modelCache.model(for: book), previewEnabled: previewEnabled)
-                }
+                })
                 .buttonStyle(.plain)
                 .applyBorderStyle()
                 .onAppear {

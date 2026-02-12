@@ -581,7 +581,7 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
             bookTitleLabel.text = publication.metadata.title
 
             if let resourceIndex = publication.resourceIndex(forLocator: locator),
-               let _ = bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR3Location(resourceIndex: resourceIndex, locator: locator)) {
+               bookmarksBusinessLogic.isBookmarkExisting(at: TPPBookmarkR3Location(resourceIndex: resourceIndex, locator: locator)) != nil {
                 updateBookmarkButton(withState: true)
             } else {
                 updateBookmarkButton(withState: false)

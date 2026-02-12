@@ -191,6 +191,8 @@
 		246ED064D298281426FEF8D5 /* KeyboardNavigationHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144BB5C0F2D1B2C0C398BD98 /* KeyboardNavigationHandler.swift */; };
 		25DF742278BA71BEE5EBAD27 /* TokenResponseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A325872EF1D517D66C0FA15F /* TokenResponseTests.swift */; };
 		2709574961502365B6E6808B /* QAAtlasCoverageGapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 903F56D4F2AA03D69839AB3F /* QAAtlasCoverageGapTests.swift */; };
+		QAGAP2BF000000000000001 /* QAAtlasCoverageGapTests2.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAGAP2FR000000000000001 /* QAAtlasCoverageGapTests2.swift */; };
+		2829574961502365B6E6808C /* QAAtlasCoverageGapTests3.swift in Sources */ = {isa = PBXBuildFile; fileRef = 913F56D4F2AA03D69839AB40 /* QAAtlasCoverageGapTests3.swift */; };
 		27A6D65175F1874DD633AFE0 /* OPDS2Feed.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB6B83327C29366849662E76 /* OPDS2Feed.swift */; };
 		2D2B47841D08F8E2007F7764 /* UpdateCheckUpToDate.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D2B47691D08F264007F7764 /* UpdateCheckUpToDate.json */; };
 		2D2B478E1D08FDF5007F7764 /* UpdateCheckNeedsUpdate.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D2B478A1D08FC78007F7764 /* UpdateCheckNeedsUpdate.json */; };
@@ -1650,6 +1652,8 @@
 		8DD49518A593F93C52009D35 /* KeyboardNavigationHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = KeyboardNavigationHandlerTests.swift; path = PalaceTests/Reader/KeyboardNavigationHandlerTests.swift; sourceTree = "<group>"; };
 		8FB5684FAB210E6557DD37E7 /* BookCellModelCacheTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BookCellModelCacheTests.swift; path = Performance/BookCellModelCacheTests.swift; sourceTree = "<group>"; };
 		903F56D4F2AA03D69839AB3F /* QAAtlasCoverageGapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QAAtlasCoverageGapTests.swift; sourceTree = "<group>"; };
+		QAGAP2FR000000000000001 /* QAAtlasCoverageGapTests2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QAAtlasCoverageGapTests2.swift; sourceTree = "<group>"; };
+		913F56D4F2AA03D69839AB40 /* QAAtlasCoverageGapTests3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QAAtlasCoverageGapTests3.swift; sourceTree = "<group>"; };
 		9A586098465213BD58E11860 /* PDFReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReaderTests.swift; sourceTree = "<group>"; };
 		9BFF70FF762C60CE8CD8D811 /* CatalogSearchViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogSearchViewModelTests.swift; sourceTree = "<group>"; };
 		9DDB7EFFCB479426AC9DB8B8 /* BookDetailSnapshotTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookDetailSnapshotTests.swift; sourceTree = "<group>"; };
@@ -3470,6 +3474,8 @@
 				17BE24D625F85D2300AE707F /* TPPAgeCheckTests.swift */,
 				E5A09A532F0D6F2A00CC23EA /* ProblemReportEmailTests.swift */,
 				903F56D4F2AA03D69839AB3F /* QAAtlasCoverageGapTests.swift */,
+				QAGAP2FR000000000000001 /* QAAtlasCoverageGapTests2.swift */,
+				913F56D4F2AA03D69839AB40 /* QAAtlasCoverageGapTests3.swift */,
 				E5F8A57C28A48B8300A229AE /* BookPreviewTests.swift */,
 				E5A09A552F0D6F3600CC23EA /* TPPUserNotificationsTests.swift */,
 				E534510429FA238500D88BC6 /* AudiobookmarkTests.swift */,
@@ -4667,6 +4673,8 @@
 				7311FD2B25CBD086004447CB /* TPPSignInOutBusinessLogicUIDelegateMock.swift in Sources */,
 				E5A09A542F0D6F2A00CC23EA /* ProblemReportEmailTests.swift in Sources */,
 				2709574961502365B6E6808B /* QAAtlasCoverageGapTests.swift in Sources */,
+				QAGAP2BF000000000000001 /* QAAtlasCoverageGapTests2.swift in Sources */,
+				2829574961502365B6E6808C /* QAAtlasCoverageGapTests3.swift in Sources */,
 				173F0823241AAA4E00A64658 /* TPPBookStateTests.swift in Sources */,
 				E5251E8F2F0DB18E00BE7E36 /* ProblemDocumentTests.swift in Sources */,
 				2199020624FD3334001BC727 /* TPPJWKConversionTest.swift in Sources */,

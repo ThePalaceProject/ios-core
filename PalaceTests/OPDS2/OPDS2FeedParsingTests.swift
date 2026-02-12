@@ -34,7 +34,7 @@ final class OPDS2FeedParsingTests: XCTestCase {
     }
 
     func testFromData_withInvalidJSON_throwsError() {
-        let invalidJSON = "{ invalid json }".data(using: .utf8)!
+        let invalidJSON = Data("{ invalid json }".utf8)
 
         XCTAssertThrowsError(try OPDS2CatalogsFeed.fromData(invalidJSON))
     }
@@ -46,24 +46,24 @@ final class OPDS2FeedParsingTests: XCTestCase {
     }
 
     func testFromData_withMissingCatalogs_throwsError() {
-        let jsonWithoutCatalogs = """
+        let jsonWithoutCatalogs = Data("""
     {
       "links": [],
       "metadata": {"title": "Test"}
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         XCTAssertThrowsError(try OPDS2CatalogsFeed.fromData(jsonWithoutCatalogs))
     }
 
     func testFromData_withEmptyCatalogs_parsesSuccessfully() throws {
-        let jsonWithEmptyCatalogs = """
+        let jsonWithEmptyCatalogs = Data("""
     {
       "catalogs": [],
       "links": [],
       "metadata": {"title": "Test Feed"}
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let feed = try OPDS2CatalogsFeed.fromData(jsonWithEmptyCatalogs)
 
@@ -116,7 +116,7 @@ final class OPDS2FeedParsingTests: XCTestCase {
     }
 
     func testDateParsing_withMilliseconds_parsesCorrectly() throws {
-        let jsonWithMilliseconds = """
+        let jsonWithMilliseconds = Data("""
     {
       "catalogs": [
         {
@@ -131,7 +131,7 @@ final class OPDS2FeedParsingTests: XCTestCase {
       "links": [],
       "metadata": {"title": "Test Feed"}
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let feed = try OPDS2CatalogsFeed.fromData(jsonWithMilliseconds)
 
@@ -139,7 +139,7 @@ final class OPDS2FeedParsingTests: XCTestCase {
     }
 
     func testDateParsing_withoutMilliseconds_parsesCorrectly() throws {
-        let jsonWithoutMilliseconds = """
+        let jsonWithoutMilliseconds = Data("""
     {
       "catalogs": [
         {
@@ -154,7 +154,7 @@ final class OPDS2FeedParsingTests: XCTestCase {
       "links": [],
       "metadata": {"title": "Test Feed"}
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let feed = try OPDS2CatalogsFeed.fromData(jsonWithoutMilliseconds)
 

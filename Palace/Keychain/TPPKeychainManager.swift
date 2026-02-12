@@ -156,12 +156,13 @@ import PalaceAudiobookToolkit
     private static func manageFeedbooksData() {
         // Go through each vendor and add their data to keychain so audiobook component can access securely
         for vendor in AudioBookVendors.allCases {
-            guard let keyData = TPPSecrets.feedbookKeys(forVendor: vendor)?.data(using: .utf8),
-                  let profile = TPPSecrets.feedbookInfo(forVendor: vendor)["profile"],
-                  let tag = "feedbook_drm_profile_\(profile)".data(using: .utf8) else {
+            guard let feedbookKeys = TPPSecrets.feedbookKeys(forVendor: vendor),
+                  let profile = TPPSecrets.feedbookInfo(forVendor: vendor)["profile"] else {
                 Log.error(#file, "Could not load secrets for Feedbook vendor: \(vendor.rawValue)")
                 continue
             }
+            let keyData = Data(feedbookKeys.utf8)
+            let tag = Data("feedbook_drm_profile_\(profile)".utf8)
 
             let addQuery: [String: Any] = [
                 kSecClass as String: kSecClassKey,

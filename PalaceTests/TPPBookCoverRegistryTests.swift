@@ -100,7 +100,7 @@ final class TPPBookCoverRegistryTests: XCTestCase {
     /// Verify that invalid data returns nil instead of crashing
     func testDownsampleImage_InvalidDataReturnsNil() {
         // Arrange - Garbage data that isn't a valid image
-        let invalidData = "This is not an image".data(using: .utf8)!
+        let invalidData = Data("This is not an image".utf8)
 
         // Act
         let result = TPPBookCoverRegistry.downsampleImage(data: invalidData, maxDimension: 512)

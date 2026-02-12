@@ -10,13 +10,13 @@ struct FacetsSelectorView: View {
                 ForEach(facetGroups, id: \.id) { group in
                     HStack(spacing: 8) {
                         ForEach(group.filters, id: \.id) { facet in
-                            Button(action: { onSelect(facet) }) {
+                            Button(action: { onSelect(facet) }, label: {
                                 Text(facet.title)
                                     .padding(.vertical, 8)
                                     .padding(.horizontal, 12)
                                     .background(facet.active ? Color.gray.opacity(0.3) : Color.clear)
                                     .clipShape(Capsule())
-                            }
+                            })
                             .buttonStyle(.plain)
                         }
                     }

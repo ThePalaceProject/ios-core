@@ -422,25 +422,25 @@ final class TPPCredentialsTests: XCTestCase {
 
     func testDecode_WithInvalidTypeID_ThrowsError() {
         // JSON with invalid type ID (999)
-        let invalidJSON = """
+        let invalidJSON = Data("""
     {
       "type": 999
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         XCTAssertThrowsError(try decoder.decode(TPPCredentials.self, from: invalidJSON))
     }
 
     func testDecode_WithMissingType_ThrowsError() {
-        let invalidJSON = """
+        let invalidJSON = Data("""
     {
       "associatedBarcodeAndPinData": {
         "barcode": "123",
         "pin": "456"
       }
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let decoder = JSONDecoder()
         XCTAssertThrowsError(try decoder.decode(TPPCredentials.self, from: invalidJSON))

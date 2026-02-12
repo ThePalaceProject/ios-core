@@ -37,13 +37,13 @@ struct CatalogLaneMoreView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 if viewModel.showSearch {
-                    Button(action: { dismissSearch() }) {
+                    Button(action: { dismissSearch() }, label: {
                         Text(Strings.Generic.cancel)
-                    }
+                    })
                 } else {
-                    Button(action: { presentSearch() }) {
+                    Button(action: { presentSearch() }, label: {
                         ImageProviders.MyBooksView.search
-                    }
+                    })
                     .accessibilityLabel(Strings.Generic.searchCatalog)
                 }
             }
@@ -212,7 +212,7 @@ struct CatalogLaneMoreView: View {
                                 await viewModel.applyOPDSFacet(facet, coordinator: coordinator)
                                 viewModel.showingSortSheet = false
                             }
-                        }) {
+                        }, label: {
                             HStack {
                                 Image(systemName: facet.active ? "largecircle.fill.circle" : "circle")
                                     .foregroundColor(.primary)
@@ -222,7 +222,7 @@ struct CatalogLaneMoreView: View {
                             }
                             .padding(.vertical, 12)
                             .padding(.horizontal)
-                        }
+                        })
                         .buttonStyle(.plain)
                     }
                 }

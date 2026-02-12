@@ -31,7 +31,7 @@ struct CatalogLaneRowView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
                 ForEach(books, id: \.identifier) { book in
-                    Button(action: { onSelect(book) }) {
+                    Button(action: { onSelect(book) }, label: {
                         BookImageView(
                             book: book,
                             width: nil,
@@ -39,7 +39,7 @@ struct CatalogLaneRowView: View {
                             usePulseSkeleton: true
                         )
                         .padding(.vertical)
-                    }
+                    })
                     .buttonStyle(.plain)
                     .accessibilityLabel(accessibilityLabel(for: book))
                 }

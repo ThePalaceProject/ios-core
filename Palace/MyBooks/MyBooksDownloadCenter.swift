@@ -601,7 +601,7 @@ actor DownloadCoordinator {
             return
         }
 
-        guard let _ = request.url else {
+        guard request.url != nil else {
             logInvalidURLRequest(for: currentBook, withState: state, url: currentBook.defaultAcquisition?.hrefURL, request: request)
             return
         }

@@ -119,10 +119,10 @@ private extension CatalogSearchView {
                     ProgressView()
                         .padding(.trailing, 8)
                 } else if !viewModel.searchQuery.isEmpty {
-                    Button(action: { viewModel.clearSearch() }) {
+                    Button(action: { viewModel.clearSearch() }, label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.gray)
-                    }
+                    })
                     .accessibilityLabel(Strings.Generic.clearSearch)
                     .padding(.trailing, 8)
                 }

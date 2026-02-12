@@ -97,7 +97,7 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
         var randomString = ""
 
         for _ in 0..<length {
-            let randomIndex = Int(arc4random_uniform(UInt32(letters.count)))
+            let randomIndex = Int.random(in: 0..<letters.count)
             let randomCharacter = letters[letters.index(letters.startIndex, offsetBy: randomIndex)]
             randomString.append(randomCharacter)
         }

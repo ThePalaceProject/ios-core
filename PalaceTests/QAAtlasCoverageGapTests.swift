@@ -405,7 +405,7 @@ final class AdobeCertificateGapTests: XCTestCase {
 
     /// QAAtlas Gap: AdobeCertificate — test init(data:) with invalid JSON returns nil
     func testAdobeCertificate_initFromData_returnsNilForInvalidJSON() {
-        let invalidData = "not json".data(using: .utf8)!
+        let invalidData = Data("not json".utf8)
 
         let cert = AdobeCertificate(data: invalidData)
 

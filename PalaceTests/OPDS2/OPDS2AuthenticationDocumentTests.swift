@@ -42,7 +42,7 @@ final class OPDS2AuthenticationDocumentTests: XCTestCase {
     }
 
     func testFromData_withInvalidJSON_throwsError() {
-        let invalidJSON = "{ invalid json }".data(using: .utf8)!
+        let invalidJSON = Data("{ invalid json }".utf8)
 
         XCTAssertThrowsError(try OPDS2AuthenticationDocument.fromData(invalidJSON))
     }
@@ -55,11 +55,11 @@ final class OPDS2AuthenticationDocumentTests: XCTestCase {
 
     func testFromData_withMissingRequiredFields_throwsError() {
         // Missing 'id' and 'title' which are required
-        let incompleteJSON = """
+        let incompleteJSON = Data("""
     {
       "authentication": []
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         XCTAssertThrowsError(try OPDS2AuthenticationDocument.fromData(incompleteJSON))
     }
@@ -292,12 +292,12 @@ final class OPDS2AuthenticationDocumentTests: XCTestCase {
 final class AnnouncementTests: XCTestCase {
 
     func testAnnouncement_decodesValidJSON() throws {
-        let json = """
+        let json = Data("""
     {
       "id": "announcement-1",
       "content": "Library will be closed on Monday"
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         let announcement = try JSONDecoder().decode(Announcement.self, from: json)
 
@@ -306,21 +306,21 @@ final class AnnouncementTests: XCTestCase {
     }
 
     func testAnnouncement_withMissingId_throwsError() {
-        let json = """
+        let json = Data("""
     {
       "content": "Test content"
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         XCTAssertThrowsError(try JSONDecoder().decode(Announcement.self, from: json))
     }
 
     func testAnnouncement_withMissingContent_throwsError() {
-        let json = """
+        let json = Data("""
     {
       "id": "test-id"
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
         XCTAssertThrowsError(try JSONDecoder().decode(Announcement.self, from: json))
     }
