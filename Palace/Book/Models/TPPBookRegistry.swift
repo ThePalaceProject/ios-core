@@ -805,11 +805,19 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
   
   func setLocationSync(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
     guard !bookIdentifier.isEmpty else { return }
-    syncQueue.sync(flags: .barrier) { [weak self] in
-      guard let self else { return }
-
+    
+    // Use the same deadlock-safe pattern as performSync: if we're already
+    // on the syncQueue (e.g., called from a sync callback), execute directly
+    // instead of calling syncQueue.sync which would deadlock.
+    if DispatchQueue.getSpecific(key: syncQueueKey) != nil {
       self.registry[bookIdentifier]?.location = location
-      Log.debug(#file, "🔒 Synchronously set location for \(bookIdentifier)")
+      Log.debug(#file, "🔒 Synchronously set location for \(bookIdentifier) (already on syncQueue)")
+    } else {
+      syncQueue.sync(flags: .barrier) { [weak self] in
+        guard let self else { return }
+        self.registry[bookIdentifier]?.location = location
+        Log.debug(#file, "🔒 Synchronously set location for \(bookIdentifier)")
+      }
     }
     saveSync()
   }

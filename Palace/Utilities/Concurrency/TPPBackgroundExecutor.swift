@@ -104,21 +104,30 @@ import Dispatch
         }
         self.isEndingTask = true
         
-        let timeRemaining: TimeInterval = DispatchQueue.main.sync {
-          UIApplication.shared.backgroundTimeRemaining
-        }
+        // Use async dispatch to main thread instead of sync to prevent deadlock.
+        // DispatchQueue.main.sync from a background queue will deadlock if the
+        // main thread is blocked (e.g., waiting on a lock or semaphore).
+        // backgroundTimeRemaining is thread-safe to read and endBackgroundTask
+        // must be called on main thread, so async is the correct pattern here.
+        DispatchQueue.main.async { [weak self] in
+          guard let self else { return }
+          
+          let timeRemaining = UIApplication.shared.backgroundTimeRemaining
 
-        Log.info(#file, """
-          \(context) \(self.taskName) background task \(bgTask.rawValue). \
-          Time remaining: \(timeRemaining)
-          """)
+          Log.info(#file, """
+            \(context) \(self.taskName) background task \(bgTask.rawValue). \
+            Time remaining: \(timeRemaining)
+            """)
 
-        if bgTask != .invalid {
-          UIApplication.shared.endBackgroundTask(bgTask)
-          bgTask = .invalid
+          if bgTask != .invalid {
+            UIApplication.shared.endBackgroundTask(bgTask)
+            bgTask = .invalid
+          }
+          
+          self.endLock.lock()
+          self.isEndingTask = false
+          self.endLock.unlock()
         }
-        
-        self.isEndingTask = false
       }
     }
 
