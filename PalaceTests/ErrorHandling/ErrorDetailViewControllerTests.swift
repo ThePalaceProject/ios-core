@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Tests for ErrorDetailViewController: renderContent (addField, addLine, addSection).
-//  Covers QAAtlas high-priority gaps: addField, addLine, addSection.
+//  Covers High-priority coverage gaps: addField, addLine, addSection.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

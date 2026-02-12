@@ -107,7 +107,7 @@ final class TPPPDFDocumentMetadataTests: XCTestCase {
         XCTAssertTrue(metadata.isBookmarked(page: Int.max - 1))
     }
 
-    // MARK: - addBookmark Tests (QAAtlas Gap)
+    // MARK: - addBookmark Tests (Coverage Gap)
 
     func testAddBookmark_AtSpecificPage_AddsToBookmarks() {
         let metadata = createMockMetadata()

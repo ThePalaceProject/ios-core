@@ -719,7 +719,7 @@ extension AccountsManagerTests {
         XCTAssertFalse(auth.catalogRequiresAuthentication)
     }
 
-    // MARK: - account(_ uuid:) Tests (QAAtlas Gap)
+    // MARK: - account(_ uuid:) Tests (Coverage Gap)
 
     func testAccount_WithExistingUUID_ReturnsAccount() {
         // Given: The shared AccountsManager with whatever accounts are loaded
@@ -760,7 +760,7 @@ extension AccountsManagerTests {
         XCTAssertNil(account)
     }
 
-    // MARK: - accounts(_ key:) Tests (QAAtlas Gap)
+    // MARK: - accounts(_ key:) Tests (Coverage Gap)
 
     func testAccounts_WithNilKey_ReturnsCurrentAccountSet() {
         // Given: The shared AccountsManager

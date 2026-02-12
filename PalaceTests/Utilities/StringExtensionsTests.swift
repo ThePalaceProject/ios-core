@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Tests for String+Extensions.swift utility functions.
-//  Covers QAAtlas gap: isDate(_:moreRecentThan:with:)
+//  Covers coverage gap: isDate(_:moreRecentThan:with:)
 //
 //  Copyright 2026 The Palace Project. All rights reserved.
 //

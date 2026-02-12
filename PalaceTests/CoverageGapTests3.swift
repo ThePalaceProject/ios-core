@@ -1,8 +1,8 @@
 //
-//  QAAtlasCoverageGapTests3.swift
+//  CoverageGapTests3.swift
 //  PalaceTests
 //
-//  Additional QAAtlas coverage gap tests for AudioBookmark, DeviceLogCollector,
+//  Additional Coverage coverage gap tests for AudioBookmark, DeviceLogCollector,
 //  TPPUserAccount, and RemoteFeatureFlags. Each test group references the specific
 //  symbol and file from the gap report.
 //
@@ -17,7 +17,7 @@ import OSLog
 
 final class AudioBookmarkGapTests: XCTestCase {
 
-    /// QAAtlas Gap: AudioBookmark — verify creation and basic properties
+    /// Coverage Gap: AudioBookmark — verify creation and basic properties
     func testAudioBookmark_creation_storesBasicProperties() {
         let bookmark = AudioBookmark(
             type: .locatorAudioBookTime,
@@ -43,7 +43,7 @@ final class AudioBookmarkGapTests: XCTestCase {
         XCTAssertEqual(bookmark.time, 5000)
     }
 
-    /// QAAtlas Gap: AudioBookmark.toData — produces valid data that can round-trip
+    /// Coverage Gap: AudioBookmark.toData — produces valid data that can round-trip
     func testAudioBookmark_toData_producesRoundTripData() throws {
         let bookmark = AudioBookmark(
             type: .locatorAudioBookTime,
@@ -74,7 +74,7 @@ final class AudioBookmarkGapTests: XCTestCase {
         XCTAssertEqual(decoded.time, bookmark.time)
     }
 
-    /// QAAtlas Gap: AudioBookmark.isSimilar — returns true for same chapter/position
+    /// Coverage Gap: AudioBookmark.isSimilar — returns true for same chapter/position
     func testAudioBookmark_isSimilar_returnsTrueForSameChapterPosition() {
         let bookmark1 = AudioBookmark(
             type: .locatorAudioBookTime,
@@ -95,7 +95,7 @@ final class AudioBookmarkGapTests: XCTestCase {
                       "Bookmarks with same chapter/position should be similar")
     }
 
-    /// QAAtlas Gap: AudioBookmark.isSimilar — returns false for different chapter
+    /// Coverage Gap: AudioBookmark.isSimilar — returns false for different chapter
     func testAudioBookmark_isSimilar_returnsFalseForDifferentChapter() {
         let bookmark1 = AudioBookmark(
             type: .locatorAudioBookTime,
@@ -116,7 +116,7 @@ final class AudioBookmarkGapTests: XCTestCase {
                        "Bookmarks with different chapter should not be similar")
     }
 
-    /// QAAtlas Gap: AudioBookmark.copy — creates independent copy
+    /// Coverage Gap: AudioBookmark.copy — creates independent copy
     func testAudioBookmark_copy_createsIndependentCopy() {
         let original = AudioBookmark(
             type: .locatorAudioBookTime,
@@ -137,7 +137,7 @@ final class AudioBookmarkGapTests: XCTestCase {
         XCTAssertEqual(copied.time, original.time)
     }
 
-    /// QAAtlas Gap: AudioBookmark.toTPPBookLocation — produces valid TPPBookLocation
+    /// Coverage Gap: AudioBookmark.toTPPBookLocation — produces valid TPPBookLocation
     func testAudioBookmark_toTPPBookLocation_producesValidLocation() {
         let bookmark = AudioBookmark(
             type: .locatorAudioBookTime,
@@ -157,7 +157,7 @@ final class AudioBookmarkGapTests: XCTestCase {
 
 final class DeviceLogCollectorGapTests: XCTestCase {
 
-    /// QAAtlas Gap: DeviceLogCollector.formatDate — output contains formatted dates (via collectLogs)
+    /// Coverage Gap: DeviceLogCollector.formatDate — output contains formatted dates (via collectLogs)
     func testDeviceLogCollector_collectLogs_outputContainsFormattedStructure() async {
         let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
         let output = String(data: data, encoding: .utf8) ?? ""
@@ -167,11 +167,11 @@ final class DeviceLogCollectorGapTests: XCTestCase {
         XCTAssertTrue(output.contains("Generated:"), "Output should contain generated timestamp")
     }
 
-    /// QAAtlas Gap: DeviceLogCollector.levelString — output can contain level strings (via collectLogs)
+    /// Coverage Gap: DeviceLogCollector.levelString — output can contain level strings (via collectLogs)
     /// Log entries use formatLogEntry which calls levelString for DEBUG, INFO, NOTE, ERROR, FAULT
     func testDeviceLogCollector_collectLogs_exercisesFormattingMethods() async {
-        let logger = Logger(subsystem: "com.thepalaceproject.test", category: "QAAtlas")
-        logger.info("QAAtlas DeviceLogCollector test log entry")
+        let logger = Logger(subsystem: "com.thepalaceproject.test", category: "Coverage")
+        logger.info("Coverage DeviceLogCollector test log entry")
 
         // Brief delay to allow log to be flushed to OSLogStore
         try? await Task.sleep(nanoseconds: 100_000_000)
@@ -190,13 +190,13 @@ final class DeviceLogCollectorGapTests: XCTestCase {
 
 final class TPPUserAccountGapTests: XCTestCase {
 
-    /// QAAtlas Gap: TPPUserAccount.sharedAccount — is accessible
+    /// Coverage Gap: TPPUserAccount.sharedAccount — is accessible
     func testTPPUserAccount_sharedAccount_isAccessible() {
         let account = TPPUserAccount.sharedAccount()
         XCTAssertNotNil(account, "sharedAccount() should return non-nil account")
     }
 
-    /// QAAtlas Gap: TPPUserAccount.hasBarcodeAndPIN — returns false when no credentials set
+    /// Coverage Gap: TPPUserAccount.hasBarcodeAndPIN — returns false when no credentials set
     func testTPPUserAccount_hasBarcodeAndPIN_returnsFalseWhenNoCredentials() {
         let mock = TPPUserAccountMock.sharedAccount(libraryUUID: nil) as! TPPUserAccountMock
         mock.removeAll()
@@ -205,7 +205,7 @@ final class TPPUserAccountGapTests: XCTestCase {
                        "hasBarcodeAndPIN should return false when no credentials set")
     }
 
-    /// QAAtlas Gap: TPPUserAccount.hasAuthToken — returns false when no token set
+    /// Coverage Gap: TPPUserAccount.hasAuthToken — returns false when no token set
     func testTPPUserAccount_hasAuthToken_returnsFalseWhenNoToken() {
         let mock = TPPUserAccountMock.sharedAccount(libraryUUID: nil) as! TPPUserAccountMock
         mock.removeAll()
@@ -214,7 +214,7 @@ final class TPPUserAccountGapTests: XCTestCase {
                       "hasAuthToken should return false when no token set")
     }
 
-    /// QAAtlas Gap: TPPUserAccount — basic property accessors don't crash
+    /// Coverage Gap: TPPUserAccount — basic property accessors don't crash
     func testTPPUserAccount_basicPropertyAccessors_dontCrash() {
         let mock = TPPUserAccountMock.sharedAccount(libraryUUID: nil) as! TPPUserAccountMock
         mock.removeAll()
@@ -233,20 +233,20 @@ final class TPPUserAccountGapTests: XCTestCase {
 
 final class RemoteFeatureFlagsGapTests: XCTestCase {
 
-    /// QAAtlas Gap: RemoteFeatureFlags.shared — is accessible
+    /// Coverage Gap: RemoteFeatureFlags.shared — is accessible
     func testRemoteFeatureFlags_shared_isAccessible() {
         let flags = RemoteFeatureFlags.shared
         XCTAssertNotNil(flags, "RemoteFeatureFlags.shared should be accessible")
     }
 
-    /// QAAtlas Gap: RemoteFeatureFlags.shouldFetch — fetchIfNeeded exercises shouldFetch (returns bool path)
+    /// Coverage Gap: RemoteFeatureFlags.shouldFetch — fetchIfNeeded exercises shouldFetch (returns bool path)
     /// shouldFetch is private; fetchIfNeeded calls it to decide whether to fetch
     func testRemoteFeatureFlags_fetchIfNeeded_completesWithoutCrashing() async {
         await RemoteFeatureFlags.shared.fetchIfNeeded()
         // Passes if no crash; shouldFetch controls whether fetch runs
     }
 
-    /// QAAtlas Gap: RemoteFeatureFlags — basic flag access methods return booleans
+    /// Coverage Gap: RemoteFeatureFlags — basic flag access methods return booleans
     func testRemoteFeatureFlags_isFeatureEnabled_returnsBoolean() {
         let flags = RemoteFeatureFlags.shared
 
@@ -257,7 +257,7 @@ final class RemoteFeatureFlagsGapTests: XCTestCase {
         XCTAssertTrue(downloadRetry == true || downloadRetry == false)
     }
 
-    /// QAAtlas Gap: RemoteFeatureFlags — convenience properties are accessible
+    /// Coverage Gap: RemoteFeatureFlags — convenience properties are accessible
     func testRemoteFeatureFlags_convenienceProperties_dontCrash() {
         let flags = RemoteFeatureFlags.shared
 
