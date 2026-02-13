@@ -456,7 +456,7 @@ final class OPDSParsingTests: XCTestCase {
     }
 
     // MARK: - TPPOPDSLink Relation Handling Tests
-    
+
     func testLinkRelationAlternate() {
         // Use the working completeFeedXML which has alternate links
         guard let data = completeFeedXML.data(using: .utf8),
@@ -529,7 +529,7 @@ final class OPDSParsingTests: XCTestCase {
             let acquisitionRelations = firstEntry.acquisitions.map { $0.relation }
             XCTAssertTrue(acquisitionRelations.contains(.openAccess), "Should contain open-access acquisition")
         }
-        
+
         // Second entry has borrow acquisition
         if feed.entries.count > 1, let secondEntry = feed.entries[1] as? TPPOPDSEntry {
             XCTAssertGreaterThan(secondEntry.acquisitions.count, 0, "Second entry should have acquisition links")

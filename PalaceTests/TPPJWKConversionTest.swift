@@ -10,36 +10,36 @@ import XCTest
 @testable import Palace
 
 class TPPJWKConversionTest: XCTestCase {
-  
-  var jwkResponseData: Data!
-  var expectedPublicKeyData: Data!
 
-  override func setUp() {
-    super.setUp()
-    // Initialize test data
-    let bundle = Bundle(for: TPPJWKConversionTest.self)
-    // JWK response data - data received from https://listen.cantookaudio.com/.well-known/jwks.json
-    jwkResponseData = try! Data(contentsOf: bundle.url(forResource: "jwk", withExtension: "json")!)
-    // Expected public key data - extracted from PEM file,
-    // content between -----BEGIN PUBLIC KEY----- and -----END PUBLIC KEY-----
-    let expectedPublicKeyString = try! String(contentsOf: bundle.url(forResource: "jwk_public", withExtension: nil)!)
-    expectedPublicKeyData = Data(base64Encoded: expectedPublicKeyString.replacingOccurrences(of: "\n", with: ""))
-  }
+    var jwkResponseData: Data!
+    var expectedPublicKeyData: Data!
 
-  override func tearDown() {
-    super.tearDown()
-    jwkResponseData = nil
-    expectedPublicKeyData = nil
-  }
+    override func setUp() {
+        super.setUp()
+        // Initialize test data
+        let bundle = Bundle(for: TPPJWKConversionTest.self)
+        // JWK response data - data received from https://listen.cantookaudio.com/.well-known/jwks.json
+        jwkResponseData = try! Data(contentsOf: bundle.url(forResource: "jwk", withExtension: "json")!)
+        // Expected public key data - extracted from PEM file,
+        // content between -----BEGIN PUBLIC KEY----- and -----END PUBLIC KEY-----
+        let expectedPublicKeyString = try! String(contentsOf: bundle.url(forResource: "jwk_public", withExtension: nil)!)
+        expectedPublicKeyData = Data(base64Encoded: expectedPublicKeyString.replacingOccurrences(of: "\n", with: ""))
+    }
 
-  func testJWKConversion() throws {
-    let jwkResponse = try? JSONDecoder().decode(JWKResponse.self, from: jwkResponseData)
-    XCTAssertNotNil(jwkResponse)
-    let jwk = jwkResponse?.keys.first
-    XCTAssertNotNil(jwk)
-    let publicKeyData = jwk?.publicKeyData
-    XCTAssertNotNil(publicKeyData)
-    XCTAssertEqual(publicKeyData!, expectedPublicKeyData)
-  }
+    override func tearDown() {
+        super.tearDown()
+        jwkResponseData = nil
+        expectedPublicKeyData = nil
+    }
+
+    func testJWKConversion() throws {
+        let jwkResponse = try? JSONDecoder().decode(JWKResponse.self, from: jwkResponseData)
+        XCTAssertNotNil(jwkResponse)
+        let jwk = jwkResponse?.keys.first
+        XCTAssertNotNil(jwk)
+        let publicKeyData = jwk?.publicKeyData
+        XCTAssertNotNil(publicKeyData)
+        XCTAssertEqual(publicKeyData!, expectedPublicKeyData)
+    }
 
 }

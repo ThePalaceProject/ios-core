@@ -9,59 +9,59 @@
 import Foundation
 
 class TPPPDFPreviewGridCell: UICollectionViewCell {
-  
-  /// Page number for the page preview image
-  var pageNumber: Int?
-  
-  var imageView: UIImageView = {
-    let imageView = UIImageView()
-    imageView.backgroundColor = .clear
-    imageView.contentMode = .scaleAspectFit
-    imageView.layer.shadowOffset = .zero
-    imageView.layer.shadowRadius = 4
-    imageView.layer.shadowOpacity = 0.2
-    imageView.isAccessibilityElement = false // Cell itself is the accessibility element
-    return imageView
-  }()
-  
-  var pageLabel: UILabel = {
-    let label = UILabel()
-    label.font = UIFont.preferredFont(forTextStyle: .caption2) // Dynamic Type support
-    label.adjustsFontForContentSizeCategory = true
-    label.textColor = .secondaryLabel
-    label.textAlignment = .center
-    label.isAccessibilityElement = false // Cell itself is the accessibility element
-    return label
-  }()
 
-  @available(*, unavailable)
-  required init?(coder: NSCoder) {
-    fatalError("init(coder:) has not been implemented")
-  }
+    /// Page number for the page preview image
+    var pageNumber: Int?
 
-  override init(frame: CGRect) {
-    super.init(frame: frame)
-    addSubviews()
-  }
-  
-  func addSubviews() {
-    addSubview(imageView)
-    addSubview(pageLabel)
-    imageView.autoPinEdgesToSuperviewMargins()
-    pageLabel.autoPinEdge(.leading, to: .leading, of: self)
-    pageLabel.autoPinEdge(.trailing, to: .trailing, of: self)
-    pageLabel.autoPinEdge(.top, to: .bottom, of: self, withOffset: -UIFont.preferredFont(forTextStyle: .caption2).pointSize / 4)
-    
-    // Accessibility: Cell is the accessible element
-    isAccessibilityElement = true
-    accessibilityTraits = .button
-  }
-  
-  override var accessibilityLabel: String? {
-    get {
-      guard let pageNum = pageNumber else { return nil }
-      return String(format: NSLocalizedString("Page %d", comment: "PDF page preview accessibility label"), pageNum)
+    var imageView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.backgroundColor = .clear
+        imageView.contentMode = .scaleAspectFit
+        imageView.layer.shadowOffset = .zero
+        imageView.layer.shadowRadius = 4
+        imageView.layer.shadowOpacity = 0.2
+        imageView.isAccessibilityElement = false // Cell itself is the accessibility element
+        return imageView
+    }()
+
+    var pageLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.preferredFont(forTextStyle: .caption2) // Dynamic Type support
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = .secondaryLabel
+        label.textAlignment = .center
+        label.isAccessibilityElement = false // Cell itself is the accessibility element
+        return label
+    }()
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
-    set { }
-  }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        addSubviews()
+    }
+
+    func addSubviews() {
+        addSubview(imageView)
+        addSubview(pageLabel)
+        imageView.autoPinEdgesToSuperviewMargins()
+        pageLabel.autoPinEdge(.leading, to: .leading, of: self)
+        pageLabel.autoPinEdge(.trailing, to: .trailing, of: self)
+        pageLabel.autoPinEdge(.top, to: .bottom, of: self, withOffset: -UIFont.preferredFont(forTextStyle: .caption2).pointSize / 4)
+
+        // Accessibility: Cell is the accessible element
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+    }
+
+    override var accessibilityLabel: String? {
+        get {
+            guard let pageNum = pageNumber else { return nil }
+            return String(format: NSLocalizedString("Page %d", comment: "PDF page preview accessibility label"), pageNum)
+        }
+        set { }
+    }
 }
