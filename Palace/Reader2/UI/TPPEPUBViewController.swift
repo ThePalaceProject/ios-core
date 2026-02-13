@@ -5,6 +5,12 @@ import ReadiumNavigator
 import GameController
 
 class TPPEPUBViewController: TPPBaseReaderViewController {
+    /// Tap handling is performed by Readium's input observer system:
+    /// DirectionalNavigationAdapter for edge taps, .tap observer for center taps.
+    /// Skips the legacy VisualNavigatorDelegate.didTapAt path to prevent
+    /// double-toggling the toolbar (Readium fires both paths for every tap).
+    override var usesInputObserversForTapHandling: Bool { true }
+
     var popoverUserconfigurationAnchor: UIBarButtonItem?
     private let systemUserInterfaceStyle: UIUserInterfaceStyle
     private let searchButton: UIBarButtonItem
@@ -134,11 +140,11 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             return
         }
 
-        // Make the navigator view respond as a single accessible element
-        // so FKA doesn't try to focus individual elements within the WKWebView.
-        navigator.view.isAccessibilityElement = true
-        navigator.view.accessibilityLabel = Strings.Generic.bookReader
-        navigator.view.accessibilityTraits = .allowsDirectInteraction
+        // Don't mark the navigator view as isAccessibilityElement — doing so
+        // causes UIKit to treat it as an opaque leaf, swallowing touch events
+        // before Readium's InputObservableViewController can receive them.
+        // Custom actions still appear in FKA's Tab-Z menu without it.
+        navigator.view.isAccessibilityElement = false
 
         // Custom actions accessible via Tab-Z for FKA users
         let nextPageAction = UIAccessibilityCustomAction(

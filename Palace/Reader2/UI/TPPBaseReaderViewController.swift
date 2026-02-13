@@ -45,6 +45,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     private var initialLocation: Locator?
     private var subscriptions: Set<AnyCancellable> = []
 
+    /// When `true`, the legacy `VisualNavigatorDelegate.didTapAt` is skipped.
+    /// Subclasses using Readium's input observer system (`.tap` observer,
+    /// `DirectionalNavigationAdapter`) should override this to return `true`
+    /// to prevent double-toggling the toolbar.
+    var usesInputObserversForTapHandling: Bool { false }
+
     private var currentLocationIsBookmarked: Bool {
         bookmarksBusinessLogic.currentLocation(in: navigator) != nil
     }
@@ -614,6 +620,10 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
 extension TPPBaseReaderViewController: VisualNavigatorDelegate {
 
     func navigator(_ navigator: VisualNavigator, didTapAt point: CGPoint) {
+        // Subclasses using Readium's input observer system handle taps there.
+        // Skip the legacy delegate path to avoid double-toggling the toolbar.
+        guard !usesInputObserversForTapHandling else { return }
+
         let viewport = navigator.view.bounds
         let thresholdRange = 0...(0.2 * viewport.width)
 
