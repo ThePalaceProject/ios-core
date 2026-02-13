@@ -85,27 +85,28 @@ final class AudiobookSessionManagerTests: XCTestCase {
         XCTAssertEqual(Double(info?.progress ?? 0), 0.5, accuracy: 0.01)
     }
 
-    func testBackgroundCompletionHandlerRegistration() async {
+    func testBackgroundCompletionHandlerRegistration() {
         // Given
         let sessionId = "test-session-\(UUID().uuidString)"
-        var handlerCalled = false
+        let handlerExpectation = expectation(description: "Background completion handler should be called")
 
-        // When
+        // When - register the handler
         AudiobookSessionManager.shared.registerBackgroundCompletionHandler({
-            handlerCalled = true
+            handlerExpectation.fulfill()
         }, forSessionIdentifier: sessionId)
 
-        // Wait for registration
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // Allow registration to complete on the concurrent queue
+        let registrationExpectation = expectation(description: "Registration completes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            registrationExpectation.fulfill()
+        }
+        wait(for: [registrationExpectation], timeout: 1.0)
 
         // Then call it
         AudiobookSessionManager.shared.callCompletionHandler(forSessionIdentifier: sessionId)
 
-        // Wait for main thread callback
-        try? await Task.sleep(nanoseconds: 500_000_000)
-
-        // Assert
-        XCTAssertTrue(handlerCalled)
+        // Assert - wait for the handler to be called on the main thread
+        wait(for: [handlerExpectation], timeout: 3.0)
     }
 }
 

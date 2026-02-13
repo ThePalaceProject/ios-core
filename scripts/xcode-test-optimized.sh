@@ -78,6 +78,12 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         echo "🔴 ERROR: No simulator could run tests!"
         exit 1
     fi
+
+    # Propagate the test exit code so CI detects failures
+    if [ "$TEST_EXIT_CODE" -ne 0 ]; then
+        echo "🔴 Tests failed with exit code: $TEST_EXIT_CODE"
+        exit $TEST_EXIT_CODE
+    fi
 else
     echo "Running in local environment - using dynamic detection"
     # Get the first available iPhone simulator ID from the Palace scheme destinations
@@ -146,4 +152,4 @@ else
     fi
 fi
 
-echo "✅ Unit tests completed successfully!"
+echo "✅ Unit tests execution completed."
