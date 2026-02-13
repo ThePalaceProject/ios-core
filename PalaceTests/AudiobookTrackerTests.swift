@@ -75,10 +75,14 @@ class AudiobookTimeTrackerTests: XCTestCase {
             sut.receiveValue(simulatedDate)
         }
 
-        // Verify the tracker's internal state has accumulated time
-        // The internal timeEntry should have some duration
-        let accumulatedDuration = sut.timeEntry.duration
-        XCTAssertGreaterThan(accumulatedDuration, 0, "Tracker should have accumulated time")
+        // Save accumulated time and verify through saved entries
+        // (Reading timeEntry.duration directly is unreliable because a minute
+        // boundary crossing resets the internal duration to 0)
+        sut.stopAndSave()
+        mockDataManager.flush()
+
+        let totalDuration = mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }
+        XCTAssertEqual(totalDuration, 90, "Tracker should have accumulated exactly 90 seconds")
     }
 
     func testTimeEntries_areLimitedTo60Seconds() {
@@ -166,11 +170,21 @@ class AudiobookTimeTrackerTests: XCTestCase {
             sut.receiveValue(simulatedDate)
         }
 
-        // Verify the tracker's internal timeEntry has correct metadata
-        let timeEntry = sut.timeEntry
-        XCTAssertGreaterThan(timeEntry.duration, 0, "Should have accumulated time")
-        XCTAssertEqual(timeEntry.bookId, "book123")
-        XCTAssertEqual(timeEntry.libraryId, "library123")
+        // Save accumulated time and verify through saved entries
+        // (Reading timeEntry.duration directly is unreliable because a minute
+        // boundary crossing resets the internal duration to 0)
+        sut.stopAndSave()
+        mockDataManager.flush()
+
+        let entries = mockDataManager.savedTimeEntries
+        let totalDuration = entries.reduce(0) { $0 + $1.duration }
+        XCTAssertEqual(totalDuration, 59, "Should have accumulated 59 seconds")
+
+        // Verify metadata on saved entries
+        let firstEntry = entries.first
+        XCTAssertNotNil(firstEntry, "Should have at least one saved entry")
+        XCTAssertEqual(firstEntry?.bookId, "book123")
+        XCTAssertEqual(firstEntry?.libraryId, "library123")
     }
 
     func testNoPlayback_savesNoTimeEntry() {
@@ -192,9 +206,14 @@ class AudiobookTimeTrackerTests: XCTestCase {
             sut.receiveValue(simulatedDate)
         }
 
-        // Verify the tracker's internal state has accumulated time
-        let timeEntry = sut.timeEntry
-        XCTAssertGreaterThan(timeEntry.duration, 0, "Time entry should have accumulated time")
+        // Save accumulated time and verify through saved entries
+        // (Reading timeEntry.duration directly is unreliable because a minute
+        // boundary crossing resets the internal duration to 0)
+        sut.stopAndSave()
+        mockDataManager.flush()
+
+        let totalDuration = mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }
+        XCTAssertEqual(totalDuration, 59, "Should have accumulated exactly 59 seconds of playback")
     }
 
     // MARK: - Additional Tests
@@ -209,10 +228,6 @@ class AudiobookTimeTrackerTests: XCTestCase {
             date = calendar.date(byAdding: .second, value: 1, to: date)!
         }
 
-        // Capture the accumulated duration before finalize
-        let accumulatedDuration = sut.timeEntry.duration
-        XCTAssertGreaterThan(accumulatedDuration, 0, "Should have accumulated time during playback")
-
         // Explicitly finalize to trigger save (don't rely on deinit)
         sut.stopAndSave()
         mockDataManager.flush()
@@ -221,7 +236,7 @@ class AudiobookTimeTrackerTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(entries.count, 1, "Should have at least 1 entry for 3 minutes")
 
         let total = entries.reduce(0) { $0 + $1.duration }
-        XCTAssertGreaterThan(total, 0, "Total should be greater than 0")
+        XCTAssertEqual(total, 180, "Total should be 180 seconds (3 minutes)")
     }
 
     func testTimeEntry_hasCorrectMetadata() {
