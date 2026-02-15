@@ -204,7 +204,9 @@ import SwiftUI
             DispatchQueue.main.async {
                 self?.stopLoading()
                 guard success else {
-                    self?.showLoadingFailureAlert()
+                    self?.showLoadingFailureAlert(retryHandler: { [weak self] in
+                        self?.authenticateAccount(account, completion: completion)
+                    })
                     return
                 }
 
@@ -213,9 +215,26 @@ import SwiftUI
         }
     }
 
-    private func showLoadingFailureAlert() {
-        let alert = TPPAlertUtils.alert(title: nil, message: "We can’t get your library right now. Please close and reopen the app to try again.", style: .cancel)
-        present(alert, animated: true, completion: nil)
+    private func showLoadingFailureAlert(retryHandler: (() -> Void)? = nil) {
+        // PP-3707: Offer retry for library loading failures (likely transient)
+        let operationId = "library-fetch"
+        let canRetry = UserRetryTracker.shared.canRetry(operationId: operationId)
+
+        if canRetry, let retryHandler = retryHandler {
+            let alert = UIAlertController(title: nil, message: Strings.MyDownloadCenter.libraryLoadError, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { _ in
+                UserRetryTracker.shared.recordRetry(operationId: operationId)
+                retryHandler()
+            })
+            alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
+            present(alert, animated: true, completion: nil)
+        } else {
+            let message = canRetry
+                ? Strings.MyDownloadCenter.libraryLoadErrorLegacy
+                : Strings.MyDownloadCenter.tryAgainLater
+            let alert = TPPAlertUtils.alert(title: nil, message: message, style: .cancel)
+            present(alert, animated: true, completion: nil)
+        }
     }
 
     private func updateSettingsAccountList() {

@@ -130,6 +130,78 @@ actor DownloadErrorRecovery {
         )
     }
 
+    // MARK: - User-Facing Retry Classification
+
+    /// Determines whether an error should be presented to the user with a "Retry" option.
+    /// This is separate from the automatic retry logic: it classifies errors that are likely
+    /// transient and worth retrying manually (e.g., network issues, server errors, parsing
+    /// errors from potentially malformed server responses).
+    static func isRetryableForUser(_ error: Error) -> Bool {
+        if let palaceError = error as? PalaceError {
+            switch palaceError {
+            // Network errors that are transient
+            case .network(.serverError),
+                 .network(.timeout),
+                 .network(.noConnection),
+                 .network(.rateLimited),
+                 .network(.invalidResponse),
+                 .network(.unknown):
+                return true
+
+            // Parsing errors are often transient (server glitch, malformed response)
+            case .parsing(.opdsFeedInvalid),
+                 .parsing(.invalidJSON),
+                 .parsing(.invalidXML),
+                 .parsing(.missingRequiredField),
+                 .parsing(.invalidFormat),
+                 .parsing(.encodingError):
+                return true
+
+            // Download failures that could resolve on retry
+            case .download(.networkFailure),
+                 .download(.maxRetriesExceeded):
+                return true
+
+            // Book registry sync failure
+            case .bookRegistry(.syncFailed):
+                return true
+
+            // Auth network error (not invalid credentials)
+            case .authentication(.networkError):
+                return true
+
+            // Audiobook streaming issues
+            case .audiobook(.streamingError):
+                return true
+
+            // Everything else is NOT retryable by the user
+            // (invalid credentials, DRM limits, storage, unsupported formats, etc.)
+            default:
+                return false
+            }
+        }
+
+        // Fallback: check NSError domain
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorCancelled,
+                 NSURLErrorBadURL,
+                 NSURLErrorUnsupportedURL,
+                 NSURLErrorUserAuthenticationRequired,
+                 NSURLErrorNoPermissionsToReadFile,
+                 NSURLErrorFileDoesNotExist:
+                return false
+            default:
+                // Most URL errors are transient (timeout, no connection, etc.)
+                return true
+            }
+        }
+
+        // Unknown errors - not retryable
+        return false
+    }
+
     // MARK: - Retry Execution
 
     /// Executes an operation with automatic retry and overall timeout

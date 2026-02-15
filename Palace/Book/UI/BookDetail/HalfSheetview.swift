@@ -111,11 +111,27 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                 set: { viewModel.downloadErrorAlert = $0 }
             )
         ) { errorAlert in
-            Alert(
-                title: Text(errorAlert.title),
-                message: Text(errorAlert.message),
-                dismissButton: .default(Text("OK"))
-            )
+            if errorAlert.secondaryButtonTitle != nil {
+                Alert(
+                    title: Text(errorAlert.title),
+                    message: Text(errorAlert.message),
+                    primaryButton: .default(
+                        Text(errorAlert.buttonTitle ?? Strings.MyDownloadCenter.retry),
+                        action: errorAlert.primaryAction
+                    ),
+                    secondaryButton: .cancel(
+                        Text(errorAlert.secondaryButtonTitle ?? Strings.Generic.cancel),
+                        action: errorAlert.secondaryAction
+                    )
+                )
+            } else {
+                // Non-retryable or max retries exceeded — show OK only
+                Alert(
+                    title: Text(errorAlert.title),
+                    message: Text(errorAlert.message),
+                    dismissButton: .default(Text(errorAlert.buttonTitle ?? Strings.Generic.ok))
+                )
+            }
         }
         .onAppear {
             originalState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)

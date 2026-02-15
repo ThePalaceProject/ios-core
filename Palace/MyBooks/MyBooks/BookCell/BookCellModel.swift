@@ -231,10 +231,18 @@ class BookCellModel: ObservableObject {
 
         // Subscribe to download errors so the half sheet can present them via SwiftUI .alert
         MyBooksDownloadCenter.shared.downloadErrorPublisher
-            .filter { [weak self] in $0.0 == self?.book.identifier }
+            .filter { [weak self] in $0.bookId == self?.book.identifier }
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] (_, title, message) in
-                self?.downloadErrorAlert = AlertModel(title: title, message: message)
+            .sink { [weak self] errorInfo in
+                if let retryAction = errorInfo.retryAction {
+                    self?.downloadErrorAlert = .retryable(
+                        title: errorInfo.title,
+                        message: errorInfo.message,
+                        retryAction: retryAction
+                    )
+                } else {
+                    self?.downloadErrorAlert = AlertModel(title: errorInfo.title, message: errorInfo.message)
+                }
             }
             .store(in: &cancellables)
     }

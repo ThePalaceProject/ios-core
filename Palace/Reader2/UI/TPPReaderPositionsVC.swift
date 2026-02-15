@@ -287,14 +287,36 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
 
     @objc(userDidRefreshBookmarksWith:)
     private func userDidRefreshBookmarks(with refreshControl: UIRefreshControl) {
-        delegate?.positionsVC(self, didRequestSyncBookmarksWithCompletion: { (success, _) in
-            TPPMainThreadRun.asyncIfNeeded { [weak self] in
+        delegate?.positionsVC(self, didRequestSyncBookmarksWithCompletion: { [weak self] (success, _) in
+            TPPMainThreadRun.asyncIfNeeded {
                 self?.tableView.reloadData()
                 self?.bookmarksRefreshControl?.endRefreshing()
                 if !success {
-                    let alert = TPPAlertUtils.alert(title: "Error Syncing Bookmarks",
-                                                    message: "There was an error syncing bookmarks to the server. Ensure your device is connected to the internet or try again later.")
-                    self?.present(alert, animated: true)
+                    // PP-3707: Offer retry for bookmark sync failures (likely transient network issue)
+                    let operationId = "bookmark-sync"
+                    let canRetry = UserRetryTracker.shared.canRetry(operationId: operationId)
+
+                    if canRetry {
+                        let alert = UIAlertController(
+                            title: Strings.MyDownloadCenter.errorSyncingBookmarks,
+                            message: Strings.MyDownloadCenter.bookmarkSyncError,
+                            preferredStyle: .alert
+                        )
+                        alert.addAction(UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { [weak self] _ in
+                            UserRetryTracker.shared.recordRetry(operationId: operationId)
+                            if let rc = self?.bookmarksRefreshControl {
+                                self?.userDidRefreshBookmarks(with: rc)
+                            }
+                        })
+                        alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
+                        self?.present(alert, animated: true)
+                    } else {
+                        let alert = TPPAlertUtils.alert(
+                            title: Strings.MyDownloadCenter.errorSyncingBookmarks,
+                            message: Strings.MyDownloadCenter.tryAgainLater
+                        )
+                        self?.present(alert, animated: true)
+                    }
                 }
             }
         })
