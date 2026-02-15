@@ -858,6 +858,12 @@
 		E5E4A9D82EB0560200CC1D67 /* OPDSFeedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9D62EB0560200CC1D67 /* OPDSFeedService.swift */; };
 		E5E4A9DA2EB0562700CC1D67 /* DownloadErrorRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9D92EB0562700CC1D67 /* DownloadErrorRecovery.swift */; };
 		E5E4A9DB2EB0562700CC1D67 /* DownloadErrorRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9D92EB0562700CC1D67 /* DownloadErrorRecovery.swift */; };
+		RTRT00012F0300010000001B /* UserRetryTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300010000001A /* UserRetryTracker.swift */; };
+		RTRT00012F0300010000001C /* UserRetryTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300010000001A /* UserRetryTracker.swift */; };
+		RTRT00012F0300020000001B /* UserRetryTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300020000001A /* UserRetryTrackerTests.swift */; };
+		RTRT00012F0300030000001B /* RetryClassificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300030000001A /* RetryClassificationTests.swift */; };
+		RTRT00012F0300040000001B /* DownloadErrorInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */; };
+		RTRT00012F0300050000001B /* AlertModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300050000001A /* AlertModelTests.swift */; };
 		E5E4A9DD2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9DC2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift */; };
 		E5E4A9DE2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9DC2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift */; };
 		E5E4A9E02EB0565800CC1D67 /* TPPBookRegistryAsync.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9DF2EB0565800CC1D67 /* TPPBookRegistryAsync.swift */; };
@@ -1902,6 +1908,11 @@
 		E5E4A9CB2EB055BB00CC1D67 /* PersistentLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistentLogger.swift; sourceTree = "<group>"; };
 		E5E4A9D62EB0560200CC1D67 /* OPDSFeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPDSFeedService.swift; sourceTree = "<group>"; };
 		E5E4A9D92EB0562700CC1D67 /* DownloadErrorRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadErrorRecovery.swift; sourceTree = "<group>"; };
+		RTRT00012F0300010000001A /* UserRetryTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserRetryTracker.swift; sourceTree = "<group>"; };
+		RTRT00012F0300020000001A /* UserRetryTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserRetryTrackerTests.swift; sourceTree = "<group>"; };
+		RTRT00012F0300030000001A /* RetryClassificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryClassificationTests.swift; sourceTree = "<group>"; };
+		RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadErrorInfoTests.swift; sourceTree = "<group>"; };
+		RTRT00012F0300050000001A /* AlertModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertModelTests.swift; sourceTree = "<group>"; };
 		E5E4A9DC2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MyBooksDownloadCenter+Async.swift"; sourceTree = "<group>"; };
 		E5E4A9DF2EB0565800CC1D67 /* TPPBookRegistryAsync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryAsync.swift; sourceTree = "<group>"; };
 		E5E4A9E32EB0568F00CC1D67 /* MainActorHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainActorHelpers.swift; sourceTree = "<group>"; };
@@ -2745,6 +2756,7 @@
 			children = (
 				E5E4A9D92EB0562700CC1D67 /* DownloadErrorRecovery.swift */,
 				E5E4A9DC2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift */,
+				RTRT00012F0300010000001A /* UserRetryTracker.swift */,
 				7384C756252D20AA0012C2DD /* TPPBook+DistributorChecks.swift */,
 				A4276F461B00046300CA7194 /* TPPMyBooksDownloadInfo.h */,
 				A4276F471B00046300CA7194 /* TPPMyBooksDownloadInfo.m */,
@@ -3582,6 +3594,9 @@
 				317C8F0150303A9AC53BC44F /* MyBooksDownloadCenterTests.swift */,
 				DCIT001T260955EF008E1DC3 /* MyBooksDownloadCenterIntegrationTests.swift */,
 				QATEST09FR00000000000001 /* DownloadErrorRecoveryTests.swift */,
+				RTRT00012F0300020000001A /* UserRetryTrackerTests.swift */,
+				RTRT00012F0300030000001A /* RetryClassificationTests.swift */,
+				RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */,
 			);
 			path = MyBooks;
 			sourceTree = "<group>";
@@ -4172,6 +4187,7 @@
 				QATEST06FR00000000000001 /* TPPProblemDocumentCacheManagerTests.swift */,
 				QATEST17FR00000000000001 /* TPPUserFriendlyErrorTests.swift */,
 				QAEDV001T260955EF00000001 /* ErrorDetailViewControllerTests.swift */,
+				RTRT00012F0300050000001A /* AlertModelTests.swift */,
 			);
 			path = ErrorHandling;
 			sourceTree = "<group>";
@@ -4708,6 +4724,10 @@
 				QATEST07BF00000000000001 /* GeneralCacheTests.swift in Sources */,
 				QATEST08BF00000000000001 /* SafeDictionaryTests.swift in Sources */,
 				QATEST09BF00000000000001 /* DownloadErrorRecoveryTests.swift in Sources */,
+				RTRT00012F0300020000001B /* UserRetryTrackerTests.swift in Sources */,
+				RTRT00012F0300030000001B /* RetryClassificationTests.swift in Sources */,
+				RTRT00012F0300040000001B /* DownloadErrorInfoTests.swift in Sources */,
+				RTRT00012F0300050000001B /* AlertModelTests.swift in Sources */,
 				QATEST10BF00000000000001 /* EmailAddressTests.swift in Sources */,
 				QATEST11BF00000000000001 /* DeviceSpecificErrorMonitorTests.swift in Sources */,
 				QATEST12BF00000000000001 /* AudiobookFileLoggerTests.swift in Sources */,
@@ -4988,6 +5008,7 @@
 				21E41779292810E000A78606 /* TPPPDFReaderMode.swift in Sources */,
 				E7B20B4A285B4E5600C49FE1 /* TPPPDFLabel.swift in Sources */,
 				E5E4A9DB2EB0562700CC1D67 /* DownloadErrorRecovery.swift in Sources */,
+				RTRT00012F0300010000001B /* UserRetryTracker.swift in Sources */,
 				E50546CB2E621B75007CCFAB /* NavigationCoordinator.swift in Sources */,
 				73EB0ABD25821DF4006BC997 /* TPPSignInBusinessLogic+OAuth.swift in Sources */,
 				73EB0ABE25821DF4006BC997 /* TPPOPDSAcquisitionPath.m in Sources */,
@@ -5302,6 +5323,7 @@
 				E7861C53284695DE00B3A38A /* TPPEncryptedPDFDocument.swift in Sources */,
 				B51C1DFA2285FDF9003B49A5 /* OPDS2CatalogsFeed.swift in Sources */,
 				E5E4A9DA2EB0562700CC1D67 /* DownloadErrorRecovery.swift in Sources */,
+				RTRT00012F0300010000001C /* UserRetryTracker.swift in Sources */,
 				2D62568B1D412BCB0080A81F /* BundledHTMLViewController.swift in Sources */,
 				E727EFAE2A1BFB20006AB1F2 /* DLNavigator.swift in Sources */,
 				E50D684626AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */,
@@ -5846,7 +5868,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 435;
+				CURRENT_PROJECT_VERSION = 436;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5903,7 +5925,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 435;
+				CURRENT_PROJECT_VERSION = 436;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6089,7 +6111,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 435;
+				CURRENT_PROJECT_VERSION = 436;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -6149,7 +6171,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 435;
+				CURRENT_PROJECT_VERSION = 436;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;

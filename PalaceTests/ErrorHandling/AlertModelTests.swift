@@ -8,8 +8,8 @@
 import XCTest
 @testable import Palace
 
-/// Tests for AlertModel factory methods — PP-3707
-final class AlertModelTests: XCTestCase {
+/// Tests for AlertModel retry factory methods — PP-3707
+final class AlertModelRetryTests: XCTestCase {
 
     // MARK: - Default AlertModel
 
