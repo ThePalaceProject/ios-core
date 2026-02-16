@@ -379,7 +379,7 @@ struct DownloadErrorInfo {
             guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
             return { [weak self] in
                 UserRetryTracker.shared.recordRetry(operationId: operationId)
-                self?.startDownload(for: book)
+                self?.startBorrow(for: book, attemptDownload: true)
             }
         }()
 
@@ -396,7 +396,7 @@ struct DownloadErrorInfo {
             guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
             return { [weak self] in
                 UserRetryTracker.shared.recordRetry(operationId: operationId)
-                self?.startDownload(for: book)
+                self?.startBorrow(for: book, attemptDownload: true)
             }
         }()
 
@@ -1145,7 +1145,8 @@ extension MyBooksDownloadCenter {
                                 }
                             }()
 
-                            let message = retryAction == nil && !UserRetryTracker.shared.canRetry(operationId: operationId)
+                            // When retries are exhausted, show "try again later"
+                            let message = (retryAction == nil && !UserRetryTracker.shared.canRetry(operationId: operationId))
                                 ? Strings.MyDownloadCenter.tryAgainLater
                                 : formattedMessage
 
@@ -1583,6 +1584,30 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
 
                 // Check if the error is "No active loan" - attempt to re-borrow
                 if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
+
+                    // PP-3716: When a SAML token expires, the server returns "no-active-loan"
+                    // (400) instead of "invalid-credentials" (401). If the user has SAML
+                    // credentials, treat this as a session expiry and trigger re-auth
+                    // instead of attempting an auto-borrow (which would also fail).
+                    let authDef = self.userAccount.authDefinition
+                    if authDef?.isSaml == true && hasCredentials {
+                        Log.info(#file, "SAML: 'no-active-loan' with active SAML credentials — treating as session expiry (PP-3716)")
+                        self.userAccount.markCredentialsStale()
+
+                        Task {
+                            await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+                            await self.taskIdentifierToBook.remove(task.taskIdentifier)
+                            await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+
+                            await MainActor.run {
+                                self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                                Log.info(#file, "SAML: Cleared failed download, retrying with SAML re-auth for \(book.identifier)")
+                                self.startDownload(for: book)
+                            }
+                        }
+                        return
+                    }
+
                     Log.info(#file, "Download failed: No active loan for \(book.identifier). Auto-borrowing...")
 
                     // Update state to unregistered so borrow logic will work
