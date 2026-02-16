@@ -229,7 +229,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
     /// Claim first responder so UIKeyCommands are matched on THIS VC before
     /// WKWebView's web-content process can consume arrow key events.
+    /// Skips when a modal (e.g. search) is presented so we don't steal focus
+    /// from its text fields (PP-3715).
     private func claimFirstResponder() {
+        guard presentedViewController == nil else { return }
         if !isFirstResponder {
             becomeFirstResponder()
         }
@@ -240,13 +243,36 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     /// responder, the iPadOS/iOS focus engine consumes arrow keys before
     /// UIKeyCommand matching. By staying first responder, our UIKeyCommands
     /// with wantsPriorityOverSystemBehavior fire BEFORE the focus engine.
+    ///
+    /// Exception: allow resignation when a modal (e.g. EPUB search) is presented,
+    /// otherwise SwiftUI TextFields in the modal can never become first responder
+    /// and the keyboard won't appear (PP-3715).
     @discardableResult
     override func resignFirstResponder() -> Bool {
+        if presentedViewController != nil {
+            return super.resignFirstResponder()
+        }
         return false
     }
 
+    /// Reclaim first responder after any modal (search, settings, TOC popover)
+    /// is dismissed. With `.overFullScreen`, `viewDidAppear` is not called
+    /// after dismissal, so without this, WKWebView grabs first responder and
+    /// keyboard shortcuts stop working.
+    override func dismiss(animated flag: Bool, completion: (() -> Void)? = nil) {
+        super.dismiss(animated: flag) { [weak self] in
+            completion?()
+            self?.claimFirstResponder()
+        }
+    }
+
     /// Block FKA from moving focus between Readium's internal WKWebViews.
+    /// Allows focus updates when a modal is presented so FKA users can
+    /// Tab-navigate within search or other presented views.
     override func shouldUpdateFocus(in context: UIFocusUpdateContext) -> Bool {
+        if presentedViewController != nil {
+            return super.shouldUpdateFocus(in: context)
+        }
         return false
     }
 

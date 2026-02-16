@@ -858,12 +858,6 @@
 		E5E4A9D82EB0560200CC1D67 /* OPDSFeedService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9D62EB0560200CC1D67 /* OPDSFeedService.swift */; };
 		E5E4A9DA2EB0562700CC1D67 /* DownloadErrorRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9D92EB0562700CC1D67 /* DownloadErrorRecovery.swift */; };
 		E5E4A9DB2EB0562700CC1D67 /* DownloadErrorRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9D92EB0562700CC1D67 /* DownloadErrorRecovery.swift */; };
-		RTRT00012F0300010000001B /* UserRetryTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300010000001A /* UserRetryTracker.swift */; };
-		RTRT00012F0300010000001C /* UserRetryTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300010000001A /* UserRetryTracker.swift */; };
-		RTRT00012F0300020000001B /* UserRetryTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300020000001A /* UserRetryTrackerTests.swift */; };
-		RTRT00012F0300030000001B /* RetryClassificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300030000001A /* RetryClassificationTests.swift */; };
-		RTRT00012F0300040000001B /* DownloadErrorInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */; };
-		RTRT00012F0300050000001B /* AlertModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300050000001A /* AlertModelTests.swift */; };
 		E5E4A9DD2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9DC2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift */; };
 		E5E4A9DE2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9DC2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift */; };
 		E5E4A9E02EB0565800CC1D67 /* TPPBookRegistryAsync.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9DF2EB0565800CC1D67 /* TPPBookRegistryAsync.swift */; };
@@ -1125,6 +1119,12 @@
 		RDBM002T260955EF008E1DC3 /* TPPReadiumBookmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RDBM001T260955EF008E1DC3 /* TPPReadiumBookmarkTests.swift */; };
 		REAU002T260955EF008E1DC3 /* TPPReauthenticatorMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = REAU001T260955EF008E1DC3 /* TPPReauthenticatorMock.swift */; };
 		RGIT002T260955EF008E1DC3 /* TPPBookRegistryIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RGIT001T260955EF008E1DC3 /* TPPBookRegistryIntegrationTests.swift */; };
+		RTRT00012F0300010000001B /* UserRetryTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300010000001A /* UserRetryTracker.swift */; };
+		RTRT00012F0300010000001C /* UserRetryTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300010000001A /* UserRetryTracker.swift */; };
+		RTRT00012F0300020000001B /* UserRetryTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300020000001A /* UserRetryTrackerTests.swift */; };
+		RTRT00012F0300030000001B /* RetryClassificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300030000001A /* RetryClassificationTests.swift */; };
+		RTRT00012F0300040000001B /* DownloadErrorInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */; };
+		RTRT00012F0300050000001B /* AlertModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300050000001A /* AlertModelTests.swift */; };
 		SCENEDEL0001PALACE00001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCENEDEL0001FILEREF001 /* SceneDelegate.swift */; };
 		SCENEDEL0002SIMPLYE0001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCENEDEL0001FILEREF001 /* SceneDelegate.swift */; };
 		SETPV002T260955EF008E1DC3 /* TPPSettingsProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = SETPV001T260955EF008E1DC3 /* TPPSettingsProviding.swift */; };
@@ -1908,11 +1908,6 @@
 		E5E4A9CB2EB055BB00CC1D67 /* PersistentLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistentLogger.swift; sourceTree = "<group>"; };
 		E5E4A9D62EB0560200CC1D67 /* OPDSFeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPDSFeedService.swift; sourceTree = "<group>"; };
 		E5E4A9D92EB0562700CC1D67 /* DownloadErrorRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadErrorRecovery.swift; sourceTree = "<group>"; };
-		RTRT00012F0300010000001A /* UserRetryTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserRetryTracker.swift; sourceTree = "<group>"; };
-		RTRT00012F0300020000001A /* UserRetryTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserRetryTrackerTests.swift; sourceTree = "<group>"; };
-		RTRT00012F0300030000001A /* RetryClassificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryClassificationTests.swift; sourceTree = "<group>"; };
-		RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadErrorInfoTests.swift; sourceTree = "<group>"; };
-		RTRT00012F0300050000001A /* AlertModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertModelTests.swift; sourceTree = "<group>"; };
 		E5E4A9DC2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MyBooksDownloadCenter+Async.swift"; sourceTree = "<group>"; };
 		E5E4A9DF2EB0565800CC1D67 /* TPPBookRegistryAsync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryAsync.swift; sourceTree = "<group>"; };
 		E5E4A9E32EB0568F00CC1D67 /* MainActorHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainActorHelpers.swift; sourceTree = "<group>"; };
@@ -2080,6 +2075,11 @@
 		RDBM001T260955EF008E1DC3 /* TPPReadiumBookmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReadiumBookmarkTests.swift; sourceTree = "<group>"; };
 		REAU001T260955EF008E1DC3 /* TPPReauthenticatorMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReauthenticatorMock.swift; sourceTree = "<group>"; };
 		RGIT001T260955EF008E1DC3 /* TPPBookRegistryIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryIntegrationTests.swift; sourceTree = "<group>"; };
+		RTRT00012F0300010000001A /* UserRetryTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserRetryTracker.swift; sourceTree = "<group>"; };
+		RTRT00012F0300020000001A /* UserRetryTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserRetryTrackerTests.swift; sourceTree = "<group>"; };
+		RTRT00012F0300030000001A /* RetryClassificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryClassificationTests.swift; sourceTree = "<group>"; };
+		RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadErrorInfoTests.swift; sourceTree = "<group>"; };
+		RTRT00012F0300050000001A /* AlertModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertModelTests.swift; sourceTree = "<group>"; };
 		SCENEDEL0001FILEREF001 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		SETPV001T260955EF008E1DC3 /* TPPSettingsProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsProviding.swift; sourceTree = "<group>"; };
 		SETVM001T260955EF008E1DC3 /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
@@ -5868,7 +5868,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 436;
+				CURRENT_PROJECT_VERSION = 437;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -5925,7 +5925,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 436;
+				CURRENT_PROJECT_VERSION = 437;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6111,8 +6111,11 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 436;
+				CURRENT_PROJECT_VERSION = 437;
 				DEVELOPMENT_TEAM = "";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 436;
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -6171,7 +6174,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 436;
+				CURRENT_PROJECT_VERSION = 437;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
