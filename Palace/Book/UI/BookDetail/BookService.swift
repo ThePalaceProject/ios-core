@@ -32,7 +32,7 @@ enum BookService {
                   let tokenURL = userAccount.authDefinition?.tokenURL else {
                 Log.error(#file, "Cannot refresh token: missing credentials or tokenURL")
                 openingBooks.remove(book.identifier)
-                showAudiobookTryAgainError()
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
                 onFinish?()
                 return
             }
@@ -46,7 +46,7 @@ enum BookService {
                         guard let json else {
                             Log.error(#file, "❌ Failed to re-fetch manifest after token refresh")
                             openingBooks.remove(book.identifier)
-                            showAudiobookTryAgainError()
+                            showAudiobookTryAgainError(book: book, onFinish: onFinish)
                             onFinish?()
                             return
                         }
@@ -58,7 +58,7 @@ enum BookService {
                 case .failure(let error):
                     Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription) - cannot open audiobook")
                     openingBooks.remove(book.identifier)
-                    showAudiobookTryAgainError()
+                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
                     onFinish?()
                 }
             }
@@ -141,7 +141,7 @@ enum BookService {
 
             guard let data = try? Data(contentsOf: url) else {
                 Log.error(#file, "  ❌ Failed to read local file data")
-                showAudiobookTryAgainError()
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
                 openingBooks.remove(book.identifier)
                 onFinish?()
                 return
@@ -149,7 +149,7 @@ enum BookService {
 
             guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
                 Log.error(#file, "  ❌ Failed to parse local file as JSON")
-                showAudiobookTryAgainError()
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
                 openingBooks.remove(book.identifier)
                 onFinish?()
                 return
@@ -166,7 +166,7 @@ enum BookService {
         fetchOpenAccessManifest(for: book) { json in
             guard let json else {
                 Log.error(#file, "  ❌ Failed to fetch or parse open access manifest")
-                showAudiobookTryAgainError()
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
                 openingBooks.remove(book.identifier)
                 onFinish?()
                 return
@@ -184,7 +184,7 @@ enum BookService {
         guard let lcpAudiobooks = LCPAudiobooks(for: lcpSourceURL) else {
             Log.error(#file, "  ❌ Failed to create LCPAudiobooks instance from URL")
             Log.error(#file, "    This could indicate license parsing failure or invalid LCP file")
-            showAudiobookTryAgainError()
+            showAudiobookTryAgainError(book: book, onFinish: onFinish)
             openingBooks.remove(book.identifier)
             onFinish?()
             return
@@ -203,7 +203,7 @@ enum BookService {
             Task { @MainActor in
                 if let error = error {
                     Log.error(#file, "  ❌ Error fetching LCP content dictionary: \(error.localizedDescription)")
-                    showAudiobookTryAgainError()
+                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
                     openingBooks.remove(book.identifier)
                     onFinish?()
                     return
@@ -211,7 +211,7 @@ enum BookService {
 
                 guard let json = dict as? [String: Any] else {
                     Log.error(#file, "  ❌ LCP content dictionary is not a valid JSON dictionary")
-                    showAudiobookTryAgainError()
+                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
                     openingBooks.remove(book.identifier)
                     onFinish?()
                     return
@@ -244,7 +244,7 @@ enum BookService {
                 if let error = error {
                     Log.error(#file, "  ❌ Vendor completion failed with error: \(error.localizedDescription)")
                     Log.error(#file, "    Domain: \(error.domain), Code: \(error.code)")
-                    showAudiobookTryAgainError()
+                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
                     openingBooks.remove(book.identifier)
                     onFinish?()
                     return
@@ -255,7 +255,7 @@ enum BookService {
                 guard let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []) else {
                     Log.error(#file, "  ❌ Failed to serialize JSON dictionary to Data")
                     Log.error(#file, "    JSON keys: \(jsonDict.keys.joined(separator: ", "))")
-                    showAudiobookTryAgainError()
+                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
                     openingBooks.remove(book.identifier)
                     onFinish?()
                     return
@@ -290,7 +290,7 @@ enum BookService {
                     if let jsonString = String(data: jsonData, encoding: .utf8) {
                         Log.error(#file, "    Full manifest JSON: \(jsonString)")
                     }
-                    showAudiobookTryAgainError()
+                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
                     openingBooks.remove(book.identifier)
                     onFinish?()
                     return
@@ -308,7 +308,7 @@ enum BookService {
                     Log.error(#file, "  ❌ AudiobookFactory failed to create audiobook")
                     Log.error(#file, "    This likely means no suitable player could be created for this manifest")
                     Log.error(#file, "    Manifest type: \(manifest.metadata?.type ?? "unknown")")
-                    showAudiobookTryAgainError()
+                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
                     openingBooks.remove(book.identifier)
                     onFinish?()
                     return
@@ -630,7 +630,7 @@ enum BookService {
         return nil
     }
 
-    private static func showAudiobookTryAgainError() {
+    private static func showAudiobookTryAgainError(book: TPPBook? = nil, onFinish: (() -> Void)? = nil) {
         Log.warn(#file, "⚠️ [ERROR ALERT] Showing 'An error was encountered while trying to open this book' alert to user")
 
         // Log the error so it can be captured by enhanced logging
@@ -651,7 +651,32 @@ enum BookService {
             ]
         )
 
-        let alert = TPPAlertUtils.alert(title: Strings.Error.openFailedError, message: Strings.Error.tryAgain)
-        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+        // PP-3707: Offer retry for audiobook open failures (may be transient)
+        let retryAction: (() -> Void)? = {
+            guard let book = book else { return nil }
+            let operationId = "audiobook-open-\(book.identifier)"
+            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+            return {
+                UserRetryTracker.shared.recordRetry(operationId: operationId)
+                BookService.open(book, onFinish: onFinish)
+            }
+        }()
+
+        if let retryAction = retryAction {
+            let alert = UIAlertController(
+                title: Strings.Error.openFailedError,
+                message: Strings.Error.tryAgain,
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { _ in retryAction() })
+            alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
+            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+        } else {
+            let message = (book != nil && !UserRetryTracker.shared.canRetry(operationId: "audiobook-open-\(book!.identifier)"))
+                ? Strings.MyDownloadCenter.tryAgainLater
+                : Strings.Error.tryAgain
+            let alert = TPPAlertUtils.alert(title: Strings.Error.openFailedError, message: message)
+            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+        }
     }
 }

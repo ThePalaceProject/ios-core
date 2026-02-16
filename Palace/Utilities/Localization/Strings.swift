@@ -193,6 +193,27 @@ struct Strings {
                 title
             )
         }
+
+        static func retryingBorrow(_ title: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("Retrying borrow for %@.", comment: "VoiceOver announcement when user taps Retry on a failed borrow"),
+                title
+            )
+        }
+
+        static func retryingReturn(_ title: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("Retrying return for %@.", comment: "VoiceOver announcement when user taps Retry on a failed return"),
+                title
+            )
+        }
+
+        static func retryingDownload(_ title: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("Retrying download for %@.", comment: "VoiceOver announcement when user taps Retry on a failed download"),
+                title
+            )
+        }
     }
 
     struct OETutorialChoiceViewController {
@@ -453,6 +474,16 @@ struct Strings {
         static let borrowFailed = NSLocalizedString("Borrow Failed", comment: "")
         static let borrowFailedMessage = NSLocalizedString("Borrowing %@ could not be completed.", comment: "")
         static let loanAlreadyExistsAlertMessage = NSLocalizedString("You have already checked out this loan. You may need to refresh your My Books list to download the title.", comment: "")
+        static let returnFailed = NSLocalizedString("Return Failed", comment: "Alert title when returning a book fails")
+        static let returnFailedMessage = NSLocalizedString("The return of %@ could not be completed.", comment: "Alert message when returning a book fails, %@ is the book title")
+        static let downloadFailed = NSLocalizedString("Download Failed", comment: "Alert title when a download fails")
+        static let downloadFailedMessage = NSLocalizedString("The download for %@ could not be completed.", comment: "Alert message when downloading a book fails, %@ is the book title")
+        static let retry = NSLocalizedString("Retry", comment: "Button to retry a failed operation")
+        static let tryAgainLater = NSLocalizedString("Please try again later.", comment: "Message shown when maximum retry attempts have been exceeded")
+        static let errorSyncingBookmarks = NSLocalizedString("Error Syncing Bookmarks", comment: "Alert title when bookmark sync fails")
+        static let bookmarkSyncError = NSLocalizedString("There was an error syncing bookmarks to the server. Ensure your device is connected to the internet.", comment: "Alert message when bookmark sync fails")
+        static let libraryLoadError = NSLocalizedString("We can\u{2019}t get your library right now. Please try again.", comment: "Alert message when library data fails to load, with retry option")
+        static let libraryLoadErrorLegacy = NSLocalizedString("We can\u{2019}t get your library right now. Please close and reopen the app to try again.", comment: "Alert message when library data fails to load, no retry available")
     }
 
     struct BookDetailView {

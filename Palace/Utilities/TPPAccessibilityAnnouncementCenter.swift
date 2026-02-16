@@ -63,6 +63,20 @@ final class TPPAccessibilityAnnouncementCenter {
         announce(Strings.DownloadAnnouncements.returnFailed(title))
     }
 
+    // MARK: - Retry Announcements (PP-3707)
+
+    func announceRetryingBorrow(title: String) {
+        announce(Strings.DownloadAnnouncements.retryingBorrow(title))
+    }
+
+    func announceRetryingReturn(title: String) {
+        announce(Strings.DownloadAnnouncements.retryingReturn(title))
+    }
+
+    func announceRetryingDownload(title: String) {
+        announce(Strings.DownloadAnnouncements.retryingDownload(title))
+    }
+
     func announceDownloadProgress(title: String, identifier: String, progress: Double) {
         let percent = progressPercent(progress)
         guard percent < 100 else { return }

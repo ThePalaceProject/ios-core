@@ -304,7 +304,8 @@ extension MyBooksDownloadCenter {
         return false
     }
 
-    /// Displays borrow error to user with optional problem document from server
+    /// Displays borrow error to user with optional problem document from server.
+    /// For retryable errors, includes a "Retry" button (up to 5 attempts).
     /// - Parameters:
     ///   - error: The structured PalaceError
     ///   - originalError: The original error that may contain problem document
@@ -349,14 +350,32 @@ extension MyBooksDownloadCenter {
             message = "\(error.localizedDescription)\n\n\(recovery)"
         }
 
+        // Check if this error is retryable and within retry limits (PP-3707)
+        let operationId = "borrow-\(book.identifier)"
+        let isRetryable = DownloadErrorRecovery.isRetryableForUser(error)
+        let canRetry = isRetryable && UserRetryTracker.shared.canRetry(operationId: operationId)
+
+        // If retryable but max retries exceeded, show "try again later" message
+        if isRetryable && !canRetry {
+            message = Strings.MyDownloadCenter.tryAgainLater
+        }
+
+        // Build retry closure if applicable
+        let retryAction: (() -> Void)? = canRetry ? { [weak self] in
+            UserRetryTracker.shared.recordRetry(operationId: operationId)
+            self?.startBorrow(for: book, attemptDownload: true)
+        } : nil
+
         // Use alertWithDetails to include the "View Error Details" button
+        // and optionally "Retry" + "Cancel" instead of "OK"
         let alert = TPPAlertUtils.alertWithDetails(
             title: title,
             message: message,
             error: originalError as NSError?,
             problemDocument: problemDoc,
             bookIdentifier: book.identifier,
-            bookTitle: book.title
+            bookTitle: book.title,
+            retryAction: retryAction
         )
 
         TPPAlertUtils.presentFromViewControllerOrNil(

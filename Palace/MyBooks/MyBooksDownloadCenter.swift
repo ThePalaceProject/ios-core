@@ -105,6 +105,31 @@ actor DownloadCoordinator {
     }
 }
 
+/// Info published when a download or borrow error occurs.
+/// Includes retry support so SwiftUI views can offer a "Retry" button.
+struct DownloadErrorInfo {
+    let bookId: String
+    let title: String
+    let message: String
+    let retryAction: (() -> Void)?
+
+    /// Convenience for non-retryable errors.
+    init(bookId: String, title: String, message: String) {
+        self.bookId = bookId
+        self.title = title
+        self.message = message
+        self.retryAction = nil
+    }
+
+    /// Full initializer with optional retry action.
+    init(bookId: String, title: String, message: String, retryAction: (() -> Void)?) {
+        self.bookId = bookId
+        self.title = title
+        self.message = message
+        self.retryAction = retryAction
+    }
+}
+
 @objc class MyBooksDownloadCenter: NSObject, URLSessionDelegate {
     typealias DisplayStrings = Strings.MyDownloadCenter
 
@@ -132,7 +157,7 @@ actor DownloadCoordinator {
     /// Subscribers (e.g. view models showing a half sheet) can present the
     /// error inline via SwiftUI `.alert` instead of relying on UIKit
     /// presentation, which can fail when a SwiftUI sheet is topmost.
-    let downloadErrorPublisher = PassthroughSubject<(String, String, String), Never>() // (bookId, title, message)
+    let downloadErrorPublisher = PassthroughSubject<DownloadErrorInfo, Never>()
 
     private var maxConcurrentDownloads: Int = 4  // Increased from 2 for better UX
     private let downloadCoordinator = DownloadCoordinator()
@@ -288,7 +313,7 @@ actor DownloadCoordinator {
         case TPPProblemDocument.TypeLoanAlreadyExists:
             let alertMessage = DisplayStrings.loanAlreadyExistsAlertMessage
             runOnMainAsync {
-                self.downloadErrorPublisher.send((book.identifier, alertTitle, alertMessage))
+                self.downloadErrorPublisher.send(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage))
             }
 
         case TPPProblemDocument.TypeInvalidCredentials:
@@ -348,15 +373,35 @@ actor DownloadCoordinator {
             }
         }
 
+        // Legacy borrow errors from problem documents - offer retry for transient issues
+        let retryAction: (() -> Void)? = {
+            let operationId = "borrow-\(book.identifier)"
+            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+            return { [weak self] in
+                UserRetryTracker.shared.recordRetry(operationId: operationId)
+                self?.startDownload(for: book)
+            }
+        }()
+
         runOnMainAsync {
-            self.downloadErrorPublisher.send((book.identifier, alertTitle, alertMessage))
+            self.downloadErrorPublisher.send(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, retryAction: retryAction))
         }
     }
 
     private func showGenericBorrowFailedAlert(for book: TPPBook) {
         let formattedMessage = String(format: DisplayStrings.borrowFailedMessage, book.title)
+
+        let retryAction: (() -> Void)? = {
+            let operationId = "borrow-\(book.identifier)"
+            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+            return { [weak self] in
+                UserRetryTracker.shared.recordRetry(operationId: operationId)
+                self?.startDownload(for: book)
+            }
+        }()
+
         runOnMainAsync {
-            self.downloadErrorPublisher.send((book.identifier, DisplayStrings.borrowFailed, formattedMessage))
+            self.downloadErrorPublisher.send(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.borrowFailed, message: formattedMessage, retryAction: retryAction))
         }
     }
 
@@ -1088,8 +1133,31 @@ extension MyBooksDownloadCenter {
                         }
                     } else {
                         runOnMainAsync {
-                            let formattedMessage = String(format: NSLocalizedString("The return of %@ could not be completed.", comment: ""), book.title)
-                            let alert = TPPAlertUtils.alert(title: "ReturnFailed", message: formattedMessage)
+                            let formattedMessage = String(format: Strings.MyDownloadCenter.returnFailedMessage, book.title)
+
+                            // PP-3707: Return failures are retryable (likely transient network/server issue)
+                            let operationId = "return-\(identifier)"
+                            let retryAction: (() -> Void)? = {
+                                guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+                                return { [weak self] in
+                                    UserRetryTracker.shared.recordRetry(operationId: operationId)
+                                    self?.returnBook(withIdentifier: identifier, completion: completion)
+                                }
+                            }()
+
+                            let message = retryAction == nil && !UserRetryTracker.shared.canRetry(operationId: operationId)
+                                ? Strings.MyDownloadCenter.tryAgainLater
+                                : formattedMessage
+
+                            let alert: UIAlertController
+                            if let retryAction = retryAction {
+                                alert = UIAlertController(title: Strings.MyDownloadCenter.returnFailed, message: message, preferredStyle: .alert)
+                                alert.addAction(UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { _ in retryAction() })
+                                alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
+                            } else {
+                                alert = TPPAlertUtils.alert(title: Strings.MyDownloadCenter.returnFailed, message: message)
+                            }
+
                             if let error = error as? Decoder, let document = try? TPPProblemDocument(from: error) {
                                 TPPAlertUtils.setProblemDocument(controller: alert, document: document, append: true)
                             }
@@ -2110,9 +2178,19 @@ extension MyBooksDownloadCenter {
         let formattedMessage = String.localizedStringWithFormat(NSLocalizedString("The download for %@ could not be completed.", comment: ""), book.title)
         let finalMessage = "\(formattedMessage)\n\(errorMessage)"
 
+        // Download failures are retryable
+        let retryAction: (() -> Void)? = {
+            let operationId = "download-\(book.identifier)"
+            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+            return { [weak self] in
+                UserRetryTracker.shared.recordRetry(operationId: operationId)
+                self?.startDownload(for: book)
+            }
+        }()
+
         // Publish error so SwiftUI views (half sheet) can present inline
         runOnMainAsync {
-            self.downloadErrorPublisher.send((book.identifier, "DownloadFailed", finalMessage))
+            self.downloadErrorPublisher.send(DownloadErrorInfo(bookId: book.identifier, title: "DownloadFailed", message: finalMessage, retryAction: retryAction))
         }
 
         broadcastUpdate()
@@ -2135,9 +2213,21 @@ extension MyBooksDownloadCenter {
             finalMessage = String(format: "%@\n\nError: %@", msg, error.localizedDescription)
         }
 
+        // Download failures are generally retryable unless it's a "no active loan" error
+        let isNoActiveLoan = problemDoc?.type == TPPProblemDocument.TypeNoActiveLoan
+        let retryAction: (() -> Void)? = {
+            guard !isNoActiveLoan else { return nil }
+            let operationId = "download-\(book.identifier)"
+            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+            return { [weak self] in
+                UserRetryTracker.shared.recordRetry(operationId: operationId)
+                self?.startDownload(for: book)
+            }
+        }()
+
         // Publish error so SwiftUI views (half sheet) can present inline
         runOnMainAsync {
-            self.downloadErrorPublisher.send((book.identifier, "DownloadFailed", finalMessage))
+            self.downloadErrorPublisher.send(DownloadErrorInfo(bookId: book.identifier, title: "DownloadFailed", message: finalMessage, retryAction: retryAction))
         }
     }
 

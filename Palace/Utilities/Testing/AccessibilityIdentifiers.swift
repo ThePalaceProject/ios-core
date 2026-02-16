@@ -262,4 +262,22 @@ public enum AccessibilityID {
         public static let closeButton = "common.closeButton"
         public static let doneButton = "common.doneButton"
     }
+
+    // MARK: - Error Alerts (PP-3707)
+
+    /// Identifiers for error alerts with retry support
+    public enum ErrorAlert {
+        public static let retryButton = "errorAlert.retryButton"
+        public static let cancelButton = "errorAlert.cancelButton"
+        public static let okButton = "errorAlert.okButton"
+        public static let viewErrorDetailsButton = "errorAlert.viewErrorDetailsButton"
+
+        // Specific alert contexts
+        public static let borrowErrorAlert = "errorAlert.borrowError"
+        public static let downloadErrorAlert = "errorAlert.downloadError"
+        public static let returnErrorAlert = "errorAlert.returnError"
+        public static let bookmarkSyncErrorAlert = "errorAlert.bookmarkSyncError"
+        public static let libraryLoadErrorAlert = "errorAlert.libraryLoadError"
+        public static let audiobookOpenErrorAlert = "errorAlert.audiobookOpenError"
+    }
 }

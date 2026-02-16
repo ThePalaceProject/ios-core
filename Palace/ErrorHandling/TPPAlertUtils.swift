@@ -366,6 +366,9 @@ import UIKit
     /// a detailed error report including activity trail, problem document,
     /// and device context.
     ///
+    /// When `retryAction` is provided, the alert shows "Retry" + "Cancel"
+    /// instead of a single "OK" button (PP-3707).
+    ///
     /// This is the primary integration point for PP-3439.
     class func alertWithDetails(
         title: String?,
@@ -373,7 +376,8 @@ import UIKit
         error: NSError? = nil,
         problemDocument: TPPProblemDocument? = nil,
         bookIdentifier: String? = nil,
-        bookTitle: String? = nil
+        bookTitle: String? = nil,
+        retryAction: (() -> Void)? = nil
     ) -> UIAlertController {
         // Build the base alert using existing logic
         let alertController: UIAlertController
@@ -446,8 +450,21 @@ import UIKit
             }
         })
 
-        // OK button
-        freshAlert.addAction(UIAlertAction(title: "OK", style: .default))
+        // PP-3707: Add Retry + Cancel for retryable errors, or OK for non-retryable
+        if let retryAction = retryAction {
+            let retry = UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { _ in
+                retryAction()
+            }
+            retry.accessibilityIdentifier = AccessibilityID.ErrorAlert.retryButton
+            let cancel = UIAlertAction(title: Strings.Generic.cancel, style: .cancel)
+            cancel.accessibilityIdentifier = AccessibilityID.ErrorAlert.cancelButton
+            freshAlert.addAction(retry)
+            freshAlert.addAction(cancel)
+        } else {
+            let ok = UIAlertAction(title: Strings.Generic.ok, style: .default)
+            ok.accessibilityIdentifier = AccessibilityID.ErrorAlert.okButton
+            freshAlert.addAction(ok)
+        }
 
         return freshAlert
     }
