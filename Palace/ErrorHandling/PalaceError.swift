@@ -539,6 +539,13 @@ extension PalaceError {
 
         let nsError = error as NSError
 
+        // PP-3716: OPDSFeedService wraps PalaceErrors in NSErrors to attach problem
+        // documents. When this happens, the domain is "Palace.PalaceError" and the code
+        // maps to the enum case index. Reconstruct the PalaceError from the code.
+        if nsError.domain == "Palace.PalaceError" {
+            return palaceErrorFromCode(nsError.code)
+        }
+
         // Network errors
         if nsError.domain == NSURLErrorDomain {
             return .network(networkErrorFrom(nsError))
@@ -553,6 +560,22 @@ extension PalaceError {
 
         // Default to unknown network error
         return .network(.unknown)
+    }
+
+    /// Reconstructs a PalaceError from its NSError code (enum case index)
+    private static func palaceErrorFromCode(_ code: Int) -> PalaceError {
+        switch code {
+        case 0: return .network(.unknown)
+        case 1: return .bookRegistry(.invalidState)
+        case 2: return .download(.networkFailure)
+        case 3: return .parsing(.opdsFeedInvalid)
+        case 4: return .drm(.authenticationFailed)
+        case 5: return .authentication(.invalidCredentials)
+        case 6: return .storage(.insufficientSpace)
+        case 7: return .bookReader(.bookNotAvailable)
+        case 8: return .audiobook(.playbackError)
+        default: return .network(.unknown)
+        }
     }
 
     private static func networkErrorFrom(_ error: NSError) -> NetworkError {

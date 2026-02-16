@@ -204,9 +204,28 @@ extension MyBooksDownloadCenter {
                 return true
             }
 
-            // Check problem document type
-            if let problemDoc = problemDocument, problemDoc.type == TPPProblemDocument.TypeInvalidCredentials {
-                return true
+            // Check problem document for explicit auth error types
+            if let problemDoc = problemDocument {
+                // Exact match: legacy "credentials-invalid" type
+                if problemDoc.type == TPPProblemDocument.TypeInvalidCredentials {
+                    return true
+                }
+
+                // PP-3716: Recoverable auth errors (e.g. "auth/recoverable/saml/session-expired")
+                // The server categorizes these with /auth/recoverable/ in the type URL
+                if problemDoc.isRecoverableAuthError {
+                    Log.info(#file, "Recoverable auth error detected: \(problemDoc.type ?? "unknown") — triggering re-auth (PP-3716)")
+                    return true
+                }
+
+                // PP-3716: "no-active-loan" with SAML credentials is likely a session
+                // expiry — the server returns 400 instead of 401 in some cases
+                if problemDoc.type == TPPProblemDocument.TypeNoActiveLoan,
+                   authDef?.isSaml == true,
+                   hasCredentials {
+                    Log.info(#file, "SAML: 'no-active-loan' with active credentials — treating as auth error (PP-3716)")
+                    return true
+                }
             }
 
             // Check original error for 401 status
