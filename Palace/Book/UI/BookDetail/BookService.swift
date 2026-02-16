@@ -672,9 +672,12 @@ enum BookService {
             alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
         } else {
-            let message = (book != nil && !UserRetryTracker.shared.canRetry(operationId: "audiobook-open-\(book!.identifier)"))
-                ? Strings.MyDownloadCenter.tryAgainLater
-                : Strings.Error.tryAgain
+            let message: String
+            if let book = book, !UserRetryTracker.shared.canRetry(operationId: "audiobook-open-\(book.identifier)") {
+                message = Strings.MyDownloadCenter.tryAgainLater
+            } else {
+                message = Strings.Error.tryAgain
+            }
             let alert = TPPAlertUtils.alert(title: Strings.Error.openFailedError, message: message)
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
         }

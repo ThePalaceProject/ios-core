@@ -114,7 +114,8 @@ final class BookDetailViewModel: ObservableObject {
 
         // Defer download progress check to avoid triggering cover fetch during init
         Task { @MainActor in
-            self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
+            let reported = downloadCenter.downloadProgress(for: book.identifier)
+            self.downloadProgress = max(self.downloadProgress, reported)
         }
 
         #if LCP
@@ -299,7 +300,8 @@ final class BookDetailViewModel: ObservableObject {
 
     @objc func handleDownloadStateDidChange(_ notification: Notification) {
         Task { @MainActor in
-            self.downloadProgress = downloadCenter.downloadProgress(for: book.identifier)
+            let reported = downloadCenter.downloadProgress(for: book.identifier)
+            self.downloadProgress = max(self.downloadProgress, reported)
             let info = downloadCenter.downloadInfo(forBookIdentifier: book.identifier)
             if let rights = info?.rightsManagement, rights != .unknown {
                 if bookState != .downloading && bookState != .downloadSuccessful {
