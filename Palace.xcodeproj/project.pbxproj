@@ -524,6 +524,9 @@
 		ABEVENTS0002SIMPLYE001 /* AudiobookEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABEVENTS0001FILEREF01 /* AudiobookEvents.swift */; };
 		ABRL002T260955EF008E1DC3 /* AudiobookReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABRL001T260955EF008E1DC3 /* AudiobookReliabilityTests.swift */; };
 		AC7D22C5A54C9291CD111AC8 /* CatalogAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4609134D5A2D39DD0D8E7DCA /* CatalogAccessibilityTests.swift */; };
+		PP3673BF000000000000001 /* AccessibilityAnnouncementCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3673FR000000000000001 /* AccessibilityAnnouncementCenterTests.swift */; };
+		PP3673BF000000000000002 /* StatusAnnouncementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3673FR000000000000002 /* StatusAnnouncementTests.swift */; };
+		PP3673BF000000000000003 /* AccessLintComplianceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3673FR000000000000003 /* AccessLintComplianceTests.swift */; };
 		ACCT00012F17000000000001 /* AccountsManagerCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACCT00012F17000000000002 /* AccountsManagerCacheTests.swift */; };
 		AE77E7E37D89FB3EED630624 /* TPPOPDSType.m in Sources */ = {isa = PBXBuildFile; fileRef = AE77EFD5622206475B6715A9 /* TPPOPDSType.m */; };
 		AE77E9B832371587493FF281 /* TPPOPDSEntry.m in Sources */ = {isa = PBXBuildFile; fileRef = AE77E4AF64208439F78B3D73 /* TPPOPDSEntry.m */; };
@@ -1479,6 +1482,9 @@
 		3DDE892E38D34061A2DBE2F2 /* CatalogRepositoryMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogRepositoryMock.swift; sourceTree = "<group>"; };
 		3FE7745D6905F20849740238 /* TPPCredentialsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPCredentialsTests.swift; sourceTree = "<group>"; };
 		42F178DBC9EBCF7C7FA70BEC /* FocusIndicationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FocusIndicationTests.swift; sourceTree = "<group>"; };
+		PP3673FR000000000000001 /* AccessibilityAnnouncementCenterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccessibilityAnnouncementCenterTests.swift; sourceTree = "<group>"; };
+		PP3673FR000000000000002 /* StatusAnnouncementTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StatusAnnouncementTests.swift; sourceTree = "<group>"; };
+		PP3673FR000000000000003 /* AccessLintComplianceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccessLintComplianceTests.swift; sourceTree = "<group>"; };
 		44E59F675A3E4419BE1E24BB /* FacetViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacetViewModelTests.swift; sourceTree = "<group>"; };
 		4609134D5A2D39DD0D8E7DCA /* CatalogAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogAccessibilityTests.swift; sourceTree = "<group>"; };
 		480ADB3F1AA842DE805EC230 /* AccountDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDetailView.swift; sourceTree = "<group>"; };
@@ -4167,11 +4173,14 @@
 			isa = PBXGroup;
 			children = (
 				724E4CF383350791D09DE972 /* AccessibilityLabelTests.swift */,
+				PP3673FR000000000000001 /* AccessibilityAnnouncementCenterTests.swift */,
+				PP3673FR000000000000003 /* AccessLintComplianceTests.swift */,
 				A77E63314ED6F70CC68C0DA0 /* AudiobookAccessibilityTests.swift */,
 				4609134D5A2D39DD0D8E7DCA /* CatalogAccessibilityTests.swift */,
 				A047896E4B4E78F19CF33603 /* FacetToolbarAccessibilityTests.swift */,
 				D72DFEC346C543E50A57BE49 /* ReaderAccessibilityTests.swift */,
 				E037F85949A0ED4B82C40B3F /* SearchAccessibilityTests.swift */,
+				PP3673FR000000000000002 /* StatusAnnouncementTests.swift */,
 				42F178DBC9EBCF7C7FA70BEC /* FocusIndicationTests.swift */,
 			);
 			path = Accessibility;
@@ -4821,6 +4830,9 @@
 				AB11E7A7E642DD31825EB6E6 /* FocusIndicationTests.swift in Sources */,
 				E861F14A001F228C7E96F790 /* KeyboardVoiceOverTests.swift in Sources */,
 				EA12FB34567890ABCDEF0002 /* EPUBToolbarToggleTests.swift in Sources */,
+				PP3673BF000000000000001 /* AccessibilityAnnouncementCenterTests.swift in Sources */,
+				PP3673BF000000000000002 /* StatusAnnouncementTests.swift in Sources */,
+				PP3673BF000000000000003 /* AccessLintComplianceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
