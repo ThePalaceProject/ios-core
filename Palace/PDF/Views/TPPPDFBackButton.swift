@@ -16,7 +16,7 @@ struct TPPPDFBackButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.left")
-                .font(.system(size: 20, weight: .medium))
+                .font(.title3.weight(.medium))
         }
         .toolbarButtonSize()
         .accessibilityLabel(Strings.Generic.goBack)

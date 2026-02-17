@@ -175,9 +175,9 @@ struct BookDetailView: View {
                 }, label: {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.body.weight(.semibold))
                         Text(Strings.Generic.back)
-                            .font(.system(size: 17))
+                            .palaceFont(.body)
                     }
                     .foregroundColor(headerColor.isDark ? .white : .black)
                 })
@@ -539,7 +539,7 @@ struct BookDetailView: View {
 
     @ViewBuilder private func infoLabel(label: String) -> some View {
         Text(label)
-            .font(Font.boldPalaceFont(size: 12))
+            .palaceFont(.caption, weight: .bold)
             .lineLimit(nil)
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
@@ -716,9 +716,9 @@ struct BookDetailView: View {
                 }, label: {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.body.weight(.semibold))
                         Text("Back")
-                            .font(.system(size: 17))
+                            .palaceFont(.body)
                     }
                     .foregroundColor(headerColor.isDark ? .white : .black)
                 })
