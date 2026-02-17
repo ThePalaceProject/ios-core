@@ -8,6 +8,8 @@
 
 import SwiftUI
 
+// accesslint:disable A11Y.SWIFTUI.MISSING_LABEL - These are image constants;
+// accessibility (labels / hidden) is configured at each usage site.
 struct ImageProviders {
     struct AudiobookSampleToolbar {
         static let pause = Image(systemName: "pause.circle")

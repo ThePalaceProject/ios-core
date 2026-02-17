@@ -494,6 +494,7 @@ struct BookDetailView: View {
             .frame(width: 28, height: 28)
             .background(Circle().fill(Color.colorAudiobookBackground))
             .clipped()
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder private var informationView: some View {

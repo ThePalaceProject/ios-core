@@ -45,6 +45,11 @@ import SwiftUI
 
     // MARK: UIViewController
 
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = NSLocalizedString("Accounts", comment: "Library accounts list screen title")
+    }
+
     override func loadView() {
         self.view = UITableView(frame: CGRect.zero, style: .grouped)
         self.tableView = self.view as? UITableView

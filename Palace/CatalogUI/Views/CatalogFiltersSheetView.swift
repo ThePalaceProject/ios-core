@@ -234,6 +234,7 @@ private struct FacetSectionHeader: View {
                         .font(.subheadline)
                         .foregroundColor(.primary)
                         .padding(.bottom, -5)
+                        .accessibilityHint(NSLocalizedString("Clears applied filters for this group", comment: "Accessibility hint for filter clear button"))
                 }
                 .frame(width: 50)
             }
