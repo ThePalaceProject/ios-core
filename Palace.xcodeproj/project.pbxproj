@@ -1128,6 +1128,7 @@
 		RTRT00012F0300030000001B /* RetryClassificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300030000001A /* RetryClassificationTests.swift */; };
 		RTRT00012F0300040000001B /* DownloadErrorInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */; };
 		RTRT00012F0300050000001B /* AlertModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300050000001A /* AlertModelTests.swift */; };
+		BREM00012F1100010000001B /* BorrowErrorMessageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BREM00012F1100010000001A /* BorrowErrorMessageTests.swift */; };
 		SCENEDEL0001PALACE00001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCENEDEL0001FILEREF001 /* SceneDelegate.swift */; };
 		SCENEDEL0002SIMPLYE0001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCENEDEL0001FILEREF001 /* SceneDelegate.swift */; };
 		SETPV002T260955EF008E1DC3 /* TPPSettingsProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = SETPV001T260955EF008E1DC3 /* TPPSettingsProviding.swift */; };
@@ -2086,6 +2087,7 @@
 		RTRT00012F0300030000001A /* RetryClassificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryClassificationTests.swift; sourceTree = "<group>"; };
 		RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadErrorInfoTests.swift; sourceTree = "<group>"; };
 		RTRT00012F0300050000001A /* AlertModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertModelTests.swift; sourceTree = "<group>"; };
+		BREM00012F1100010000001A /* BorrowErrorMessageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorrowErrorMessageTests.swift; sourceTree = "<group>"; };
 		SCENEDEL0001FILEREF001 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		SETPV001T260955EF008E1DC3 /* TPPSettingsProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsProviding.swift; sourceTree = "<group>"; };
 		SETVM001T260955EF008E1DC3 /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
@@ -3603,6 +3605,7 @@
 				RTRT00012F0300020000001A /* UserRetryTrackerTests.swift */,
 				RTRT00012F0300030000001A /* RetryClassificationTests.swift */,
 				RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */,
+				BREM00012F1100010000001A /* BorrowErrorMessageTests.swift */,
 			);
 			path = MyBooks;
 			sourceTree = "<group>";
@@ -4736,6 +4739,7 @@
 				RTRT00012F0300020000001B /* UserRetryTrackerTests.swift in Sources */,
 				RTRT00012F0300030000001B /* RetryClassificationTests.swift in Sources */,
 				RTRT00012F0300040000001B /* DownloadErrorInfoTests.swift in Sources */,
+				BREM00012F1100010000001B /* BorrowErrorMessageTests.swift in Sources */,
 				RTRT00012F0300050000001B /* AlertModelTests.swift in Sources */,
 				QATEST10BF00000000000001 /* EmailAddressTests.swift in Sources */,
 				QATEST11BF00000000000001 /* DeviceSpecificErrorMonitorTests.swift in Sources */,
