@@ -107,13 +107,11 @@ struct AudiobookSampleToolbar: View {
                 .resizable()
                 .square(length: playbackButtonLength)
                 .padding(.trailing)
-                .accessibilityHidden(true)
         case .playing:
             Images.pause
                 .resizable()
                 .square(length: playbackButtonLength)
                 .padding(.trailing)
-                .accessibilityHidden(true)
         default:
             loadingView
                 .square(length: playbackButtonLength)
@@ -140,7 +138,6 @@ struct AudiobookSampleToolbar: View {
                 .resizable()
                 .square(length: playbackButtonLength)
                 .padding(.trailing)
-                .accessibilityHidden(true)
         }
         .accessibilityLabel(Strings.Generic.skipBack30)
     }

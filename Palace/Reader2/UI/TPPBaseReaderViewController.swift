@@ -114,7 +114,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        title = publication.metadata.title
         view.backgroundColor = TPPConfiguration.backgroundColor()
 
         // Ensure content extends under navigation bar without shifting when bar appears/disappears

@@ -35,7 +35,7 @@ struct TPPPDFToolbarButton: View {
         Button(action: action) {
             if let image = image {
                 image
-                    .accessibilityHidden(true)
+                    .accessibilityHidden(true) // Button provides accessibility
             }
             if let text = text {
                 Text(text)
@@ -43,7 +43,7 @@ struct TPPPDFToolbarButton: View {
             }
         }
         .toolbarButtonSize()
-        .accessibilityLabel(accessibilityLabelText ?? text ?? Strings.Generic.ok)
+        .accessibilityLabel(accessibilityLabelText ?? "")
     }
 }
 

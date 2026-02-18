@@ -22,18 +22,11 @@ class CatalogSearchViewModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
     private let debounceInterval: TimeInterval
-    private let announcements: TPPAccessibilityAnnouncementCenter
 
-    init(
-        repository: CatalogRepositoryProtocol,
-        baseURL: @escaping () -> URL?,
-        debounceInterval: TimeInterval = 0.1,
-        announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter()
-    ) {
+    init(repository: CatalogRepositoryProtocol, baseURL: @escaping () -> URL?, debounceInterval: TimeInterval = 0.1) {
         self.repository = repository
         self.baseURL = baseURL
         self.debounceInterval = debounceInterval
-        self.announcements = announcements
     }
 
     deinit {
@@ -124,23 +117,14 @@ class CatalogSearchViewModel: ObservableObject {
 
                     self.filteredBooks = searchResults
                     self.extractNextPageURL(from: feedObjc)
-
-                    // PP-3673: Announce search results to VoiceOver without moving focus
-                    self.announcements.announceSearchResults(query: query, count: searchResults.count)
                 } else {
                     self.filteredBooks = []
                     self.nextPageURL = nil
-
-                    // PP-3673: Announce no results
-                    self.announcements.announceSearchResults(query: query, count: 0)
                 }
             } catch {
                 guard !Task.isCancelled else { return }
                 self?.filteredBooks = []
                 self?.nextPageURL = nil
-
-                // PP-3673: Announce search failure
-                self?.announcements.announceSearchFailed()
             }
         }
     }
@@ -180,9 +164,6 @@ class CatalogSearchViewModel: ObservableObject {
             if let entries = feedObjc.entries as? [TPPOPDSEntry] {
                 let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
                 filteredBooks.append(contentsOf: newBooks)
-
-                // PP-3673: Announce additional results loaded
-                announcements.announceAdditionalResultsLoaded(count: newBooks.count)
             }
         } catch {
             Log.error(#file, "Failed to load next page of search results: \(error.localizedDescription)")

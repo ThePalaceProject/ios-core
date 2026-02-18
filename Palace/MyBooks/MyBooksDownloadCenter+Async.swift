@@ -363,11 +363,11 @@ extension MyBooksDownloadCenter {
             )
         }
 
-        var message = Self.buildBorrowErrorMessage(
-            for: book.title,
-            error: error,
-            problemDocument: problemDoc
-        )
+        // Build message with recovery suggestion
+        var message = error.localizedDescription
+        if problemDoc == nil, let recovery = error.recoverySuggestion {
+            message = "\(error.localizedDescription)\n\n\(recovery)"
+        }
 
         // Check if this error is retryable and within retry limits (PP-3707)
         let operationId = "borrow-\(book.identifier)"
@@ -403,38 +403,5 @@ extension MyBooksDownloadCenter {
             animated: true,
             completion: nil
         )
-    }
-
-    // MARK: - Borrow Error Message Builder
-
-    /// Builds a user-friendly borrow error message.
-    ///
-    /// Always uses the localized "Borrowing [title] could not be completed." base message
-    /// instead of raw `PalaceError.localizedDescription` (which can contain technical strings
-    /// like "Invalid OPDS feed" that confuse users and generate support tickets).
-    ///
-    /// Technical details remain available via the "View Error Details" button.
-    ///
-    /// - Parameters:
-    ///   - bookTitle: The title of the book that failed to borrow
-    ///   - error: The structured PalaceError
-    ///   - problemDocument: Optional problem document from the server
-    /// - Returns: A user-friendly error message string
-    static func buildBorrowErrorMessage(
-        for bookTitle: String,
-        error: PalaceError,
-        problemDocument: TPPProblemDocument?
-    ) -> String {
-        let baseMessage = String(format: Strings.MyDownloadCenter.borrowFailedMessage, bookTitle)
-
-        if let doc = problemDocument, let detail = doc.detail, !detail.isEmpty {
-            return baseMessage + "\n\n" + detail
-        }
-
-        if let recovery = error.recoverySuggestion {
-            return baseMessage + "\n\n" + recovery
-        }
-
-        return baseMessage
     }
 }

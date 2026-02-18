@@ -99,7 +99,6 @@
         self.submitButton = submitButton
         submitButton.translatesAutoresizingMaskIntoConstraints = false
         submitButton.setTitle("Send to Support", for: .normal)
-        submitButton.accessibilityHint = NSLocalizedString("Sends this error report to the support team", comment: "Accessibility hint for send to support button")
         submitButton.addTarget(self, action: #selector(submitButtonWasPressed), for: .touchDown)
 
         scrollView.addSubview(label)

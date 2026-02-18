@@ -81,7 +81,6 @@ struct TPPPDFNavigation<Content>: View where Content: View {
                 Picker("", selection: $pickerSelection.onChange(changeReaderMode)) {
                     ForEach(TPPPDFReaderModeValues.allValues) { readerModeValue in
                         readerModeValue.image
-                            .accessibilityHidden(true)
                             .tag(readerModeValue.rawValue)
                             .accessibilityLabel(readerModeValue.accessibilityLabel)
                     }

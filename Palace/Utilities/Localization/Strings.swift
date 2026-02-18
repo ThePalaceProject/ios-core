@@ -216,67 +216,6 @@ struct Strings {
         }
     }
 
-    // MARK: - Search Announcements (PP-3673)
-
-    struct SearchAnnouncements {
-        static func searchResultsFound(_ query: String, count: Int) -> String {
-            String.localizedStringWithFormat(
-                NSLocalizedString(
-                    "Showing %d results for %@.",
-                    comment: "VoiceOver announcement when search results load. %d is result count, %@ is search term"
-                ),
-                count,
-                query
-            )
-        }
-
-        static func noSearchResults(_ query: String) -> String {
-            String.localizedStringWithFormat(
-                NSLocalizedString(
-                    "No results found for %@.",
-                    comment: "VoiceOver announcement when search returns no results. %@ is search term"
-                ),
-                query
-            )
-        }
-
-        static func searchFailed() -> String {
-            NSLocalizedString(
-                "Search failed. Please try again.",
-                comment: "VoiceOver announcement when a search request fails"
-            )
-        }
-
-        static func loadingMoreResults() -> String {
-            NSLocalizedString(
-                "Loading more results.",
-                comment: "VoiceOver announcement when loading additional search result pages"
-            )
-        }
-
-        static func additionalResultsLoaded(_ count: Int) -> String {
-            String.localizedStringWithFormat(
-                NSLocalizedString(
-                    "%d additional results loaded.",
-                    comment: "VoiceOver announcement when more search results are loaded. %d is new result count"
-                ),
-                count
-            )
-        }
-    }
-
-    // MARK: - Status Announcements (PP-3673)
-
-    struct StatusAnnouncements {
-        static func errorOccurred(_ message: String) -> String {
-            message
-        }
-
-        static func actionFailed(title: String, message: String) -> String {
-            "\(title). \(message)"
-        }
-    }
-
     struct OETutorialChoiceViewController {
         static let loginMessage = NSLocalizedString("You need to login to access the collection.", comment: "")
         static let requestNewCodes = NSLocalizedString("Request New Codes", comment: "")

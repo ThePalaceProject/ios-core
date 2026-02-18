@@ -72,7 +72,7 @@ struct EPUBReaderView: View {
             coordinator.dismissEPUBSample()
         }, label: {
             Image(systemName: "xmark.circle.fill")
-                .font(.title)
+                .font(.system(size: 28))
                 .foregroundColor(.white)
                 .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                 .padding(16)

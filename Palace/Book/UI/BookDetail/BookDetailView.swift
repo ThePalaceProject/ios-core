@@ -175,9 +175,9 @@ struct BookDetailView: View {
                 }, label: {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
-                            .font(.body.weight(.semibold))
+                            .font(.system(size: 17, weight: .semibold))
                         Text(Strings.Generic.back)
-                            .palaceFont(.body)
+                            .font(.system(size: 17))
                     }
                     .foregroundColor(headerColor.isDark ? .white : .black)
                 })
@@ -494,7 +494,6 @@ struct BookDetailView: View {
             .frame(width: 28, height: 28)
             .background(Circle().fill(Color.colorAudiobookBackground))
             .clipped()
-            .accessibilityHidden(true)
     }
 
     @ViewBuilder private var informationView: some View {
@@ -539,7 +538,7 @@ struct BookDetailView: View {
 
     @ViewBuilder private func infoLabel(label: String) -> some View {
         Text(label)
-            .palaceFont(.caption, weight: .bold)
+            .font(Font.boldPalaceFont(size: 12))
             .lineLimit(nil)
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
@@ -716,9 +715,9 @@ struct BookDetailView: View {
                 }, label: {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
-                            .font(.body.weight(.semibold))
+                            .font(.system(size: 17, weight: .semibold))
                         Text("Back")
-                            .palaceFont(.body)
+                            .font(.system(size: 17))
                     }
                     .foregroundColor(headerColor.isDark ? .white : .black)
                 })

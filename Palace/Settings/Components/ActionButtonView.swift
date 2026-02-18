@@ -38,7 +38,7 @@ struct ActionButtonView: View {
                         .tint(buttonTextColor)
                 }
                 Text(title)
-                    .palaceFont(.body, weight: .semibold)
+                    .font(.system(size: AccountDetailView.Typography.buttonSize, weight: .semibold))
                     .opacity(isLoading ? 0.5 : 1)
             }
             .frame(maxWidth: .infinity)

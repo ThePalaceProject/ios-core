@@ -71,7 +71,7 @@ struct TPPReaderSettingsView: View {
                 }
                 .accessibility(label: Text(readerAppearance.accessibilityText))
                 .buttonStyle(SettingsButtonStyle(settings: settings, textColor: readerAppearance.associatedColors.textColor))
-                .font(.body)
+                .font(.system(size: 18))
                 .background(
                     Rectangle()
                         .foregroundColor(Color(readerAppearance.associatedColors.backgroundColor))

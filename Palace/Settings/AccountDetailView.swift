@@ -95,7 +95,7 @@ struct AccountDetailView: View {
             }
 
             Text(viewModel.libraryName)
-                .palaceFont(.headline)
+                .font(.boldPalaceFont(size: Typography.libraryNameSize))
                 .foregroundColor(.secondary)
                 .horizontallyCentered()
         }
@@ -105,7 +105,7 @@ struct AccountDetailView: View {
 
     private var signInMessageSection: some View {
         Text(Strings.AccountDetail.signInMessage(libraryName: viewModel.libraryName))
-            .palaceFont(.footnote)
+            .font(.palaceFont(size: Typography.messageSize))
             .foregroundColor(.primary)
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.vertical, Layout.verticalPaddingLarge)
@@ -176,14 +176,14 @@ struct AccountDetailView: View {
         if viewModel.selectedAccount?.supportEmail != nil {
             Button(action: handleReportIssue, label: {
                 Text(DisplayStrings.reportIssue)
-                    .palaceFont(.footnote)
+                    .font(.palaceFont(size: Typography.messageSize))
                     .foregroundColor(Color(TPPConfiguration.mainColor()))
                     .underline()
             })
         } else if viewModel.selectedAccount?.supportURL != nil {
             NavigationLink(destination: reportIssueWebView, label: {
                 Text(DisplayStrings.reportIssue)
-                    .palaceFont(.footnote)
+                    .font(.palaceFont(size: Typography.messageSize))
                     .foregroundColor(Color(TPPConfiguration.mainColor()))
                     .underline()
             })
@@ -230,7 +230,7 @@ struct AccountDetailView: View {
             }
 
             Text(viewModel.libraryName)
-                .palaceFont(.headline)
+                .font(.system(size: Typography.headerSize, weight: .bold))
                 .foregroundColor(.secondary)
 
             Spacer()

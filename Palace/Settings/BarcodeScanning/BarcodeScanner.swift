@@ -36,7 +36,6 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        title = NSLocalizedString("Scan Barcode", comment: "Barcode scanner screen title")
         view.backgroundColor = UIColor.black
         captureSession = AVCaptureSession()
 

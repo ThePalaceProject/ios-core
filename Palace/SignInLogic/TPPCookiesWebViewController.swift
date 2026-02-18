@@ -133,25 +133,18 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
     }
 
     private func hideLoading() {
-        if UIAccessibility.isReduceMotionEnabled {
-            loadingOverlay.isHidden = true
-            activityIndicator.stopAnimating()
-        } else {
-            UIView.animate(withDuration: 0.25) {
-                self.loadingOverlay.alpha = 0
-            } completion: { _ in
-                self.loadingOverlay.isHidden = true
-                self.loadingOverlay.alpha = 1
-                self.activityIndicator.stopAnimating()
-            }
+        UIView.animate(withDuration: 0.25) {
+            self.loadingOverlay.alpha = 0
+        } completion: { _ in
+            self.loadingOverlay.isHidden = true
+            self.loadingOverlay.alpha = 1
+            self.activityIndicator.stopAnimating()
         }
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         assert(model != nil, "You nneed to set the model first!")
-
-        title = NSLocalizedString("Sign In", comment: "Sign-in web view screen title")
 
         if model?.autoPresentIfNeeded == true {
             TPPCookiesWebViewController.automaticBrowserStorage[uuid] = self

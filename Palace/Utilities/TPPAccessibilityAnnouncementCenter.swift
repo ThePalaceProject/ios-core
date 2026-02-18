@@ -8,43 +8,24 @@
 import UIKit
 
 /// Centralized VoiceOver announcements for background events.
-///
-/// Provides a single place to post `UIAccessibility.announcement`
-/// notifications so that VoiceOver announces status changes without
-/// moving focus. The center includes deduplication: if the same message
-/// is posted within `deduplicationInterval` seconds it is suppressed to
-/// avoid flooding the user with repeated announcements (PP-3673).
 final class TPPAccessibilityAnnouncementCenter {
     typealias PostHandler = (UIAccessibility.Notification, String) -> Void
     typealias VoiceOverRunningProvider = () -> Bool
-    typealias TimeProvider = () -> Date
 
     private let postHandler: PostHandler
     private let isVoiceOverRunning: VoiceOverRunningProvider
-    private let timeProvider: TimeProvider
     private let progressStep: Int
-    private let deduplicationInterval: TimeInterval
-
     private var lastProgressBucketByKey: [String: Int] = [:]
-
-    /// Tracks the most recent announcement time per message for deduplication.
-    private var recentAnnouncements: [String: Date] = [:]
 
     init(
         postHandler: @escaping PostHandler = { UIAccessibility.post(notification: $0, argument: $1) },
         isVoiceOverRunning: @escaping VoiceOverRunningProvider = { UIAccessibility.isVoiceOverRunning },
-        timeProvider: @escaping TimeProvider = { Date() },
-        progressStep: Int = 20,
-        deduplicationInterval: TimeInterval = 2.0
+        progressStep: Int = 20
     ) {
         self.postHandler = postHandler
         self.isVoiceOverRunning = isVoiceOverRunning
-        self.timeProvider = timeProvider
         self.progressStep = max(5, progressStep)
-        self.deduplicationInterval = deduplicationInterval
     }
-
-    // MARK: - Download Announcements
 
     func announceDownloadStarted(title: String) {
         announce(Strings.DownloadAnnouncements.downloadStarted(title))
@@ -58,8 +39,6 @@ final class TPPAccessibilityAnnouncementCenter {
         announce(Strings.DownloadAnnouncements.downloadFailed(title))
     }
 
-    // MARK: - Borrow Announcements
-
     func announceBorrowStarted(title: String) {
         announce(Strings.DownloadAnnouncements.borrowStarted(title))
     }
@@ -71,8 +50,6 @@ final class TPPAccessibilityAnnouncementCenter {
     func announceBorrowFailed(title: String) {
         announce(Strings.DownloadAnnouncements.borrowFailed(title))
     }
-
-    // MARK: - Return Announcements
 
     func announceReturnStarted(title: String) {
         announce(Strings.DownloadAnnouncements.returnStarted(title))
@@ -100,8 +77,6 @@ final class TPPAccessibilityAnnouncementCenter {
         announce(Strings.DownloadAnnouncements.retryingDownload(title))
     }
 
-    // MARK: - Download Progress
-
     func announceDownloadProgress(title: String, identifier: String, progress: Double) {
         let percent = progressPercent(progress)
         guard percent < 100 else { return }
@@ -114,83 +89,14 @@ final class TPPAccessibilityAnnouncementCenter {
         lastProgressBucketByKey.removeValue(forKey: identifier)
     }
 
-    // MARK: - Search Announcements (PP-3673)
-
-    func announceSearchResults(query: String, count: Int) {
-        if count > 0 {
-            announce(Strings.SearchAnnouncements.searchResultsFound(query, count: count))
-        } else {
-            announce(Strings.SearchAnnouncements.noSearchResults(query))
-        }
-    }
-
-    func announceSearchFailed() {
-        announce(Strings.SearchAnnouncements.searchFailed())
-    }
-
-    func announceLoadingMoreResults() {
-        announce(Strings.SearchAnnouncements.loadingMoreResults())
-    }
-
-    func announceAdditionalResultsLoaded(count: Int) {
-        guard count > 0 else { return }
-        announce(Strings.SearchAnnouncements.additionalResultsLoaded(count))
-    }
-
-    // MARK: - Error / Status Announcements (PP-3673)
-
-    /// Announces an error message without moving VoiceOver focus.
-    /// Duplicate messages within `deduplicationInterval` are suppressed.
-    func announceError(_ message: String) {
-        announce(Strings.StatusAnnouncements.errorOccurred(message))
-    }
-
-    /// Announces a titled status message, e.g. an error alert title + body.
-    func announceStatus(title: String, message: String) {
-        announce(Strings.StatusAnnouncements.actionFailed(title: title, message: message))
-    }
-
-    // MARK: - General Purpose
-
-    /// Post an arbitrary status message as a VoiceOver announcement.
-    /// Respects deduplication: the same `message` within `deduplicationInterval`
-    /// seconds will be suppressed automatically.
-    func announceMessage(_ message: String) {
-        announce(message)
-    }
-
     // MARK: - Private
 
     private func announce(_ message: String) {
         guard isVoiceOverRunning() else { return }
-        guard !message.isEmpty else { return }
-        guard shouldAnnounce(message: message) else { return }
         DispatchQueue.main.async { [postHandler] in
             postHandler(.announcement, message)
         }
     }
-
-    /// Returns `true` if the message has not been announced within
-    /// `deduplicationInterval`. Records the current time for future checks.
-    private func shouldAnnounce(message: String) -> Bool {
-        let now = timeProvider()
-        if let lastTime = recentAnnouncements[message],
-           now.timeIntervalSince(lastTime) < deduplicationInterval {
-            return false
-        }
-        recentAnnouncements[message] = now
-        pruneOldAnnouncements(now: now)
-        return true
-    }
-
-    /// Remove entries older than `deduplicationInterval` to prevent unbounded growth.
-    private func pruneOldAnnouncements(now: Date) {
-        recentAnnouncements = recentAnnouncements.filter { _, time in
-            now.timeIntervalSince(time) < deduplicationInterval
-        }
-    }
-
-    // MARK: - Progress Helpers
 
     private func progressPercent(_ progress: Double) -> Int {
         let clamped = max(0.0, min(1.0, progress))
