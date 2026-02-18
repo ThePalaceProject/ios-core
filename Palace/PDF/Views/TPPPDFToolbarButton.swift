@@ -12,45 +12,40 @@ import PalaceUIKit
 /// Preconfigured toolbar button view
 struct TPPPDFToolbarButton: View {
 
-    let action: () -> Void
-    let image: Image?
-    let text: String?
-    let accessibilityLabelText: String?
-
-    init(icon: String, accessibilityLabel: String? = nil, action: @escaping () -> Void) {
-        self.action = action
-        self.image = Image(systemName: icon)
-        self.text = nil
-        self.accessibilityLabelText = accessibilityLabel
+  let action: () -> Void
+  let image: Image?
+  let text: String?
+  
+  init(icon: String, action: @escaping () -> Void) {
+    self.action = action
+    self.image = Image(systemName: icon)
+    self.text = nil
+  }
+  
+  init(text: String, action: @escaping () -> Void) {
+    self.action = action
+    self.image = nil
+    self.text = text
+  }
+  
+  var body: some View {
+    Button(action: action) {
+      if let image = image {
+        image
+      }
+      if let text = text {
+        Text(text)
+          .palaceFont(.body)
+      }
     }
-
-    init(text: String, action: @escaping () -> Void) {
-        self.action = action
-        self.image = nil
-        self.text = text
-        self.accessibilityLabelText = text
-    }
-
-    var body: some View {
-        Button(action: action) {
-            if let image = image {
-                image
-                    .accessibilityHidden(true)
-            }
-            if let text = text {
-                Text(text)
-                    .palaceFont(.body)
-            }
-        }
-        .toolbarButtonSize()
-        .accessibilityLabel(accessibilityLabelText ?? text ?? Strings.Generic.ok)
-    }
+    .toolbarButtonSize()
+  }
 }
 
 struct ToolbarButton_Previews: PreviewProvider {
-    static var previews: some View {
-        TPPPDFToolbarButton(text: "Hello") {
-            //
-        }
+  static var previews: some View {
+    TPPPDFToolbarButton(text: "Hello") {
+      //
     }
+  }
 }

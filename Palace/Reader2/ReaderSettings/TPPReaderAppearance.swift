@@ -8,32 +8,32 @@
 
 import Foundation
 
-enum TPPReaderAppearance: Int, CaseIterable, Identifiable {
-    case blackOnWhite, blackOnSepia, whiteOnBlack
+enum TPPReaderAppearance: Int,  CaseIterable, Identifiable {
+  case blackOnWhite, blackOnSepia, whiteOnBlack
+  
+  typealias DisplayStrings = Strings.TPPReaderAppearance
 
-    typealias DisplayStrings = Strings.TPPReaderAppearance
-
-    var id: Int {
-        rawValue
+  var id: Int {
+    rawValue
+  }
+  
+  var propertyIndex: Int {
+    rawValue
+  }
+  
+  var associatedColors: TPPAppearanceColors {
+    switch self {
+    case .blackOnWhite: return .blackOnWhiteColors
+    case .blackOnSepia: return .blackOnSepiaColors
+    case .whiteOnBlack: return .whiteOnBlackColors
     }
-
-    var propertyIndex: Int {
-        rawValue
+  }
+  
+  var accessibilityText: String {
+    switch self {
+    case .blackOnWhite: return DisplayStrings.blackOnWhiteText
+    case .blackOnSepia: return DisplayStrings.blackOnSepiaText
+    case .whiteOnBlack: return DisplayStrings.whiteOnBlackText
     }
-
-    var associatedColors: TPPAppearanceColors {
-        switch self {
-        case .blackOnWhite: return .blackOnWhiteColors
-        case .blackOnSepia: return .blackOnSepiaColors
-        case .whiteOnBlack: return .whiteOnBlackColors
-        }
-    }
-
-    var accessibilityText: String {
-        switch self {
-        case .blackOnWhite: return DisplayStrings.blackOnWhiteText
-        case .blackOnSepia: return DisplayStrings.blackOnSepiaText
-        case .whiteOnBlack: return DisplayStrings.whiteOnBlackText
-        }
-    }
+  }
 }

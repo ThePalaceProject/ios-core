@@ -10,9 +10,10 @@ import Foundation
 @testable import Palace
 
 class TPPURLSettingsProviderMock: NSObject, NYPLUniversalLinksSettings, NYPLFeedURLProvider {
-    var accountMainFeedURL: URL?
+  var accountMainFeedURL: URL?
 
-    var universalLinksURL: URL {
-        return URL(string: "https://example.com/univeral-link-redirect")!
-    }
+  var universalLinksURL: URL {
+    return URL(string: "https://example.com/univeral-link-redirect")!
+  }
 }
+

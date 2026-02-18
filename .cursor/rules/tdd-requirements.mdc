@@ -1,0 +1,75 @@
+---
+description: TDD requirements for all agents working on Palace iOS
+globs: ["**/*.swift"]
+alwaysApply: true
+---
+
+# TDD Requirements for Palace iOS
+
+## MANDATORY: All Bug Fixes and Features Must Have Tests
+
+### Bug Fix Protocol
+
+1. **FIRST** - Write a failing test that reproduces the bug
+2. **THEN** - Implement the fix
+3. **FINALLY** - Verify the test passes
+4. **COMMIT** - Test and fix together
+
+```swift
+/// Regression test for PP-XXXX: [Bug description]
+func testPPXXXX_[Scenario]_[ExpectedBehavior]() {
+  // Arrange - Set up the bug condition
+  // Act - Trigger the bug
+  // Assert - Verify correct behavior
+}
+```
+
+### New Feature Protocol
+
+1. **FIRST** - Write tests defining expected behavior
+2. **THEN** - Implement feature to make tests pass
+3. **FINALLY** - Refactor while keeping tests green
+
+### Before Committing Checklist
+
+- [ ] New/modified code has corresponding tests
+- [ ] Tests use REAL production classes (not testing mocks)
+- [ ] Mocks are ONLY used for dependency injection
+- [ ] No network calls in tests
+- [ ] Bug fixes include ticket # in test comment
+- [ ] Tests follow naming: `test[Unit]_[Scenario]_[Expected]`
+
+### Quick Test Patterns
+
+```swift
+// Test with mock dependency injection
+let mockRegistry = TPPBookRegistryMock()
+let viewModel = MyViewModel(registry: mockRegistry)
+
+// Test state changes
+mockRegistry.setState(.downloading, for: bookId)
+XCTAssertEqual(viewModel.state, .downloading)
+
+// Test async operations
+await viewModel.load()
+XCTAssertFalse(viewModel.isLoading)
+
+// Test error handling
+mockRepository.errorToThrow = TestError.networkError
+await viewModel.load()
+XCTAssertNotNil(viewModel.errorMessage)
+```
+
+### Available Mocks (in PalaceTests/Mocks/)
+
+- `TPPBookRegistryMock` - Book state management
+- `CatalogRepositoryMock` - Catalog API calls
+- `MockImageCache` - Image caching
+- `TPPBookMocker` - Create test books
+
+### Reference Documents
+
+- `TESTING.md` - Testing standards
+- `UNIT_TESTING_PLAN.md` - Full migration plan
+
+**DO NOT skip writing tests. TDD is mandatory for this codebase.**

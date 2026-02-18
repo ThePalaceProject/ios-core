@@ -9,9 +9,9 @@
 import Foundation
 
 protocol Reauthenticator: NSObject {
-    func authenticateIfNeeded(_ user: TPPUserAccount,
-                              usingExistingCredentials: Bool,
-                              authenticationCompletion: (() -> Void)?)
+  func authenticateIfNeeded(_ user: TPPUserAccount,
+                                  usingExistingCredentials: Bool,
+                                  authenticationCompletion: (()-> Void)?)
 }
 
 /// This class is a front-end for taking care of situations where an
@@ -27,25 +27,25 @@ protocol Reauthenticator: NSObject {
 /// the hood when no user input is needed.
 @objc class TPPReauthenticator: NSObject, Reauthenticator {
 
-    /// Re-authenticates the user. This may involve presenting the sign-in
-    /// modal UI or not, depending on the sign-in business logic.
-    ///
-    /// - Parameters:
-    ///   - user: The current user.
-    ///   - usingExistingCredentials: Use the existing credentials for `user`.
-    ///   - authenticationCompletion: Code to run after the authentication
-    ///   flow completes.
-    @objc func authenticateIfNeeded(_ user: TPPUserAccount,
-                                    usingExistingCredentials: Bool,
-                                    authenticationCompletion: (() -> Void)?) {
-        TPPMainThreadRun.asyncIfNeeded {
-            Log.info(#file, "TPPReauthenticator: Re-authentication requested, using existing credentials: \(usingExistingCredentials)")
-
-            // Use new SwiftUI sign-in modal
-            SignInModalPresenter.presentSignInModalForCurrentAccount {
-                Log.info(#file, "TPPReauthenticator: Re-authentication completed")
-                authenticationCompletion?()
-            }
-        }
+  /// Re-authenticates the user. This may involve presenting the sign-in
+  /// modal UI or not, depending on the sign-in business logic.
+  ///
+  /// - Parameters:
+  ///   - user: The current user.
+  ///   - usingExistingCredentials: Use the existing credentials for `user`.
+  ///   - authenticationCompletion: Code to run after the authentication
+  ///   flow completes.
+  @objc func authenticateIfNeeded(_ user: TPPUserAccount,
+                                  usingExistingCredentials: Bool,
+                                  authenticationCompletion: (()-> Void)?) {
+    TPPMainThreadRun.asyncIfNeeded {
+      Log.info(#file, "TPPReauthenticator: Re-authentication requested, using existing credentials: \(usingExistingCredentials)")
+      
+      // Use new SwiftUI sign-in modal
+      SignInModalPresenter.presentSignInModalForCurrentAccount {
+        Log.info(#file, "TPPReauthenticator: Re-authentication completed")
+        authenticationCompletion?()
+      }
     }
+  }
 }

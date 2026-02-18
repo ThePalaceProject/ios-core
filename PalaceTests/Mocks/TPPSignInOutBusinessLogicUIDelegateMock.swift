@@ -10,91 +10,91 @@ import Foundation
 @testable import Palace
 
 class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLogicUIDelegate {
+  
+  // MARK: - Call Tracking for Tests
+  var didCallWillSignOut = false
+  var didCallDidFinishDeauthorizing = false
+  var didFinishDeauthorizingHandler: (() -> Void)?
+  
+  // MARK: - Sign-In Flow Tracking
+  var didCallWillSignIn = false
+  var didCallDidCompleteSignIn = false
+  var didCallDidCancelSignIn = false
+  var didCallDidReceiveCredentials = false
+  var willSignInCallCount = 0
+  var didCompleteSignInCallCount = 0
+  var didReceiveCredentialsCallCount = 0
+  
+  // Track isLoading state transitions
+  var isLoading = false
+  var loadingStateChanges: [Bool] = []
+  
+  func businessLogicWillSignOut(_ businessLogic: TPPSignInBusinessLogic) {
+    didCallWillSignOut = true
+  }
 
-    // MARK: - Call Tracking for Tests
-    var didCallWillSignOut = false
-    var didCallDidFinishDeauthorizing = false
-    var didFinishDeauthorizingHandler: (() -> Void)?
+  func businessLogic(_ logic: TPPSignInBusinessLogic,
+                     didEncounterSignOutError error: Error?,
+                     withHTTPStatusCode httpStatusCode: Int) {
+  }
 
-    // MARK: - Sign-In Flow Tracking
-    var didCallWillSignIn = false
-    var didCallDidCompleteSignIn = false
-    var didCallDidCancelSignIn = false
-    var didCallDidReceiveCredentials = false
-    var willSignInCallCount = 0
-    var didCompleteSignInCallCount = 0
-    var didReceiveCredentialsCallCount = 0
+  func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {
+    didCallDidFinishDeauthorizing = true
+    didFinishDeauthorizingHandler?()
+  }
 
-    // Track isLoading state transitions
-    var isLoading = false
-    var loadingStateChanges: [Bool] = []
+  func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+    didCallDidCancelSignIn = true
+    isLoading = false
+    loadingStateChanges.append(false)
+  }
 
-    func businessLogicWillSignOut(_ businessLogic: TPPSignInBusinessLogic) {
-        didCallWillSignOut = true
-    }
+  var context = "Unit Tests Context"
 
-    func businessLogic(_ logic: TPPSignInBusinessLogic,
-                       didEncounterSignOutError error: Error?,
-                       withHTTPStatusCode httpStatusCode: Int) {
-    }
+  func businessLogicWillSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+    didCallWillSignIn = true
+    willSignInCallCount += 1
+    isLoading = true
+    loadingStateChanges.append(true)
+  }
 
-    func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {
-        didCallDidFinishDeauthorizing = true
-        didFinishDeauthorizingHandler?()
-    }
+  func businessLogicDidCompleteSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+    didCallDidCompleteSignIn = true
+    didCompleteSignInCallCount += 1
+    isLoading = false
+    loadingStateChanges.append(false)
+  }
+  
+  func businessLogicDidReceiveCredentials(_ businessLogic: TPPSignInBusinessLogic) {
+    didCallDidReceiveCredentials = true
+    didReceiveCredentialsCallCount += 1
+    // Simulate the real behavior: keep loading true as DRM processing starts
+    isLoading = true
+  }
 
-    func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-        didCallDidCancelSignIn = true
-        isLoading = false
-        loadingStateChanges.append(false)
-    }
+  func businessLogic(_ logic: TPPSignInBusinessLogic,
+                     didEncounterValidationError error: Error?,
+                     userFriendlyErrorTitle title: String?,
+                     andMessage message: String?) {
+  }
 
-    var context = "Unit Tests Context"
+  func dismiss(animated flag: Bool, completion: (() -> Void)?) {
+    completion?()
+  }
 
-    func businessLogicWillSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-        didCallWillSignIn = true
-        willSignInCallCount += 1
-        isLoading = true
-        loadingStateChanges.append(true)
-    }
+  func present(_ viewControllerToPresent: UIViewController,
+               animated flag: Bool,
+               completion: (() -> Void)?) {
+    completion?()
+  }
 
-    func businessLogicDidCompleteSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-        didCallDidCompleteSignIn = true
-        didCompleteSignInCallCount += 1
-        isLoading = false
-        loadingStateChanges.append(false)
-    }
+  var username: String? = "username"
 
-    func businessLogicDidReceiveCredentials(_ businessLogic: TPPSignInBusinessLogic) {
-        didCallDidReceiveCredentials = true
-        didReceiveCredentialsCallCount += 1
-        // Simulate the real behavior: keep loading true as DRM processing starts
-        isLoading = true
-    }
+  var pin: String? = "pin"
 
-    func businessLogic(_ logic: TPPSignInBusinessLogic,
-                       didEncounterValidationError error: Error?,
-                       userFriendlyErrorTitle title: String?,
-                       andMessage message: String?) {
-    }
+  var usernameTextField: UITextField? = nil
 
-    func dismiss(animated flag: Bool, completion: (() -> Void)?) {
-        completion?()
-    }
+  var PINTextField: UITextField? = nil
 
-    func present(_ viewControllerToPresent: UIViewController,
-                 animated flag: Bool,
-                 completion: (() -> Void)?) {
-        completion?()
-    }
-
-    var username: String? = "username"
-
-    var pin: String? = "pin"
-
-    var usernameTextField: UITextField?
-
-    var PINTextField: UITextField?
-
-    var forceEditability: Bool = false
+  var forceEditability: Bool = false
 }

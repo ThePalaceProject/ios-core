@@ -10,10 +10,10 @@ import SwiftUI
 import Combine
 
 struct BookCell: View {
-    @ObservedObject var model: BookCellModel
-    var previewEnabled: Bool = true
-
-    var body: some View {
-        NormalBookCell(model: model, previewEnabled: previewEnabled)
-    }
+  @ObservedObject var model: BookCellModel
+  var previewEnabled: Bool = true
+  
+  var body: some View {
+    NormalBookCell(model: model, previewEnabled: previewEnabled)
+  }
 }

@@ -11,8 +11,8 @@ import PalaceAudiobookToolkit
 /// Centralized publisher for audiobook-related events.
 /// Provides type-safe Combine publishers instead of NotificationCenter.
 enum AudiobookEvents {
-
-    /// Emits when a new AudiobookManager is created and ready for playback.
-    /// Subscribers receive the strongly-typed manager instance directly.
-    static let managerCreated = PassthroughSubject<AudiobookManager, Never>()
+  
+  /// Emits when a new AudiobookManager is created and ready for playback.
+  /// Subscribers receive the strongly-typed manager instance directly.
+  static let managerCreated = PassthroughSubject<AudiobookManager, Never>()
 }

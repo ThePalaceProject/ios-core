@@ -10,10 +10,10 @@ import Foundation
 @testable import Palace
 
 class TPPAgeCheckChoiceStorageMock: NSObject, TPPAgeCheckChoiceStorage {
-    var userPresentedAgeCheck: Bool
-
-    override init() {
-        userPresentedAgeCheck = false
-        super.init()
-    }
+  var userPresentedAgeCheck: Bool
+  
+  override init() {
+    userPresentedAgeCheck = false
+    super.init()
+  }
 }

@@ -1,26 +1,18 @@
 name: Unit Tests
 on: [ pull_request, workflow_dispatch ]
-concurrency:
-  group: unit-tests-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
 jobs:
-
-  # NOTE: Standalone QAAtlas and AccessLint jobs have been consolidated into
-  # the Ledger Analysis workflow (ledger.yml) which now integrates both tools.
-  # See: https://github.com/mauricecarrier7/ledger-dist
-
   build-and-test:
-    runs-on: macos-26
+    runs-on: macos-14
     permissions:
       contents: write
       pull-requests: write
       pages: write
       id-token: write
     steps:
-      - name: Set up Xcode 26
+      - name: Set up Xcode 16.2
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26'
+          xcode-version: '16.2'
 
       - name: Verify Xcode Version
         run: xcodebuild -version
@@ -87,7 +79,7 @@ jobs:
         
       - name: Run Palace unit tests
         id: tests
-        timeout-minutes: 30
+        timeout-minutes: 20
         run: ./scripts/xcode-test-optimized.sh
         env:
           BUILD_CONTEXT: ci
@@ -384,15 +376,14 @@ jobs:
             echo "</details>" >> $GITHUB_STEP_SUMMARY
           fi
           
-          # Code Coverage - actual runtime coverage from test execution
+          # Code Coverage
           if [ "$COVERAGE" != "N/A" ] && [ -n "$COVERAGE" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 📈 Actual Code Coverage: $COVERAGE" >> $GITHUB_STEP_SUMMARY
-            echo "> Lines of code executed during test runs" >> $GITHUB_STEP_SUMMARY
+            echo "### 📈 Code Coverage: $COVERAGE" >> $GITHUB_STEP_SUMMARY
             if [ -n "$COVERAGE_TARGETS" ]; then
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "| Target | Lines Covered |" >> $GITHUB_STEP_SUMMARY
-              echo "|--------|---------------|" >> $GITHUB_STEP_SUMMARY
+              echo "| Target | Coverage |" >> $GITHUB_STEP_SUMMARY
+              echo "|--------|----------|" >> $GITHUB_STEP_SUMMARY
               echo "$COVERAGE_TARGETS" | while IFS='|' read -r name cov covered total; do
                 if [ -n "$name" ]; then
                   echo "| $name | $cov |" >> $GITHUB_STEP_SUMMARY
@@ -582,7 +573,6 @@ jobs:
           
       - name: Publish to GitHub Pages
         if: always()
-        continue-on-error: true
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -685,13 +675,12 @@ jobs:
               body += `</details>\n\n`;
             }
             
-            // Code Coverage - actual runtime coverage from test execution
+            // Code Coverage
             if (coverage && coverage !== 'N/A' && coverage !== '') {
-              body += `### 📈 Actual Code Coverage: ${coverage}\n\n`;
-              body += `> Lines of code executed during test runs (from Xcode test report)\n\n`;
+              body += `### 📈 Code Coverage: ${coverage}\n\n`;
               if (coverageTargets && coverageTargets.trim()) {
-                body += `| Target | Lines Covered |\n`;
-                body += `|--------|---------------|\n`;
+                body += `| Target | Coverage |\n`;
+                body += `|--------|----------|\n`;
                 coverageTargets.trim().split('\n').forEach(line => {
                   const [name, cov] = line.split('|');
                   if (name) {
@@ -785,6 +774,3 @@ jobs:
       - name: Fail if tests failed
         if: steps.tests.outcome == 'failure'
         run: exit 1
-
-  # Note: The AccessLint GitHub Action handles PR comments and artifact upload automatically
-  # This combined-report job is no longer needed since AccessLint posts its own comment

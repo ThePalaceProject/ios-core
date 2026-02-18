@@ -11,21 +11,21 @@ import SwiftUI
 /// TOC View
 struct TPPPDFTOCView: View {
 
-    @EnvironmentObject var metadata: TPPPDFDocumentMetadata
-    let document: TPPPDFDocument
-    let done: () -> Void
+  @EnvironmentObject var metadata: TPPPDFDocumentMetadata
+  let document: TPPPDFDocument
+  let done: () -> Void
 
-    var body: some View {
-        VStack {
-            List {
-                ForEach(document.tableOfContents) { location in
-                    TPPPDFLocationView(location: location, emphasizeLevel: 0)
-                        .onTapGesture {
-                            metadata.currentPage = location.pageNumber
-                            done()
-                        }
-                }
+  var body: some View {
+    VStack {
+      List {
+        ForEach(document.tableOfContents) { location in
+          TPPPDFLocationView(location: location, emphasizeLevel: 0)
+            .onTapGesture {
+              metadata.currentPage = location.pageNumber
+              done()
             }
         }
+      }
     }
+  }
 }

@@ -14,33 +14,34 @@ import Foundation
 import UIKit
 import ReadiumShared
 
+
 /// Base module delegate, that sub-modules' delegate can extend.
 /// Provides basic shared functionalities.
 protocol ModuleDelegate: AnyObject {
-    func presentAlert(_ title: String, message: String, from viewController: UIViewController)
-    func presentError(_ error: Error?, from viewController: UIViewController)
+  func presentAlert(_ title: String, message: String, from viewController: UIViewController)
+  func presentError(_ error: Error?, from viewController: UIViewController)
 }
 
-// MARK: -
+// MARK:-
 
 /// The ReaderModuleAPI declares what is needed to handle the presentation
 /// of a publication.
 protocol ReaderModuleAPI {
-
-    var delegate: ModuleDelegate? { get }
-
-    /// Presents the given publication to the user, inside the given navigation controller.
-    /// - Parameter publication: The R2 publication to display.
-    /// - Parameter book: Our internal book model related to the `publication`.
-    /// - Parameter navigationController: The navigation stack the book will be presented in.
-    /// - Parameter completion: Called once the publication is presented, or if an error occured.
-    func presentPublication(_ publication: Publication,
-                            book: TPPBook,
-                            in navigationController: UINavigationController,
-                            forSample: Bool)
+  
+  var delegate: ModuleDelegate? { get }
+  
+  /// Presents the given publication to the user, inside the given navigation controller.
+  /// - Parameter publication: The R2 publication to display.
+  /// - Parameter book: Our internal book model related to the `publication`.
+  /// - Parameter navigationController: The navigation stack the book will be presented in.
+  /// - Parameter completion: Called once the publication is presented, or if an error occured.
+  func presentPublication(_ publication: Publication,
+                          book: TPPBook,
+                          in navigationController: UINavigationController,
+                          forSample: Bool)
 }
 
-// MARK: -
+// MARK:-
 
 /// The ReaderModule handles the presentation of a publication.
 ///
@@ -48,85 +49,85 @@ protocol ReaderModuleAPI {
 /// publication format (e.g. EPUB, PDF, etc).
 final class ReaderModule: ReaderModuleAPI {
 
-    weak var delegate: ModuleDelegate?
-    private let bookRegistry: TPPBookRegistryProvider
-    private let progressSynchronizer: TPPLastReadPositionSynchronizer
+  weak var delegate: ModuleDelegate?
+  private let bookRegistry: TPPBookRegistryProvider
+  private let progressSynchronizer: TPPLastReadPositionSynchronizer
 
-    /// Sub-modules to handle different publication formats (eg. EPUB, CBZ)
-    var formatModules: [ReaderFormatModule] = []
+  /// Sub-modules to handle different publication formats (eg. EPUB, CBZ)
+  var formatModules: [ReaderFormatModule] = []
 
-    init(delegate: ModuleDelegate?,
-         resourcesServer: HTTPServer,
-         bookRegistry: TPPBookRegistryProvider) {
-        self.delegate = delegate
-        self.bookRegistry = bookRegistry
-        self.progressSynchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
+  init(delegate: ModuleDelegate?,
+       resourcesServer: HTTPServer,
+       bookRegistry: TPPBookRegistryProvider) {
+    self.delegate = delegate
+    self.bookRegistry = bookRegistry
+    self.progressSynchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
 
-        formatModules = [
-            EPUBModule(delegate: self.delegate, resourcesServer: resourcesServer)
-        ]
+    formatModules = [
+      EPUBModule(delegate: self.delegate, resourcesServer: resourcesServer)
+    ]
+  }
+
+  func presentPublication(_ publication: Publication,
+                          book: TPPBook,
+                          in navigationController: UINavigationController,
+                          forSample: Bool = false) {
+    if delegate == nil {
+      TPPErrorLogger.logError(nil, summary: "ReaderModule delegate is not set")
     }
 
-    func presentPublication(_ publication: Publication,
+    guard let formatModule = self.formatModules.first(where:{ $0.supports(publication) }) else {
+      delegate?.presentError(ReaderError.formatNotSupported, from: navigationController)
+      return
+    }
+
+    let drmDeviceID = TPPUserAccount.sharedAccount().deviceID
+    progressSynchronizer.sync(for: publication,
+                              book: book,
+                              drmDeviceID: drmDeviceID) { [weak self] in
+
+      self?.finalizePresentation(for: publication,
+                                 book: book,
+                                 formatModule: formatModule,
+                                 in: navigationController,
+                                 forSample: forSample)
+    }
+  }
+
+  func finalizePresentation(for publication: Publication,
                             book: TPPBook,
+                            formatModule: ReaderFormatModule,
                             in navigationController: UINavigationController,
                             forSample: Bool = false) {
-        if delegate == nil {
-            TPPErrorLogger.logError(nil, summary: "ReaderModule delegate is not set")
+    Task.detached { [weak self] in
+      guard let self else { return }
+
+      do {
+        let lastSavedLocation = self.bookRegistry.location(forIdentifier: book.identifier)
+        let initialLocator = await lastSavedLocation?.convertToLocator(publication: publication)
+
+        let readerVC = try await formatModule.makeReaderViewController(
+          for: publication,
+          book: book,
+          initialLocation: initialLocator,
+          forSample: forSample
+        )
+
+        await MainActor.run {
+          let backItem = UIBarButtonItem()
+          backItem.title = Strings.Generic.back
+          readerVC.navigationItem.backBarButtonItem = backItem
+          readerVC.extendedLayoutIncludesOpaqueBars = true
+          readerVC.navigationController?.isNavigationBarHidden = false
+          readerVC.hidesBottomBarWhenPushed = true
+          navigationController.pushViewController(readerVC, animated: true)
         }
 
-        guard let formatModule = self.formatModules.first(where: { $0.supports(publication) }) else {
-            delegate?.presentError(ReaderError.formatNotSupported, from: navigationController)
-            return
+      } catch {
+        await MainActor.run {
+          self.delegate?.presentError(error, from: navigationController)
         }
-
-        let drmDeviceID = TPPUserAccount.sharedAccount().deviceID
-        progressSynchronizer.sync(for: publication,
-                                  book: book,
-                                  drmDeviceID: drmDeviceID) { [weak self] in
-
-            self?.finalizePresentation(for: publication,
-                                       book: book,
-                                       formatModule: formatModule,
-                                       in: navigationController,
-                                       forSample: forSample)
-        }
+      }
     }
-
-    func finalizePresentation(for publication: Publication,
-                              book: TPPBook,
-                              formatModule: ReaderFormatModule,
-                              in navigationController: UINavigationController,
-                              forSample: Bool = false) {
-        Task.detached { [weak self] in
-            guard let self else { return }
-
-            do {
-                let lastSavedLocation = self.bookRegistry.location(forIdentifier: book.identifier)
-                let initialLocator = await lastSavedLocation?.convertToLocator(publication: publication)
-
-                let readerVC = try await formatModule.makeReaderViewController(
-                    for: publication,
-                    book: book,
-                    initialLocation: initialLocator,
-                    forSample: forSample
-                )
-
-                await MainActor.run {
-                    let backItem = UIBarButtonItem()
-                    backItem.title = Strings.Generic.back
-                    readerVC.navigationItem.backBarButtonItem = backItem
-                    readerVC.extendedLayoutIncludesOpaqueBars = true
-                    readerVC.navigationController?.isNavigationBarHidden = false
-                    readerVC.hidesBottomBarWhenPushed = true
-                    navigationController.pushViewController(readerVC, animated: true)
-                }
-
-            } catch {
-                await MainActor.run {
-                    self.delegate?.presentError(error, from: navigationController)
-                }
-            }
-        }
-    }
+  }
 }

@@ -9,12 +9,12 @@
 import Foundation
 
 extension CGSize {
-    /// Thumbnail image size for PDF viewer
-    static var pdfThumbnailSize: CGSize {
-        CGSize(width: 30, height: 30)
-    }
-    /// Preview image size for PDF viewer
-    static var pdfPreviewSize: CGSize {
-        CGSize(width: 300, height: 300)
-    }
+  /// Thumbnail image size for PDF viewer
+  static var pdfThumbnailSize: CGSize {
+    CGSize(width: 30, height: 30)
+  }
+  /// Preview image size for PDF viewer
+  static var pdfPreviewSize: CGSize {
+    CGSize(width: 300, height: 300)
+  }
 }

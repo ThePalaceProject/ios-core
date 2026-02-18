@@ -135,7 +135,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
         if let entries = feedObjc.entries as? [TPPOPDSEntry] {
           switch feedObjc.type {
           case .acquisitionGrouped:
-            processGroupedFeed(entries: entries, feedObjc: feedObjc)
+            processGroupedFeed(entries: entries)
           case .acquisitionUngrouped:
             processUngroupedFeed(entries: entries, feedObjc: feedObjc)
           case .navigation, .invalid:
@@ -156,7 +156,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
     }
   }
   
-  private func processGroupedFeed(entries: [TPPOPDSEntry], feedObjc: TPPOPDSFeed) {
+  private func processGroupedFeed(entries: [TPPOPDSEntry]) {
     var orderedTitles: [String] = []
     var titleToBooks: [String: [TPPBook]] = [:]
     var titleToMoreURL: [String: URL?] = [:]
@@ -177,9 +177,6 @@ class CatalogLaneMoreViewModel: ObservableObject {
     
     // Store original catalog books for restoration after returns
     storeOriginalCatalogBooks(lanes.flatMap { $0.books })
-    
-    // Extract facets (including sort facets) from grouped feeds (PP-3629)
-    facetGroups = CatalogViewModel.extractFacets(from: feedObjc).0
   }
   
   private func processUngroupedFeed(entries: [TPPOPDSEntry], feedObjc: TPPOPDSFeed) {

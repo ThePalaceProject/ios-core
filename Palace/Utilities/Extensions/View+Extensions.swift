@@ -10,47 +10,47 @@ import Foundation
 import SwiftUI
 
 extension View {
-    func anyView() -> AnyView {
-        AnyView(self)
+  func anyView() -> AnyView {
+    AnyView(self)
+  }
+  
+  func verticallyCentered() -> some View {
+    VStack {
+      Spacer()
+      self
+      Spacer()
     }
+  }
+  
+  func horizontallyCentered() -> some View {
+    HStack {
+      Spacer()
+      self
+      Spacer()
+    }
+  }
+  
+  func bottomrRightJustified() -> some View {
+    VStack {
+      Spacer()
+      HStack {
+        Spacer()
+        self
+      }
+    }
+  }
 
-    func verticallyCentered() -> some View {
-        VStack {
-            Spacer()
-            self
-            Spacer()
-        }
-    }
+  func square(length: CGFloat) -> some View {
+    self.frame(width: length, height: length)
+  }
 
-    func horizontallyCentered() -> some View {
-        HStack {
-            Spacer()
-            self
-            Spacer()
-        }
-    }
-
-    func bottomrRightJustified() -> some View {
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                self
-            }
-        }
-    }
-
-    func square(length: CGFloat) -> some View {
-        self.frame(width: length, height: length)
-    }
-
-    func refreshable(_ refreshAction: @escaping Action) -> some View {
-        modifier(RefreshableScrollView(refreshAction))
-    }
+  func refreshable(_ refreshAction: @escaping Action) -> some View {
+    modifier(RefreshableScrollView(refreshAction))
+  }
 }
 
 extension View {
-    func dismissKeyboardOnTap(onDismiss: (() -> Void)? = nil) -> some View {
-        modifier(DismissKeyboardOnTap(onDismiss: onDismiss))
-    }
+  func dismissKeyboardOnTap(onDismiss: (() -> Void)? = nil) -> some View {
+    modifier(DismissKeyboardOnTap(onDismiss: onDismiss))
+  }
 }

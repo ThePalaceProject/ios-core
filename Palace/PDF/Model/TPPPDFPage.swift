@@ -13,5 +13,5 @@ import Foundation
 /// This structure is used for encoding and decoding page location in PDF files
 /// in TPPBookLocation object.
 struct TPPPDFPage: Codable {
-    let pageNumber: Int
+  let pageNumber: Int
 }

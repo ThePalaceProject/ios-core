@@ -45,7 +45,7 @@ public extension NSString {
                           arguments: $0)
             }
         }
-
+        
         return localized
     }
 }

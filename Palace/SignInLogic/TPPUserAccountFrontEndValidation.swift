@@ -14,81 +14,81 @@ import UIKit
  */
 @objc
 protocol NYPLUserAccountInputProvider {
-    var usernameTextField: UITextField? { get set }
-    var PINTextField: UITextField? { get set }
-    var forceEditability: Bool { get }
+  var usernameTextField: UITextField? { get set }
+  var PINTextField: UITextField? { get set }
+  var forceEditability: Bool { get }
 }
 
 @objcMembers class TPPUserAccountFrontEndValidation: NSObject {
-    let account: Account
-    private weak var businessLogic: TPPSignInBusinessLogic?
-    private weak var userInputProvider: NYPLUserAccountInputProvider?
+  let account: Account
+  private weak var businessLogic: TPPSignInBusinessLogic?
+  private weak var userInputProvider: NYPLUserAccountInputProvider?
 
-    init(account: Account,
-         businessLogic: TPPSignInBusinessLogic?,
-         inputProvider: NYPLUserAccountInputProvider) {
+  init(account: Account,
+       businessLogic: TPPSignInBusinessLogic?,
+       inputProvider: NYPLUserAccountInputProvider) {
 
-        self.account = account
-        self.businessLogic = businessLogic
-        self.userInputProvider = inputProvider
-    }
+    self.account = account
+    self.businessLogic = businessLogic
+    self.userInputProvider = inputProvider
+  }
 }
 
 extension TPPUserAccountFrontEndValidation: UITextFieldDelegate {
-    func textFieldShouldBeginEditing(_ textField: UITextField) -> Bool {
-        if let userInputProvider = userInputProvider, userInputProvider.forceEditability {
-            return true
-        }
-
-        return !(businessLogic?.userAccount.hasBarcodeAndPIN() ?? false)
+  func textFieldShouldBeginEditing(_ textField: UITextField) -> Bool {
+    if let userInputProvider = userInputProvider, userInputProvider.forceEditability {
+      return true
     }
 
-    func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
-        guard string.canBeConverted(to: .ascii) else { return false }
+    return !(businessLogic?.userAccount.hasBarcodeAndPIN() ?? false)
+  }
 
-        if textField == userInputProvider?.usernameTextField,
-           businessLogic?.selectedAuthentication?.patronIDKeyboard != .email {
+  func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
+    guard string.canBeConverted(to: .ascii) else { return false }
 
-            if let text = textField.text {
-                if range.location < 0 || range.location + range.length > text.count {
-                    return false
-                }
+    if textField == userInputProvider?.usernameTextField,
+      businessLogic?.selectedAuthentication?.patronIDKeyboard != .email {
 
-                let updatedText = (text as NSString).replacingCharacters(in: range, with: string)
-                // Usernames cannot be longer than 25 characters.
-                guard updatedText.count <= 25 else { return false }
-            }
+      if let text = textField.text {
+        if range.location < 0 || range.location + range.length > text.count {
+          return false
         }
 
-        if textField == userInputProvider?.PINTextField {
-            let allowedCharacters = CharacterSet.decimalDigits
-            let bannedCharacters = allowedCharacters.inverted
+        let updatedText = (text as NSString).replacingCharacters(in: range, with: string)
+        // Usernames cannot be longer than 25 characters.
+        guard updatedText.count <= 25 else { return false }
+      }
+    }
 
-            let alphanumericPin = businessLogic?.selectedAuthentication?.pinKeyboard != .numeric
-            let containsNonNumeric = !(string.rangeOfCharacter(from: bannedCharacters)?.isEmpty ?? true)
-            let abovePinCharLimit: Bool
-            let passcodeLength = businessLogic?.selectedAuthentication?.authPasscodeLength ?? 0
+    if textField == userInputProvider?.PINTextField {
+      let allowedCharacters = CharacterSet.decimalDigits
+      let bannedCharacters = allowedCharacters.inverted
 
-            if let text = textField.text,
-               let textRange = Range(range, in: text) {
+      let alphanumericPin = businessLogic?.selectedAuthentication?.pinKeyboard != .numeric
+      let containsNonNumeric = !(string.rangeOfCharacter(from: bannedCharacters)?.isEmpty ?? true)
+      let abovePinCharLimit: Bool
+      let passcodeLength = businessLogic?.selectedAuthentication?.authPasscodeLength ?? 0
 
-                let updatedText = text.replacingCharacters(in: textRange, with: string)
-                abovePinCharLimit = updatedText.count > passcodeLength
-            } else {
-                abovePinCharLimit = false
-            }
+      if let text = textField.text,
+        let textRange = Range(range, in: text) {
 
-            // PIN's support numeric or alphanumeric.
-            guard alphanumericPin || !containsNonNumeric else { return false }
+        let updatedText = text.replacingCharacters(in: textRange, with: string)
+        abovePinCharLimit = updatedText.count > passcodeLength
+      } else {
+        abovePinCharLimit = false
+      }
 
-            // PIN's character limit. Zero is unlimited.
-            if passcodeLength == 0 {
-                return true
-            } else if abovePinCharLimit {
-                return false
-            }
-        }
+      // PIN's support numeric or alphanumeric.
+      guard alphanumericPin || !containsNonNumeric else { return false }
 
+      // PIN's character limit. Zero is unlimited.
+      if passcodeLength == 0 {
         return true
+      } else if abovePinCharLimit {
+        return false
+      }
     }
+
+    return true
+  }
 }

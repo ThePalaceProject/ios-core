@@ -11,35 +11,36 @@ import Foundation
 let TPPDefaultRequestTimeout: TimeInterval = 30.0
 
 protocol TPPRequestExecuting {
-    /// Execute a given request.
-    /// - Parameters:
-    ///   - req: The request to perform.
-    ///   - completion: Always called when the resource is either fetched from
-    /// the network or from the cache.
-    /// - Returns: The task issueing the given request.
-    @discardableResult
-    func executeRequest(_ req: URLRequest,
-                        enableTokenRefresh: Bool,
-                        completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask?
+  /// Execute a given request.
+  /// - Parameters:
+  ///   - req: The request to perform.
+  ///   - completion: Always called when the resource is either fetched from
+  /// the network or from the cache.
+  /// - Returns: The task issueing the given request.
+  @discardableResult
+  func executeRequest(_ req: URLRequest,
+                      enableTokenRefresh: Bool,
+                      completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask?
 
-    var requestTimeout: TimeInterval {get}
+  var requestTimeout: TimeInterval {get}
 
-    static var defaultRequestTimeout: TimeInterval {get}
+  static var defaultRequestTimeout: TimeInterval {get}
 }
 
 extension TPPRequestExecuting {
-    var requestTimeout: TimeInterval {
-        return Self.defaultRequestTimeout
-    }
+  var requestTimeout: TimeInterval {
+    return Self.defaultRequestTimeout
+  }
 
-    static var defaultRequestTimeout: TimeInterval {
-        return TPPDefaultRequestTimeout
-    }
+  static var defaultRequestTimeout: TimeInterval {
+    return TPPDefaultRequestTimeout
+  }
 
-    @discardableResult
-    func executeRequest(_ req: URLRequest,
-                        useTokenIfAvailable: Bool = true,
-                        completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-        URLSessionDataTask()
-    }
+  @discardableResult
+  func executeRequest(_ req: URLRequest,
+                      useTokenIfAvailable: Bool = true,
+                      completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
+    URLSessionDataTask()
+  }
 }
+

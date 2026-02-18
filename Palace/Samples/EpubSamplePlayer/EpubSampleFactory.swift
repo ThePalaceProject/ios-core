@@ -9,79 +9,79 @@
 import Foundation
 
 @objc class EpubLocationSampleURL: NSObject {
-    @objc var url: URL
-
-    init(url: URL) {
-        self.url = url
-    }
+  @objc var url: URL
+  
+  init(url: URL) {
+    self.url = url
+  }
 }
 
 @objc class EpubSampleWebURL: EpubLocationSampleURL {}
 
 @objc class EpubSampleFactory: NSObject {
-    private static let samplePath = "TestApp.epub"
+  private static let samplePath = "TestApp.epub"
 
-    @objc static func createSample(book: TPPBook, completion: @escaping (EpubLocationSampleURL?, Error?) -> Void) {
-        guard let epubSample = book.sample as? EpubSample
-        else {
-            completion(nil, SamplePlayerError.noSampleAvailable)
-            return
-        }
-
-        if epubSample.type.needsDownload {
-            epubSample.fetchSample { result in
-                switch result {
-                case .failure(let error, _):
-                    completion(nil, error)
-                case .success(let data, _):
-
-                    do {
-                        guard let location = try save(data: data) else {
-                            completion(nil, SamplePlayerError.fileSaveFailed(nil))
-                            return
-                        }
-
-                        let epubLocationURL = EpubLocationSampleURL(url: location)
-                        DispatchQueue.main.async {
-                            completion(epubLocationURL, nil)
-                        }
-                    } catch {
-                        completion(nil, error)
-                    }
-                }
+  @objc static func createSample(book: TPPBook, completion: @escaping (EpubLocationSampleURL?, Error?) -> Void) {
+    guard let epubSample = book.sample as? EpubSample
+    else {
+      completion(nil, SamplePlayerError.noSampleAvailable)
+      return
+    }
+    
+    if epubSample.type.needsDownload {
+      epubSample.fetchSample { result in
+        switch result {
+        case .failure(let error, _):
+          completion(nil, error)
+        case .success(let data, _):
+  
+          do {
+            guard let location = try save(data: data) else {
+              completion(nil, SamplePlayerError.fileSaveFailed(nil))
+              return
             }
-        } else {
-            let webURL = EpubSampleWebURL(url: epubSample.url)
-            completion(webURL, nil)
+
+            let epubLocationURL = EpubLocationSampleURL(url: location)
+            DispatchQueue.main.async {
+              completion(epubLocationURL, nil)
+            }
+          } catch {
+            completion(nil, error)
+          }
         }
+      }
+    } else {
+      let webURL = EpubSampleWebURL(url: epubSample.url)
+      completion(webURL, nil)
     }
+  }
 
-    private static func save(data: Data) throws -> URL? {
-        let url = documentDirectory()
-        do {
-            // Create parent directory if it doesn't exist
-            let parentDirectory = url.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: parentDirectory, withIntermediateDirectories: true, attributes: nil)
-
-            try data.write(to: url)
-            Log.info(#file, "Successfully saved sample EPUB to: \(url.path)")
-        } catch {
-            Log.error(#file, "Failed to save sample EPUB: \(error.localizedDescription)")
-            throw error
-        }
-        return url.absoluteURL
+  private static func save(data: Data) throws -> URL? {
+    let url = documentDirectory()
+    do {
+      // Create parent directory if it doesn't exist
+      let parentDirectory = url.deletingLastPathComponent()
+      try FileManager.default.createDirectory(at: parentDirectory, withIntermediateDirectories: true, attributes: nil)
+      
+      try data.write(to: url)
+      Log.info(#file, "Successfully saved sample EPUB to: \(url.path)")
+    } catch {
+      Log.error(#file, "Failed to save sample EPUB: \(error.localizedDescription)")
+      throw error
     }
+    return url.absoluteURL
+  }
 
-    private static func documentDirectory() -> URL {
-        let documentDirectory = FileManager.default.urls(
-            for: .documentDirectory,
-            in: .userDomainMask
-        )[0]
-
-        // Create samples subdirectory to avoid root directory access issues
-        let samplesDirectory = documentDirectory.appendingPathComponent("Samples")
-        try? FileManager.default.createDirectory(at: samplesDirectory, withIntermediateDirectories: true, attributes: nil)
-
-        return samplesDirectory.appendingPathComponent(samplePath)
-    }
+  private static func documentDirectory() -> URL {
+    let documentDirectory = FileManager.default.urls(
+      for: .documentDirectory,
+      in: .userDomainMask
+    )[0]
+    
+    // Create samples subdirectory to avoid root directory access issues
+    let samplesDirectory = documentDirectory.appendingPathComponent("Samples")
+    try? FileManager.default.createDirectory(at: samplesDirectory, withIntermediateDirectories: true, attributes: nil)
+    
+    return samplesDirectory.appendingPathComponent(samplePath)
+  }
 }

@@ -3,11 +3,11 @@ import XCTest
 @testable import Palace
 
 class UserProfileDocumentTests: XCTestCase {
-    let validJson = TPPFake.validUserProfileJson
+  let validJson = TPPFake.validUserProfileJson
 
-    let dataCorruptedJson = "lll"
-
-    let extraPropertyJson = """
+  let dataCorruptedJson = "lll"
+    
+  let extraPropertyJson = """
   {
     "simplified:authorization_identifier": "23333999999915",
     "drm": [
@@ -33,8 +33,8 @@ class UserProfileDocumentTests: XCTestCase {
     "extra_property": false
   }
   """
-
-    let keyNotFoundJson = """
+    
+  let keyNotFoundJson = """
   {
     "simplified:authorization_identifier": "23333999999915",
     "drm": [
@@ -55,8 +55,8 @@ class UserProfileDocumentTests: XCTestCase {
     }
   }
   """
-
-    let mismatchTypeJson = """
+    
+  let mismatchTypeJson = """
     {
       "simplified:authorization_identifier": "23333999999915",
       "drm": [
@@ -79,7 +79,7 @@ class UserProfileDocumentTests: XCTestCase {
     }
     """
 
-    let valueNotFoundJson = """
+  let valueNotFoundJson = """
   {
     "simplified:authorization_identifier": "23333999999915",
     "drm": [
@@ -102,7 +102,7 @@ class UserProfileDocumentTests: XCTestCase {
   }
   """
 
-    let simply2491ProfileDoc = """
+  let simply2491ProfileDoc = """
   {
     "simplified:authorization_identifier": "23333999999666",
     "drm": [{
@@ -125,196 +125,196 @@ class UserProfileDocumentTests: XCTestCase {
   }
   """
 
-    /// For this test to be meaningful it needs to be run on a physical device
-    /// with these global system settings:
-    /// General - Language & Region:
-    /// - Region: UK
-    /// - Calendar: Gregorian
-    /// General - Date & Time:
-    /// - 24-Hour Time: Off
-    func testParseProfileDocCausingSIMPLY2491() {
-        guard let data = simply2491ProfileDoc.data(using: .utf8) else {
-            XCTFail("Failed to generate test Data from String")
-            return
-        }
-
-        do {
-            let profileDoc = try UserProfileDocument.fromData(data)
-            XCTAssertNotNil(profileDoc)
-            XCTAssertEqual(profileDoc.authorizationIdentifier, "23333999999666")
-            XCTAssertNotNil(profileDoc.drm)
-            if let drms = profileDoc.drm {
-                XCTAssert(drms.count == 1)
-                XCTAssert(drms[0].vendor == "the_vendor")
-            }
-
-            let cal = NSCalendar(identifier: .gregorian)!
-            cal.timeZone = TimeZone(secondsFromGMT: 0)!
-            cal.locale = Locale(identifier: "en_US_POSIX")
-            guard let date = profileDoc.authorizationExpires else {
-                XCTFail("Failed to parse `authorizationExpires`")
-                return
-            }
-            XCTAssertEqual(cal.component(.year, from: date), 2023)
-            XCTAssertEqual(cal.component(.month, from: date), 6)
-            XCTAssertEqual(cal.component(.day, from: date), 25)
-            XCTAssertEqual(cal.component(.hour, from: date), 0)
-            XCTAssertEqual(cal.component(.minute, from: date), 0)
-            XCTAssertEqual(cal.component(.second, from: date), 0)
-        } catch {
-            XCTFail("parse fail with error \(error)")
-        }
+  /// For this test to be meaningful it needs to be run on a physical device
+  /// with these global system settings:
+  /// General - Language & Region:
+  /// - Region: UK
+  /// - Calendar: Gregorian
+  /// General - Date & Time:
+  /// - 24-Hour Time: Off
+  func testParseProfileDocCausingSIMPLY2491() {
+    guard let data = simply2491ProfileDoc.data(using: .utf8) else {
+      XCTFail("Failed to generate test Data from String")
+      return
     }
 
-    func testParse() {
-        let data = validJson.data(using: .utf8)
-        XCTAssertNotNil(data)
-        do {
-            let pDoc = try UserProfileDocument.fromData(data!)
+    do {
+      let profileDoc = try UserProfileDocument.fromData(data)
+      XCTAssertNotNil(profileDoc)
+      XCTAssertEqual(profileDoc.authorizationIdentifier, "23333999999666")
+      XCTAssertNotNil(profileDoc.drm)
+      if let drms = profileDoc.drm {
+        XCTAssert(drms.count == 1)
+        XCTAssert(drms[0].vendor == "the_vendor")
+      }
 
-            XCTAssert(pDoc.authorizationIdentifier == "23333999999915")
-            XCTAssertNotNil(pDoc.authorizationExpires)
-            print(pDoc.authorizationExpires!)
-
-            // Test DRM
-            XCTAssertNotNil(pDoc.drm)
-            if let drms = pDoc.drm {
-                XCTAssert(drms.count == 1)
-                XCTAssert(drms[0].vendor == "NYPL")
-                XCTAssert(drms[0].scheme == "http://librarysimplified.org/terms/drm/scheme/ACS")
-                XCTAssert(drms[0].clientToken == "someToken")
-                XCTAssertNil(drms[0].serverToken)
-            }
-
-            // Test Links
-            XCTAssertNotNil(pDoc.links)
-            if let links = pDoc.links {
-                XCTAssert(links.count == 1)
-                XCTAssert(links[0].href == "https://circulation.librarysimplified.org/NYNYPL/AdobeAuth/devices")
-                XCTAssert(links[0].rel == "http://librarysimplified.org/terms/drm/rel/devices")
-                XCTAssertNil(links[0].type)
-                XCTAssertNil(links[0].templated)
-            }
-
-            // Test Settings
-            XCTAssertNotNil(pDoc.settings)
-            XCTAssertTrue(pDoc.settings?.synchronizeAnnotations ?? false)
-        } catch {
-            XCTAssert(false, error.localizedDescription)
-        }
+      let cal = NSCalendar(identifier: .gregorian)!
+      cal.timeZone = TimeZone(secondsFromGMT: 0)!
+      cal.locale = Locale(identifier: "en_US_POSIX")
+      guard let date = profileDoc.authorizationExpires else {
+        XCTFail("Failed to parse `authorizationExpires`")
+        return
+      }
+      XCTAssertEqual(cal.component(.year, from: date), 2023)
+      XCTAssertEqual(cal.component(.month, from: date), 6)
+      XCTAssertEqual(cal.component(.day, from: date), 25)
+      XCTAssertEqual(cal.component(.hour, from: date), 0)
+      XCTAssertEqual(cal.component(.minute, from: date), 0)
+      XCTAssertEqual(cal.component(.second, from: date), 0)
+    } catch {
+      XCTFail("parse fail with error \(error)")
     }
+  }
 
-    func testParseJSONExtraProperty() {
-        let data = extraPropertyJson.data(using: .utf8)
-        XCTAssertNotNil(data)
-        do {
-            let pDoc = try UserProfileDocument.fromData(data!)
+  func testParse() {
+    let data = validJson.data(using: .utf8)
+    XCTAssertNotNil(data)
+    do {
+      let pDoc = try UserProfileDocument.fromData(data!)
+      
+      XCTAssert(pDoc.authorizationIdentifier == "23333999999915")
+      XCTAssertNotNil(pDoc.authorizationExpires)
+      print(pDoc.authorizationExpires!)
 
-            XCTAssert(pDoc.authorizationIdentifier == "23333999999915")
-            XCTAssertNotNil(pDoc.authorizationExpires)
-            print(pDoc.authorizationExpires!)
-
-            // Test DRM
-            XCTAssertNotNil(pDoc.drm)
-            if let drms = pDoc.drm {
-                XCTAssert(drms.count == 1)
-                XCTAssert(drms[0].vendor == "NYPL")
-                XCTAssert(drms[0].scheme == "http://librarysimplified.org/terms/drm/scheme/ACS")
-                XCTAssert(drms[0].clientToken == "someToken")
-                XCTAssertNil(drms[0].serverToken)
-            }
-
-            // Test Links
-            XCTAssertNotNil(pDoc.links)
-            if let links = pDoc.links {
-                XCTAssert(links.count == 1)
-                XCTAssert(links[0].href == "https://circulation.librarysimplified.org/NYNYPL/AdobeAuth/devices")
-                XCTAssert(links[0].rel == "http://librarysimplified.org/terms/drm/rel/devices")
-                XCTAssertNil(links[0].type)
-                XCTAssertNil(links[0].templated)
-            }
-
-            // Test Settings
-            XCTAssertNotNil(pDoc.settings)
-            XCTAssertTrue(pDoc.settings?.synchronizeAnnotations ?? false)
-        } catch {
-            XCTAssert(false, error.localizedDescription)
-        }
+      // Test DRM
+      XCTAssertNotNil(pDoc.drm)
+      if let drms = pDoc.drm {
+        XCTAssert(drms.count == 1)
+        XCTAssert(drms[0].vendor == "NYPL")
+        XCTAssert(drms[0].scheme == "http://librarysimplified.org/terms/drm/scheme/ACS")
+        XCTAssert(drms[0].clientToken == "someToken")
+        XCTAssertNil(drms[0].serverToken)
+      }
+      
+      // Test Links
+      XCTAssertNotNil(pDoc.links)
+      if let links = pDoc.links {
+        XCTAssert(links.count == 1)
+        XCTAssert(links[0].href == "https://circulation.librarysimplified.org/NYNYPL/AdobeAuth/devices")
+        XCTAssert(links[0].rel == "http://librarysimplified.org/terms/drm/rel/devices")
+        XCTAssertNil(links[0].type)
+        XCTAssertNil(links[0].templated)
+      }
+      
+      // Test Settings
+      XCTAssertNotNil(pDoc.settings)
+      XCTAssertTrue(pDoc.settings?.synchronizeAnnotations ?? false)
+    } catch {
+      XCTAssert(false, error.localizedDescription)
     }
+  }
+    
+  func testParseJSONExtraProperty() {
+    let data = extraPropertyJson.data(using: .utf8)
+    XCTAssertNotNil(data)
+    do {
+      let pDoc = try UserProfileDocument.fromData(data!)
+      
+      XCTAssert(pDoc.authorizationIdentifier == "23333999999915")
+      XCTAssertNotNil(pDoc.authorizationExpires)
+      print(pDoc.authorizationExpires!)
 
-    func testParseJSONInvalid() {
-        let data = dataCorruptedJson.data(using: .utf8)
-        XCTAssertNotNil(data)
-
-        do {
-            _ = try UserProfileDocument.fromData(data!)
-            XCTAssert(false)
-        } catch {
-            let err = error as NSError
-            XCTAssertEqual(err.code, NSCoderReadCorruptError)
-
-            guard let customErrorCode = err.userInfo[UserProfileDocument.parseErrorKey] as? Int else {
-                XCTFail()
-                return
-            }
-            XCTAssertEqual(customErrorCode, TPPErrorCode.parseProfileDataCorrupted.rawValue)
-        }
+      // Test DRM
+      XCTAssertNotNil(pDoc.drm)
+      if let drms = pDoc.drm {
+        XCTAssert(drms.count == 1)
+        XCTAssert(drms[0].vendor == "NYPL")
+        XCTAssert(drms[0].scheme == "http://librarysimplified.org/terms/drm/scheme/ACS")
+        XCTAssert(drms[0].clientToken == "someToken")
+        XCTAssertNil(drms[0].serverToken)
+      }
+      
+      // Test Links
+      XCTAssertNotNil(pDoc.links)
+      if let links = pDoc.links {
+        XCTAssert(links.count == 1)
+        XCTAssert(links[0].href == "https://circulation.librarysimplified.org/NYNYPL/AdobeAuth/devices")
+        XCTAssert(links[0].rel == "http://librarysimplified.org/terms/drm/rel/devices")
+        XCTAssertNil(links[0].type)
+        XCTAssertNil(links[0].templated)
+      }
+      
+      // Test Settings
+      XCTAssertNotNil(pDoc.settings)
+      XCTAssertTrue(pDoc.settings?.synchronizeAnnotations ?? false)
+    } catch {
+      XCTAssert(false, error.localizedDescription)
     }
-
-    func testParseJSONMissingProperty() {
-        let data = keyNotFoundJson.data(using: .utf8)
-        XCTAssertNotNil(data)
-
-        do {
-            _ = try UserProfileDocument.fromData(data!)
-            XCTAssert(false)
-        } catch {
-            let err = error as NSError
-            XCTAssertEqual(err.code, NSCoderValueNotFoundError)
-
-            guard let customErrorCode = err.userInfo[UserProfileDocument.parseErrorKey] as? Int else {
-                XCTFail()
-                return
-            }
-            XCTAssertEqual(customErrorCode, TPPErrorCode.parseProfileKeyNotFound.rawValue)
-        }
+  }
+    
+  func testParseJSONInvalid() {
+    let data = dataCorruptedJson.data(using: .utf8)
+    XCTAssertNotNil(data)
+    
+    do {
+      let _ = try UserProfileDocument.fromData(data!)
+      XCTAssert(false)
+    } catch {
+      let err = error as NSError
+      XCTAssertEqual(err.code, NSCoderReadCorruptError)
+        
+      guard let customErrorCode = err.userInfo[UserProfileDocument.parseErrorKey] as? Int else {
+        XCTFail()
+        return
+      }
+      XCTAssertEqual(customErrorCode, TPPErrorCode.parseProfileDataCorrupted.rawValue)
     }
-
-    func testParseJSONTypeMismatch() {
-        let data = mismatchTypeJson.data(using: .utf8)
-        XCTAssertNotNil(data)
-
-        do {
-            _ = try UserProfileDocument.fromData(data!)
-            XCTAssert(false)
-        } catch {
-            let err = error as NSError
-            XCTAssertEqual(err.code, NSCoderReadCorruptError)
-
-            guard let customErrorCode = err.userInfo[UserProfileDocument.parseErrorKey] as? Int else {
-                XCTFail()
-                return
-            }
-            XCTAssertEqual(customErrorCode, TPPErrorCode.parseProfileTypeMismatch.rawValue)
-        }
+  }
+    
+  func testParseJSONMissingProperty() {
+    let data = keyNotFoundJson.data(using: .utf8)
+    XCTAssertNotNil(data)
+    
+    do {
+      let _ = try UserProfileDocument.fromData(data!)
+      XCTAssert(false)
+    } catch {
+      let err = error as NSError
+      XCTAssertEqual(err.code, NSCoderValueNotFoundError)
+        
+      guard let customErrorCode = err.userInfo[UserProfileDocument.parseErrorKey] as? Int else {
+        XCTFail()
+        return
+      }
+      XCTAssertEqual(customErrorCode, TPPErrorCode.parseProfileKeyNotFound.rawValue)
     }
-
-    func testParseJSONNilValue() {
-        let data = valueNotFoundJson.data(using: .utf8)
-        XCTAssertNotNil(data)
-
-        do {
-            _ = try UserProfileDocument.fromData(data!)
-            XCTAssert(false)
-        } catch {
-            let err = error as NSError
-            XCTAssertEqual(err.code, NSCoderValueNotFoundError)
-
-            guard let customErrorCode = err.userInfo[UserProfileDocument.parseErrorKey] as? Int else {
-                XCTFail()
-                return
-            }
-            XCTAssertEqual(customErrorCode, TPPErrorCode.parseProfileValueNotFound.rawValue)
-        }
+  }
+    
+  func testParseJSONTypeMismatch() {
+    let data = mismatchTypeJson.data(using: .utf8)
+    XCTAssertNotNil(data)
+    
+    do {
+      let _ = try UserProfileDocument.fromData(data!)
+      XCTAssert(false)
+    } catch {
+      let err = error as NSError
+      XCTAssertEqual(err.code, NSCoderReadCorruptError)
+        
+      guard let customErrorCode = err.userInfo[UserProfileDocument.parseErrorKey] as? Int else {
+        XCTFail()
+        return
+      }
+      XCTAssertEqual(customErrorCode, TPPErrorCode.parseProfileTypeMismatch.rawValue)
     }
+  }
+    
+  func testParseJSONNilValue() {
+    let data = valueNotFoundJson.data(using: .utf8)
+    XCTAssertNotNil(data)
+    
+    do {
+      let _ = try UserProfileDocument.fromData(data!)
+      XCTAssert(false)
+    } catch {
+      let err = error as NSError
+      XCTAssertEqual(err.code, NSCoderValueNotFoundError)
+        
+      guard let customErrorCode = err.userInfo[UserProfileDocument.parseErrorKey] as? Int else {
+        XCTFail()
+        return
+      }
+      XCTAssertEqual(customErrorCode, TPPErrorCode.parseProfileValueNotFound.rawValue)
+    }
+  }
 }

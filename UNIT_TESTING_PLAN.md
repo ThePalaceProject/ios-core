@@ -354,8 +354,6 @@ Located in `PalaceTests/Mocks/`:
 |------|---------|----------|
 | `TPPBookRegistryMock` | Book state management | Full protocol, publishers |
 | `CatalogRepositoryMock` | Catalog API | Search, load, cache |
-| `CatalogAPIMock` | CatalogAPI protocol | fetchFeed, search, error injection |
-| `NetworkClientMock` | NetworkClient protocol | URL stubbing, error injection, call tracking |
 | `MockImageCache` | Image caching | TenPrint covers |
 | `TPPBookMocker` | Test book creation | All distributor types |
 

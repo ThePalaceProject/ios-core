@@ -9,29 +9,29 @@
 import CoreLocation
 
 extension Notification.Name {
-    static let locationAuthorizationDidChange = Notification.Name("LocationAuthorizationDidChange")
+  static let locationAuthorizationDidChange = Notification.Name("LocationAuthorizationDidChange")
 }
 
 class LocationManager: NSObject, CLLocationManagerDelegate {
-    static let shared = LocationManager()
-    private let locationManager = CLLocationManager()
+  static let shared = LocationManager()
+  private let locationManager = CLLocationManager()
 
-    private override init() {
-        super.init()
-        locationManager.delegate = self
-    }
+  private override init() {
+    super.init()
+    locationManager.delegate = self
+  }
+  
+  var locationAccessAuthorized: Bool {
+    let status = locationManager.authorizationStatus
+    return status == .authorizedAlways || status == .authorizedWhenInUse
+  }
+  
+  var locationAccessDenied: Bool {
+    let status = locationManager.authorizationStatus
+    return status == .denied
+  }
 
-    var locationAccessAuthorized: Bool {
-        let status = locationManager.authorizationStatus
-        return status == .authorizedAlways || status == .authorizedWhenInUse
-    }
-
-    var locationAccessDenied: Bool {
-        let status = locationManager.authorizationStatus
-        return status == .denied
-    }
-
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        NotificationCenter.default.post(name: .locationAuthorizationDidChange, object: nil)
-    }
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    NotificationCenter.default.post(name: .locationAuthorizationDidChange, object: nil)
+  }
 }
