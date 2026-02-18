@@ -153,10 +153,12 @@ struct EPUBSearchView: View {
 
             return Text(combinedText)
                 .palaceFont(.body)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
                 .onTapGesture {
                     viewModel.userSelected(locator)
                 }
-                .padding(5)
+                .padding(.horizontal, 5)
         } else {
             return VStack {
                 Text(text.before ?? "") +
@@ -164,10 +166,12 @@ struct EPUBSearchView: View {
                     Text(text.after ?? "")
             }
             .palaceFont(.body)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
             .onTapGesture {
                 viewModel.userSelected(locator)
             }
-            .padding(5)
+            .padding(.horizontal, 5)
         }
     }
 

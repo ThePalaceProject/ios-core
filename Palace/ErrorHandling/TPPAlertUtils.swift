@@ -202,6 +202,18 @@ import UIKit
                                               viewController: UIViewController?,
                                               animated: Bool,
                                               completion: (() -> Void)?) {
+        // PP-3673: Announce the alert to VoiceOver without moving focus.
+        // This ensures assistive-technology users hear error/status messages
+        // even if UIKit focus changes are delayed or suppressed.
+        if let alert = alertController, UIAccessibility.isVoiceOverRunning {
+            let announcement = [alert.title, alert.message]
+                .compactMap { $0 }
+                .joined(separator: ". ")
+            if !announcement.isEmpty {
+                UIAccessibility.post(notification: .announcement, argument: announcement)
+            }
+        }
+
         presentFromViewControllerOrNil(
             alertController: alertController,
             viewController: viewController,

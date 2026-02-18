@@ -152,6 +152,7 @@ private extension CatalogView {
                 }, label: {
                     HStack {
                         Image(systemName: "arrow.clockwise")
+                            .accessibilityHidden(true)
                         Text(Strings.Generic.reload)
                     }
                     .padding(.horizontal, 24)

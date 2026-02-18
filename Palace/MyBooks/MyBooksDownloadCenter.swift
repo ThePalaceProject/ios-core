@@ -250,6 +250,16 @@ struct DownloadErrorInfo {
         accessibilityAnnouncements.announceReturnFailed(title: book.title)
     }
 
+    // MARK: - Error Announcements (PP-3673)
+
+    /// Publishes an error to `downloadErrorPublisher` and simultaneously announces
+    /// it via VoiceOver so assistive technology users hear the error without
+    /// needing to navigate to the alert element.
+    private func publishAndAnnounceError(_ errorInfo: DownloadErrorInfo) {
+        downloadErrorPublisher.send(errorInfo)
+        accessibilityAnnouncements.announceStatus(title: errorInfo.title, message: errorInfo.message)
+    }
+
     private func markDownloadSuccessful(for book: TPPBook) {
         bookRegistry.setState(.downloadSuccessful, for: book.identifier)
         announceDownloadCompleted(for: book)
@@ -313,7 +323,7 @@ struct DownloadErrorInfo {
         case TPPProblemDocument.TypeLoanAlreadyExists:
             let alertMessage = DisplayStrings.loanAlreadyExistsAlertMessage
             runOnMainAsync {
-                self.downloadErrorPublisher.send(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage))
+                self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage))
             }
 
         case TPPProblemDocument.TypeInvalidCredentials:
@@ -384,7 +394,7 @@ struct DownloadErrorInfo {
         }()
 
         runOnMainAsync {
-            self.downloadErrorPublisher.send(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, retryAction: retryAction))
+            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, retryAction: retryAction))
         }
     }
 
@@ -401,7 +411,7 @@ struct DownloadErrorInfo {
         }()
 
         runOnMainAsync {
-            self.downloadErrorPublisher.send(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.borrowFailed, message: formattedMessage, retryAction: retryAction))
+            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.borrowFailed, message: formattedMessage, retryAction: retryAction))
         }
     }
 
@@ -2213,9 +2223,9 @@ extension MyBooksDownloadCenter {
             }
         }()
 
-        // Publish error so SwiftUI views (half sheet) can present inline
+        // Publish error and announce via VoiceOver (PP-3673)
         runOnMainAsync {
-            self.downloadErrorPublisher.send(DownloadErrorInfo(bookId: book.identifier, title: "DownloadFailed", message: finalMessage, retryAction: retryAction))
+            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.downloadFailed, message: finalMessage, retryAction: retryAction))
         }
 
         broadcastUpdate()
@@ -2250,9 +2260,9 @@ extension MyBooksDownloadCenter {
             }
         }()
 
-        // Publish error so SwiftUI views (half sheet) can present inline
+        // Publish error and announce via VoiceOver (PP-3673)
         runOnMainAsync {
-            self.downloadErrorPublisher.send(DownloadErrorInfo(bookId: book.identifier, title: "DownloadFailed", message: finalMessage, retryAction: retryAction))
+            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.downloadFailed, message: finalMessage, retryAction: retryAction))
         }
     }
 
