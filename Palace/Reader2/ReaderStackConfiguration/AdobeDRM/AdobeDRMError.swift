@@ -11,15 +11,15 @@ import Foundation
 #if FEATURE_DRM_CONNECTOR
 
 enum AdobeDRMError: LocalizedError {
-  
-  /// Indicates the item license has expired
-  case expiredDisplayUntilDate
-  
-  public var errorDescription: String? {
-    switch self {
-    case .expiredDisplayUntilDate: return NSLocalizedString("The book license has expired.", comment: "Expired license warning")
+
+    /// Indicates the item license has expired
+    case expiredDisplayUntilDate
+
+    public var errorDescription: String? {
+        switch self {
+        case .expiredDisplayUntilDate: return NSLocalizedString("The book license has expired.", comment: "Expired license warning")
+        }
     }
-  }
 }
 
 #endif

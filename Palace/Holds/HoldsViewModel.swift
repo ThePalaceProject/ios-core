@@ -40,10 +40,10 @@ final class HoldsViewModel: ObservableObject {
     convenience init() {
         self.init(bookRegistry: TPPBookRegistry.shared)
     }
-    
+
     init(bookRegistry: TPPBookRegistryProvider) {
         self.bookRegistry = bookRegistry
-        
+
         NotificationCenter.default.publisher(for: .TPPSyncBegan)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -53,7 +53,7 @@ final class HoldsViewModel: ObservableObject {
 
         let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
         let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
-        
+
         syncEnd
             .merge(with: registryChange)
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
@@ -77,7 +77,7 @@ final class HoldsViewModel: ObservableObject {
         #else
         let allHeld = bookRegistry.heldBooks
         #endif
-        
+
         var reservedVMs: [HoldsBookViewModel] = []
         var heldVMs: [HoldsBookViewModel] = []
 
@@ -90,12 +90,12 @@ final class HoldsViewModel: ObservableObject {
             }
         }
 
-        withAnimation {
+        withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) {
             self.reservedBookVMs = reservedVMs
             self.heldBookVMs = heldVMs
             self.visibleBooks = self.allBooks
         }
-        
+
         // Trigger badge update via notification (badge is now centrally managed by AppTabHostView)
         NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
     }
@@ -120,15 +120,15 @@ final class HoldsViewModel: ObservableObject {
         selectNewLibrary = false
         reloadData()
     }
-    
+
     private func updateFeed(_ account: Account) {
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
             TPPSettings.shared.accountMainFeedURL = url
         }
         AccountsManager.shared.currentAccount = account
-        
+
         account.loadAuthenticationDocument { _ in }
-        
+
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
 
@@ -148,7 +148,7 @@ final class HoldsViewModel: ObservableObject {
                 DispatchQueue.global(qos: .userInitiated).async {
                     let result = sourceBooks.filter {
                         $0.title.localizedCaseInsensitiveContains(query) ||
-                        ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
+                            ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
                     }
                     continuation.resume(returning: result)
                 }

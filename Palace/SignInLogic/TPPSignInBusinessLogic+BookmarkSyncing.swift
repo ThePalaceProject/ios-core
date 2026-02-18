@@ -9,30 +9,30 @@
 import Foundation
 
 extension TPPSignInBusinessLogic {
-  @objc func shouldShowSyncButton() -> Bool {
-    guard let libraryDetails = libraryAccount?.details else {
-      Log.debug(#file, "🔖 shouldShowSyncButton: NO - libraryAccount?.details is nil")
-      return false
-    }
+    @objc func shouldShowSyncButton() -> Bool {
+        guard let libraryDetails = libraryAccount?.details else {
+            Log.debug(#file, "🔖 shouldShowSyncButton: NO - libraryAccount?.details is nil")
+            return false
+        }
 
-    let supportsSync = libraryDetails.supportsSimplyESync
-    // Use TPPAnnotations.annotationsURL which computes the URL from mainFeedURL
-    // instead of getLicenseURL(.annotations) which is never populated
-    let hasAnnotationsURL = TPPAnnotations.annotationsURL != nil
-    let hasCredentials = userAccount.hasCredentials()
-    let isCurrentAccount = libraryAccountID == libraryAccountsProvider.currentAccountId
-    
-    Log.debug(#file, """
+        let supportsSync = libraryDetails.supportsSimplyESync
+        // Use TPPAnnotations.annotationsURL which computes the URL from mainFeedURL
+        // instead of getLicenseURL(.annotations) which is never populated
+        let hasAnnotationsURL = TPPAnnotations.annotationsURL != nil
+        let hasCredentials = userAccount.hasCredentials()
+        let isCurrentAccount = libraryAccountID == libraryAccountsProvider.currentAccountId
+
+        Log.debug(#file, """
       🔖 shouldShowSyncButton check for '\(libraryAccount?.name ?? "unknown")':
          supportsSimplyESync: \(supportsSync)
          hasAnnotationsURL: \(hasAnnotationsURL) (URL: \(TPPAnnotations.annotationsURL?.absoluteString ?? "nil"))
          hasCredentials: \(hasCredentials)
          isCurrentAccount: \(isCurrentAccount) (libraryAccountID: \(libraryAccountID ?? "nil"), currentAccountId: \(libraryAccountsProvider.currentAccountId ?? "nil"))
       """)
-    
-    let result = supportsSync && hasAnnotationsURL && hasCredentials && isCurrentAccount
-    Log.debug(#file, "🔖 shouldShowSyncButton result: \(result)")
-    
-    return result
-  }
+
+        let result = supportsSync && hasAnnotationsURL && hasCredentials && isCurrentAccount
+        Log.debug(#file, "🔖 shouldShowSyncButton result: \(result)")
+
+        return result
+    }
 }

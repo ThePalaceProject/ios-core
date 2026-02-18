@@ -1,0 +1,678 @@
+# Ledger Analysis for Palace iOS
+#
+# This workflow runs ledger analysis on PRs using the `observe` command
+# which outputs structured JSON for CI integration.
+#
+# Currently non-blocking (continue-on-error: true).
+# See comments below for enabling gating.
+
+name: Ledger Analysis
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    # Only run on code changes, not docs-only
+    paths:
+      - '**.swift'
+      - '**.m'
+      - '**.h'
+      - 'tools/ledger/**'
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      full_analysis:
+        description: 'Run full analysis instead of diff'
+        required: false
+        default: 'false'
+        type: boolean
+
+# Cancel in-progress runs for same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Ledger Analysis
+    runs-on: macos-latest
+    # Non-blocking for initial dogfood cycle
+    continue-on-error: true
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history for diff analysis
+          fetch-depth: 0
+
+      - name: Setup environment
+        run: |
+          # Ensure jq is available (usually pre-installed on macos-latest)
+          which jq || brew install jq
+          
+          # Create directories
+          mkdir -p tools/bin
+          mkdir -p artifacts/ledger
+
+      - name: Install ledger
+        run: |
+          # v0.9.4 with new install script and bundled tools
+          curl -fsSL https://raw.githubusercontent.com/mauricecarrier7/ledger-dist/main/install.sh \
+            | bash -s -- --version 0.9.4 --dir ./tools/bin
+          
+          # Clear macOS quarantine attributes (fixes exit code 11)
+          xattr -cr ./tools/bin/ 2>/dev/null || true
+          
+          echo "Installed versions:"
+          ./tools/bin/ledger --version
+          ./tools/bin/accesslint --version 2>/dev/null || echo "AccessLint installed"
+          ./tools/bin/qaatlas --version 2>/dev/null || echo "QAAtlas installed"
+
+      - name: Run analysis
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # Initialize ledger with iOS preset
+          echo "Initializing ledger..."
+          ./tools/bin/ledger init --platform ios --no-interactive
+          
+          # Use our pre-configured config with correct settings
+          echo "Applying custom config..."
+          cp tools/ledger/ledger-config.json .ledger/config.json
+          
+          # Build model before observe
+          echo "Building model..."
+          ./tools/bin/ledger update
+          
+          # Always enable QAAtlas - the secret is configured in the repo
+          # OPENAI_API_KEY is passed via env above and Ledger will use it
+          DOMAINS="arch,reach,a11y,qa"
+          
+          # Debug: Confirm key is available (show only first 4 chars for security)
+          if [[ -n "$OPENAI_API_KEY" ]]; then
+            echo "✅ OPENAI_API_KEY is set (starts with: ${OPENAI_API_KEY:0:4}...)"
+          else
+            echo "⚠️ OPENAI_API_KEY not found in environment"
+          fi
+          
+          # Run ledger observe for CI-friendly JSON output
+          echo "Running ledger observe with domains: $DOMAINS"
+          ./tools/bin/ledger observe \
+            --domains $DOMAINS \
+            --output artifacts/ledger/observe \
+            2>&1 | tee artifacts/ledger/observe.log
+          
+          # Debug: Show what was generated
+          echo "=== Generated files ==="
+          find artifacts/ledger/observe -type f -name "*.json" 2>/dev/null | head -20 || echo "No JSON files found"
+          
+          # Debug: Show summary.json content if exists
+          if [[ -f "artifacts/ledger/observe/latest/summary.json" ]]; then
+            echo "=== summary.json structure ==="
+            jq 'keys' artifacts/ledger/observe/latest/summary.json
+            echo "=== QA section ==="
+            jq '.qa // "QA section not found"' artifacts/ledger/observe/latest/summary.json | head -30
+          else
+            echo "⚠️ summary.json not found"
+            ls -la artifacts/ledger/observe/ 2>/dev/null || echo "observe dir not found"
+            ls -la artifacts/ledger/observe/latest/ 2>/dev/null || echo "latest dir not found"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ledger-analysis
+          path: |
+            artifacts/ledger/observe/
+            artifacts/ledger/observe.log
+            artifacts/ledger/diff/
+            artifacts/ledger/logs/
+          retention-days: 14
+
+      - name: Parse analysis results
+        if: always()
+        id: parse
+        run: |
+          # Initialize defaults
+          echo "components=0" >> $GITHUB_OUTPUT
+          echo "cycles=0" >> $GITHUB_OUTPUT
+          echo "violations=0" >> $GITHUB_OUTPUT
+          echo "hotspots=0" >> $GITHUB_OUTPUT
+          echo "changed_files=0" >> $GITHUB_OUTPUT
+          echo "arch_issues=0" >> $GITHUB_OUTPUT
+          echo "reach_issues=0" >> $GITHUB_OUTPUT
+          echo "a11y_issues=0" >> $GITHUB_OUTPUT
+          echo "a11y_blocker=0" >> $GITHUB_OUTPUT
+          echo "a11y_major=0" >> $GITHUB_OUTPUT
+          echo "a11y_minor=0" >> $GITHUB_OUTPUT
+          echo "a11y_info=0" >> $GITHUB_OUTPUT
+          echo "qa_coverage=" >> $GITHUB_OUTPUT
+          echo "qa_tested=0" >> $GITHUB_OUTPUT
+          echo "qa_total=0" >> $GITHUB_OUTPUT
+          echo "qa_high_gaps=0" >> $GITHUB_OUTPUT
+          echo "qa_tests_recommended=0" >> $GITHUB_OUTPUT
+          echo "qa_risk=" >> $GITHUB_OUTPUT
+          
+          OBSERVE_DIR="artifacts/ledger/observe/latest"
+          
+          # Parse from summary.json (primary source)
+          # v0.8.3 uses short keys: arch, reach, a11y, qa
+          if [[ -f "$OBSERVE_DIR/summary.json" ]]; then
+            
+            # Architecture metrics (v0.8.3 uses .arch)
+            COMPONENTS=$(jq -r '.arch.components // 0' "$OBSERVE_DIR/summary.json")
+            CYCLES=$(jq -r '.arch.cycles // 0' "$OBSERVE_DIR/summary.json")
+            VIOLATIONS=$(jq -r '.arch.violations // 0' "$OBSERVE_DIR/summary.json")
+            HOTSPOTS=$(jq -r '.arch.hotspots // 0' "$OBSERVE_DIR/summary.json")
+            ARCH_ISSUES=$(jq -r '.arch.findings | length // 0' "$OBSERVE_DIR/summary.json")
+            AVG_COUPLING=$(jq -r '.arch.averageCoupling // 0' "$OBSERVE_DIR/summary.json")
+            echo "components=$COMPONENTS" >> $GITHUB_OUTPUT
+            echo "cycles=$CYCLES" >> $GITHUB_OUTPUT
+            echo "violations=$VIOLATIONS" >> $GITHUB_OUTPUT
+            echo "hotspots=$HOTSPOTS" >> $GITHUB_OUTPUT
+            echo "arch_issues=$ARCH_ISSUES" >> $GITHUB_OUTPUT
+            echo "avg_coupling=$AVG_COUPLING" >> $GITHUB_OUTPUT
+            
+            # Reachability metrics (v0.8.3 uses .reach)
+            REACH_ISSUES=$(jq -r '.reach.deadCodeCount // 0' "$OBSERVE_DIR/summary.json")
+            echo "reach_issues=$REACH_ISSUES" >> $GITHUB_OUTPUT
+            
+            # Accessibility metrics (v0.8.3 uses .a11y with findings array)
+            # Count from findings array since totalCount may not exist
+            A11Y_TOTAL=$(jq -r '.a11y.findings | length // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_BLOCKER=$(jq -r '[.a11y.findings[] | select(.severity == "blocker")] | length // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_MAJOR=$(jq -r '[.a11y.findings[] | select(.severity == "major")] | length // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_MINOR=$(jq -r '[.a11y.findings[] | select(.severity == "minor")] | length // 0' "$OBSERVE_DIR/summary.json")
+            A11Y_INFO=$(jq -r '[.a11y.findings[] | select(.severity == "info")] | length // 0' "$OBSERVE_DIR/summary.json")
+            echo "a11y_issues=$A11Y_TOTAL" >> $GITHUB_OUTPUT
+            echo "a11y_blocker=$A11Y_BLOCKER" >> $GITHUB_OUTPUT
+            echo "a11y_major=$A11Y_MAJOR" >> $GITHUB_OUTPUT
+            echo "a11y_minor=$A11Y_MINOR" >> $GITHUB_OUTPUT
+            echo "a11y_info=$A11Y_INFO" >> $GITHUB_OUTPUT
+            
+            # QAAtlas metrics - try summary.json first, fallback to gap-report.json
+            QA_COVERAGE=""
+            if jq -e '.qa != null and .qa.coverage != null' "$OBSERVE_DIR/summary.json" > /dev/null 2>&1; then
+              # QA data is in summary.json (v0.8.3 format)
+              QA_COVERAGE=$(jq -r '.qa.coverage // empty' "$OBSERVE_DIR/summary.json")
+              QA_TESTED=$(jq -r '.qa.testedCount // 0' "$OBSERVE_DIR/summary.json")
+              QA_TOTAL=$(jq -r '.qa.totalCount // 0' "$OBSERVE_DIR/summary.json")
+              QA_HIGH_GAPS=$(jq -r '.qa.highPriorityGaps // 0' "$OBSERVE_DIR/summary.json")
+              QA_TESTS_REC=$(jq -r '.qa.testsRecommended // 0' "$OBSERVE_DIR/summary.json")
+              QA_RISK=$(jq -r '.qa.risk // empty' "$OBSERVE_DIR/summary.json")
+            elif [[ -f "$OBSERVE_DIR/qa/gap-report.json" ]]; then
+              # Fallback: parse directly from gap-report.json
+              QA_COVERAGE=$(jq -r '.coverage // .coverageEstimate // empty' "$OBSERVE_DIR/qa/gap-report.json")
+              QA_TESTED=$(jq -r '.testedCount // .functionsWithTests // 0' "$OBSERVE_DIR/qa/gap-report.json")
+              QA_TOTAL=$(jq -r '.totalCount // .totalFunctions // 0' "$OBSERVE_DIR/qa/gap-report.json")
+              QA_HIGH_GAPS=$(jq -r '.highPriorityGaps // 0' "$OBSERVE_DIR/qa/gap-report.json")
+              QA_TESTS_REC=$(jq -r '.gaps | length' "$OBSERVE_DIR/qa/gap-report.json" 2>/dev/null || echo "0")
+              QA_RISK=$(jq -r '.risk // .riskLevel // empty' "$OBSERVE_DIR/qa/gap-report.json")
+            fi
+            
+            if [[ -n "$QA_COVERAGE" ]]; then
+              echo "qa_coverage=$QA_COVERAGE" >> $GITHUB_OUTPUT
+              echo "qa_tested=$QA_TESTED" >> $GITHUB_OUTPUT
+              echo "qa_total=$QA_TOTAL" >> $GITHUB_OUTPUT
+              echo "qa_high_gaps=$QA_HIGH_GAPS" >> $GITHUB_OUTPUT
+              echo "qa_tests_recommended=$QA_TESTS_REC" >> $GITHUB_OUTPUT
+              echo "qa_risk=$QA_RISK" >> $GITHUB_OUTPUT
+            fi
+          fi
+          
+          # Generate detailed markdown for expandable sections
+          
+          # Accessibility: All issues sorted by severity
+          if [[ -f "$OBSERVE_DIR/a11y/findings.json" ]]; then
+            jq -r '.findings | sort_by({blocker:0,major:1,minor:2,info:3}[.severity] // 4)[:5][] | "- " + ({blocker:"🚨",major:"🔴",minor:"🟡",info:"🔵"}[.severity] // "⚪") + " **" + .title + "** - `" + (.file | split("/")[-1]) + ":" + (.line|tostring) + "`"' \
+              "$OBSERVE_DIR/a11y/findings.json" 2>/dev/null > /tmp/a11y_top_issues.md || true
+            
+            # Full issue list for expandable section
+            jq -r '.findings | sort_by({blocker:0,major:1,minor:2,info:3}[.severity] // 4)[] | "| " + ({blocker:"🚨",major:"🔴",minor:"🟡",info:"🔵"}[.severity] // "⚪") + " " + .severity + " | " + .title + " | `" + (.file | split("/")[-1]) + ":" + (.line|tostring) + "` | " + (.rule // "-") + " |"' \
+              "$OBSERVE_DIR/a11y/findings.json" 2>/dev/null > /tmp/a11y_all_issues.md || true
+          fi
+          
+          # Reachability: All dead symbols
+          if [[ -f "$OBSERVE_DIR/reach/analysis.json" ]]; then
+            jq -r '.findings[:5][] | "- `" + .symbol + "` in `" + (.file | split("/")[-1]) + "`"' \
+              "$OBSERVE_DIR/reach/analysis.json" 2>/dev/null > /tmp/reach_top_dead.md || true
+            
+            # Full list for expandable section
+            jq -r '.findings[] | "| `" + .symbol + "` | `" + (.file | split("/")[-1]) + "` | " + (.type // "unknown") + " |"' \
+              "$OBSERVE_DIR/reach/analysis.json" 2>/dev/null > /tmp/reach_all_dead.md || true
+          fi
+          
+          # QAAtlas: Coverage gaps
+          if [[ -f "$OBSERVE_DIR/qa/gap-report.json" ]]; then
+            # Top 10 gaps for expandable section
+            jq -r '.gaps[:10][] | "| " + ({high:"🔴",medium:"🟡",low:"🟢"}[.priority] // "⚪") + " " + (.priority | ascii_upcase) + " | `" + .symbol[:45] + "` | `" + (.file | split("/")[-1]) + "` |"' \
+              "$OBSERVE_DIR/qa/gap-report.json" 2>/dev/null > /tmp/qa_top_gaps.md || true
+          fi
+          
+          # QAAtlas: Test recommendations (testplan)
+          if [[ -f "$OBSERVE_DIR/qa/testplan.md" ]]; then
+            head -80 "$OBSERVE_DIR/qa/testplan.md" > /tmp/qa_testplan.md 2>/dev/null || true
+          fi
+          
+          # QAAtlas: PR-specific analysis (what changed)
+          if [[ -f "$OBSERVE_DIR/qa/pr-comment.md" ]]; then
+            cat "$OBSERVE_DIR/qa/pr-comment.md" > /tmp/qa_pr_comment.md 2>/dev/null || true
+          fi
+          
+          # QAAtlas: Test matching (existing coverage)
+          if [[ -f "$OBSERVE_DIR/qa/test-matches.json" ]]; then
+            jq -r '.[] | "| " + (.title[:40] + if (.title | length) > 40 then "..." else "" end) + " | `" + (.test_file | split("/")[-1]) + "` | " + (if .match_type | contains("mapped") then "✅ Direct" else "🔍 Keyword" end) + " |"' \
+              "$OBSERVE_DIR/qa/test-matches.json" 2>/dev/null > /tmp/qa_test_matches.md || true
+          fi
+          
+          # Architecture: Cycle details
+          if [[ -f "$OBSERVE_DIR/arch/analysis.json" ]]; then
+            jq -r 'if .cycles then .cycles[] | "- " + (.components | join(" → ")) else empty end' \
+              "$OBSERVE_DIR/arch/analysis.json" 2>/dev/null > /tmp/arch_cycles.md || true
+            
+            # Findings/issues
+            jq -r '.findings[]? | "- **" + .type + "**: " + .message' \
+              "$OBSERVE_DIR/arch/analysis.json" 2>/dev/null > /tmp/arch_findings.md || true
+          fi
+          
+          # Parse diff summary for changed files count
+          if [[ -f "artifacts/ledger/logs/diff-summary.md" ]]; then
+            CHANGED=$(grep -oE "Changed files:\*\* [0-9]+" artifacts/ledger/logs/diff-summary.md | grep -oE "[0-9]+" || echo "0")
+            echo "changed_files=$CHANGED" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post summary
+        if: always()
+        run: |
+          echo "## 🏗️ CodeAtlas Ledger Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Show summary if exists
+          if [[ -f "artifacts/ledger/observe/latest/report.md" ]]; then
+            cat artifacts/ledger/observe/latest/report.md >> $GITHUB_STEP_SUMMARY
+          elif [[ -f "artifacts/ledger/logs/diff-summary.md" ]]; then
+            cat artifacts/ledger/logs/diff-summary.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No summary generated. Check workflow logs." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "Artifacts available in the Actions tab." >> $GITHUB_STEP_SUMMARY
+
+      - name: Post PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Helper: round floats to 2 decimal places
+            const round2 = (val) => {
+              const num = parseFloat(val);
+              return isNaN(num) ? val : num.toFixed(2);
+            };
+            
+            // Basic metrics
+            const changedFiles = '${{ steps.parse.outputs.changed_files }}' || '0';
+            const components = '${{ steps.parse.outputs.components }}' || '0';
+            const cycles = '${{ steps.parse.outputs.cycles }}' || '0';
+            const violations = '${{ steps.parse.outputs.violations }}' || '0';
+            const hotspots = '${{ steps.parse.outputs.hotspots }}' || '0';
+            const avgCouplingRaw = '${{ steps.parse.outputs.avg_coupling }}' || '0';
+            const avgCoupling = round2(avgCouplingRaw);
+            const archIssues = '${{ steps.parse.outputs.arch_issues }}' || '0';
+            const reachIssues = '${{ steps.parse.outputs.reach_issues }}' || '0';
+            
+            // AccessLint detailed metrics
+            const a11yIssues = '${{ steps.parse.outputs.a11y_issues }}' || '0';
+            const a11yBlocker = '${{ steps.parse.outputs.a11y_blocker }}' || '0';
+            const a11yMajor = '${{ steps.parse.outputs.a11y_major }}' || '0';
+            const a11yMinor = '${{ steps.parse.outputs.a11y_minor }}' || '0';
+            const a11yInfo = '${{ steps.parse.outputs.a11y_info }}' || '0';
+            
+            // QAAtlas metrics (if qa domain enabled)
+            const qaCoverageRaw = '${{ steps.parse.outputs.qa_coverage }}';
+            const qaCoverage = qaCoverageRaw ? round2(qaCoverageRaw) : '';
+            const qaTested = '${{ steps.parse.outputs.qa_tested }}' || '0';
+            const qaTotal = '${{ steps.parse.outputs.qa_total }}' || '0';
+            const qaHighGaps = '${{ steps.parse.outputs.qa_high_gaps }}' || '0';
+            const qaTestsRec = '${{ steps.parse.outputs.qa_tests_recommended }}' || '0';
+            const qaRisk = '${{ steps.parse.outputs.qa_risk }}';
+            
+            const totalIssues = parseInt(archIssues) + parseInt(reachIssues) + parseInt(a11yIssues);
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            
+            let body = '## 🏗️ CodeAtlas Ledger Analysis\n\n';
+            
+            // Overall status header
+            const criticalA11y = parseInt(a11yBlocker) + parseInt(a11yMajor);
+            if (totalIssues === 0) {
+              body += '### ✅ All Checks Passed\n\n';
+            } else if (criticalA11y > 0 || parseInt(archIssues) > 0) {
+              body += `### 🚨 ${totalIssues} Issue${totalIssues === 1 ? '' : 's'} Require Attention\n\n`;
+            } else {
+              body += `### ⚠️ ${totalIssues} Issue${totalIssues === 1 ? '' : 's'} Found\n\n`;
+            }
+            
+            // ═══════════════════════════════════════════════════════════════
+            // ACCESSIBILITY SECTION (AccessLint)
+            // ═══════════════════════════════════════════════════════════════
+            body += '---\n';
+            body += '### ♿ Accessibility (via AccessLint)\n\n';
+            body += '> 💡 *Static analysis against WCAG 2.1 AA guidelines for iOS accessibility.*\n\n';
+            
+            if (parseInt(a11yIssues) === 0) {
+              body += '✅ **No accessibility issues detected**\n\n';
+            } else {
+              // Severity breakdown table with help
+              body += '| Severity | Count | ℹ️ What This Means |\n';
+              body += '|----------|-------|-------------------|\n';
+              if (parseInt(a11yBlocker) > 0) body += `| 🚨 Blocker | ${a11yBlocker} | Completely blocks assistive technology users |\n`;
+              body += `| 🔴 Major | ${a11yMajor} | Significant barrier - fix before release |\n`;
+              body += `| 🟡 Minor | ${a11yMinor} | Usability issue - improves experience |\n`;
+              body += `| 🔵 Info | ${a11yInfo} | Best practice suggestion |\n`;
+              body += `| **Total** | **${a11yIssues}** | |\n\n`;
+              
+              // Top issues
+              body += '**Top Issues:**\n';
+              try {
+                const topIssues = fs.readFileSync('/tmp/a11y_top_issues.md', 'utf8');
+                if (topIssues.trim()) {
+                  body += topIssues + '\n';
+                } else {
+                  body += `Found ${a11yIssues} issue(s). See details below.\n`;
+                }
+              } catch (e) {
+                body += `Found ${a11yIssues} issue(s). See details below.\n`;
+              }
+              
+              // Expandable full details
+              body += '\n<details>\n<summary><strong>📋 View All Accessibility Issues</strong></summary>\n\n';
+              body += '| Severity | Issue | Location | Rule |\n';
+              body += '|----------|-------|----------|------|\n';
+              try {
+                const allIssues = fs.readFileSync('/tmp/a11y_all_issues.md', 'utf8');
+                if (allIssues.trim()) {
+                  body += allIssues;
+                } else {
+                  body += '| - | No detailed data available | - | - |\n';
+                }
+              } catch (e) {
+                body += '| - | See full report artifact | - | - |\n';
+              }
+              body += '\n</details>\n\n';
+            }
+            
+            // ═══════════════════════════════════════════════════════════════
+            // TEST COVERAGE SECTION (QAAtlas) - only if qa domain enabled
+            // ═══════════════════════════════════════════════════════════════
+            body += '---\n';
+            body += '### 🧪 Test Coverage (via QAAtlas)\n\n';
+            
+            // Check if we have valid QA data
+            const hasQAData = qaCoverage && parseFloat(qaCoverage) > 0 || (parseInt(qaTested) > 0 || parseInt(qaTotal) > 0);
+            
+            if (!hasQAData) {
+              body += '> ⚠️ **No coverage data available** - QAAtlas requires an OpenAI API key.\n';
+              body += '> Set `OPENAI_API_KEY` in repository secrets to enable AI-powered test coverage analysis.\n\n';
+            } else {
+              const coverageNum = parseFloat(qaCoverage);
+              const coverageIcon = coverageNum >= 50 ? '🟢' : coverageNum >= 30 ? '🟡' : '🔴';
+              body += `**Coverage Estimate:** ${coverageIcon} **${qaCoverage}%**\n\n`;
+              body += `> 💡 *AI analysis of which functions/classes have corresponding unit tests.*\n\n`;
+              
+              // Metrics table with help tooltips
+              body += '| Metric | Value | ℹ️ What This Means |\n';
+              body += '|--------|-------|-------------------|\n';
+              body += `| Functions with Tests | ${qaTested} / ${qaTotal} | Number of methods that appear to have test coverage out of total detected |\n`;
+              body += `| High-Priority Gaps | ${qaHighGaps} | Critical functions (public APIs, error handlers) that lack tests |\n`;
+              if (qaTestsRec && qaTestsRec !== '0') {
+                body += `| Suggested Tests | ${qaTestsRec} | AI-recommended tests based on code complexity and risk |\n`;
+              }
+              body += '\n';
+              
+              // Risk assessment with description
+              if (qaRisk) {
+                const riskIcon = {low: '🟢', medium: '🟡', high: '🔴'}[qaRisk.toLowerCase()] || '⚪';
+                const riskDesc = {
+                  low: 'Changes are low-risk or well-covered by existing tests',
+                  medium: 'Some changes may benefit from additional testing',
+                  high: 'Changes touch critical code paths - careful review recommended'
+                }[qaRisk.toLowerCase()] || '';
+                body += `**Risk Assessment:** ${riskIcon} **${qaRisk.toUpperCase()}** - ${riskDesc}\n\n`;
+              }
+              
+              // What Changed in This PR (PR-specific analysis)
+              try {
+                const prComment = fs.readFileSync('/tmp/qa_pr_comment.md', 'utf8');
+                if (prComment.trim()) {
+                  body += '#### 🔍 What Changed in This PR\n\n';
+                  body += prComment + '\n\n';
+                }
+              } catch (e) {
+                // No PR comment available
+              }
+              
+              // Existing Test Coverage (test matching)
+              try {
+                const testMatches = fs.readFileSync('/tmp/qa_test_matches.md', 'utf8');
+                if (testMatches.trim()) {
+                  body += '<details>\n<summary><strong>✅ Existing Test Coverage</strong></summary>\n\n';
+                  body += '| Recommendation | Covered By | Match Type |\n';
+                  body += '|----------------|------------|------------|\n';
+                  body += testMatches;
+                  body += '\n</details>\n\n';
+                }
+              } catch (e) {
+                // No test matches available
+              }
+              
+              // Expandable: Top Coverage Gaps
+              if (parseInt(qaHighGaps) > 0) {
+                body += '<details>\n<summary><strong>🔍 Top 10 Coverage Gaps</strong></summary>\n\n';
+                body += '| Priority | Symbol | File |\n';
+                body += '|----------|--------|------|\n';
+                try {
+                  const topGaps = fs.readFileSync('/tmp/qa_top_gaps.md', 'utf8');
+                  if (topGaps.trim()) {
+                    body += topGaps;
+                  } else {
+                    body += '| - | See full report | - |\n';
+                  }
+                } catch (e) {
+                  body += '| - | See full report | - |\n';
+                }
+                body += '\n</details>\n\n';
+              }
+              
+              // Expandable: Recommended Tests
+              body += '<details>\n<summary><strong>📋 Recommended Tests</strong></summary>\n\n';
+              try {
+                const testplan = fs.readFileSync('/tmp/qa_testplan.md', 'utf8');
+                if (testplan.trim()) {
+                  body += testplan;
+                } else {
+                  body += 'No specific test recommendations for this PR.\n';
+                }
+              } catch (e) {
+                body += 'See full report artifact for test recommendations.\n';
+              }
+              body += '\n</details>\n\n';
+              
+              body += '*⚠️ AI recommendations are advisory only - review before implementing*\n\n';
+            } // end hasQAData
+            
+            // ═══════════════════════════════════════════════════════════════
+            // ARCHITECTURE SECTION
+            // ═══════════════════════════════════════════════════════════════
+            body += '---\n';
+            body += '### 🏛️ Architecture Analysis\n\n';
+            
+            // Always show metrics table with help tooltips
+            body += '| Metric | Value | ℹ️ What This Means |\n';
+            body += '|--------|-------|-------------------|\n';
+            body += `| Components | ${components} | Distinct modules/layers detected in your codebase |\n`;
+            body += `| Dependency Cycles | ${cycles} | Circular dependencies (A→B→C→A). Goal: **0** |\n`;
+            body += `| Layer Violations | ${violations} | Dependencies that break architectural boundaries |\n`;
+            body += `| Hotspots | ${hotspots} | Files with high complexity + frequent changes |\n`;
+            body += `| Avg Coupling | ${avgCoupling} | How interconnected modules are (lower is better, <1.0 is good) |\n\n`;
+            
+            if (parseInt(archIssues) === 0 && cycles === '0' && violations === '0') {
+              body += '✅ **Architecture looks healthy!**\n\n';
+            } else {
+              // Show issues summary
+              if (parseInt(archIssues) > 0) {
+                body += `⚠️ Found **${archIssues}** architectural issue(s).\n\n`;
+              }
+              
+              // Expandable: Dependency Cycles
+              if (parseInt(cycles) > 0) {
+                body += '<details>\n<summary><strong>🔄 Dependency Cycles</strong></summary>\n\n';
+                try {
+                  const cyclesDetail = fs.readFileSync('/tmp/arch_cycles.md', 'utf8');
+                  if (cyclesDetail.trim()) {
+                    body += cyclesDetail;
+                  } else {
+                    body += 'See full report for cycle details.\n';
+                  }
+                } catch (e) {
+                  body += 'See full report for cycle details.\n';
+                }
+                body += '\n</details>\n\n';
+              }
+              
+              // Expandable: All Findings
+              if (parseInt(archIssues) > 0) {
+                body += '<details>\n<summary><strong>📋 Architecture Findings</strong></summary>\n\n';
+                try {
+                  const findings = fs.readFileSync('/tmp/arch_findings.md', 'utf8');
+                  if (findings.trim()) {
+                    body += findings;
+                  } else {
+                    body += 'See full report for detailed findings.\n';
+                  }
+                } catch (e) {
+                  body += 'See full report for detailed findings.\n';
+                }
+                body += '\n</details>\n\n';
+              }
+            }
+            
+            // ═══════════════════════════════════════════════════════════════
+            // REACHABILITY SECTION
+            // ═══════════════════════════════════════════════════════════════
+            body += '---\n';
+            body += '### 🔍 Reachability Analysis\n\n';
+            body += '> 💡 *Detects code that cannot be reached from entry points (dead code).*\n\n';
+            
+            if (parseInt(reachIssues) === 0) {
+              body += '✅ **No dead code detected**\n\n';
+            } else {
+              body += `Found **${reachIssues}** potentially unreachable symbol(s).\n`;
+              body += `> These functions/classes may be unused and could be candidates for removal.\n\n`;
+              
+              body += '**Top Unreachable Symbols:**\n';
+              try {
+                const topDead = fs.readFileSync('/tmp/reach_top_dead.md', 'utf8');
+                if (topDead.trim()) {
+                  body += topDead + '\n';
+                } else {
+                  body += 'See details below.\n';
+                }
+              } catch (e) {
+                body += 'See details below.\n';
+              }
+              
+              // Expandable: All dead code
+              body += '\n<details>\n<summary><strong>📋 All Unreachable Symbols</strong></summary>\n\n';
+              body += '| Symbol | File | Type |\n';
+              body += '|--------|------|------|\n';
+              try {
+                const allDead = fs.readFileSync('/tmp/reach_all_dead.md', 'utf8');
+                if (allDead.trim()) {
+                  body += allDead;
+                } else {
+                  body += '| - | See full report | - |\n';
+                }
+              } catch (e) {
+                body += '| - | See full report | - |\n';
+              }
+              body += '\n</details>\n\n';
+            }
+            
+            // ═══════════════════════════════════════════════════════════════
+            // FOOTER
+            // ═══════════════════════════════════════════════════════════════
+            body += '---\n';
+            body += `📊 **${changedFiles}** files analyzed | `;
+            body += `📦 [Download Full Report](${runUrl})\n\n`;
+            body += '*Powered by [CodeAtlas Ledger](https://github.com/mauricecarrier7/ledger-dist)*\n';
+            body += '*• Accessibility: [AccessLint](https://github.com/mauricecarrier7/AccessLint-Distribution)*';
+            if (qaCoverage) {
+              body += '\n*• Test Coverage: [QAAtlas](https://github.com/mauricecarrier7/qaatlas-dist)*';
+            }
+            
+            // Find/update existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const existing = comments.find(c => 
+              c.user.type === 'Bot' && c.body.includes('CodeAtlas Ledger Analysis')
+            );
+            
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+
+# ---------------------------------------------------------------------
+# GATING CONFIGURATION (uncomment to enable blocking checks)
+# ---------------------------------------------------------------------
+#
+# To make ledger analysis a required check:
+#
+# 1. Remove `continue-on-error: true` from the job
+#
+# 2. Add a verification step that fails on issues:
+#
+#     - name: Check for blocking issues
+#       run: |
+#         # Example: Fail if critical arch violations found
+#         if grep -r "CRITICAL" artifacts/ledger/diff/ 2>/dev/null; then
+#           echo "::error::Critical architecture violations found"
+#           exit 1
+#         fi
+#
+# 3. Configure branch protection in GitHub:
+#    - Settings > Branches > Branch protection rules
+#    - Add rule for 'main'
+#    - Enable "Require status checks to pass"
+#    - Add "Ledger Analysis" to required checks
+#
+# 4. Optionally add spec verification:
+#
+#     - name: Verify against specs
+#       run: |
+#         if [[ -d "artifacts/ledger/spec" ]]; then
+#           ./tools/ledger/run_verify.sh
+#         fi
+# ---------------------------------------------------------------------

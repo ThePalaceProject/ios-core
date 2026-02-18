@@ -1,0 +1,19 @@
+# Jira Integration Configuration
+# Copy this file to .jira-config and fill in your credentials
+# IMPORTANT: .jira-config contains secrets and is gitignored - DO NOT COMMIT IT
+
+# Your Jira instance URL (no trailing slash)
+JIRA_URL="https://ebce-lyrasis.atlassian.net"
+
+# Your Jira email address
+JIRA_EMAIL="your.email@example.com"
+
+# Your Jira API token (generate at: https://id.atlassian.com/manage-profile/security/api-tokens)
+JIRA_API_TOKEN="your-api-token-here"
+
+# Project key for ticket validation (e.g., PP for PP-3605)
+JIRA_PROJECT_KEY="PP"
+
+# Enable/disable features (true/false)
+JIRA_AUTO_LINK_COMMITS="true"
+JIRA_AUTO_COMMENT="true"
