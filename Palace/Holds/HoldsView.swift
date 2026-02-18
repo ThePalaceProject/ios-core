@@ -119,7 +119,7 @@ struct HoldsView: View {
             .multilineTextAlignment(.center)
             .foregroundColor(Color(white: 0.667))
             .background(Color(TPPConfiguration.backgroundColor()))
-            .font(.system(size: 18))
+            .palaceFont(.body)
             .padding(.horizontal, 24)
             .padding(.top, 100)
     }

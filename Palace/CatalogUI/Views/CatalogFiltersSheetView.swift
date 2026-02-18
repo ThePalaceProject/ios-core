@@ -234,6 +234,7 @@ private struct FacetSectionHeader: View {
                         .font(.subheadline)
                         .foregroundColor(.primary)
                         .padding(.bottom, -5)
+                        .accessibilityHint(NSLocalizedString("Clears applied filters for this group", comment: "Accessibility hint for filter clear button"))
                 }
                 .frame(width: 50)
             }
@@ -244,7 +245,8 @@ private struct FacetSectionHeader: View {
                     .accessibleAnimation(.easeInOut(duration: 0.2), value: isExpanded)
                     .foregroundColor(.primary)
             }
-            .frame(width: 24, alignment: .center)
+            .frame(minWidth: 44, minHeight: 44, alignment: .center)
+            .contentShape(Rectangle())
             .buttonStyle(.plain)
             .accessibilityLabel(isExpanded ? Strings.Generic.collapseSection : Strings.Generic.expandSection)
         }
@@ -261,12 +263,14 @@ private struct FacetRowButton: View {
             HStack {
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
                     .foregroundColor(.primary)
+                    .accessibilityHidden(true)
                 Text(title)
                     .palaceFont(size: 16)
                     .foregroundColor(.primary)
                 Spacer()
             }
         }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .buttonStyle(.plain)
         .padding(.vertical, 10)
         .background(Color.clear)

@@ -216,6 +216,7 @@ struct CatalogLaneMoreView: View {
                             HStack {
                                 Image(systemName: facet.active ? "largecircle.fill.circle" : "circle")
                                     .foregroundColor(.primary)
+                                    .accessibilityHidden(true)
                                 Text(facet.title)
                                     .foregroundColor(.primary)
                                 Spacer()
@@ -223,6 +224,7 @@ struct CatalogLaneMoreView: View {
                             .padding(.vertical, 12)
                             .padding(.horizontal)
                         })
+                        .accessibilityAddTraits(facet.active ? .isSelected : [])
                         .buttonStyle(.plain)
                     }
                 }

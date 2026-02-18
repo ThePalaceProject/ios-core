@@ -132,11 +132,35 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
     // MARK: - Helper Methods
 
+    /// Captures VoiceOver announcements posted through the injected announcement center.
+    private class AnnouncementCapture {
+        var items: [String] = []
+    }
+
+    /// Creates a `TPPAccessibilityAnnouncementCenter` that records every
+    /// announcement synchronously in `capture.items`.
+    private func makeCapturingAnnouncer(capture: AnnouncementCapture) -> TPPAccessibilityAnnouncementCenter {
+        TPPAccessibilityAnnouncementCenter(
+            postHandler: { _, message in capture.items.append(message) },
+            isVoiceOverRunning: { true },
+            deduplicationInterval: 0
+        )
+    }
+
     private func createViewModel(
         baseURL: URL? = nil,
-        debounceInterval: TimeInterval = 0.05 // Short debounce for faster tests
+        debounceInterval: TimeInterval = 0.05, // Short debounce for faster tests
+        announcements: TPPAccessibilityAnnouncementCenter? = nil
     ) -> CatalogSearchViewModel {
         let urlToUse = baseURL ?? testBaseURL
+        if let announcements {
+            return CatalogSearchViewModel(
+                repository: mockRepository,
+                baseURL: { urlToUse },
+                debounceInterval: debounceInterval,
+                announcements: announcements
+            )
+        }
         return CatalogSearchViewModel(
             repository: mockRepository,
             baseURL: { urlToUse },
@@ -864,5 +888,91 @@ final class CatalogSearchViewModelTests: XCTestCase {
             searchIdBeforeClear,
             "searchId should change when clearing search to trigger scroll to top"
         )
+    }
+
+    // MARK: - PP-3673: VoiceOver Search Announcements
+
+    /// PP-3673: When search returns nil (no results), VoiceOver announces "no results".
+    func testPP3673_search_noResults_announcesNoResults() async {
+        let capture = AnnouncementCapture()
+        let announcer = makeCapturingAnnouncer(capture: capture)
+        let viewModel = createViewModel(announcements: announcer)
+
+        mockRepository.searchResult = nil
+
+        viewModel.updateSearchQuery("nonexistent")
+        await waitForDebounce(interval: 0.25)
+
+        let noResultMsg = capture.items.first(where: { $0.lowercased().contains("no results") })
+        XCTAssertNotNil(noResultMsg, "Should announce no results, got: \(capture.items)")
+    }
+
+    /// PP-3673: When search fails with error, VoiceOver announces the failure.
+    func testPP3673_search_error_announcesFailure() async {
+        let capture = AnnouncementCapture()
+        let announcer = makeCapturingAnnouncer(capture: capture)
+        let viewModel = createViewModel(announcements: announcer)
+
+        mockRepository.searchError = TestError.networkError
+
+        viewModel.updateSearchQuery("test")
+        await waitForDebounce(interval: 0.25)
+
+        let failMsg = capture.items.first(where: {
+            $0.lowercased().contains("search") && $0.lowercased().contains("failed")
+        })
+        XCTAssertNotNil(failMsg, "Should announce search failure, got: \(capture.items)")
+    }
+
+    /// PP-3673: When search is re-run with different results, VoiceOver announces updated status.
+    func testPP3673_search_rerun_announcesUpdatedResults() async {
+        let capture = AnnouncementCapture()
+        let announcer = makeCapturingAnnouncer(capture: capture)
+        let viewModel = createViewModel(announcements: announcer)
+
+        // First search returns no results
+        mockRepository.searchResult = nil
+        viewModel.updateSearchQuery("first")
+        await waitForDebounce(interval: 0.25)
+
+        let firstAnnouncements = capture.items.count
+        XCTAssertGreaterThan(firstAnnouncements, 0, "Should have at least one announcement")
+
+        // Second search also returns nil (re-run)
+        viewModel.updateSearchQuery("second")
+        await waitForDebounce(interval: 0.25)
+
+        XCTAssertGreaterThan(capture.items.count, firstAnnouncements,
+                             "Should produce a new announcement for the second search")
+    }
+
+    /// PP-3673: Empty query does NOT produce a VoiceOver announcement.
+    func testPP3673_search_emptyQuery_doesNotAnnounce() async {
+        let capture = AnnouncementCapture()
+        let announcer = makeCapturingAnnouncer(capture: capture)
+        let viewModel = createViewModel(announcements: announcer)
+
+        viewModel.updateSearchQuery("")
+        await waitForDebounce(interval: 0.25)
+
+        XCTAssertTrue(capture.items.isEmpty, "Empty query should not trigger announcements, got: \(capture.items)")
+    }
+
+    /// PP-3673: Clearing search does NOT produce a VoiceOver announcement.
+    func testPP3673_clearSearch_doesNotAnnounce() async {
+        let capture = AnnouncementCapture()
+        let announcer = makeCapturingAnnouncer(capture: capture)
+        let viewModel = createViewModel(announcements: announcer)
+
+        viewModel.updateSearchQuery("test")
+        await waitForDebounce(interval: 0.25)
+
+        // Clear captured announcements before testing clearSearch
+        capture.items.removeAll()
+
+        viewModel.clearSearch()
+        await waitForDebounce(interval: 0.1)
+
+        XCTAssertTrue(capture.items.isEmpty, "Clearing search should not produce announcements, got: \(capture.items)")
     }
 }
