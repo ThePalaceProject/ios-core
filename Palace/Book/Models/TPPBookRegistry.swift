@@ -337,6 +337,31 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         return fileExists
     }
 
+    /// Re-validates file existence for all downloaded books.
+    /// Call after app updates or migrations to ensure states are consistent.
+    func validateDownloadedContent() {
+        guard let account = AccountsManager.shared.currentAccount?.uuid else { return }
+
+        var didChange = false
+        syncQueue.sync {
+            for (identifier, record) in self.registry {
+                guard record.state == .downloadSuccessful || record.state == .used else { continue }
+                let fileExists = self.checkIfBookFileExists(for: record.book, account: account)
+                if !fileExists {
+                    Log.warn(#file, "Post-update validation: '\(record.book.title)' file missing — marking as downloadNeeded")
+                    self.registry[identifier]?.state = .downloadNeeded
+                    didChange = true
+                }
+            }
+        }
+        if didChange {
+            save()
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+            }
+        }
+    }
+
     func reset(_ account: String) {
         state = .unloaded
         syncUrl = nil
@@ -401,20 +426,45 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                         }
                     }
 
-                    // Remove books that aren't in the server's current response (loan expired/returned)
-                    recordsToDelete.forEach { identifier in
-                        guard let record = self.registry[identifier] else { return }
+                    // Remove books that aren't in the server's current response (loan expired/returned).
+                    // Guard: If the feed returned very few entries relative to what we have
+                    // locally, it likely indicates a partial/truncated server response rather
+                    // than all books being legitimately expired. In that case, skip deletion
+                    // to avoid wiping downloaded content from a transient server issue.
+                    let localCount = self.registry.count
+                    let feedCount = feed.entries.count
+                    let deletionCount = recordsToDelete.count
+                    let deletionRatio = localCount > 0 ? Double(deletionCount) / Double(localCount) : 0
 
-                        let wasDownloaded = record.state == .downloadSuccessful || record.state == .used
+                    let shouldSkipBulkDeletion = localCount > 2
+                        && feedCount == 0
+                        && deletionCount > 0
 
-                        if wasDownloaded {
-                            Log.info(#file, "📚 Removing expired/returned book '\(record.book.title)' (not in server feed)")
-                            MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
+                    let shouldWarnLargeDeletion = localCount > 4
+                        && deletionRatio > 0.5
+                        && deletionCount > 2
+
+                    if shouldSkipBulkDeletion {
+                        Log.error(#file, "🛡️ Sync returned EMPTY feed but \(localCount) local books exist — skipping deletion (possible server issue)")
+                    } else if shouldWarnLargeDeletion {
+                        Log.warn(#file, "⚠️ Sync would remove \(deletionCount)/\(localCount) books (\(Int(deletionRatio * 100))%) — proceeding but logging for investigation")
+                    }
+
+                    if !shouldSkipBulkDeletion {
+                        recordsToDelete.forEach { identifier in
+                            guard let record = self.registry[identifier] else { return }
+
+                            let wasDownloaded = record.state == .downloadSuccessful || record.state == .used
+
+                            if wasDownloaded {
+                                Log.info(#file, "📚 Removing expired/returned book '\(record.book.title)' (not in server feed)")
+                                MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
+                            }
+
+                            self.registry[identifier]?.state = .unregistered
+                            self.removeBook(forIdentifier: identifier)
+                            changesMade = true
                         }
-
-                        self.registry[identifier]?.state = .unregistered
-                        self.removeBook(forIdentifier: identifier)
-                        changesMade = true
                     }
                     self.save()
                 }

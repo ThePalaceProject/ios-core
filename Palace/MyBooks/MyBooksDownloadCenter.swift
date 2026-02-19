@@ -1145,7 +1145,6 @@ extension MyBooksDownloadCenter {
                         runOnMainAsync {
                             let formattedMessage = String(format: Strings.MyDownloadCenter.returnFailedMessage, book.title)
 
-                            // PP-3707: Return failures are retryable (likely transient network/server issue)
                             let operationId = "return-\(identifier)"
                             let retryAction: (() -> Void)? = {
                                 guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
@@ -1155,19 +1154,31 @@ extension MyBooksDownloadCenter {
                                 }
                             }()
 
-                            // When retries are exhausted, show "try again later"
                             let message = (retryAction == nil && !UserRetryTracker.shared.canRetry(operationId: operationId))
                                 ? Strings.MyDownloadCenter.tryAgainLater
                                 : formattedMessage
 
-                            let alert: UIAlertController
+                            let alert = UIAlertController(title: Strings.MyDownloadCenter.returnFailed, message: message, preferredStyle: .alert)
+
                             if let retryAction = retryAction {
-                                alert = UIAlertController(title: Strings.MyDownloadCenter.returnFailed, message: message, preferredStyle: .alert)
                                 alert.addAction(UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { _ in retryAction() })
-                                alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
-                            } else {
-                                alert = TPPAlertUtils.alert(title: Strings.MyDownloadCenter.returnFailed, message: message)
                             }
+
+                            // Offer force-remove so the book doesn't stay stuck in the user's list
+                            alert.addAction(UIAlertAction(title: NSLocalizedString("Remove from Device", comment: "Button to remove a book locally when server return fails"), style: .destructive) { [weak self] _ in
+                                guard let self = self else { return }
+                                if downloaded {
+                                    self.deleteLocalContent(for: identifier)
+                                    self.purgeAllAudiobookCaches(force: true)
+                                }
+                                TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                                self.bookRegistry.setState(.unregistered, for: identifier)
+                                self.bookRegistry.removeBook(forIdentifier: identifier)
+                                self.announceReturnSucceeded(for: book)
+                                completion?()
+                            })
+
+                            alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
 
                             if let error = error as? Decoder, let document = try? TPPProblemDocument(from: error) {
                                 TPPAlertUtils.setProblemDocument(controller: alert, document: document, append: true)

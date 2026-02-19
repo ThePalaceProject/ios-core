@@ -73,7 +73,7 @@ final class MyBooksSimplifiedBearerTokenTests: XCTestCase {
         let dict: [String: Any] = [
             "access_token": "tok",
             "expires_in": 3600,
-            "location": "not a valid url \n\n"
+            "location": ""
         ]
 
         XCTAssertNil(MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: dict))
@@ -194,8 +194,7 @@ final class MyBooksSimplifiedBearerTokenTests: XCTestCase {
         ]
         let responseData = try! JSONSerialization.data(withJSONObject: tokenJSON)
 
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [HTTPStubURLProtocol.self]
+        URLProtocol.registerClass(HTTPStubURLProtocol.self)
         HTTPStubURLProtocol.reset()
         HTTPStubURLProtocol.register { request in
             guard request.url == fulfillURL else { return nil }
@@ -215,13 +214,13 @@ final class MyBooksSimplifiedBearerTokenTests: XCTestCase {
 
         waitForExpectations(timeout: 5)
         HTTPStubURLProtocol.reset()
+        URLProtocol.unregisterClass(HTTPStubURLProtocol.self)
     }
 
     func testRefreshToken_serverError_returnsNil() {
         let fulfillURL = URL(string: "https://cm.example.com/fulfill/book-456")!
 
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [HTTPStubURLProtocol.self]
+        URLProtocol.registerClass(HTTPStubURLProtocol.self)
         HTTPStubURLProtocol.reset()
         HTTPStubURLProtocol.register { request in
             guard request.url == fulfillURL else { return nil }
@@ -237,14 +236,14 @@ final class MyBooksSimplifiedBearerTokenTests: XCTestCase {
 
         waitForExpectations(timeout: 5)
         HTTPStubURLProtocol.reset()
+        URLProtocol.unregisterClass(HTTPStubURLProtocol.self)
     }
 
     func testRefreshToken_invalidJSON_returnsNil() {
         let fulfillURL = URL(string: "https://cm.example.com/fulfill/book-789")!
         let invalidData = "not json".data(using: .utf8)!
 
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [HTTPStubURLProtocol.self]
+        URLProtocol.registerClass(HTTPStubURLProtocol.self)
         HTTPStubURLProtocol.reset()
         HTTPStubURLProtocol.register { request in
             guard request.url == fulfillURL else { return nil }
@@ -260,5 +259,6 @@ final class MyBooksSimplifiedBearerTokenTests: XCTestCase {
 
         waitForExpectations(timeout: 5)
         HTTPStubURLProtocol.reset()
+        URLProtocol.unregisterClass(HTTPStubURLProtocol.self)
     }
 }
