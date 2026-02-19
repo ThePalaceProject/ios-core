@@ -1482,6 +1482,9 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                 if let data = try? Data(contentsOf: location) {
                     if let dictionary = TPPJSONObjectFromData(data) as? [String: Any],
                        let simplifiedBearerToken = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: dictionary) {
+                        let cmFulfillURL = task.originalRequest?.url
+                        simplifiedBearerToken.fulfillURL = cmFulfillURL
+
                         var mutableRequest = URLRequest(url: simplifiedBearerToken.location, applyingCustomUserAgent: true)
                         mutableRequest.setValue("Bearer \(simplifiedBearerToken.accessToken)", forHTTPHeaderField: "Authorization")
                         let newTask = session.downloadTask(with: mutableRequest as URLRequest)
@@ -1493,6 +1496,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                         )
                         await bookIdentifierToDownloadInfo.set(book.identifier, value: downloadInfo)
                         book.bearerToken = simplifiedBearerToken.accessToken
+                        book.bearerTokenFulfillURL = cmFulfillURL
                         await taskIdentifierToBook.set(newTask.taskIdentifier, value: book)
                         newTask.resume()
                     } else {

@@ -193,17 +193,19 @@ actor TPPBookCoverRegistry {
                     maxDimension: self.maxDecodeDimension
                 ) else {
                     Log.error(#file, "Failed to decode image data from URL: \(url)")
+                    TPPErrorLogger.logImageDecodeFail(url: url)
                     return nil
                 }
 
                 self.imageCache.set(image, for: key as String, expiresIn: nil)
                 return image
             } catch {
-                // Track host-level failures (DNS, connection refused, etc.) so we can
-                // skip future requests to this host immediately
                 if Self.isHostLevelError(error) {
                     await self.hostFailureTracker.recordFailure(for: url.host)
                     Log.warn(#file, "Host failure recorded for \(url.host ?? "unknown"): \(error.localizedDescription)")
+                    if let host = url.host {
+                        TPPErrorLogger.logImageHostFailure(host: host, error: error, url: url)
+                    }
                 }
 
                 Log.error(#file, "Failed to fetch image from \(url): \(error.localizedDescription)")
@@ -347,6 +349,7 @@ actor TPPBookCoverRegistry {
                     maxDimension: self.maxDecodeDimension
                 ) else {
                     Log.error(#file, "Failed to decode image data from URL: \(url)")
+                    TPPErrorLogger.logImageDecodeFail(url: url)
                     return nil
                 }
 
@@ -356,6 +359,9 @@ actor TPPBookCoverRegistry {
                 if Self.isHostLevelError(error) {
                     await self.hostFailureTracker.recordFailure(for: url.host)
                     Log.warn(#file, "Host failure recorded for \(url.host ?? "unknown"): \(error.localizedDescription)")
+                    if let host = url.host {
+                        TPPErrorLogger.logImageHostFailure(host: host, error: error, url: url)
+                    }
                 }
 
                 Log.error(#file, "Failed to fetch image from \(url): \(error.localizedDescription)")

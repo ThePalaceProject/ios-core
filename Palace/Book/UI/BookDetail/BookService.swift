@@ -303,7 +303,8 @@ enum BookService {
                     for: manifest,
                     bookIdentifier: book.identifier,
                     decryptor: decryptor,
-                    token: book.bearerToken
+                    token: book.bearerToken,
+                    fulfillURL: book.bearerTokenFulfillURL
                 ) else {
                     Log.error(#file, "  ❌ AudiobookFactory failed to create audiobook")
                     Log.error(#file, "    This likely means no suitable player could be created for this manifest")

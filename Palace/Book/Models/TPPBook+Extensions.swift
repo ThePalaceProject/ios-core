@@ -26,6 +26,24 @@ import Foundation
         }
     }
 
+    var bearerTokenFulfillURL: URL? {
+        get {
+            let key = "\(self.identifier)-fulfillURL"
+            let variable: TPPKeychainVariable<String> = key.asKeychainVariable(with: bookTokenQueue)
+            guard let urlString = variable.read() else { return nil }
+            return URL(string: urlString)
+        }
+
+        set {
+            let keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: bookTokenQueue)
+            let key = "\(self.identifier)-fulfillURL"
+            let variable: TPPKeychainVariable<String> = key.asKeychainVariable(with: bookTokenQueue)
+            keychainTransaction.perform {
+                variable.write(newValue?.absoluteString)
+            }
+        }
+    }
+
     /// Readable book format based on its content type
     var format: String {
         switch defaultBookContentType {

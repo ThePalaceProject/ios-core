@@ -551,6 +551,8 @@
 		BSMA00012F0F000100000002 /* BookCellModelStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BSMA00012F0F000000000002 /* BookCellModelStateTests.swift */; };
 		BSMA00012F0F000100000003 /* BookCellModelCacheInvalidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BSMA00012F0F000000000003 /* BookCellModelCacheInvalidationTests.swift */; };
 		BSMA00012F0F000100000004 /* TPPBookRegistryRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BSMA00012F0F000000000004 /* TPPBookRegistryRecordTests.swift */; };
+		BTRF00012F1900010000001B /* MyBooksSimplifiedBearerTokenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BTRF00012F1900010000001A /* MyBooksSimplifiedBearerTokenTests.swift */; };
+		BTRF00012F1900020000001B /* TPPBookBearerTokenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BTRF00012F1900020000001A /* TPPBookBearerTokenTests.swift */; };
 		C0FC0D33083455384EE64A71 /* AudiobookSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E5BAC81314C28A366BF6BB7 /* AudiobookSessionManager.swift */; };
 		C386EA20C90C8215EF9387D3 /* TokenRefreshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A81964771D1CB9A93ED2EA6 /* TokenRefreshTests.swift */; };
 		C3C7B0F9C4F9B13DD69CEA84 /* TPPReaderSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2ADD2980F56FC974B6DEBAC /* TPPReaderSettingsTests.swift */; };
@@ -1726,6 +1728,8 @@
 		BSMA00012F0F000000000002 /* BookCellModelStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModelStateTests.swift; sourceTree = "<group>"; };
 		BSMA00012F0F000000000003 /* BookCellModelCacheInvalidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModelCacheInvalidationTests.swift; sourceTree = "<group>"; };
 		BSMA00012F0F000000000004 /* TPPBookRegistryRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryRecordTests.swift; sourceTree = "<group>"; };
+		BTRF00012F1900010000001A /* MyBooksSimplifiedBearerTokenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksSimplifiedBearerTokenTests.swift; sourceTree = "<group>"; };
+		BTRF00012F1900020000001A /* TPPBookBearerTokenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookBearerTokenTests.swift; sourceTree = "<group>"; };
 		C36BFAE4E752CA9A1451CDCE /* EPUBPositionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EPUBPositionTests.swift; sourceTree = "<group>"; };
 		C61A8F5FC897F582128D45B7 /* NetworkClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkClientTests.swift; sourceTree = "<group>"; };
 		C72E88998C74489891046AA2 /* TPPBookmarkDeletionLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TPPBookmarkDeletionLogTests.swift; path = Bookmarks/TPPBookmarkDeletionLogTests.swift; sourceTree = "<group>"; };
@@ -3606,6 +3610,8 @@
 				RTRT00012F0300030000001A /* RetryClassificationTests.swift */,
 				RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */,
 				BREM00012F1100010000001A /* BorrowErrorMessageTests.swift */,
+				BTRF00012F1900010000001A /* MyBooksSimplifiedBearerTokenTests.swift */,
+				BTRF00012F1900020000001A /* TPPBookBearerTokenTests.swift */,
 			);
 			path = MyBooks;
 			sourceTree = "<group>";
@@ -4740,6 +4746,8 @@
 				RTRT00012F0300030000001B /* RetryClassificationTests.swift in Sources */,
 				RTRT00012F0300040000001B /* DownloadErrorInfoTests.swift in Sources */,
 				BREM00012F1100010000001B /* BorrowErrorMessageTests.swift in Sources */,
+				BTRF00012F1900010000001B /* MyBooksSimplifiedBearerTokenTests.swift in Sources */,
+				BTRF00012F1900020000001B /* TPPBookBearerTokenTests.swift in Sources */,
 				RTRT00012F0300050000001B /* AlertModelTests.swift in Sources */,
 				QATEST10BF00000000000001 /* EmailAddressTests.swift in Sources */,
 				QATEST11BF00000000000001 /* DeviceSpecificErrorMonitorTests.swift in Sources */,
@@ -6126,9 +6134,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 438;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
