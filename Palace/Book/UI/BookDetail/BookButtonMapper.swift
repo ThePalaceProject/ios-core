@@ -39,6 +39,9 @@ struct BookButtonMapper {
         }
 
         if registryState == .holding {
+            if let availState = stateForAvailability(availability), availState == .canBorrow {
+                return .canBorrow
+            }
             return .holding
         }
 

@@ -69,29 +69,27 @@ struct BookListView: View {
 
     // MARK: - Image Prefetching
 
-    /// Prefetches images for cells that are about to become visible
+    /// Prefetches images for cells that are about to become visible.
+    /// Snapshots the books array to avoid index-out-of-bounds if the array
+    /// changes between finding the current index and slicing.
     private func prefetchUpcomingImages(currentBook: TPPBook) {
-        guard let currentIndex = books.firstIndex(where: { $0.identifier == currentBook.identifier }) else {
+        let snapshot = books
+        guard let currentIndex = snapshot.firstIndex(where: { $0.identifier == currentBook.identifier }) else {
             return
         }
 
-        // Prefetch next N items
         let startIndex = currentIndex + 1
-        let endIndex = min(startIndex + prefetchBuffer, books.count)
+        guard startIndex < snapshot.count else { return }
+        let endIndex = min(startIndex + prefetchBuffer, snapshot.count)
 
-        guard startIndex < endIndex else { return }
+        let upcomingBooks = Array(snapshot[startIndex..<endIndex])
 
-        let upcomingBooks = Array(books[startIndex..<endIndex])
-
-        // Prefetch in background
         Task.detached(priority: .utility) {
             for book in upcomingBooks {
-                // Prefetch thumbnail images
                 await TPPBookCoverRegistry.shared.thumbnailImage(for: book)
             }
         }
 
-        // Also preload models for upcoming books
         Task { @MainActor in
             modelCache.preload(books: upcomingBooks)
         }
