@@ -11,6 +11,7 @@ import UIKit
 /// PDF preview grid.
 ///
 /// Shows page previews and bookmarks in `.pdf` files.
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 class TPPPDFPreviewGridController: UICollectionViewController {
 
     private let preferredPreviewWidth: CGFloat = 200
@@ -162,6 +163,7 @@ class TPPPDFPreviewGridController: UICollectionViewController {
 }
 
 extension TPPPDFPreviewGridController: UICollectionViewDelegateFlowLayout {
+    // accesslint:disable A11Y.UIKIT.ORIENTATION - Adapts grid density for landscape; does not restrict orientation
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         var itemsPerRow = minimumItemsPerRow
         let device = UIDevice.current

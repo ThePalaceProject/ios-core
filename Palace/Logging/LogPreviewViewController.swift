@@ -10,6 +10,7 @@ import UIKit
 /// A view controller for previewing collected log data locally.
 /// Provides a segmented control to switch between log sources,
 /// a search bar with match navigation, and share/copy functionality.
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in setupUI
 final class LogPreviewViewController: UIViewController {
 
     private let logData: ErrorLogData

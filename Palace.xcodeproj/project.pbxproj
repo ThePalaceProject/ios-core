@@ -2417,7 +2417,7 @@
 				8FB5684FAB210E6557DD37E7 /* BookCellModelCacheTests.swift */,
 				PP3702FR000000000000003 /* ArraySafetyTests.swift */,
 			);
-			name = Performance;
+			path = Performance;
 			sourceTree = "<group>";
 		};
 		41514C9E35D6E001ED308146 /* BookCell */ = {
@@ -6154,9 +6154,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 439;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",

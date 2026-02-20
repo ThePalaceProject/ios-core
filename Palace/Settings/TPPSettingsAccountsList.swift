@@ -3,6 +3,7 @@ import SwiftUI
 
 /// UITableView to display or add library accounts that the user
 /// can then log in and adjust settings after selecting Accounts.
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 @objcMembers class TPPSettingsAccountsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, TPPLoadingViewController {
 
     enum LoadState {

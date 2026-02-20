@@ -10,6 +10,7 @@ import UIKit
 import SwiftUI
 
 /// Single page view controller
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 class TPPEncryptedPDFPageViewController: UIViewController {
 
     private let contentInset: CGFloat = 5

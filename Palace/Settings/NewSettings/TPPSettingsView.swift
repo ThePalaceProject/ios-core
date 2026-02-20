@@ -23,6 +23,7 @@ struct TPPSettingsView: View {
         _currentAccounts = State(initialValue: TPPSettings.shared.settingsAccountsList)
     }
 
+    // accesslint:disable A11Y.UIKIT.ORIENTATION - Adapts layout for iPad landscape; does not restrict orientation
     private var sideBarEnabled: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
             &&  UIDevice.current.orientation != .portrait

@@ -72,6 +72,7 @@ class TPPRegistryDebuggingCell: UITableViewCell {
 
         clearButton.setTitle("Clear", for: .normal)
         clearButton.setTitleColor(UIColor.defaultLabelColor(), for: .normal)
+        clearButton.accessibilityHint = NSLocalizedString("Clears the registry data for this book", comment: "Hint for registry debugging clear button")
 
         clearButton.addTarget(self, action: #selector(clear), for: .touchUpInside)
 
