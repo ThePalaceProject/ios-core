@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import Security
 @testable import Palace
 
 final class TPPBookBearerTokenTests: XCTestCase {
@@ -17,6 +18,24 @@ final class TPPBookBearerTokenTests: XCTestCase {
     private var book: TPPBook!
     private var fulfillURLKey: String!
     private var tokenKey: String!
+
+    /// Returns true if the keychain is accessible (fails in CI without code signing)
+    private var isKeychainAccessible: Bool {
+        let testKey = "TPPBookBearerTokenTests.keychainCheck"
+        let testData = "test".data(using: .utf8)!
+
+        let addQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: testKey,
+            kSecValueData as String: testData
+        ]
+
+        SecItemDelete(addQuery as CFDictionary)
+        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        SecItemDelete(addQuery as CFDictionary)
+
+        return status == errSecSuccess
+    }
 
     override func setUp() {
         super.setUp()
@@ -100,7 +119,12 @@ final class TPPBookBearerTokenTests: XCTestCase {
         TPPKeychain.shared()?.removeObject(forKey: key2)
     }
 
-    func testFulfillURL_persistsAcrossNewBookInstances() {
+    /// Tests that keychain data persists across different TPPBook instances with the same identifier.
+    /// This simulates what happens when the app restarts and creates new book instances.
+    /// Requires actual keychain access, which may not be available in CI without code signing.
+    func testFulfillURL_persistsAcrossNewBookInstances() throws {
+        try XCTSkipUnless(isKeychainAccessible, "Keychain not accessible (likely running in CI without code signing)")
+
         let url = URL(string: "https://cm.example.com/fulfill/persist-test")!
         book.bearerTokenFulfillURL = url
 

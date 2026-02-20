@@ -7,40 +7,53 @@
 //
 
 import Foundation
+import ObjectiveC
+
+// MARK: - Associated Object Keys for Keychain Variables
+
+private var bearerTokenVariableKey: UInt8 = 0
+private var fulfillURLVariableKey: UInt8 = 0
 
 @objc extension TPPBook {
     typealias DisplayStrings = Strings.TPPBook
 
+    /// Cached keychain variable for bearer token (reused across get/set calls)
+    @nonobjc private var _bearerTokenVariable: TPPKeychainVariable<String> {
+        if let existing = objc_getAssociatedObject(self, &bearerTokenVariableKey) as? TPPKeychainVariable<String> {
+            return existing
+        }
+        let variable: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenQueue)
+        objc_setAssociatedObject(self, &bearerTokenVariableKey, variable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        return variable
+    }
+
+    /// Cached keychain variable for fulfill URL (reused across get/set calls)
+    @nonobjc private var _fulfillURLVariable: TPPKeychainVariable<String> {
+        if let existing = objc_getAssociatedObject(self, &fulfillURLVariableKey) as? TPPKeychainVariable<String> {
+            return existing
+        }
+        let key = "\(self.identifier)-fulfillURL"
+        let variable: TPPKeychainVariable<String> = key.asKeychainVariable(with: bookTokenQueue)
+        objc_setAssociatedObject(self, &fulfillURLVariableKey, variable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        return variable
+    }
+
     var bearerToken: String? {
         get {
-            let _bearerToken: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenQueue)
-            return _bearerToken.read()
+            _bearerTokenVariable.read()
         }
-
         set {
-            let keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: bookTokenQueue)
-            let _bearerToken: TPPKeychainVariable<String> = self.identifier.asKeychainVariable(with: bookTokenQueue)
-            keychainTransaction.perform {
-                _bearerToken.write(newValue)
-            }
+            _bearerTokenVariable.write(newValue)
         }
     }
 
     var bearerTokenFulfillURL: URL? {
         get {
-            let key = "\(self.identifier)-fulfillURL"
-            let variable: TPPKeychainVariable<String> = key.asKeychainVariable(with: bookTokenQueue)
-            guard let urlString = variable.read() else { return nil }
+            guard let urlString = _fulfillURLVariable.read() else { return nil }
             return URL(string: urlString)
         }
-
         set {
-            let keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: bookTokenQueue)
-            let key = "\(self.identifier)-fulfillURL"
-            let variable: TPPKeychainVariable<String> = key.asKeychainVariable(with: bookTokenQueue)
-            keychainTransaction.perform {
-                variable.write(newValue?.absoluteString)
-            }
+            _fulfillURLVariable.write(newValue?.absoluteString)
         }
     }
 
