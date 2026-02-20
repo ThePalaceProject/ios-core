@@ -2064,7 +2064,7 @@
 		PP3673FR000000000000003 /* AccessLintComplianceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccessLintComplianceTests.swift; sourceTree = "<group>"; };
 		PP3702FR000000000000001 /* BookButtonMapperHoldReadyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookButtonMapperHoldReadyTests.swift; sourceTree = "<group>"; };
 		PP3702FR000000000000002 /* AccountAwareNetworkTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountAwareNetworkTests.swift; sourceTree = "<group>"; };
-		PP3702FR000000000000003 /* ArraySafetyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ArraySafetyTests.swift; sourceTree = "<group>"; };
+		PP3702FR000000000000003 /* ArraySafetyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArraySafetyTests.swift; path = Performance/ArraySafetyTests.swift; sourceTree = "<group>"; };
 		PP3702FR000000000000004 /* AccountSwitchCleanupTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountSwitchCleanupTests.swift; sourceTree = "<group>"; };
 		QAAMT001T260955EF00000001 /* AccountModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountModelTests.swift; sourceTree = "<group>"; };
 		QAAPD001T260955EF00000001 /* AccountProfileDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountProfileDocumentTests.swift; sourceTree = "<group>"; };
@@ -2417,7 +2417,7 @@
 				8FB5684FAB210E6557DD37E7 /* BookCellModelCacheTests.swift */,
 				PP3702FR000000000000003 /* ArraySafetyTests.swift */,
 			);
-			path = Performance;
+			name = Performance;
 			sourceTree = "<group>";
 		};
 		41514C9E35D6E001ED308146 /* BookCell */ = {
