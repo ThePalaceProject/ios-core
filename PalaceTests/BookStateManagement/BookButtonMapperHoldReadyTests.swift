@@ -71,8 +71,8 @@ final class BookButtonMapperHoldReadyTests: XCTestCase {
         XCTAssertEqual(result, .holding, "Holding with unavailable should remain .holding")
     }
 
-    /// Holding state with limited (copies available > 0) availability shows .canBorrow.
-    func testMap_HoldingState_LimitedWithCopiesAvailability_ReturnsCanBorrow() {
+    /// Holding state with limited (copies available > 0) stays .holding — only "ready" triggers canBorrow.
+    func testMap_HoldingState_LimitedWithCopiesAvailability_ReturnsHolding() {
         let limited: TPPOPDSAcquisitionAvailability =
             TPPOPDSAcquisitionAvailabilityLimited(copiesAvailable: 2, copiesTotal: 5, since: nil, until: nil)
 
@@ -82,7 +82,7 @@ final class BookButtonMapperHoldReadyTests: XCTestCase {
             isProcessingDownload: false
         )
 
-        XCTAssertEqual(result, .canBorrow, "Holding with available copies should return .canBorrow")
+        XCTAssertEqual(result, .holding, "Holding with limited availability should remain .holding")
     }
 
     /// Holding state with limited (copies = 0) stays .holding.
@@ -99,8 +99,8 @@ final class BookButtonMapperHoldReadyTests: XCTestCase {
         XCTAssertEqual(result, .holding, "Holding with zero copies should remain .holding")
     }
 
-    /// Holding state with unlimited availability shows .canBorrow.
-    func testMap_HoldingState_UnlimitedAvailability_ReturnsCanBorrow() {
+    /// Holding state with unlimited availability stays .holding — only "ready" triggers canBorrow.
+    func testMap_HoldingState_UnlimitedAvailability_ReturnsHolding() {
         let unlimited: TPPOPDSAcquisitionAvailability =
             TPPOPDSAcquisitionAvailabilityUnlimited()
 
@@ -110,7 +110,7 @@ final class BookButtonMapperHoldReadyTests: XCTestCase {
             isProcessingDownload: false
         )
 
-        XCTAssertEqual(result, .canBorrow, "Holding with unlimited availability should return .canBorrow")
+        XCTAssertEqual(result, .holding, "Holding with unlimited availability should remain .holding")
     }
 
     // MARK: - Other States Unaffected

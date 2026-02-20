@@ -39,7 +39,7 @@ struct BookButtonMapper {
         }
 
         if registryState == .holding {
-            if let availState = stateForAvailability(availability), availState == .canBorrow {
+            if availability is TPPOPDSAcquisitionAvailabilityReady {
                 return .canBorrow
             }
             return .holding

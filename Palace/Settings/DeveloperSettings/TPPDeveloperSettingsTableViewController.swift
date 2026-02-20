@@ -80,7 +80,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             #if DEBUG
             return 2  // Simulate Borrow Error + Preview Error Details
             #else
-            return 1
+            return 1  // Simulate Borrow Error (available in TestFlight for QA)
             #endif
         default: return 1
         }
@@ -114,14 +114,15 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             return UITableViewCell()  // Should never be called in production (0 rows)
             #endif
         case .errorSimulation:
-            #if DEBUG
             switch indexPath.row {
             case 0: return cellForErrorSimulation()
-            default: return cellForPreviewErrorDetails()
+            default:
+                #if DEBUG
+                return cellForPreviewErrorDetails()
+                #else
+                return UITableViewCell()
+                #endif
             }
-            #else
-            return cellForErrorSimulation()
-            #endif
         }
     }
 
@@ -250,32 +251,20 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
     #endif
 
-    #if DEBUG
     private func cellForErrorSimulation() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: errorSimulationCellIdentifier)!
+        let currentError = DebugSettings.shared.simulatedBorrowError
+
+        let cell = UITableViewCell(style: .value1, reuseIdentifier: errorSimulationCellIdentifier)
         cell.selectionStyle = .default
         cell.textLabel?.text = "Simulate Borrow Error"
         cell.textLabel?.adjustsFontSizeToFitWidth = true
-
-        let currentError = DebugSettings.shared.simulatedBorrowError
         cell.detailTextLabel?.text = currentError.displayName
-
-        // Use a subtitle style cell to show current selection
-        if cell.detailTextLabel == nil {
-            let newCell = UITableViewCell(style: .value1, reuseIdentifier: errorSimulationCellIdentifier)
-            newCell.selectionStyle = .default
-            newCell.textLabel?.text = "Simulate Borrow Error"
-            newCell.detailTextLabel?.text = currentError.displayName
-            newCell.detailTextLabel?.textColor = currentError == .none ? .secondaryLabel : .systemOrange
-            newCell.accessoryType = .disclosureIndicator
-            return newCell
-        }
-
         cell.detailTextLabel?.textColor = currentError == .none ? .secondaryLabel : .systemOrange
         cell.accessoryType = .disclosureIndicator
         return cell
     }
 
+    #if DEBUG
     private func cellForPreviewErrorDetails() -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: "previewErrorDetailsCell")
         cell.selectionStyle = .default
@@ -287,7 +276,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
     private func showPreviewErrorDetails() {
         Task {
-            // Seed some realistic activity trail entries for the preview
             let tracker = ErrorActivityTracker.shared
             await tracker.log("User tapped 'Get' on 'The Great Gatsby'", category: .ui)
             await tracker.log("Initiating borrow for 'The Great Gatsby'", category: .borrow)
@@ -297,7 +285,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             await tracker.log("Received HTTP 403 from circulation server", category: .network)
             await tracker.log("[DEBUG] Preview: Simulated error for testing Error Details view", category: .general)
 
-            // Create a realistic sample ErrorDetail
             let sampleProblemDoc = TPPProblemDocument.fromDictionary([
                 "type": TPPProblemDocument.TypePatronLoanLimit,
                 "title": "Loan limit reached",
@@ -330,11 +317,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         }
     }
-    #else
-    private func cellForErrorSimulation() -> UITableViewCell {
-        // Return empty cell in non-DEBUG builds (section won't be visible anyway)
-        return UITableViewCell()
-    }
     #endif
 
     // MARK: - UITableViewDelegate
@@ -365,14 +347,14 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             #endif
 
         case .errorSimulation:
-            #if DEBUG
             switch indexPath.row {
             case 0:
                 showErrorSimulationPicker()
             default:
+                #if DEBUG
                 showPreviewErrorDetails()
+                #endif
             }
-            #endif
 
         default:
             break
@@ -396,7 +378,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 DebugSettings.shared.testHoldsConfiguration = config
                 self?.tableView.reloadData()
 
-                // Trigger refresh of both badge (TPPBookRegistryStateDidChange) and HoldsView (TPPBookRegistryDidChange)
                 NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
                 NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
 
@@ -412,7 +393,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
 
-        // For iPad
         if let popover = alert.popoverPresentationController {
             popover.sourceView = tableView
             popover.sourceRect = tableView.rectForRow(at: IndexPath(row: 1, section: Section.badgeTesting.rawValue))
@@ -420,6 +400,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
         present(alert, animated: true)
     }
+    #endif
 
     private func showErrorSimulationPicker() {
         let alert = UIAlertController(
@@ -448,7 +429,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
 
-        // For iPad
         if let popover = alert.popoverPresentationController {
             popover.sourceView = tableView
             popover.sourceRect = tableView.rectForRow(at: IndexPath(row: 0, section: Section.errorSimulation.rawValue))
@@ -456,7 +436,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
         present(alert, animated: true)
     }
-    #endif
 
     private func sendErrorLogs() {
         Task {
