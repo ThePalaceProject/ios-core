@@ -37,7 +37,7 @@ import Foundation
         self.password = password
     }
 
-    func execute() async -> Result<TokenResponse, Error> {
+    func execute(session: URLSession = .shared) async -> Result<TokenResponse, Error> {
         Log.info(#file, "Requesting token from: \(url.absoluteString)")
 
         var request = URLRequest(url: url, applyingCustomUserAgent: true)
@@ -54,7 +54,7 @@ import Foundation
         Log.debug(#file, "Sending POST request with Basic Auth")
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
 
             Log.info(#file, "Token request returned \(data.count) bytes")
 

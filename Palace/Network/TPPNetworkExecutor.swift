@@ -470,9 +470,10 @@ extension TPPNetworkExecutor {
     }
 
     func executeTokenRefresh(username: String, password: String, tokenURL: URL, accountId: String? = nil, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
+        let session = self.urlSession
         Task {
             let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
-            let result = await tokenRequest.execute()
+            let result = await tokenRequest.execute(session: session)
 
             switch result {
             case .success(let tokenResponse):
