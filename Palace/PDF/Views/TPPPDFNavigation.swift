@@ -18,6 +18,7 @@ struct TPPPDFNavigation<Content>: View where Content: View {
             rawValue
         }
 
+        // accesslint:disable A11Y.SWIFTUI.MISSING_LABEL - Decorative; accessibilityLabel set via accessibilityLabel computed property below
         var image: Image {
             switch self {
             case .previews: return Image(systemName: "rectangle.grid.3x2")

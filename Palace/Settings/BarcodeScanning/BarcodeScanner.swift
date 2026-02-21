@@ -15,6 +15,7 @@ fileprivate extension CGRect {
     }
 }
 
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     private var captureSession: AVCaptureSession!
     private var previewLayer: AVCaptureVideoPreviewLayer!

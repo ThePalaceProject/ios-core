@@ -9,6 +9,7 @@
 import UIKit
 
 /// Encrypted PDF view controller
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 class TPPEncryptedPDFViewController: UIPageViewController {
 
     var document: TPPEncryptedPDFDocument

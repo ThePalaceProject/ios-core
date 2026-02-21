@@ -132,6 +132,10 @@ private let nullString = "null"
     case locationAccessDenied = 1400
     case failedToGetLocation = 1401
     case unknownLocationError = 1402
+
+    // image loading
+    case imageHostFailure = 1500
+    case imageDecodeFail = 1501
 }
 
 /// Facility to report error situations to a remote logging system such as
@@ -383,6 +387,63 @@ private let nullString = "null"
 
         record(error: err)
     }
+
+    // ----------------------------------------------------------------------------
+    // MARK: - Image Loading Errors
+
+    /// Throttle state: tracks the last time a non-fatal was recorded per host
+    /// to avoid flooding Crashlytics during mass failure events (e.g., a dead
+    /// image host affecting every book in a swimlane).
+    private static var lastImageErrorReport: [String: Date] = [:]
+    private static let imageErrorReportInterval: TimeInterval = 60
+
+    /// Records a host-level image loading failure as a non-fatal error in
+    /// Crashlytics. Throttled to one report per host per minute.
+    class func logImageHostFailure(host: String, error: Error, url: URL) {
+        guard shouldReportImageError(key: "host:\(host)") else { return }
+
+        var metadata: [String: Any] = [
+            "failingHost": host,
+            "url": url.absoluteString,
+            "errorDescription": error.localizedDescription,
+            "errorCode": (error as NSError).code
+        ]
+        addAccountInfoToMetadata(&metadata)
+
+        logError(error,
+                 code: .imageHostFailure,
+                 summary: "Image host failure: \(host)",
+                 metadata: metadata)
+    }
+
+    /// Records an image decode failure as a non-fatal error in Crashlytics.
+    /// Throttled to one report per URL per minute.
+    class func logImageDecodeFail(url: URL) {
+        guard shouldReportImageError(key: "decode:\(url.absoluteString)") else { return }
+
+        var metadata: [String: Any] = [
+            "url": url.absoluteString,
+            "host": url.host ?? "unknown"
+        ]
+        addAccountInfoToMetadata(&metadata)
+
+        logError(withCode: .imageDecodeFail,
+                 summary: "Image decode failure",
+                 metadata: metadata)
+    }
+
+    private class func shouldReportImageError(key: String) -> Bool {
+        let now = Date()
+        if let lastReport = lastImageErrorReport[key],
+           now.timeIntervalSince(lastReport) < imageErrorReportInterval {
+            return false
+        }
+        lastImageErrorReport[key] = now
+        return true
+    }
+
+    // ----------------------------------------------------------------------------
+    // MARK: - Catalog Errors
 
     class func logCatalogInitError(withCode code: TPPErrorCode,
                                    response: URLResponse?,

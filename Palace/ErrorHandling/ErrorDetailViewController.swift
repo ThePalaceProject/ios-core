@@ -10,6 +10,7 @@ import UIKit
 /// Presents detailed error information including the activity trail,
 /// server response, and device context. Accessible from the "View Error Details"
 /// button on error alerts.
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in setupUI
 final class ErrorDetailViewController: UIViewController {
 
     private let errorDetail: ErrorDetail

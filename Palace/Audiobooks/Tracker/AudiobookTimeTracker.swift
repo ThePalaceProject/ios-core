@@ -113,13 +113,12 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
         syncQueue.async { [weak self] in
             guard let self = self else { return }
 
-            self.duration += self.tick
             let minute = self.minuteFormatter.string(from: value)
-
             if minute != self.currentMinute {
                 self.saveCurrentDuration(date: value)
                 self.currentMinute = minute
             }
+            self.duration += self.tick
         }
     }
 

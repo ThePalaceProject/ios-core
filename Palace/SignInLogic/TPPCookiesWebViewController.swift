@@ -32,6 +32,7 @@ class TPPCookiesWebViewModel: NSObject {
     }
 }
 
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 @objcMembers
 class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
     private let uuid: String = UUID().uuidString

@@ -53,11 +53,10 @@ extension MyBooksDownloadCenter {
 
         Task { await ErrorActivityTracker.shared.log("Initiating borrow for '\(book.title)'", category: .borrow) }
 
-        #if DEBUG
-        // Check if error simulation is enabled via Developer Settings
-        if let simulated = DebugSettings.shared.createSimulatedBorrowError() {
+        if Bundle.main.applicationEnvironment != .production,
+           let simulated = DebugSettings.shared.createSimulatedBorrowError() {
             await ErrorActivityTracker.shared.log(
-                "[DEBUG] Simulated borrow error triggered: \(DebugSettings.shared.simulatedBorrowError.displayName)",
+                "Simulated borrow error triggered: \(DebugSettings.shared.simulatedBorrowError.displayName)",
                 category: .borrow
             )
             await MainActor.run {
@@ -65,7 +64,6 @@ extension MyBooksDownloadCenter {
             }
             throw simulated.error
         }
-        #endif
 
         // Use modern OPDSFeedService instead of legacy callback-based TPPOPDSFeed
         guard let acquisitionURL = book.defaultAcquisition?.hrefURL else {

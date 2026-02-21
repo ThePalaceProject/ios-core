@@ -106,12 +106,34 @@ enum NYPLResult<SuccessInfo> {
         activeTasks.forEach { $0.resume() }
         activeTasksLock.unlock()
     }
+
+    /// Cancels all active tasks that are not related to audiobook streaming.
+    /// Called during account switches to prevent requests from completing with
+    /// the wrong account's credentials.
+    @objc func cancelNonEssentialTasks() {
+        activeTasksLock.lock()
+        let tasksToCancel = activeTasks.filter { task in
+            guard let url = task.originalRequest?.url?.absoluteString else { return true }
+            let isAudiobook = url.contains("audiobook") ||
+                url.contains(".mp3") ||
+                url.contains(".m4a") ||
+                url.contains("audio") ||
+                url.contains("readium") ||
+                url.contains("lcp")
+            return !isAudiobook
+        }
+        tasksToCancel.forEach { $0.cancel() }
+        activeTasks.removeAll { tasksToCancel.contains($0) }
+        activeTasksLock.unlock()
+        Log.info(#file, "Cancelled \(tasksToCancel.count) non-essential tasks during account switch")
+    }
 }
 
 extension TPPNetworkExecutor: TPPRequestExecuting {
     @discardableResult
     func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
-        let userAccount = TPPUserAccount.sharedAccount()
+        let accountId = AccountsManager.shared.currentAccountId
+        let userAccount = TPPUserAccount.sharedAccount(libraryUUID: accountId)
 
         // SAML auth uses cookies, not tokens - proceed directly
         if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
@@ -125,8 +147,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
            authDef.isToken || authDef.isOauth,
            authDef.tokenURL != nil {
             Log.info(#file, "Token near expiry - proactively refreshing before request")
-            refreshTokenAndResume(task: nil) { [weak self] _ in
-                // After refresh attempt, proceed with the original request
+            refreshTokenAndResume(task: nil, accountId: accountId) { [weak self] _ in
                 _ = self?.performDataTask(with: req, completion: completion)
             }
             return nil
@@ -156,10 +177,15 @@ extension TPPNetworkExecutor {
 
 extension TPPNetworkExecutor {
     @objc func request(for url: URL, useTokenIfAvailable: Bool = true) -> URLRequest {
+        return request(for: url, useTokenIfAvailable: useTokenIfAvailable, accountId: nil)
+    }
+
+    func request(for url: URL, useTokenIfAvailable: Bool = true, accountId: String?) -> URLRequest {
         var urlRequest = URLRequest(url: url,
                                     cachePolicy: urlSession.configuration.requestCachePolicy)
         urlRequest.applyCustomUserAgent()
-        if let authToken = TPPUserAccount.sharedAccount().authToken, useTokenIfAvailable {
+        let account = TPPUserAccount.sharedAccount(libraryUUID: accountId ?? AccountsManager.shared.currentAccountId)
+        if let authToken = account.authToken, useTokenIfAvailable {
             urlRequest.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
         urlRequest.setValue("", forHTTPHeaderField: "Accept-Language")
@@ -309,17 +335,15 @@ extension TPPNetworkExecutor {
         return executeRequest(request, enableTokenRefresh: false, completion: completionWrapper)
     }
 
-    func refreshTokenAndResume(task: URLSessionTask?, completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
+    func refreshTokenAndResume(task: URLSessionTask?, accountId: String? = nil, completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
+        let capturedAccountId = accountId ?? AccountsManager.shared.currentAccountId
         refreshQueue.async { [weak self] in
             guard let self = self else {
-                // Self deallocated - call completion to avoid leaking continuation
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Network executor deallocated"])
                 completion?(NYPLResult.failure(error, nil))
                 return
             }
 
-            // If refresh is already in progress, still add task to retry queue
-            // so it will be retried when the current refresh completes
             if self.isRefreshing {
                 Log.debug(#file, "Token refresh already in progress, queueing task for retry")
                 if let task {
@@ -330,7 +354,6 @@ extension TPPNetworkExecutor {
                     }
                     self.retryQueueLock.unlock()
                 } else {
-                    // No task to queue - must call completion to avoid leaking continuation
                     let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"])
                     completion?(NYPLResult.failure(error, nil))
                 }
@@ -339,18 +362,19 @@ extension TPPNetworkExecutor {
 
             self.isRefreshing = true
 
-            guard let username = TPPUserAccount.sharedAccount().username,
-                  let password = TPPUserAccount.sharedAccount().pin,
-                  let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL else {
-                Log.error(#file, "Cannot refresh token: missing credentials or tokenURL")
+            let account = TPPUserAccount.sharedAccount(libraryUUID: capturedAccountId)
+            guard let username = account.username,
+                  let password = account.pin,
+                  let tokenURL = account.authDefinition?.tokenURL else {
+                Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
                 self.isRefreshing = false
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
                 completion?(NYPLResult.failure(error, nil))
                 return
             }
 
-            let authType = TPPUserAccount.sharedAccount().authDefinition?.authType.rawValue ?? "unknown"
-            Log.info(#file, "Refreshing token for auth type: \(authType)")
+            let authType = account.authDefinition?.authType.rawValue ?? "unknown"
+            Log.info(#file, "Refreshing token for auth type: \(authType), account: \(capturedAccountId ?? "current")")
 
             if let task {
                 self.retryQueueLock.lock()
@@ -361,12 +385,12 @@ extension TPPNetworkExecutor {
                 self.retryQueueLock.unlock()
             }
 
-            self.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL) { result in
+            self.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: capturedAccountId) { result in
                 defer { self.isRefreshing = false }
 
                 switch result {
                 case .success(let tokenResponse):
-                    Log.info(#file, "Token refresh successful, expires in \(tokenResponse.expiresIn)s")
+                    Log.info(#file, "Token refresh successful for account \(capturedAccountId ?? "current"), expires in \(tokenResponse.expiresIn)s")
 
                     var newTasks = [URLSessionTask]()
 
@@ -410,13 +434,12 @@ extension TPPNetworkExecutor {
                     failedTasks.forEach { $0.cancel() }
 
                     if let nsError = error as? NSError, nsError.code == 401 {
-                        Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale")
+                        Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? "current")")
                         DispatchQueue.main.async {
-                            // Mark credentials as stale - preserves Adobe DRM activation
-                            // Don't clear credentials entirely - just mark them as needing refresh
-                            TPPUserAccount.sharedAccount().markCredentialsStale()
-                            // Present sign-in modal so user can re-authenticate
-                            SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
+                            TPPUserAccount.sharedAccount(libraryUUID: capturedAccountId).markCredentialsStale()
+                            if capturedAccountId == nil || capturedAccountId == AccountsManager.shared.currentAccountId {
+                                SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
+                            }
                         }
                     }
 
@@ -446,22 +469,21 @@ extension TPPNetworkExecutor {
         retryQueueLock.unlock()
     }
 
-    func executeTokenRefresh(username: String, password: String, tokenURL: URL, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
+    func executeTokenRefresh(username: String, password: String, tokenURL: URL, accountId: String? = nil, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
+        let session = self.urlSession
         Task {
             let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
-            let result = await tokenRequest.execute()
+            let result = await tokenRequest.execute(session: session)
 
             switch result {
             case .success(let tokenResponse):
-                let account = TPPUserAccount.sharedAccount()
+                let account = TPPUserAccount.sharedAccount(libraryUUID: accountId)
                 account.setAuthToken(
                     tokenResponse.accessToken,
                     barcode: username,
                     pin: password,
                     expirationDate: tokenResponse.expirationDate
                 )
-                // Mark account as fully logged in after successful token refresh
-                // This transitions from .credentialsStale -> .loggedIn
                 account.markLoggedIn()
                 completion(.success(tokenResponse))
             case .failure(let error):

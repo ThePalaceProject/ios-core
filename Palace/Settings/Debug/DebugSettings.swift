@@ -8,10 +8,9 @@
 
 import Foundation
 
-#if DEBUG
-
-/// Manages debug settings for testing error scenarios
-/// All settings are stored in UserDefaults and only available in DEBUG builds
+/// Manages debug/testing settings for error scenarios and QA tools.
+/// Available in DEBUG and TestFlight builds; gated behind Developer Settings UI
+/// which requires a hidden gesture to access.
 final class DebugSettings {
 
     static let shared = DebugSettings()
@@ -314,5 +313,3 @@ final class DebugSettings {
 
     private init() {}
 }
-
-#endif

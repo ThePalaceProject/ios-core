@@ -125,21 +125,20 @@ struct CatalogCacheMetadata: Codable {
         }
     }
 
-    /// Cleans up active audiobook playback and other content before switching accounts
+    /// Cleans up active audiobook playback, in-flight network requests, and other
+    /// content before switching accounts to prevent cross-account credential leaks.
     private func cleanupActiveContentBeforeAccountSwitch(from previousId: String?, to newId: String?) {
+        TPPNetworkExecutor.shared.cancelNonEssentialTasks()
+
         Task { @MainActor in
-            // Clear any active audiobook playback
             if let coordinator = NavigationCoordinatorHub.shared.coordinator {
                 let pathCount = coordinator.path.count
                 Log.debug(#file, "  Navigation path has \(pathCount) items")
 
-                // If there's anything in the navigation stack, pop to root to clean up any active content
-                // This prevents audiobooks or other content from continuing to play with the wrong account context
                 if pathCount > 0 {
                     Log.info(#file, "  🔄 Popping to root to clean up active content before account switch")
                     coordinator.popToRoot()
 
-                    // Give the UI a moment to clean up
                     try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
                 }
             }

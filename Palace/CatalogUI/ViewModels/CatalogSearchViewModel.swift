@@ -191,28 +191,26 @@ class CatalogSearchViewModel: ObservableObject {
 
     // MARK: - Registry Sync
 
-    /// Refresh visible books with registry state (for downloaded/borrowed books)
+    /// Refresh visible books with registry state (for downloaded/borrowed books).
+    /// Works on a snapshot of the array to prevent issues if filteredBooks is
+    /// mutated by a concurrent SwiftUI render cycle.
     func applyRegistryUpdates(changedIdentifier: String?) {
-        guard !filteredBooks.isEmpty else { return }
+        let currentBooks = filteredBooks
+        guard !currentBooks.isEmpty else { return }
 
-        var books = filteredBooks
+        var books = currentBooks
         var anyChanged = false
         for idx in books.indices {
             let book = books[idx]
             if let changedIdentifier, book.identifier != changedIdentifier { continue }
 
-            // Check if book is in registry
             if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
-                // Book is in registry - use registry version
                 books[idx] = registryBook
                 anyChanged = true
             } else {
-                // Book is NOT in registry (e.g., returned)
-                // Reset to original catalog version from allBooks to get correct availability
                 if let originalBook = allBooks.first(where: { $0.identifier == book.identifier }) {
                     books[idx] = originalBook
                 }
-                // Invalidate cached model so it gets recreated with fresh state
                 BookCellModelCache.shared.invalidate(for: book.identifier)
                 anyChanged = true
             }

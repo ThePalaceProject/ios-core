@@ -2,6 +2,7 @@ import Foundation
 
 /// List of available Libraries/Accounts to select as patron's primary
 /// when going through Welcome Screen flow.
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad from datasource.title
 @objc final class TPPAccountList: UIViewController {
 
     private let completion: (Account) -> Void

@@ -282,13 +282,14 @@ extension BookCellModelCache {
         visibleRange: Range<Int>,
         buffer: Int = 10
     ) {
+        let snapshot = books
+        guard !snapshot.isEmpty else { return }
         let startIndex = max(0, visibleRange.lowerBound - buffer)
-        let endIndex = min(books.count, visibleRange.upperBound + buffer)
+        let endIndex = min(snapshot.count, visibleRange.upperBound + buffer)
+        guard startIndex < endIndex, startIndex < snapshot.count else { return }
 
-        let prefetchRange = startIndex..<endIndex
-        let booksToPreload = Array(books[prefetchRange])
+        let booksToPreload = Array(snapshot[startIndex..<endIndex])
 
-        // Preload models in background-ish priority
         Task { @MainActor in
             for book in booksToPreload {
                 _ = model(for: book)
