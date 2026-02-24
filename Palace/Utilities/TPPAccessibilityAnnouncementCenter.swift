@@ -24,10 +24,9 @@ final class TPPAccessibilityAnnouncementCenter {
     private let timeProvider: TimeProvider
     private let progressStep: Int
     private let deduplicationInterval: TimeInterval
+    private let lock = NSLock()
 
     private var lastProgressBucketByKey: [String: Int] = [:]
-
-    /// Tracks the most recent announcement time per message for deduplication.
     private var recentAnnouncements: [String: Date] = [:]
 
     init(
@@ -111,7 +110,9 @@ final class TPPAccessibilityAnnouncementCenter {
     }
 
     func resetProgress(identifier: String) {
+        lock.lock()
         lastProgressBucketByKey.removeValue(forKey: identifier)
+        lock.unlock()
     }
 
     // MARK: - Search Announcements (PP-3673)
@@ -170,24 +171,19 @@ final class TPPAccessibilityAnnouncementCenter {
         }
     }
 
-    /// Returns `true` if the message has not been announced within
-    /// `deduplicationInterval`. Records the current time for future checks.
     private func shouldAnnounce(message: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
         let now = timeProvider()
         if let lastTime = recentAnnouncements[message],
            now.timeIntervalSince(lastTime) < deduplicationInterval {
             return false
         }
         recentAnnouncements[message] = now
-        pruneOldAnnouncements(now: now)
-        return true
-    }
-
-    /// Remove entries older than `deduplicationInterval` to prevent unbounded growth.
-    private func pruneOldAnnouncements(now: Date) {
         recentAnnouncements = recentAnnouncements.filter { _, time in
             now.timeIntervalSince(time) < deduplicationInterval
         }
+        return true
     }
 
     // MARK: - Progress Helpers
@@ -204,6 +200,8 @@ final class TPPAccessibilityAnnouncementCenter {
 
     private func shouldAnnounceProgress(identifier: String, bucket: Int) -> Bool {
         guard bucket > 0 else { return false }
+        lock.lock()
+        defer { lock.unlock() }
         let lastBucket = lastProgressBucketByKey[identifier] ?? -progressStep
         guard bucket > lastBucket else { return false }
         lastProgressBucketByKey[identifier] = bucket

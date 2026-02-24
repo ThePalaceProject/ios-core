@@ -576,7 +576,6 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
         NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
     }
-    }
 
     // MARK: - Available Features Checks
 
