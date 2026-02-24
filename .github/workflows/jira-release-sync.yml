@@ -16,6 +16,6 @@ jobs:
           jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}
           jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
 
-          release-name: "VLC ${{ github.event.release.tag_name }}"
+          release-name: "IOS ${{ github.event.release.tag_name }}"
           release-url: ${{ github.event.release.html_url }}
           release-body: ${{ github.event.release.body }}
