@@ -109,9 +109,12 @@ final class TPPSaveDRMCredentialsTests: XCTestCase {
                        "No activation should occur for libraries without Adobe DRM")
     }
 
-    func testSaveDRMCredentials_failsOnInvalidData() {
+    func testSaveDRMCredentials_preservesCredentialsOnInvalidData() {
         let invalidData = "not valid json".data(using: .utf8)!
         let expectation = self.expectation(description: "Sign-in completes")
+
+        uiDelegate.username = "23333012345678"
+        uiDelegate.pin = "1234"
 
         uiDelegate.didCompleteSignInHandler = {
             expectation.fulfill()
@@ -121,8 +124,12 @@ final class TPPSaveDRMCredentialsTests: XCTestCase {
 
         waitForExpectations(timeout: 2.0)
 
-        // Should fail gracefully without crash
+        // PP-3784: Sign-in must succeed even when profile doc is unparseable.
+        // The server already accepted the patron credentials (HTTP 200),
+        // so we must not wipe them just because the DRM profile is malformed.
         XCTAssertFalse(drmAuthorizer.authorizeWasCalled)
+        XCTAssertTrue(uiDelegate.didCallDidCompleteSignIn,
+                      "Sign-in should complete successfully despite invalid profile doc")
     }
     #endif
 }

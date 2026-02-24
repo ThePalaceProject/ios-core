@@ -592,20 +592,16 @@ private enum StorageKey: String {
     /// - Returns: `true` if credentials were found after refresh, `false` otherwise.
     @discardableResult
     func refreshCredentialsFromKeychain() -> Bool {
-        // Force all keychain variables to re-read from keychain on next access
-        // This is done by changing the key (which resets alreadyInited) and then
-        // changing it back
-        let currentUUID = libraryUUID
+        // PP-3784: Use the barrier queue to prevent race conditions where another
+        // thread calls sharedAccount(libraryUUID:) between the nil/uuid toggle,
+        // which would leave the singleton pointing at the wrong library's keychain.
+        return accountInfoQueue.sync(flags: .barrier) {
+            guard let uuid = libraryUUID else { return hasCredentials() }
 
-        // Temporarily invalidate cache by triggering key change
-        // We do this by re-setting the libraryUUID which updates all keys via didSet
-        if let uuid = currentUUID {
-            // Force the didSet to trigger by setting to a different value first
             libraryUUID = nil
             libraryUUID = uuid
+            return hasCredentials()
         }
-
-        return hasCredentials()
     }
 
     // MARK: - Remove

@@ -530,7 +530,13 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                            cookies: [HTTPCookie]?) {
         #if FEATURE_DRM_CONNECTOR
         guard drmSuccess else {
-            userAccount.removeAll()
+            // PP-3784: Don't wipe basic auth credentials (barcode/PIN) when DRM
+            // authorization fails. The server already accepted the patron's
+            // credentials; the DRM failure is a separate concern. Wiping
+            // removeAll() here caused the barcode to disappear after sign-in
+            // for libraries whose profile document lacks Adobe DRM info.
+            Log.warn(#file, "DRM authorization failed — skipping credential save but not wiping existing credentials")
+            NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
             return
         }
         #endif
