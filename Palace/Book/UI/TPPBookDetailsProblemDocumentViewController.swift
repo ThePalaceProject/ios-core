@@ -42,8 +42,7 @@
         // NavBar
         var navBar: UIView?
         if UIDevice.current.userInterfaceIdiom == .pad,
-           let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
-           let win = scene.windows.first(where: { $0.isKeyWindow }),
+           let win = UIApplication.shared.mainKeyWindow,
            win.traitCollection.horizontalSizeClass != .compact {
             navBar = UIView.init()
             navBar!.translatesAutoresizingMaskIntoConstraints = false

@@ -738,7 +738,7 @@ struct DownloadErrorInfo {
                 self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
 
                 Task { @MainActor in
-                    if let topVC = UIApplication.shared.windows.first?.rootViewController {
+                    if let topVC = UIApplication.shared.mainKeyWindow?.rootViewController {
                         var current = topVC
                         while let presented = current.presentedViewController {
                             current = presented

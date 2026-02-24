@@ -612,9 +612,7 @@ struct AccountDetailView: View {
     }
 
     private func topViewController() -> UIViewController? {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first,
-              let root = window.rootViewController else {
+        guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
             return nil
         }
 

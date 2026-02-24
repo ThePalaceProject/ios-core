@@ -483,7 +483,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     @objc private func dismissRegistration() {
-        guard let presented = UIApplication.shared.windows.first?.rootViewController?.presentedViewController else {
+        guard let presented = UIApplication.shared.mainKeyWindow?.rootViewController?.presentedViewController else {
             return
         }
         presented.dismiss(animated: true)
@@ -732,7 +732,7 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
     }
 
     func dismiss(animated flag: Bool, completion: (() -> Void)?) {
-        guard var topVC = UIApplication.shared.windows.first?.rootViewController else {
+        guard var topVC = UIApplication.shared.mainKeyWindow?.rootViewController else {
             return
         }
 
