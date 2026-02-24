@@ -26,6 +26,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
 
+        guard session.role == .windowApplication else {
+            Log.info(#file, "Ignoring non-application scene role: \(session.role.rawValue)")
+            return
+        }
+
         Log.info(#file, "📱 Main app scene connecting")
         SceneDelegate.hasMainSceneConnected = true
 

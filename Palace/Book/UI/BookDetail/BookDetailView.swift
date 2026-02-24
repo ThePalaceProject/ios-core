@@ -212,8 +212,7 @@ struct BookDetailView: View {
             return iPadPadding
         } else {
             let topInset: CGFloat
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let win = windowScene.windows.first {
+            if let win = UIApplication.shared.mainKeyWindow {
                 topInset = win.safeAreaInsets.top
             } else {
                 topInset = 0

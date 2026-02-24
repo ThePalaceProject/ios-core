@@ -262,17 +262,21 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         switch connectingSceneSession.role {
         case .carTemplateApplication:
-            // Handle CarPlay scene
             Log.info(#file, "🚗 Creating CarPlay scene configuration")
             let config = UISceneConfiguration(name: "CarPlay", sessionRole: connectingSceneSession.role)
             config.delegateClass = CarPlaySceneDelegate.self
             return config
 
-        default:
-            // Handle main app scene
+        case .windowApplication:
             let config = UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
             config.delegateClass = SceneDelegate.self
             return config
+
+        default:
+            // External displays / AirPlay mirroring — return a bare config so
+            // iOS mirrors the main window instead of creating an independent UI.
+            Log.info(#file, "Skipping full UI for scene role: \(connectingSceneSession.role.rawValue)")
+            return UISceneConfiguration(name: "External", sessionRole: connectingSceneSession.role)
         }
     }
 

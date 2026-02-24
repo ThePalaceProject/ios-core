@@ -723,6 +723,8 @@
 		E562DD9C2D35ABC4003A1A40 /* BookDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DD992D35ABBF003A1A40 /* BookDetailView.swift */; };
 		E562DE432D38BA3B003A1A40 /* UIDevice+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE422D38BA35003A1A40 /* UIDevice+Extension.swift */; };
 		E562DE452D38BA3B003A1A40 /* UIDevice+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE422D38BA35003A1A40 /* UIDevice+Extension.swift */; };
+		292DACBF794B4FA5B1A9DAEB /* UIApplication+MainScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D50821D42294719B5E6F62C /* UIApplication+MainScene.swift */; };
+		87C254132B0D459592C2B7D6 /* UIApplication+MainScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D50821D42294719B5E6F62C /* UIApplication+MainScene.swift */; };
 		E562DE472D38BB8C003A1A40 /* Image+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE462D38BB8A003A1A40 /* Image+Extension.swift */; };
 		E562DE492D38BB8C003A1A40 /* Image+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE462D38BB8A003A1A40 /* Image+Extension.swift */; };
 		E56576002C933527005953BD /* AudiobookFileLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56575FF2C933527005953BD /* AudiobookFileLogger.swift */; };
@@ -1833,6 +1835,7 @@
 		E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailViewModel.swift; sourceTree = "<group>"; };
 		E562DD992D35ABBF003A1A40 /* BookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailView.swift; sourceTree = "<group>"; };
 		E562DE422D38BA35003A1A40 /* UIDevice+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIDevice+Extension.swift"; sourceTree = "<group>"; };
+		8D50821D42294719B5E6F62C /* UIApplication+MainScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIApplication+MainScene.swift"; sourceTree = "<group>"; };
 		E562DE462D38BB8A003A1A40 /* Image+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Image+Extension.swift"; sourceTree = "<group>"; };
 		E56575FF2C933527005953BD /* AudiobookFileLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookFileLogger.swift; sourceTree = "<group>"; };
 		E56724C02A132C1300972828 /* TPPAnnotationMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAnnotationMock.swift; sourceTree = "<group>"; };
@@ -3777,6 +3780,7 @@
 				179699D024131BA500EC309F /* UIColor+Extensions.swift */,
 				E544C4F62A3C1E4A00B2DC9D /* Dictionary+Extensions.swift */,
 				E562DE462D38BB8A003A1A40 /* Image+Extension.swift */,
+				8D50821D42294719B5E6F62C /* UIApplication+MainScene.swift */,
 				E562DE422D38BA35003A1A40 /* UIDevice+Extension.swift */,
 				E54DD4D4275C7C940013C200 /* View+Extensions.swift */,
 				E54DD4E5275C8EAA0013C200 /* Font+Extensions.swift */,
@@ -4903,6 +4907,7 @@
 				E5DE86FD2D6C39D7003D356E /* BookImageView.swift in Sources */,
 				73EB0A7625821DF4006BC997 /* TPPAlertUtils.swift in Sources */,
 				E562DE432D38BA3B003A1A40 /* UIDevice+Extension.swift in Sources */,
+				292DACBF794B4FA5B1A9DAEB /* UIApplication+MainScene.swift in Sources */,
 				21E417962928136300A78606 /* AudiobookSampleToolbar.swift in Sources */,
 				73EB0A7725821DF4006BC997 /* OPDS2Publication.swift in Sources */,
 				73EB0A7825821DF4006BC997 /* String+MD5.swift in Sources */,
@@ -5567,6 +5572,7 @@
 				7314D1402551E73C00723E26 /* TPPSignInBusinessLogic+SignOut.swift in Sources */,
 				E5AA6F4129A6BA4000601B02 /* RefreshableView.swift in Sources */,
 				E562DE452D38BA3B003A1A40 /* UIDevice+Extension.swift in Sources */,
+				87C254132B0D459592C2B7D6 /* UIApplication+MainScene.swift in Sources */,
 				73A229A2240F3BEB006B9EAD /* LibraryService.swift in Sources */,
 				E57F92B82D6918CC003D9180 /* DeviceOrientation.swift in Sources */,
 				730B7868249AB9D7008F28B3 /* Float+TPPAdditions.swift in Sources */,

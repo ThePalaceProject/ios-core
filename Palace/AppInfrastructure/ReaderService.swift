@@ -8,20 +8,12 @@ final class ReaderService {
     private lazy var r3Owner: TPPR3Owner = TPPR3Owner()
 
     private func topPresenter() -> UIViewController {
-        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
-           let win = scene.windows.first(where: { $0.isKeyWindow }),
-           let root = win.rootViewController {
-            var base: UIViewController = root
-            while let presented = base.presentedViewController { base = presented }
-            return base
+        guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
+            return UIViewController()
         }
-        if let win = UIApplication.shared.windows.first(where: { $0.isKeyWindow }),
-           let root = win.rootViewController {
-            var base: UIViewController = root
-            while let presented = base.presentedViewController { base = presented }
-            return base
-        }
-        return UIViewController()
+        var base: UIViewController = root
+        while let presented = base.presentedViewController { base = presented }
+        return base
     }
 
     @MainActor
