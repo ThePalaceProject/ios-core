@@ -353,7 +353,7 @@ final class TPPCredentialSnapshotTests: XCTestCase {
         user._credentials = .barcodeAndPin(barcode: "snapshotBarcode", pin: "snapshotPin")
         user.setAuthState(.loggedIn)
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
+        let snapshot = TPPUserAccountMock.credentialSnapshot(for: nil)
 
         XCTAssertTrue(snapshot.hasCredentials)
         XCTAssertFalse(snapshot.hasAuthToken)
@@ -367,7 +367,7 @@ final class TPPCredentialSnapshotTests: XCTestCase {
         user._credentials = .token(authToken: "myToken", barcode: "tokenBarcode", pin: nil, expirationDate: nil)
         user.setAuthState(.loggedIn)
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
+        let snapshot = TPPUserAccountMock.credentialSnapshot(for: nil)
 
         XCTAssertTrue(snapshot.hasCredentials)
         XCTAssertTrue(snapshot.hasAuthToken)
@@ -381,7 +381,7 @@ final class TPPCredentialSnapshotTests: XCTestCase {
         user._credentials = .barcodeAndPin(barcode: "test", pin: "1234")
         user.setAuthState(.credentialsStale)
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
+        let snapshot = TPPUserAccountMock.credentialSnapshot(for: nil)
 
         XCTAssertEqual(snapshot.authState, .credentialsStale)
         XCTAssertTrue(snapshot.hasCredentials)
@@ -392,7 +392,7 @@ final class TPPCredentialSnapshotTests: XCTestCase {
         let user = TPPUserAccountMock.sharedAccount(libraryUUID: nil) as! TPPUserAccountMock
         user.removeAll()
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
+        let snapshot = TPPUserAccountMock.credentialSnapshot(for: nil)
 
         XCTAssertFalse(snapshot.hasCredentials)
         XCTAssertFalse(snapshot.hasAuthToken)
@@ -407,7 +407,7 @@ final class TPPCredentialSnapshotTests: XCTestCase {
         user._credentials = .barcodeAndPin(barcode: "barcode", pin: "pin")
         user.setAuthState(.loggedIn)
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
+        let snapshot = TPPUserAccountMock.credentialSnapshot(for: nil)
         let isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         XCTAssertTrue(isSignedIn,
@@ -422,7 +422,7 @@ final class TPPCredentialSnapshotTests: XCTestCase {
         user._credentials = .barcodeAndPin(barcode: "barcode", pin: "pin")
         user.setAuthState(.credentialsStale)
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
+        let snapshot = TPPUserAccountMock.credentialSnapshot(for: nil)
         let isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         XCTAssertTrue(isSignedIn,
@@ -435,7 +435,7 @@ final class TPPCredentialSnapshotTests: XCTestCase {
         user._credentials = .token(authToken: "tok", barcode: nil, pin: nil, expirationDate: nil)
         user.setAuthState(.credentialsStale)
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
+        let snapshot = TPPUserAccountMock.credentialSnapshot(for: nil)
         let isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         XCTAssertTrue(isSignedIn,
@@ -448,7 +448,7 @@ final class TPPCredentialSnapshotTests: XCTestCase {
         user._credentials = .barcodeAndPin(barcode: "barcode", pin: "pin")
         user.setAuthState(.loggedOut)
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
+        let snapshot = TPPUserAccountMock.credentialSnapshot(for: nil)
         let isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         XCTAssertFalse(isSignedIn,
@@ -704,7 +704,7 @@ final class TPPCredentialConcurrencyTests: XCTestCase {
         for _ in 0..<iterations {
             group.enter()
             DispatchQueue.global().async {
-                let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
+                let snapshot = TPPUserAccountMock.credentialSnapshot(for: nil)
                 if snapshot.barcode != "concurrentBarcode" ||
                     snapshot.pin != "concurrentPin" ||
                     !snapshot.hasCredentials ||

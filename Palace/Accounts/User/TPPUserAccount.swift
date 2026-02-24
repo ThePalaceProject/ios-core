@@ -620,7 +620,7 @@ private enum StorageKey: String {
     /// Atomically sets the singleton to the given library, refreshes all keychain
     /// caches, and captures every credential-related property in a single barrier.
     /// This eliminates race conditions where `libraryUUID` changes between reads.
-    static func credentialSnapshot(for libraryUUID: String?) -> CredentialSnapshot {
+    class func credentialSnapshot(for libraryUUID: String?) -> CredentialSnapshot {
         return shared.accountInfoQueue.sync(flags: .barrier) {
             if shared.libraryUUID != libraryUUID {
                 shared.libraryUUID = libraryUUID
