@@ -24,6 +24,7 @@ class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLog
     var willSignInCallCount = 0
     var didCompleteSignInCallCount = 0
     var didReceiveCredentialsCallCount = 0
+    var didCompleteSignInHandler: (() -> Void)?
 
     // Track isLoading state transitions
     var isLoading = false
@@ -63,6 +64,7 @@ class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLog
         didCompleteSignInCallCount += 1
         isLoading = false
         loadingStateChanges.append(false)
+        didCompleteSignInHandler?()
     }
 
     func businessLogicDidReceiveCredentials(_ businessLogic: TPPSignInBusinessLogic) {
