@@ -408,55 +408,51 @@ final class TPPCredentialSnapshotTests: XCTestCase {
         user.setAuthState(.loggedIn)
 
         let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
-
-        let isSignedIn: Bool
-        if snapshot.hasAuthToken {
-            isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
-        } else {
-            isSignedIn = snapshot.hasCredentials && snapshot.authState == .loggedIn
-        }
+        let isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         XCTAssertTrue(isSignedIn,
                       "Basic auth with credentials + loggedIn should be signed in")
     }
 
-    /// isSignedIn logic for basic auth with stale credentials → should be false.
+    /// PP-3784: Basic auth with stale credentials should still appear signed in.
+    /// A 401 from bookRegistry.sync() triggers markCredentialsStale(), but the
+    /// user's barcode must remain visible.
     func testSnapshot_isSignedInLogic_basicAuth_stale() {
         let user = TPPUserAccountMock.sharedAccount(libraryUUID: nil) as! TPPUserAccountMock
         user._credentials = .barcodeAndPin(barcode: "barcode", pin: "pin")
         user.setAuthState(.credentialsStale)
 
         let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
+        let isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
-        let isSignedIn: Bool
-        if snapshot.hasAuthToken {
-            isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
-        } else {
-            isSignedIn = snapshot.hasCredentials && snapshot.authState == .loggedIn
-        }
-
-        XCTAssertFalse(isSignedIn,
-                       "Basic auth with stale credentials should NOT be signed in")
+        XCTAssertTrue(isSignedIn,
+                      "PP-3784: Basic auth with stale credentials should still show as signed in")
     }
 
-    /// isSignedIn logic for OAuth with stale credentials → should still be true
-    /// (token refreshes in background).
+    /// OAuth with stale credentials → should still be true (token refreshes in background).
     func testSnapshot_isSignedInLogic_OAuth_stale() {
         let user = TPPUserAccountMock.sharedAccount(libraryUUID: nil) as! TPPUserAccountMock
         user._credentials = .token(authToken: "tok", barcode: nil, pin: nil, expirationDate: nil)
         user.setAuthState(.credentialsStale)
 
         let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
-
-        let isSignedIn: Bool
-        if snapshot.hasAuthToken {
-            isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
-        } else {
-            isSignedIn = snapshot.hasCredentials && snapshot.authState == .loggedIn
-        }
+        let isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         XCTAssertTrue(isSignedIn,
-                      "OAuth with stale credentials should still be signed in (token refreshes in background)")
+                      "OAuth with stale credentials should still be signed in")
+    }
+
+    /// Only .loggedOut should result in not signed in.
+    func testSnapshot_isSignedInLogic_loggedOut() {
+        let user = TPPUserAccountMock.sharedAccount(libraryUUID: nil) as! TPPUserAccountMock
+        user._credentials = .barcodeAndPin(barcode: "barcode", pin: "pin")
+        user.setAuthState(.loggedOut)
+
+        let snapshot = TPPUserAccount.credentialSnapshot(for: nil)
+        let isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+
+        XCTAssertFalse(isSignedIn,
+                       "Explicit loggedOut with credentials should NOT be signed in")
     }
 }
 
@@ -555,12 +551,7 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
         let authState = user.authState
         let hasToken = user.hasAuthToken()
 
-        let isSignedIn: Bool
-        if hasToken {
-            isSignedIn = hasCreds && authState != .loggedOut
-        } else {
-            isSignedIn = hasCreds && authState == .loggedIn
-        }
+        let isSignedIn = hasCreds && authState != .loggedOut
 
         XCTAssertTrue(isSignedIn,
                       "PP-3784: The isSignedIn condition must evaluate to true after sign-in. " +

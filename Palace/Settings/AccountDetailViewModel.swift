@@ -102,17 +102,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         )
 
         let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
-        let signedIn: Bool
-        if snapshot.hasAuthToken {
-            signedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
-        } else {
-            signedIn = snapshot.hasCredentials && snapshot.authState == .loggedIn
-        }
-        self.isSignedIn = signedIn
+        self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         super.init()
-
-        Log.debug(#file, "AccountDetailViewModel init: hasToken=\(snapshot.hasAuthToken), authState=\(snapshot.authState), isSignedIn=\(signedIn)")
 
         var drmAuthorizer: TPPDRMAuthorizing?
         #if FEATURE_DRM_CONNECTOR
@@ -484,11 +476,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     private func accountDidChange() {
         let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
 
-        if snapshot.hasAuthToken {
-            isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
-        } else {
-            isSignedIn = snapshot.hasCredentials && snapshot.authState == .loggedIn
-        }
+        // PP-3784: Use the same condition for all auth types. A user with
+        // .credentialsStale state IS signed in (they have credentials that need
+        // refreshing). Only .loggedOut means actually signed out. Without this,
+        // any 401 from bookRegistry.sync() after sign-in would call
+        // markCredentialsStale() and immediately clear the barcode fields.
+        isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         if isSignedIn {
             usernameText = snapshot.barcode ?? ""
@@ -512,12 +505,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         let wasSignedIn = isSignedIn
 
         let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
-
-        if snapshot.hasAuthToken {
-            isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
-        } else {
-            isSignedIn = snapshot.hasCredentials && snapshot.authState == .loggedIn
-        }
+        isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         if wasSignedIn != isSignedIn {
             setupTableData()
