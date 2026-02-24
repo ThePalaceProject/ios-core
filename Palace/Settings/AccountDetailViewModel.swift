@@ -101,26 +101,18 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             drmAuthorizer: nil
         )
 
-        // Initialize isSignedIn based on current credentials AND auth state
-        // OAuth: Consider signed in even when stale (token refreshes in background)
-        // SAML/Basic: Only signed in when loggedIn (needs re-auth via IDP when stale)
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryAccountID)
-        let authState = account.authState
-        let hasCreds = account.hasCredentials()
-
-        // OAuth users have token credentials; SAML/Basic users have barcode/PIN
-        let isOAuth = account.hasAuthToken()
+        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
         let signedIn: Bool
-        if isOAuth {
-            signedIn = hasCreds && authState != .loggedOut
+        if snapshot.hasAuthToken {
+            signedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
         } else {
-            signedIn = hasCreds && authState == .loggedIn
+            signedIn = snapshot.hasCredentials && snapshot.authState == .loggedIn
         }
         self.isSignedIn = signedIn
 
         super.init()
 
-        Log.info(#file, "🔐 [INIT] AccountDetailViewModel: isOAuth=\(isOAuth), authState=\(authState), isSignedIn=\(signedIn)")
+        Log.debug(#file, "AccountDetailViewModel init: hasToken=\(snapshot.hasAuthToken), authState=\(snapshot.authState), isSignedIn=\(signedIn)")
 
         var drmAuthorizer: TPPDRMAuthorizing?
         #if FEATURE_DRM_CONNECTOR
@@ -490,22 +482,17 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func accountDidChange() {
-        // Force refresh from keychain to get latest credentials
-        // This ensures we see updates made by other components (e.g., borrow flow sign-in)
-        let hasCreds = selectedUserAccount.refreshCredentialsFromKeychain()
-        let authState = selectedUserAccount.authState
+        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
 
-        // OAuth users have token credentials; SAML/Basic users have barcode/PIN
-        let isOAuth = selectedUserAccount.hasAuthToken()
-        if isOAuth {
-            isSignedIn = hasCreds && authState != .loggedOut
+        if snapshot.hasAuthToken {
+            isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
         } else {
-            isSignedIn = hasCreds && authState == .loggedIn
+            isSignedIn = snapshot.hasCredentials && snapshot.authState == .loggedIn
         }
 
         if isSignedIn {
-            usernameText = selectedUserAccount.barcode ?? ""
-            pinText = selectedUserAccount.pin ?? ""
+            usernameText = snapshot.barcode ?? ""
+            pinText = snapshot.pin ?? ""
         } else {
             usernameText = ""
             pinText = ""
@@ -524,21 +511,13 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func refreshSignInState() {
         let wasSignedIn = isSignedIn
 
-        // Force refresh credentials from keychain to ensure we have latest state
-        // This is necessary because credentials might have been updated by another component
-        // (e.g., sign-in from borrow flow modal)
-        let hasCreds = selectedUserAccount.refreshCredentialsFromKeychain()
-        let authState = selectedUserAccount.authState
+        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
 
-        // OAuth users have token credentials; SAML/Basic users have barcode/PIN
-        let isOAuth = selectedUserAccount.hasAuthToken()
-        if isOAuth {
-            isSignedIn = hasCreds && authState != .loggedOut
+        if snapshot.hasAuthToken {
+            isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
         } else {
-            isSignedIn = hasCreds && authState == .loggedIn
+            isSignedIn = snapshot.hasCredentials && snapshot.authState == .loggedIn
         }
-
-        Log.info(#file, "🔐 [REFRESH] isOAuth=\(isOAuth), authState=\(authState), isSignedIn=\(isSignedIn)")
 
         if wasSignedIn != isSignedIn {
             setupTableData()

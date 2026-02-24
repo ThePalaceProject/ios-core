@@ -151,6 +151,11 @@ class TPPUserAccountMock: TPPUserAccount {
         _authState = .loggedIn
     }
 
+    override func atomicUpdate(for libraryUUID: String?,
+                                _ block: (TPPUserAccount) -> Void) {
+        block(self)
+    }
+
     // MARK: - Clean everything up
 
     override func removeAll() {

@@ -532,43 +532,43 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         guard drmSuccess else {
             // PP-3784: Don't wipe basic auth credentials (barcode/PIN) when DRM
             // authorization fails. The server already accepted the patron's
-            // credentials; the DRM failure is a separate concern. Wiping
-            // removeAll() here caused the barcode to disappear after sign-in
-            // for libraries whose profile document lacks Adobe DRM info.
-            Log.warn(#file, "DRM authorization failed — skipping credential save but not wiping existing credentials")
+            // credentials; the DRM failure is a separate concern.
+            Log.warn(#file, "DRM authorization failed — preserving existing credentials")
             NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
             return
         }
         #endif
 
-        guard let selectedAuthentication = selectedAuthentication else {
-            setBarcode(barcode, pin: pin)
-            return
-        }
+        // PP-3784: All credential writes MUST happen inside atomicUpdate to
+        // prevent background threads (e.g. TPPNetworkExecutor) from calling
+        // sharedAccount(libraryUUID:) between individual writes, which changes
+        // the singleton's keychain keys and writes data to the wrong library.
+        let selectedAuth = selectedAuthentication
+        userAccount.atomicUpdate(for: libraryAccountID) { account in
+            if let selectedAuth {
+                if selectedAuth.isOauth || selectedAuth.isSaml || selectedAuth.isToken {
+                    if let patron {
+                        account.setPatron(patron)
+                    }
+                    if let authToken {
+                        account.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
+                    } else if let barcode, let pin {
+                        account.setBarcode(barcode, PIN: pin)
+                    }
+                } else if let barcode, let pin {
+                    account.setBarcode(barcode, PIN: pin)
+                }
 
-        if selectedAuthentication.isOauth || selectedAuthentication.isSaml || selectedAuthentication.isToken {
-            if let patron {
-                userAccount.setPatron(patron)
+                if selectedAuth.isSaml, let cookies {
+                    account.setCookies(cookies)
+                }
+                account.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuth)
+            } else if let barcode, let pin {
+                account.setBarcode(barcode, PIN: pin)
             }
 
-            if let authToken {
-                userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
-            } else {
-                setBarcode(barcode, pin: pin)
-            }
-        } else {
-            setBarcode(barcode, pin: pin)
+            account.markLoggedIn()
         }
-
-        if selectedAuthentication.isSaml, let cookies {
-            userAccount.setCookies(cookies)
-        }
-
-        userAccount.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuthentication)
-
-        // Mark the account as fully logged in
-        // This transitions from .credentialsStale -> .loggedIn or .loggedOut -> .loggedIn
-        userAccount.markLoggedIn()
 
         if libraryAccountID == libraryAccountsProvider.currentAccountId {
             bookRegistry.sync()
@@ -576,11 +576,6 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
         NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
     }
-
-    private func setBarcode(_ barcode: String?, pin: String?) {
-        if let barcode = barcode, let pin = pin {
-            userAccount.setBarcode(barcode, PIN: pin)
-        }
     }
 
     // MARK: - Available Features Checks
