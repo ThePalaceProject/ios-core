@@ -763,3 +763,196 @@ final class TPPCredentialConcurrencyTests: XCTestCase {
                       "Credentials should remain intact after concurrent refreshes")
     }
 }
+
+// MARK: - Captured Credentials Tests (PP-3784 token flow)
+
+/// Tests that barcode/PIN are captured at login time and used by finalizeSignIn,
+/// preventing credential loss when the ViewModel's text fields are cleared by
+/// intermediate accountDidChange notifications.
+final class TPPCapturedCredentialsTests: XCTestCase {
+
+    private var businessLogic: TPPSignInBusinessLogic!
+    private var libraryAccountMock: TPPLibraryAccountMock!
+    private var drmAuthorizer: TPPDRMAuthorizingMock!
+    private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+    private var networkExecutor: TPPRequestExecutorMock!
+
+    override func setUp() {
+        super.setUp()
+        libraryAccountMock = TPPLibraryAccountMock()
+        drmAuthorizer = TPPDRMAuthorizingMock()
+        uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+        networkExecutor = TPPRequestExecutorMock()
+
+        businessLogic = TPPSignInBusinessLogic(
+            libraryAccountID: libraryAccountMock.tppAccountUUID,
+            libraryAccountsProvider: libraryAccountMock,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: TPPBookRegistryMock(),
+            bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+            userAccountProvider: TPPUserAccountMock.self,
+            networkExecutor: networkExecutor,
+            uiDelegate: uiDelegate,
+            drmAuthorizer: drmAuthorizer
+        )
+    }
+
+    override func tearDown() {
+        businessLogic.userAccount.removeAll()
+        drmAuthorizer.reset()
+        businessLogic = nil
+        libraryAccountMock = nil
+        drmAuthorizer = nil
+        uiDelegate = nil
+        networkExecutor = nil
+        super.tearDown()
+    }
+
+    /// PP-3784: When the UI delegate's credentials are cleared between logIn()
+    /// and finalizeSignIn() (e.g. by an intermediate accountDidChange notification),
+    /// the captured credentials must still be used.
+    func testFinalizeSignIn_usesCapturedCredentials_whenUIDelegateCleared() {
+        let barcode = "23333012345678"
+        let pin = "1234"
+        uiDelegate.username = barcode
+        uiDelegate.pin = pin
+
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+
+        let expectation = self.expectation(description: "Sign-in completes")
+        uiDelegate.didCompleteSignInHandler = {
+            expectation.fulfill()
+        }
+
+        // Simulate: logIn captures credentials, then UI delegate is cleared
+        // before finalizeSignIn reads them. This happens in production when
+        // executeTokenRefresh fires accountDidChange → ViewModel clears fields.
+        businessLogic.logIn()
+
+        // Clear the UI delegate's credentials (simulating accountDidChange clearing ViewModel)
+        uiDelegate.username = nil
+        uiDelegate.pin = nil
+
+        waitForExpectations(timeout: 5.0)
+
+        let user = businessLogic.userAccount
+        XCTAssertEqual(user.barcode, barcode,
+                       "PP-3784: Must use captured barcode when UI delegate is cleared")
+        XCTAssertEqual(user.PIN, pin,
+                       "PP-3784: Must use captured PIN when UI delegate is cleared")
+    }
+
+    /// PP-3784: When captured credentials are nil (e.g. OAuth flow where
+    /// credentials come from the server), finalizeSignIn falls back to the
+    /// UI delegate's current values.
+    func testFinalizeSignIn_fallsBackToUIDelegate_whenCapturedNil() {
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+
+        // Set uiDelegate credentials AFTER logIn would have been called
+        // (simulating OAuth where credentials arrive later)
+        uiDelegate.username = "oauthBarcode"
+        uiDelegate.pin = "oauthPin"
+
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: uiDelegate.username,
+            pin: uiDelegate.pin,
+            authToken: nil,
+            expirationDate: nil,
+            patron: nil,
+            cookies: nil
+        )
+
+        let user = businessLogic.userAccount
+        XCTAssertEqual(user.barcode, "oauthBarcode",
+                       "Should use UI delegate credentials when captured values are nil")
+        XCTAssertEqual(user.PIN, "oauthPin")
+    }
+
+    /// PP-3784: atomicUpdate must be called with the correct library UUID
+    /// so credentials are written to the right keychain keys.
+    func testUpdateUserAccount_usesAtomicUpdateWithCorrectLibraryUUID() {
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+        let mockUser = businessLogic.userAccount as! TPPUserAccountMock
+
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: "test",
+            pin: "test",
+            authToken: nil,
+            expirationDate: nil,
+            patron: nil,
+            cookies: nil
+        )
+
+        XCTAssertGreaterThanOrEqual(mockUser.atomicUpdateCallCount, 1,
+                                    "atomicUpdate must be called during updateUserAccount")
+        XCTAssertEqual(mockUser.atomicUpdateLibraryUUIDs.last,
+                       libraryAccountMock.tppAccountUUID,
+                       "atomicUpdate must use the correct library UUID")
+    }
+
+    /// PP-3784: When updateUserAccount receives an auth token (token-based
+    /// auth), it must save both the token and the barcode/PIN and write
+    /// everything to the correct library's keychain keys.
+    func testUpdateUserAccount_withAuthToken_savesAllCredentials() {
+        businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
+
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: "tokenBarcode",
+            pin: "tokenPin",
+            authToken: "bearerToken123",
+            expirationDate: Date().addingTimeInterval(3600),
+            patron: nil,
+            cookies: nil
+        )
+
+        let user = businessLogic.userAccount as! TPPUserAccountMock
+        XCTAssertEqual(user.authToken, "bearerToken123",
+                       "Auth token must be saved")
+        XCTAssertEqual(user.barcode, "tokenBarcode",
+                       "Barcode must be saved alongside token")
+        XCTAssertEqual(user.authState, .loggedIn,
+                       "Auth state must be loggedIn after token auth")
+
+        XCTAssertEqual(user.atomicUpdateLibraryUUIDs.last,
+                       libraryAccountMock.tppAccountUUID,
+                       "Must write to the correct library UUID")
+    }
+
+    /// PP-3784: Multiple sign-in attempts must not accumulate stale captured
+    /// credentials. Each logIn() call must refresh the captured values.
+    func testLogIn_refreshesCapturedCredentials_onSubsequentAttempts() {
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+
+        uiDelegate.username = "firstBarcode"
+        uiDelegate.pin = "firstPin"
+
+        let exp1 = expectation(description: "First sign-in completes")
+        uiDelegate.didCompleteSignInHandler = { exp1.fulfill() }
+        businessLogic.validateCredentials()
+        waitForExpectations(timeout: 5.0)
+
+        XCTAssertEqual(businessLogic.userAccount.barcode, "firstBarcode")
+
+        // Sign out (reset state)
+        businessLogic.userAccount.removeAll()
+
+        uiDelegate.username = "secondBarcode"
+        uiDelegate.pin = "secondPin"
+
+        let exp2 = expectation(description: "Second sign-in completes")
+        uiDelegate.didCompleteSignInHandler = { exp2.fulfill() }
+        businessLogic.logIn()
+
+        // Clear UI delegate to simulate intermediate notification
+        uiDelegate.username = nil
+        uiDelegate.pin = nil
+
+        waitForExpectations(timeout: 5.0)
+
+        XCTAssertEqual(businessLogic.userAccount.barcode, "secondBarcode",
+                       "Second sign-in must use freshly captured credentials, not stale ones")
+    }
+}

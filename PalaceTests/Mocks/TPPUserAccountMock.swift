@@ -151,8 +151,13 @@ class TPPUserAccountMock: TPPUserAccount {
         _authState = .loggedIn
     }
 
+    var atomicUpdateCallCount = 0
+    var atomicUpdateLibraryUUIDs: [String?] = []
+
     override func atomicUpdate(for libraryUUID: String?,
                                 _ block: (TPPUserAccount) -> Void) {
+        atomicUpdateCallCount += 1
+        atomicUpdateLibraryUUIDs.append(libraryUUID)
         block(self)
     }
 

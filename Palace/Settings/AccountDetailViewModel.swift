@@ -476,12 +476,13 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     private func accountDidChange() {
         let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
 
-        // PP-3784: Use the same condition for all auth types. A user with
-        // .credentialsStale state IS signed in (they have credentials that need
-        // refreshing). Only .loggedOut means actually signed out. Without this,
-        // any 401 from bookRegistry.sync() after sign-in would call
-        // markCredentialsStale() and immediately clear the barcode fields.
-        isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+        let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+
+        if isSignedIn != newSignedIn {
+            Log.debug(#file, "isSignedIn: \(isSignedIn)->\(newSignedIn), authState=\(snapshot.authState)")
+        }
+
+        isSignedIn = newSignedIn
 
         if isSignedIn {
             usernameText = snapshot.barcode ?? ""
@@ -720,14 +721,10 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
 
 extension AccountDetailViewModel: NYPLBasicAuthCredentialsProvider {
     var username: String? {
-        let value = usernameText.isEmpty ? nil : usernameText
-        Log.debug(#file, "Credentials provider - username: \(value ?? "nil")")
-        return value
+        usernameText.isEmpty ? nil : usernameText
     }
 
     var pin: String? {
-        let value = pinText.isEmpty ? "" : pinText
-        Log.debug(#file, "Credentials provider - pin: '\(value)'")
-        return value
+        pinText.isEmpty ? "" : pinText
     }
 }

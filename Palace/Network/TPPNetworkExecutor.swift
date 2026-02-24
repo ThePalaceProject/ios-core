@@ -477,14 +477,15 @@ extension TPPNetworkExecutor {
 
             switch result {
             case .success(let tokenResponse):
-                let account = TPPUserAccount.sharedAccount(libraryUUID: accountId)
-                account.setAuthToken(
-                    tokenResponse.accessToken,
-                    barcode: username,
-                    pin: password,
-                    expirationDate: tokenResponse.expirationDate
-                )
-                account.markLoggedIn()
+                TPPUserAccount.sharedAccount().atomicUpdate(for: accountId) { account in
+                    account.setAuthToken(
+                        tokenResponse.accessToken,
+                        barcode: username,
+                        pin: password,
+                        expirationDate: tokenResponse.expirationDate
+                    )
+                    account.markLoggedIn()
+                }
                 completion(.success(tokenResponse))
             case .failure(let error):
                 completion(.failure(error))

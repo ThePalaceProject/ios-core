@@ -29,9 +29,12 @@ extension TPPSignInBusinessLogic {
                 self.uiDelegate?.businessLogicDidCompleteSignIn(self)
             }
 
+            let barcode = self.capturedBarcode ?? self.uiDelegate?.username
+            let pin = self.capturedPin ?? self.uiDelegate?.pin
+
             self.updateUserAccount(forDRMAuthorization: drmSuccess,
-                                   withBarcode: self.uiDelegate?.username,
-                                   pin: self.uiDelegate?.pin,
+                                   withBarcode: barcode,
+                                   pin: pin,
                                    authToken: self.authToken,
                                    expirationDate: self.authTokenExpiration,
                                    patron: self.patron,

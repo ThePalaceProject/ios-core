@@ -117,6 +117,12 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
     var authTokenExpiration: Date?
 
+    /// Barcode/PIN captured at sign-in time so that `finalizeSignIn` does not
+    /// need to re-read them from the ViewModel, which may have been cleared by
+    /// an intermediate `accountDidChange` notification.
+    var capturedBarcode: String?
+    var capturedPin: String?
+
     /// The current patron info if available.
     var patron: [String: Any]?
 
@@ -325,7 +331,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
 
     func getBearerToken(username: String, password: String, tokenURL: URL, completion: (() -> Void)? = nil) {
-        TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL) {  [weak self] result in
+        TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: libraryAccountID) { [weak self] result in
             defer {
                 completion?()
             }
@@ -381,6 +387,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// Initiates process of signing in with the server.
     @objc func logIn(with tokenURL: URL? = nil) {
         NotificationCenter.default.post(name: .TPPIsSigningIn, object: true)
+
+        capturedBarcode = uiDelegate?.username
+        capturedPin = uiDelegate?.pin
 
         TPPMainThreadRun.asyncIfNeeded {
             self.uiDelegate?.businessLogicWillSignIn(self)
@@ -530,19 +539,12 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                            cookies: [HTTPCookie]?) {
         #if FEATURE_DRM_CONNECTOR
         guard drmSuccess else {
-            // PP-3784: Don't wipe basic auth credentials (barcode/PIN) when DRM
-            // authorization fails. The server already accepted the patron's
-            // credentials; the DRM failure is a separate concern.
             Log.warn(#file, "DRM authorization failed — preserving existing credentials")
             NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
             return
         }
         #endif
 
-        // PP-3784: All credential writes MUST happen inside atomicUpdate to
-        // prevent background threads (e.g. TPPNetworkExecutor) from calling
-        // sharedAccount(libraryUUID:) between individual writes, which changes
-        // the singleton's keychain keys and writes data to the wrong library.
         let selectedAuth = selectedAuthentication
         userAccount.atomicUpdate(for: libraryAccountID) { account in
             if let selectedAuth {

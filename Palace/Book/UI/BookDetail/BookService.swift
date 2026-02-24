@@ -37,7 +37,7 @@ enum BookService {
                 return
             }
 
-            TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL) { result in
+            TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
                 switch result {
                 case .success:
                     Log.info(#file, "✅ Token refresh successful - re-fetching manifest with fresh token")
