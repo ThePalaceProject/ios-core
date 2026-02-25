@@ -407,11 +407,6 @@ import UIKit
             preferredStyle: .alert
         )
 
-        // Apply problem document if present
-        if let doc = problemDocument {
-            setProblemDocument(controller: freshAlert, document: doc, append: true)
-        }
-
         // Capture values for the closure
         let alertTitle = freshAlert.title ?? title ?? "Error"
         let alertMessage = freshAlert.message ?? message ?? ""

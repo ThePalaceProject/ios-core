@@ -151,6 +151,53 @@ class TPPUserAccountMock: TPPUserAccount {
         _authState = .loggedIn
     }
 
+    override class func credentialSnapshot(for libraryUUID: String?) -> CredentialSnapshot {
+        let mock = shared
+        let creds = mock._credentials
+        let hasCreds = mock.hasCredentials()
+        let hasToken: Bool
+        if let creds = creds, case .token = creds {
+            hasToken = true
+        } else {
+            hasToken = false
+        }
+
+        let state: TPPAccountAuthState = mock._authState
+
+        var barcode: String?
+        var pin: String?
+        if let creds = creds {
+            switch creds {
+            case let .barcodeAndPin(barcode: b, pin: p):
+                barcode = b
+                pin = p
+            case let .token(_, barcode: b, pin: p, _):
+                barcode = b
+                pin = p
+            default:
+                break
+            }
+        }
+
+        return CredentialSnapshot(
+            hasCredentials: hasCreds,
+            hasAuthToken: hasToken,
+            authState: state,
+            barcode: barcode,
+            pin: pin
+        )
+    }
+
+    var atomicUpdateCallCount = 0
+    var atomicUpdateLibraryUUIDs: [String?] = []
+
+    override func atomicUpdate(for libraryUUID: String?,
+                                _ block: (TPPUserAccount) -> Void) {
+        atomicUpdateCallCount += 1
+        atomicUpdateLibraryUUIDs.append(libraryUUID)
+        block(self)
+    }
+
     // MARK: - Clean everything up
 
     override func removeAll() {

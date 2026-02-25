@@ -57,10 +57,6 @@ struct AccountDetailView: View {
     }
 
     private var shouldShowSignInPrompt: Bool {
-        // Show sign-in prompt when:
-        // 1. User is not signed in (no credentials), OR
-        // 2. forceReauthMode is true AND credentials are stale (need re-authentication)
-        //    This is used when the sign-in modal is presented for re-auth (e.g., borrow flow after 401)
         let needsSignIn = !viewModel.isSignedIn
         let needsReauth = forceReauthMode && viewModel.selectedUserAccount.authState == .credentialsStale
 
@@ -369,26 +365,27 @@ struct AccountDetailView: View {
         Button(action: { viewModel.signIn() }, label: {
             HStack {
                 if viewModel.isLoading {
-                    ZStack {
+                    HStack(spacing: 8) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle())
                         Text(viewModel.isSigningOut ? DisplayStrings.signingOut : DisplayStrings.signingIn)
                             .foregroundColor(.primary)
                     }
                     .horizontallyCentered()
+                } else if viewModel.isSignedIn {
+                    Text(DisplayStrings.signOut)
+                        .foregroundColor(Color(TPPConfiguration.mainColor()))
+                        .horizontallyCentered()
                 } else {
-                    if viewModel.isSignedIn {
-                        Text(DisplayStrings.signOut)
-                            .foregroundColor(Color(TPPConfiguration.mainColor()))
-                            .horizontallyCentered()
-                    } else {
-                        Text(Strings.Generic.signin)
-                            .foregroundColor(viewModel.canSignIn ? Color(TPPConfiguration.mainColor()) : .secondary)
-                    }
+                    Text(Strings.Generic.signin)
+                        .foregroundColor(viewModel.canSignIn ? Color(TPPConfiguration.mainColor()) : .secondary)
+                        .horizontallyCentered()
                 }
             }
         })
+        .buttonStyle(.plain)
         .disabled(!viewModel.canSignIn && !viewModel.isSignedIn)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .accessibilityIdentifier(AccessibilityID.SignIn.signInButton)
     }
 

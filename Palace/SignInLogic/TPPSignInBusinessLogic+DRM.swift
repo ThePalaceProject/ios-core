@@ -15,20 +15,22 @@ extension TPPSignInBusinessLogic {
     /// Saves DRM credentials from the user profile document without performing
     /// Adobe device activation. Activation is deferred to borrow time (PP-3649).
     ///
+    /// Profile document parsing is best-effort: if it fails, sign-in still
+    /// succeeds because the server already accepted the patron's credentials
+    /// (HTTP 200). Wiping credentials on a parse failure was the cause of
+    /// PP-3784 (barcode disappearing after sign-in).
+    ///
     /// - Parameters:
     ///   - data: The binary data containing the DRM authorization info.
     ///   - loggingContext: Information to report when logging errors.
     func saveDRMCredentials(_ data: Data, loggingContext: [String: Any]) {
-        let profileDoc: UserProfileDocument
-        do {
-            profileDoc = try UserProfileDocument.fromData(data)
-        } catch {
-            TPPErrorLogger.logUserProfileDocumentAuthError(error as NSError,
-                                                           summary: "SignIn: unable to parse user profile doc",
-                                                           barcode: nil,
-                                                           metadata: loggingContext)
-            finalizeSignIn(forDRMAuthorization: false,
-                           errorMessage: "Error parsing user profile document")
+        guard let profileDoc = try? UserProfileDocument.fromData(data) else {
+            TPPErrorLogger.logUserProfileDocumentAuthError(
+                NSError(domain: "ProfileDoc", code: -1),
+                summary: "SignIn: unable to parse user profile doc (non-fatal)",
+                barcode: uiDelegate?.username,
+                metadata: loggingContext)
+            finalizeSignIn(forDRMAuthorization: true)
             return
         }
 

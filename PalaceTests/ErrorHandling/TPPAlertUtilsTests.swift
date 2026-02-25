@@ -110,6 +110,88 @@ final class TPPAlertUtilsTests: XCTestCase {
         XCTAssertEqual(alert.actions.count, 2, "Should have OK and View Error Details actions")
     }
 
+    // MARK: - Alert with Details + Problem Document (Regression for PP-3439)
+
+    /// Regression test: when alertWithDetails receives a problem document,
+    /// its detail must appear at most once in the final alert message.
+    /// Previously, setProblemDocument appended the detail even though the
+    /// caller's message already contained it, causing visible duplication.
+    func testAlertWithDetails_withProblemDocument_doesNotDuplicateDetail() {
+        let serverDetail = "The loan limit for this library has been reached."
+        let problemDoc = TPPProblemDocument.fromDictionary([
+            "detail": serverDetail
+        ])
+        let messageWithDetail = "Borrowing Test Book could not be completed.\n\n\(serverDetail)"
+
+        let alert = TPPAlertUtils.alertWithDetails(
+            title: "Borrow Failed",
+            message: messageWithDetail,
+            problemDocument: problemDoc,
+            bookIdentifier: "test-id",
+            bookTitle: "Test Book"
+        )
+
+        let occurrences = alert.message?
+            .components(separatedBy: serverDetail).count ?? 0
+        // components(separatedBy:) returns N+1 parts for N occurrences
+        XCTAssertEqual(
+            occurrences - 1, 1,
+            "Problem document detail should appear exactly once, found \(occurrences - 1)"
+        )
+    }
+
+    /// Integration test: exercises the same buildBorrowErrorMessage →
+    /// alertWithDetails pipeline used by showBorrowError to ensure the
+    /// full call chain never duplicates the problem document detail.
+    func testBorrowErrorPipeline_doesNotDuplicateProblemDocDetail() {
+        let serverDetail = "An internal error occurred on the server."
+        let problemDoc = TPPProblemDocument.fromDictionary([
+            "detail": serverDetail
+        ])
+
+        let message = MyBooksDownloadCenter.buildBorrowErrorMessage(
+            for: "Test Book",
+            error: .network(.serverError),
+            problemDocument: problemDoc
+        )
+
+        let alert = TPPAlertUtils.alertWithDetails(
+            title: "Borrow Failed",
+            message: message,
+            problemDocument: problemDoc,
+            bookIdentifier: "test-id",
+            bookTitle: "Test Book"
+        )
+
+        let occurrences = alert.message?
+            .components(separatedBy: serverDetail).count ?? 0
+        XCTAssertEqual(
+            occurrences - 1, 1,
+            "Full borrow pipeline should show detail exactly once, found \(occurrences - 1)"
+        )
+    }
+
+    /// Ensures alertWithDetails still shows the problem document detail when
+    /// the message does NOT already include it (e.g. a caller that passes a
+    /// plain message alongside a problem document).
+    func testAlertWithDetails_plainMessageWithProblemDoc_includesDetail() {
+        let serverDetail = "License expired"
+        let problemDoc = TPPProblemDocument.fromDictionary([
+            "detail": serverDetail
+        ])
+
+        let alert = TPPAlertUtils.alertWithDetails(
+            title: "Error",
+            message: "Something went wrong.",
+            problemDocument: problemDoc
+        )
+
+        XCTAssertTrue(
+            alert.message?.contains("Something went wrong.") == true,
+            "Original message must be present"
+        )
+    }
+
     // MARK: - Problem Document
 
     func testSetProblemDocument_appendsToMessage() {

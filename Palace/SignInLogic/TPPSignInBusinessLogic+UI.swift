@@ -24,47 +24,25 @@ extension TPPSignInBusinessLogic {
     func finalizeSignIn(forDRMAuthorization drmSuccess: Bool,
                         error: Error? = nil,
                         errorMessage: String? = nil) {
-        Log.info(#file, "🔐 [FINALIZE] finalizeSignIn() called")
-        Log.info(#file, "🔐 [FINALIZE] DRM success: \(drmSuccess)")
-        Log.info(#file, "🔐 [FINALIZE] Error: \(error?.localizedDescription ?? "nil")")
-        Log.info(#file, "🔐 [FINALIZE] Library account ID: \(libraryAccountID)")
-        Log.info(#file, "🔐 [FINALIZE] Auth token available: \(authToken != nil)")
-        Log.info(#file, "🔐 [FINALIZE] Patron available: \(patron != nil)")
-        Log.info(#file, "🔐 [FINALIZE] Cookies available: \(cookies?.count ?? 0)")
-
         TPPMainThreadRun.asyncIfNeeded {
-            Log.info(#file, "🔐 [FINALIZE] Running on main thread")
-
             defer {
-                Log.info(#file, "🔐 [FINALIZE] Calling businessLogicDidCompleteSignIn")
                 self.uiDelegate?.businessLogicDidCompleteSignIn(self)
             }
 
-            Log.info(#file, "🔐 [FINALIZE] Calling updateUserAccount()...")
+            let barcode = self.capturedBarcode ?? self.uiDelegate?.username
+            let pin = self.capturedPin ?? self.uiDelegate?.pin
+
             self.updateUserAccount(forDRMAuthorization: drmSuccess,
-                                   withBarcode: self.uiDelegate?.username,
-                                   pin: self.uiDelegate?.pin,
+                                   withBarcode: barcode,
+                                   pin: pin,
                                    authToken: self.authToken,
                                    expirationDate: self.authTokenExpiration,
                                    patron: self.patron,
                                    cookies: self.cookies
             )
-            Log.info(#file, "🔐 [FINALIZE] updateUserAccount() completed")
-
-            // CRITICAL: Verify credentials were persisted to keychain
-            // This refresh forces re-read from keychain to confirm persistence
-            let credentialsPersisted = self.userAccount.refreshCredentialsFromKeychain()
-            if credentialsPersisted {
-                Log.info(#file, "🔐 [FINALIZE] ✅ Credentials verified as persisted to keychain")
-            } else {
-                Log.error(#file, "🔐 [FINALIZE] ❌ WARNING: Credentials may not have been persisted!")
-                Log.error(#file, "🔐 [FINALIZE]   Library ID: \(self.libraryAccountID)")
-                Log.error(#file, "🔐 [FINALIZE]   Auth token was: \(self.authToken != nil)")
-            }
 
             #if FEATURE_DRM_CONNECTOR
             guard drmSuccess else {
-                Log.warn(#file, "🔐 [FINALIZE] ⚠️ DRM authorization failed - showing error alert")
                 NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
 
                 let alert = TPPAlertUtils.alert(title: Strings.Error.loginErrorTitle,
@@ -75,25 +53,19 @@ extension TPPSignInBusinessLogic {
             }
             #endif
 
-            // no need to force a login, as we just logged in successfully
             self.ignoreSignedInState = false
-            Log.info(#file, "🔐 [FINALIZE] Set ignoreSignedInState = false")
 
             let completionHandler = self.refreshAuthCompletion
             self.refreshAuthCompletion = nil
 
             if !self.isLoggingInAfterSignUp, let vc = self.uiDelegate as? UIViewController {
-                // don't dismiss anything if the vc is not even on the view stack
                 if vc.view.superview != nil || vc.presentingViewController != nil {
-                    Log.info(#file, "🔐 [FINALIZE] Dismissing UI and calling completion handler")
                     self.uiDelegate?.dismiss(animated: true, completion: completionHandler)
                     return
                 }
             }
 
-            Log.info(#file, "🔐 [FINALIZE] Calling completion handler directly")
             completionHandler?()
-            Log.info(#file, "🔐 [FINALIZE] ✅ finalizeSignIn() completed successfully")
         }
     }
 

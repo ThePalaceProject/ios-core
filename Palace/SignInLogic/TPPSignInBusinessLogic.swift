@@ -117,6 +117,12 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
     var authTokenExpiration: Date?
 
+    /// Barcode/PIN captured at sign-in time so that `finalizeSignIn` does not
+    /// need to re-read them from the ViewModel, which may have been cleared by
+    /// an intermediate `accountDidChange` notification.
+    var capturedBarcode: String?
+    var capturedPin: String?
+
     /// The current patron info if available.
     var patron: [String: Any]?
 
@@ -325,7 +331,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
 
     func getBearerToken(username: String, password: String, tokenURL: URL, completion: (() -> Void)? = nil) {
-        TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL) {  [weak self] result in
+        TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: libraryAccountID) { [weak self] result in
             defer {
                 completion?()
             }
@@ -381,6 +387,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// Initiates process of signing in with the server.
     @objc func logIn(with tokenURL: URL? = nil) {
         NotificationCenter.default.post(name: .TPPIsSigningIn, object: true)
+
+        capturedBarcode = uiDelegate?.username
+        capturedPin = uiDelegate?.pin
 
         TPPMainThreadRun.asyncIfNeeded {
             self.uiDelegate?.businessLogicWillSignIn(self)
@@ -530,51 +539,44 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                            cookies: [HTTPCookie]?) {
         #if FEATURE_DRM_CONNECTOR
         guard drmSuccess else {
-            userAccount.removeAll()
+            Log.warn(#file, "DRM authorization failed — preserving existing credentials")
+            NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
             return
         }
         #endif
 
-        guard let selectedAuthentication = selectedAuthentication else {
-            setBarcode(barcode, pin: pin)
-            return
-        }
+        let selectedAuth = selectedAuthentication
+        userAccount.atomicUpdate(for: libraryAccountID) { account in
+            if let selectedAuth {
+                if selectedAuth.isOauth || selectedAuth.isSaml || selectedAuth.isToken {
+                    if let patron {
+                        account.setPatron(patron)
+                    }
+                    if let authToken {
+                        account.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
+                    } else if let barcode, let pin {
+                        account.setBarcode(barcode, PIN: pin)
+                    }
+                } else if let barcode, let pin {
+                    account.setBarcode(barcode, PIN: pin)
+                }
 
-        if selectedAuthentication.isOauth || selectedAuthentication.isSaml || selectedAuthentication.isToken {
-            if let patron {
-                userAccount.setPatron(patron)
+                if selectedAuth.isSaml, let cookies {
+                    account.setCookies(cookies)
+                }
+                account.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuth)
+            } else if let barcode, let pin {
+                account.setBarcode(barcode, PIN: pin)
             }
 
-            if let authToken {
-                userAccount.setAuthToken(authToken, barcode: barcode, pin: pin, expirationDate: expirationDate)
-            } else {
-                setBarcode(barcode, pin: pin)
-            }
-        } else {
-            setBarcode(barcode, pin: pin)
+            account.markLoggedIn()
         }
-
-        if selectedAuthentication.isSaml, let cookies {
-            userAccount.setCookies(cookies)
-        }
-
-        userAccount.setAuthDefinitionWithoutUpdate(authDefinition: selectedAuthentication)
-
-        // Mark the account as fully logged in
-        // This transitions from .credentialsStale -> .loggedIn or .loggedOut -> .loggedIn
-        userAccount.markLoggedIn()
 
         if libraryAccountID == libraryAccountsProvider.currentAccountId {
             bookRegistry.sync()
         }
 
         NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
-    }
-
-    private func setBarcode(_ barcode: String?, pin: String?) {
-        if let barcode = barcode, let pin = pin {
-            userAccount.setBarcode(barcode, PIN: pin)
-        }
     }
 
     // MARK: - Available Features Checks

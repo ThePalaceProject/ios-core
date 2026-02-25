@@ -592,20 +592,111 @@ private enum StorageKey: String {
     /// - Returns: `true` if credentials were found after refresh, `false` otherwise.
     @discardableResult
     func refreshCredentialsFromKeychain() -> Bool {
-        // Force all keychain variables to re-read from keychain on next access
-        // This is done by changing the key (which resets alreadyInited) and then
-        // changing it back
-        let currentUUID = libraryUUID
+        return accountInfoQueue.sync(flags: .barrier) {
+            guard let uuid = libraryUUID else { return hasCredentials() }
 
-        // Temporarily invalidate cache by triggering key change
-        // We do this by re-setting the libraryUUID which updates all keys via didSet
-        if let uuid = currentUUID {
-            // Force the didSet to trigger by setting to a different value first
             libraryUUID = nil
             libraryUUID = uuid
+            return hasCredentials()
         }
+    }
 
-        return hasCredentials()
+    // MARK: - Atomic Snapshot
+
+    /// A thread-safe snapshot of all credential-related state for a given library.
+    /// Reading multiple properties from the `TPPUserAccount` singleton outside of
+    /// a barrier is inherently racy because any background thread (e.g.
+    /// `TPPNetworkExecutor`) can call `sharedAccount(libraryUUID:)` between reads,
+    /// changing which library's keychain data the singleton points at.
+    /// Use `credentialSnapshot(for:)` to read everything atomically.
+    struct CredentialSnapshot {
+        let hasCredentials: Bool
+        let hasAuthToken: Bool
+        let authState: TPPAccountAuthState
+        let barcode: String?
+        let pin: String?
+    }
+
+    /// Atomically sets the singleton to the given library, refreshes all keychain
+    /// caches, and captures every credential-related property in a single barrier.
+    /// This eliminates race conditions where `libraryUUID` changes between reads.
+    class func credentialSnapshot(for libraryUUID: String?) -> CredentialSnapshot {
+        return shared.accountInfoQueue.sync(flags: .barrier) {
+            if shared.libraryUUID != libraryUUID {
+                shared.libraryUUID = libraryUUID
+            }
+
+            // Force keychain re-read by toggling UUID
+            if let uuid = shared.libraryUUID {
+                shared.libraryUUID = nil
+                shared.libraryUUID = uuid
+            }
+
+            let creds = shared.credentials
+            let hasCreds = shared.hasCredentials()
+            let hasToken: Bool
+            if let creds = creds, case .token = creds {
+                hasToken = true
+            } else {
+                hasToken = false
+            }
+
+            let state: TPPAccountAuthState
+            if let stored = shared._authState.read() {
+                if stored.hasStoredCredentials && !hasCreds {
+                    state = .loggedOut
+                } else {
+                    state = stored
+                }
+            } else {
+                state = hasCreds ? .loggedIn : .loggedOut
+            }
+
+            var snapshotBarcode: String?
+            var snapshotPin: String?
+            if let creds = creds {
+                switch creds {
+                case let .barcodeAndPin(barcode: b, pin: p):
+                    snapshotBarcode = b
+                    snapshotPin = p
+                case let .token(_, barcode: b, pin: p, _):
+                    snapshotBarcode = b
+                    snapshotPin = p
+                default:
+                    break
+                }
+            }
+
+            return CredentialSnapshot(
+                hasCredentials: hasCreds,
+                hasAuthToken: hasToken,
+                authState: state,
+                barcode: snapshotBarcode,
+                pin: snapshotPin
+            )
+        }
+    }
+
+    // MARK: - Atomic Write
+
+    /// Performs all writes atomically within a single barrier, guaranteeing that
+    /// `libraryUUID` (and therefore all keychain keys) remains stable for the
+    /// duration of the block.
+    ///
+    /// Without this, a background thread (e.g. `TPPNetworkExecutor`) can call
+    /// `sharedAccount(libraryUUID:)` between individual writes, changing the
+    /// keys mid-operation and writing credentials to the wrong library. This was
+    /// the root cause of PP-3784.
+    ///
+    /// Subclasses (e.g. mocks) can override to skip the barrier when not needed.
+    func atomicUpdate(for libraryUUID: String?,
+                      _ block: (TPPUserAccount) -> Void) {
+        accountInfoQueue.sync(flags: .barrier) {
+            if self.libraryUUID != libraryUUID {
+                self.libraryUUID = libraryUUID
+            }
+            block(self)
+        }
     }
 
     // MARK: - Remove
