@@ -84,6 +84,13 @@
   }, {
     "type": "http://librarysimplified.org/authtype/SAML-2.0",
     "description": "SAML authentication"
+  }, {
+    "type": "http://thepalaceproject.org/authtype/openid-connect",
+    "description": "OpenID Connect",
+    "links": [{
+      "href": "https://circulation.example.com/NYNYPL/oidc/authenticate",
+      "rel": "authenticate"
+    }]
   }],
   "announcements": [],
   "color_scheme": "red",

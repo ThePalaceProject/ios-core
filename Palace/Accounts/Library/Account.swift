@@ -39,6 +39,7 @@ protocol AccountLogoDelegate: AnyObject {
         case oauthIntermediary = "http://librarysimplified.org/authtype/OAuth-with-intermediary"
         case saml = "http://librarysimplified.org/authtype/SAML-2.0"
         case token = "http://thepalaceproject.org/authtype/basic-token"
+        case oidc = "http://thepalaceproject.org/authtype/openid-connect"
         case none
     }
 
@@ -60,6 +61,7 @@ protocol AccountLogoDelegate: AnyObject {
         let methodDescription: String?
 
         let samlIdps: [OPDS2SamlIDP]?
+        let oidcAuthenticationUrl: URL?
 
         init(auth: OPDS2AuthenticationDocument.Authentication) {
             let authType = AuthType(rawValue: auth.type) ?? .none
@@ -80,6 +82,7 @@ protocol AccountLogoDelegate: AnyObject {
                 oauthIntermediaryUrl = nil
                 samlIdps = nil
                 tokenURL = nil
+                oidcAuthenticationUrl = nil
 
             case .oauthIntermediary:
                 oauthIntermediaryUrl = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
@@ -87,12 +90,22 @@ protocol AccountLogoDelegate: AnyObject {
                 coppaOverUrl = nil
                 samlIdps = nil
                 tokenURL = nil
+                oidcAuthenticationUrl = nil
 
             case .saml:
                 samlIdps = auth.links?.filter { $0.rel == "authenticate" }.compactMap { OPDS2SamlIDP(opdsLink: $0) }
                 oauthIntermediaryUrl = nil
                 coppaUnderUrl = nil
                 coppaOverUrl = nil
+                tokenURL = nil
+                oidcAuthenticationUrl = nil
+
+            case .oidc:
+                oidcAuthenticationUrl = URL(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
+                oauthIntermediaryUrl = nil
+                coppaUnderUrl = nil
+                coppaOverUrl = nil
+                samlIdps = nil
                 tokenURL = nil
 
             case .none, .basic, .anonymous:
@@ -101,18 +114,20 @@ protocol AccountLogoDelegate: AnyObject {
                 coppaOverUrl = nil
                 samlIdps = nil
                 tokenURL = nil
+                oidcAuthenticationUrl = nil
             case .token:
                 tokenURL = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
                 oauthIntermediaryUrl = nil
                 coppaUnderUrl = nil
                 coppaOverUrl = nil
                 samlIdps = nil
+                oidcAuthenticationUrl = nil
 
             }
         }
 
         var needsAuth: Bool {
-            authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token
+            authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token || authType == .oidc
         }
 
         var needsAgeCheck: Bool {
@@ -137,6 +152,10 @@ protocol AccountLogoDelegate: AnyObject {
 
         var isToken: Bool {
             authType == .token
+        }
+
+        var isOidc: Bool {
+            authType == .oidc
         }
 
         var catalogRequiresAuthentication: Bool {
@@ -169,6 +188,7 @@ protocol AccountLogoDelegate: AnyObject {
             methodDescription = authentication.methodDescription
             samlIdps = authentication.samlIdps
             tokenURL = authentication.tokenURL
+            oidcAuthenticationUrl = authentication.oidcAuthenticationUrl
         }
     }
 
