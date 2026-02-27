@@ -59,9 +59,9 @@ jobs:
 
       - name: Install ledger
         run: |
-          # v0.9.5 with AccessLint suppression comment support
+          # v0.9.4 with bundled tools (bump to 0.9.5 when published to dist)
           curl -fsSL https://raw.githubusercontent.com/mauricecarrier7/ledger-dist/main/install.sh \
-            | bash -s -- --version 0.9.5 --dir ./tools/bin
+            | bash -s -- --version 0.9.4 --dir ./tools/bin
           
           # Clear macOS quarantine attributes (fixes exit code 11)
           xattr -cr ./tools/bin/ 2>/dev/null || true
