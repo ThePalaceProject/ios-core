@@ -117,9 +117,41 @@ jobs:
           JIRA_PROJECT_KEY="PP"
           EOF
           
-          # Read PR body for key changes
-          KEY_CHANGES=$(cat /tmp/pr_body.txt 2>/dev/null | head -30 || true)
-          
+          # Parse structured sections from PR body
+          PR_BODY=$(cat /tmp/pr_body.txt 2>/dev/null || true)
+
+          # Extract Summary (root cause / what was fixed)
+          ROOT_CAUSE=$(echo "$PR_BODY" | python3 -c "
+          import sys, re
+          body = sys.stdin.read()
+          # Match ## Summary section until next ## heading or end
+          m = re.search(r'##\s*Summary\s*\n(.*?)(?=\n##|\Z)', body, re.DOTALL)
+          if m:
+              text = m.group(1).strip()
+              # Clean up markdown bullet points for plain text
+              text = re.sub(r'^\s*[-*]\s*', '• ', text, flags=re.MULTILINE)
+              print(text)
+          " 2>/dev/null || true)
+
+          # Extract Test plan
+          TESTING_STEPS=$(echo "$PR_BODY" | python3 -c "
+          import sys, re
+          body = sys.stdin.read()
+          m = re.search(r'##\s*Test [Pp]lan\s*\n(.*?)(?=\n##|\Z)', body, re.DOTALL)
+          if m:
+              text = m.group(1).strip()
+              # Convert markdown checklist to numbered steps
+              lines = [re.sub(r'^\s*[-*]\s*\[.\]\s*', '', l).strip()
+                       for l in text.splitlines() if l.strip()]
+              for i, line in enumerate(lines, 1):
+                  print(f'{i}. {line}')
+          " 2>/dev/null || true)
+
+          # Fallback: use first 20 lines of PR body if no Summary section found
+          if [ -z "$ROOT_CAUSE" ]; then
+            ROOT_CAUSE=$(echo "$PR_BODY" | head -20 | sed 's/^#.*//g' | tr '\n' ' ' | xargs)
+          fi
+
           for TICKET in $TICKETS; do
             echo "🔍 Moving $TICKET to Code Review..."
             
@@ -128,34 +160,29 @@ jobs:
               echo "⚠️ Could not transition $TICKET (may already be in review or different workflow)"
             }
             
-            # Build rich comment with full PR context
-            COMMENT="🔍 *Pull Request Ready for Review*
-
-*PR:* #${PR_NUM} - ${PR_TITLE}
-*URL:* ${PR_URL}
-*Author:* ${AUTHOR}
-*Branch:* ${BRANCH}
-*Build:* ${BUILD_NUM}"
-
-            if [ -n "$KEY_CHANGES" ]; then
-              COMMENT="${COMMENT}
-
-*Key changes:*
-${KEY_CHANGES}"
+            # Post structured fix details (root cause, testing steps, commit)
+            if [ -n "$ROOT_CAUSE" ]; then
+              ./scripts/jira-integration.sh add-fix-comment "$TICKET" \
+                "$ROOT_CAUSE" \
+                "${TESTING_STEPS:-See PR for testing details.}" \
+                "${COMMIT_SHA}" || {
+                echo "⚠️ Failed to add fix details to $TICKET"
+              }
             fi
 
-            COMMENT="${COMMENT}
+            # Add PR link comment
+            PR_COMMENT=$(cat <<EOFCOMMENT
+          🔍 Pull Request Ready for Review
 
-*Commit Information*
-{code}
-Commit: ${COMMIT_SHA}
-Author: ${COMMIT_AUTHOR}
-Date: ${COMMIT_DATE}
-Message: ${COMMIT_MSG}
-{code}"
-
-            ./scripts/jira-integration.sh comment "$TICKET" "$COMMENT" || {
-              echo "⚠️ Failed to add comment to $TICKET"
+          PR: #${PR_NUM} - ${PR_TITLE}
+          URL: ${PR_URL}
+          Author: ${AUTHOR}
+          Branch: ${BRANCH}
+          Build: ${BUILD_NUM}
+          EOFCOMMENT
+            )
+            ./scripts/jira-integration.sh comment "$TICKET" "$PR_COMMENT" || {
+              echo "⚠️ Failed to add PR comment to $TICKET"
             }
           done
           
