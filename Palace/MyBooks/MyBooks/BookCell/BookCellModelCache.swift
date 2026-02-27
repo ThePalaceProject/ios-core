@@ -145,7 +145,8 @@ final class BookCellModelCache: ObservableObject {
             // Defer book update to avoid "Publishing changes from within view updates" warning.
             // Use identity check (not just `updated` timestamp) because sync can update
             // availability data (e.g. holdPosition) without changing the timestamp.
-            if entry.model.book !== book {
+            // Guard against replacing a newer book with an older one.
+            if entry.model.book !== book && book.updated >= entry.model.book.updated {
                 let model = entry.model
                 let updatedBook = book
                 Task { @MainActor in
