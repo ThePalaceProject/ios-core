@@ -375,10 +375,11 @@ public class TPPBook: NSObject, ObservableObject {
     }
 
     @objc var sampleAcquisition: TPPOPDSAcquisition? {
-        acquisitions.first(where: {
+        let sampleAndPreview: TPPOPDSAcquisitionRelationSet = [.sample, .preview]
+        return acquisitions.first(where: {
             !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
                 forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-                allowedRelations: TPPOPDSAcquisitionRelationSet.sample,
+                allowedRelations: sampleAndPreview,
                 acquisitions: [$0]
             ).isEmpty
         }) ?? previewLink

@@ -493,7 +493,20 @@ extension BookCellModel {
     func didSelectSample() {
         isLoading = true
         if book.defaultBookContentType == .audiobook {
-            SamplePreviewManager.shared.toggle(for: book)
+            if book.sampleAcquisition?.type == "text/html" {
+                SamplePreviewManager.shared.close()
+                if let url = book.sampleAcquisition?.hrefURL {
+                    let webController = BundledHTMLViewController(
+                        fileURL: url,
+                        title: AccountsManager.shared.currentAccount?.name ?? ""
+                    )
+                    if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
+                        top.present(webController, animated: true)
+                    }
+                }
+            } else {
+                SamplePreviewManager.shared.toggle(for: book)
+            }
             self.isLoading = false
             return
         }
