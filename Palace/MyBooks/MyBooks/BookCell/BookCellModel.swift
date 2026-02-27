@@ -216,6 +216,14 @@ class BookCellModel: ObservableObject {
             .receive(on: RunLoop.main) // Use RunLoop.main to avoid "Publishing changes during view updates"
             .sink { [weak self] newState in
                 guard let self else { return }
+
+                // PP-3811: Update book from registry so availability data (hold position,
+                // loan duration, etc.) is current. Without this, views like holdingInfoView
+                // read stale data from the pre-borrow catalog book.
+                if let updatedBook = self.bookRegistry.book(forIdentifier: self.book.identifier) {
+                    self.book = updatedBook
+                }
+
                 self.registryState = newState
 
                 // Clear loading state based on state transitions

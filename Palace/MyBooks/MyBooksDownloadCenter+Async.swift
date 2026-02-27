@@ -148,6 +148,17 @@ extension MyBooksDownloadCenter {
                 }
             }
 
+            // PP-3811: The server's immediate borrow response often returns
+            // holdPosition=0 for holds. The real position is only available from
+            // the shelf/loans feed. Trigger a sync after a short delay so the UI
+            // can update with the correct hold position.
+            if newState == .holding {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    TPPBookRegistry.shared.sync()
+                }
+            }
+
             // Clear re-auth tracking on success
             Self.clearBorrowReauthAttempted(for: bookIdentifier)
 

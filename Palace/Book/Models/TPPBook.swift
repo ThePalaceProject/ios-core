@@ -424,7 +424,10 @@ public class TPPBook: NSObject, ObservableObject {
                     untilDate = until
                 }
 
-                reservationDetails.copiesAvailable = Int(reserved.copiesTotal)
+                let total = reserved.copiesTotal
+                if total != UInt(TPPOPDSAcquisitionAvailabilityCopiesUnknown) && total <= UInt(Int.max) {
+                    reservationDetails.copiesAvailable = Int(total)
+                }
 
             },
             ready: { ready in

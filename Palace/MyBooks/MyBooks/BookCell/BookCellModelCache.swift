@@ -142,9 +142,10 @@ final class BookCellModelCache: ObservableObject {
             cache[key] = entry
             updateAccessOrder(key)
 
-            // Defer book update to avoid "Publishing changes from within view updates" warning
-            // This can happen when SwiftUI calls model(for:) during rendering
-            if book.updated > entry.model.book.updated {
+            // Defer book update to avoid "Publishing changes from within view updates" warning.
+            // Use identity check (not just `updated` timestamp) because sync can update
+            // availability data (e.g. holdPosition) without changing the timestamp.
+            if entry.model.book !== book {
                 let model = entry.model
                 let updatedBook = book
                 Task { @MainActor in
