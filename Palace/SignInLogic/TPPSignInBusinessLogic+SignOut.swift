@@ -33,7 +33,7 @@ extension TPPSignInBusinessLogic {
                                     for: request,
                                     barcode: barcode)
             case .failure(let errorWithProblemDoc, let response):
-                TPPUserAccount.sharedAccount().removeAll()
+                self?.userAccount.removeAll()
                 self?.processLogOutError(errorWithProblemDoc,
                                          response: response,
                                          for: request,
