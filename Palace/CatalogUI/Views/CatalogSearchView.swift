@@ -50,9 +50,9 @@ struct CatalogSearchView: View {
                     .id("search-results-top")
                 }
                 .scrollDismissesKeyboard(.immediately)
-                .onTapGesture {
-                    isSearchFieldFocused = false
-                }
+                .simultaneousGesture(
+                    TapGesture().onEnded { isSearchFieldFocused = false }
+                )
                 .onChange(of: viewModel.searchId) { _ in
                     // Scroll to top only for new searches, not pagination
                     proxy.scrollTo("search-results-top", anchor: .top)
@@ -61,6 +61,9 @@ struct CatalogSearchView: View {
         }
         .onAppear {
             viewModel.updateBooks(books)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isSearchFieldFocused = true
+            }
         }
         .onChange(of: books) { newBooks in
             viewModel.updateBooks(newBooks)
