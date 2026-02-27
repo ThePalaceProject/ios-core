@@ -246,13 +246,31 @@ private extension HalfSheetView {
     @ViewBuilder
     var holdingInfoView: some View {
         let details = viewModel.book.getReservationDetails()
-        if details.holdPosition > 0 && details.copiesAvailable > 0 {
+        if details.holdPosition > 0 {
+            if details.copiesAvailable > 0 {
+                Text(
+                    String(
+                        format: DisplayStrings.holdStatus,
+                        details.holdPosition.ordinal(),
+                        details.copiesAvailable,
+                        details.copiesAvailable == 1 ? DisplayStrings.copy : DisplayStrings.copies
+                    )
+                )
+                .font(.footnote)
+            } else {
+                Text(
+                    String(
+                        format: DisplayStrings.holdPositionOnly,
+                        details.holdPosition.ordinal()
+                    )
+                )
+                .font(.footnote)
+            }
+        } else {
             Text(
                 String(
-                    format: DisplayStrings.holdStatus,
-                    details.holdPosition.ordinal(),
-                    details.copiesAvailable,
-                    details.copiesAvailable == 1 ? DisplayStrings.copy : DisplayStrings.copies
+                    format: DisplayStrings.holdPositionOnly,
+                    1.ordinal()
                 )
             )
             .font(.footnote)

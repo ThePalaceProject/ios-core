@@ -778,3 +778,132 @@ extension AccountsManagerTests {
         XCTAssertTrue(accounts.isEmpty)
     }
 }
+
+// MARK: - Auth Document Carryover Tests (PP-3810)
+
+/// Tests that Account.details (and authenticationDocument) are preserved when
+/// Account objects are replaced during background catalog refreshes.
+/// Regression: loadAccountSetsAndAuthDoc created new Account objects that lost
+/// the authenticationDocument/details from the old ones, causing
+/// syncIsPossibleAndPermitted() to return false (PP-3810).
+final class AccountAuthDocCarryoverTests: XCTestCase {
+
+    private var feedURL: URL!
+    private var authDocURL: URL!
+    private var feedData: Data!
+    private var authDoc: OPDS2AuthenticationDocument!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        let bundle = Bundle(for: type(of: self))
+        feedURL = bundle.url(forResource: "OPDS2CatalogsFeed", withExtension: "json")
+        authDocURL = bundle.url(forResource: "nypl_authentication_document", withExtension: "json")
+        guard let feedURL, let authDocURL else {
+            throw XCTSkip("Test fixtures not available in bundle")
+        }
+        feedData = try Data(contentsOf: feedURL)
+        authDoc = try OPDS2AuthenticationDocument.fromData(Data(contentsOf: authDocURL))
+    }
+
+    func testAccount_authenticationDocumentDidSet_createsDetails() throws {
+        let feed = try OPDS2CatalogsFeed.fromData(feedData)
+        guard let pub = feed.catalogs.first else {
+            throw XCTSkip("No catalogs in feed")
+        }
+
+        let account = Account(publication: pub, imageCache: MockImageCache())
+        XCTAssertNil(account.details, "New account should have nil details")
+
+        account.authenticationDocument = authDoc
+        XCTAssertNotNil(account.details, "Setting authenticationDocument should create details")
+        XCTAssertTrue(account.details!.supportsSimplyESync, "NYPL auth doc should support sync")
+    }
+
+    func testAccount_detailsPreserved_whenAuthDocCopiedToNewAccount() throws {
+        let feed = try OPDS2CatalogsFeed.fromData(feedData)
+        guard let pub = feed.catalogs.first else {
+            throw XCTSkip("No catalogs in feed")
+        }
+
+        // Simulate initial load: old account with auth doc set
+        let oldAccount = Account(publication: pub, imageCache: MockImageCache())
+        oldAccount.authenticationDocument = authDoc
+        XCTAssertNotNil(oldAccount.details)
+
+        // Simulate background refresh: new account from same publication
+        let newAccount = Account(publication: pub, imageCache: MockImageCache())
+        XCTAssertNil(newAccount.details, "Fresh account should have nil details")
+
+        // Simulate the carryover fix
+        if let existingAuthDoc = oldAccount.authenticationDocument {
+            newAccount.authenticationDocument = existingAuthDoc
+        }
+
+        XCTAssertNotNil(newAccount.details, "Details should be restored after auth doc carryover")
+        XCTAssertEqual(
+            newAccount.details?.supportsSimplyESync,
+            oldAccount.details?.supportsSimplyESync,
+            "Sync support should match after carryover"
+        )
+    }
+
+    func testAccount_replacementWithoutCarryover_losesDetails() throws {
+        let feed = try OPDS2CatalogsFeed.fromData(feedData)
+        guard let pub = feed.catalogs.first else {
+            throw XCTSkip("No catalogs in feed")
+        }
+
+        // Old account with details
+        let oldAccount = Account(publication: pub, imageCache: MockImageCache())
+        oldAccount.authenticationDocument = authDoc
+        XCTAssertNotNil(oldAccount.details)
+
+        // New account WITHOUT carryover — this is the bug scenario
+        let newAccount = Account(publication: pub, imageCache: MockImageCache())
+        XCTAssertNil(newAccount.details,
+                     "Without auth doc carryover, new account loses details")
+    }
+
+    func testAccount_detailsSyncPermission_defaultsToTrue() throws {
+        let feed = try OPDS2CatalogsFeed.fromData(feedData)
+        guard let pub = feed.catalogs.first else {
+            throw XCTSkip("No catalogs in feed")
+        }
+
+        let account = Account(publication: pub, imageCache: MockImageCache())
+        account.authenticationDocument = authDoc
+
+        // syncPermissionGranted defaults to true unless explicitly disabled
+        XCTAssertTrue(account.details?.syncPermissionGranted ?? false,
+                      "Sync permission should default to true")
+    }
+
+    func testAccount_multipleAccountsCarryover_matchesByUUID() throws {
+        let feed = try OPDS2CatalogsFeed.fromData(feedData)
+        guard feed.catalogs.count >= 2 else {
+            throw XCTSkip("Need at least 2 catalogs for this test")
+        }
+
+        // Create old accounts with auth docs
+        let oldAccounts = feed.catalogs.map { Account(publication: $0, imageCache: MockImageCache()) }
+        oldAccounts[0].authenticationDocument = authDoc
+
+        // Create new accounts (simulating refresh)
+        let newAccounts = feed.catalogs.map { Account(publication: $0, imageCache: MockImageCache()) }
+
+        // Apply carryover by UUID matching
+        for newAccount in newAccounts {
+            if let old = oldAccounts.first(where: { $0.uuid == newAccount.uuid }),
+               let existingAuthDoc = old.authenticationDocument {
+                newAccount.authenticationDocument = existingAuthDoc
+            }
+        }
+
+        // Account 0 should have details (had auth doc)
+        XCTAssertNotNil(newAccounts[0].details,
+                        "Account with matching UUID should get details from carryover")
+        // Account 1 should still have nil details (no auth doc on old)
+        XCTAssertNil(newAccounts[1].details,
+                     "Account without auth doc on old should remain nil")
+    }
+}

@@ -63,10 +63,20 @@ final class ReaderService {
     @MainActor
     func makeEPUBViewController(for publication: Publication, book: TPPBook, forSample: Bool) async throws -> UIViewController {
         let bookRegistry = TPPBookRegistry.shared
+
+        // Sync reading position with server before opening (shows "Stay or Move"
+        // dialog when the server has a different position from another device).
+        // Samples don't need sync since they have no persisted position.
+        if !forSample {
+            let synchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
+            let drmDeviceID = TPPUserAccount.sharedAccount().deviceID
+            await synchronizer.sync(for: publication, book: book, drmDeviceID: drmDeviceID)
+        }
+
+        // Re-read location after sync — it may have been updated if user chose "Move"
         let lastSavedLocation = bookRegistry.location(forIdentifier: book.identifier)
         let initialLocator = await lastSavedLocation?.convertToLocator(publication: publication)
 
-        // Cast to concrete ReaderModule to access formatModules
         guard let readerModule = r3Owner.readerModule as? ReaderModule else {
             throw ReaderError.formatNotSupported
         }

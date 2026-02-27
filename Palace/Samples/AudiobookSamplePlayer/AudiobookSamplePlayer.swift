@@ -138,17 +138,24 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
 
     private func downloadFile() {
         state = .loading
+        Log.debug(#file, "Downloading sample from: \(sample.url.absoluteString)")
 
         _ = sample.fetchSample { [weak self]  result in
             guard let self = self else { return }
 
             switch result {
             case let .failure(error, _):
+                Log.error(#file, "Sample download failed for \(self.sample.url): \(error.localizedDescription)")
                 TPPErrorLogger.logError(error, summary: "Failed to download sample")
+                DispatchQueue.main.async { self.state = .paused }
                 return
-            case let .success(result, _):
+            case let .success(data, _):
                 DispatchQueue.main.async {
-                    try? self.setupPlayer(data: result)
+                    do {
+                        try self.setupPlayer(data: data)
+                    } catch {
+                        Log.error(#file, "Sample player setup failed: \(error.localizedDescription)")
+                    }
                 }
             }
         }

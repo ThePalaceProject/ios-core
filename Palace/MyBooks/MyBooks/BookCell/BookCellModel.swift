@@ -216,6 +216,14 @@ class BookCellModel: ObservableObject {
             .receive(on: RunLoop.main) // Use RunLoop.main to avoid "Publishing changes during view updates"
             .sink { [weak self] newState in
                 guard let self else { return }
+
+                // PP-3811: Update book from registry so availability data (hold position,
+                // loan duration, etc.) is current. Without this, views like holdingInfoView
+                // read stale data from the pre-borrow catalog book.
+                if let updatedBook = self.bookRegistry.book(forIdentifier: self.book.identifier) {
+                    self.book = updatedBook
+                }
+
                 self.registryState = newState
 
                 // Clear loading state based on state transitions
@@ -493,7 +501,20 @@ extension BookCellModel {
     func didSelectSample() {
         isLoading = true
         if book.defaultBookContentType == .audiobook {
-            SamplePreviewManager.shared.toggle(for: book)
+            if book.sampleAcquisition?.type == "text/html" {
+                SamplePreviewManager.shared.close()
+                if let url = book.sampleAcquisition?.hrefURL {
+                    let webController = BundledHTMLViewController(
+                        fileURL: url,
+                        title: AccountsManager.shared.currentAccount?.name ?? ""
+                    )
+                    if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
+                        top.present(webController, animated: true)
+                    }
+                }
+            } else {
+                SamplePreviewManager.shared.toggle(for: book)
+            }
             self.isLoading = false
             return
         }

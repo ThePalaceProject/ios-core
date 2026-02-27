@@ -407,7 +407,11 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 }
 
                 var changesMade = false
-                self.syncQueue.sync {
+                // Use barrier to get exclusive write access. updateBook() uses
+                // syncQueue.async(flags: .barrier) internally, which would defer
+                // writes until AFTER this block — causing save() to persist stale data.
+                // Inline the update logic here so save() captures current state.
+                self.syncQueue.sync(flags: .barrier) {
                     var recordsToDelete = Set<String>(self.registry.keys)
                     for entry in feed.entries {
                         guard let opdsEntry = entry as? TPPOPDSEntry,
@@ -415,13 +419,31 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                         else { continue }
                         recordsToDelete.remove(book.identifier)
 
-                        if self.registry[book.identifier] != nil {
-                            self.updateBook(book)
+                        if let record = self.registry[book.identifier] {
+                            var nextState = record.state
+                            if record.state == .unregistered {
+                                book.defaultAcquisition?.availability.matchUnavailable(
+                                    nil, limited: nil, unlimited: nil,
+                                    reserved: { _ in nextState = .holding },
+                                    ready: { _ in nextState = .holding }
+                                )
+                            }
+                            NotificationService.compareAvailability(cachedRecord: record, andNewBook: book)
+                            self.registry[book.identifier] = TPPBookRegistryRecord(
+                                book: book,
+                                location: record.location,
+                                state: nextState,
+                                fulfillmentId: record.fulfillmentId,
+                                readiumBookmarks: record.readiumBookmarks,
+                                genericBookmarks: record.genericBookmarks
+                            )
                             changesMade = true
                         } else {
-                            // Derive initial state from book availability (e.g., holding for reserved books)
                             let initialState = TPPBookRegistryRecord.deriveInitialState(for: book)
-                            self.addBook(book, state: initialState)
+                            self.registry[book.identifier] = TPPBookRegistryRecord(
+                                book: book,
+                                state: initialState
+                            )
                             changesMade = true
                         }
                     }

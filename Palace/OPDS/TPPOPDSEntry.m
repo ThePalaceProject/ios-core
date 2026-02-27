@@ -151,13 +151,15 @@
   NSMutableArray<TPPOPDSAcquisition *> *mutableAcquisitions = [NSMutableArray array];
   
   for (TPPXML *linkXML in [entryXML childrenWithName:@"link"]) {
-    if ([linkXML.attributes[@"rel"] containsString:TPPOPDSRelationAcquisition]) {
+    BOOL isAcquisitionRel = [linkXML.attributes[@"rel"] containsString:TPPOPDSRelationAcquisition];
+    if (isAcquisitionRel) {
       TPPOPDSAcquisition *acquisition = [TPPOPDSAcquisition acquisitionWithLinkXML:linkXML];
       if (acquisition) {
         [mutableAcquisitions addObject:acquisition];
         continue;
       }
-    } else if ([linkXML.attributes[@"rel"] containsString:TPPOPDSRelationPreview]) {
+    }
+    if ([linkXML.attributes[@"rel"] containsString:TPPOPDSRelationPreview]) {
       TPPOPDSAcquisition *acquisition = [TPPOPDSAcquisition acquisitionWithLinkXML:linkXML];
       if (acquisition) {
         NSString *mimeType = acquisition.type;

@@ -12,6 +12,7 @@ static NSString *const openAccessRelationString = @"http://opds-spec.org/acquisi
 static NSString *const sampleRelationString = @"http://opds-spec.org/acquisition/sample";
 static NSString *const subscribeRelationString = @"http://opds-spec.org/acquisition/subscribe";
 static NSString *const previewRelationString = @"preview";
+static NSString *const acquisitionPreviewRelationString = @"http://opds-spec.org/acquisition/preview";
 
 static NSString *const availabilityKey = @"availability";
 static NSString *const hrefURLKey = @"href";
@@ -74,6 +75,7 @@ NYPLOPDSAcquisitionRelationWithString(NSString *const _Nonnull string,
       buyRelationString: @(TPPOPDSAcquisitionRelationBuy),
       sampleRelationString: @(TPPOPDSAcquisitionRelationSample),
       previewRelationString: @(TPPOPDSAcquisitionRelationPreview),
+      acquisitionPreviewRelationString: @(TPPOPDSAcquisitionRelationPreview),
       subscribeRelationString: @(TPPOPDSAcquisitionRelationSubscribe)
     };
   }

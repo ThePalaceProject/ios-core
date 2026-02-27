@@ -19,9 +19,19 @@ final class SamplePreviewManager: ObservableObject {
             return
         }
 
+        if book.sampleAcquisition?.type == "text/html" {
+            Log.info(#file, "Book '\(book.title)' has text/html preview; " +
+                     "web previews should be opened via a web view, not the audio toolbar")
+            return
+        }
+
         close()
 
         guard let toolbarView = AudiobookSampleToolbar(book: book) else {
+            Log.warn(#file, "Could not create sample toolbar for '\(book.title)' " +
+                     "(contentType=\(book.defaultBookContentType.rawValue), " +
+                     "sampleAcq=\(book.sampleAcquisition?.type ?? "nil"), " +
+                     "previewLink=\(book.previewLink?.type ?? "nil"))")
             return
         }
 

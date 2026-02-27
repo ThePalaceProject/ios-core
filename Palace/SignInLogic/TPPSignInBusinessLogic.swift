@@ -409,7 +409,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             case .token:
                 guard let username = self.uiDelegate?.username,
                       let password = self.uiDelegate?.pin,
-                      let tokenURL = tokenURL ?? TPPUserAccount.sharedAccount().authDefinition?.tokenURL
+                      let tokenURL = tokenURL ?? userAccount.authDefinition?.tokenURL
                 else {
                     validateCredentials()
                     return
@@ -460,7 +460,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                                    completion: (() -> Void)?) -> Bool {
         guard
             let authDef = userAccount.authDefinition,
-            authDef.isBasic || authDef.isOauth || authDef.isSaml || (authDef.isToken && TPPUserAccount.sharedAccount().authTokenHasExpired)
+            authDef.isBasic || authDef.isOauth || authDef.isSaml || (authDef.isToken && userAccount.authTokenHasExpired)
         else {
             completion?()
             return false
@@ -482,7 +482,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             }
         }
 
-        if authDef.isToken, let barcode = userAccount.barcode, let pin = userAccount.pin, let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL {
+        if authDef.isToken, let barcode = userAccount.barcode, let pin = userAccount.pin, let tokenURL = userAccount.authDefinition?.tokenURL {
             getBearerToken(username: barcode, password: pin, tokenURL: tokenURL, completion: completion)
         } else if authDef.isBasic {
             if usingExistingCredentials && userAccount.hasBarcodeAndPIN() {
