@@ -29,6 +29,11 @@ extension TPPSignInBusinessLogic {
                 self.uiDelegate?.businessLogicDidCompleteSignIn(self)
             }
 
+            // PP-3819: Cancel any pending sign-out for this library so that
+            // a stale DRM deauthorization callback cannot wipe these new
+            // credentials after we save them.
+            self.cancelPendingSignOut()
+
             let barcode = self.capturedBarcode ?? self.uiDelegate?.username
             let pin = self.capturedPin ?? self.uiDelegate?.pin
 

@@ -34,9 +34,19 @@ class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLog
         didCallWillSignOut = true
     }
 
+    // MARK: - Sign-Out Error Tracking
+    var didCallSignOutError = false
+    var signOutErrorCallCount = 0
+    var lastSignOutErrorHTTPStatusCode: Int?
+    var signOutErrorHandler: ((Error?, Int) -> Void)?
+
     func businessLogic(_ logic: TPPSignInBusinessLogic,
                        didEncounterSignOutError error: Error?,
                        withHTTPStatusCode httpStatusCode: Int) {
+        didCallSignOutError = true
+        signOutErrorCallCount += 1
+        lastSignOutErrorHTTPStatusCode = httpStatusCode
+        signOutErrorHandler?(error, httpStatusCode)
     }
 
     func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {

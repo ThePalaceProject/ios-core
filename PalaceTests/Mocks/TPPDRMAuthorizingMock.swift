@@ -31,6 +31,13 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing {
     /// Counts how many times `deauthorize` was called.
     var deauthorizeCallCount = 0
 
+    /// When true, `deauthorize` captures the completion instead of calling it
+    /// immediately. Call `completeDeferredDeauthorize()` to fire the callback.
+    var shouldDeferDeauthorize = false
+
+    /// Captured deauthorization completion for simulating slow DRM callbacks.
+    private(set) var deferredDeauthCompletion: ((Bool, Error?) -> Void)?
+
     func isUserAuthorized(_ userID: String!, withDevice device: String!) -> Bool {
         return isUserAuthorizedReturnValue
     }
@@ -44,7 +51,17 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing {
     func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: ((Bool, Error?) -> Void)!) {
         deauthorizeWasCalled = true
         deauthorizeCallCount += 1
-        completion(true, nil)
+        if shouldDeferDeauthorize {
+            deferredDeauthCompletion = completion
+        } else {
+            completion(true, nil)
+        }
+    }
+
+    /// Fires the previously captured deauthorization completion.
+    func completeDeferredDeauthorize(success: Bool = true, error: Error? = nil) {
+        deferredDeauthCompletion?(success, error)
+        deferredDeauthCompletion = nil
     }
 
     /// Resets all tracking properties. Call in test tearDown.
@@ -54,5 +71,7 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing {
         authorizeCallCount = 0
         deauthorizeWasCalled = false
         deauthorizeCallCount = 0
+        shouldDeferDeauthorize = false
+        deferredDeauthCompletion = nil
     }
 }

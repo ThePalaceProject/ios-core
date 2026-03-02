@@ -213,5 +213,6 @@ class TPPUserAccountMock: TPPUserAccount {
         _cookies = nil
         _authorizationIdentifier = nil
         _authState = .loggedOut
+        signInGeneration = 0
     }
 }
