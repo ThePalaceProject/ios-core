@@ -375,10 +375,11 @@ public class TPPBook: NSObject, ObservableObject {
     }
 
     @objc var sampleAcquisition: TPPOPDSAcquisition? {
-        acquisitions.first(where: {
+        let sampleAndPreview: TPPOPDSAcquisitionRelationSet = [.sample, .preview]
+        return acquisitions.first(where: {
             !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
                 forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-                allowedRelations: TPPOPDSAcquisitionRelationSet.sample,
+                allowedRelations: sampleAndPreview,
                 acquisitions: [$0]
             ).isEmpty
         }) ?? previewLink
@@ -423,7 +424,10 @@ public class TPPBook: NSObject, ObservableObject {
                     untilDate = until
                 }
 
-                reservationDetails.copiesAvailable = Int(reserved.copiesTotal)
+                let total = reserved.copiesTotal
+                if total != UInt(TPPOPDSAcquisitionAvailabilityCopiesUnknown) && total <= UInt(Int.max) {
+                    reservationDetails.copiesAvailable = Int(total)
+                }
 
             },
             ready: { ready in

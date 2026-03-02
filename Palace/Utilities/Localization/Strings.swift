@@ -570,6 +570,10 @@ struct Strings {
             "You are %1$@ in line. %2$d %3$@ in use.",
             comment: "User hold position and number of copies in use. Format: 'You are 5th in line. 3 copies in use.'"
         )
+        static let holdPositionOnly = NSLocalizedString(
+            "You are %1$@ in line.",
+            comment: "User hold position without copies info. Format: 'You are 5th in line.'"
+        )
         static let copy = NSLocalizedString("copy", comment: "")
         static let copies = NSLocalizedString("copies", comment: "")
         static let returning = NSLocalizedString("returning", comment: "")

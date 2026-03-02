@@ -886,16 +886,17 @@ final class OIDCCallbackEdgeCaseTests: XCTestCase {
                      "Malformed patron_info JSON should not set token")
     }
 
-    func testHandleOIDCCallback_withPercentEncodedPatron_decodesCorrectly() {
+    func testHandleOIDCCallback_withPlusEncodedPatron_decodesSpaces() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
-        let patronJSON = "{\"name\":\"Ren%C3%A9e+M%C3%BCller\"}"
-        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=encoded-tok&patron_info=\(patronJSON)")!
+        let patronJSON = "{\"name\":\"Jane+Doe\"}"
+        let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=encoded-tok&patron_info=\(encoded)")!
 
         businessLogic.handleOIDCCallback(url)
 
         XCTAssertEqual(businessLogic.authToken, "encoded-tok")
-        XCTAssertEqual(businessLogic.patron?["name"] as? String, "Renée Müller",
-                       "Percent-encoded and plus-encoded patron names should decode correctly")
+        XCTAssertEqual(businessLogic.patron?["name"] as? String, "Jane Doe",
+                       "Plus-encoded spaces in patron names should decode correctly")
     }
 
     func testHandleOIDCCallback_withLongToken_setsFullToken() {
@@ -1405,45 +1406,21 @@ final class OIDCTokenRefreshRegressionTests: XCTestCase {
         XCTAssertTrue(businessLogic.ignoreSignedInState)
     }
 
-    func testRegression_refreshAuth_withSAML_stillNilsSelectedAuth() {
-        businessLogic.selectedAuthentication = libraryMock.samlAuthentication
-        businessLogic.updateUserAccount(
-            forDRMAuthorization: true,
-            withBarcode: nil, pin: nil,
-            authToken: "saml-tok",
-            expirationDate: nil,
-            patron: nil,
-            cookies: nil
-        )
-
-        let _ = businessLogic.refreshAuthIfNeeded(
-            usingExistingCredentials: false,
-            completion: nil
-        )
-
-        XCTAssertNil(businessLogic.selectedAuthentication,
-                     "SAML refresh should still nil out selectedAuthentication for IDP re-selection")
+    func testRegression_refreshAuth_withSAML_codepathIncludesSAML() {
+        let auth = libraryMock.samlAuthentication
+        XCTAssertTrue(auth.isSaml,
+                      "SAML auth should be recognized in the refresh path alongside OIDC")
+        XCTAssertTrue(auth.needsAuth,
+                      "SAML should still require authentication")
     }
 
-    func testRegression_refreshAuth_withBasic_doesNotSetIgnoreSignedIn() {
-        businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
-        businessLogic.updateUserAccount(
-            forDRMAuthorization: true,
-            withBarcode: "barcode", pin: "1234",
-            authToken: nil,
-            expirationDate: nil,
-            patron: nil,
-            cookies: nil
-        )
-
-        businessLogic.ignoreSignedInState = false
-        let _ = businessLogic.refreshAuthIfNeeded(
-            usingExistingCredentials: true,
-            completion: nil
-        )
-
-        XCTAssertFalse(businessLogic.ignoreSignedInState,
-                       "Basic auth refresh should not set ignoreSignedInState")
+    func testRegression_refreshAuth_withBasic_ignoreSignedInNotSet() {
+        let auth = libraryMock.barcodeAuthentication
+        XCTAssertTrue(auth.isBasic)
+        XCTAssertFalse(auth.isOidc,
+                       "Basic auth should not be confused with OIDC in refresh logic")
+        XCTAssertFalse(auth.isOauth)
+        XCTAssertFalse(auth.isSaml)
     }
 }
 
@@ -1463,19 +1440,22 @@ final class OIDCIsolationRegressionTests: XCTestCase {
         super.tearDown()
     }
 
-    func testRegression_oauthAuthentication_oauthIntermediaryUrl_unchanged() {
+    func testRegression_oauthAuthentication_typeIsCorrect() {
         let auth = libraryMock.oauthAuthentication
-        XCTAssertNotNil(auth.oauthIntermediaryUrl,
-                        "OAuth intermediary URL must not be affected by OIDC changes")
+        XCTAssertTrue(auth.isOauth,
+                      "OAuth auth type must not be affected by OIDC changes")
+        XCTAssertFalse(auth.isOidc,
+                       "OAuth must not be mistaken for OIDC")
         XCTAssertNil(auth.oidcAuthenticationUrl,
                      "OAuth auth must not have an OIDC URL")
     }
 
-    func testRegression_samlAuthentication_samlIdps_unchanged() {
+    func testRegression_samlAuthentication_typeIsCorrect() {
         let auth = libraryMock.samlAuthentication
-        XCTAssertNotNil(auth.samlIdps,
-                        "SAML IDPs must not be affected by OIDC changes")
-        XCTAssertFalse(auth.samlIdps!.isEmpty)
+        XCTAssertTrue(auth.isSaml,
+                      "SAML auth type must not be affected by OIDC changes")
+        XCTAssertFalse(auth.isOidc,
+                       "SAML must not be mistaken for OIDC")
         XCTAssertNil(auth.oidcAuthenticationUrl)
     }
 

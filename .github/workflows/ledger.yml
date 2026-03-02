@@ -59,7 +59,7 @@ jobs:
 
       - name: Install ledger
         run: |
-          # v0.9.4 with new install script and bundled tools
+          # v0.9.4 with bundled tools (bump to 0.9.5 when published to dist)
           curl -fsSL https://raw.githubusercontent.com/mauricecarrier7/ledger-dist/main/install.sh \
             | bash -s -- --version 0.9.4 --dir ./tools/bin
           

@@ -393,7 +393,18 @@ struct CatalogCacheMetadata: Codable {
         do {
             let feed = try OPDS2CatalogsFeed.fromData(data)
             let hadAccount = self.currentAccount != nil
+            let oldAccounts = self.accounts(hash)
             let newAccounts = feed.catalogs.map { Account(publication: $0, imageCache: ImageCache.shared) }
+
+            // Carry over authenticationDocument (and thus details) from old
+            // accounts so a background refresh doesn't nil-out details while
+            // the user is actively using the app.
+            for newAccount in newAccounts {
+                if let old = oldAccounts.first(where: { $0.uuid == newAccount.uuid }),
+                   let authDoc = old.authenticationDocument {
+                    newAccount.authenticationDocument = authDoc
+                }
+            }
 
             self.performWrite {
                 self.accountSets[hash] = newAccounts
@@ -401,7 +412,10 @@ struct CatalogCacheMetadata: Codable {
 
             let group = DispatchGroup()
 
-            if hadAccount != (self.currentAccount != nil), let current = self.currentAccount {
+            let accountExistenceChanged = hadAccount != (self.currentAccount != nil)
+            let currentAccountMissingDetails = self.currentAccount != nil && self.currentAccount?.details == nil
+
+            if accountExistenceChanged || currentAccountMissingDetails, let current = self.currentAccount {
                 group.enter()
                 current.loadLogo()
                 current.loadAuthenticationDocument(using: TPPUserAccount.sharedAccount()) { _ in

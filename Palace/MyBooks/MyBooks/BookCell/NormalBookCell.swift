@@ -222,13 +222,31 @@ struct NormalBookCell: View {
 
     @ViewBuilder var holdingInfoView: some View {
         let details = model.book.getReservationDetails()
-        if details.holdPosition > 0 && details.copiesAvailable > 0 {
+        if details.holdPosition > 0 {
+            if details.copiesAvailable > 0 {
+                Text(
+                    String(
+                        format: Strings.BookDetailView.holdStatus,
+                        details.holdPosition.ordinal(),
+                        details.copiesAvailable,
+                        details.copiesAvailable == 1 ? Strings.BookDetailView.copy : Strings.BookDetailView.copies
+                    )
+                )
+                .font(.footnote)
+            } else {
+                Text(
+                    String(
+                        format: Strings.BookDetailView.holdPositionOnly,
+                        details.holdPosition.ordinal()
+                    )
+                )
+                .font(.footnote)
+            }
+        } else {
             Text(
                 String(
-                    format: Strings.BookDetailView.holdStatus,
-                    details.holdPosition.ordinal(),
-                    details.copiesAvailable,
-                    details.copiesAvailable == 1 ? Strings.BookDetailView.copy : Strings.BookDetailView.copies
+                    format: Strings.BookDetailView.holdPositionOnly,
+                    1.ordinal()
                 )
             )
             .font(.footnote)

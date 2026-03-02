@@ -90,11 +90,13 @@ final class HoldsViewModel: ObservableObject {
             }
         }
 
-        withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) {
-            self.reservedBookVMs = reservedVMs
-            self.heldBookVMs = heldVMs
-            self.visibleBooks = self.allBooks
-        }
+        // PP-3811: Don't wrap in withAnimation — animating @Published array
+        // changes while a child view is pushed on the NavigationStack can cause
+        // SwiftUI to unexpectedly pop the navigation (known NavigationStack issue).
+        // SwiftUI still animates insertions/removals in LazyVGrid naturally.
+        self.reservedBookVMs = reservedVMs
+        self.heldBookVMs = heldVMs
+        self.visibleBooks = self.allBooks
 
         // Trigger badge update via notification (badge is now centrally managed by AppTabHostView)
         NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)

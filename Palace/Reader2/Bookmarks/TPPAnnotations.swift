@@ -498,8 +498,18 @@ protocol AnnotationsManager {
     }
 
     static func syncIsPossibleAndPermitted() -> Bool {
+        let account = TPPUserAccount.sharedAccount()
         let acct = AccountsManager.shared.currentAccount
-        return syncIsPossible(TPPUserAccount.sharedAccount()) && acct?.details?.syncPermissionGranted == true
+        let hasCreds = account.hasCredentials()
+        let supportsSync = acct?.details?.supportsSimplyESync == true
+        let permissionGranted = acct?.details?.syncPermissionGranted == true
+        let result = hasCreds && supportsSync && permissionGranted
+
+        if !result {
+            Log.debug(#file, "syncIsPossibleAndPermitted=\(result): hasCredentials=\(hasCreds), supportsSimplyESync=\(supportsSync), syncPermissionGranted=\(permissionGranted), accountDetails=\(acct?.details != nil ? "present" : "nil")")
+        }
+
+        return result
     }
 
     static var annotationsURL: URL? {
