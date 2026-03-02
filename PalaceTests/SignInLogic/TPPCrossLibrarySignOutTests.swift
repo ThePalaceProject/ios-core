@@ -93,6 +93,8 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
     }
 
     override func tearDown() {
+        (activeBusinessLogic.networker as? TPPRequestExecutorMock)?.reset()
+        (targetBusinessLogic.networker as? TPPRequestExecutorMock)?.reset()
         activeBusinessLogic.userAccount.removeAll()
         targetBusinessLogic.userAccount.removeAll()
         activeBusinessLogic = nil

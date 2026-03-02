@@ -45,6 +45,7 @@ final class TPPSaveDRMCredentialsTests: XCTestCase {
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         drmAuthorizer.reset()
         businessLogic = nil
@@ -165,6 +166,7 @@ final class TPPLoginNoActivationTests: XCTestCase {
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         drmAuthorizer.reset()
         businessLogic = nil
