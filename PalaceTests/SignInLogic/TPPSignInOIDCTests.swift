@@ -425,9 +425,28 @@ final class OIDCUpdateUserAccountTests: XCTestCase {
     }
 }
 
-// MARK: - Integration Tests: Redirect Handling
+// MARK: - Unit Tests: OIDC Callback Scheme Constants
 
-final class OIDCRedirectHandlingTests: XCTestCase {
+final class OIDCCallbackSchemeTests: XCTestCase {
+
+    func testOidcCallbackScheme_matchesAndroidConvention() {
+        XCTAssertEqual(TPPSignInBusinessLogic.oidcCallbackScheme, "palace-oidc-callback",
+                       "Must match Android's custom scheme for consistent CM behavior")
+    }
+
+    func testOidcCallbackHost_matchesAndroidConvention() {
+        XCTAssertEqual(TPPSignInBusinessLogic.oidcCallbackHost, "org.thepalaceproject.oidc")
+    }
+
+    func testOidcCallbackScheme_isNotHTTPS() {
+        XCTAssertNotEqual(TPPSignInBusinessLogic.oidcCallbackScheme, "https",
+                          "Must NOT use https — ASWebAuthenticationSession requires a custom scheme")
+    }
+}
+
+// MARK: - Integration Tests: OIDC Callback Handling
+
+final class OIDCCallbackHandlingTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
     private var libraryMock: TPPLibraryAccountMock!
@@ -462,49 +481,64 @@ final class OIDCRedirectHandlingTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Integration test: OIDC redirect with access_token + patron_info triggers credential validation.
-    func testHandleRedirectURL_withOIDCToken_extractsTokenAndValidates() {
+    /// Callback URL uses the custom scheme with query parameters (like Android).
+    func testHandleOIDCCallback_withQueryParams_extractsTokenAndValidates() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
         let patronJSON = "{\"name\":\"OIDC+User\"}"
         let encodedPatron = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
-        let redirectURL = URL(string: "https://example.com/univeral-link-redirect#access_token=oidc-token-abc&patron_info=\(encodedPatron)")!
+        let callbackURL = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=oidc-token-abc&patron_info=\(encodedPatron)")!
 
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
-
-        businessLogic.handleRedirectURL(notification)
+        businessLogic.handleOIDCCallback(callbackURL)
 
         XCTAssertEqual(businessLogic.authToken, "oidc-token-abc",
-                       "OIDC redirect should extract access_token")
+                       "OIDC callback should extract access_token")
         XCTAssertEqual(businessLogic.patron?["name"] as? String, "OIDC User",
-                       "OIDC redirect should extract patron_info")
+                       "OIDC callback should extract patron_info")
         XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "After redirect, should be validating credentials against the CM")
+                      "After callback, should be validating credentials against the CM")
     }
 
-    /// Integration test: OIDC redirect with error should not set auth token.
-    func testHandleRedirectURL_withError_doesNotSetToken() {
+    /// CM may also provide tokens as a URL fragment (same as OAuth).
+    func testHandleOIDCCallback_withFragment_extractsTokenAndValidates() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+
+        let patronJSON = "{\"name\":\"Fragment+User\"}"
+        let encodedPatron = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let callbackURL = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback#access_token=frag-token&patron_info=\(encodedPatron)")!
+
+        businessLogic.handleOIDCCallback(callbackURL)
+
+        XCTAssertEqual(businessLogic.authToken, "frag-token")
+        XCTAssertEqual(businessLogic.patron?["name"] as? String, "Fragment User")
+    }
+
+    /// Error callback should not set auth token.
+    func testHandleOIDCCallback_withError_doesNotSetToken() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
         let errorJSON = "{\"title\":\"Authentication+failed\"}"
         let encoded = errorJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
-        let redirectURL = URL(string: "https://example.com/univeral-link-redirect#error=\(encoded)")!
+        let callbackURL = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?error=\(encoded)")!
 
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
+        businessLogic.handleOIDCCallback(callbackURL)
 
-        businessLogic.handleRedirectURL(notification)
-
-        XCTAssertNil(businessLogic.authToken, "Error redirect should not set auth token")
+        XCTAssertNil(businessLogic.authToken, "Error callback should not set auth token")
     }
 
-    /// Integration test: Full credential validation flow after OIDC redirect.
-    func testOIDCFlow_afterRedirect_validatesAndCompletesSignIn() {
+    /// Callback with missing payload should not crash or set token.
+    func testHandleOIDCCallback_withNoPayload_doesNotSetToken() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+
+        let callbackURL = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback")!
+
+        businessLogic.handleOIDCCallback(callbackURL)
+
+        XCTAssertNil(businessLogic.authToken, "No-payload callback should not set auth token")
+    }
+
+    /// Full sign-in flow: callback → validateCredentials → completion.
+    func testOIDCFlow_afterCallback_validatesAndCompletesSignIn() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
         let exp = expectation(description: "Sign-in completes")
@@ -514,14 +548,9 @@ final class OIDCRedirectHandlingTests: XCTestCase {
 
         let patronJSON = "{\"name\":\"Test+Patron\"}"
         let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
-        let redirectURL = URL(string: "https://example.com/univeral-link-redirect#access_token=valid-oidc-token&patron_info=\(encoded)")!
+        let callbackURL = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=valid-oidc-token&patron_info=\(encoded)")!
 
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
-
-        businessLogic.handleRedirectURL(notification)
+        businessLogic.handleOIDCCallback(callbackURL)
 
         waitForExpectations(timeout: 10.0)
 
@@ -787,5 +816,744 @@ final class OIDCViewModelRegressionTests: XCTestCase {
         // The test verifies the auth flags that drive UI decisions
         XCTAssertTrue(auth.needsAuth, "OIDC needs auth")
         XCTAssertEqual(auth.pinKeyboard.rawValue, LoginKeyboard.standard.rawValue)
+    }
+}
+
+// MARK: - Unit Tests: handleOIDCCallback Edge Cases
+
+final class OIDCCallbackEdgeCaseTests: XCTestCase {
+
+    private var businessLogic: TPPSignInBusinessLogic!
+    private var libraryMock: TPPLibraryAccountMock!
+    private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+
+    override func setUp() {
+        super.setUp()
+        libraryMock = TPPLibraryAccountMock()
+        uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+
+        businessLogic = TPPSignInBusinessLogic(
+            libraryAccountID: libraryMock.tppAccountUUID,
+            libraryAccountsProvider: libraryMock,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: TPPBookRegistryMock(),
+            bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+            userAccountProvider: TPPUserAccountMock.self,
+            networkExecutor: TPPRequestExecutorMock(),
+            uiDelegate: uiDelegate,
+            drmAuthorizer: TPPDRMAuthorizingMock()
+        )
+    }
+
+    override func tearDown() {
+        businessLogic.userAccount.removeAll()
+        businessLogic = nil
+        libraryMock = nil
+        uiDelegate = nil
+        super.tearDown()
+    }
+
+    func testHandleOIDCCallback_withOnlyAccessToken_doesNotSetToken() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=only-token")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertNil(businessLogic.authToken,
+                     "access_token without patron_info should not set token")
+        XCTAssertFalse(businessLogic.isValidatingCredentials)
+    }
+
+    func testHandleOIDCCallback_withOnlyPatronInfo_doesNotSetToken() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let patronJSON = "{\"name\":\"Orphan\"}"
+        let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?patron_info=\(encoded)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertNil(businessLogic.authToken,
+                     "patron_info without access_token should not set token")
+    }
+
+    func testHandleOIDCCallback_withMalformedPatronJSON_doesNotSetToken() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=tk&patron_info=not-json")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertNil(businessLogic.authToken,
+                     "Malformed patron_info JSON should not set token")
+    }
+
+    func testHandleOIDCCallback_withPercentEncodedPatron_decodesCorrectly() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let patronJSON = "{\"name\":\"Ren%C3%A9e+M%C3%BCller\"}"
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=encoded-tok&patron_info=\(patronJSON)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(businessLogic.authToken, "encoded-tok")
+        XCTAssertEqual(businessLogic.patron?["name"] as? String, "Renée Müller",
+                       "Percent-encoded and plus-encoded patron names should decode correctly")
+    }
+
+    func testHandleOIDCCallback_withLongToken_setsFullToken() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let longToken = String(repeating: "a", count: 2048)
+        let patronJSON = "{\"name\":\"Long+Token\"}"
+        let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=\(longToken)&patron_info=\(encoded)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(businessLogic.authToken?.count, 2048,
+                       "Long JWT-like tokens should be preserved in full")
+    }
+
+    func testHandleOIDCCallback_prefersQueryOverFragment() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let patronJSON = "{\"name\":\"Query+User\"}"
+        let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=query-tok&patron_info=\(encoded)#access_token=frag-tok&patron_info=ignore")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(businessLogic.authToken, "query-tok",
+                       "Query parameters should take precedence when both query and fragment exist")
+    }
+
+    func testHandleOIDCCallback_doesNotAffectPriorOAuthState() {
+        businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
+        businessLogic.authToken = "existing-oauth-token"
+
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback")!
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(businessLogic.authToken, "existing-oauth-token",
+                       "Failed OIDC callback should not clear a previously set token")
+    }
+
+    func testHandleOIDCCallback_withEmptyQueryString_doesNotSetToken() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertNil(businessLogic.authToken,
+                     "Empty query string should not set token")
+    }
+
+    func testHandleOIDCCallback_withPatronContainingMultipleFields_parsesAll() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let patronJSON = "{\"name\":\"Full+User\",\"email\":\"u%40e.com\",\"barcode\":\"12345\"}"
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=multi-tok&patron_info=\(patronJSON)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(businessLogic.authToken, "multi-tok")
+        XCTAssertEqual(businessLogic.patron?["name"] as? String, "Full User")
+        XCTAssertEqual(businessLogic.patron?["barcode"] as? String, "12345")
+    }
+}
+
+// MARK: - Unit Tests: Redirect URI Construction
+
+final class OIDCRedirectURIConstructionTests: XCTestCase {
+
+    private var businessLogic: TPPSignInBusinessLogic!
+    private var libraryMock: TPPLibraryAccountMock!
+
+    override func setUp() {
+        super.setUp()
+        libraryMock = TPPLibraryAccountMock()
+
+        businessLogic = TPPSignInBusinessLogic(
+            libraryAccountID: libraryMock.tppAccountUUID,
+            libraryAccountsProvider: libraryMock,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: TPPBookRegistryMock(),
+            bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+            userAccountProvider: TPPUserAccountMock.self,
+            networkExecutor: TPPRequestExecutorMock(),
+            uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
+            drmAuthorizer: TPPDRMAuthorizingMock()
+        )
+    }
+
+    override func tearDown() {
+        businessLogic.userAccount.removeAll()
+        businessLogic = nil
+        libraryMock = nil
+        super.tearDown()
+    }
+
+    func testOidcCallbackScheme_isLowercase() {
+        XCTAssertEqual(TPPSignInBusinessLogic.oidcCallbackScheme,
+                       TPPSignInBusinessLogic.oidcCallbackScheme.lowercased(),
+                       "Custom URL schemes must be lowercase per Apple docs")
+    }
+
+    func testOidcCallbackScheme_containsNoDots() {
+        XCTAssertFalse(TPPSignInBusinessLogic.oidcCallbackScheme.contains("."),
+                       "Scheme should use hyphens, not dots")
+    }
+
+    func testOidcCallbackScheme_doesNotContainColonOrSlash() {
+        let scheme = TPPSignInBusinessLogic.oidcCallbackScheme
+        XCTAssertFalse(scheme.contains(":"), "Scheme must not include colon")
+        XCTAssertFalse(scheme.contains("/"), "Scheme must not include slash")
+    }
+
+    func testOidcRedirectURI_isValidURL() {
+        let uriStr = "\(TPPSignInBusinessLogic.oidcCallbackScheme)://\(TPPSignInBusinessLogic.oidcCallbackHost)/callback"
+        XCTAssertNotNil(URL(string: uriStr), "Redirect URI must be a valid URL")
+    }
+
+    func testOidcRedirectURI_doesNotUseHTTPS() {
+        let uriStr = "\(TPPSignInBusinessLogic.oidcCallbackScheme)://\(TPPSignInBusinessLogic.oidcCallbackHost)/callback"
+        XCTAssertFalse(uriStr.hasPrefix("https://"),
+                       "Redirect URI must NOT use https — it must use the custom scheme")
+    }
+
+    func testOidcRedirectURI_doesNotUseUniversalLinksURL() {
+        let uriStr = "\(TPPSignInBusinessLogic.oidcCallbackScheme)://\(TPPSignInBusinessLogic.oidcCallbackHost)/callback"
+        let urlSettings = TPPURLSettingsProviderMock()
+        XCTAssertFalse(uriStr.contains(urlSettings.universalLinksURL.host ?? ""),
+                       "OIDC redirect URI should be independent of the universal links URL")
+    }
+}
+
+// MARK: - Regression Tests: OAuth/SAML handleRedirectURL Unaffected
+
+final class OAuthSAMLRedirectRegressionTests: XCTestCase {
+
+    private var businessLogic: TPPSignInBusinessLogic!
+    private var libraryMock: TPPLibraryAccountMock!
+    private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+
+    override func setUp() {
+        super.setUp()
+        libraryMock = TPPLibraryAccountMock()
+        uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+
+        businessLogic = TPPSignInBusinessLogic(
+            libraryAccountID: libraryMock.tppAccountUUID,
+            libraryAccountsProvider: libraryMock,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: TPPBookRegistryMock(),
+            bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+            userAccountProvider: TPPUserAccountMock.self,
+            networkExecutor: TPPRequestExecutorMock(),
+            uiDelegate: uiDelegate,
+            drmAuthorizer: TPPDRMAuthorizingMock()
+        )
+    }
+
+    override func tearDown() {
+        businessLogic.userAccount.removeAll()
+        businessLogic = nil
+        libraryMock = nil
+        uiDelegate = nil
+        super.tearDown()
+    }
+
+    func testRegression_oauthRedirect_stillUsesUniversalLinksPrefix() {
+        businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
+
+        let patronJSON = "{\"name\":\"OAuth+User\"}"
+        let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let redirectURL = URL(string: "https://example.com/univeral-link-redirect#access_token=oauth-tok&patron_info=\(encoded)")!
+
+        let notification = Notification(
+            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
+            object: redirectURL
+        )
+        businessLogic.handleRedirectURL(notification)
+
+        XCTAssertEqual(businessLogic.authToken, "oauth-tok",
+                       "OAuth redirect through handleRedirectURL must still work")
+        XCTAssertTrue(businessLogic.isValidatingCredentials)
+    }
+
+    func testRegression_samlRedirect_stillUsesUniversalLinksPrefix() {
+        businessLogic.selectedAuthentication = libraryMock.samlAuthentication
+
+        let patronJSON = "{\"name\":\"SAML+User\"}"
+        let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let redirectURL = URL(string: "https://example.com/univeral-link-redirect?access_token=saml-tok&patron_info=\(encoded)")!
+
+        let notification = Notification(
+            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
+            object: redirectURL
+        )
+        businessLogic.handleRedirectURL(notification)
+
+        XCTAssertEqual(businessLogic.authToken, "saml-tok",
+                       "SAML redirect through handleRedirectURL must still work")
+        XCTAssertTrue(businessLogic.isValidatingCredentials)
+    }
+
+    func testRegression_oauthRedirect_withError_stillHandlesError() {
+        businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
+
+        let errorJSON = "{\"title\":\"OAuth+Error\"}"
+        let encoded = errorJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let redirectURL = URL(string: "https://example.com/univeral-link-redirect#error=\(encoded)")!
+
+        let notification = Notification(
+            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
+            object: redirectURL
+        )
+        businessLogic.handleRedirectURL(notification)
+
+        XCTAssertNil(businessLogic.authToken, "OAuth error redirect should not set token")
+    }
+
+    func testRegression_handleRedirectURL_rejectsCustomSchemeURL() {
+        businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
+
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=tok&patron_info={}")!
+        let notification = Notification(
+            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
+            object: url
+        )
+        businessLogic.handleRedirectURL(notification)
+
+        XCTAssertNil(businessLogic.authToken,
+                     "handleRedirectURL must reject URLs that don't match universalLinksURL prefix")
+        XCTAssertFalse(businessLogic.isValidatingCredentials)
+    }
+}
+
+// MARK: - Regression Tests: Sign-Out Flow With OIDC
+
+final class OIDCSignOutRegressionTests: XCTestCase {
+
+    private var businessLogic: TPPSignInBusinessLogic!
+    private var libraryMock: TPPLibraryAccountMock!
+    private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+    private var bookRegistryMock: TPPBookRegistryMock!
+    private var downloadsCenterMock: TPPMyBooksDownloadsCenterMock!
+
+    override func setUp() {
+        super.setUp()
+        libraryMock = TPPLibraryAccountMock()
+        uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+        bookRegistryMock = TPPBookRegistryMock()
+        downloadsCenterMock = TPPMyBooksDownloadsCenterMock()
+
+        businessLogic = TPPSignInBusinessLogic(
+            libraryAccountID: libraryMock.tppAccountUUID,
+            libraryAccountsProvider: libraryMock,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: bookRegistryMock,
+            bookDownloadsCenter: downloadsCenterMock,
+            userAccountProvider: TPPUserAccountMock.self,
+            networkExecutor: TPPRequestExecutorMock(),
+            uiDelegate: uiDelegate,
+            drmAuthorizer: TPPDRMAuthorizingMock()
+        )
+    }
+
+    override func tearDown() {
+        businessLogic.userAccount.removeAll()
+        businessLogic = nil
+        libraryMock = nil
+        uiDelegate = nil
+        bookRegistryMock = nil
+        downloadsCenterMock = nil
+        super.tearDown()
+    }
+
+    func testSignOut_withOIDC_clearsAuthToken() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "oidc-to-clear",
+            expirationDate: nil,
+            patron: ["name": "Temp"],
+            cookies: nil
+        )
+        XCTAssertTrue(businessLogic.isSignedIn(), "Precondition: user should be signed in")
+
+        let exp = expectation(description: "Sign-out completes")
+        uiDelegate.didFinishDeauthorizingHandler = {
+            exp.fulfill()
+        }
+
+        businessLogic.performLogOut()
+        waitForExpectations(timeout: 5.0)
+
+        XCTAssertNil(businessLogic.userAccount.authToken,
+                     "OIDC sign-out must clear the auth token")
+        XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
+                      "Sign-out must notify the UI delegate")
+    }
+
+    func testSignOut_withOIDC_usesStandardPath_noSpecialLogoutFlow() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "oidc-token",
+            expirationDate: nil,
+            patron: ["name": "User"],
+            cookies: nil
+        )
+
+        let exp = expectation(description: "Sign-out completes")
+        uiDelegate.didFinishDeauthorizingHandler = {
+            exp.fulfill()
+        }
+
+        businessLogic.performLogOut()
+        waitForExpectations(timeout: 5.0)
+
+        XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
+                      "OIDC uses the same sign-out path as other auth types")
+        XCTAssertNil(businessLogic.selectedIDP)
+    }
+
+    func testSignOut_withOIDC_clearsPatronInfo() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "oidc-token",
+            expirationDate: nil,
+            patron: ["name": "Will Be Cleared"],
+            cookies: nil
+        )
+
+        let exp = expectation(description: "Sign-out completes")
+        uiDelegate.didFinishDeauthorizingHandler = {
+            exp.fulfill()
+        }
+
+        businessLogic.performLogOut()
+        waitForExpectations(timeout: 5.0)
+
+        XCTAssertNil(businessLogic.userAccount.patron,
+                     "OIDC sign-out must clear patron info")
+    }
+
+    func testRegression_signOut_withOAuth_stillClearsToken() {
+        businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "oauth-token",
+            expirationDate: nil,
+            patron: ["name": "OAuth User"],
+            cookies: nil
+        )
+
+        let exp = expectation(description: "OAuth sign-out completes")
+        uiDelegate.didFinishDeauthorizingHandler = {
+            exp.fulfill()
+        }
+
+        businessLogic.performLogOut()
+        waitForExpectations(timeout: 5.0)
+
+        XCTAssertNil(businessLogic.userAccount.authToken,
+                     "OAuth sign-out must still work after OIDC changes")
+    }
+
+    func testRegression_signOut_withSAML_stillClearsCookies() {
+        businessLogic.selectedAuthentication = libraryMock.samlAuthentication
+        let cookies = [HTTPCookie(properties: [
+            .domain: "idp.example.com", .path: "/",
+            .name: "session", .value: "abc"
+        ])!]
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "saml-token",
+            expirationDate: nil,
+            patron: nil,
+            cookies: cookies
+        )
+
+        let exp = expectation(description: "SAML sign-out completes")
+        uiDelegate.didFinishDeauthorizingHandler = {
+            exp.fulfill()
+        }
+
+        businessLogic.performLogOut()
+        waitForExpectations(timeout: 5.0)
+
+        XCTAssertNil(businessLogic.userAccount.authToken,
+                     "SAML sign-out must still clear tokens after OIDC changes")
+    }
+}
+
+// MARK: - Regression Tests: Token Refresh Logic
+
+final class OIDCTokenRefreshRegressionTests: XCTestCase {
+
+    private var businessLogic: TPPSignInBusinessLogic!
+    private var libraryMock: TPPLibraryAccountMock!
+
+    override func setUp() {
+        super.setUp()
+        libraryMock = TPPLibraryAccountMock()
+
+        businessLogic = TPPSignInBusinessLogic(
+            libraryAccountID: libraryMock.tppAccountUUID,
+            libraryAccountsProvider: libraryMock,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: TPPBookRegistryMock(),
+            bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+            userAccountProvider: TPPUserAccountMock.self,
+            networkExecutor: TPPRequestExecutorMock(),
+            uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
+            drmAuthorizer: TPPDRMAuthorizingMock()
+        )
+    }
+
+    override func tearDown() {
+        businessLogic.userAccount.removeAll()
+        businessLogic = nil
+        libraryMock = nil
+        super.tearDown()
+    }
+
+    func testRefreshAuth_withOIDC_usingExistingCredentials_doesNotResetSelectedAuth() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "refresh-oidc-token",
+            expirationDate: nil,
+            patron: ["name": "User"],
+            cookies: nil
+        )
+
+        let _ = businessLogic.refreshAuthIfNeeded(
+            usingExistingCredentials: true,
+            completion: nil
+        )
+
+        XCTAssertNotNil(businessLogic.selectedAuthentication,
+                        "OIDC refresh with existing credentials should not nil out selectedAuthentication")
+        XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .oidc)
+    }
+
+    func testRefreshAuth_withOIDC_withoutExistingCredentials_setsIgnoreSignedIn() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "expired-token",
+            expirationDate: nil,
+            patron: ["name": "User"],
+            cookies: nil
+        )
+
+        let needsUI = businessLogic.refreshAuthIfNeeded(
+            usingExistingCredentials: false,
+            completion: nil
+        )
+
+        XCTAssertTrue(needsUI)
+        XCTAssertTrue(businessLogic.ignoreSignedInState,
+                      "OIDC without existing credentials should set ignoreSignedInState")
+    }
+
+    func testRefreshAuth_withOIDC_doesNotNilOutSelectedAuth_unlikeSAML() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "tok",
+            expirationDate: nil,
+            patron: ["name": "User"],
+            cookies: nil
+        )
+
+        let _ = businessLogic.refreshAuthIfNeeded(
+            usingExistingCredentials: false,
+            completion: nil
+        )
+
+        XCTAssertNotNil(businessLogic.selectedAuthentication,
+                        "OIDC refresh should NOT nil selectedAuthentication (only SAML does that)")
+        XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .oidc)
+    }
+
+    func testRegression_refreshAuth_withOAuth_stillSetsIgnoreSignedIn() {
+        businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "oauth-tok",
+            expirationDate: nil,
+            patron: ["name": "User"],
+            cookies: nil
+        )
+
+        let needsUI = businessLogic.refreshAuthIfNeeded(
+            usingExistingCredentials: false,
+            completion: nil
+        )
+
+        XCTAssertTrue(needsUI, "OAuth refresh should still require UI")
+        XCTAssertTrue(businessLogic.ignoreSignedInState)
+    }
+
+    func testRegression_refreshAuth_withSAML_stillNilsSelectedAuth() {
+        businessLogic.selectedAuthentication = libraryMock.samlAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "saml-tok",
+            expirationDate: nil,
+            patron: nil,
+            cookies: nil
+        )
+
+        let _ = businessLogic.refreshAuthIfNeeded(
+            usingExistingCredentials: false,
+            completion: nil
+        )
+
+        XCTAssertNil(businessLogic.selectedAuthentication,
+                     "SAML refresh should still nil out selectedAuthentication for IDP re-selection")
+    }
+
+    func testRegression_refreshAuth_withBasic_doesNotSetIgnoreSignedIn() {
+        businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: "barcode", pin: "1234",
+            authToken: nil,
+            expirationDate: nil,
+            patron: nil,
+            cookies: nil
+        )
+
+        businessLogic.ignoreSignedInState = false
+        let _ = businessLogic.refreshAuthIfNeeded(
+            usingExistingCredentials: true,
+            completion: nil
+        )
+
+        XCTAssertFalse(businessLogic.ignoreSignedInState,
+                       "Basic auth refresh should not set ignoreSignedInState")
+    }
+}
+
+// MARK: - Regression Tests: OIDC Does Not Interfere With Other Flows
+
+final class OIDCIsolationRegressionTests: XCTestCase {
+
+    private var libraryMock: TPPLibraryAccountMock!
+
+    override func setUp() {
+        super.setUp()
+        libraryMock = TPPLibraryAccountMock()
+    }
+
+    override func tearDown() {
+        libraryMock = nil
+        super.tearDown()
+    }
+
+    func testRegression_oauthAuthentication_oauthIntermediaryUrl_unchanged() {
+        let auth = libraryMock.oauthAuthentication
+        XCTAssertNotNil(auth.oauthIntermediaryUrl,
+                        "OAuth intermediary URL must not be affected by OIDC changes")
+        XCTAssertNil(auth.oidcAuthenticationUrl,
+                     "OAuth auth must not have an OIDC URL")
+    }
+
+    func testRegression_samlAuthentication_samlIdps_unchanged() {
+        let auth = libraryMock.samlAuthentication
+        XCTAssertNotNil(auth.samlIdps,
+                        "SAML IDPs must not be affected by OIDC changes")
+        XCTAssertFalse(auth.samlIdps!.isEmpty)
+        XCTAssertNil(auth.oidcAuthenticationUrl)
+    }
+
+    func testRegression_basicAuthentication_noTokenURLs() {
+        let auth = libraryMock.barcodeAuthentication
+        XCTAssertNil(auth.oidcAuthenticationUrl)
+        XCTAssertNil(auth.oauthIntermediaryUrl)
+        XCTAssertNil(auth.samlIdps)
+        XCTAssertNil(auth.tokenURL)
+    }
+
+    func testRegression_oidcAuthentication_noOtherAuthURLs() {
+        let auth = libraryMock.oidcAuthentication
+        XCTAssertNotNil(auth.oidcAuthenticationUrl)
+        XCTAssertNil(auth.oauthIntermediaryUrl)
+        XCTAssertNil(auth.samlIdps)
+        XCTAssertNil(auth.tokenURL)
+        XCTAssertNil(auth.coppaUnderUrl)
+        XCTAssertNil(auth.coppaOverUrl)
+    }
+
+    func testRegression_makeRequest_oauthAndOIDC_bothUseBearerToken() {
+        let makeBusinessLogic = { () -> TPPSignInBusinessLogic in
+            TPPSignInBusinessLogic(
+                libraryAccountID: self.libraryMock.tppAccountUUID,
+                libraryAccountsProvider: self.libraryMock,
+                urlSettingsProvider: TPPURLSettingsProviderMock(),
+                bookRegistry: TPPBookRegistryMock(),
+                bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+                userAccountProvider: TPPUserAccountMock.self,
+                networkExecutor: TPPRequestExecutorMock(),
+                uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
+                drmAuthorizer: TPPDRMAuthorizingMock()
+            )
+        }
+
+        let oauthBL = makeBusinessLogic()
+        oauthBL.selectedAuthentication = libraryMock.oauthAuthentication
+        oauthBL.authToken = "oauth-tok"
+        let oauthReq = oauthBL.makeRequest(for: .signIn, context: "test")
+
+        let oidcBL = makeBusinessLogic()
+        oidcBL.selectedAuthentication = libraryMock.oidcAuthentication
+        oidcBL.authToken = "oidc-tok"
+        let oidcReq = oidcBL.makeRequest(for: .signIn, context: "test")
+
+        XCTAssertEqual(oauthReq?.value(forHTTPHeaderField: "Authorization"), "Bearer oauth-tok")
+        XCTAssertEqual(oidcReq?.value(forHTTPHeaderField: "Authorization"), "Bearer oidc-tok")
+
+        oauthBL.userAccount.removeAll()
+        oidcBL.userAccount.removeAll()
+    }
+
+    func testRegression_updateUserAccount_oauthStillStoresToken() {
+        let bl = TPPSignInBusinessLogic(
+            libraryAccountID: libraryMock.tppAccountUUID,
+            libraryAccountsProvider: libraryMock,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: TPPBookRegistryMock(),
+            bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+            userAccountProvider: TPPUserAccountMock.self,
+            networkExecutor: TPPRequestExecutorMock(),
+            uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
+            drmAuthorizer: TPPDRMAuthorizingMock()
+        )
+        defer { bl.userAccount.removeAll() }
+
+        bl.selectedAuthentication = libraryMock.oauthAuthentication
+        bl.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "oauth-stored",
+            expirationDate: nil,
+            patron: ["name": "OAuth Patron"],
+            cookies: nil
+        )
+
+        XCTAssertEqual(bl.userAccount.authToken, "oauth-stored")
+        XCTAssertTrue(bl.isSignedIn())
     }
 }

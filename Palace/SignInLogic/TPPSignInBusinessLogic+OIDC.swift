@@ -10,13 +10,30 @@ import AuthenticationServices
 
 extension TPPSignInBusinessLogic {
 
+    /// Custom URL scheme for OIDC callbacks.
+    /// Mirrors Android's `palace-oidc-callback` scheme. The CM redirects to
+    /// this scheme with `access_token` and `patron_info` parameters after the
+    /// identity provider completes authentication.
+    static let oidcCallbackScheme = "palace-oidc-callback"
+    static let oidcCallbackHost   = "org.thepalaceproject.oidc"
+
+    /// Builds the callback URL the CM should redirect to after OIDC login.
+    /// Format: `palace-oidc-callback://org.thepalaceproject.oidc/callback`
+    private var oidcRedirectURI: String {
+        "\(Self.oidcCallbackScheme)://\(Self.oidcCallbackHost)/callback"
+    }
+
     /// Initiates the OIDC sign-in flow using `ASWebAuthenticationSession`.
     ///
     /// The Circulation Manager's authenticate endpoint handles the full OIDC
-    /// authorization code exchange with the identity provider. On success it
-    /// redirects back to the app's universal link URL with `access_token` and
-    /// `patron_info` query/fragment parameters — the same contract used by the
-    /// OAuth intermediary flow.
+    /// authorization code exchange with the identity provider (including PKCE).
+    /// On success it redirects back to our custom URI scheme with
+    /// `access_token` and `patron_info` query parameters.
+    ///
+    /// Per RFC 8252 and the team's decision, the system browser is used (not a
+    /// WebView). Google actively blocks in-app WebViews, so this is required
+    /// for Google-backed IdPs. The CM handles refresh tokens server-side; the
+    /// app never sees them.
     func oidcLogIn() {
         guard let oidcURL = selectedAuthentication?.oidcAuthenticationUrl else {
             TPPErrorLogger.logError(
@@ -41,8 +58,7 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        let redirectURI = urlSettingsProvider.universalLinksURL.absoluteString
-        let redirectParam = URLQueryItem(name: "redirect_uri", value: redirectURI)
+        let redirectParam = URLQueryItem(name: "redirect_uri", value: oidcRedirectURI)
         if urlComponents.queryItems != nil {
             urlComponents.queryItems?.append(redirectParam)
         } else {
@@ -61,11 +77,9 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        let callbackScheme = urlSettingsProvider.universalLinksURL.scheme
-
         let session = ASWebAuthenticationSession(
             url: finalURL,
-            callbackURLScheme: callbackScheme
+            callbackURLScheme: Self.oidcCallbackScheme
         ) { [weak self] callbackURL, error in
             guard let self = self else { return }
 
@@ -103,12 +117,7 @@ extension TPPSignInBusinessLogic {
                 return
             }
 
-            let notification = Notification(
-                name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-                object: callbackURL,
-                userInfo: nil)
-
-            self.handleRedirectURL(notification)
+            self.handleOIDCCallback(callbackURL)
         }
 
         TPPMainThreadRun.asyncIfNeeded { [weak self] in
@@ -122,6 +131,73 @@ extension TPPSignInBusinessLogic {
             session.prefersEphemeralWebBrowserSession = false
             session.start()
         }
+    }
+
+    /// Parses the OIDC callback URL returned by the CM after the IdP
+    /// authentication completes. Extracts `access_token` and `patron_info`
+    /// from query parameters or fragment, then validates credentials.
+    func handleOIDCCallback(_ url: URL) {
+        let urlStr = url.absoluteString
+        Log.info(#file, "OIDC callback received: \(urlStr.prefix(120))...")
+
+        guard let payload = url.query ?? url.fragment else {
+            TPPErrorLogger.logError(
+                withCode: .unrecognizedUniversalLink,
+                summary: "OIDC callback has no query or fragment",
+                metadata: [
+                    "callbackURL": urlStr,
+                    "context": uiDelegate?.context ?? "N/A"
+                ])
+            return
+        }
+
+        var kvpairs = [String: String]()
+        for param in payload.components(separatedBy: "&") {
+            let elts = param.components(separatedBy: "=")
+            guard elts.count >= 2, let key = elts.first, let value = elts.last else {
+                continue
+            }
+            kvpairs[key] = value
+        }
+
+        if let rawError = kvpairs["error"],
+           let error = rawError
+            .replacingOccurrences(of: "+", with: " ")
+            .removingPercentEncoding,
+           let parsedError = error.parseJSONString as? [String: Any] {
+            TPPMainThreadRun.asyncIfNeeded { [weak self] in
+                guard let self = self else { return }
+                self.uiDelegate?.businessLogic(
+                    self,
+                    didEncounterValidationError: NSError(domain: "OIDC", code: 0),
+                    userFriendlyErrorTitle: Strings.Error.loginErrorTitle,
+                    andMessage: parsedError["title"] as? String ?? error)
+            }
+            return
+        }
+
+        guard
+            let authToken = kvpairs["access_token"],
+            let patronInfo = kvpairs["patron_info"],
+            let patron = patronInfo
+                .replacingOccurrences(of: "+", with: " ")
+                .removingPercentEncoding,
+            let parsedPatron = patron.parseJSONString as? [String: Any]
+        else {
+            TPPErrorLogger.logError(
+                withCode: .authDataParseFail,
+                summary: "OIDC callback missing access_token or patron_info",
+                metadata: [
+                    "callbackURL": urlStr,
+                    "keysPresent": kvpairs.keys.sorted().joined(separator: ", "),
+                    "context": uiDelegate?.context ?? "N/A"
+                ])
+            return
+        }
+
+        self.authToken = authToken
+        self.patron = parsedPatron
+        validateCredentials()
     }
 }
 
