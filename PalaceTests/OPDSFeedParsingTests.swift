@@ -30,5 +30,3 @@ final class OPDSFeedParsingTests: XCTestCase {
         }
     }
 }
-
-

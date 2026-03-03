@@ -10,80 +10,80 @@ import SwiftUI
 import PalaceUIKit
 
 struct TPPPDFSearchView: View {
-  @StateObject var searchDelegate: SearchDelegate
-  @EnvironmentObject var metadata: TPPPDFDocumentMetadata
-  
-  let document: TPPPDFDocument
-  let done: () -> Void
-  
-  @State private var searchText = ""
+    @StateObject var searchDelegate: SearchDelegate
+    @EnvironmentObject var metadata: TPPPDFDocumentMetadata
 
-  init(document: TPPPDFDocument, done: @escaping () -> Void) {
-    self.document = document
-    self.done = done
-    self._searchDelegate = StateObject(wrappedValue: SearchDelegate(document: document))
-  }
-  
-  var body: some View {
-    VStack(spacing: 0) {
-      HStack {
-        Spacer()
-        Button {
-          done()
-        } label: {
-          Text(Strings.Generic.done)
-            .palaceFont(.body, weight: .bold)
-        }
-        .padding()
-      }
-      Divider()
-      TextField(Strings.Generic.search, text: $searchText.onChange(performSearch))
-        .palaceFont(.body)
-        .frame(minHeight: 44)
-        .padding(.horizontal)
-      Divider()
-      List {
-        ForEach(searchDelegate.searchResults) { location in
-          TPPPDFLocationView(location: location)
-            .onTapGesture {
-              metadata.currentPage = location.pageNumber
-              done()
+    let document: TPPPDFDocument
+    let done: () -> Void
+
+    @State private var searchText = ""
+
+    init(document: TPPPDFDocument, done: @escaping () -> Void) {
+        self.document = document
+        self.done = done
+        self._searchDelegate = StateObject(wrappedValue: SearchDelegate(document: document))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Button {
+                    done()
+                } label: {
+                    Text(Strings.Generic.done)
+                        .palaceFont(.body, weight: .bold)
+                }
+                .padding()
+            }
+            Divider()
+            TextField(Strings.Generic.search, text: $searchText.onChange(performSearch))
+                .palaceFont(.body)
+                .frame(minHeight: 44)
+                .padding(.horizontal)
+            Divider()
+            List {
+                ForEach(searchDelegate.searchResults) { location in
+                    TPPPDFLocationView(location: location)
+                        .onTapGesture {
+                            metadata.currentPage = location.pageNumber
+                            done()
+                        }
+                }
             }
         }
-      }
     }
-  }
-  
-  func performSearch(string: String) {
-    searchDelegate.search(text: string)
-  }
 
-  class SearchDelegate: ObservableObject, TPPPDFDocumentDelegate {
-    
-    let document: TPPPDFDocument
-    
-    @Published var searchResults: [TPPPDFLocation] = []
+    func performSearch(string: String) {
+        searchDelegate.search(text: string)
+    }
 
-    init(document: TPPPDFDocument) {
-      self.document = document
-      self.document.delegate = self
+    class SearchDelegate: ObservableObject, TPPPDFDocumentDelegate {
+
+        let document: TPPPDFDocument
+
+        @Published var searchResults: [TPPPDFLocation] = []
+
+        init(document: TPPPDFDocument) {
+            self.document = document
+            self.document.delegate = self
+        }
+
+        func search(text: String) {
+            searchResults = []
+            if text.count >= 3 {
+                document.search(text: text)
+            }
+        }
+
+        func cancelSearch() {
+            document.cancelSearch()
+        }
+
+        func didMatchString(_ instance: TPPPDFLocation) {
+            DispatchQueue.main.async {
+                self.searchResults.append(instance)
+            }
+        }
     }
-    
-    func search(text: String) {
-      searchResults = []
-      if text.count >= 3 {
-        document.search(text: text)
-      }
-    }
-    
-    func cancelSearch() {
-      document.cancelSearch()
-    }
-    
-    func didMatchString(_ instance: TPPPDFLocation) {
-      DispatchQueue.main.async {
-        self.searchResults.append(instance)
-      }
-    }
-  }
 }

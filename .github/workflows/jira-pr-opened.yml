@@ -1,0 +1,200 @@
+name: Update Jira on PR Open
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to process'
+        required: true
+        type: string
+
+jobs:
+  move-to-review:
+    if: >
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event.pull_request.draft == false)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Resolve PR data
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual trigger — fetch PR data via API
+            PR_JSON=$(gh api repos/${{ github.repository }}/pulls/${{ inputs.pr_number }})
+            echo "num=${{ inputs.pr_number }}" >> $GITHUB_OUTPUT
+            echo "title=$(echo "$PR_JSON" | jq -r '.title')" >> $GITHUB_OUTPUT
+            echo "url=$(echo "$PR_JSON" | jq -r '.html_url')" >> $GITHUB_OUTPUT
+            echo "author=$(echo "$PR_JSON" | jq -r '.user.login')" >> $GITHUB_OUTPUT
+            echo "branch=$(echo "$PR_JSON" | jq -r '.head.ref')" >> $GITHUB_OUTPUT
+            echo "sha=$(echo "$PR_JSON" | jq -r '.head.sha')" >> $GITHUB_OUTPUT
+            
+            # PR body can be multiline — write to file
+            echo "$PR_JSON" | jq -r '.body // ""' > /tmp/pr_body.txt
+          else
+            # pull_request event — use event payload
+            echo "num=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+            echo "url=${{ github.event.pull_request.html_url }}" >> $GITHUB_OUTPUT
+            echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
+            echo "branch=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+            
+            # Write PR body to file (via env var to avoid injection)
+            cat <<'EOFBODY' > /tmp/pr_body.txt
+          ${{ github.event.pull_request.body }}
+          EOFBODY
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+          fetch-depth: 10
+          
+      - name: Get build number
+        id: build
+        run: |
+          BUILD_NUM=$(grep -m1 'CURRENT_PROJECT_VERSION' Palace.xcodeproj/project.pbxproj | grep -oE '[0-9]+' | head -1)
+          echo "number=$BUILD_NUM" >> $GITHUB_OUTPUT
+          echo "📦 Build number: $BUILD_NUM"
+
+      - name: Extract Jira tickets
+        id: tickets
+        env:
+          PR_TITLE: ${{ steps.pr.outputs.title }}
+          PR_BRANCH: ${{ steps.pr.outputs.branch }}
+        run: |
+          PR_BODY=$(cat /tmp/pr_body.txt 2>/dev/null || true)
+          ALL_TEXT="$PR_TITLE $PR_BODY $PR_BRANCH"
+          
+          TICKETS=$(echo "$ALL_TEXT" | grep -oE 'PP-[0-9]+' | sort -u | tr '\n' ' ' || true)
+          
+          if [ -z "$TICKETS" ]; then
+            echo "found=false" >> $GITHUB_OUTPUT
+          else
+            echo "Found tickets: $TICKETS"
+            echo "found=true" >> $GITHUB_OUTPUT
+            echo "list=$TICKETS" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get latest commit info
+        id: commit
+        run: |
+          echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "author=$(git log -1 --format='%an')" >> $GITHUB_OUTPUT
+          echo "date=$(git log -1 --format='%ai')" >> $GITHUB_OUTPUT
+          echo "msg=$(git log -1 --format='%s')" >> $GITHUB_OUTPUT
+
+      - name: Move tickets to Code Review
+        if: steps.tickets.outputs.found == 'true'
+        env:
+          JIRA_URL: ${{ secrets.JIRA_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          PR_NUM: ${{ steps.pr.outputs.num }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          PR_TITLE: ${{ steps.pr.outputs.title }}
+          AUTHOR: ${{ steps.pr.outputs.author }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          BUILD_NUM: ${{ steps.build.outputs.number }}
+          COMMIT_SHA: ${{ steps.commit.outputs.sha }}
+          COMMIT_AUTHOR: ${{ steps.commit.outputs.author }}
+          COMMIT_DATE: ${{ steps.commit.outputs.date }}
+          COMMIT_MSG: ${{ steps.commit.outputs.msg }}
+          TICKETS: ${{ steps.tickets.outputs.list }}
+        run: |
+          # Create temp config for script
+          cat > .jira-config << EOF
+          JIRA_URL="$JIRA_URL"
+          JIRA_EMAIL="$JIRA_EMAIL"
+          JIRA_API_TOKEN="$JIRA_API_TOKEN"
+          JIRA_PROJECT_KEY="PP"
+          EOF
+          
+          # Parse structured sections from PR body
+          PR_BODY=$(cat /tmp/pr_body.txt 2>/dev/null || true)
+
+          # Extract Summary (root cause / what was fixed)
+          ROOT_CAUSE=$(echo "$PR_BODY" | python3 -c "
+          import sys, re
+          body = sys.stdin.read()
+          # Match ## Summary section until next ## heading or end
+          m = re.search(r'##\s*Summary\s*\n(.*?)(?=\n##|\Z)', body, re.DOTALL)
+          if m:
+              text = m.group(1).strip()
+              # Clean up markdown bullet points for plain text
+              text = re.sub(r'^\s*[-*]\s*', '• ', text, flags=re.MULTILINE)
+              print(text)
+          " 2>/dev/null || true)
+
+          # Extract Test plan
+          TESTING_STEPS=$(echo "$PR_BODY" | python3 -c "
+          import sys, re
+          body = sys.stdin.read()
+          m = re.search(r'##\s*Test [Pp]lan\s*\n(.*?)(?=\n##|\Z)', body, re.DOTALL)
+          if m:
+              text = m.group(1).strip()
+              # Convert markdown checklist to numbered steps
+              lines = [re.sub(r'^\s*[-*]\s*\[.\]\s*', '', l).strip()
+                       for l in text.splitlines() if l.strip()]
+              for i, line in enumerate(lines, 1):
+                  print(f'{i}. {line}')
+          " 2>/dev/null || true)
+
+          # Fallback: use first 20 lines of PR body if no Summary section found
+          if [ -z "$ROOT_CAUSE" ]; then
+            ROOT_CAUSE=$(echo "$PR_BODY" | head -20 | sed 's/^#.*//g' | tr '\n' ' ' | xargs)
+          fi
+
+          for TICKET in $TICKETS; do
+            echo "🔍 Moving $TICKET to Code Review..."
+            
+            # Transition to Code Review
+            ./scripts/jira-integration.sh transition "$TICKET" "Code Review" || {
+              echo "⚠️ Could not transition $TICKET (may already be in review or different workflow)"
+            }
+            
+            # Post structured fix details (root cause, testing steps, commit)
+            if [ -n "$ROOT_CAUSE" ]; then
+              ./scripts/jira-integration.sh add-fix-comment "$TICKET" \
+                "$ROOT_CAUSE" \
+                "${TESTING_STEPS:-See PR for testing details.}" \
+                "${COMMIT_SHA}" || {
+                echo "⚠️ Failed to add fix details to $TICKET"
+              }
+            fi
+
+            # Add PR link comment
+            PR_COMMENT=$(cat <<EOFCOMMENT
+          🔍 Pull Request Ready for Review
+
+          PR: #${PR_NUM} - ${PR_TITLE}
+          URL: ${PR_URL}
+          Author: ${AUTHOR}
+          Branch: ${BRANCH}
+          Build: ${BUILD_NUM}
+          EOFCOMMENT
+            )
+            ./scripts/jira-integration.sh comment "$TICKET" "$PR_COMMENT" || {
+              echo "⚠️ Failed to add PR comment to $TICKET"
+            }
+          done
+          
+          # Cleanup
+          rm -f .jira-config
+          
+      - name: Summary
+        if: steps.tickets.outputs.found == 'true'
+        run: |
+          echo "## 🔍 Jira Code Review Update" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tickets moved to Code Review:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** #${{ steps.pr.outputs.num }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Build:** ${{ steps.build.outputs.number }}" >> $GITHUB_STEP_SUMMARY

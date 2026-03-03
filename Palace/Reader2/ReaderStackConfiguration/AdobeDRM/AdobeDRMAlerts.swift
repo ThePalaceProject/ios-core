@@ -9,10 +9,10 @@
 import Foundation
 
 extension TPPAlertUtils {
-  @objc class func expiredAdobeDRMAlert() -> UIAlertController {
-    return TPPAlertUtils.alert(
-      title: NSLocalizedString("Something went wrong with the Adobe DRM system", comment: "Expired DRM certificate title"),
-      message: NSLocalizedString("Some books will be unavailable in this version. Please try updating to the latest version of the application.", comment: "Expired DRM certificate message")
-    )
-  }
+    @objc class func expiredAdobeDRMAlert() -> UIAlertController {
+        return TPPAlertUtils.alert(
+            title: NSLocalizedString("Something went wrong with the Adobe DRM system", comment: "Expired DRM certificate title"),
+            message: NSLocalizedString("Some books will be unavailable in this version. Please try updating to the latest version of the application.", comment: "Expired DRM certificate message")
+        )
+    }
 }

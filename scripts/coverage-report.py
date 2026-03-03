@@ -64,53 +64,123 @@ def parse_coverage_data(data: Dict) -> Dict:
     if not data:
         return result
     
-    # Get overall line coverage
-    result['line_coverage'] = data.get('lineCoverage', 0.0) * 100
-    result['covered_lines'] = data.get('coveredLines', 0)
-    result['executable_lines'] = data.get('executableLines', 0)
-    result['total_coverage'] = result['line_coverage']
-    
-    # Parse targets
+    # Parse targets - we'll calculate coverage from app target only
     targets = data.get('targets', [])
+    
+    # Filter to only include main app target(s), exclude:
+    # - Test targets (ends with Tests)
+    # - SPM packages (usually have reverse-DNS names or are third-party)
+    # - Framework targets we don't own
+    APP_TARGETS = ['Palace']  # Add other app targets if needed
+    EXCLUDED_PATTERNS = [
+        'Tests',           # Test targets
+        'Mock',            # Mock targets
+        '.build',          # SPM build artifacts
+        'SourcePackages',  # SPM packages
+        'Pods',            # CocoaPods
+        'Carthage',        # Carthage
+    ]
+    
+    def should_include_target(name: str) -> bool:
+        """Check if target should be included in coverage calculation."""
+        # First check exclusions - if it matches any exclusion pattern, skip it
+        for pattern in EXCLUDED_PATTERNS:
+            if pattern in name:
+                return False
+        
+        # Include if it's an explicit app target
+        if name in APP_TARGETS:
+            return True
+        
+        # Include Palace-prefixed targets (like PalaceAudiobooks) but not Tests
+        if name.startswith('Palace') and not name.endswith('Tests'):
+            return True
+        
+        # Include targets containing "Palace" (case-insensitive) but not tests/mocks
+        name_lower = name.lower()
+        if 'palace' in name_lower and 'test' not in name_lower and 'mock' not in name_lower:
+            return True
+        
+        return False
+    
+    # Calculate coverage from filtered targets only
+    total_covered = 0
+    total_executable = 0
+    included_targets = []
+    excluded_targets = []
+    
     for target in targets:
         target_name = target.get('name', 'Unknown')
         target_coverage = target.get('lineCoverage', 0.0) * 100
         covered = target.get('coveredLines', 0)
         executable = target.get('executableLines', 0)
         
+        # Check if this target should be included
+        include_in_total = should_include_target(target_name)
+        
+        if include_in_total:
+            total_covered += covered
+            total_executable += executable
+            included_targets.append(f"{target_name}: {covered}/{executable} lines ({target_coverage:.1f}%)")
+        else:
+            excluded_targets.append(target_name)
+    
+    # Debug output
+    print(f"\n=== Coverage Target Analysis ===", file=sys.stderr)
+    print(f"Total targets in report: {len(targets)}", file=sys.stderr)
+    print(f"Included targets ({len(included_targets)}):", file=sys.stderr)
+    for t in included_targets:
+        print(f"  ✓ {t}", file=sys.stderr)
+    print(f"Excluded targets ({len(excluded_targets)}): {', '.join(excluded_targets[:10])}", file=sys.stderr)
+    if len(excluded_targets) > 10:
+        print(f"  ... and {len(excluded_targets) - 10} more", file=sys.stderr)
+    print(f"=================================\n", file=sys.stderr)
+        
         result['targets'].append({
             'name': target_name,
             'coverage': target_coverage,
             'covered_lines': covered,
             'executable_lines': executable,
-            'coverage_formatted': f"{target_coverage:.1f}%"
+            'coverage_formatted': f"{target_coverage:.1f}%",
+            'included_in_total': include_in_total
         })
         
-        # Parse files in target
-        files = target.get('files', [])
-        for file_data in files:
-            file_name = file_data.get('name', 'Unknown')
-            file_path = file_data.get('path', '')
-            file_coverage = file_data.get('lineCoverage', 0.0) * 100
-            file_covered = file_data.get('coveredLines', 0)
-            file_executable = file_data.get('executableLines', 0)
-            
-            # Skip files with no executable lines
-            if file_executable == 0:
-                continue
-            
-            result['files'].append({
-                'name': file_name,
-                'path': file_path,
-                'target': target_name,
-                'coverage': file_coverage,
-                'covered_lines': file_covered,
-                'executable_lines': file_executable,
-                'coverage_formatted': f"{file_coverage:.1f}%"
-            })
+        # Parse files in target (only for included targets)
+        if include_in_total:
+            files = target.get('files', [])
+            for file_data in files:
+                file_name = file_data.get('name', 'Unknown')
+                file_path = file_data.get('path', '')
+                file_coverage = file_data.get('lineCoverage', 0.0) * 100
+                file_covered = file_data.get('coveredLines', 0)
+                file_executable = file_data.get('executableLines', 0)
+                
+                # Skip files with no executable lines
+                if file_executable == 0:
+                    continue
+                
+                result['files'].append({
+                    'name': file_name,
+                    'path': file_path,
+                    'target': target_name,
+                    'coverage': file_coverage,
+                    'covered_lines': file_covered,
+                    'executable_lines': file_executable,
+                    'coverage_formatted': f"{file_coverage:.1f}%"
+                })
     
-    # Sort targets by name
-    result['targets'].sort(key=lambda t: t['name'])
+    # Calculate total coverage from filtered targets
+    if total_executable > 0:
+        result['line_coverage'] = (total_covered / total_executable) * 100
+    else:
+        result['line_coverage'] = 0.0
+    
+    result['covered_lines'] = total_covered
+    result['executable_lines'] = total_executable
+    result['total_coverage'] = result['line_coverage']
+    
+    # Sort targets by name, showing included targets first
+    result['targets'].sort(key=lambda t: (not t.get('included_in_total', False), t['name']))
     
     # Sort files by coverage (ascending - worst first)
     result['files'].sort(key=lambda f: f['coverage'])
@@ -123,18 +193,32 @@ def format_coverage_summary(coverage: Dict) -> str:
     lines.append("=" * 60)
     lines.append("CODE COVERAGE REPORT")
     lines.append("=" * 60)
-    lines.append(f"Overall Coverage: {coverage['total_coverage']:.1f}%")
+    lines.append(f"Palace App Coverage: {coverage['total_coverage']:.1f}%")
     lines.append(f"Lines Covered: {coverage['covered_lines']} / {coverage['executable_lines']}")
     lines.append("")
     
     if coverage['targets']:
-        lines.append("COVERAGE BY TARGET:")
-        for target in coverage['targets']:
-            bar = "█" * int(target['coverage'] / 5) + "░" * (20 - int(target['coverage'] / 5))
-            lines.append(f"  {target['name']}: {target['coverage_formatted']} [{bar}]")
+        # Separate included vs excluded targets
+        included = [t for t in coverage['targets'] if t.get('included_in_total', False)]
+        excluded = [t for t in coverage['targets'] if not t.get('included_in_total', False)]
+        
+        if included:
+            lines.append("INCLUDED TARGETS (counted in coverage):")
+            for target in included:
+                bar = "█" * int(target['coverage'] / 5) + "░" * (20 - int(target['coverage'] / 5))
+                lines.append(f"  ✓ {target['name']}: {target['coverage_formatted']} [{bar}]")
+                lines.append(f"      ({target['covered_lines']} / {target['executable_lines']} lines)")
+        
+        if excluded:
+            lines.append("")
+            lines.append(f"EXCLUDED TARGETS ({len(excluded)} third-party/test targets not counted):")
+            for target in excluded[:5]:  # Show first 5
+                lines.append(f"  ✗ {target['name']}: {target['coverage_formatted']}")
+            if len(excluded) > 5:
+                lines.append(f"  ... and {len(excluded) - 5} more")
     
     lines.append("")
-    lines.append("LOWEST COVERAGE FILES:")
+    lines.append("LOWEST COVERAGE FILES (Palace only):")
     for file_data in coverage['files'][:10]:
         lines.append(f"  {file_data['coverage_formatted']:>6} - {file_data['name']}")
     
@@ -149,10 +233,11 @@ def output_github_actions(coverage: Dict, output_file: str):
         f.write(f"covered_lines={coverage['covered_lines']}\n")
         f.write(f"executable_lines={coverage['executable_lines']}\n")
         
-        # Target summary for PR comment
-        if coverage['targets']:
+        # Target summary for PR comment - only show included targets
+        included_targets = [t for t in coverage['targets'] if t.get('included_in_total', False)]
+        if included_targets:
             f.write("coverage_targets<<EOF\n")
-            for target in coverage['targets']:
+            for target in included_targets:
                 f.write(f"{target['name']}|{target['coverage_formatted']}|{target['covered_lines']}|{target['executable_lines']}\n")
             f.write("EOF\n")
 

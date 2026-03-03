@@ -10,10 +10,10 @@ import Foundation
 import PalaceAudiobookToolkit
 
 @objc extension TPPBookRegistry {
-  func syncLocation(for book: TPPBook, completion: @escaping (AudioBookmark?) -> Void) {
-    Task {
-      let readPos = await TPPAnnotations.syncReadingPosition(ofBook: book, toURL: book.annotationsURL) as? AudioBookmark
-      completion(readPos)
+    func syncLocation(for book: TPPBook, completion: @escaping (AudioBookmark?) -> Void) {
+        Task {
+            let readPos = await TPPAnnotations.syncReadingPosition(ofBook: book, toURL: book.annotationsURL) as? AudioBookmark
+            completion(readPos)
+        }
     }
-  }
 }
