@@ -165,6 +165,26 @@ final class NavigationCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.path.count, 1, "Should not accumulate duplicate audio routes")
     }
 
+    /// PP-3783: Opening audiobook from book detail must preserve book detail in stack
+    /// so that "My Books" in the player returns to book detail, not catalog.
+    func testNavigationCoordinator_PushAudioRoute_FromBookDetail_PreservesStack() {
+        // Arrange - user on book detail (e.g. tapped Listen)
+        coordinator.push(.bookDetail(BookRoute(id: "book-1")))
+        XCTAssertEqual(coordinator.path.count, 1)
+
+        // Act - present audiobook (should not clear; top is not audio)
+        coordinator.pushAudioRoute(BookRoute(id: "audiobook-1"))
+
+        // Assert - stack is [BookDetail, Audio]
+        XCTAssertEqual(coordinator.path.count, 2, "Book detail should remain under audio route")
+
+        // Act - user taps "My Books" in player (one pop)
+        coordinator.pop()
+
+        // Assert - back on book detail
+        XCTAssertEqual(coordinator.path.count, 1, "One pop should return to book detail")
+    }
+
     // MARK: - Book Storage Tests
 
     func testNavigationCoordinator_StoreBook_CanBeRetrieved() {

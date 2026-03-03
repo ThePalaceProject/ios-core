@@ -1433,11 +1433,10 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         Log.info(#file, "Download completed for \(book.identifier) with rights: \(rights)")
 
         if let response = task.response, response.isProblemDocument() {
-            do {
-                let problemDocData = try Data(contentsOf: location)
-                problemDoc = try TPPProblemDocument.fromData(problemDocData)
-            } catch let error {
-                TPPErrorLogger.logProblemDocumentParseError(error as NSError, problemDocumentData: nil, url: location, summary: "Error parsing problem doc downloading \(String(describing: book.distributor)) book", metadata: ["book": book.loggableShortString])
+            let problemDocData = (try? Data(contentsOf: location)) ?? Data()
+            problemDoc = TPPProblemDocument.fromProblemResponseData(problemDocData)
+            if problemDoc == nil {
+                TPPErrorLogger.logProblemDocumentParseError(NSError(domain: "MyBooksDownloadCenter", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not parse problem document"]), problemDocumentData: problemDocData.isEmpty ? nil : problemDocData, url: location, summary: "Error parsing problem doc downloading \(String(describing: book.distributor)) book", metadata: ["book": book.loggableShortString])
             }
 
             try? FileManager.default.removeItem(at: location)

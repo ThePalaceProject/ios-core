@@ -74,6 +74,11 @@ final class NavigationCoordinator: ObservableObject {
     private var cleanupTask: Task<Void, Never>?
     private var lastPopTime: Date?
 
+    /// Tracks whether the top of the navigation stack is an audio route.
+    /// Used so we only clear the stack when replacing an existing player (e.g. switching audiobooks),
+    /// not when pushing the player from book detail (so "My Books" returns to book detail, not catalog).
+    private var isTopRouteAudio: Bool = false
+
     // MARK: - Public API
 
     func push(_ route: AppRoute) {
@@ -85,6 +90,10 @@ final class NavigationCoordinator: ObservableObject {
             withAnimation(.easeInOut) {
                 path.append(route)
             }
+        }
+        switch route {
+        case .audio: isTopRouteAudio = true
+        default: isTopRouteAudio = false
         }
         Log.debug(#file, "📍 NavigationCoordinator.push(\(route)) - After push count: \(path.count)")
     }
@@ -102,6 +111,7 @@ final class NavigationCoordinator: ObservableObject {
         }
 
         lastPopTime = Date()
+        isTopRouteAudio = false
         Log.debug(#file, "📍 NavigationCoordinator.pop() - Current path count: \(path.count)")
         // Respect reduce motion accessibility setting
         if UIAccessibility.isReduceMotionEnabled {
@@ -116,6 +126,7 @@ final class NavigationCoordinator: ObservableObject {
 
     func popToRoot() {
         guard !path.isEmpty else { return }
+        isTopRouteAudio = false
         // Respect reduce motion accessibility setting
         if UIAccessibility.isReduceMotionEnabled {
             path.removeLast(path.count)
@@ -127,16 +138,10 @@ final class NavigationCoordinator: ObservableObject {
     }
 
     /// Removes all existing audio routes from the navigation path.
-    /// Used before pushing a new audio route to prevent accumulation.
+    /// Used before pushing a new audio route when the top is already audio (e.g. switching audiobooks).
     func clearAudioRoutes() {
-        // NavigationPath doesn't allow iteration, so we need to pop to root
-        // and re-push non-audio routes if needed. For simplicity, just track
-        // if we have audio routes and handle appropriately.
-        // Since audio is typically the last route, popping to root is safe.
         guard !path.isEmpty else { return }
-
-        // For now, just pop to root when switching audiobooks
-        // This ensures no stacking of player views
+        isTopRouteAudio = false
         Log.debug(#file, "📍 NavigationCoordinator.clearAudioRoutes() - Clearing path for new audio route")
         // Respect reduce motion accessibility setting
         if UIAccessibility.isReduceMotionEnabled {
@@ -148,13 +153,13 @@ final class NavigationCoordinator: ObservableObject {
         }
     }
 
-    /// Pushes an audio route, clearing any existing audio routes first.
-    /// This prevents accumulation of player views in the navigation stack.
+    /// Pushes an audio route. Clears the stack only when the top is already an audio route
+    /// (e.g. switching to another audiobook), so that opening from book detail keeps the stack
+    /// and "My Books" in the player returns to book detail instead of catalog (PP-3783).
     func pushAudioRoute(_ route: BookRoute) {
-        Log.debug(#file, "📍 NavigationCoordinator.pushAudioRoute(\(route.id)) - Current path count: \(path.count)")
+        Log.debug(#file, "📍 NavigationCoordinator.pushAudioRoute(\(route.id)) - Current path count: \(path.count), isTopRouteAudio: \(isTopRouteAudio)")
 
-        // Clear existing routes before pushing new audio route
-        if !path.isEmpty {
+        if isTopRouteAudio {
             clearAudioRoutes()
         }
 
@@ -166,6 +171,7 @@ final class NavigationCoordinator: ObservableObject {
                 path.append(AppRoute.audio(route))
             }
         }
+        isTopRouteAudio = true
         Log.debug(#file, "📍 NavigationCoordinator.pushAudioRoute - After push count: \(path.count)")
     }
 

@@ -1,3 +1,11 @@
+**Summary for JIRA** _(paste this into the ticket / release notes; see [.github/COMMIT_AND_PR_FOR_JIRA.md](.github/COMMIT_AND_PR_FOR_JIRA.md))_
+- **JIRA:** 
+- **Root cause:** 
+- **Solution:** 
+- **How to verify:** 
+
+---
+
 **What's this do?**
 [Description of what this PR does goes here]
 
