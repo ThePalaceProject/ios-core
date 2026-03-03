@@ -9,11 +9,11 @@
 import Foundation
 
 extension URL {
-  func replacingScheme(with scheme: String) -> URL {
-    guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
-      return self
+    func replacingScheme(with scheme: String) -> URL {
+        guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
+            return self
+        }
+        components.scheme = scheme
+        return components.url ?? self
     }
-    components.scheme = scheme
-    return components.url ?? self
-  }
 }

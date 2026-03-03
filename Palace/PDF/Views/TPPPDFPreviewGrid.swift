@@ -10,48 +10,48 @@ import SwiftUI
 import UIKit
 
 /// Previews and bookmarks.
-/// Wraps `TPPPDFPreviewGridController` — `UICollectionViewController` 
+/// Wraps `TPPPDFPreviewGridController` — `UICollectionViewController`
 struct TPPPDFPreviewGrid: UIViewControllerRepresentable {
-  let document: TPPPDFDocument
-  var pageIndices: Set<Int>?
-  var isVisible = false
-  let done: () -> Void
-  
-  @EnvironmentObject var metadata: TPPPDFDocumentMetadata
+    let document: TPPPDFDocument
+    var pageIndices: Set<Int>?
+    var isVisible = false
+    let done: () -> Void
 
-  func makeUIViewController(context: Context) -> some UIViewController {
-    let vc = TPPPDFPreviewGridController(document: document, indices: pageIndices?.sorted())
-    vc.delegate = context.coordinator
-    vc.currentPage = metadata.currentPage
-    vc.isVisible = isVisible
-    return vc
-  }
+    @EnvironmentObject var metadata: TPPPDFDocumentMetadata
 
-  func updateUIViewController(_ uiViewController: UIViewControllerType, context: Context) {
-    guard let vc = uiViewController as? TPPPDFPreviewGridController else {
-      return
+    func makeUIViewController(context: Context) -> some UIViewController {
+        let vc = TPPPDFPreviewGridController(document: document, indices: pageIndices?.sorted())
+        vc.delegate = context.coordinator
+        vc.currentPage = metadata.currentPage
+        vc.isVisible = isVisible
+        return vc
     }
-    vc.indices = pageIndices?.sorted()
-    vc.currentPage = metadata.currentPage
-    vc.isVisible = isVisible
-  }
 
-  func makeCoordinator() -> Coordinator {
-    Coordinator { page in
-      metadata.currentPage = page
-      done()
+    func updateUIViewController(_ uiViewController: UIViewControllerType, context: Context) {
+        guard let vc = uiViewController as? TPPPDFPreviewGridController else {
+            return
+        }
+        vc.indices = pageIndices?.sorted()
+        vc.currentPage = metadata.currentPage
+        vc.isVisible = isVisible
     }
-  }
 
-  class Coordinator: TPPPDFPreviewGridDelegate {
-    let action: (Int) -> Void
+    func makeCoordinator() -> Coordinator {
+        Coordinator { page in
+            metadata.currentPage = page
+            done()
+        }
+    }
 
-    func didSelectPage(_ n: Int) {
-      action(n)
+    class Coordinator: TPPPDFPreviewGridDelegate {
+        let action: (Int) -> Void
+
+        func didSelectPage(_ n: Int) {
+            action(n)
+        }
+
+        init(changePageAction: @escaping (Int) -> Void) {
+            self.action = changePageAction
+        }
     }
-    
-    init(changePageAction: @escaping (Int) -> Void) {
-      self.action = changePageAction
-    }
-  }
 }

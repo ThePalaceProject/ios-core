@@ -10,19 +10,19 @@ import Foundation
 
 extension URLResponse {
 
-  /// Determines if the response is a Problem Document response per
-  /// https://tools.ietf.org/html/rfc7807.
-  /// - Returns: `true` is the response contains a problem Document,
-  /// `false` otherwise.
-  @objc func isProblemDocument() -> Bool {
-    
-    return ["application/problem+json",
-            "application/api-problem+json"].contains(mimeType)
-  }
+    /// Determines if the response is a Problem Document response per
+    /// https://tools.ietf.org/html/rfc7807.
+    /// - Returns: `true` is the response contains a problem Document,
+    /// `false` otherwise.
+    @objc func isProblemDocument() -> Bool {
+
+        return ["application/problem+json",
+                "application/api-problem+json"].contains(mimeType)
+    }
 }
 
 extension HTTPURLResponse {
-  @objc func isSuccess() -> Bool {
-    return (200...299).contains(statusCode)
-  }
+    @objc func isSuccess() -> Bool {
+        return (200...299).contains(statusCode)
+    }
 }

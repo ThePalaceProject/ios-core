@@ -16,6 +16,8 @@ class LoadingViewController: UIViewController {
         view = UIView()
         title = NSLocalizedString("Loading", comment: "Loading overlay title")
         view.backgroundColor = UIColor(white: 0, alpha: 0.7)
+        view.accessibilityViewIsModal = true
+        view.accessibilityLabel = NSLocalizedString("Loading", comment: "Loading overlay accessibility label")
 
         spinner.translatesAutoresizingMaskIntoConstraints = false
         spinner.startAnimating()

@@ -10,11 +10,11 @@ import XCTest
 @testable import Palace
 
 final class OPDS2FeedTests: XCTestCase {
-  
-  // MARK: - Feed Parsing
-  
-  func testParseMinimalFeed() throws {
-    let json = """
+
+    // MARK: - Feed Parsing
+
+    func testParseMinimalFeed() throws {
+        let json = """
     {
       "metadata": {
         "title": "Test Library"
@@ -28,17 +28,17 @@ final class OPDS2FeedTests: XCTestCase {
       ]
     }
     """
-    
-    let data = json.data(using: .utf8)!
-    let feed = try OPDS2Feed.from(data: data)
-    
-    XCTAssertEqual(feed.title, "Test Library")
-    XCTAssertEqual(feed.links.count, 1)
-    XCTAssertEqual(feed.selfURL?.absoluteString, "https://example.com/feed")
-  }
-  
-  func testParseFeedWithNavigation() throws {
-    let json = """
+
+        let data = json.data(using: .utf8)!
+        let feed = try OPDS2Feed.from(data: data)
+
+        XCTAssertEqual(feed.title, "Test Library")
+        XCTAssertEqual(feed.links.count, 1)
+        XCTAssertEqual(feed.selfURL?.absoluteString, "https://example.com/feed")
+    }
+
+    func testParseFeedWithNavigation() throws {
+        let json = """
     {
       "metadata": {
         "title": "Library Catalog"
@@ -52,18 +52,18 @@ final class OPDS2FeedTests: XCTestCase {
       ]
     }
     """
-    
-    let data = json.data(using: .utf8)!
-    let feed = try OPDS2Feed.from(data: data)
-    
-    XCTAssertTrue(feed.isNavigationFeed)
-    XCTAssertFalse(feed.isPublicationFeed)
-    XCTAssertEqual(feed.navigation?.count, 2)
-    XCTAssertEqual(feed.navigation?.first?.title, "Ebooks")
-  }
-  
-  func testParseFeedWithPublications() throws {
-    let json = """
+
+        let data = json.data(using: .utf8)!
+        let feed = try OPDS2Feed.from(data: data)
+
+        XCTAssertTrue(feed.isNavigationFeed)
+        XCTAssertFalse(feed.isPublicationFeed)
+        XCTAssertEqual(feed.navigation?.count, 2)
+        XCTAssertEqual(feed.navigation?.first?.title, "Ebooks")
+    }
+
+    func testParseFeedWithPublications() throws {
+        let json = """
     {
       "metadata": {
         "title": "Featured Books"
@@ -88,17 +88,17 @@ final class OPDS2FeedTests: XCTestCase {
       ]
     }
     """
-    
-    let data = json.data(using: .utf8)!
-    let feed = try OPDS2Feed.from(data: data)
-    
-    XCTAssertTrue(feed.isPublicationFeed)
-    XCTAssertEqual(feed.publications?.count, 1)
-    XCTAssertEqual(feed.publications?.first?.metadata.title, "Test Book")
-  }
-  
-  func testParseFeedWithPagination() throws {
-    let json = """
+
+        let data = json.data(using: .utf8)!
+        let feed = try OPDS2Feed.from(data: data)
+
+        XCTAssertTrue(feed.isPublicationFeed)
+        XCTAssertEqual(feed.publications?.count, 1)
+        XCTAssertEqual(feed.publications?.first?.metadata.title, "Test Book")
+    }
+
+    func testParseFeedWithPagination() throws {
+        let json = """
     {
       "metadata": {
         "title": "Search Results",
@@ -113,19 +113,19 @@ final class OPDS2FeedTests: XCTestCase {
       ]
     }
     """
-    
-    let data = json.data(using: .utf8)!
-    let feed = try OPDS2Feed.from(data: data)
-    
-    XCTAssertEqual(feed.metadata.numberOfItems, 100)
-    XCTAssertEqual(feed.metadata.itemsPerPage, 20)
-    XCTAssertNotNil(feed.nextPageURL)
-    XCTAssertEqual(feed.nextPageURL?.absoluteString, "https://example.com/search?page=2")
-    XCTAssertNotNil(feed.startURL)
-  }
-  
-  func testParseFeedWithGroups() throws {
-    let json = """
+
+        let data = json.data(using: .utf8)!
+        let feed = try OPDS2Feed.from(data: data)
+
+        XCTAssertEqual(feed.metadata.numberOfItems, 100)
+        XCTAssertEqual(feed.metadata.itemsPerPage, 20)
+        XCTAssertNotNil(feed.nextPageURL)
+        XCTAssertEqual(feed.nextPageURL?.absoluteString, "https://example.com/search?page=2")
+        XCTAssertNotNil(feed.startURL)
+    }
+
+    func testParseFeedWithGroups() throws {
+        let json = """
     {
       "metadata": {"title": "Home"},
       "links": [{"href": "/home", "rel": "self"}],
@@ -148,19 +148,19 @@ final class OPDS2FeedTests: XCTestCase {
       ]
     }
     """
-    
-    let data = json.data(using: .utf8)!
-    let feed = try OPDS2Feed.from(data: data)
-    
-    XCTAssertTrue(feed.isGroupedFeed)
-    XCTAssertEqual(feed.groups?.count, 2)
-    XCTAssertEqual(feed.groups?.first?.title, "New Releases")
-    XCTAssertEqual(feed.groups?.first?.publications?.count, 1)
-    XCTAssertNotNil(feed.groups?[1].moreURL)
-  }
-  
-  func testParseFeedWithFacets() throws {
-    let json = """
+
+        let data = json.data(using: .utf8)!
+        let feed = try OPDS2Feed.from(data: data)
+
+        XCTAssertTrue(feed.isGroupedFeed)
+        XCTAssertEqual(feed.groups?.count, 2)
+        XCTAssertEqual(feed.groups?.first?.title, "New Releases")
+        XCTAssertEqual(feed.groups?.first?.publications?.count, 1)
+        XCTAssertNotNil(feed.groups?[1].moreURL)
+    }
+
+    func testParseFeedWithFacets() throws {
+        let json = """
     {
       "metadata": {"title": "Books"},
       "links": [{"href": "/books", "rel": "self"}],
@@ -176,19 +176,19 @@ final class OPDS2FeedTests: XCTestCase {
       ]
     }
     """
-    
-    let data = json.data(using: .utf8)!
-    let feed = try OPDS2Feed.from(data: data)
-    
-    XCTAssertEqual(feed.facets?.count, 1)
-    XCTAssertEqual(feed.facets?.first?.title, "Sort By")
-    XCTAssertEqual(feed.facets?.first?.links.count, 3)
-  }
-  
-  // MARK: - Link Parsing
-  
-  func testParseLinkWithProperties() throws {
-    let json = """
+
+        let data = json.data(using: .utf8)!
+        let feed = try OPDS2Feed.from(data: data)
+
+        XCTAssertEqual(feed.facets?.count, 1)
+        XCTAssertEqual(feed.facets?.first?.title, "Sort By")
+        XCTAssertEqual(feed.facets?.first?.links.count, 3)
+    }
+
+    // MARK: - Link Parsing
+
+    func testParseLinkWithProperties() throws {
+        let json = """
     {
       "href": "https://example.com/borrow",
       "rel": "http://opds-spec.org/acquisition/borrow",
@@ -208,19 +208,19 @@ final class OPDS2FeedTests: XCTestCase {
       }
     }
     """
-    
-    let data = json.data(using: .utf8)!
-    let link = try JSONDecoder().decode(OPDS2Link.self, from: data)
-    
-    XCTAssertTrue(link.isBorrow)
-    XCTAssertTrue(link.properties?.availability?.isAvailable ?? false)
-    XCTAssertEqual(link.properties?.copies?.total, 5)
-    XCTAssertEqual(link.properties?.copies?.available, 2)
-    XCTAssertEqual(link.properties?.holds?.position, 1)
-  }
-  
-  func testParseLinkWithIndirectAcquisition() throws {
-    let json = """
+
+        let data = json.data(using: .utf8)!
+        let link = try JSONDecoder().decode(OPDS2Link.self, from: data)
+
+        XCTAssertTrue(link.isBorrow)
+        XCTAssertTrue(link.properties?.availability?.isAvailable ?? false)
+        XCTAssertEqual(link.properties?.copies?.total, 5)
+        XCTAssertEqual(link.properties?.copies?.available, 2)
+        XCTAssertEqual(link.properties?.holds?.position, 1)
+    }
+
+    func testParseLinkWithIndirectAcquisition() throws {
+        let json = """
     {
       "href": "https://example.com/fulfill",
       "rel": "http://opds-spec.org/acquisition",
@@ -237,20 +237,20 @@ final class OPDS2FeedTests: XCTestCase {
       }
     }
     """
-    
-    let data = json.data(using: .utf8)!
-    let link = try JSONDecoder().decode(OPDS2Link.self, from: data)
-    
-    XCTAssertTrue(link.isAcquisition)
-    XCTAssertEqual(link.properties?.indirectAcquisition?.count, 1)
-    XCTAssertEqual(link.properties?.indirectAcquisition?.first?.type, "application/vnd.adobe.adept+xml")
-    XCTAssertEqual(link.properties?.indirectAcquisition?.first?.child?.first?.type, "application/epub+zip")
-  }
-  
-  // MARK: - Date Parsing
-  
-  func testParseDateWithFractionalSeconds() throws {
-    let json = """
+
+        let data = json.data(using: .utf8)!
+        let link = try JSONDecoder().decode(OPDS2Link.self, from: data)
+
+        XCTAssertTrue(link.isAcquisition)
+        XCTAssertEqual(link.properties?.indirectAcquisition?.count, 1)
+        XCTAssertEqual(link.properties?.indirectAcquisition?.first?.type, "application/vnd.adobe.adept+xml")
+        XCTAssertEqual(link.properties?.indirectAcquisition?.first?.child?.first?.type, "application/epub+zip")
+    }
+
+    // MARK: - Date Parsing
+
+    func testParseDateWithFractionalSeconds() throws {
+        let json = """
     {
       "metadata": {
         "title": "Test",
@@ -259,15 +259,15 @@ final class OPDS2FeedTests: XCTestCase {
       "links": []
     }
     """
-    
-    let data = json.data(using: .utf8)!
-    let feed = try OPDS2Feed.from(data: data)
-    
-    XCTAssertNotNil(feed.metadata.modified)
-  }
-  
-  func testParseDateWithoutFractionalSeconds() throws {
-    let json = """
+
+        let data = json.data(using: .utf8)!
+        let feed = try OPDS2Feed.from(data: data)
+
+        XCTAssertNotNil(feed.metadata.modified)
+    }
+
+    func testParseDateWithoutFractionalSeconds() throws {
+        let json = """
     {
       "metadata": {
         "title": "Test",
@@ -276,45 +276,45 @@ final class OPDS2FeedTests: XCTestCase {
       "links": []
     }
     """
-    
-    let data = json.data(using: .utf8)!
-    let feed = try OPDS2Feed.from(data: data)
-    
-    XCTAssertNotNil(feed.metadata.modified)
-  }
-  
-  // MARK: - Format Detection
-  
-  func testDetectOPDS2FromContentType() {
-    XCTAssertEqual(OPDSFormat.detect(from: "application/opds+json"), .opds2)
-    XCTAssertEqual(OPDSFormat.detect(from: "application/json"), .opds2)
-    XCTAssertEqual(OPDSFormat.detect(from: "application/atom+xml"), .opds1)
-    XCTAssertEqual(OPDSFormat.detect(from: "text/xml"), .opds1)
-    XCTAssertEqual(OPDSFormat.detect(from: nil), .unknown)
-  }
-  
-  func testDetectOPDS2FromData() {
-    let json = "{\"metadata\":{}}".data(using: .utf8)!
-    let xml = "<?xml version=\"1.0\"?>".data(using: .utf8)!
-    
-    XCTAssertEqual(OPDSFormat.detect(from: json), .opds2)
-    XCTAssertEqual(OPDSFormat.detect(from: xml), .opds1)
-  }
-  
-  // MARK: - Equatable
-  
-  func testFeedEquatable() throws {
-    let json = """
+
+        let data = json.data(using: .utf8)!
+        let feed = try OPDS2Feed.from(data: data)
+
+        XCTAssertNotNil(feed.metadata.modified)
+    }
+
+    // MARK: - Format Detection
+
+    func testDetectOPDS2FromContentType() {
+        XCTAssertEqual(OPDSFormat.detect(from: "application/opds+json"), .opds2)
+        XCTAssertEqual(OPDSFormat.detect(from: "application/json"), .opds2)
+        XCTAssertEqual(OPDSFormat.detect(from: "application/atom+xml"), .opds1)
+        XCTAssertEqual(OPDSFormat.detect(from: "text/xml"), .opds1)
+        XCTAssertEqual(OPDSFormat.detect(from: nil), .unknown)
+    }
+
+    func testDetectOPDS2FromData() {
+        let json = Data("{\"metadata\":{}}".utf8)
+        let xml = Data("<?xml version=\"1.0\"?>".utf8)
+
+        XCTAssertEqual(OPDSFormat.detect(from: json), .opds2)
+        XCTAssertEqual(OPDSFormat.detect(from: xml), .opds1)
+    }
+
+    // MARK: - Equatable
+
+    func testFeedEquatable() throws {
+        let json = """
     {
       "metadata": {"title": "Test"},
       "links": [{"href": "/test", "rel": "self"}]
     }
     """
-    
-    let data = json.data(using: .utf8)!
-    let feed1 = try OPDS2Feed.from(data: data)
-    let feed2 = try OPDS2Feed.from(data: data)
-    
-    XCTAssertEqual(feed1, feed2)
-  }
+
+        let data = Data(json.utf8)
+        let feed1 = try OPDS2Feed.from(data: data)
+        let feed2 = try OPDS2Feed.from(data: data)
+
+        XCTAssertEqual(feed1, feed2)
+    }
 }
