@@ -27,42 +27,42 @@ import Foundation
 /// credentialsStale ──[sign out]──▶ loggedOut (triggers Adobe deactivation)
 /// ```
 @objc enum TPPAccountAuthState: Int, Codable, CustomStringConvertible {
-    /// No credentials stored. Adobe DRM has been deactivated.
-    /// This is the initial state for new accounts and the state after explicit sign-out.
-    case loggedOut = 0
-
-    /// Fully authenticated with valid credentials. Adobe DRM is activated.
-    /// This is the normal operating state for signed-in users.
-    case loggedIn = 1
-
-    /// Session/token has expired but Adobe DRM credentials remain valid.
-    /// This state is entered when a 401 is received for an authenticated request.
-    /// Re-authentication from this state should skip Adobe activation.
-    case credentialsStale = 2
-
-    var description: String {
-        switch self {
-        case .loggedOut:
-            return "loggedOut"
-        case .loggedIn:
-            return "loggedIn"
-        case .credentialsStale:
-            return "credentialsStale"
-        }
+  /// No credentials stored. Adobe DRM has been deactivated.
+  /// This is the initial state for new accounts and the state after explicit sign-out.
+  case loggedOut = 0
+  
+  /// Fully authenticated with valid credentials. Adobe DRM is activated.
+  /// This is the normal operating state for signed-in users.
+  case loggedIn = 1
+  
+  /// Session/token has expired but Adobe DRM credentials remain valid.
+  /// This state is entered when a 401 is received for an authenticated request.
+  /// Re-authentication from this state should skip Adobe activation.
+  case credentialsStale = 2
+  
+  var description: String {
+    switch self {
+    case .loggedOut:
+      return "loggedOut"
+    case .loggedIn:
+      return "loggedIn"
+    case .credentialsStale:
+      return "credentialsStale"
     }
-
-    /// Whether the account has any form of credentials (even if stale)
-    var hasStoredCredentials: Bool {
-        return self != .loggedOut
-    }
-
-    /// Whether the account needs re-authentication before making authenticated requests
-    var needsReauthentication: Bool {
-        return self == .credentialsStale || self == .loggedOut
-    }
-
-    /// Whether Adobe DRM is expected to be activated for this account
-    var hasAdobeActivation: Bool {
-        return self == .loggedIn || self == .credentialsStale
-    }
+  }
+  
+  /// Whether the account has any form of credentials (even if stale)
+  var hasStoredCredentials: Bool {
+    return self != .loggedOut
+  }
+  
+  /// Whether the account needs re-authentication before making authenticated requests
+  var needsReauthentication: Bool {
+    return self == .credentialsStale || self == .loggedOut
+  }
+  
+  /// Whether Adobe DRM is expected to be activated for this account
+  var hasAdobeActivation: Bool {
+    return self == .loggedIn || self == .credentialsStale
+  }
 }

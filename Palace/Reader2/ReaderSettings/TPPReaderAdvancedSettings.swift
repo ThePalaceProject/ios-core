@@ -9,6 +9,6 @@
 import Foundation
 
 enum TPPReaderAdvancedSettings: String {
-    case on = "readium-advanced-on"
-    case off = "readium-advanced-off"
+  case on = "readium-advanced-on"
+  case off = "readium-advanced-off"
 }

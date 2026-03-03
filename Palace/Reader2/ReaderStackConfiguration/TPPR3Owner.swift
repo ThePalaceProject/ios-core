@@ -20,40 +20,40 @@ import ReadiumStreamer
 /// modules' delegates.
 @objc public final class TPPR3Owner: NSObject {
 
-    var libraryService: LibraryService! = nil
-    var readerModule: ReaderModuleAPI! = nil
+  var libraryService: LibraryService! = nil
+  var readerModule: ReaderModuleAPI! = nil
 
-    override init() {
-        super.init()
-        libraryService = LibraryService()
-        readerModule = ReaderModule(delegate: self,
-                                    resourcesServer: libraryService.httpServer,
-                                    bookRegistry: TPPBookRegistry.shared)
+  override init() {
+    super.init()
+    libraryService = LibraryService()
+    readerModule = ReaderModule(delegate: self,
+                                resourcesServer: libraryService.httpServer,
+                                bookRegistry: TPPBookRegistry.shared)
 
-        ReadiumEnableLog(withMinimumSeverityLevel: .debug)
-    }
+    ReadiumEnableLog(withMinimumSeverityLevel: .debug)
+  }
 
-    deinit {
-        Log.warn(#file, "TPPR3Owner being dealloced")
-    }
+  deinit {
+    Log.warn(#file, "TPPR3Owner being dealloced")
+  }
 }
 
 extension TPPR3Owner: ModuleDelegate {
-    func presentAlert(_ title: String,
-                      message: String,
-                      from viewController: UIViewController) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        let dismissButton = UIAlertAction(title: Strings.Generic.ok, style: .cancel)
-        alert.addAction(dismissButton)
-        viewController.present(alert, animated: true)
-    }
+  func presentAlert(_ title: String,
+                    message: String,
+                    from viewController: UIViewController) {
+    let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+    let dismissButton = UIAlertAction(title: Strings.Generic.ok, style: .cancel)
+    alert.addAction(dismissButton)
+    viewController.present(alert, animated: true)
+  }
 
-    func presentError(_ error: Error?, from viewController: UIViewController) {
-        guard let error = error else { return }
-        presentAlert(
-            Strings.Generic.error,
-            message: error.localizedDescription,
-            from: viewController
-        )
-    }
+  func presentError(_ error: Error?, from viewController: UIViewController) {
+    guard let error = error else { return }
+    presentAlert(
+      Strings.Generic.error,
+      message: error.localizedDescription,
+      from: viewController
+    )
+  }
 }

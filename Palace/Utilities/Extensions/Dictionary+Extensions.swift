@@ -9,26 +9,26 @@
 import Foundation
 
 extension Dictionary {
-    func mapKeys<T>(_ transform: (Key) throws -> T) rethrows -> [T: Value] {
-        var dictionary = [T: Value]()
-        for (key, value) in self {
-            dictionary[try transform(key)] = value
-        }
-        return dictionary
+  func mapKeys<T>(_ transform: (Key) throws -> T) rethrows -> Dictionary<T, Value> {
+    var dictionary = Dictionary<T, Value>()
+    for (key, value) in self {
+      dictionary[try transform(key)] = value
     }
+    return dictionary
+  }
 }
 
 extension Dictionary where Key == String, Value: Any {
-
-    /// Pretty prints the JSON dictionary
-    func prettyPrintJSON() {
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: self, options: .prettyPrinted)
-            if let jsonString = String(data: jsonData, encoding: .utf8) {
-                print(jsonString)
-            }
-        } catch {
-            print("Failed to pretty print JSON: \(error)")
-        }
+  
+  /// Pretty prints the JSON dictionary
+  func prettyPrintJSON() {
+    do {
+      let jsonData = try JSONSerialization.data(withJSONObject: self, options: .prettyPrinted)
+      if let jsonString = String(data: jsonData, encoding: .utf8) {
+        print(jsonString)
+      }
+    } catch {
+      print("Failed to pretty print JSON: \(error)")
     }
+  }
 }

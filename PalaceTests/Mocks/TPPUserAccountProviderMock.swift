@@ -10,17 +10,17 @@ import Foundation
 @testable import Palace
 
 class TPPUserAccountProviderMock: NSObject, TPPUserAccountProvider {
-    private static let userAccountMock = TPPUserAccountMock()
-
-    var needsAuth: Bool
-
-    static func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
-        return userAccountMock
-    }
-
-    override init() {
-        needsAuth = false
-
-        super.init()
-    }
+  private static let userAccountMock = TPPUserAccountMock()
+  
+  var needsAuth: Bool
+  
+  static func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
+    return userAccountMock
+  }
+  
+  override init() {
+    needsAuth = false
+    
+    super.init()
+  }
 }

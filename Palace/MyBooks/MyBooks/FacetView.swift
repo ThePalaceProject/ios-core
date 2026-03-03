@@ -11,60 +11,60 @@ import Combine
 import PalaceUIKit
 
 struct FacetView: View {
-    @ObservedObject var model: FacetViewModel
-    @State private var showAlert = false
+  @ObservedObject var model: FacetViewModel
+  @State private var showAlert = false
 
-    var body: some View {
-        VStack(alignment: .leading) {
-            dividerView
-            HStack(alignment: .center) {
-                titleLabel
-                sortView
-            }
-            .padding(.leading)
-            .actionSheet(isPresented: $showAlert) { alert }
-            .palaceFont(size: 12)
-            dividerView
-        }
+  var body: some View {
+    VStack(alignment: .leading) {
+      dividerView
+      HStack(alignment: .center) {
+        titleLabel
+        sortView
+      }
+      .padding(.leading)
+      .actionSheet(isPresented: $showAlert) { alert }
+      .palaceFont(size: 12)
+      dividerView
+    }
+  }
+
+  private var titleLabel: some View {
+    Text(model.groupName)
+  }
+
+  private var sortView: some View {
+    Button(action: {
+      showAlert = true
+    }) {
+      Text(model.activeSort.localizedString)
+    }
+    .frame(width: 65, height: 30)
+    .border(Color(TPPConfiguration.mainColor()), width: 1)
+    .cornerRadius(2)
+  }
+  
+  private var dividerView: some View {
+    Rectangle()
+      .fill(Color(UIColor.lightGray.withAlphaComponent(0.9)))
+      .frame(height: 1.0)
+      .edgesIgnoringSafeArea(.horizontal)
+  }
+
+  private var alert: ActionSheet {
+    var buttons = [ActionSheet.Button]()
+
+    if let secondaryFacet = model.facets.first(where: { $0 != model.activeSort }) {
+      buttons.append(ActionSheet.Button.default(Text(secondaryFacet.localizedString)) {
+        self.model.activeSort = secondaryFacet
+      })
+
+      buttons.append(Alert.Button.default(Text(model.activeSort.localizedString)) {
+        self.model.activeSort = model.activeSort
+      })
+    } else {
+      buttons.append(ActionSheet.Button.cancel(Text(Strings.Generic.cancel)))
     }
 
-    private var titleLabel: some View {
-        Text(model.groupName)
-    }
-
-    private var sortView: some View {
-        Button(action: {
-            showAlert = true
-        }, label: {
-            Text(model.activeSort.localizedString)
-        })
-        .frame(width: 65, height: 30)
-        .border(Color(TPPConfiguration.mainColor()), width: 1)
-        .cornerRadius(2)
-    }
-
-    private var dividerView: some View {
-        Rectangle()
-            .fill(Color(UIColor.lightGray.withAlphaComponent(0.9)))
-            .frame(height: 1.0)
-            .edgesIgnoringSafeArea(.horizontal)
-    }
-
-    private var alert: ActionSheet {
-        var buttons = [ActionSheet.Button]()
-
-        if let secondaryFacet = model.facets.first(where: { $0 != model.activeSort }) {
-            buttons.append(ActionSheet.Button.default(Text(secondaryFacet.localizedString)) {
-                self.model.activeSort = secondaryFacet
-            })
-
-            buttons.append(Alert.Button.default(Text(model.activeSort.localizedString)) {
-                self.model.activeSort = model.activeSort
-            })
-        } else {
-            buttons.append(ActionSheet.Button.cancel(Text(Strings.Generic.cancel)))
-        }
-
-        return ActionSheet(title: Text(""), message: Text(""), buttons: buttons)
-    }
+    return ActionSheet(title: Text(""), message: Text(""), buttons:buttons)
+  }
 }

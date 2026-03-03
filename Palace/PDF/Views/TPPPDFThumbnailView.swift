@@ -12,17 +12,17 @@ import PDFKit
 /// Wraps PDFKit PDFThumbnails control
 struct TPPPDFThumbnailView: UIViewRepresentable {
 
-    var pdfView: PDFView
-
-    func makeUIView(context: Context) -> some UIView {
-        let view = PDFThumbnailView()
-        view.pdfView = pdfView
-        view.layoutMode = .horizontal
-        view.backgroundColor = .systemBackground
-        return view
-    }
-
-    func updateUIView(_ uiView: UIViewType, context: Context) {
-        //
-    }
+  var pdfView: PDFView
+  
+  func makeUIView(context: Context) -> some UIView {
+    let view = PDFThumbnailView()
+    view.pdfView = pdfView
+    view.layoutMode = .horizontal
+    view.backgroundColor = .systemBackground
+    return view
+  }
+  
+  func updateUIView(_ uiView: UIViewType, context: Context) {
+    //
+  }
 }

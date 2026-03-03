@@ -12,15 +12,15 @@ import Foundation
 ///
 /// Used to determine current reader mode in `TPPDFNavigation`, and view roles
 enum TPPPDFReaderMode {
-    case reader, previews, bookmarks, toc, search
-
-    var value: String {
-        switch self {
-        case .reader: return "Reader"
-        case .previews: return "Page previews"
-        case .bookmarks: return "Bookmarks"
-        case .toc: return "TOC"
-        case .search: return "Search"
-        }
+  case reader, previews, bookmarks, toc, search
+  
+  var value: String {
+    switch self {
+    case .reader: return "Reader"
+    case .previews: return "Page previews"
+    case .bookmarks: return "Bookmarks"
+    case .toc: return "TOC"
+    case .search: return "Search"
     }
+  }
 }

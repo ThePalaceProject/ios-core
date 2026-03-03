@@ -9,6 +9,6 @@
 import Foundation
 
 @objc extension NSObject {
-    func didSignOut() {
-    }
+  func didSignOut() {
+  }
 }

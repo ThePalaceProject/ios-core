@@ -10,27 +10,27 @@ import Foundation
 
 @objcMembers
 class TPPAuthMethodCellType: NSObject {
-    let authenticationMethod: AccountDetails.Authentication
+  let authenticationMethod: AccountDetails.Authentication
 
-    init(authenticationMethod: AccountDetails.Authentication) {
-        self.authenticationMethod = authenticationMethod
-    }
+  init(authenticationMethod: AccountDetails.Authentication) {
+    self.authenticationMethod = authenticationMethod
+  }
 }
 
 @objcMembers
 class TPPInfoHeaderCellType: NSObject {
-    let information: String
+  let information: String
 
-    init(information: String) {
-        self.information = information
-    }
+  init(information: String) {
+    self.information = information
+  }
 }
 
 @objcMembers
 class TPPSamlIdpCellType: NSObject {
-    let idp: OPDS2SamlIDP
+  let idp: OPDS2SamlIDP
 
-    init(idp: OPDS2SamlIDP) {
-        self.idp = idp
-    }
+  init(idp: OPDS2SamlIDP) {
+    self.idp = idp
+  }
 }

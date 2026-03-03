@@ -9,34 +9,34 @@
 import Foundation
 
 enum SampleType: String {
-    case contentTypeEpubZip = "application/epub+zip"
-    case overdriveWeb = "text/html"
-    case openAccessAudiobook = "application/audiobook+json"
-    case overdriveAudiobookWaveFile = "audio/x-ms-wma"
-    case overdriveAudiobookMpeg = "audio/mpeg"
+  case contentTypeEpubZip = "application/epub+zip"
+  case overdriveWeb = "text/html"
+  case openAccessAudiobook = "application/audiobook+json"
+  case overdriveAudiobookWaveFile = "audio/x-ms-wma"
+  case overdriveAudiobookMpeg = "audio/mpeg"
 
-    var needsDownload: Bool {
-        switch self {
-        case .contentTypeEpubZip, .overdriveAudiobookMpeg, .overdriveAudiobookWaveFile:
-            return true
-        default:
-            return false
-        }
+  var needsDownload: Bool {
+    switch self {
+    case .contentTypeEpubZip, .overdriveAudiobookMpeg, .overdriveAudiobookWaveFile:
+      return true
+    default:
+      return false
     }
+  }
 }
 
 protocol Sample {
-    var url: URL { get }
-    var type: SampleType { get }
-    func fetchSample(completion: @escaping (NYPLResult<Data>) -> Void)
+  var url: URL { get }
+  var type: SampleType { get }
+  func fetchSample(completion: @escaping (NYPLResult<Data>) -> Void)
 }
 
 extension Sample {
-    var needsDownload: Bool { type.needsDownload }
+  var needsDownload: Bool { type.needsDownload }
 
-    func fetchSample(completion: @escaping (NYPLResult<Data>) -> Void) {
-        _ = TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
-            completion(result)
-        }
+  func fetchSample(completion: @escaping (NYPLResult<Data>) -> Void) {
+    let _ = TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
+        completion(result)
     }
+  }
 }

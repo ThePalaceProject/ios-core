@@ -9,6 +9,6 @@
 import Foundation
 
 struct EpubSample: Sample {
-    var url: URL
-    var type: SampleType
+  var url: URL
+  var type: SampleType
 }

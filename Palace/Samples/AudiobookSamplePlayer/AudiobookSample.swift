@@ -9,6 +9,6 @@
 import Foundation
 
 struct AudiobookSample: Sample {
-    var url: URL
-    var type: SampleType
+  var url: URL
+  var type: SampleType
 }
