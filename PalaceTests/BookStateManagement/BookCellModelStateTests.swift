@@ -188,4 +188,67 @@ final class BookCellModelStateTests: XCTestCase {
 
         XCTAssertTrue(model.isLoading)
     }
+
+    // MARK: - Download Error Routing
+
+    func testDownloadErrorRoutesToCellAlertWhenHalfSheetHidden() {
+        let book = createTestBook(id: "download-error-hidden")
+        mockRegistry.addBook(book, state: .downloadNeeded)
+
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry)
+        let expectation = XCTestExpectation(description: "Cell alert should be populated")
+
+        model.$showAlert
+            .dropFirst()
+            .sink { alert in
+                if alert != nil {
+                    expectation.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        MyBooksDownloadCenter.shared.downloadErrorPublisher.send(
+            DownloadErrorInfo(
+                bookId: book.identifier,
+                title: "Download Failed",
+                message: "Network timeout"
+            )
+        )
+
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertNotNil(model.showAlert)
+        XCTAssertNil(model.downloadErrorAlert)
+    }
+
+    func testDownloadErrorRoutesToHalfSheetAlertWhenHalfSheetVisible() {
+        let book = createTestBook(id: "download-error-halfsheet")
+        mockRegistry.addBook(book, state: .downloadNeeded)
+
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry)
+        model.showHalfSheet = true
+
+        let expectation = XCTestExpectation(description: "Half sheet alert should be populated")
+
+        model.$downloadErrorAlert
+            .dropFirst()
+            .sink { alert in
+                if alert != nil {
+                    expectation.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        MyBooksDownloadCenter.shared.downloadErrorPublisher.send(
+            DownloadErrorInfo(
+                bookId: book.identifier,
+                title: "Download Failed",
+                message: "Service unavailable",
+                retryAction: {}
+            )
+        )
+
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertNotNil(model.downloadErrorAlert)
+        XCTAssertNil(model.showAlert)
+    }
 }

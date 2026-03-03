@@ -60,12 +60,29 @@ struct NormalBookCell: View {
                     )
                 })
                 .alert(item: $model.showAlert) { alert in
-                    Alert(
-                        title: Text(alert.title),
-                        message: Text(alert.message),
-                        primaryButton: .default(Text(alert.buttonTitle ?? ""), action: alert.primaryAction),
-                        secondaryButton: .cancel(alert.secondaryAction)
-                    )
+                    if alert.secondaryButtonTitle != nil {
+                        Alert(
+                            title: Text(alert.title),
+                            message: Text(alert.message),
+                            primaryButton: .default(
+                                Text(alert.buttonTitle ?? Strings.MyDownloadCenter.retry),
+                                action: alert.primaryAction
+                            ),
+                            secondaryButton: .cancel(
+                                Text(alert.secondaryButtonTitle ?? Strings.Generic.cancel),
+                                action: alert.secondaryAction
+                            )
+                        )
+                    } else {
+                        Alert(
+                            title: Text(alert.title),
+                            message: Text(alert.message),
+                            dismissButton: .default(
+                                Text(alert.buttonTitle ?? Strings.Generic.ok),
+                                action: alert.primaryAction
+                            )
+                        )
+                    }
                 }
             }
 
