@@ -1,0 +1,139 @@
+{
+  "success": true,
+  "xcresult_path": "TestResults.xcresult",
+  "api_used": "legacy",
+  "build": {
+    "status": "notRequested",
+    "errors": [],
+    "warnings": []
+  },
+  "summary": {
+    "tests": 3,
+    "passed": 0,
+    "failed": 3,
+    "skipped": 0,
+    "duration": 0.0,
+    "duration_formatted": "<1ms",
+    "pass_rate": "0.0%"
+  },
+  "tests": [
+    {
+      "name": "(Transient Testing)",
+      "method": "(Transient Testing)",
+      "class": "Test Plan",
+      "identifier": "Test Plan/(Transient Testing)",
+      "status": "Failure",
+      "duration": 0.0,
+      "duration_formatted": "<1ms",
+      "failures": []
+    },
+    {
+      "name": "Could not resolve package dependencies:\n  Failed to resolve dependencies Dependencies could not be resolved because root depends on 'swift-toolkit' 3.3.0 and root depends on 'swift-toolkit' 3.7.0.\n",
+      "method": "Could not resolve package dependencies:\n  Failed to resolve dependencies Dependencies could not be resolved because root depends on 'swift-toolkit' 3.3.0 and root depends on 'swift-toolkit' 3.7.0.\n",
+      "class": "xcodebuild encountered an error",
+      "identifier": "xcodebuild encountered an error/Could not resolve package dependencies:\n  Failed to resolve dependencies Dependencies could not be resolved because root depends on 'swift-toolkit' 3.3.0 and root depends on 'swift-toolkit' 3.7.0.\n",
+      "status": "Failure",
+      "duration": 0.0,
+      "duration_formatted": "<1ms",
+      "failures": []
+    },
+    {
+      "name": "xcodebuild encountered an error (74)",
+      "method": "xcodebuild encountered an error (74)",
+      "class": "xcodebuild encountered an error",
+      "identifier": "F5A85F14-EB06-431A-BC98-4FD0481678ED",
+      "status": "Failure",
+      "duration": 0.0,
+      "duration_formatted": "<1ms",
+      "failures": []
+    }
+  ],
+  "classes": {
+    "Test Plan": {
+      "tests": [
+        {
+          "name": "(Transient Testing)",
+          "method": "(Transient Testing)",
+          "class": "Test Plan",
+          "identifier": "Test Plan/(Transient Testing)",
+          "status": "Failure",
+          "duration": 0.0,
+          "duration_formatted": "<1ms",
+          "failures": []
+        }
+      ],
+      "stats": {
+        "total": 1,
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0,
+        "duration": 0.0,
+        "duration_formatted": "<1ms"
+      }
+    },
+    "xcodebuild encountered an error": {
+      "tests": [
+        {
+          "name": "xcodebuild encountered an error (74)",
+          "method": "xcodebuild encountered an error (74)",
+          "class": "xcodebuild encountered an error",
+          "identifier": "F5A85F14-EB06-431A-BC98-4FD0481678ED",
+          "status": "Failure",
+          "duration": 0.0,
+          "duration_formatted": "<1ms",
+          "failures": []
+        },
+        {
+          "name": "Could not resolve package dependencies:\n  Failed to resolve dependencies Dependencies could not be resolved because root depends on 'swift-toolkit' 3.3.0 and root depends on 'swift-toolkit' 3.7.0.\n",
+          "method": "Could not resolve package dependencies:\n  Failed to resolve dependencies Dependencies could not be resolved because root depends on 'swift-toolkit' 3.3.0 and root depends on 'swift-toolkit' 3.7.0.\n",
+          "class": "xcodebuild encountered an error",
+          "identifier": "xcodebuild encountered an error/Could not resolve package dependencies:\n  Failed to resolve dependencies Dependencies could not be resolved because root depends on 'swift-toolkit' 3.3.0 and root depends on 'swift-toolkit' 3.7.0.\n",
+          "status": "Failure",
+          "duration": 0.0,
+          "duration_formatted": "<1ms",
+          "failures": []
+        }
+      ],
+      "stats": {
+        "total": 2,
+        "passed": 0,
+        "failed": 2,
+        "skipped": 0,
+        "duration": 0.0,
+        "duration_formatted": "<1ms"
+      }
+    }
+  },
+  "failed_tests": [
+    {
+      "name": "(Transient Testing)",
+      "method": "(Transient Testing)",
+      "class": "Test Plan",
+      "identifier": "Test Plan/(Transient Testing)",
+      "status": "Failure",
+      "duration": 0.0,
+      "duration_formatted": "<1ms",
+      "failures": []
+    },
+    {
+      "name": "xcodebuild encountered an error (74)",
+      "method": "xcodebuild encountered an error (74)",
+      "class": "xcodebuild encountered an error",
+      "identifier": "F5A85F14-EB06-431A-BC98-4FD0481678ED",
+      "status": "Failure",
+      "duration": 0.0,
+      "duration_formatted": "<1ms",
+      "failures": []
+    },
+    {
+      "name": "Could not resolve package dependencies:\n  Failed to resolve dependencies Dependencies could not be resolved because root depends on 'swift-toolkit' 3.3.0 and root depends on 'swift-toolkit' 3.7.0.\n",
+      "method": "Could not resolve package dependencies:\n  Failed to resolve dependencies Dependencies could not be resolved because root depends on 'swift-toolkit' 3.3.0 and root depends on 'swift-toolkit' 3.7.0.\n",
+      "class": "xcodebuild encountered an error",
+      "identifier": "xcodebuild encountered an error/Could not resolve package dependencies:\n  Failed to resolve dependencies Dependencies could not be resolved because root depends on 'swift-toolkit' 3.3.0 and root depends on 'swift-toolkit' 3.7.0.\n",
+      "status": "Failure",
+      "duration": 0.0,
+      "duration_formatted": "<1ms",
+      "failures": []
+    }
+  ]
+}
