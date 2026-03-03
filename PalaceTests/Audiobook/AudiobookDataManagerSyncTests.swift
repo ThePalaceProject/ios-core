@@ -267,14 +267,14 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
 
         dataManager.save(time: entry)
 
-        // Act
-        let expectation = XCTestExpectation(description: "Sync completes")
+        // Act — wait until the mock actually receives a POST rather than using a fixed delay
+        let mockRef = mockNetworkExecutor!
+        let requestReceived = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in mockRef.requestHistory.count > 0 },
+            object: nil
+        )
         dataManager.syncValues()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
+        wait(for: [requestReceived], timeout: 10.0)
 
         // Assert - verify request body format
         guard let requestBody = mockNetworkExecutor.requestHistory.first?.body else {
