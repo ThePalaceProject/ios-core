@@ -107,6 +107,28 @@ import Foundation
         return try jsonDecoder.decode(TPPProblemDocument.self, from: data)
     }
 
+    /// When the server returns application/api-problem+json but strict RFC 7807 decode fails,
+    /// extracts a human-readable message from common keys so the user still sees the server's reason.
+    static func fromProblemResponseData(_ data: Data) -> TPPProblemDocument? {
+        if let doc = try? fromData(data) {
+            return doc
+        }
+        guard let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return nil
+        }
+        let detail = (dict["detail"] as? String)
+            ?? (dict["message"] as? String)
+            ?? (dict["title"] as? String)
+        let title = dict["title"] as? String
+        return TPPProblemDocument([
+            typeKey: dict["type"] as? String ?? "",
+            titleKey: title ?? NSLocalizedString("Download Error", comment: ""),
+            statusKey: dict["status"] as? Int ?? noStatus,
+            detailKey: detail ?? NSLocalizedString("The server returned an error. You may need to return the book and borrow it again.", comment: ""),
+            instanceKey: dict["instance"] as? String ?? ""
+        ])
+    }
+
     /// Factory method to create a problem document after an api call.
     ///
     /// - Parameters:
