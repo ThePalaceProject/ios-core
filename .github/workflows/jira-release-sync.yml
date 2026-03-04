@@ -1,0 +1,111 @@
+name: Jira Release Sync
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to sync (e.g. 2.2.2)'
+        required: true
+jobs:
+  sync-to-jira:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release info
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          TAG="${INPUT_TAG:-$EVENT_TAG}"
+          RELEASE_JSON=$(gh release view "$TAG" --json tagName,url,body)
+          echo "tag=$(echo "$RELEASE_JSON" | jq -r .tagName)" >> "$GITHUB_OUTPUT"
+          echo "url=$(echo "$RELEASE_JSON" | jq -r .url)" >> "$GITHUB_OUTPUT"
+          {
+            echo "body<<EOFBODY"
+            echo "$RELEASE_JSON" | jq -r .body
+            echo "EOFBODY"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create Jira version
+        id: create-version
+        env:
+          JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          RELEASE_NAME: "IOS ${{ steps.release.outputs.tag }}"
+        run: |
+          echo "Creating Jira version: $RELEASE_NAME"
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            --url "${JIRA_URL}/rest/api/3/version" \
+            --user "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
+            --header 'Accept: application/json' \
+            --header 'Content-Type: application/json' \
+            --data "$(jq -n --arg name "$RELEASE_NAME" '{
+              name: $name,
+              description: "Release created from GitHub build.",
+              project: "PP",
+              released: false
+            }')")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP status: $HTTP_CODE"
+          echo "Response: $BODY"
+          if [ "$HTTP_CODE" -ge 400 ]; then
+            echo "::error::Jira API returned HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+      - name: Link GitHub release to Jira version
+        env:
+          JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          RELEASE_NAME: "IOS ${{ steps.release.outputs.tag }}"
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+        run: |
+          VERSION_ID=$(curl -s \
+            --user "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
+            --url "${JIRA_URL}/rest/api/3/project/PP/versions" \
+            | jq -r ".[] | select(.name == \"$RELEASE_NAME\") | .id")
+          echo "Version ID: $VERSION_ID"
+          curl -s --fail -X POST \
+            --url "${JIRA_URL}/rest/api/3/version/$VERSION_ID/relatedwork" \
+            --user "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
+            --header 'Accept: application/json' \
+            --header 'Content-Type: application/json' \
+            --data "$(jq -n --arg title "GitHub Release Notes" --arg url "$RELEASE_URL" '{
+              title: $title,
+              url: $url,
+              category: "release notes"
+            }')"
+
+      - name: Update fixVersions on linked tickets
+        env:
+          JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          RELEASE_NAME: "IOS ${{ steps.release.outputs.tag }}"
+          RELEASE_BODY: ${{ steps.release.outputs.body }}
+        run: |
+          KEYS=$((echo "$RELEASE_BODY" | grep -oE "PP-[0-9]+" | sort -u) || echo "")
+          if [ -z "$KEYS" ]; then
+            echo "No Jira keys found in release body."
+            exit 0
+          fi
+          echo "Found tickets: $KEYS"
+          for KEY in $KEYS; do
+            echo "Updating fixVersion on $KEY..."
+            curl -s --fail -X PUT \
+              --url "${JIRA_URL}/rest/api/3/issue/$KEY" \
+              --user "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
+              --header 'Accept: application/json' \
+              --header 'Content-Type: application/json' \
+              --data "$(jq -n --arg name "$RELEASE_NAME" '{
+                update: { fixVersions: [{ add: { name: $name } }] }
+              }')" || echo "Warning: failed to update $KEY"
+          done
