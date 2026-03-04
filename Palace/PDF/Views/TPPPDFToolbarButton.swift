@@ -17,7 +17,6 @@ struct TPPPDFToolbarButton: View {
     let text: String?
     let accessibilityLabelText: String?
 
-    // accesslint:disable A11Y.SWIFTUI.MISSING_LABEL - Image is decorative (.accessibilityHidden); button has .accessibilityLabel
     init(icon: String, accessibilityLabel: String? = nil, action: @escaping () -> Void) {
         self.action = action
         self.image = Image(systemName: icon)

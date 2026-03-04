@@ -20,7 +20,7 @@ final class HoldsSnapshotTests: XCTestCase {
             Text(Strings.HoldsView.emptyMessage)
                 .multilineTextAlignment(.center)
                 .foregroundColor(Color(white: 0.667))
-                .font(.system(size: 18))
+                .font(.body)
                 .padding(.horizontal, 24)
         }
         .frame(width: 390, height: 400)
@@ -34,7 +34,7 @@ final class HoldsSnapshotTests: XCTestCase {
             Text(Strings.HoldsView.emptyMessage)
                 .multilineTextAlignment(.center)
                 .foregroundColor(Color(white: 0.667))
-                .font(.system(size: 18))
+                .font(.body)
                 .padding(.horizontal, 24)
         }
         .frame(width: 390, height: 400)

@@ -2,7 +2,6 @@ import Foundation
 
 /// List of available Libraries/Accounts to select as patron's primary
 /// when going through Welcome Screen flow.
-// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad from datasource.title
 @objc final class TPPAccountList: UIViewController {
 
     private let completion: (Account) -> Void
@@ -23,6 +22,7 @@ import Foundation
     @objc required init(completion: @escaping (Account) -> Void) {
         self.completion = completion
         super.init(nibName: nil, bundle: nil)
+        title = datasource.title
     }
 
     @available(*, unavailable)
@@ -33,7 +33,6 @@ import Foundation
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = TPPConfiguration.backgroundColor()
-        title = datasource.title
 
         if #available(iOS 13.0, *) {
             isModalInPresentation = requiresSelectionBeforeDismiss

@@ -202,10 +202,8 @@ struct NormalBookCell: View {
     @ViewBuilder private var unreadImageView: some View {
         VStack {
             ImageProviders.MyBooksView.unreadBadge
-                .resizable()
                 .frame(width: 10, height: 10)
                 .foregroundColor(Color(TPPConfiguration.accentColor()))
-                .accessibilityHidden(true)
             Spacer()
         }
         .opacity(model.showUnreadIndicator ? 1.0 : 0.0)

@@ -1,12 +1,20 @@
 import UIKit
 
-// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 final class CatalogLoadingViewController: UIViewController, TPPLoadingViewController {
     var loadingView: UIView?
 
+    override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+        super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
+        title = NSLocalizedString("Loading", comment: "Loading screen title")
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = NSLocalizedString("Loading", comment: "Loading screen title")
         view.backgroundColor = TPPConfiguration.backgroundColor()
     }
 
