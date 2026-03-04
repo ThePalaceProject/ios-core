@@ -1,0 +1,43 @@
+name: Jira Release Sync
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to sync (e.g. 2.2.2)'
+        required: true
+jobs:
+  sync-to-jira:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release info
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          TAG="${INPUT_TAG:-$EVENT_TAG}"
+          RELEASE_JSON=$(gh release view "$TAG" --json tagName,url,body)
+          echo "tag=$(echo "$RELEASE_JSON" | jq -r .tagName)" >> "$GITHUB_OUTPUT"
+          echo "url=$(echo "$RELEASE_JSON" | jq -r .url)" >> "$GITHUB_OUTPUT"
+          {
+            echo "body<<EOFBODY"
+            echo "$RELEASE_JSON" | jq -r .body
+            echo "EOFBODY"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Sync release to Jira
+        uses: ThePalaceProject/circulation/.github/actions/jira-release-sync@main
+        with:
+          jira-base-url: ${{ secrets.JIRA_BASE_URL }}
+          jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}
+          jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
+
+          release-name: "IOS ${{ steps.release.outputs.tag }}"
+          release-url: ${{ steps.release.outputs.url }}
+          release-body: ${{ steps.release.outputs.body }}
