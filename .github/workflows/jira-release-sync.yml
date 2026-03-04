@@ -37,7 +37,7 @@ jobs:
           JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
           JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-          RELEASE_NAME: "IOS ${{ steps.release.outputs.tag }}"
+          RELEASE_NAME: "iOS ${{ steps.release.outputs.tag }}"
         run: |
           echo "Creating Jira version: $RELEASE_NAME"
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
@@ -65,7 +65,7 @@ jobs:
           JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
           JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-          RELEASE_NAME: "IOS ${{ steps.release.outputs.tag }}"
+          RELEASE_NAME: "iOS ${{ steps.release.outputs.tag }}"
           RELEASE_URL: ${{ steps.release.outputs.url }}
         run: |
           VERSION_ID=$(curl -s \
@@ -89,7 +89,7 @@ jobs:
           JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
           JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-          RELEASE_NAME: "IOS ${{ steps.release.outputs.tag }}"
+          RELEASE_NAME: "iOS ${{ steps.release.outputs.tag }}"
           RELEASE_BODY: ${{ steps.release.outputs.body }}
         run: |
           KEYS=$((echo "$RELEASE_BODY" | grep -oE "PP-[0-9]+" | sort -u) || echo "")
