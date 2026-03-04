@@ -10,91 +10,103 @@ import Foundation
 @testable import Palace
 
 class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLogicUIDelegate {
-  
-  // MARK: - Call Tracking for Tests
-  var didCallWillSignOut = false
-  var didCallDidFinishDeauthorizing = false
-  var didFinishDeauthorizingHandler: (() -> Void)?
-  
-  // MARK: - Sign-In Flow Tracking
-  var didCallWillSignIn = false
-  var didCallDidCompleteSignIn = false
-  var didCallDidCancelSignIn = false
-  var didCallDidReceiveCredentials = false
-  var willSignInCallCount = 0
-  var didCompleteSignInCallCount = 0
-  var didReceiveCredentialsCallCount = 0
-  
-  // Track isLoading state transitions
-  var isLoading = false
-  var loadingStateChanges: [Bool] = []
-  
-  func businessLogicWillSignOut(_ businessLogic: TPPSignInBusinessLogic) {
-    didCallWillSignOut = true
-  }
 
-  func businessLogic(_ logic: TPPSignInBusinessLogic,
-                     didEncounterSignOutError error: Error?,
-                     withHTTPStatusCode httpStatusCode: Int) {
-  }
+    // MARK: - Call Tracking for Tests
+    var didCallWillSignOut = false
+    var didCallDidFinishDeauthorizing = false
+    var didFinishDeauthorizingHandler: (() -> Void)?
 
-  func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {
-    didCallDidFinishDeauthorizing = true
-    didFinishDeauthorizingHandler?()
-  }
+    // MARK: - Sign-In Flow Tracking
+    var didCallWillSignIn = false
+    var didCallDidCompleteSignIn = false
+    var didCallDidCancelSignIn = false
+    var didCallDidReceiveCredentials = false
+    var willSignInCallCount = 0
+    var didCompleteSignInCallCount = 0
+    var didReceiveCredentialsCallCount = 0
+    var didCompleteSignInHandler: (() -> Void)?
 
-  func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-    didCallDidCancelSignIn = true
-    isLoading = false
-    loadingStateChanges.append(false)
-  }
+    // Track isLoading state transitions
+    var isLoading = false
+    var loadingStateChanges: [Bool] = []
 
-  var context = "Unit Tests Context"
+    func businessLogicWillSignOut(_ businessLogic: TPPSignInBusinessLogic) {
+        didCallWillSignOut = true
+    }
 
-  func businessLogicWillSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-    didCallWillSignIn = true
-    willSignInCallCount += 1
-    isLoading = true
-    loadingStateChanges.append(true)
-  }
+    // MARK: - Sign-Out Error Tracking
+    var didCallSignOutError = false
+    var signOutErrorCallCount = 0
+    var lastSignOutErrorHTTPStatusCode: Int?
+    var signOutErrorHandler: ((Error?, Int) -> Void)?
 
-  func businessLogicDidCompleteSignIn(_ businessLogic: TPPSignInBusinessLogic) {
-    didCallDidCompleteSignIn = true
-    didCompleteSignInCallCount += 1
-    isLoading = false
-    loadingStateChanges.append(false)
-  }
-  
-  func businessLogicDidReceiveCredentials(_ businessLogic: TPPSignInBusinessLogic) {
-    didCallDidReceiveCredentials = true
-    didReceiveCredentialsCallCount += 1
-    // Simulate the real behavior: keep loading true as DRM processing starts
-    isLoading = true
-  }
+    func businessLogic(_ logic: TPPSignInBusinessLogic,
+                       didEncounterSignOutError error: Error?,
+                       withHTTPStatusCode httpStatusCode: Int) {
+        didCallSignOutError = true
+        signOutErrorCallCount += 1
+        lastSignOutErrorHTTPStatusCode = httpStatusCode
+        signOutErrorHandler?(error, httpStatusCode)
+    }
 
-  func businessLogic(_ logic: TPPSignInBusinessLogic,
-                     didEncounterValidationError error: Error?,
-                     userFriendlyErrorTitle title: String?,
-                     andMessage message: String?) {
-  }
+    func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {
+        didCallDidFinishDeauthorizing = true
+        didFinishDeauthorizingHandler?()
+    }
 
-  func dismiss(animated flag: Bool, completion: (() -> Void)?) {
-    completion?()
-  }
+    func businessLogicDidCancelSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+        didCallDidCancelSignIn = true
+        isLoading = false
+        loadingStateChanges.append(false)
+    }
 
-  func present(_ viewControllerToPresent: UIViewController,
-               animated flag: Bool,
-               completion: (() -> Void)?) {
-    completion?()
-  }
+    var context = "Unit Tests Context"
 
-  var username: String? = "username"
+    func businessLogicWillSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+        didCallWillSignIn = true
+        willSignInCallCount += 1
+        isLoading = true
+        loadingStateChanges.append(true)
+    }
 
-  var pin: String? = "pin"
+    func businessLogicDidCompleteSignIn(_ businessLogic: TPPSignInBusinessLogic) {
+        didCallDidCompleteSignIn = true
+        didCompleteSignInCallCount += 1
+        isLoading = false
+        loadingStateChanges.append(false)
+        didCompleteSignInHandler?()
+    }
 
-  var usernameTextField: UITextField? = nil
+    func businessLogicDidReceiveCredentials(_ businessLogic: TPPSignInBusinessLogic) {
+        didCallDidReceiveCredentials = true
+        didReceiveCredentialsCallCount += 1
+        // Simulate the real behavior: keep loading true as DRM processing starts
+        isLoading = true
+    }
 
-  var PINTextField: UITextField? = nil
+    func businessLogic(_ logic: TPPSignInBusinessLogic,
+                       didEncounterValidationError error: Error?,
+                       userFriendlyErrorTitle title: String?,
+                       andMessage message: String?) {
+    }
 
-  var forceEditability: Bool = false
+    func dismiss(animated flag: Bool, completion: (() -> Void)?) {
+        completion?()
+    }
+
+    func present(_ viewControllerToPresent: UIViewController,
+                 animated flag: Bool,
+                 completion: (() -> Void)?) {
+        completion?()
+    }
+
+    var username: String? = "username"
+
+    var pin: String? = "pin"
+
+    var usernameTextField: UITextField?
+
+    var PINTextField: UITextField?
+
+    var forceEditability: Bool = false
 }

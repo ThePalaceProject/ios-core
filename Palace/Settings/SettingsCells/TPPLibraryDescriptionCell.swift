@@ -11,26 +11,27 @@ import UIKit
 @objcMembers
 class TPPLibraryDescriptionCell: UITableViewCell {
 
-  let descriptionLabel: UILabel = {
-    let label = UILabel()
-    label.numberOfLines = 0
-    label.font = UIFont.palaceFont(ofSize: 12)
-    return label
-  }()
+    let descriptionLabel: UILabel = {
+        let label = UILabel()
+        label.numberOfLines = 0
+        label.font = UIFont.preferredFont(forTextStyle: .footnote) // Dynamic Type
+        label.adjustsFontForContentSizeCategory = true
+        return label
+    }()
 
-  override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-    super.init(style: style, reuseIdentifier: reuseIdentifier)
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
 
-    descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
-    contentView.addSubview(descriptionLabel)
+        descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(descriptionLabel)
 
-    descriptionLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor).isActive = true
-    descriptionLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor).isActive = true
-    descriptionLabel.widthAnchor.constraint(equalTo: contentView.widthAnchor, constant: -32).isActive = true
-    descriptionLabel.heightAnchor.constraint(equalTo: contentView.heightAnchor, constant: -16).isActive = true
-  }
+        descriptionLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor).isActive = true
+        descriptionLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor).isActive = true
+        descriptionLabel.widthAnchor.constraint(equalTo: contentView.widthAnchor, constant: -32).isActive = true
+        descriptionLabel.heightAnchor.constraint(equalTo: contentView.heightAnchor, constant: -16).isActive = true
+    }
 
-  required init?(coder aDecoder: NSCoder) {
-    fatalError("init(coder:) has not been implemented")
-  }
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 }

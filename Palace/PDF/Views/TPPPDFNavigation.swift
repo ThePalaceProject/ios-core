@@ -10,116 +10,119 @@ import SwiftUI
 
 /// Navigation between previews, TOC and bookmarks
 struct TPPPDFNavigation<Content>: View where Content: View {
-  
-  private enum TPPPDFReaderModeValues: Int, Identifiable {
-    case previews, toc, bookmarks
-    
-    var id: Int {
-      rawValue
-    }
-    
-    var image: Image {
-      switch self {
-      case .previews: return Image(systemName: "rectangle.grid.3x2")
-      case .toc: return Image(systemName: "list.bullet")
-      case .bookmarks: return Image(systemName: "bookmark")
-      }
-    }
-    
-    var accessibilityLabel: String {
-      switch self {
-      case .previews: return Strings.Generic.pagePreviewsTab
-      case .toc: return Strings.Generic.tableOfContents
-      case .bookmarks: return Strings.Generic.bookmarksTab
-      }
-    }
-    
-    static var allValues: [TPPPDFReaderModeValues] {
-      return [.previews, .toc, .bookmarks]
-    }
-    
-    var readerMode: TPPPDFReaderMode {
-      switch self {
-      case .previews: return .previews
-      case .toc: return .toc
-      case .bookmarks: return .bookmarks
-      }
-    }
-  }
-  
-  @EnvironmentObject var metadata: TPPPDFDocumentMetadata
-  
-  @Environment(\.presentationMode) var presentationMode: Binding<PresentationMode>
-  
-  @Binding var readerMode: TPPPDFReaderMode
 
-  private var isShowingPdfContorls: Bool {
-    readerMode == .previews || readerMode == .bookmarks || readerMode == .toc
-  }
-  @State private var pickerSelection = 0
-  let content: (TPPPDFReaderMode) -> Content
-  
-  var body: some View {
-    content(readerMode)
-      .navigationBarItems(leading: leadingItems, trailing: trailingItems)
-  }
-  
-  private let minButtonSize = CGSize(width: 24, height: 24)
-  
-  @ViewBuilder
-  var leadingItems: some View {
-    HStack {
-      ZStack(alignment: .leading) {
-        TPPPDFToolbarButton(icon: "list.bullet") {
-          readerMode = TPPPDFReaderModeValues(rawValue: pickerSelection)?.readerMode ?? .previews
-          metadata.fetchBookmarks()
+    private enum TPPPDFReaderModeValues: Int, Identifiable {
+        case previews, toc, bookmarks
+
+        var id: Int {
+            rawValue
         }
-        .accessibilityLabel(Strings.Generic.tableOfContents)
-        .visible(when: !isShowingPdfContorls)
 
-        Picker("", selection: $pickerSelection.onChange(changeReaderMode)) {
-          ForEach(TPPPDFReaderModeValues.allValues) { readerModeValue in
-            readerModeValue.image
-              .tag(readerModeValue.rawValue)
-              .accessibilityLabel(readerModeValue.accessibilityLabel)
-          }
+        // accesslint:disable A11Y.SWIFTUI.MISSING_LABEL - Decorative; accessibilityLabel set via accessibilityLabel computed property below
+        var image: Image {
+            switch self {
+            case .previews: return Image(systemName: "rectangle.grid.3x2")
+            case .toc: return Image(systemName: "list.bullet")
+            case .bookmarks: return Image(systemName: "bookmark")
+            }
         }
-        .toolbarButtonSize()
-        .pickerStyle(.segmented)
-        .visible(when: isShowingPdfContorls)
-      }
-    }
-  }
 
-  @ViewBuilder
-  var trailingItems: some View {
-    ZStack(alignment: .trailing) {
-      TPPPDFToolbarButton(text: Strings.TPPPDFNavigation.resume) {
-        readerMode = .reader
-      }
-      .visible(when: isShowingPdfContorls)
-
-      HStack {
-        TPPPDFToolbarButton(icon: "magnifyingglass") {
-          readerMode = (readerMode == .search ? .reader : .search)
+        /// Accessibility label for the tab - images are decorative, labels provide context
+        var accessibilityLabel: String {
+            switch self {
+            case .previews: return Strings.Generic.pagePreviewsTab
+            case .toc: return Strings.Generic.tableOfContents
+            case .bookmarks: return Strings.Generic.bookmarksTab
+            }
         }
-        .accessibilityLabel(Strings.Generic.searchInBook)
-        TPPPDFToolbarButton(icon: metadata.isBookmarked() ? "bookmark.fill" : "bookmark") {
-          if metadata.isBookmarked() {
-            metadata.removeBookmark()
-          } else {
-            metadata.addBookmark()
-          }
-        }
-        .accessibilityLabel(metadata.isBookmarked() ? Strings.TPPBaseReaderViewController.removeBookmark : Strings.TPPBaseReaderViewController.addBookmark)
-      }
-      .visible(when: !isShowingPdfContorls)
-    }
-  }
 
-  func changeReaderMode(_ newValue: Int) {
-    if let readerModeValue = TPPPDFReaderModeValues(rawValue: newValue) {
-      readerMode = readerModeValue.readerMode
+        static var allValues: [TPPPDFReaderModeValues] {
+            return [.previews, .toc, .bookmarks]
+        }
+
+        var readerMode: TPPPDFReaderMode {
+            switch self {
+            case .previews: return .previews
+            case .toc: return .toc
+            case .bookmarks: return .bookmarks
+            }
+        }
     }
-  }
+
+    @EnvironmentObject var metadata: TPPPDFDocumentMetadata
+
+    @Environment(\.presentationMode) var presentationMode: Binding<PresentationMode>
+
+    @Binding var readerMode: TPPPDFReaderMode
+
+    private var isShowingPdfContorls: Bool {
+        readerMode == .previews || readerMode == .bookmarks || readerMode == .toc
+    }
+    @State private var pickerSelection = 0
+    let content: (TPPPDFReaderMode) -> Content
+
+    var body: some View {
+        content(readerMode)
+            .navigationBarItems(leading: leadingItems, trailing: trailingItems)
+    }
+
+    private let minButtonSize = CGSize(width: 24, height: 24)
+
+    @ViewBuilder
+    var leadingItems: some View {
+        HStack {
+            ZStack(alignment: .leading) {
+                TPPPDFToolbarButton(icon: "list.bullet") {
+                    readerMode = TPPPDFReaderModeValues(rawValue: pickerSelection)?.readerMode ?? .previews
+                    metadata.fetchBookmarks()
+                }
+                .accessibilityLabel(Strings.Generic.tableOfContents)
+                .visible(when: !isShowingPdfContorls)
+
+                Picker("", selection: $pickerSelection.onChange(changeReaderMode)) {
+                    ForEach(TPPPDFReaderModeValues.allValues) { readerModeValue in
+                        readerModeValue.image
+                            .accessibilityHidden(true)
+                            .tag(readerModeValue.rawValue)
+                            .accessibilityLabel(readerModeValue.accessibilityLabel)
+                    }
+                }
+                .toolbarButtonSize()
+                .pickerStyle(.segmented)
+                .visible(when: isShowingPdfContorls)
+            }
+        }
+    }
+
+    @ViewBuilder
+    var trailingItems: some View {
+        ZStack(alignment: .trailing) {
+            TPPPDFToolbarButton(text: Strings.TPPPDFNavigation.resume) {
+                readerMode = .reader
+            }
+            .visible(when: isShowingPdfContorls)
+
+            HStack {
+                TPPPDFToolbarButton(icon: "magnifyingglass") {
+                    readerMode = (readerMode == .search ? .reader : .search)
+                }
+                .accessibilityLabel(Strings.Generic.searchInBook)
+                TPPPDFToolbarButton(icon: metadata.isBookmarked() ? "bookmark.fill" : "bookmark") {
+                    if metadata.isBookmarked() {
+                        metadata.removeBookmark()
+                    } else {
+                        metadata.addBookmark()
+                    }
+                }
+                .accessibilityLabel(metadata.isBookmarked() ? Strings.TPPBaseReaderViewController.removeBookmark : Strings.TPPBaseReaderViewController.addBookmark)
+            }
+            .visible(when: !isShowingPdfContorls)
+        }
+    }
+
+    func changeReaderMode(_ newValue: Int) {
+        if let readerModeValue = TPPPDFReaderModeValues(rawValue: newValue) {
+            readerMode = readerModeValue.readerMode
+        }
+    }
 }

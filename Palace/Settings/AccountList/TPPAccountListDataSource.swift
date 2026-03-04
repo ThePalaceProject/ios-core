@@ -11,22 +11,33 @@ class TPPAccountListDataSource: NSObject {
   
   private var accounts: [Account]!
   private var nationalAccounts: [Account]!
+  private let accountsProvider: () -> [Account]
+  private let nationalAccountUUIDs: [String]
   
-  override init() {
+  override convenience init() {
+    self.init(
+      accountsProvider: { AccountsManager.shared.accounts() },
+      nationalAccountUUIDs: AccountsManager.TPPNationalAccountUUIDs
+    )
+  }
+  
+  init(accountsProvider: @escaping () -> [Account], nationalAccountUUIDs: [String]) {
+    self.accountsProvider = accountsProvider
+    self.nationalAccountUUIDs = nationalAccountUUIDs
     super.init()
     loadData()
   }
   
   func loadData(_ filterString: String? = nil) {
-    accounts = AccountsManager.shared.accounts()
-    accounts.sort { $0.name < $1.name }
+    accounts = accountsProvider()
+    accounts.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     
     if let filter = filterString, !filter.isEmpty {
-      nationalAccounts = self.accounts.filter { AccountsManager.TPPNationalAccountUUIDs.contains($0.uuid) && $0.name.range(of: filter, options: .caseInsensitive) != nil }
-      accounts = self.accounts.filter { !AccountsManager.TPPNationalAccountUUIDs.contains($0.uuid) && $0.name.range(of: filter, options: .caseInsensitive) != nil }
+      nationalAccounts = self.accounts.filter { nationalAccountUUIDs.contains($0.uuid) && $0.name.range(of: filter, options: .caseInsensitive) != nil }
+      accounts = self.accounts.filter { !nationalAccountUUIDs.contains($0.uuid) && $0.name.range(of: filter, options: .caseInsensitive) != nil }
     } else {
-      nationalAccounts = self.accounts.filter { AccountsManager.TPPNationalAccountUUIDs.contains($0.uuid) }
-      accounts = self.accounts.filter { !AccountsManager.TPPNationalAccountUUIDs.contains($0.uuid) }
+      nationalAccounts = self.accounts.filter { nationalAccountUUIDs.contains($0.uuid) }
+      accounts = self.accounts.filter { !nationalAccountUUIDs.contains($0.uuid) }
     }
     
     delegate?.refresh()

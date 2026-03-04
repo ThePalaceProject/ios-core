@@ -11,241 +11,299 @@ import WebKit
 
 extension TPPSignInBusinessLogic {
 
-  /// Main entry point for logging a user out.
-  ///
-  /// - Important: Requires to be called from the main thread.
-func performLogOut() {
-#if FEATURE_DRM_CONNECTOR
-    uiDelegate?.businessLogicWillSignOut(self)
-    
-    guard var request = self.makeRequest(for: .signOut, context: "Sign Out") else {
-      return
+    // MARK: - Sign-Out Race Condition Guard (PP-3819)
+    //
+    // Race condition: sign-out request returns 401 (token expired after idle)
+    // → DRM deauthorization starts asynchronously → user signs back in before
+    // DRM callback fires → callback triggers completeLogOutProcess() which
+    // clears the user's NEW credentials.
+    //
+    // Fix: performLogOut() captures the userAccount's signInGeneration.
+    // finalizeSignIn() increments it (via cancelPendingSignOut).
+    // completeLogOutProcess() checks if it changed — if so, the user
+    // re-authenticated and we skip cleanup.
+    //
+    // The counter lives on the TPPUserAccount (shared per library) so that
+    // it works across different business-logic instances for the same library,
+    // while being naturally isolated per library. No global mutable state.
+
+    private static var signOutSnapshotKey = 0
+
+    /// The signInGeneration captured when performLogOut() was called.
+    private var signOutSnapshot: Int {
+        get { objc_getAssociatedObject(self, &Self.signOutSnapshotKey) as? Int ?? -1 }
+        set { objc_setAssociatedObject(self, &Self.signOutSnapshotKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }
 
-    request.timeoutInterval = 45
-    
-    let barcode = userAccount.barcode
-    networker.executeRequest(request, enableTokenRefresh: false) { [weak self] result in
-      switch result {
-      case .success(let data, let response):
-        self?.processLogOut(data: data,
-                            response: response,
-                            for: request,
-                            barcode: barcode)
-      case .failure(let errorWithProblemDoc, let response):
-        TPPUserAccount.sharedAccount().removeAll()        
-        self?.processLogOutError(errorWithProblemDoc,
-                                 response: response,
-                                 for: request,
-                                 barcode: barcode)
-      }
-    }
-    
-#else
-    if self.bookRegistry.isSyncing {
-      let alert = TPPAlertUtils.alert(
-        title: "SettingsAccountViewControllerCannotLogOutTitle",
-        message: "SettingsAccountViewControllerCannotLogOutMessage")
-      uiDelegate?.present(alert, animated: true, completion: nil)
-    } else {
-      completeLogOutProcess()
-    }
-#endif
-  }
-
-  #if FEATURE_DRM_CONNECTOR
-  private func processLogOut(data: Data,
-                             response: URLResponse?,
-                             for request: URLRequest,
-                             barcode: String?) {
-    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-
-    let profileDoc: UserProfileDocument
-    do {
-      profileDoc = try UserProfileDocument.fromData(data)
-    } catch {
-      Log.error(#file, "Unable to parse user profile at sign out (HTTP \(statusCode): Adobe device deauthorization won't be possible.")
-      TPPErrorLogger.logUserProfileDocumentAuthError(
-        error as NSError,
-        summary: "SignOut: unable to parse user profile doc",
-        barcode: barcode,
-        metadata: [
-          "Request": request.loggableString,
-          "Response": response ?? "N/A",
-          "HTTP status code": statusCode
-      ])
-      self.uiDelegate?.businessLogic(self,
-                                     didEncounterSignOutError: error,
-                                     withHTTPStatusCode: statusCode)
-      return
+    /// Called by finalizeSignIn() to invalidate any in-flight sign-out
+    /// for this library's user account.
+    func cancelPendingSignOut() {
+        userAccount.signInGeneration += 1
     }
 
-    if let drm = profileDoc.drm?.first,
-      let clientToken = drm.clientToken, drm.vendor != nil {
+    /// Main entry point for logging a user out.
+    ///
+    /// - Important: Requires to be called from the main thread.
+    func performLogOut() {
+        signOutSnapshot = userAccount.signInGeneration
 
-      // Set the fresh Adobe token info into the user account so that the
-      // following `deauthorizeDevice` call can use it.
-      self.userAccount.setLicensor(drm.licensor)
-      Log.info(#file, "Licensor token updated to \(clientToken) for adobe user ID \(self.userAccount.userID ?? "N/A")")
-    } else {
-      Log.error(#file, "Licensor token invalid: \(profileDoc.toJson())")
+        #if FEATURE_DRM_CONNECTOR
+        uiDelegate?.businessLogicWillSignOut(self)
+
+        guard var request = self.makeRequest(for: .signOut, context: "Sign Out") else {
+            return
+        }
+
+        request.timeoutInterval = 45
+
+        let barcode = userAccount.barcode
+        networker.executeRequest(request, enableTokenRefresh: false) { [weak self] result in
+            switch result {
+            case .success(let data, let response):
+                self?.processLogOut(data: data,
+                                    response: response,
+                                    for: request,
+                                    barcode: barcode)
+            case .failure(let errorWithProblemDoc, let response):
+                // PP-3819: Do NOT call removeAll() here. Credential cleanup
+                // is handled by completeLogOutProcess() after device
+                // deauthorization. Calling it prematurely caused:
+                // 1. Licensor wiped before deauthorizeDevice() could use it
+                // 2. Double removeAll() → double notification → UI corruption
+                // 3. Race condition with re-authentication
+                self?.processLogOutError(errorWithProblemDoc,
+                                         response: response,
+                                         for: request,
+                                         barcode: barcode)
+            }
+        }
+
+        #else
+        if self.bookRegistry.isSyncing {
+            let alert = TPPAlertUtils.alert(
+                title: "SettingsAccountViewControllerCannotLogOutTitle",
+                message: "SettingsAccountViewControllerCannotLogOutMessage")
+            uiDelegate?.present(alert, animated: true, completion: nil)
+        } else {
+            completeLogOutProcess()
+        }
+        #endif
     }
 
-    self.deauthorizeDevice()
-  }
+    #if FEATURE_DRM_CONNECTOR
+    private func processLogOut(data: Data,
+                               response: URLResponse?,
+                               for request: URLRequest,
+                               barcode: String?) {
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
-  private func processLogOutError(_ errorWithProblemDoc: TPPUserFriendlyError,
-                                  response: URLResponse?,
-                                  for request: URLRequest,
-                                  barcode: String?) {
-    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let profileDoc: UserProfileDocument
+        do {
+            profileDoc = try UserProfileDocument.fromData(data)
+        } catch {
+            Log.error(#file, "Unable to parse user profile at sign out (HTTP \(statusCode): Adobe device deauthorization won't be possible.")
+            TPPErrorLogger.logUserProfileDocumentAuthError(
+                error as NSError,
+                summary: "SignOut: unable to parse user profile doc",
+                barcode: barcode,
+                metadata: [
+                    "Request": request.loggableString,
+                    "Response": response ?? "N/A",
+                    "HTTP status code": statusCode
+                ])
+            self.uiDelegate?.businessLogic(self,
+                                           didEncounterSignOutError: error,
+                                           withHTTPStatusCode: statusCode)
+            return
+        }
 
-    if statusCode == 401 {
-      self.deauthorizeDevice()
+        if let drm = profileDoc.drm?.first,
+           let clientToken = drm.clientToken, drm.vendor != nil {
+
+            // Set the fresh Adobe token info into the user account so that the
+            // following `deauthorizeDevice` call can use it.
+            self.userAccount.setLicensor(drm.licensor)
+            Log.info(#file, "Licensor token updated to \(clientToken) for adobe user ID \(self.userAccount.userID ?? "N/A")")
+        } else {
+            Log.error(#file, "Licensor token invalid: \(profileDoc.toJson())")
+        }
+
+        self.deauthorizeDevice()
     }
 
-    TPPErrorLogger.logNetworkError(
-      errorWithProblemDoc,
-      summary: "SignOut: token refresh failed",
-      request: request,
-      response: response,
-      metadata: [
-        "AuthMethod": self.selectedAuthentication?.methodDescription ?? "N/A",
-        "Hashed barcode": barcode?.md5hex() ?? "N/A",
-        "HTTP status code": statusCode])
+    private func processLogOutError(_ errorWithProblemDoc: TPPUserFriendlyError,
+                                    response: URLResponse?,
+                                    for request: URLRequest,
+                                    barcode: String?) {
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
-    self.uiDelegate?.businessLogic(self,
-                                   didEncounterSignOutError: errorWithProblemDoc,
-                                   withHTTPStatusCode: statusCode)
-  }
-  #endif
-  
-  private func completeLogOutProcess() {
-    // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
-    // Also reset the flag so token re-registers on next sign-in
-    if let account = AccountsManager.shared.account(libraryAccountID) {
-      NotificationService.shared.deleteToken(for: account)
-      account.hasUpdatedToken = false
-    }
-    
-    bookDownloadsCenter.reset(libraryAccountID)
-    bookRegistry.reset(libraryAccountID)
-    userAccount.removeAll()
-    selectedIDP = nil
-    
-    // Clear WebView data to fully sign out of SAML/OAuth IdPs (e.g., Google)
-    // Without this, the IdP session remains cached and auto-signs in on next attempt
-    // CRITICAL: Wait for WebView data to be cleared BEFORE notifying UI that sign-out is complete
-    // This prevents SAML IdP auto-sign-in when user tries to borrow after signing out
-    clearWebViewData { [weak self] in
-      // UI delegate callback MUST be on main thread
-      // (This method can be called from Adobe DRM callback on background thread)
-      DispatchQueue.main.async { [weak self] in
-        guard let self = self else { return }
-        self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
-      }
-    }
-  }
-  
-  /// Clears all WebView data including cookies, cache, local storage, and session data.
-  /// This ensures SAML/OAuth identity providers are fully signed out.
-  /// - Parameter completion: Called when all WebView data and cookies have been cleared.
-  ///   This is critical for SAML sign-out to prevent IdP auto-sign-in.
-  private func clearWebViewData(completion: @escaping () -> Void) {
-    // Skip WebKit cleanup in test environments (no UI context)
-    #if DEBUG
-    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
-      completion()
-      return
+        if statusCode == 401 {
+            // PP-3819: A 401 on sign-out is expected when the session/token
+            // expired during idle. The user's intent is to sign out, so
+            // proceed with local cleanup silently instead of showing the
+            // confusing "Unexpected Credentials" error.
+            Log.info(#file, "Sign-out returned 401 (token expired) — proceeding with local cleanup (PP-3819)")
+        } else {
+            TPPErrorLogger.logNetworkError(
+                errorWithProblemDoc,
+                summary: "SignOut: server error",
+                request: request,
+                response: response,
+                metadata: [
+                    "AuthMethod": self.selectedAuthentication?.methodDescription ?? "N/A",
+                    "Hashed barcode": barcode?.md5hex() ?? "N/A",
+                    "HTTP status code": statusCode])
+
+            self.uiDelegate?.businessLogic(self,
+                                           didEncounterSignOutError: errorWithProblemDoc,
+                                           withHTTPStatusCode: statusCode)
+        }
+
+        // Always attempt local device deauthorization + cleanup regardless
+        // of the server error code. This ensures the user is logged out
+        // locally even if the server rejected the request.
+        self.deauthorizeDevice()
     }
     #endif
-    
-    // WebKit operations MUST run on the main thread
-    DispatchQueue.main.async {
-      let dataStore = WKWebsiteDataStore.default()
-      let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
-      
-      dataStore.fetchDataRecords(ofTypes: dataTypes) { records in
-        dataStore.removeData(ofTypes: dataTypes, for: records) {
-          // Also clear shared cookie storage (synchronous)
-          if let cookies = HTTPCookieStorage.shared.cookies {
-            for cookie in cookies {
-              HTTPCookieStorage.shared.deleteCookie(cookie)
-            }
-          }
-          
-          // CRITICAL: Only call completion AFTER both WebKit data AND cookies are cleared
-          // This ensures SAML IdP sessions are fully invalidated before sign-out completes
-          completion()
-        }
-      }
-    }
-  }
 
-  #if FEATURE_DRM_CONNECTOR
-  private func deauthorizeDevice() {
-    guard let licensor = userAccount.licensor else {
-      Log.warn(#file, "No Licensor available to deauthorize device. Will remove user credentials anyway.")
-      TPPErrorLogger.logInvalidLicensor(withAccountID: libraryAccountID)
-      completeLogOutProcess()
-      return
-    }
-
-    var licensorItems = (licensor["clientToken"] as? String)?
-      .replacingOccurrences(of: "\n", with: "")
-      .components(separatedBy: "|")
-    let tokenPassword = licensorItems?.last
-    licensorItems?.removeLast()
-    let tokenUsername = licensorItems?.joined(separator: "|")
-    let adobeUserID = userAccount.userID
-    let adobeDeviceID = userAccount.deviceID
-
-    if let drmAuthorizer = drmAuthorizer {
-      drmAuthorizer.deauthorize(
-        withUsername: tokenUsername,
-        password: tokenPassword,
-        userID: adobeUserID,
-        deviceID: adobeDeviceID) { [weak self] success, error in
-          if !success {
-            // DRM deauthorization failures are expected (e.g., E_DEACT_USER_MISMATCH when user changes PIN)
-            // Just log locally and continue - the user should still be able to log out
-            Log.warn(#file, "DRM deauthorization failed (expected): \(error?.localizedDescription ?? "unknown")")
-          }
-
-          // Check if self was deallocated during the DRM callback
-          guard let strongSelf = self else {
-            // Skip WebKit cleanup in test environments (no UI context)
-            #if DEBUG
-            if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
-              return
-            }
-            #endif
-            
-            // Even if self is nil, we need to complete the logout process
-            // Call static/global cleanup methods directly
-            DispatchQueue.main.async {
-              // Clear WebView data directly
-              let dataStore = WKWebsiteDataStore.default()
-              let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
-              dataStore.fetchDataRecords(ofTypes: dataTypes) { records in
-                dataStore.removeData(ofTypes: dataTypes, for: records) {
-                  // Clear cookies AFTER WebView data to ensure complete cleanup
-                  if let cookies = HTTPCookieStorage.shared.cookies {
-                    for cookie in cookies {
-                      HTTPCookieStorage.shared.deleteCookie(cookie)
-                    }
-                  }
-                }
-              }
+    private func completeLogOutProcess() {
+        // PP-3819: Check if this sign-out operation is still valid. A stale
+        // DRM deauthorization callback can fire after the user has already
+        // re-authenticated — in that case we must not wipe their new credentials.
+        guard userAccount.signInGeneration == signOutSnapshot else {
+            Log.warn(#file, "Stale sign-out for library \(libraryAccountID) — user re-authenticated. Skipping credential cleanup (PP-3819).")
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
             }
             return
-          }
-          
-          strongSelf.completeLogOutProcess()
-      }
-    } else {
-      self.completeLogOutProcess()
+        }
+
+        // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
+        // Also reset the flag so token re-registers on next sign-in
+        if let account = AccountsManager.shared.account(libraryAccountID) {
+            NotificationService.shared.deleteToken(for: account)
+            account.hasUpdatedToken = false
+        }
+
+        bookDownloadsCenter.reset(libraryAccountID)
+        bookRegistry.reset(libraryAccountID)
+        userAccount.removeAll()
+        selectedIDP = nil
+
+        // Clear WebView data to fully sign out of SAML/OAuth IdPs (e.g., Google)
+        // Without this, the IdP session remains cached and auto-signs in on next attempt
+        // CRITICAL: Wait for WebView data to be cleared BEFORE notifying UI that sign-out is complete
+        // This prevents SAML IdP auto-sign-in when user tries to borrow after signing out
+        clearWebViewData { [weak self] in
+            // UI delegate callback MUST be on main thread
+            // (This method can be called from Adobe DRM callback on background thread)
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
+            }
+        }
     }
-  }
-  #endif
+
+    /// Clears all WebView data including cookies, cache, local storage, and session data.
+    /// This ensures SAML/OAuth identity providers are fully signed out.
+    /// - Parameter completion: Called when all WebView data and cookies have been cleared.
+    ///   This is critical for SAML sign-out to prevent IdP auto-sign-in.
+    private func clearWebViewData(completion: @escaping () -> Void) {
+        // Skip WebKit cleanup in test environments (no UI context)
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            completion()
+            return
+        }
+        #endif
+
+        // WebKit operations MUST run on the main thread
+        DispatchQueue.main.async {
+            let dataStore = WKWebsiteDataStore.default()
+            let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+
+            dataStore.fetchDataRecords(ofTypes: dataTypes) { records in
+                dataStore.removeData(ofTypes: dataTypes, for: records) {
+                    // Also clear shared cookie storage (synchronous)
+                    if let cookies = HTTPCookieStorage.shared.cookies {
+                        for cookie in cookies {
+                            HTTPCookieStorage.shared.deleteCookie(cookie)
+                        }
+                    }
+
+                    // CRITICAL: Only call completion AFTER both WebKit data AND cookies are cleared
+                    // This ensures SAML IdP sessions are fully invalidated before sign-out completes
+                    completion()
+                }
+            }
+        }
+    }
+
+    #if FEATURE_DRM_CONNECTOR
+    private func deauthorizeDevice() {
+        guard let licensor = userAccount.licensor else {
+            Log.warn(#file, "No Licensor available to deauthorize device. Will remove user credentials anyway.")
+            TPPErrorLogger.logInvalidLicensor(withAccountID: libraryAccountID)
+            completeLogOutProcess()
+            return
+        }
+
+        var licensorItems = (licensor["clientToken"] as? String)?
+            .replacingOccurrences(of: "\n", with: "")
+            .components(separatedBy: "|")
+        let tokenPassword = licensorItems?.last
+        licensorItems?.removeLast()
+        let tokenUsername = licensorItems?.joined(separator: "|")
+        let adobeUserID = userAccount.userID
+        let adobeDeviceID = userAccount.deviceID
+
+        if let drmAuthorizer = drmAuthorizer {
+            drmAuthorizer.deauthorize(
+                withUsername: tokenUsername,
+                password: tokenPassword,
+                userID: adobeUserID,
+                deviceID: adobeDeviceID) { [weak self] success, error in
+                if !success {
+                    // DRM deauthorization failures are expected (e.g., E_DEACT_USER_MISMATCH when user changes PIN)
+                    // Just log locally and continue - the user should still be able to log out
+                    Log.warn(#file, "DRM deauthorization failed (expected): \(error?.localizedDescription ?? "unknown")")
+                }
+
+                // Check if self was deallocated during the DRM callback
+                guard let strongSelf = self else {
+                    // Skip WebKit cleanup in test environments (no UI context)
+                    #if DEBUG
+                    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+                        return
+                    }
+                    #endif
+
+                    // Even if self is nil, we need to complete the logout process
+                    // Call static/global cleanup methods directly
+                    DispatchQueue.main.async {
+                        // Clear WebView data directly
+                        let dataStore = WKWebsiteDataStore.default()
+                        let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+                        dataStore.fetchDataRecords(ofTypes: dataTypes) { records in
+                            dataStore.removeData(ofTypes: dataTypes, for: records) {
+                                // Clear cookies AFTER WebView data to ensure complete cleanup
+                                if let cookies = HTTPCookieStorage.shared.cookies {
+                                    for cookie in cookies {
+                                        HTTPCookieStorage.shared.deleteCookie(cookie)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return
+                }
+
+                strongSelf.completeLogOutProcess()
+            }
+        } else {
+            self.completeLogOutProcess()
+        }
+    }
+    #endif
 }

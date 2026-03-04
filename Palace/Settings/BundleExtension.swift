@@ -9,7 +9,7 @@ import Foundation
 
 @objc
 enum TPPEnvironment: NSInteger {
-  case debug, testFlight, production
+    case debug, testFlight, production
 }
 
 /**
@@ -17,21 +17,21 @@ enum TPPEnvironment: NSInteger {
  https://stackoverflow.com/questions/26081543/how-to-tell-at-runtime-whether-an-ios-app-is-running-through-a-testflight-beta-i
  */
 extension Bundle {
-  
-  @objc
-  var applicationEnvironment: TPPEnvironment {
-    #if DEBUG
-    return .debug
-    #else
-    guard let path = self.appStoreReceiptURL?.path else {
-      return .production
+
+    @objc
+    var applicationEnvironment: TPPEnvironment {
+        #if DEBUG
+        return .debug
+        #else
+        guard let path = self.appStoreReceiptURL?.path else {
+            return .production
+        }
+        // Sandbox receipt means the app is in TestFlight environment.
+        if path.contains("sandboxReceipt") {
+            return .testFlight
+        } else {
+            return .production
+        }
+        #endif
     }
-    // Sandbox receipt means the app is in TestFlight environment.
-    if path.contains("sandboxReceipt") {
-      return .testFlight
-    } else {
-      return .production
-    }
-    #endif
-  }
 }

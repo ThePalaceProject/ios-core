@@ -9,15 +9,15 @@
 import Transifex
 
 @objc class TransifexManager: NSObject {
-  @objc static func setup() {
-    let locales = TXLocaleState(sourceLocale: "en",
-                                appLocales: ["en", "es", "it", "de", "fr"])
+    @objc static func setup() {
+        let locales = TXLocaleState(sourceLocale: "en",
+                                    appLocales: ["en", "es", "it", "de", "fr"])
 
-    TXNative.initialize(
-      locales: locales,
-      token: TPPSecrets.transifexToken ?? ""
-    )
+        TXNative.initialize(
+            locales: locales,
+            token: TPPSecrets.transifexToken ?? ""
+        )
 
-    TXNative.fetchTranslations()
-  }
+        TXNative.fetchTranslations()
+    }
 }
