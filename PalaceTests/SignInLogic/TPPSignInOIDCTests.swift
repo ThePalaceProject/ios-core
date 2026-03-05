@@ -18,13 +18,25 @@ final class OIDCAuthTypeTests: XCTestCase {
     func testAuthType_OidcRawValue_IsCorrect() {
         XCTAssertEqual(
             AccountDetails.AuthType.oidc.rawValue,
-            "http://thepalaceproject.org/authtype/openid-connect"
+            "http://palaceproject.io/authtype/OpenIDConnect"
         )
     }
 
     func testAuthType_InitFromOidcString_ReturnsOidc() {
-        let authType = AccountDetails.AuthType(rawValue: "http://thepalaceproject.org/authtype/openid-connect")
+        let authType = AccountDetails.AuthType(rawValue: "http://palaceproject.io/authtype/OpenIDConnect")
         XCTAssertEqual(authType, .oidc)
+    }
+
+    func testAuthType_InitFromLegacyOidcString_ReturnsOidc() {
+        let authType = AccountDetails.AuthType.from("http://thepalaceproject.org/authtype/openid-connect")
+        XCTAssertEqual(authType, .oidc, "Legacy OIDC URI must still resolve to .oidc")
+    }
+
+    func testAuthType_LegacyOidcURI_DecodesViaCodeable() throws {
+        let json = "\"http://thepalaceproject.org/authtype/openid-connect\""
+        let data = json.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AccountDetails.AuthType.self, from: data)
+        XCTAssertEqual(decoded, .oidc, "Legacy OIDC URI must decode to .oidc via Codable")
     }
 
     func testAuthType_OidcIsDistinct_FromOtherTypes() {
@@ -83,7 +95,7 @@ final class OIDCAuthenticationPropertyTests: XCTestCase {
         XCTAssertNotNil(auth.oidcAuthenticationUrl)
         XCTAssertEqual(
             auth.oidcAuthenticationUrl?.absoluteString,
-            "https://circulation.example.com/NYNYPL/oidc/authenticate"
+            "https://circulation.example.com/NYNYPL/oidc/authenticate?provider=OpenID+Connect"
         )
     }
 

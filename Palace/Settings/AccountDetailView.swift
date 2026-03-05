@@ -76,6 +76,7 @@ struct AccountDetailView: View {
             signInMessageSection
             SectionSeparator()
             signInButtonSection
+            registrationLinkIfAvailable
             reportIssueLinkIfAvailable
             Spacer()
         }
@@ -154,6 +155,21 @@ struct AccountDetailView: View {
         .padding(.top, Layout.verticalPaddingLarge)
         // Force view refresh when isLoading changes
         .id("signInButton-\(viewModel.isLoading)")
+    }
+
+    @ViewBuilder
+    private var registrationLinkIfAvailable: some View {
+        if viewModel.businessLogic.registrationIsPossible() {
+            HStack {
+                SecondaryActionButtonView(
+                    title: DisplayStrings.signUpForCard,
+                    action: { viewModel.openRegistration() }
+                )
+                Spacer()
+            }
+            .padding(.horizontal, Layout.horizontalPadding)
+            .padding(.top, Layout.verticalPaddingMedium)
+        }
     }
 
     @ViewBuilder

@@ -39,8 +39,26 @@ protocol AccountLogoDelegate: AnyObject {
         case oauthIntermediary = "http://librarysimplified.org/authtype/OAuth-with-intermediary"
         case saml = "http://librarysimplified.org/authtype/SAML-2.0"
         case token = "http://thepalaceproject.org/authtype/basic-token"
-        case oidc = "http://thepalaceproject.org/authtype/openid-connect"
+        case oidc = "http://palaceproject.io/authtype/OpenIDConnect"
         case none
+
+        private static let legacyOIDCType = "http://thepalaceproject.org/authtype/openid-connect"
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            let rawValue = try container.decode(String.self)
+            if let authType = AuthType(rawValue: rawValue) {
+                self = authType
+            } else if rawValue == Self.legacyOIDCType {
+                self = .oidc
+            } else {
+                self = .none
+            }
+        }
+
+        static func from(_ type: String) -> AuthType {
+            AuthType(rawValue: type) ?? (type == legacyOIDCType ? .oidc : .none)
+        }
     }
 
     @objc(AccountDetailsAuthentication)
@@ -64,7 +82,7 @@ protocol AccountLogoDelegate: AnyObject {
         let oidcAuthenticationUrl: URL?
 
         init(auth: OPDS2AuthenticationDocument.Authentication) {
-            let authType = AuthType(rawValue: auth.type) ?? .none
+            let authType = AuthType.from(auth.type)
             self.authType = authType
             authPasscodeLength = auth.inputs?.password.maximumLength ?? 99
             patronIDKeyboard = LoginKeyboard.init(auth.inputs?.login.keyboard) ?? .standard
