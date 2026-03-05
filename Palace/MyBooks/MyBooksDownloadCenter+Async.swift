@@ -65,6 +65,16 @@ extension MyBooksDownloadCenter {
             throw simulated.error
         }
 
+        // PP-3649: If this book requires Adobe DRM, ensure the device is activated
+        // before proceeding with the borrow. This is the on-demand activation that
+        // replaces the previous login-time activation.
+        #if FEATURE_DRM_CONNECTOR
+        if book.requiresAdobeDRM {
+            Task { await ErrorActivityTracker.shared.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
+            try await AdobeDRMService.shared.ensureDeviceActivated()
+        }
+        #endif
+
         // Use modern OPDSFeedService instead of legacy callback-based TPPOPDSFeed
         guard let acquisitionURL = book.defaultAcquisition?.hrefURL else {
             Task { await ErrorActivityTracker.shared.log("No acquisition URL found for '\(book.title)'", category: .borrow) }

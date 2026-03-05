@@ -520,6 +520,20 @@ extension TPPBook {
         let userAuthRequired = TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? false
         return self.defaultAcquisitionIfOpenAccess == nil && userAuthRequired
     }
+
+    /// Whether any supported acquisition path for this book includes Adobe DRM.
+    /// Used to determine if on-demand Adobe device activation is needed at borrow time (PP-3649).
+    @objc var requiresAdobeDRM: Bool {
+        guard let acquisition = defaultAcquisition else { return false }
+        let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+            forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+            allowedRelations: NYPLOPDSAcquisitionRelationSetAll,
+            acquisitions: [acquisition]
+        )
+        return paths.contains { path in
+            path.types.contains(ContentTypeAdobeAdept)
+        }
+    }
 }
 
 extension TPPBook {

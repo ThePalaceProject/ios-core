@@ -314,14 +314,10 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                 }
 
                 #if FEATURE_DRM_CONNECTOR
-                if AdobeCertificate.defaultCertificate?.hasExpired == true {
-                    self.finalizeSignIn(forDRMAuthorization: true)
-                } else if self.shouldSkipAdobeActivation() {
-                    // Refreshing stale credentials - Adobe DRM is still valid, skip activation
-                    self.finalizeSignIn(forDRMAuthorization: true)
-                } else {
-                    self.drmAuthorizeUserData(responseData, loggingContext: loggingContext)
-                }
+                // PP-3649: Save DRM credentials from profile document but defer Adobe
+                // device activation to borrow time. This avoids burning device activations
+                // for users who never borrow Adobe DRM content.
+                self.saveDRMCredentials(responseData, loggingContext: loggingContext)
                 #else
                 self.finalizeSignIn(forDRMAuthorization: true)
                 #endif

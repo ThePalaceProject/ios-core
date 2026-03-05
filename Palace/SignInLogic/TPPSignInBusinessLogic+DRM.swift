@@ -12,6 +12,48 @@ import Foundation
 
 extension TPPSignInBusinessLogic {
 
+    /// Saves DRM credentials from the user profile document without performing
+    /// Adobe device activation. Activation is deferred to borrow time (PP-3649).
+    ///
+    /// Profile document parsing is best-effort: if it fails, sign-in still
+    /// succeeds because the server already accepted the patron's credentials
+    /// (HTTP 200). Wiping credentials on a parse failure was the cause of
+    /// PP-3784 (barcode disappearing after sign-in).
+    ///
+    /// - Parameters:
+    ///   - data: The binary data containing the DRM authorization info.
+    ///   - loggingContext: Information to report when logging errors.
+    func saveDRMCredentials(_ data: Data, loggingContext: [String: Any]) {
+        guard let profileDoc = try? UserProfileDocument.fromData(data) else {
+            TPPErrorLogger.logUserProfileDocumentAuthError(
+                NSError(domain: "ProfileDoc", code: -1),
+                summary: "SignIn: unable to parse user profile doc (non-fatal)",
+                barcode: uiDelegate?.username,
+                metadata: loggingContext)
+            finalizeSignIn(forDRMAuthorization: true)
+            return
+        }
+
+        if let authID = profileDoc.authorizationIdentifier {
+            userAccount.setAuthorizationIdentifier(authID)
+        } else {
+            TPPErrorLogger.logError(withCode: .noAuthorizationIdentifier,
+                                    summary: "SignIn: no authorization ID in user profile doc",
+                                    metadata: loggingContext)
+        }
+
+        if let drm = profileDoc.drm?.first,
+           drm.vendor != nil,
+           drm.clientToken != nil {
+            Log.info(#file, "Saving DRM licensor credentials (activation deferred to borrow time)")
+            userAccount.setLicensor(drm.licensor)
+        } else {
+            Log.info(#file, "No Adobe DRM credentials in profile doc — library may not use Adobe DRM")
+        }
+
+        finalizeSignIn(forDRMAuthorization: true)
+    }
+
     /// Extract authorization credentials from binary data and perform DRM
     /// authorization request.
     ///
