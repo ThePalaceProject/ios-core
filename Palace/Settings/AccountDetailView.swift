@@ -160,15 +160,13 @@ struct AccountDetailView: View {
     @ViewBuilder
     private var registrationLinkIfAvailable: some View {
         if viewModel.businessLogic.registrationIsPossible() {
-            HStack {
-                SecondaryActionButtonView(
-                    title: DisplayStrings.signUpForCard,
-                    action: { viewModel.openRegistration() }
-                )
-                Spacer()
+            Button(action: { viewModel.openRegistration() }) {
+                Text(DisplayStrings.signUpForCard)
+                    .foregroundColor(Color(TPPConfiguration.mainColor()))
+                    .horizontallyCentered()
             }
             .padding(.horizontal, Layout.horizontalPadding)
-            .padding(.top, Layout.verticalPaddingMedium)
+            .padding(.top, Layout.verticalPaddingLarge)
         }
     }
 

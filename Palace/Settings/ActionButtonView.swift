@@ -52,40 +52,6 @@ struct ActionButtonView: View {
     }
 }
 
-/// Secondary outline button for actions like registration.
-/// Sizes to fit its content rather than filling available width.
-struct SecondaryActionButtonView: View {
-    typealias Constants = AccountDetailView.Layout
-
-    let title: String
-    let action: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var borderColor: Color {
-        colorScheme == .dark ? .white : .black
-    }
-
-    private var textColor: Color {
-        colorScheme == .dark ? .white : .black
-    }
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .palaceFont(.body, weight: .semibold)
-                .padding(.horizontal, 20)
-                .frame(height: Constants.buttonHeight)
-                .foregroundColor(textColor)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Constants.buttonCornerRadius)
-                        .stroke(borderColor, lineWidth: 1.5)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 /// Separator line for sections
 struct SectionSeparator: View {
     var body: some View {
