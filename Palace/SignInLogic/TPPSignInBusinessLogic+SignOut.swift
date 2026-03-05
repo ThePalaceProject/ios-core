@@ -11,10 +11,42 @@ import WebKit
 
 extension TPPSignInBusinessLogic {
 
+    // MARK: - Sign-Out Race Condition Guard (PP-3819)
+    //
+    // Race condition: sign-out request returns 401 (token expired after idle)
+    // → DRM deauthorization starts asynchronously → user signs back in before
+    // DRM callback fires → callback triggers completeLogOutProcess() which
+    // clears the user's NEW credentials.
+    //
+    // Fix: performLogOut() captures the userAccount's signInGeneration.
+    // finalizeSignIn() increments it (via cancelPendingSignOut).
+    // completeLogOutProcess() checks if it changed — if so, the user
+    // re-authenticated and we skip cleanup.
+    //
+    // The counter lives on the TPPUserAccount (shared per library) so that
+    // it works across different business-logic instances for the same library,
+    // while being naturally isolated per library. No global mutable state.
+
+    private static var signOutSnapshotKey = 0
+
+    /// The signInGeneration captured when performLogOut() was called.
+    private var signOutSnapshot: Int {
+        get { objc_getAssociatedObject(self, &Self.signOutSnapshotKey) as? Int ?? -1 }
+        set { objc_setAssociatedObject(self, &Self.signOutSnapshotKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+
+    /// Called by finalizeSignIn() to invalidate any in-flight sign-out
+    /// for this library's user account.
+    func cancelPendingSignOut() {
+        userAccount.signInGeneration += 1
+    }
+
     /// Main entry point for logging a user out.
     ///
     /// - Important: Requires to be called from the main thread.
     func performLogOut() {
+        signOutSnapshot = userAccount.signInGeneration
+
         #if FEATURE_DRM_CONNECTOR
         uiDelegate?.businessLogicWillSignOut(self)
 
@@ -33,7 +65,12 @@ extension TPPSignInBusinessLogic {
                                     for: request,
                                     barcode: barcode)
             case .failure(let errorWithProblemDoc, let response):
-                self?.userAccount.removeAll()
+                // PP-3819: Do NOT call removeAll() here. Credential cleanup
+                // is handled by completeLogOutProcess() after device
+                // deauthorization. Calling it prematurely caused:
+                // 1. Licensor wiped before deauthorizeDevice() could use it
+                // 2. Double removeAll() → double notification → UI corruption
+                // 3. Race condition with re-authentication
                 self?.processLogOutError(errorWithProblemDoc,
                                          response: response,
                                          for: request,
@@ -101,26 +138,47 @@ extension TPPSignInBusinessLogic {
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         if statusCode == 401 {
-            self.deauthorizeDevice()
+            // PP-3819: A 401 on sign-out is expected when the session/token
+            // expired during idle. The user's intent is to sign out, so
+            // proceed with local cleanup silently instead of showing the
+            // confusing "Unexpected Credentials" error.
+            Log.info(#file, "Sign-out returned 401 (token expired) — proceeding with local cleanup (PP-3819)")
+        } else {
+            TPPErrorLogger.logNetworkError(
+                errorWithProblemDoc,
+                summary: "SignOut: server error",
+                request: request,
+                response: response,
+                metadata: [
+                    "AuthMethod": self.selectedAuthentication?.methodDescription ?? "N/A",
+                    "Hashed barcode": barcode?.md5hex() ?? "N/A",
+                    "HTTP status code": statusCode])
+
+            self.uiDelegate?.businessLogic(self,
+                                           didEncounterSignOutError: errorWithProblemDoc,
+                                           withHTTPStatusCode: statusCode)
         }
 
-        TPPErrorLogger.logNetworkError(
-            errorWithProblemDoc,
-            summary: "SignOut: token refresh failed",
-            request: request,
-            response: response,
-            metadata: [
-                "AuthMethod": self.selectedAuthentication?.methodDescription ?? "N/A",
-                "Hashed barcode": barcode?.md5hex() ?? "N/A",
-                "HTTP status code": statusCode])
-
-        self.uiDelegate?.businessLogic(self,
-                                       didEncounterSignOutError: errorWithProblemDoc,
-                                       withHTTPStatusCode: statusCode)
+        // Always attempt local device deauthorization + cleanup regardless
+        // of the server error code. This ensures the user is logged out
+        // locally even if the server rejected the request.
+        self.deauthorizeDevice()
     }
     #endif
 
     private func completeLogOutProcess() {
+        // PP-3819: Check if this sign-out operation is still valid. A stale
+        // DRM deauthorization callback can fire after the user has already
+        // re-authenticated — in that case we must not wipe their new credentials.
+        guard userAccount.signInGeneration == signOutSnapshot else {
+            Log.warn(#file, "Stale sign-out for library \(libraryAccountID) — user re-authenticated. Skipping credential cleanup (PP-3819).")
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
+            }
+            return
+        }
+
         // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
         // Also reset the flag so token re-registers on next sign-in
         if let account = AccountsManager.shared.account(libraryAccountID) {

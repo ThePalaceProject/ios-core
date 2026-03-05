@@ -34,6 +34,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
 
     override func tearDownWithError() throws {
         try super.tearDownWithError()
+        (businessLogic.networker as? TPPRequestExecutorMock)?.reset()
         businessLogic.userAccount.removeAll()
         businessLogic = nil
         libraryAccountMock = nil

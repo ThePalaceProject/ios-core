@@ -15,20 +15,46 @@ class TPPRequestExecutorMock: TPPRequestExecuting {
     // table of all mock response bodies for given URLs
     var responseBodies = [URL: String]()
 
+    /// When set, ALL requests will fail with this HTTP status code.
+    var forceFailureStatusCode: Int?
+
+    /// Incremented in `reset()` so that stale GCD blocks from a previous
+    /// test skip their completion callback.
+    private var generation: Int = 0
+
     init() {
         // add here the responses of all the api calls whose flow you want to verify
         let userProfileURL = URL(string: "https://circulation.librarysimplified.org/NYNYPL/patrons/me/")!
         responseBodies[userProfileURL] = TPPFake.validUserProfileJson
     }
 
+    /// Call in tearDown to invalidate any pending async completions.
+    func reset() {
+        generation += 1
+    }
+
     func executeRequest(_ req: URLRequest,
                         enableTokenRefresh: Bool,
                         completion: @escaping (NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
 
-        DispatchQueue.main.async {
+        let capturedGeneration = generation
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.generation == capturedGeneration else { return }
+
             guard let url = req.url else {
                 completion(.failure(NSError(domain: "Unit tests: empty url",
                                             code: 0, userInfo: nil), nil))
+                return
+            }
+
+            if let statusCode = self.forceFailureStatusCode {
+                let httpResponse = HTTPURLResponse(url: url,
+                                                   statusCode: statusCode,
+                                                   httpVersion: "1.1",
+                                                   headerFields: nil)
+                completion(.failure(NSError(domain: "Unit tests: forced \(statusCode)",
+                                            code: statusCode, userInfo: nil),
+                                    httpResponse))
                 return
             }
 

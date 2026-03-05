@@ -242,14 +242,31 @@ class BookCellModel: ObservableObject {
             .filter { [weak self] in $0.bookId == self?.book.identifier }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] errorInfo in
+                guard let self else { return }
+
+                let alertModel: AlertModel
                 if let retryAction = errorInfo.retryAction {
-                    self?.downloadErrorAlert = .retryable(
+                    alertModel = .retryable(
                         title: errorInfo.title,
                         message: errorInfo.message,
                         retryAction: retryAction
                     )
                 } else {
-                    self?.downloadErrorAlert = AlertModel(title: errorInfo.title, message: errorInfo.message)
+                    alertModel = AlertModel(
+                        title: errorInfo.title,
+                        message: errorInfo.message,
+                        buttonTitle: Strings.Generic.ok
+                    )
+                }
+
+                // If the half sheet is visible, present there. Otherwise present from
+                // the cell-level alert so list users still get an immediate popup.
+                if self.showHalfSheet {
+                    self.downloadErrorAlert = alertModel
+                    self.showAlert = nil
+                } else {
+                    self.showAlert = alertModel
+                    self.downloadErrorAlert = nil
                 }
             }
             .store(in: &cancellables)

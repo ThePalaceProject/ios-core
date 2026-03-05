@@ -47,6 +47,7 @@ final class TPPCredentialPersistenceTests: XCTestCase {
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         drmAuthorizer.reset()
         businessLogic = nil
@@ -234,6 +235,7 @@ final class TPPDRMFailureCredentialPreservationTests: XCTestCase {
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         drmAuthorizer.reset()
         businessLogic = nil
@@ -591,6 +593,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         drmAuthorizer.reset()
         businessLogic = nil
@@ -798,6 +801,7 @@ final class TPPCapturedCredentialsTests: XCTestCase {
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         drmAuthorizer.reset()
         businessLogic = nil

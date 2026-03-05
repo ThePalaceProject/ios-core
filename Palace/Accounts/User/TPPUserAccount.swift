@@ -44,6 +44,11 @@ private enum StorageKey: String {
     private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
     private var notifyAccountChange: Bool = true
 
+    /// PP-3819: Incremented by `cancelPendingSignOut()` each time the user
+    /// signs in, so that a stale DRM deauthorization callback can detect
+    /// that re-authentication occurred and skip credential cleanup.
+    var signInGeneration: Int = 0
+
     var libraryUUID: String? {
         didSet {
             guard libraryUUID != oldValue else { return }

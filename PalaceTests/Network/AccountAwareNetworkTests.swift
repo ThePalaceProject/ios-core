@@ -219,7 +219,7 @@ final class AccountAwareNetworkTests: XCTestCase {
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        wait(for: [expectation], timeout: 15.0)
         HTTPStubURLProtocol.reset()
     }
 
@@ -245,7 +245,8 @@ final class AccountAwareNetworkTests: XCTestCase {
         let expectation = XCTestExpectation(description: "Token refresh completes")
         let tokenURL = URL(string: "https://example.com/token")!
 
-        // Call without accountId (default nil)
+        // Call without accountId (default nil) — the key assertion is that this
+        // compiles and runs without the accountId parameter (backward compatibility).
         executor.executeTokenRefresh(
             username: "testuser",
             password: "testpass",
@@ -254,7 +255,13 @@ final class AccountAwareNetworkTests: XCTestCase {
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        // The session delegate chain and Task scheduling add variable latency on CI
+        // (the sibling test with accountId took ~3.2s on CI), so use a generous timeout.
+        wait(for: [expectation], timeout: 15.0)
+
+        // Keep executor alive until completion to prevent session invalidation
+        _ = executor
+
         HTTPStubURLProtocol.reset()
     }
 }

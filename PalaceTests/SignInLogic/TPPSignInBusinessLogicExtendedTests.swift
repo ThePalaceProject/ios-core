@@ -48,6 +48,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         businessLogic = nil
         libraryAccountMock = nil
@@ -611,6 +612,7 @@ final class TPPSignInOAuthFlowTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        (businessLogic.networker as? TPPRequestExecutorMock)?.reset()
         businessLogic.userAccount.removeAll()
         businessLogic = nil
         libraryAccountMock = nil
@@ -648,6 +650,7 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         businessLogic = nil
         libraryAccountMock = nil
@@ -685,13 +688,21 @@ class TPPNetworkErrorMock: TPPRequestExecuting {
     var shouldFail = false
     var errorStatusCode = 500
 
+    private var generation: Int = 0
+
+    func reset() {
+        generation += 1
+    }
+
     func executeRequest(
         _ req: URLRequest,
         enableTokenRefresh: Bool,
         completion: @escaping (NYPLResult<Data>) -> Void
     ) -> URLSessionDataTask? {
-        // Use immediate async dispatch instead of delayed timers to avoid test hangs
-        DispatchQueue.main.async {
+        let capturedGeneration = generation
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.generation == capturedGeneration else { return }
+
             if self.shouldFail {
                 let error = NSError(domain: "Test", code: self.errorStatusCode, userInfo: nil)
                 let response = HTTPURLResponse(
