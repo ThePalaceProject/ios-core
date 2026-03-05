@@ -60,10 +60,11 @@ struct AccountDetailView: View {
         let needsSignIn = !viewModel.isSignedIn
         let needsReauth = forceReauthMode && viewModel.selectedUserAccount.authState == .credentialsStale
 
-        let isOAuthOrSAML = viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
-            viewModel.businessLogic.selectedAuthentication?.isSaml == true
+        let isBrowserBasedAuth = viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
+            viewModel.businessLogic.selectedAuthentication?.isSaml == true ||
+            viewModel.businessLogic.selectedAuthentication?.isOidc == true
 
-        return (needsSignIn || needsReauth) && isOAuthOrSAML
+        return (needsSignIn || needsReauth) && isBrowserBasedAuth
     }
 
     // MARK: - Sign In Prompt View
