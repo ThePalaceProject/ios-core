@@ -319,7 +319,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     // MARK: - Actions
 
     func signIn() {
-        guard !isSignedIn else {
+        let needsReauth = selectedUserAccount.authState == .credentialsStale
+        guard !isSignedIn || needsReauth else {
             isSigningOut = true
             presentSignOutAlert()
             return

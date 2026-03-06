@@ -36,6 +36,13 @@ struct AccountDetailView: View {
             .onAppear {
                 viewModel.refreshSignInState()
             }
+            .task {
+                if forceReauthMode,
+                   viewModel.selectedUserAccount.authState == .credentialsStale,
+                   viewModel.businessLogic.selectedAuthentication?.isOidc == true {
+                    viewModel.signIn()
+                }
+            }
     }
 
     @ViewBuilder

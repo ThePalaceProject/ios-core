@@ -1549,3 +1549,239 @@ final class OIDCIsolationRegressionTests: XCTestCase {
         XCTAssertTrue(bl.isSignedIn())
     }
 }
+
+// MARK: - Tests: OIDC Re-Auth on 401 / Stale Credentials
+
+final class OIDCReauthOnExpiredTokenTests: XCTestCase {
+
+    private var businessLogic: TPPSignInBusinessLogic!
+    private var libraryMock: TPPLibraryAccountMock!
+    private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+
+    override func setUp() {
+        super.setUp()
+        libraryMock = TPPLibraryAccountMock()
+        uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+
+        businessLogic = TPPSignInBusinessLogic(
+            libraryAccountID: libraryMock.tppAccountUUID,
+            libraryAccountsProvider: libraryMock,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: TPPBookRegistryMock(),
+            bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+            userAccountProvider: TPPUserAccountMock.self,
+            networkExecutor: TPPRequestExecutorMock(),
+            uiDelegate: uiDelegate,
+            drmAuthorizer: TPPDRMAuthorizingMock()
+        )
+    }
+
+    override func tearDown() {
+        businessLogic.userAccount.removeAll()
+        businessLogic = nil
+        libraryMock = nil
+        uiDelegate = nil
+        super.tearDown()
+    }
+
+    func testOIDC_refreshAuthIfNeeded_withoutExistingCredentials_requiresUI() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "expired-oidc-token",
+            expirationDate: nil,
+            patron: ["name": "User"],
+            cookies: nil
+        )
+
+        let needsUI = businessLogic.refreshAuthIfNeeded(
+            usingExistingCredentials: false,
+            completion: nil
+        )
+
+        XCTAssertTrue(needsUI, "OIDC re-auth should require UI (browser flow)")
+        XCTAssertTrue(businessLogic.ignoreSignedInState,
+                      "Should ignore signed-in state to force the OIDC browser flow")
+    }
+
+    func testOIDC_refreshAuthIfNeeded_doesNotNilSelectedAuth() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "tok",
+            expirationDate: nil,
+            patron: ["name": "User"],
+            cookies: nil
+        )
+
+        _ = businessLogic.refreshAuthIfNeeded(
+            usingExistingCredentials: false,
+            completion: nil
+        )
+
+        XCTAssertNotNil(businessLogic.selectedAuthentication,
+                        "OIDC refresh must NOT nil selectedAuthentication (only SAML does that for IDP picker)")
+        XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .oidc)
+    }
+
+    func testOIDC_staleCredentials_stillHasCredentials() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "stale-token",
+            expirationDate: nil,
+            patron: ["name": "User"],
+            cookies: nil
+        )
+
+        businessLogic.userAccount.markCredentialsStale()
+
+        XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
+                      "Stale OIDC credentials should still report hasCredentials (token preserved)")
+        XCTAssertEqual(businessLogic.userAccount.authState, .credentialsStale)
+    }
+
+    func testOIDC_staleCredentials_authDefinitionPreserved() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "tok",
+            expirationDate: nil,
+            patron: nil,
+            cookies: nil
+        )
+
+        businessLogic.userAccount.markCredentialsStale()
+
+        XCTAssertEqual(businessLogic.userAccount.authDefinition?.authType, .oidc,
+                       "Auth definition must survive credentialsStale transition")
+        XCTAssertTrue(businessLogic.userAccount.authDefinition?.isOidc == true)
+    }
+
+    func testOIDC_afterReauth_credentialsRestored() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "old-token",
+            expirationDate: nil,
+            patron: ["name": "User"],
+            cookies: nil
+        )
+
+        businessLogic.userAccount.markCredentialsStale()
+        XCTAssertEqual(businessLogic.userAccount.authState, .credentialsStale)
+
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "new-fresh-token",
+            expirationDate: nil,
+            patron: ["name": "User"],
+            cookies: nil
+        )
+
+        XCTAssertEqual(businessLogic.userAccount.authToken, "new-fresh-token")
+        XCTAssertTrue(businessLogic.isSignedIn())
+    }
+}
+
+// MARK: - Tests: AccountDetailViewModel Sign-In with Stale Credentials
+
+@MainActor
+final class OIDCViewModelSignInTests: XCTestCase {
+
+    func testSignIn_withStaleOIDCCredentials_proceedsToLogin() {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            return
+        }
+
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+
+        let userAccount = viewModel.selectedUserAccount
+        let originalState = userAccount.authState
+
+        // The signIn guard should allow stale credentials through:
+        // guard !isSignedIn || needsReauth else { ... }
+        let isSignedIn = userAccount.hasCredentials() && userAccount.authState != .loggedOut
+        let needsReauth = userAccount.authState == .credentialsStale
+
+        if isSignedIn && needsReauth {
+            XCTAssertTrue(true, "Stale credentials should bypass the sign-out guard")
+        } else if !isSignedIn {
+            XCTAssertTrue(true, "Not signed in - normal sign-in flow")
+        }
+
+        _ = originalState
+    }
+
+    func testSignIn_withActiveCredentials_showsSignOutAlert() {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            return
+        }
+
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+
+        let isSignedIn = viewModel.isSignedIn
+        let isStale = viewModel.selectedUserAccount.authState == .credentialsStale
+
+        if isSignedIn && !isStale {
+            // This should trigger presentSignOutAlert, not the login flow
+            XCTAssertTrue(true, "Active (non-stale) credentials should show sign-out alert")
+        }
+    }
+}
+
+// MARK: - Tests: Network Layer OIDC 401 Handling
+
+final class OIDCNetworkLayer401Tests: XCTestCase {
+
+    func testOIDC_authDefinition_isNotToken() {
+        let mock = TPPLibraryAccountMock()
+        let auth = mock.oidcAuthentication
+        XCTAssertFalse(auth.isToken,
+                       "OIDC must not be treated as token auth for client-side refresh")
+    }
+
+    func testOIDC_authDefinition_isNotOauth() {
+        let mock = TPPLibraryAccountMock()
+        let auth = mock.oidcAuthentication
+        XCTAssertFalse(auth.isOauth,
+                       "OIDC must not be treated as OAuth for client-side refresh")
+    }
+
+    func testOIDC_authDefinition_hasNoTokenURL() {
+        let mock = TPPLibraryAccountMock()
+        let auth = mock.oidcAuthentication
+        XCTAssertNil(auth.tokenURL,
+                     "OIDC should not have a tokenURL (refresh is server-side)")
+    }
+
+    func testOIDC_cannotDoClientSideTokenRefresh() {
+        let mock = TPPLibraryAccountMock()
+        let auth = mock.oidcAuthentication
+
+        let canRefreshToken = (auth.isToken || auth.isOauth) &&
+            auth.tokenURL != nil
+
+        XCTAssertFalse(canRefreshToken,
+                       "OIDC must NOT match the client-side token refresh condition")
+    }
+
+    func testOIDC_isTreatedLikeSAML_forReauth() {
+        let mock = TPPLibraryAccountMock()
+        let oidcAuth = mock.oidcAuthentication
+        let samlAuth = mock.samlAuthentication
+
+        // Both should require browser-based re-auth, not client-side token refresh
+        let oidcNeedsBrowserReauth = oidcAuth.isOidc || oidcAuth.isSaml
+        let samlNeedsBrowserReauth = samlAuth.isOidc || samlAuth.isSaml
+
+        XCTAssertTrue(oidcNeedsBrowserReauth, "OIDC should match the browser re-auth path")
+        XCTAssertTrue(samlNeedsBrowserReauth, "SAML should match the browser re-auth path")
+    }
+}

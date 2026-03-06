@@ -398,6 +398,11 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task
             return false
         }
 
+        if authDef?.isOidc == true {
+            Log.info(#file, "Server returned 401 for OIDC - CM refresh_token likely expired, credentials marked stale")
+            return false
+        }
+
         let canRefreshToken = (authDef?.isToken == true || authDef?.isOauth == true) &&
             authDef?.tokenURL != nil &&
             userAccount.username != nil &&
