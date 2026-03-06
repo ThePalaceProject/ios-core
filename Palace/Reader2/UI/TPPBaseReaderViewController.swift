@@ -16,7 +16,6 @@ import ReadiumShared
 import Combine
 
 /// This class is meant to be subclassed by each publication format view controller. It contains the shared behavior, eg. navigation bar toggling.
-// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad from publication.metadata.title
 class TPPBaseReaderViewController: UIViewController, Loggable {
     typealias DisplayStrings = Strings.TPPBaseReaderViewController
 
@@ -96,6 +95,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         bookmarksBusinessLogic.syncBookmarks { (_, _) in }
 
         super.init(nibName: nil, bundle: nil)
+        title = publication.metadata.title
 
         NotificationCenter.default.addObserver(self, selector: #selector(voiceOverStatusDidChange), name: Notification.Name(UIAccessibility.voiceOverStatusDidChangeNotification.rawValue), object: nil)
 
@@ -114,8 +114,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
-        title = publication.metadata.title
         view.backgroundColor = TPPConfiguration.backgroundColor()
 
         // Ensure content extends under navigation bar without shifting when bar appears/disappears

@@ -36,6 +36,13 @@ struct AccountDetailView: View {
             .onAppear {
                 viewModel.refreshSignInState()
             }
+            .task {
+                if forceReauthMode,
+                   viewModel.selectedUserAccount.authState == .credentialsStale,
+                   viewModel.businessLogic.selectedAuthentication?.isOidc == true {
+                    viewModel.signIn()
+                }
+            }
     }
 
     @ViewBuilder
@@ -60,10 +67,11 @@ struct AccountDetailView: View {
         let needsSignIn = !viewModel.isSignedIn
         let needsReauth = forceReauthMode && viewModel.selectedUserAccount.authState == .credentialsStale
 
-        let isOAuthOrSAML = viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
-            viewModel.businessLogic.selectedAuthentication?.isSaml == true
+        let isBrowserBasedAuth = viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
+            viewModel.businessLogic.selectedAuthentication?.isSaml == true ||
+            viewModel.businessLogic.selectedAuthentication?.isOidc == true
 
-        return (needsSignIn || needsReauth) && isOAuthOrSAML
+        return (needsSignIn || needsReauth) && isBrowserBasedAuth
     }
 
     // MARK: - Sign In Prompt View
@@ -75,6 +83,7 @@ struct AccountDetailView: View {
             signInMessageSection
             SectionSeparator()
             signInButtonSection
+            registrationLinkIfAvailable
             reportIssueLinkIfAvailable
             Spacer()
         }
@@ -153,6 +162,19 @@ struct AccountDetailView: View {
         .padding(.top, Layout.verticalPaddingLarge)
         // Force view refresh when isLoading changes
         .id("signInButton-\(viewModel.isLoading)")
+    }
+
+    @ViewBuilder
+    private var registrationLinkIfAvailable: some View {
+        if viewModel.businessLogic.registrationIsPossible() {
+            Button(action: { viewModel.openRegistration() }) {
+                Text(DisplayStrings.signUpForCard)
+                    .foregroundColor(Color(TPPConfiguration.mainColor()))
+                    .horizontallyCentered()
+            }
+            .padding(.horizontal, Layout.horizontalPadding)
+            .padding(.top, Layout.verticalPaddingLarge)
+        }
     }
 
     @ViewBuilder

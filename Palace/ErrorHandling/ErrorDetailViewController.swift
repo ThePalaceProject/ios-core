@@ -10,7 +10,6 @@ import UIKit
 /// Presents detailed error information including the activity trail,
 /// server response, and device context. Accessible from the "View Error Details"
 /// button on error alerts.
-// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in setupUI
 final class ErrorDetailViewController: UIViewController {
 
     private let errorDetail: ErrorDetail
@@ -21,6 +20,7 @@ final class ErrorDetailViewController: UIViewController {
     init(errorDetail: ErrorDetail) {
         self.errorDetail = errorDetail
         super.init(nibName: nil, bundle: nil)
+        title = NSLocalizedString("Error Details", comment: "Error detail screen title")
     }
 
     @available(*, unavailable)
@@ -39,7 +39,6 @@ final class ErrorDetailViewController: UIViewController {
     // MARK: - UI Setup
 
     private func setupUI() {
-        title = "Error Details"
         view.backgroundColor = .systemBackground
 
         navigationItem.leftBarButtonItem = UIBarButtonItem(

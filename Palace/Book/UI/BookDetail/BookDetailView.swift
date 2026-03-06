@@ -488,12 +488,10 @@ struct BookDetailView: View {
 
     @ViewBuilder private var audiobookIndicator: some View {
         ImageProviders.MyBooksView.audiobookBadge
-            .resizable()
             .scaledToFit()
             .frame(width: 28, height: 28)
             .background(Circle().fill(Color.colorAudiobookBackground))
             .clipped()
-            .accessibilityHidden(true)
     }
 
     @ViewBuilder private var informationView: some View {

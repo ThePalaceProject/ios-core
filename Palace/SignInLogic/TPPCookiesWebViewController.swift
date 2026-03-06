@@ -32,12 +32,21 @@ class TPPCookiesWebViewModel: NSObject {
     }
 }
 
-// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 @objcMembers
 class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
     private let uuid: String = UUID().uuidString
     private static var automaticBrowserStorage: [String: TPPCookiesWebViewController] = [:]
     var model: TPPCookiesWebViewModel? // must be set before view loads
+
+    override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+        super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
+        title = NSLocalizedString("Sign In", comment: "Sign-in web view screen title")
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        title = NSLocalizedString("Sign In", comment: "Sign-in web view screen title")
+    }
     private var domainCookies: [String: HTTPCookie] = [:] // (<domain><cookiename>) is a key, use for ios < 11 only
     private var rawCookies: [HTTPCookie] {
         // use for ios < 11 only
@@ -90,10 +99,6 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
         super.init(nibName: nil, bundle: nil)
 
         webView.configuration.websiteDataStore = WKWebsiteDataStore.nonPersistent()
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
     }
 
     override func loadView() {
@@ -151,8 +156,6 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         assert(model != nil, "You nneed to set the model first!")
-
-        title = NSLocalizedString("Sign In", comment: "Sign-in web view screen title")
 
         if model?.autoPresentIfNeeded == true {
             TPPCookiesWebViewController.automaticBrowserStorage[uuid] = self
