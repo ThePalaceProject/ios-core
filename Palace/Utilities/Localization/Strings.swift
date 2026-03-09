@@ -336,7 +336,7 @@ struct Strings {
         static let forgotPassword = NSLocalizedString("Forgot your password?", comment: "")
         static let signUpForCard = NSLocalizedString("Sign up for a library card", comment: "")
         static let eulaAgreement = NSLocalizedString("By signing in, you agree to the End User License Agreement.", comment: "")
-        static let syncDescription = NSLocalizedString("Save your reading position and bookmarks to all your other devices.", comment: "")
+        static let syncDescription = NSLocalizedString("Toggle on sync bookmarks to save your reading position and bookmarks across all of your devices. This must be done on all devices where you are accessing Palace to synchronize reading position.", comment: "Instructional text under Sync Bookmarks in Settings")
         static let authenticateToRevealPIN = NSLocalizedString("Authenticate to reveal your PIN.", comment: "")
         static let deleteServerData = NSLocalizedString("Delete Server Data", comment: "")
     }

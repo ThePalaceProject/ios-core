@@ -133,18 +133,26 @@ jobs:
               print(text)
           " 2>/dev/null || true)
 
-          # Extract Test plan
+          # Extract Test plan (preferred) or "How to verify" from Summary for JIRA
           TESTING_STEPS=$(echo "$PR_BODY" | python3 -c "
           import sys, re
           body = sys.stdin.read()
+          # Try ## Test Plan section first
           m = re.search(r'##\s*Test [Pp]lan\s*\n(.*?)(?=\n##|\Z)', body, re.DOTALL)
           if m:
               text = m.group(1).strip()
-              # Convert markdown checklist to numbered steps
               lines = [re.sub(r'^\s*[-*]\s*\[.\]\s*', '', l).strip()
                        for l in text.splitlines() if l.strip()]
               for i, line in enumerate(lines, 1):
                   print(f'{i}. {line}')
+          else:
+              # Fallback: How to verify from Summary for JIRA
+              m2 = re.search(r'\*\*How to verify:\*\*\s*(.+?)(?=\n\*\*|\n---|\Z)', body, re.DOTALL)
+              if m2:
+                  text = m2.group(1).strip()
+                  lines = [l.strip() for l in text.splitlines() if l.strip()]
+                  for i, line in enumerate(lines, 1):
+                      print(f'{i}. {line}')
           " 2>/dev/null || true)
 
           # Fallback: use first 20 lines of PR body if no Summary section found
@@ -170,15 +178,15 @@ jobs:
               }
             fi
 
-            # Add PR link comment
+            # Add PR link comment (QA-friendly: points to fix comment for verification)
             PR_COMMENT=$(cat <<EOFCOMMENT
           🔍 Pull Request Ready for Review
 
           PR: #${PR_NUM} - ${PR_TITLE}
           URL: ${PR_URL}
-          Author: ${AUTHOR}
-          Branch: ${BRANCH}
           Build: ${BUILD_NUM}
+
+          See the "Ready for QA" comment above for *What changed* and *How to verify (QA)*.
           EOFCOMMENT
             )
             ./scripts/jira-integration.sh comment "$TICKET" "$PR_COMMENT" || {

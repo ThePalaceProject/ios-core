@@ -288,7 +288,7 @@ find_fix_comment_id() {
   ' 2>/dev/null
 }
 
-# Add a structured fix comment with root cause and testing steps
+# Add a structured fix comment for QA: what changed + how to verify
 add_fix_comment() {
   local ticket="$1"
   local root_cause="$2"
@@ -300,7 +300,7 @@ add_fix_comment() {
   fi
   
   if [[ -z "$ticket" ]]; then
-    echo -e "${RED}❌ Usage: jira-integration.sh add-fix-comment <ticket> <root_cause> <testing_steps> [commit_sha]${NC}"
+    echo -e "${RED}❌ Usage: jira-integration.sh add-fix-comment <ticket> <what_changed> <how_to_verify_qa> [commit_sha]${NC}"
     return 1
   fi
   
@@ -361,12 +361,12 @@ Message: $commit_msg"
             {
               type: "heading",
               attrs: { level: 3 },
-              content: [{ type: "text", text: "🔧 Fix Details" }]
+              content: [{ type: "text", text: "✅ Ready for QA" }]
             },
             {
-              type: "heading", 
+              type: "heading",
               attrs: { level: 4 },
-              content: [{ type: "text", text: "Root Cause" }]
+              content: [{ type: "text", text: "What changed" }]
             },
             {
               type: "paragraph",
@@ -375,7 +375,7 @@ Message: $commit_msg"
             {
               type: "heading",
               attrs: { level: 4 },
-              content: [{ type: "text", text: "Testing Steps" }]
+              content: [{ type: "text", text: "How to verify (QA)" }]
             },
             {
               type: "orderedList",
@@ -385,7 +385,7 @@ Message: $commit_msg"
             {
               type: "heading",
               attrs: { level: 4 },
-              content: [{ type: "text", text: "Commit Information" }]
+              content: [{ type: "text", text: "Build/commit (traceability)" }]
             },
             {
               type: "codeBlock",
@@ -409,12 +409,12 @@ Message: $commit_msg"
             {
               type: "heading",
               attrs: { level: 3 },
-              content: [{ type: "text", text: "🔧 Fix Details" }]
+              content: [{ type: "text", text: "✅ Ready for QA" }]
             },
             {
-              type: "heading", 
+              type: "heading",
               attrs: { level: 4 },
-              content: [{ type: "text", text: "Root Cause" }]
+              content: [{ type: "text", text: "What changed" }]
             },
             {
               type: "paragraph",
@@ -423,7 +423,7 @@ Message: $commit_msg"
             {
               type: "heading",
               attrs: { level: 4 },
-              content: [{ type: "text", text: "Testing Steps" }]
+              content: [{ type: "text", text: "How to verify (QA)" }]
             },
             {
               type: "paragraph",
@@ -432,7 +432,7 @@ Message: $commit_msg"
             {
               type: "heading",
               attrs: { level: 4 },
-              content: [{ type: "text", text: "Commit Information" }]
+              content: [{ type: "text", text: "Build/commit (traceability)" }]
             },
             {
               type: "codeBlock",
@@ -556,10 +556,12 @@ add_build_info() {
   
   local comment="✅ *Merged to ${branch:-main}*
 
-*Build:* ${build_number}"
+*Ready for QA:* TestFlight build *${build_number}*
+Use the \"How to verify (QA)\" steps in the fix comment above to validate this change."
 
   if [[ -n "$pr_number" ]]; then
     comment+="
+
 *PR:* [#${pr_number}|${repo_url}/pull/${pr_number}]"
   fi
   
@@ -567,10 +569,6 @@ add_build_info() {
     comment+="
 *Title:* ${pr_title}"
   fi
-  
-  comment+="
-
-This fix will be available in the next TestFlight build."
   
   add_comment "$ticket" "$comment"
 }
@@ -597,7 +595,7 @@ interactive_fix_comment() {
   echo -e "${BLUE}📋 Adding fix details to $ticket${NC}"
   echo ""
   
-  echo -e "${YELLOW}Enter root cause (press Enter twice when done):${NC}"
+  echo -e "${YELLOW}Enter what changed (user-facing summary for QA; press Enter twice when done):${NC}"
   local root_cause=""
   local line
   while IFS= read -r line; do
@@ -606,7 +604,7 @@ interactive_fix_comment() {
   done
   
   echo ""
-  echo -e "${YELLOW}Enter testing steps (press Enter twice when done):${NC}"
+  echo -e "${YELLOW}Enter how to verify (QA steps; press Enter twice when done):${NC}"
   local testing_steps=""
   while IFS= read -r line; do
     [[ -z "$line" ]] && break
@@ -1255,7 +1253,7 @@ main() {
       echo "Comments & Linking:"
       echo "  comment <ticket> <text>           Add a comment to a ticket"
       echo "  link-commit <ticket> [sha]        Link a commit to a ticket"
-      echo "  add-fix-comment <ticket> <root_cause> <testing_steps> [sha]"
+      echo "  add-fix-comment <ticket> <what_changed> <how_to_verify_qa> [sha]"
       echo "                                    Add structured fix details"
       echo "  add-build-info <ticket> <build> [pr_num] [pr_title] [branch]"
       echo "                                    Add merge/build info to ticket"
