@@ -116,6 +116,10 @@ struct MyBooksView: View {
                         onSelect: { book in presentBookDetail(for: book) }
                     )
                 }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(Strings.Generic.myBooksListLabel)
+                .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.books.count))
+                .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
                 .accessibilityIdentifier(AccessibilityID.MyBooks.gridView)
                 .scrollIndicators(.visible)
                 .refreshable { model.reloadData() }

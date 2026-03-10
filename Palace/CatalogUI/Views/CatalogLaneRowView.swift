@@ -36,7 +36,8 @@ struct CatalogLaneRowView: View {
                             book: book,
                             width: nil,
                             height: 150,
-                            usePulseSkeleton: true
+                            usePulseSkeleton: true,
+                            treatImageAsDecorativeInLists: true
                         )
                         .padding(.vertical)
                     })
@@ -46,6 +47,10 @@ struct CatalogLaneRowView: View {
             }
             .padding(.horizontal, 12)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
+        .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: books.count))
+        .accessibilityHint(Strings.Generic.horizontalLaneHint)
     }
 
     private func accessibilityLabel(for book: TPPBook) -> String {

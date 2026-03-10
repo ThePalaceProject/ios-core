@@ -109,6 +109,10 @@ struct HoldsView: View {
                     )
                     .padding(.horizontal, 8)
                 }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(Strings.Generic.reservationsListLabel)
+                .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.visibleBooks.count))
+                .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
                 .scrollIndicators(.visible)
                 .refreshable { model.refresh() }
                 .dismissKeyboardOnTap()

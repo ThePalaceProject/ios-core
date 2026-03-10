@@ -29,6 +29,7 @@ struct EPUBSearchView: View {
                     Image(systemName: "chevron.left")
                         .foregroundColor(.primary)
                         .padding(.trailing, 8)
+                        .accessibilityHidden(true)
                 })
                 .accessibilityLabel(Strings.Generic.goBack)
                 Text(Strings.Generic.search)

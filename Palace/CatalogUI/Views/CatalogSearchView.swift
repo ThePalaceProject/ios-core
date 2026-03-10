@@ -58,7 +58,10 @@ struct CatalogSearchView: View {
                     .id("search-results-top")
                 }
                 .accessibilityIdentifier(AccessibilityID.Search.resultsScrollView)
-                .accessibilityLabel(NSLocalizedString("Search results", comment: "VoiceOver label for search results area"))
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(NSLocalizedString("Search results list", comment: "VoiceOver label for search results area"))
+                .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count))
+                .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
                 .accessibilityFocused($accessibilityFocus, equals: .resultsArea)
                 .scrollDismissesKeyboard(.immediately)
                 .simultaneousGesture(

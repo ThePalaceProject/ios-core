@@ -100,7 +100,7 @@ struct TPPSettingsView: View {
             .navigationBarItems(trailing: navButton)
             .id(librariesRefreshToken)
 
-        Section {
+        Section(header: Text(DisplayStrings.libraries)) {
             row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
                 .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
         }
@@ -108,7 +108,7 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var infoSection: some View {
         let view: AnyView = showDeveloperSettings ? EmptyView().anyView() : versionInfo.anyView()
-        Section(footer: view) {
+        Section(header: Text(Strings.Settings.aboutSectionHeader), footer: view) {
             aboutRow
             privacyRow
             userAgreementRow
@@ -174,7 +174,7 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var developerSettingsSection: some View {
         if TPPSettings.shared.customMainFeedURL == nil && showDeveloperSettings {
-            Section(footer: versionInfo) {
+            Section(header: Text(DisplayStrings.developerSettings), footer: versionInfo) {
                 let viewController = TPPDeveloperSettingsTableViewController()
 
                 let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
