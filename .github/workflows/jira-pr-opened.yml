@@ -92,7 +92,9 @@ jobs:
           echo "msg=$(git log -1 --format='%s')" >> $GITHUB_OUTPUT
 
       - name: Move tickets to Code Review
+        id: jira-update
         if: steps.tickets.outputs.found == 'true'
+        continue-on-error: true
         env:
           JIRA_URL: ${{ secrets.JIRA_URL }}
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
@@ -198,11 +200,13 @@ jobs:
           rm -f .jira-config
           
       - name: Summary
-        if: steps.tickets.outputs.found == 'true'
+        if: always() && steps.tickets.outputs.found == 'true'
         run: |
           echo "## 🔍 Jira Code Review Update" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tickets moved to Code Review:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**PR:** #${{ steps.pr.outputs.num }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Build:** ${{ steps.build.outputs.number }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.jira-update.outcome }}" = "failure" ]; then
+            echo "⚠️ **JIRA step failed.** Check Actions log for errors. Common causes: missing repo secrets (JIRA_URL, JIRA_EMAIL, JIRA_API_TOKEN), or transition name mismatch (e.g. \"Code Review\")." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "**Tickets:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** #${{ steps.pr.outputs.num }} | **Build:** ${{ steps.build.outputs.number }}" >> $GITHUB_STEP_SUMMARY

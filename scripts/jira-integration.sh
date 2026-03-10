@@ -270,7 +270,7 @@ for item in items:
 " "$text"
 }
 
-# Find existing "Fix Details" comment ID for a ticket
+# Find existing "Ready for QA" or "Fix Details" comment ID for a ticket
 find_fix_comment_id() {
   local ticket="$1"
   
@@ -280,10 +280,10 @@ find_fix_comment_id() {
     -H "Content-Type: application/json" \
     "$JIRA_URL/rest/api/3/issue/$ticket/comment")
   
-  # Find comment containing "Fix Details" and return its ID
+  # Find comment containing our fix-details heading (updated text or legacy)
   echo "$response" | jq -r '
     [.comments[]? | select(
-      .body.content[]?.content[]?.text? // empty | contains("Fix Details")
+      (.body.content[]?.content[]?.text? // empty) | test("Ready for QA|Fix Details")
     ) | .id] | first // empty
   ' 2>/dev/null
 }
@@ -347,101 +347,45 @@ Message: $commit_msg"
   
   # Use jq for proper JSON construction with escaping
   local json_payload
+  # Omit Build/commit section when commit_info is empty (empty codeBlock can break JIRA API)
   if [[ "$list_items_json" != "[]" ]]; then
     # Use ordered list for testing steps
     json_payload=$(jq -n \
       --arg root_cause "$root_cause" \
       --argjson list_items "$list_items_json" \
       --arg commit_info "$commit_info" \
-      '{
-        body: {
-          type: "doc",
-          version: 1,
-          content: [
-            {
-              type: "heading",
-              attrs: { level: 3 },
-              content: [{ type: "text", text: "✅ Ready for QA" }]
-            },
-            {
-              type: "heading",
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "What changed" }]
-            },
-            {
-              type: "paragraph",
-              content: [{ type: "text", text: $root_cause }]
-            },
-            {
-              type: "heading",
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "How to verify (QA)" }]
-            },
-            {
-              type: "orderedList",
-              attrs: { order: 1 },
-              content: $list_items
-            },
-            {
-              type: "heading",
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "Build/commit (traceability)" }]
-            },
-            {
-              type: "codeBlock",
-              attrs: { language: "text" },
-              content: [{ type: "text", text: $commit_info }]
-            }
-          ]
-        }
-      }')
+      '(
+        [
+          { type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "✅ Ready for QA" }] },
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "What changed" }] },
+          { type: "paragraph", content: [{ type: "text", text: $root_cause }] },
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "How to verify (QA)" }] },
+          { type: "orderedList", attrs: { order: 1 }, content: $list_items }
+        ] + (if ($commit_info | length) > 0 then [
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "Build/commit (traceability)" }] },
+          { type: "codeBlock", attrs: { language: "text" }, content: [{ type: "text", text: $commit_info }] }
+        ] else [] end)
+      ) as $content
+      | { body: { type: "doc", version: 1, content: $content } }')
   else
     # Plain text for testing steps
     json_payload=$(jq -n \
       --arg root_cause "$root_cause" \
       --arg testing_steps "$testing_steps" \
       --arg commit_info "$commit_info" \
-      '{
-        body: {
-          type: "doc",
-          version: 1,
-          content: [
-            {
-              type: "heading",
-              attrs: { level: 3 },
-              content: [{ type: "text", text: "✅ Ready for QA" }]
-            },
-            {
-              type: "heading",
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "What changed" }]
-            },
-            {
-              type: "paragraph",
-              content: [{ type: "text", text: $root_cause }]
-            },
-            {
-              type: "heading",
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "How to verify (QA)" }]
-            },
-            {
-              type: "paragraph",
-              content: [{ type: "text", text: $testing_steps }]
-            },
-            {
-              type: "heading",
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "Build/commit (traceability)" }]
-            },
-            {
-              type: "codeBlock",
-              attrs: { language: "text" },
-              content: [{ type: "text", text: $commit_info }]
-            }
-          ]
-        }
-      }')
+      '(
+        [
+          { type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "✅ Ready for QA" }] },
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "What changed" }] },
+          { type: "paragraph", content: [{ type: "text", text: $root_cause }] },
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "How to verify (QA)" }] },
+          { type: "paragraph", content: [{ type: "text", text: $testing_steps }] }
+        ] + (if ($commit_info | length) > 0 then [
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "Build/commit (traceability)" }] },
+          { type: "codeBlock", attrs: { language: "text" }, content: [{ type: "text", text: $commit_info }] }
+        ] else [] end)
+      ) as $content
+      | { body: { type: "doc", version: 1, content: $content } }')
   fi
   
   local response
