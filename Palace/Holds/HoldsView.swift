@@ -74,6 +74,10 @@ struct HoldsView: View {
 
     private var mainContent: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if let error = model.syncError {
+                syncErrorBanner(error)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             if model.showSearchSheet {
                 searchBar
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -111,6 +115,34 @@ struct HoldsView: View {
                 .accessibilityIdentifier(AccessibilityID.Holds.scrollView)
             }
         }
+    }
+
+    private func syncErrorBanner(_ error: HoldsViewModel.SyncError) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.white)
+                .font(.body)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Strings.HoldsView.syncFailedTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white)
+                Text(error.message)
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.9))
+            }
+            Spacer()
+            Button {
+                withAnimation { model.dismissSyncError() }
+            } label: {
+                Image(systemName: "xmark")
+                    .foregroundColor(.white.opacity(0.8))
+                    .font(.caption)
+            }
+            .accessibilityLabel(Strings.Generic.close)
+        }
+        .padding(12)
+        .background(Color.red.opacity(0.85))
+        .accessibilityIdentifier(AccessibilityID.Holds.syncErrorBanner)
     }
 
     /// Placeholder text when there are no holds at all

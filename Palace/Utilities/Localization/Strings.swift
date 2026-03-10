@@ -607,5 +607,13 @@ struct Strings {
             Look here from time to time to see if your book is available to download.
             """, comment: "")
         static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "")
+        static let syncFailedMessage = NSLocalizedString(
+            "Your reservations may be out of date. Pull down to try again.",
+            comment: "Shown when syncing the holds/reservations list fails"
+        )
+        static let syncFailedTitle = NSLocalizedString(
+            "Couldn't Update Reservations",
+            comment: "Title for sync failure banner on holds screen"
+        )
     }
 }
