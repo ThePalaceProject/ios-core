@@ -1,11 +1,17 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Accessibility focus (list callout when entering Reservations)
+private enum HoldsAccessibilityFocus: Hashable {
+    case list
+}
+
 struct HoldsView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator
     typealias DisplayStrings = Strings.HoldsView
 
     @StateObject private var model = HoldsViewModel()
+    @AccessibilityFocusState private var accessibilityFocus: HoldsAccessibilityFocus?
     @StateObject private var logoObserver = CatalogLogoObserver()
     @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
     private var allBooks: [TPPBook] {
@@ -48,6 +54,27 @@ struct HoldsView: View {
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
+                    // Announce "Reservations list, X books" when entering the tab (focus only when list is shown)
+                    if !model.isLoading, UIAccessibility.isVoiceOverRunning {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.visibleBooks.count)
+                            UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.reservationsListLabel), \(value)")
+                            if !model.visibleBooks.isEmpty {
+                                accessibilityFocus = .list
+                            }
+                        }
+                    }
+                }
+                .onChange(of: model.isLoading) { isLoading in
+                    if !isLoading, UIAccessibility.isVoiceOverRunning {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.visibleBooks.count)
+                            UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.reservationsListLabel), \(value)")
+                            if !model.visibleBooks.isEmpty {
+                                accessibilityFocus = .list
+                            }
+                        }
+                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
                     let account = AccountsManager.shared.currentAccount
@@ -113,6 +140,7 @@ struct HoldsView: View {
                 .accessibilityLabel(Strings.Generic.reservationsListLabel)
                 .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.visibleBooks.count))
                 .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
+                .accessibilityFocused($accessibilityFocus, equals: .list)
                 .scrollIndicators(.visible)
                 .refreshable { model.refresh() }
                 .dismissKeyboardOnTap()

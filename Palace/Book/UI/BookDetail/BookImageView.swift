@@ -43,6 +43,7 @@ struct BookImageView: View {
                     .accessibilityHidden(treatImageAsDecorativeInLists)
             }
         }
+        .accessibilityElement(children: treatImageAsDecorativeInLists ? .ignore : .combine)
         .frame(width: width, height: height)
         .onAppear {
             // Skip skeleton if image already loaded
