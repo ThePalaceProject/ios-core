@@ -52,6 +52,7 @@ jobs:
           
       - name: Update Jira tickets
         if: steps.tickets.outputs.found == 'true'
+        continue-on-error: true
         env:
           JIRA_URL: ${{ secrets.JIRA_URL }}
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}

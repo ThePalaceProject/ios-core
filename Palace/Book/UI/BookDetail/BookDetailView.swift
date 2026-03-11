@@ -176,11 +176,13 @@ struct BookDetailView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
                             .font(.body.weight(.semibold))
+                            .accessibilityHidden(true)
                         Text(Strings.Generic.back)
                             .palaceFont(.body)
                     }
                     .foregroundColor(headerColor.isDark ? .white : .black)
                 })
+                .accessibilityLabel(Strings.Generic.goBack)
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -275,7 +277,7 @@ struct BookDetailView: View {
     }
 
     private var imageView: some View {
-        BookImageView(book: viewModel.book, height: 280 * imageScale)
+        BookImageView(book: viewModel.book, height: 280 * imageScale, treatImageAsDecorativeInLists: true)
             .accessibilityIdentifier(AccessibilityID.BookDetail.coverImage)
             .opacity(imageOpacity)
             .adaptiveShadow()
@@ -369,6 +371,7 @@ struct BookDetailView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(DisplayStrings.description.uppercased())
                         .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
 
                     Divider()
                         .padding(.vertical)
@@ -415,6 +418,7 @@ struct BookDetailView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(DisplayStrings.otherBooks.uppercased())
                         .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
 
                     Divider()
                         .padding(.vertical, 20)
@@ -448,7 +452,7 @@ struct BookDetailView: View {
                                             Button(action: {
                                                 viewModel.selectRelatedBook(book)
                                             }, label: {
-                                                BookImageView(book: book, height: 160)
+                                                BookImageView(book: book, height: 160, treatImageAsDecorativeInLists: true)
                                                     .padding()
                                                     .adaptiveShadow(radius: 5)
                                                     .transition(.opacity.combined(with: .scale))
@@ -465,6 +469,10 @@ struct BookDetailView: View {
                                 .padding(.horizontal, 30)
 
                             }
+                            .accessibilityElement(children: .contain)
+                            .accessibilityLabel(lane.title)
+                            .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: lane.books.count))
+                            .accessibilityHint(Strings.Generic.horizontalLaneHint)
                         }
                     }
                 }
@@ -498,6 +506,7 @@ struct BookDetailView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(DisplayStrings.information.uppercased())
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
             Divider()
                 .padding(.vertical)
 
@@ -714,11 +723,13 @@ struct BookDetailView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
                             .font(.body.weight(.semibold))
-                        Text("Back")
+                            .accessibilityHidden(true)
+                        Text(Strings.Generic.back)
                             .palaceFont(.body)
                     }
                     .foregroundColor(headerColor.isDark ? .white : .black)
                 })
+                .accessibilityLabel(Strings.Generic.goBack)
                 .padding(.leading, 8)
                 .padding(.top, UIDevice.current.isIpad ? 8 : 0)
 

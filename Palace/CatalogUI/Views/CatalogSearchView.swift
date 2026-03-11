@@ -1,10 +1,18 @@
 import SwiftUI
 import Combine
+import UIKit
+
+// MARK: - Accessibility focus target (PP-3834: move VoiceOver to results after search)
+private enum SearchAccessibilityFocus: Hashable {
+    case searchField
+    case resultsArea
+}
 
 // MARK: - SearchView
 struct CatalogSearchView: View {
     @StateObject private var viewModel: CatalogSearchViewModel
     @FocusState private var isSearchFieldFocused: Bool
+    @AccessibilityFocusState private var accessibilityFocus: SearchAccessibilityFocus?
     let books: [TPPBook]
     let onBookSelected: (TPPBook) -> Void
 
@@ -49,6 +57,12 @@ struct CatalogSearchView: View {
                     )
                     .id("search-results-top")
                 }
+                .accessibilityIdentifier(AccessibilityID.Search.resultsScrollView)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(NSLocalizedString("Search results list", comment: "VoiceOver label for search results area"))
+                .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count))
+                .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
+                .accessibilityFocused($accessibilityFocus, equals: .resultsArea)
                 .scrollDismissesKeyboard(.immediately)
                 .simultaneousGesture(
                     TapGesture().onEnded { isSearchFieldFocused = false }
@@ -56,6 +70,17 @@ struct CatalogSearchView: View {
                 .onChange(of: viewModel.searchId) { _ in
                     // Scroll to top only for new searches, not pagination
                     proxy.scrollTo("search-results-top", anchor: .top)
+                }
+                .onChange(of: viewModel.isLoading) { isLoading in
+                    // PP-3834: When search completes, move VoiceOver focus to results (WCAG 2.4.3)
+                    if !isLoading, !viewModel.searchQuery.isEmpty, UIAccessibility.isVoiceOverRunning {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            accessibilityFocus = .resultsArea
+                            let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count)
+                            let listLabel = NSLocalizedString("Search results list", comment: "VoiceOver label for search results area")
+                            UIAccessibility.post(notification: .announcement, argument: "\(listLabel), \(value)")
+                        }
+                    }
                 }
             }
         }

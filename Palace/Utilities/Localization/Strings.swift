@@ -102,6 +102,12 @@ struct Strings {
         static let moreBooksInLane = NSLocalizedString("More books in %@", comment: "VoiceOver: See more books in a catalog lane")
         static let expandSection = NSLocalizedString("Expand section", comment: "VoiceOver: Expand a collapsible section")
         static let collapseSection = NSLocalizedString("Collapse section", comment: "VoiceOver: Collapse an expanded section")
+        static let horizontalLaneHint = NSLocalizedString("Swipe horizontally to browse. Double tap to open a book.", comment: "VoiceOver: Hint for horizontal book lanes")
+        static let catalogRegion = NSLocalizedString("Catalog", comment: "VoiceOver: Label for main catalog / browse region")
+        static let booksListLabel = NSLocalizedString("Books list", comment: "VoiceOver: Label for a list of books")
+        static let myBooksListLabel = NSLocalizedString("My Books list", comment: "VoiceOver: Label for My Books tab list")
+        static let reservationsListLabel = NSLocalizedString("Reservations list", comment: "VoiceOver: Label for Holds/Reservations list")
+        static let accountSettingsRegion = NSLocalizedString("Account settings", comment: "VoiceOver: Label for account/sign-in settings list")
 
         // Accessibility - Reader Navigation
         static let tableOfContents = NSLocalizedString("Table of contents", comment: "VoiceOver: Open table of contents")
@@ -247,6 +253,27 @@ struct Strings {
             )
         }
 
+        /// VoiceOver value for the search results list (e.g. "5 books", "No results").
+        static func searchResultsListValue(bookCount: Int) -> String {
+            switch bookCount {
+            case 0:
+                return NSLocalizedString("No results", comment: "Accessibility value when search has no results")
+            case 1:
+                return NSLocalizedString("1 book", comment: "Accessibility value when search has one result")
+            default:
+                return String.localizedStringWithFormat(
+                    NSLocalizedString("%d books", comment: "Accessibility value for search results count. %d is number of books"),
+                    bookCount
+                )
+            }
+        }
+
+        /// VoiceOver hint for the search results list.
+        static let searchResultsListHint = NSLocalizedString(
+            "Swipe to browse results. Double tap to open a book.",
+            comment: "Accessibility hint for search results list"
+        )
+
         static func loadingMoreResults() -> String {
             NSLocalizedString(
                 "Loading more results.",
@@ -336,9 +363,10 @@ struct Strings {
         static let forgotPassword = NSLocalizedString("Forgot your password?", comment: "")
         static let signUpForCard = NSLocalizedString("Sign up for a library card", comment: "")
         static let eulaAgreement = NSLocalizedString("By signing in, you agree to the End User License Agreement.", comment: "")
-        static let syncDescription = NSLocalizedString("Save your reading position and bookmarks to all your other devices.", comment: "")
+        static let syncDescription = NSLocalizedString("Toggle on sync bookmarks to save your reading position and bookmarks across all of your devices. This must be done on all devices where you are accessing Palace to synchronize reading position.", comment: "Instructional text under Sync Bookmarks in Settings")
         static let authenticateToRevealPIN = NSLocalizedString("Authenticate to reveal your PIN.", comment: "")
         static let deleteServerData = NSLocalizedString("Delete Server Data", comment: "")
+        static let aboutSectionHeader = NSLocalizedString("About and legal", comment: "VoiceOver: Settings list section header for About, Privacy, Licenses")
     }
 
     struct AccountDetail {
@@ -607,5 +635,13 @@ struct Strings {
             Look here from time to time to see if your book is available to download.
             """, comment: "")
         static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "")
+        static let syncFailedMessage = NSLocalizedString(
+            "Your reservations may be out of date. Pull down to try again.",
+            comment: "Shown when syncing the holds/reservations list fails"
+        )
+        static let syncFailedTitle = NSLocalizedString(
+            "Couldn't Update Reservations",
+            comment: "Title for sync failure banner on holds screen"
+        )
     }
 }

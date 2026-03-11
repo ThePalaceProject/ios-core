@@ -225,6 +225,8 @@ struct AccountDetailView: View {
             }
         }
         .listStyle(GroupedListStyle())
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Strings.Generic.accountSettingsRegion)
     }
 
     @ViewBuilder

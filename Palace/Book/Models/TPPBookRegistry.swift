@@ -384,6 +384,21 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             return
         }
 
+        // Simulate sync failure for testing the silent-error UX gap
+        if Bundle.main.applicationEnvironment != .production,
+           DebugSettings.shared.isSyncFailureSimulationEnabled {
+            let simType = DebugSettings.shared.simulatedSyncFailure
+            Log.warn(#file, "DEBUG: Simulating sync failure: \(simType.displayName)")
+            state = .syncing
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.state = .loaded
+                let errorDoc = simType == .emptyFeed ? nil : simType.errorDocument
+                self?.postSyncFailure(errorDoc)
+                completion?(errorDoc, false)
+            }
+            return
+        }
+
         state = .syncing
         syncUrl = loansUrl
 
@@ -395,6 +410,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 if let errorDocument = errorDocument {
                     self.state = .loaded
                     self.syncUrl = nil
+                    self.postSyncFailure(errorDocument)
                     completion?(errorDocument, false)
                     return
                 }
@@ -402,6 +418,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 guard let feed = feed else {
                     self.state = .loaded
                     self.syncUrl = nil
+                    self.postSyncFailure(nil)
                     completion?(nil, false)
                     return
                 }
@@ -496,6 +513,16 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 completion?(nil, changesMade)
             }
         }
+    }
+
+    static let syncFailureErrorDocumentKey = "errorDocument"
+
+    private func postSyncFailure(_ errorDocument: [AnyHashable: Any]?) {
+        var userInfo: [AnyHashable: Any] = [:]
+        if let errorDocument {
+            userInfo[TPPBookRegistry.syncFailureErrorDocumentKey] = errorDocument
+        }
+        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: userInfo)
     }
 
     private func save() {

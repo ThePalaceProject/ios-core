@@ -167,6 +167,9 @@ public enum AccessibilityID {
         public static let searchField = "holds.searchField"
         public static let libraryButton = "holds.libraryButton"
 
+        // Sync error
+        public static let syncErrorBanner = "holds.syncErrorBanner"
+
         // Hold cells
         public static func holdCell(_ bookID: String) -> String { "holds.holdCell.\(bookID)" }
         public static func cancelHoldButton(_ bookID: String) -> String { "holds.cancelHold.\(bookID)" }
