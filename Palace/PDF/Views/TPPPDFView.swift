@@ -24,11 +24,15 @@ struct TPPPDFView: View {
     @State private var showingDocumentInfo = true
     @State private var isTracking = false
     @State private var documentTitle: String = ""
+    @State private var isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
 
     var body: some View {
         ZStack {
             TPPPDFDocumentView(document: document, pdfView: pdfView, showingDocumentInfo: $showingDocumentInfo, isTracking: $isTracking)
                 .edgesIgnoringSafeArea([.all])
+                .accessibilityScrollAction { edge in
+                    handleAccessibilityScroll(edge)
+                }
 
             VStack {
                 TPPPDFLabel(documentTitle)
@@ -41,17 +45,24 @@ struct TPPPDFView: View {
                 }
                 VStack(spacing: 0) {
                     Divider()
-                    TPPPDFThumbnailView(pdfView: pdfView)
-                        .frame(maxHeight: 40)
-                        .background(
-                            Color(UIColor.systemBackground)
-                                .edgesIgnoringSafeArea(.bottom)
+                    if isVoiceOverRunning {
+                        TPPPDFAccessibilityToolbar(
+                            currentPage: $metadata.currentPage,
+                            pageCount: document.pageCount
                         )
+                    } else {
+                        TPPPDFThumbnailView(pdfView: pdfView)
+                            .frame(maxHeight: 40)
+                            .background(
+                                Color(UIColor.systemBackground)
+                                    .edgesIgnoringSafeArea(.bottom)
+                            )
+                    }
                 }
             }
-            .opacity(showingDocumentInfo ? 1 : 0)
+            .opacity(showingDocumentInfo || isVoiceOverRunning ? 1 : 0)
         }
-        .navigationBarHidden(!showingDocumentInfo)
+        .navigationBarHidden(!showingDocumentInfo && !isVoiceOverRunning)
         .onAppear {
             Task {
                 if let title = await fetchDocumentTitle() {
@@ -67,6 +78,22 @@ struct TPPPDFView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.voiceOverStatusDidChangeNotification)) { _ in
+            isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
+        }
+    }
+
+    private func handleAccessibilityScroll(_ edge: Edge) {
+        switch edge {
+        case .trailing, .bottom:
+            guard metadata.currentPage < document.pageCount - 1 else { return }
+            metadata.currentPage += 1
+        case .leading, .top:
+            guard metadata.currentPage > 0 else { return }
+            metadata.currentPage -= 1
+        }
+        let status = String(format: Strings.TPPBaseReaderViewController.pageOf, metadata.currentPage + 1) + "\(document.pageCount)"
+        UIAccessibility.post(notification: .pageScrolled, argument: status)
     }
 
     private func fetchDocumentTitle() async -> String? {
