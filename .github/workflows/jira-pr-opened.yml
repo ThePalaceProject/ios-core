@@ -179,21 +179,6 @@ jobs:
                 echo "⚠️ Failed to add fix details to $TICKET"
               }
             fi
-
-            # Add PR link comment (QA-friendly: points to fix comment for verification)
-            PR_COMMENT=$(cat <<EOFCOMMENT
-          🔍 Pull Request Ready for Review
-
-          PR: #${PR_NUM} - ${PR_TITLE}
-          URL: ${PR_URL}
-          Build: ${BUILD_NUM}
-
-          See the "Ready for QA" comment above for *What changed* and *How to verify (QA)*.
-          EOFCOMMENT
-            )
-            ./scripts/jira-integration.sh comment "$TICKET" "$PR_COMMENT" || {
-              echo "⚠️ Failed to add PR comment to $TICKET"
-            }
           done
           
           # Cleanup
