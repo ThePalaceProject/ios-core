@@ -37,8 +37,13 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     @ObservedObject var viewModel: ViewModel
     var backgroundColor: Color
     @Binding var coverImage: UIImage?
+    @AccessibilityFocusState private var isBookTitleFocused: Bool
     @State private var originalState: TPPBookState = .unregistered
     @State private var didChangeState: Bool = false
+
+    private var isShowingProgress: Bool {
+        viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
@@ -51,11 +56,13 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
             bookInfoView
             statusInfoView
 
-            // Reserve consistent space for progress bar to prevent layout shifts
             ProgressView(value: viewModel.downloadProgress, total: 1.0)
                 .progressViewStyle(LinearProgressViewStyle())
                 .frame(height: 6)
-                .opacity(viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful ? 1 : 0)
+                .opacity(isShowingProgress ? 1 : 0)
+                .accessibilityLabel(Strings.DownloadAnnouncements.downloadingTitle(viewModel.book.title))
+                .accessibilityIdentifier(AccessibilityID.BookDetail.downloadProgress)
+                .accessibilityHidden(!isShowingProgress)
 
             if viewModel.isFullSize {
                 BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
@@ -133,8 +140,13 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                 )
             }
         }
+        .accessibilityIdentifier(AccessibilityID.BookDetail.halfSheet)
         .onAppear {
             originalState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+            NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                isBookTitleFocused = true
+            }
         }
         .onDisappear {
             // Always sync to latest registry state to avoid reverting the UI after a successful download
@@ -208,6 +220,7 @@ private extension HalfSheetView {
                     Text(viewModel.book.title)
                         .font(.body)
                         .foregroundColor(.primary)
+                        .accessibilityFocused($isBookTitleFocused)
 
                     if let authors = viewModel.book.authors, !authors.isEmpty {
                         Text(authors)
