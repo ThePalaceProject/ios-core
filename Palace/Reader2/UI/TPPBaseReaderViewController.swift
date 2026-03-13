@@ -51,6 +51,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     /// to prevent double-toggling the toolbar.
     var usesInputObserversForTapHandling: Bool { false }
 
+    /// Set before any user-initiated navigation (toolbar buttons, keyboard,
+    /// edge taps). Cleared by `didChangeLocation` after use. Lets subclasses
+    /// distinguish manual page turns from VoiceOver's automatic
+    /// `accessibilityScroll` which flows through Readium's internal path.
+    var manualNavigationPending = false
+
     private var currentLocationIsBookmarked: Bool {
         bookmarksBusinessLogic.currentLocation(in: navigator) != nil
     }
@@ -504,20 +510,16 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
 
     @objc private func goBackward() {
+        manualNavigationPending = true
         Task {
             await navigator.goBackward(options: NavigatorGoOptions(animated: false))
-            if let title = self.navigator.currentLocation?.title {
-                UIAccessibility.post(notification: .announcement, argument: title)
-            }
         }
     }
 
     @objc private func goForward() {
+        manualNavigationPending = true
         Task {
             await navigator.goForward(options: NavigatorGoOptions(animated: false))
-            if let title = self.navigator.currentLocation?.title {
-                UIAccessibility.post(notification: .announcement, argument: title)
-            }
         }
     }
 
@@ -533,10 +535,12 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     func handleKeyboardCommand(_ command: ReaderKeyboardCommand) {
         switch command {
         case .goBackward:
+            manualNavigationPending = true
             Task { @MainActor in
                 await navigator.goBackward(options: NavigatorGoOptions(animated: false))
             }
         case .goForward:
+            manualNavigationPending = true
             Task { @MainActor in
                 await navigator.goForward(options: NavigatorGoOptions(animated: false))
             }
@@ -627,6 +631,7 @@ extension TPPBaseReaderViewController: VisualNavigatorDelegate {
         let viewport = navigator.view.bounds
         let thresholdRange = 0...(0.2 * viewport.width)
 
+        manualNavigationPending = true
         Task {
             var moved = false
             if thresholdRange ~= point.x {
@@ -636,6 +641,7 @@ extension TPPBaseReaderViewController: VisualNavigatorDelegate {
             }
 
             if !moved {
+                manualNavigationPending = false
                 toggleNavigationBar()
             }
         }

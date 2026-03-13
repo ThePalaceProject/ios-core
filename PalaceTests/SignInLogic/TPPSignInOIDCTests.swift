@@ -485,6 +485,7 @@ final class OIDCCallbackHandlingTests: XCTestCase {
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         businessLogic = nil
         libraryMock = nil
@@ -838,11 +839,13 @@ final class OIDCCallbackEdgeCaseTests: XCTestCase {
     private var businessLogic: TPPSignInBusinessLogic!
     private var libraryMock: TPPLibraryAccountMock!
     private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+    private var networkExecutor: TPPRequestExecutorMock!
 
     override func setUp() {
         super.setUp()
         libraryMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+        networkExecutor = TPPRequestExecutorMock()
 
         businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryMock.tppAccountUUID,
@@ -851,17 +854,19 @@ final class OIDCCallbackEdgeCaseTests: XCTestCase {
             bookRegistry: TPPBookRegistryMock(),
             bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
             userAccountProvider: TPPUserAccountMock.self,
-            networkExecutor: TPPRequestExecutorMock(),
+            networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
             drmAuthorizer: TPPDRMAuthorizingMock()
         )
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         businessLogic = nil
         libraryMock = nil
         uiDelegate = nil
+        networkExecutor = nil
         super.tearDown()
     }
 
@@ -1045,11 +1050,13 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
     private var businessLogic: TPPSignInBusinessLogic!
     private var libraryMock: TPPLibraryAccountMock!
     private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+    private var networkExecutor: TPPRequestExecutorMock!
 
     override func setUp() {
         super.setUp()
         libraryMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+        networkExecutor = TPPRequestExecutorMock()
 
         businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryMock.tppAccountUUID,
@@ -1058,17 +1065,19 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
             bookRegistry: TPPBookRegistryMock(),
             bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
             userAccountProvider: TPPUserAccountMock.self,
-            networkExecutor: TPPRequestExecutorMock(),
+            networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
             drmAuthorizer: TPPDRMAuthorizingMock()
         )
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         businessLogic = nil
         libraryMock = nil
         uiDelegate = nil
+        networkExecutor = nil
         super.tearDown()
     }
 
@@ -1149,6 +1158,7 @@ final class OIDCSignOutRegressionTests: XCTestCase {
     private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
     private var bookRegistryMock: TPPBookRegistryMock!
     private var downloadsCenterMock: TPPMyBooksDownloadsCenterMock!
+    private var networkExecutor: TPPRequestExecutorMock!
 
     override func setUp() {
         super.setUp()
@@ -1156,6 +1166,7 @@ final class OIDCSignOutRegressionTests: XCTestCase {
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
         bookRegistryMock = TPPBookRegistryMock()
         downloadsCenterMock = TPPMyBooksDownloadsCenterMock()
+        networkExecutor = TPPRequestExecutorMock()
 
         businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryMock.tppAccountUUID,
@@ -1164,19 +1175,21 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             bookRegistry: bookRegistryMock,
             bookDownloadsCenter: downloadsCenterMock,
             userAccountProvider: TPPUserAccountMock.self,
-            networkExecutor: TPPRequestExecutorMock(),
+            networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
             drmAuthorizer: TPPDRMAuthorizingMock()
         )
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         businessLogic = nil
         libraryMock = nil
         uiDelegate = nil
         bookRegistryMock = nil
         downloadsCenterMock = nil
+        networkExecutor = nil
         super.tearDown()
     }
 
@@ -1310,10 +1323,12 @@ final class OIDCTokenRefreshRegressionTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
     private var libraryMock: TPPLibraryAccountMock!
+    private var networkExecutor: TPPRequestExecutorMock!
 
     override func setUp() {
         super.setUp()
         libraryMock = TPPLibraryAccountMock()
+        networkExecutor = TPPRequestExecutorMock()
 
         businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryMock.tppAccountUUID,
@@ -1322,16 +1337,18 @@ final class OIDCTokenRefreshRegressionTests: XCTestCase {
             bookRegistry: TPPBookRegistryMock(),
             bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
             userAccountProvider: TPPUserAccountMock.self,
-            networkExecutor: TPPRequestExecutorMock(),
+            networkExecutor: networkExecutor,
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
             drmAuthorizer: TPPDRMAuthorizingMock()
         )
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         businessLogic = nil
         libraryMock = nil
+        networkExecutor = nil
         super.tearDown()
     }
 
@@ -1557,11 +1574,13 @@ final class OIDCReauthOnExpiredTokenTests: XCTestCase {
     private var businessLogic: TPPSignInBusinessLogic!
     private var libraryMock: TPPLibraryAccountMock!
     private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+    private var networkExecutor: TPPRequestExecutorMock!
 
     override func setUp() {
         super.setUp()
         libraryMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+        networkExecutor = TPPRequestExecutorMock()
 
         businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryMock.tppAccountUUID,
@@ -1570,17 +1589,19 @@ final class OIDCReauthOnExpiredTokenTests: XCTestCase {
             bookRegistry: TPPBookRegistryMock(),
             bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
             userAccountProvider: TPPUserAccountMock.self,
-            networkExecutor: TPPRequestExecutorMock(),
+            networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
             drmAuthorizer: TPPDRMAuthorizingMock()
         )
     }
 
     override func tearDown() {
+        networkExecutor.reset()
         businessLogic.userAccount.removeAll()
         businessLogic = nil
         libraryMock = nil
         uiDelegate = nil
+        networkExecutor = nil
         super.tearDown()
     }
 
