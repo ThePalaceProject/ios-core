@@ -96,8 +96,8 @@ jobs:
         if: steps.tickets.outputs.found == 'true'
         continue-on-error: true
         env:
-          JIRA_URL: ${{ secrets.JIRA_URL }}
-          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
           PR_NUM: ${{ steps.pr.outputs.num }}
           PR_URL: ${{ steps.pr.outputs.url }}
