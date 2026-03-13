@@ -28,6 +28,7 @@ struct BookDetailView: View {
     @State private var imageBottomPosition: CGFloat = 400
     @State private var pulseSkeleton: Bool = false
     @State private var lastBookIdentifier: String?
+    @AccessibilityFocusState private var isTitleFocused: Bool
     @State private var initialLayoutComplete: Bool = false
     @State private var currentOrientation: UIDeviceOrientation = UIDevice.current.orientation
 
@@ -98,6 +99,11 @@ struct BookDetailView: View {
                 self.descriptionText = viewModel.book.summary ?? ""
                 accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                     pulseSkeleton = true
+                }
+
+                NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    isTitleFocused = true
                 }
             }
             .onDisappear {
@@ -298,6 +304,7 @@ struct BookDetailView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, alignment: viewModel.isFullSize ? .leading : .center)
                 .accessibilityIdentifier(AccessibilityID.BookDetail.title)
+                .accessibilityFocused($isTitleFocused)
 
             if let authors = viewModel.book.authors, !authors.isEmpty {
                 Text(authors)

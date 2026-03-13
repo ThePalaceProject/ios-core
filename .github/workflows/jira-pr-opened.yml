@@ -96,9 +96,9 @@ jobs:
         if: steps.tickets.outputs.found == 'true'
         continue-on-error: true
         env:
-          JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
-          JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
-          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_URL: ${{ secrets.JIRA_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_PERSONAL_EMAIL || secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_PERSONAL_API_TOKEN || secrets.JIRA_API_TOKEN }}
           PR_NUM: ${{ steps.pr.outputs.num }}
           PR_URL: ${{ steps.pr.outputs.url }}
           PR_TITLE: ${{ steps.pr.outputs.title }}
@@ -179,21 +179,6 @@ jobs:
                 echo "⚠️ Failed to add fix details to $TICKET"
               }
             fi
-
-            # Add PR link comment (QA-friendly: points to fix comment for verification)
-            PR_COMMENT=$(cat <<EOFCOMMENT
-          🔍 Pull Request Ready for Review
-
-          PR: #${PR_NUM} - ${PR_TITLE}
-          URL: ${PR_URL}
-          Build: ${BUILD_NUM}
-
-          See the "Ready for QA" comment above for *What changed* and *How to verify (QA)*.
-          EOFCOMMENT
-            )
-            ./scripts/jira-integration.sh comment "$TICKET" "$PR_COMMENT" || {
-              echo "⚠️ Failed to add PR comment to $TICKET"
-            }
           done
           
           # Cleanup

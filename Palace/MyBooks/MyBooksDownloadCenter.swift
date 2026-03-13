@@ -205,7 +205,7 @@ struct DownloadErrorInfo {
     }
 
     func announceDownloadStarted(for book: TPPBook) {
-        accessibilityAnnouncements.announceDownloadStarted(title: book.title)
+        accessibilityAnnouncements.announceDownloadStarted(title: book.title, identifier: book.identifier)
     }
 
     func announceDownloadProgress(for book: TPPBook, progress: Double) {

@@ -142,15 +142,12 @@ struct NormalBookCell: View {
         if isDownloading {
             VStack(alignment: .leading, spacing: 2) {
                 if hasMeaningfulProgress {
-                    // Show progress bar when we have meaningful progress
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
-                            // Background track
                             RoundedRectangle(cornerRadius: 2)
                                 .fill(Color.secondary.opacity(0.2))
                                 .frame(height: 4)
 
-                            // Progress fill
                             RoundedRectangle(cornerRadius: 2)
                                 .fill(Color(TPPConfiguration.mainColor()))
                                 .frame(width: geometry.size.width * downloadProgress, height: 4)
@@ -158,11 +155,18 @@ struct NormalBookCell: View {
                     }
                     .frame(height: 4)
                 } else {
-                    // Show indeterminate spinner for initial checkout phase
                     ProgressView()
                         .scaleEffect(0.7)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Strings.DownloadAnnouncements.downloadingTitle(model.book.title))
+            .accessibilityValue(
+                hasMeaningfulProgress
+                    ? Strings.DownloadAnnouncements.percentComplete(Int(downloadProgress * 100))
+                    : Strings.BookCell.downloading
+            )
+            .accessibilityIdentifier( AccessibilityID.BookDetail.downloadProgress)
             .padding(.bottom, 4)
             .transition(.opacity.combined(with: .move(edge: .top)))
         } else if isDownloadFailed {

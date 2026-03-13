@@ -158,6 +158,20 @@ struct Strings {
             )
         }
 
+        static func downloadingTitle(_ title: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("Downloading %@", comment: "VoiceOver accessibility label for download progress indicator, %@ is the book title"),
+                title
+            )
+        }
+
+        static func percentComplete(_ percent: Int) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%d percent complete", comment: "VoiceOver accessibility value for download progress"),
+                percent
+            )
+        }
+
         static func borrowStarted(_ title: String) -> String {
             String.localizedStringWithFormat(
                 NSLocalizedString("Borrow started for %@.", comment: "VoiceOver announcement when a borrow starts"),
