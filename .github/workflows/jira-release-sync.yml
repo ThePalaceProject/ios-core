@@ -34,9 +34,9 @@ jobs:
       - name: Create Jira version
         id: create-version
         env:
-          JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
-          JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
-          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_URL: ${{ secrets.JIRA_URL || secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_PERSONAL_EMAIL || secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_PERSONAL_API_TOKEN || secrets.JIRA_API_TOKEN }}
           RELEASE_NAME: "iOS ${{ steps.release.outputs.tag }}"
         run: |
           echo "Creating Jira version: $RELEASE_NAME"
@@ -62,9 +62,9 @@ jobs:
 
       - name: Link GitHub release to Jira version
         env:
-          JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
-          JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
-          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_URL: ${{ secrets.JIRA_URL || secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_PERSONAL_EMAIL || secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_PERSONAL_API_TOKEN || secrets.JIRA_API_TOKEN }}
           RELEASE_NAME: "iOS ${{ steps.release.outputs.tag }}"
           RELEASE_URL: ${{ steps.release.outputs.url }}
         run: |
@@ -86,9 +86,9 @@ jobs:
 
       - name: Update fixVersions on linked tickets
         env:
-          JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
-          JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
-          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_URL: ${{ secrets.JIRA_URL || secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_PERSONAL_EMAIL || secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_PERSONAL_API_TOKEN || secrets.JIRA_API_TOKEN }}
           RELEASE_NAME: "iOS ${{ steps.release.outputs.tag }}"
           RELEASE_BODY: ${{ steps.release.outputs.body }}
         run: |
