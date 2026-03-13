@@ -50,13 +50,22 @@ jobs:
             echo "list=$TICKETS" >> $GITHUB_OUTPUT
           fi
           
+      - name: Resolve Jira credentials
+        id: jira-creds
+        run: |
+          if [ "${{ github.event.pull_request.base.ref }}" = "main" ]; then
+            echo "scope=org" >> $GITHUB_OUTPUT
+          else
+            echo "scope=personal" >> $GITHUB_OUTPUT
+          fi
+
       - name: Update Jira tickets
         if: steps.tickets.outputs.found == 'true'
         continue-on-error: true
         env:
-          JIRA_URL: ${{ secrets.JIRA_URL || secrets.JIRA_BASE_URL }}
-          JIRA_EMAIL: ${{ secrets.JIRA_PERSONAL_EMAIL || secrets.JIRA_USER_EMAIL }}
-          JIRA_API_TOKEN: ${{ secrets.JIRA_PERSONAL_API_TOKEN || secrets.JIRA_API_TOKEN }}
+          JIRA_URL: ${{ steps.jira-creds.outputs.scope == 'org' && secrets.JIRA_BASE_URL || secrets.JIRA_URL }}
+          JIRA_EMAIL: ${{ steps.jira-creds.outputs.scope == 'org' && secrets.JIRA_USER_EMAIL || secrets.JIRA_PERSONAL_EMAIL }}
+          JIRA_API_TOKEN: ${{ steps.jira-creds.outputs.scope == 'org' && secrets.JIRA_API_TOKEN || secrets.JIRA_PERSONAL_API_TOKEN }}
           BUILD_NUM: ${{ steps.build.outputs.number }}
           PR_NUM: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
