@@ -27,10 +27,27 @@ enum BookService {
         if book.defaultBookContentType == .audiobook && userAccount.authTokenHasExpired {
             Log.info(#file, "🔄 Auth token expired for audiobook - refreshing before opening")
 
+            let authDef = userAccount.authDefinition
+            let authType = authDef?.authType.rawValue ?? "none"
+            let authState = userAccount.authState
+            let hasBarcode = userAccount.barcode != nil
+            let hasPin = userAccount.PIN != nil
+            let hasToken = userAccount.authToken != nil
+            let hasTokenURL = authDef?.tokenURL != nil
+            Log.info(#file, "  📋 Account diagnostics for audiobook open:")
+            Log.info(#file, "    authType=\(authType), authState=\(authState)")
+            Log.info(#file, "    hasBarcode=\(hasBarcode), hasPin=\(hasPin), hasToken=\(hasToken), hasTokenURL=\(hasTokenURL)")
+            Log.info(#file, "    tokenExpired=\(userAccount.authTokenHasExpired), tokenNearExpiry=\(userAccount.authTokenNearExpiry)")
+            Log.info(#file, "    book.distributor=\(book.distributor ?? "nil"), book.hasBearerToken=\(book.bearerToken != nil)")
+            if let barcode = userAccount.barcode {
+                let barcodeShape = barcode.allSatisfy({ $0.isNumber }) ? "numeric" : (barcode.count > 50 ? "token-like" : "alphanumeric")
+                Log.info(#file, "    barcodeShape=\(barcodeShape), barcodeLen=\(barcode.count)")
+            }
+
             guard let username = userAccount.username,
                   let password = userAccount.PIN,
                   let tokenURL = userAccount.authDefinition?.tokenURL else {
-                Log.error(#file, "Cannot refresh token: missing credentials or tokenURL")
+                Log.error(#file, "Cannot refresh token: missing credentials or tokenURL (username=\(userAccount.username != nil), PIN=\(userAccount.PIN != nil), tokenURL=\(authDef?.tokenURL?.absoluteString ?? "nil"))")
                 openingBooks.remove(book.identifier)
                 showAudiobookTryAgainError(book: book, onFinish: onFinish)
                 onFinish?()
@@ -536,8 +553,22 @@ enum BookService {
 
             guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
                 Log.error(#file, "  ❌ Failed to parse manifest data as JSON dictionary")
+                if let httpResponse = response as? HTTPURLResponse {
+                    Log.error(#file, "    HTTP status: \(httpResponse.statusCode)")
+                    Log.error(#file, "    Content-Type: \(httpResponse.allHeaderFields["Content-Type"] ?? "unknown")")
+                    let isHTML = (httpResponse.allHeaderFields["Content-Type"] as? String)?.contains("html") == true
+                    if isHTML {
+                        Log.error(#file, "    ⚠️ Server returned HTML instead of JSON - likely a redirect to login page or error page")
+                    }
+                    if httpResponse.statusCode != 200 {
+                        Log.error(#file, "    ⚠️ Non-200 status but data was still returned (\(data.count) bytes)")
+                    }
+                }
                 if let dataString = String(data: data, encoding: .utf8) {
-                    Log.error(#file, "    Data preview: \(String(dataString.prefix(200)))...")
+                    let preview = String(dataString.prefix(500))
+                    Log.error(#file, "    Data preview (\(data.count) bytes): \(preview)")
+                } else {
+                    Log.error(#file, "    Data is not UTF-8 decodable (\(data.count) bytes)")
                 }
                 completion(nil)
                 return

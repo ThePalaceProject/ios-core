@@ -40,18 +40,22 @@ import Foundation
     func execute(session: URLSession = .shared) async -> Result<TokenResponse, Error> {
         Log.info(#file, "Requesting token from: \(url.absoluteString)")
 
+        let looksLikeBarcode = username.allSatisfy({ $0.isNumber }) && username.count >= 5
+        let looksLikeOAuthToken = username.count > 50 || username.contains(".")
+        Log.info(#file, "  Credential shape: usernameLen=\(username.count), pinLen=\(password.count), looksLikeBarcode=\(looksLikeBarcode), looksLikeOAuthToken=\(looksLikeOAuthToken)")
+
         var request = URLRequest(url: url, applyingCustomUserAgent: true)
         request.httpMethod = HTTPMethodType.POST.rawValue
 
         let loginString = "\(username):\(password)"
         guard let loginData = loginString.data(using: .utf8) else {
-            Log.error(#file, "Failed to encode credentials")
+            Log.error(#file, "Failed to encode credentials - contains non-UTF8 characters?")
             return .failure(URLError(.badURL))
         }
         let base64LoginString = loginData.base64EncodedString()
         request.addValue("Basic \(base64LoginString)", forHTTPHeaderField: "Authorization")
 
-        Log.debug(#file, "Sending POST request with Basic Auth")
+        Log.debug(#file, "Sending POST with Basic Auth (base64 len=\(base64LoginString.count))")
 
         do {
             let (data, response) = try await session.data(for: request)
