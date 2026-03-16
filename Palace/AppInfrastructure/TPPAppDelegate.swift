@@ -69,6 +69,10 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         NetworkQueue.shared().addObserverForOfflineQueue()
         Reachability.shared.startMonitoring()
 
+        PalaceAuthTokenProvider.tokenResolver = {
+            TPPUserAccount.sharedAccount().authToken
+        }
+
         DispatchQueue.main.async {
             self.audiobookLifecycleManager.didFinishLaunching()
 

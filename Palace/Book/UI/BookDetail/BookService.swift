@@ -156,7 +156,23 @@ enum BookService {
             }
 
             Log.debug(#file, "  ✅ Successfully parsed local manifest JSON")
-            presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+
+            if let fulfillURL = book.bearerTokenFulfillURL {
+                Log.debug(#file, "  🔑 Bearer token book - refreshing token before playback")
+                MyBooksSimplifiedBearerToken.refreshToken(from: fulfillURL) { newToken in
+                    Task { @MainActor in
+                        if let newToken = newToken {
+                            Log.info(#file, "  ✅ Bearer token refreshed before playback")
+                            book.bearerToken = newToken.accessToken
+                        } else {
+                            Log.warn(#file, "  ⚠️ Bearer token refresh failed - proceeding with existing token")
+                        }
+                        presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+                    }
+                }
+            } else {
+                presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+            }
             return
         } else {
             Log.debug(#file, "  No local audiobook file found")
