@@ -167,7 +167,7 @@ final class HoldsViewModel: ObservableObject {
     }
 
     var openSearchDescription: TPPOpenSearchDescription {
-        let title = NSLocalizedString("Search Reservations", comment: "")
+        let title = NSLocalizedString("Search Holds", comment: "")
         let books = allBooks
         return TPPOpenSearchDescription(title: title, books: books)
     }

@@ -42,7 +42,7 @@ struct AppTabHostView: View {
                 .tabItem {
                     VStack {
                         Image("Holds").renderingMode(.template)
-                        Text(Strings.HoldsView.reservations)
+                        Text(Strings.HoldsView.holds)
                     }
                 }
                 .badge(holdsBadgeCount)
@@ -93,7 +93,7 @@ private extension AppTabHostView {
         switch tab {
         case .catalog: return Strings.Settings.catalog
         case .myBooks: return Strings.MyBooksView.navTitle
-        case .holds: return Strings.HoldsView.reservations
+        case .holds: return Strings.HoldsView.holds
         case .settings: return Strings.Settings.settings
         }
     }

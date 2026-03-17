@@ -102,7 +102,7 @@ final class HoldsSnapshotTests: XCTestCase {
 
     func testHoldsSearchBar_empty() {
         let searchBar = HStack {
-            TextField(NSLocalizedString("Search Reservations", comment: ""), text: .constant(""))
+            TextField(NSLocalizedString("Search Holds", comment: ""), text: .constant(""))
                 .searchBarStyle()
             Button(action: {}, label: {
                 Image(systemName: "xmark.circle.fill")
@@ -120,7 +120,7 @@ final class HoldsSnapshotTests: XCTestCase {
 
     func testHoldsSearchBar_withText() {
         let searchBar = HStack {
-            TextField(NSLocalizedString("Search Reservations", comment: ""), text: .constant("Harry Potter"))
+            TextField(NSLocalizedString("Search Holds", comment: ""), text: .constant("Harry Potter"))
                 .searchBarStyle()
             Button(action: {}, label: {
                 Image(systemName: "xmark.circle.fill")

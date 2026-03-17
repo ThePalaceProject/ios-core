@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Accessibility focus (list callout when entering Reservations)
+// MARK: - Accessibility focus (list callout when entering Holds)
 private enum HoldsAccessibilityFocus: Hashable {
     case list
 }
@@ -54,11 +54,10 @@ struct HoldsView: View {
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
-                    // Announce "Reservations list, X books" when entering the tab (focus only when list is shown)
                     if !model.isLoading, UIAccessibility.isVoiceOverRunning {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                             let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.visibleBooks.count)
-                            UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.reservationsListLabel), \(value)")
+                            UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.holdsListLabel), \(value)")
                             if !model.visibleBooks.isEmpty {
                                 accessibilityFocus = .list
                             }
@@ -69,7 +68,7 @@ struct HoldsView: View {
                     if !isLoading, UIAccessibility.isVoiceOverRunning {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                             let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.visibleBooks.count)
-                            UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.reservationsListLabel), \(value)")
+                            UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.holdsListLabel), \(value)")
                             if !model.visibleBooks.isEmpty {
                                 accessibilityFocus = .list
                             }
@@ -137,7 +136,7 @@ struct HoldsView: View {
                     .padding(.horizontal, 8)
                 }
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel(Strings.Generic.reservationsListLabel)
+                .accessibilityLabel(Strings.Generic.holdsListLabel)
                 .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.visibleBooks.count))
                 .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
                 .accessibilityFocused($accessibilityFocus, equals: .list)
@@ -229,7 +228,7 @@ struct HoldsView: View {
             ImageProviders.MyBooksView.search
         }
         .accessibilityIdentifier(AccessibilityID.Holds.searchButton)
-        .accessibilityLabel(NSLocalizedString("Search Reservations", comment: ""))
+        .accessibilityLabel(NSLocalizedString("Search Holds", comment: ""))
     }
 
     private func presentBookDetail(_ book: TPPBook) {
@@ -239,7 +238,7 @@ struct HoldsView: View {
 
     private var searchBar: some View {
         HStack {
-            TextField(NSLocalizedString("Search Reservations", comment: ""), text: $model.searchQuery)
+            TextField(NSLocalizedString("Search Holds", comment: ""), text: $model.searchQuery)
                 .searchBarStyle()
                 .accessibilityIdentifier(AccessibilityID.Holds.searchField)
                 .onChange(of: model.searchQuery) { query in
@@ -272,7 +271,7 @@ struct HoldsView: View {
         let holdsRoot = HoldsView()
 
         let hosting = UIHostingController(rootView: holdsRoot)
-        hosting.title = NSLocalizedString("Reservations", comment: "Nav title for Holds")
+        hosting.title = Strings.HoldsView.holds
         hosting.tabBarItem.image = UIImage(named: "Holds")
 
         return hosting
