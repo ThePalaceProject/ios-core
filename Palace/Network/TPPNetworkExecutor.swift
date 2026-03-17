@@ -373,8 +373,33 @@ extension TPPNetworkExecutor {
                 return
             }
 
-            let authType = account.authDefinition?.authType.rawValue ?? "unknown"
+            let authDef = account.authDefinition
+            let authType = authDef?.authType.rawValue ?? "unknown"
+            let credentialType: String
+            switch account.credentials {
+            case .token(let authToken, let barcode, let pin, let expirationDate):
+                let hasBarcode = barcode != nil && !barcode!.isEmpty
+                let hasPin = pin != nil && !pin!.isEmpty
+                let hasToken = !authToken.isEmpty
+                let tokenExpired = expirationDate.map { $0 < Date() } ?? false
+                credentialType = "token(hasBarcode=\(hasBarcode), hasPin=\(hasPin), hasToken=\(hasToken), tokenExpired=\(tokenExpired))"
+            case .barcodeAndPin(let barcode, _):
+                credentialType = "barcodeAndPin(barcodeLen=\(barcode.count))"
+            case .cookies:
+                credentialType = "cookies"
+            case .none:
+                credentialType = "nil"
+            }
+            let isOAuth = authDef?.isOauth == true
+            let isToken = authDef?.isToken == true
+            let isBasic = authDef?.isBasic == true
             Log.info(#file, "Refreshing token for auth type: \(authType), account: \(capturedAccountId ?? "current")")
+            Log.info(#file, "  Auth flags: isBasic=\(isBasic), isToken=\(isToken), isOAuth=\(isOAuth)")
+            Log.info(#file, "  Credential type: \(credentialType)")
+            Log.info(#file, "  Using username(len=\(username.count)) + password(len=\(password.count)) for Basic Auth")
+            if isOAuth && !isToken {
+                Log.warn(#file, "  ⚠️ POTENTIAL MISMATCH: OAuth auth type but attempting Basic Auth token refresh")
+            }
 
             if let task {
                 self.retryQueueLock.lock()
