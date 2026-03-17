@@ -400,7 +400,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 if config != .none {
                     let confirmAlert = TPPAlertUtils.alert(
                         title: "Test Holds Enabled",
-                        message: "Badge should show: \(config.expectedBadgeCount)\n\nGo to the Reservations tab to see the test books. Remember to disable when done testing."
+                        message: "Badge should show: \(config.expectedBadgeCount)\n\nGo to the Holds tab to see the test books. Remember to disable when done testing."
                     )
                     self?.present(confirmAlert, animated: true)
                 }
@@ -456,7 +456,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private func showSyncFailurePicker() {
         let alert = UIAlertController(
             title: "Simulate Sync Failure",
-            message: "Simulates the loans feed sync failing silently — the exact scenario reported by users where hold notifications don't convert to checkouts.\n\nEnable, then pull-to-refresh on Reservations or switch to foreground.",
+            message: "Simulates the loans feed sync failing silently \u{2014} the exact scenario reported by users where hold notifications don't convert to checkouts.\n\nEnable, then pull-to-refresh on Holds or switch to foreground.",
             preferredStyle: .actionSheet
         )
 
@@ -471,7 +471,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 if failureType != .none {
                     let confirmAlert = TPPAlertUtils.alert(
                         title: "Sync Failure Enabled",
-                        message: "'\(failureType.displayName)' will be simulated on every sync. Go to Reservations and pull to refresh — notice how nothing happens and no error is shown.\n\nDisable when done testing."
+                        message: "'\(failureType.displayName)' will be simulated on every sync. Go to Holds and pull to refresh \u{2014} notice how nothing happens and no error is shown.\n\nDisable when done testing."
                     )
                     self?.present(confirmAlert, animated: true)
                 }

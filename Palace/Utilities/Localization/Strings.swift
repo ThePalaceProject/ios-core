@@ -106,7 +106,7 @@ struct Strings {
         static let catalogRegion = NSLocalizedString("Catalog", comment: "VoiceOver: Label for main catalog / browse region")
         static let booksListLabel = NSLocalizedString("Books list", comment: "VoiceOver: Label for a list of books")
         static let myBooksListLabel = NSLocalizedString("My Books list", comment: "VoiceOver: Label for My Books tab list")
-        static let reservationsListLabel = NSLocalizedString("Reservations list", comment: "VoiceOver: Label for Holds/Reservations list")
+        static let holdsListLabel = NSLocalizedString("Holds list", comment: "VoiceOver: Label for Holds list")
         static let accountSettingsRegion = NSLocalizedString("Account settings", comment: "VoiceOver: Label for account/sign-in settings list")
 
         // Accessibility - Reader Navigation
@@ -558,8 +558,8 @@ struct Strings {
         static let remove = NSLocalizedString("Remove", comment: "")
         static let deleteMessage = NSLocalizedString("Are you sure you want to delete \"%@\"?", comment: "Message shown in an alert to the user prior to deleting a title")
         static let returnMessage = NSLocalizedString("Are you sure you want to return \"%@\"?", comment: "Message shown in an alert to the user prior to returning a title")
-        static let removeReservation = NSLocalizedString("Remove Reservation", comment: "")
-        static let removeReservationMessage = NSLocalizedString("Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book.", comment: "Message shown in an alert to the user prior to returning a reserved title.")
+        static let removeHold = NSLocalizedString("Remove Hold", comment: "")
+        static let removeHoldMessage = NSLocalizedString("Are you sure you want to remove \"%@\" from your holds? You will no longer be in line for this book.", comment: "Message shown in an alert to the user prior to removing a held title.")
         static let downloading = NSLocalizedString("Downloading", comment: "")
         static let downloadFailedMessage = NSLocalizedString("The download could not be completed.", comment: "")
     }
@@ -643,18 +643,18 @@ struct Strings {
     }
 
     struct HoldsView {
-        static let reservations = NSLocalizedString("Reservations", comment: "Nav title")
+        static let holds = NSLocalizedString("Holds", comment: "Nav title for Holds tab")
         static let emptyMessage = NSLocalizedString("""
-            When you reserve a book from the catalog, it will show up here. \
+            When you place a hold on a book from the catalog, it will show up here. \
             Look here from time to time to see if your book is available to download.
             """, comment: "")
         static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "")
         static let syncFailedMessage = NSLocalizedString(
-            "Your reservations may be out of date. Pull down to try again.",
-            comment: "Shown when syncing the holds/reservations list fails"
+            "Your holds may be out of date. Pull down to try again.",
+            comment: "Shown when syncing the holds list fails"
         )
         static let syncFailedTitle = NSLocalizedString(
-            "Couldn't Update Reservations",
+            "Couldn't Update Holds",
             comment: "Title for sync failure banner on holds screen"
         )
     }
