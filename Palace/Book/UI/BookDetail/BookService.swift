@@ -596,6 +596,10 @@ enum BookService {
         let _ = TPPNetworkExecutor.shared.GET(url) { data, response, error in
             if let error = error {
                 Log.error(#file, "  ❌ Network error fetching manifest: \(error.localizedDescription)")
+                if let httpResponse = response as? HTTPURLResponse {
+                    Log.error(#file, "    HTTP status: \(httpResponse.statusCode)")
+                    Log.error(#file, "    Content-Type: \(httpResponse.allHeaderFields["Content-Type"] ?? "unknown")")
+                }
                 completion(nil)
                 return
             }
