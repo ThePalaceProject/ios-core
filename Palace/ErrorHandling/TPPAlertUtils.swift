@@ -240,8 +240,7 @@ import UIKit
                     completion?()
                     return
                 }
-                vc.present(alertController, animated: animated, completion: completion)
-                if let msg = alertController.message { Log.info(#file, msg) }
+                safePresent(alertController, on: vc, animated: animated, completion: completion)
             }
             return
         }
@@ -343,14 +342,30 @@ import UIKit
                     return
                 }
 
-                // Present on top of the presented view controller
-                presented.present(alertController, animated: animated, completion: completion)
-                if let msg = alertController.message { Log.info(#file, msg) }
+                safePresent(alertController, on: presented, animated: animated, completion: completion)
             } else {
-                top.present(alertController, animated: animated, completion: completion)
-                if let msg = alertController.message { Log.info(#file, msg) }
+                safePresent(alertController, on: top, animated: animated, completion: completion)
             }
         }
+    }
+
+    /// Presents an alert controller wrapped in ObjC exception handling.
+    /// UIKit can throw NSInternalInconsistencyException during animated transitions
+    /// when the view hierarchy is in an unexpected state (e.g. a VC that doesn't
+    /// contain an alert controller is asked for its contained alert controller).
+    private class func safePresent(_ alertController: UIAlertController,
+                                   on presenter: UIViewController,
+                                   animated: Bool,
+                                   completion: (() -> Void)?) {
+        let exception = TPPObjCExceptionCatcher.catchException {
+            presenter.present(alertController, animated: animated, completion: completion)
+        }
+        if let exception = exception {
+            Log.error(#file, "ObjC exception presenting alert: \(exception.name.rawValue) — \(exception.reason ?? "unknown")")
+            completion?()
+            return
+        }
+        if let msg = alertController.message { Log.info(#file, msg) }
     }
 
     /// Retries alert presentation after a short delay to allow transitions to complete.
