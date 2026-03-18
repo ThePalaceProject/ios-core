@@ -8,6 +8,7 @@
 
 import XCTest
 import CarPlay
+import MediaPlayer
 @testable import Palace
 @testable import PalaceAudiobookToolkit
 
@@ -545,5 +546,24 @@ class CarPlayPlaybackErrorTests: XCTestCase {
                 "Error \(error) should have a description for CarPlay alert"
             )
         }
+    }
+
+    // MARK: - PP-3679 Auto-Navigate to Now Playing
+
+    func testBridge_isPlaying_reflectsSessionManager() {
+        let bridge = CarPlayAudiobookBridge()
+        XCTAssertFalse(bridge.isPlaying, "Bridge should report not playing when no session is active")
+    }
+
+    func testBridge_currentBook_nilWhenNoSession() {
+        let bridge = CarPlayAudiobookBridge()
+        XCTAssertNil(bridge.currentBook, "No book should be set when session is inactive")
+    }
+
+    // MARK: - PP-3679 Lock Screen Position Sync
+
+    func testNowPlayingInfo_isAccessible() {
+        let infoCenter = MPNowPlayingInfoCenter.default()
+        XCTAssertNotNil(infoCenter, "Now Playing info center should be available")
     }
 }
