@@ -127,6 +127,53 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
         XCTAssertEqual(cacheManager.getLastCachedDoc(key)?.title, "After Clear")
     }
 
+    // MARK: - Thread Safety
+
+    func testConcurrentReadWrite_doesNotCrash() {
+        let iterations = 200
+        let expectation = expectation(description: "concurrent access")
+        expectation.expectedFulfillmentCount = iterations * 3
+
+        for i in 0..<iterations {
+            let key = "concurrent-\(i % 10)"
+            DispatchQueue.global(qos: .userInitiated).async {
+                let doc = TPPProblemDocument.fromDictionary(["title": "Doc \(i)"])
+                self.cacheManager.cacheProblemDocument(doc, key: key)
+                expectation.fulfill()
+            }
+            DispatchQueue.global(qos: .utility).async {
+                _ = self.cacheManager.getLastCachedDoc(key)
+                expectation.fulfill()
+            }
+            DispatchQueue.global(qos: .background).async {
+                self.cacheManager.clearCachedDoc(key)
+                expectation.fulfill()
+            }
+        }
+
+        wait(for: [expectation], timeout: 10.0)
+    }
+
+    func testConcurrentCacheAndClear_sameKey_doesNotCrash() {
+        let key = "race-key"
+        let expectation = expectation(description: "same-key race")
+        expectation.expectedFulfillmentCount = 100
+
+        for i in 0..<50 {
+            DispatchQueue.global().async {
+                let doc = TPPProblemDocument.fromDictionary(["title": "Write \(i)"])
+                self.cacheManager.cacheProblemDocument(doc, key: key)
+                expectation.fulfill()
+            }
+            DispatchQueue.global().async {
+                self.cacheManager.clearCachedDoc(key)
+                expectation.fulfill()
+            }
+        }
+
+        wait(for: [expectation], timeout: 10.0)
+    }
+
     // MARK: - Notification
 
     func testCacheProblemDocument_postsNotification() {
