@@ -44,17 +44,17 @@ enum BookService {
                 Log.info(#file, "    barcodeShape=\(barcodeShape), barcodeLen=\(barcode.count)")
             }
 
-            guard let username = userAccount.username,
-                  let password = userAccount.PIN,
+            guard let username = userAccount.username, !username.isEmpty,
+                  let password = userAccount.PIN, !password.isEmpty,
                   let tokenURL = userAccount.authDefinition?.tokenURL else {
-                Log.error(#file, "Cannot refresh token: missing credentials or tokenURL (username=\(userAccount.username != nil), PIN=\(userAccount.PIN != nil), tokenURL=\(authDef?.tokenURL?.absoluteString ?? "nil"))")
+                Log.error(#file, "Cannot refresh token: missing or empty credentials (usernameLen=\(userAccount.username?.count ?? -1), pinLen=\(userAccount.PIN?.count ?? -1), tokenURL=\(authDef?.tokenURL?.absoluteString ?? "nil"))")
                 openingBooks.remove(book.identifier)
                 showAudiobookTryAgainError(book: book, onFinish: onFinish)
                 onFinish?()
                 return
             }
 
-            TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
+            TPPNetworkExecutor.shared.refreshTokenAndResume(task: nil, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
                 switch result {
                 case .success:
                     Log.info(#file, "✅ Token refresh successful - re-fetching manifest with fresh token")
