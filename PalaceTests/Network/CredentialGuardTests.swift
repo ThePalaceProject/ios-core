@@ -828,7 +828,7 @@ final class BasicAuthEmptyCredentialTests: XCTestCase {
         XCTAssertEqual(receivedDisposition, .useCredential)
         XCTAssertEqual(receivedCredential?.user, "12345")
         XCTAssertEqual(receivedCredential?.password, "1234")
-        XCTAssertEqual(receivedCredential?.persistence, .none,
+        XCTAssertEqual(receivedCredential?.persistence, URLCredential.Persistence.none,
                        "Credentials must use .none persistence to prevent URLSession from caching them")
     }
 
