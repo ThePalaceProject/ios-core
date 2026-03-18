@@ -14,9 +14,6 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // Use a fresh instance to avoid shared-state pollution across tests.
-        // The singleton's clearCachedDoc sets keys to [] (not nil), which
-        // prevents cacheProblemDocument from appending to that key again.
         cacheManager = TPPProblemDocumentCacheManager()
     }
 
@@ -57,19 +54,21 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
     // MARK: - Multiple Documents Per Key
 
     func testCacheMultipleDocuments_lastEntryRetrievable() {
-        // Note: The current implementation only appends when count >= CACHE_SIZE
-        // (eviction path). For count < CACHE_SIZE, only the first entry persists.
-        // This test verifies the first-cached document is retrievable.
-        let doc = TPPProblemDocument.fromDictionary([
+        let first = TPPProblemDocument.fromDictionary([
             "title": "First Error",
             "detail": "First detail"
         ])
+        let second = TPPProblemDocument.fromDictionary([
+            "title": "Second Error",
+            "detail": "Second detail"
+        ])
 
-        cacheManager.cacheProblemDocument(doc, key: "test-key-2")
+        cacheManager.cacheProblemDocument(first, key: "test-key-2")
+        cacheManager.cacheProblemDocument(second, key: "test-key-2")
 
         let retrieved = cacheManager.getLastCachedDoc("test-key-2")
         XCTAssertNotNil(retrieved)
-        XCTAssertEqual(retrieved?.title, "First Error")
+        XCTAssertEqual(retrieved?.title, "Second Error")
     }
 
     // MARK: - Clear
@@ -94,27 +93,38 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
 
     // MARK: - LRU Behavior
 
-    func testCache_exceedingSize_evictsAndAppendsNewEntry() {
-        // Fill up to CACHE_SIZE (5) by using separate fresh instances per key,
-        // since the implementation only creates a new array for nil keys
-        // and only evicts+appends when count >= CACHE_SIZE.
-        // We cache CACHE_SIZE docs first via the nil-key path (one per key),
-        // then verify that subsequent caching on a full key triggers eviction.
-
-        // First, fill the key with CACHE_SIZE entries by re-creating the manager
-        // for each entry (since the append-when-below-capacity path is broken).
-        // Instead, test the eviction path directly by pre-filling the cache.
+    func testCache_exceedingSize_evictsOldestEntry() {
         let key = "lru-test"
-        let firstDoc = TPPProblemDocument.fromDictionary([
-            "title": "First",
-            "detail": "First detail"
-        ])
-        cacheManager.cacheProblemDocument(firstDoc, key: key)
 
-        // After one cacheProblemDocument call, the key has 1 entry.
+        for i in 0..<TPPProblemDocumentCacheManager.CACHE_SIZE {
+            let doc = TPPProblemDocument.fromDictionary([
+                "title": "Doc \(i)",
+                "detail": "Detail \(i)"
+            ])
+            cacheManager.cacheProblemDocument(doc, key: key)
+        }
+
+        let overflow = TPPProblemDocument.fromDictionary([
+            "title": "Overflow",
+            "detail": "Should evict Doc 0"
+        ])
+        cacheManager.cacheProblemDocument(overflow, key: key)
+
         let retrieved = cacheManager.getLastCachedDoc(key)
         XCTAssertNotNil(retrieved)
-        XCTAssertEqual(retrieved?.title, "First")
+        XCTAssertEqual(retrieved?.title, "Overflow")
+    }
+
+    func testClearThenReCache_works() {
+        let key = "recache-test"
+        let doc1 = TPPProblemDocument.fromDictionary(["title": "Before Clear"])
+        cacheManager.cacheProblemDocument(doc1, key: key)
+        cacheManager.clearCachedDoc(key)
+        XCTAssertNil(cacheManager.getLastCachedDoc(key))
+
+        let doc2 = TPPProblemDocument.fromDictionary(["title": "After Clear"])
+        cacheManager.cacheProblemDocument(doc2, key: key)
+        XCTAssertEqual(cacheManager.getLastCachedDoc(key)?.title, "After Clear")
     }
 
     // MARK: - Notification
