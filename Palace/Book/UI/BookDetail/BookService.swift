@@ -57,20 +57,11 @@ enum BookService {
             TPPNetworkExecutor.shared.refreshTokenAndResume(task: nil, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
                 switch result {
                 case .success:
-                    Log.info(#file, "✅ Token refresh successful - re-fetching manifest with fresh token")
-
-                    fetchOpenAccessManifest(for: book) { json in
-                        guard let json else {
-                            Log.error(#file, "❌ Failed to re-fetch manifest after token refresh")
-                            openingBooks.remove(book.identifier)
-                            showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                            onFinish?()
-                            return
-                        }
-
-                        Log.info(#file, "✅ Manifest re-fetched with fresh bearer token - opening audiobook")
-                        presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
-                    }
+                    Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
+                    // Route through presentAudiobook so each book type gets proper handling:
+                    // LCP books go through the LCP pipeline, bearer token books through the
+                    // two-step fulfill flow, and open access books through fetchOpenAccessManifest.
+                    presentAudiobook(book, onFinish: onFinish)
 
                 case .failure(let error, _):
                     Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription) - cannot open audiobook")
@@ -144,6 +135,10 @@ enum BookService {
             } else {
                 Log.debug(#file, "  No LCP license file found")
             }
+
+            Log.info(#file, "  LCP audiobook with no local files - re-downloading LCP license from fulfill URL")
+            redownloadLCPLicenseAndPresent(book, onFinish: onFinish)
+            return
         } else {
             Log.debug(#file, "  Not an LCP audiobook")
         }
@@ -254,6 +249,73 @@ enum BookService {
                 Log.debug(#file, "    Dictionary keys: \(json.keys.joined(separator: ", "))")
                 presentAudiobookFrom(book: book, json: json, decryptor: lcpAudiobooks, onFinish: onFinish)
             }
+        }
+    }
+
+    /// Re-downloads the LCP license from the CM fulfill URL and processes it through the LCP pipeline.
+    /// Called when an LCP audiobook's local files are missing (cache cleared, storage pressure, etc.)
+    /// but the book still appears as downloaded in the registry.
+    private static func redownloadLCPLicenseAndPresent(_ book: TPPBook, onFinish: (() -> Void)?) {
+        guard let fulfillURL = book.defaultAcquisition?.hrefURL else {
+            Log.error(#file, "  ❌ No fulfill URL for LCP audiobook re-download")
+            showAudiobookTryAgainError(book: book, onFinish: onFinish)
+            openingBooks.remove(book.identifier)
+            onFinish?()
+            return
+        }
+
+        guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else {
+            Log.error(#file, "  ❌ Cannot determine content directory for LCP license")
+            showAudiobookTryAgainError(book: book, onFinish: onFinish)
+            openingBooks.remove(book.identifier)
+            onFinish?()
+            return
+        }
+
+        let licenseFileURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        Log.info(#file, "  📡 Fetching LCP license from: \(fulfillURL.host ?? "unknown")")
+
+        let _ = TPPNetworkExecutor.shared.GET(fulfillURL) { data, response, error in
+            if let error = error {
+                Log.error(#file, "  ❌ Network error re-downloading LCP license: \(error.localizedDescription)")
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
+                openingBooks.remove(book.identifier)
+                onFinish?()
+                return
+            }
+
+            guard let data = data, !data.isEmpty else {
+                Log.error(#file, "  ❌ No data received for LCP license re-download")
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
+                openingBooks.remove(book.identifier)
+                onFinish?()
+                return
+            }
+
+            if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
+                Log.error(#file, "  ❌ LCP license re-download failed with HTTP \(httpResponse.statusCode)")
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
+                openingBooks.remove(book.identifier)
+                onFinish?()
+                return
+            }
+
+            do {
+                let directory = licenseFileURL.deletingLastPathComponent()
+                if !FileManager.default.fileExists(atPath: directory.path) {
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                }
+                try data.write(to: licenseFileURL, options: .atomic)
+                Log.info(#file, "  ✅ LCP license saved to: \(licenseFileURL.lastPathComponent) (\(data.count) bytes)")
+            } catch {
+                Log.error(#file, "  ❌ Failed to save LCP license: \(error.localizedDescription)")
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
+                openingBooks.remove(book.identifier)
+                onFinish?()
+                return
+            }
+
+            buildAndPresentAudiobook(book: book, lcpSourceURL: licenseFileURL, onFinish: onFinish)
         }
     }
     #endif
