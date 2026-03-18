@@ -560,6 +560,8 @@
 		BTRF00012F1900020000001B /* TPPBookBearerTokenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BTRF00012F1900020000001A /* TPPBookBearerTokenTests.swift */; };
 		C0FC0D33083455384EE64A71 /* AudiobookSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E5BAC81314C28A366BF6BB7 /* AudiobookSessionManager.swift */; };
 		C386EA20C90C8215EF9387D3 /* TokenRefreshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A81964771D1CB9A93ED2EA6 /* TokenRefreshTests.swift */; };
+		CG791BF000000000000001 /* CredentialGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CG791FR000000000000001 /* CredentialGuardTests.swift */; };
+		MF791BF000000000000001 /* ManifestFetchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF791FR000000000000001 /* ManifestFetchTests.swift */; };
 		C3C7B0F9C4F9B13DD69CEA84 /* TPPReaderSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2ADD2980F56FC974B6DEBAC /* TPPReaderSettingsTests.swift */; };
 		C3C7B0F9C4F9B13DD69CEA85 /* EPUBSearchViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E6F7A8B9C0D1E2 /* EPUBSearchViewModelTests.swift */; };
 		C64399E81697447CA4F20ABA /* EULAViewHosting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04CF94B049964380A3A35DA9 /* EULAViewHosting.swift */; };
@@ -1669,6 +1671,8 @@
 		7751F6315B6633F398F0B808 /* StringExtensionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StringExtensionTests.swift; sourceTree = "<group>"; };
 		781125E2689F3A05C75A0D33 /* CatalogCacheMetadataTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogCacheMetadataTests.swift; sourceTree = "<group>"; };
 		7F31B83CAB15F0245AEEE83C /* NetworkRetryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NetworkRetryTests.swift; sourceTree = "<group>"; };
+		CG791FR000000000000001 /* CredentialGuardTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CredentialGuardTests.swift; sourceTree = "<group>"; };
+		MF791FR000000000000001 /* ManifestFetchTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ManifestFetchTests.swift; sourceTree = "<group>"; };
 		84B7A3431B84E8FE00584FB2 /* OFL.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
 		84B7A3441B84E8FE00584FB2 /* OpenDyslexic3-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenDyslexic3-Bold.ttf"; sourceTree = "<group>"; };
 		84B7A3451B84E8FE00584FB2 /* OpenDyslexic3-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "OpenDyslexic3-Regular.ttf"; sourceTree = "<group>"; };
@@ -2259,6 +2263,8 @@
 				QATEST14FR00000000000001 /* TPPNetworkExecutorTests.swift */,
 				QATEST15FR00000000000001 /* ReachabilityTests.swift */,
 				PP3702FR000000000000002 /* AccountAwareNetworkTests.swift */,
+				CG791FR000000000000001 /* CredentialGuardTests.swift */,
+				MF791FR000000000000001 /* ManifestFetchTests.swift */,
 			);
 			path = Network;
 			sourceTree = "<group>";
@@ -4899,6 +4905,8 @@
 				PP3673BF000000000000003 /* AccessLintComplianceTests.swift in Sources */,
 				PP3702BF000000000000001 /* BookButtonMapperHoldReadyTests.swift in Sources */,
 				PP3702BF000000000000002 /* AccountAwareNetworkTests.swift in Sources */,
+				CG791BF000000000000001 /* CredentialGuardTests.swift in Sources */,
+				MF791BF000000000000001 /* ManifestFetchTests.swift in Sources */,
 				PP3702BF000000000000003 /* ArraySafetyTests.swift in Sources */,
 				PP3702BF000000000000004 /* AccountSwitchCleanupTests.swift in Sources */,
 			);

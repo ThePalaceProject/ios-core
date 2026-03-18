@@ -72,7 +72,7 @@ enum BookService {
                         presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
                     }
 
-                case .failure(let error):
+                case .failure(let error, _):
                     Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription) - cannot open audiobook")
                     openingBooks.remove(book.identifier)
                     showAudiobookTryAgainError(book: book, onFinish: onFinish)
@@ -531,7 +531,7 @@ enum BookService {
 
         Log.debug(#file, "  📡 Fetching manifest from URL: \(url.absoluteString)")
 
-        let task = TPPNetworkExecutor.shared.download(url) { data, response, error in
+        let _ = TPPNetworkExecutor.shared.GET(url) { data, response, error in
             if let error = error {
                 Log.error(#file, "  ❌ Network error fetching manifest: \(error.localizedDescription)")
                 completion(nil)
@@ -574,7 +574,71 @@ enum BookService {
                 return
             }
 
+            // The CM fulfill endpoint for bearer-token audiobooks returns a bearer
+            // token response (with access_token/location), not the manifest itself.
+            // Detect this and follow the two-step flow: fulfill -> bearer token -> manifest.
+            if let bearerToken = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: json) {
+                Log.info(#file, "  🔑 Received bearer token response from fulfill URL - fetching actual manifest")
+                bearerToken.fulfillURL = url
+                book.bearerToken = bearerToken.accessToken
+                book.bearerTokenFulfillURL = url
+                fetchManifestWithBearerToken(bearerToken, for: book, completion: completion)
+                return
+            }
+
             Log.debug(#file, "  ✅ Successfully parsed manifest JSON")
+            Log.debug(#file, "    JSON keys: \(json.keys.joined(separator: ", "))")
+            completion(json)
+        }
+    }
+
+    /// Fetches the actual audiobook manifest using a book-specific bearer token.
+    /// Called when the fulfill URL returns a bearer token response instead of the manifest directly.
+    static func fetchManifestWithBearerToken(
+        _ token: MyBooksSimplifiedBearerToken,
+        for book: TPPBook,
+        session: URLSession = .shared,
+        completion: @escaping ([String: Any]?) -> Void
+    ) {
+        var request = URLRequest(url: token.location)
+        request.setValue("Bearer \(token.accessToken)", forHTTPHeaderField: "Authorization")
+        request.applyCustomUserAgent()
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        Log.info(#file, "  📡 Fetching manifest from bearer token location: \(token.location.host ?? "unknown")")
+
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                Log.error(#file, "  ❌ Network error fetching manifest via bearer token: \(error.localizedDescription)")
+                completion(nil)
+                return
+            }
+
+            guard let data = data, !data.isEmpty else {
+                Log.error(#file, "  ❌ No data received from bearer token manifest fetch")
+                completion(nil)
+                return
+            }
+
+            if let httpResponse = response as? HTTPURLResponse {
+                Log.debug(#file, "  Bearer token manifest response: HTTP \(httpResponse.statusCode)")
+                if !httpResponse.isSuccess() {
+                    Log.error(#file, "  ❌ Bearer token manifest fetch failed with HTTP \(httpResponse.statusCode)")
+                    completion(nil)
+                    return
+                }
+            }
+
+            guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
+                Log.error(#file, "  ❌ Failed to parse bearer token manifest as JSON")
+                if let preview = String(data: data, encoding: .utf8).map({ String($0.prefix(500)) }) {
+                    Log.error(#file, "    Data preview (\(data.count) bytes): \(preview)")
+                }
+                completion(nil)
+                return
+            }
+
+            Log.info(#file, "  ✅ Successfully fetched manifest via bearer token (\(data.count) bytes)")
             Log.debug(#file, "    JSON keys: \(json.keys.joined(separator: ", "))")
             completion(json)
         }
