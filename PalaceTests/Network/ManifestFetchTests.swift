@@ -504,6 +504,11 @@ final class BearerTokenFulfillFlowTests: XCTestCase {
     private let fulfillURL = URL(string: "https://cm.example.com/CA9876/works/6139999/fulfill/30")!
     private let manifestURL = URL(string: "https://distributor.example.com/content/manifest.json")!
 
+    override func setUp() {
+        super.setUp()
+        HTTPStubURLProtocol.reset()
+    }
+
     override func tearDown() {
         HTTPStubURLProtocol.reset()
         super.tearDown()
@@ -1068,6 +1073,11 @@ final class FetchOpenAccessManifestLCPSafetyTests: XCTestCase {
 /// instead of a manifest.
 final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        HTTPStubURLProtocol.reset()
+    }
+
     override func tearDown() {
         HTTPStubURLProtocol.reset()
         super.tearDown()
@@ -1120,6 +1130,11 @@ final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
 /// receives response bodies for various content types. This prevents the
 /// original bug where URLSessionDownloadTask silently dropped response data.
 final class NetworkExecutorResponseRegressionTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        HTTPStubURLProtocol.reset()
+    }
 
     override func tearDown() {
         HTTPStubURLProtocol.reset()

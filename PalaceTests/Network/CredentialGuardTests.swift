@@ -23,9 +23,14 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
 
     private let tokenURL = URL(string: "https://example.com/patrons/me/token/")!
 
-    override func tearDown() {
-        super.tearDown()
+    override func setUp() {
+        super.setUp()
         HTTPStubURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        HTTPStubURLProtocol.reset()
+        super.tearDown()
     }
 
     // MARK: Empty Credential Rejection
@@ -344,9 +349,14 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
         )
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func setUp() {
+        super.setUp()
         HTTPStubURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        HTTPStubURLProtocol.reset()
+        super.tearDown()
     }
 
     // MARK: refreshTokenAndResume Guards
@@ -591,9 +601,14 @@ final class ConcurrentTokenRefreshTests: XCTestCase {
         )
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func setUp() {
+        super.setUp()
         HTTPStubURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        HTTPStubURLProtocol.reset()
+        super.tearDown()
     }
 
     func testMultipleExecuteTokenRefresh_AllComplete() {
@@ -933,9 +948,14 @@ final class TokenRefreshIntegrationTests: XCTestCase {
         )
     }
 
-    override func tearDown() {
-        super.tearDown()
+    override func setUp() {
+        super.setUp()
         HTTPStubURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        HTTPStubURLProtocol.reset()
+        super.tearDown()
     }
 
     func testExecuteTokenRefresh_ValidatesBasicAuthHeaderOnWire() {

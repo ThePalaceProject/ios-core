@@ -14,6 +14,16 @@ import XCTest
 
 final class AccountAwareNetworkTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        HTTPStubURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        HTTPStubURLProtocol.reset()
+        super.tearDown()
+    }
+
     // MARK: - Request Creation with Account Context
 
     func testRequest_CapturesCurrentAccountToken() {
