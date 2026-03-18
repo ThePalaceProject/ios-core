@@ -105,17 +105,20 @@ actor DownloadErrorRecovery {
             }
         )
 
-        /// Fast policy for borrow operations - fail fast to show error quickly
+        /// Policy for borrow operations — retries transient network issues and
+        /// "no active loan" (server may not have the loan ready when a hold
+        /// notification fires).
         static let borrowOperation = RetryPolicy(
-            maxAttempts: 2,
-            baseDelay: 1.0,
+            maxAttempts: 3,
+            baseDelay: 2.0,
             maxDelay: 10.0,
-            overallTimeout: 20.0,  // Max 20 seconds - fail fast and show error
+            overallTimeout: 25.0,
             shouldRetry: { error in
-                // Only retry on transient network issues, not server errors
                 if let palaceError = error as? PalaceError {
                     switch palaceError {
                     case .network(.timeout), .network(.noConnection):
+                        return true
+                    case .bookRegistry(.bookNotFound):
                         return true
                     default:
                         return false

@@ -50,8 +50,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
         if daysSinceLastLaunch >= 1 {
             Log.info(#file, "App hasn't been used in \(daysSinceLastLaunch) days - clearing HTTP cache, keeping memory cache for stale-while-revalidate")
-            // Clear URLCache to prevent stale/corrupted HTTP responses from causing parsing crashes
-            // in legacy OPDS code. Our memory cache is preserved for stale-while-revalidate.
+            TPPNetworkExecutor.shared.clearCache()
             URLCache.shared.removeAllCachedResponses()
             needsBackgroundRefresh = true
         }
