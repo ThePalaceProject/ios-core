@@ -13,39 +13,33 @@ extension Notification.Name {
 
         init(_ document: TPPProblemDocument) {
             doc = document
-            timestamp = Date.init()
+            timestamp = Date()
         }
     }
 
-    // Static values
     static let CACHE_SIZE = 5
     static let shared = TPPProblemDocumentCacheManager()
 
-    // For Objective-C classes
     class func sharedInstance() -> TPPProblemDocumentCacheManager {
         return TPPProblemDocumentCacheManager.shared
     }
 
-    // Member values
-    private var cache: [String: [DocWithTimestamp]]
+    private var cache = [String: [DocWithTimestamp]]()
+    private let queue = DispatchQueue(label: "org.thepalaceproject.problemDocumentCache")
 
     override init() {
-        cache = [String: [DocWithTimestamp]]()
         super.init()
     }
 
     // MARK: - Write
 
     func cacheProblemDocument(_ doc: TPPProblemDocument, key: String) {
-        let timeStampDoc = DocWithTimestamp.init(doc)
-        guard var vals = cache[key] else {
-            cache[key] = [timeStampDoc]
-            NotificationCenter.default.post(name: NSNotification.Name.TPPProblemDocumentWasCached, object: doc)
-            return
-        }
-
-        if vals.count >= TPPProblemDocumentCacheManager.CACHE_SIZE {
-            vals.removeFirst(1)
+        let timeStampDoc = DocWithTimestamp(doc)
+        queue.sync {
+            var vals = cache[key] ?? []
+            if vals.count >= TPPProblemDocumentCacheManager.CACHE_SIZE {
+                vals.removeFirst(1)
+            }
             vals.append(timeStampDoc)
             cache[key] = vals
         }
@@ -54,15 +48,16 @@ extension Notification.Name {
 
     @objc(clearCachedDocForBookIdentifier:)
     func clearCachedDoc(_ key: String) {
-        cache[key] = []
+        queue.sync {
+            cache[key] = nil
+        }
     }
 
     // MARK: - Read
 
     func getLastCachedDoc(_ key: String) -> TPPProblemDocument? {
-        guard let cachedDocuments = cache[key] else {
-            return nil
+        queue.sync {
+            cache[key]?.last?.doc
         }
-        return cachedDocuments.last?.doc
     }
 }

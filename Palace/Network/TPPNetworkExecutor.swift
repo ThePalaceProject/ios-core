@@ -185,6 +185,13 @@ extension TPPNetworkExecutor {
                                     cachePolicy: urlSession.configuration.requestCachePolicy)
         urlRequest.applyCustomUserAgent()
         let account = TPPUserAccount.sharedAccount(libraryUUID: accountId ?? AccountsManager.shared.currentAccountId)
+
+        if let authDef = account.authDefinition, authDef.isSaml,
+           let cookies = account.cookies, !cookies.isEmpty {
+            let shared = HTTPCookieStorage.shared
+            for cookie in cookies { shared.setCookie(cookie) }
+        }
+
         if let authToken = account.authToken, useTokenIfAvailable {
             urlRequest.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
