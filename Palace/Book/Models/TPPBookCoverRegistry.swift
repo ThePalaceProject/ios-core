@@ -462,7 +462,7 @@ actor TPPBookCoverRegistry {
                     frame: CGRect(origin: .zero, size: size),
                     withTitle: title,
                     withAuthor: authors ?? "Unknown Author",
-                    withScale: viewScale
+                    withScale: Float(viewScale)
                 ) {
                     view.layer.render(in: ctx.cgContext)
                 }
