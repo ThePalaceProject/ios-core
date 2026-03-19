@@ -361,10 +361,11 @@ enum BookService {
                     timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: url)
                 }
 
-                let networkService: AudiobookNetworkService = DefaultAudiobookNetworkService(
+                let networkService: DefaultAudiobookNetworkService = DefaultAudiobookNetworkService(
                     tracks: audiobook.tableOfContents.allTracks,
                     decryptor: decryptor
                 )
+                networkService.downloadOnlyOnWiFi = TPPSettings.shared.downloadOnlyOnWiFi
 
                 let manager = DefaultAudiobookManager(
                     metadata: metadata,

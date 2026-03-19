@@ -202,6 +202,9 @@ public enum AccessibilityID {
         // Advanced
         public static let advancedButton = "settings.advancedButton"
         public static let deleteServerDataButton = "settings.deleteServerDataButton"
+
+        // Downloads
+        public static let downloadOnlyOnWiFiToggle = "settings.downloadOnlyOnWiFiToggle"
     }
 
     // MARK: - Audiobook Player

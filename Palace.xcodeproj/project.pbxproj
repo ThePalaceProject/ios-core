@@ -1139,6 +1139,7 @@
 		QATEST18BF00000000000001 /* SEMigrationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST18FR00000000000001 /* SEMigrationsTests.swift */; };
 		QATEST19BF00000000000001 /* TPPSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST19FR00000000000001 /* TPPSettingsTests.swift */; };
 		QATEST20BF00000000000001 /* TPPBookContentMetadataFilesHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST20FR00000000000001 /* TPPBookContentMetadataFilesHelperTests.swift */; };
+		PP0758BF000000000000001 /* DownloadOnlyOnWiFiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP0758FR000000000000001 /* DownloadOnlyOnWiFiTests.swift */; };
 		R3LC002T260955EF008E1DC3 /* TPPBookmarkR3LocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = R3LC001T260955EF008E1DC3 /* TPPBookmarkR3LocationTests.swift */; };
 		RDBM002T260955EF008E1DC3 /* TPPReadiumBookmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RDBM001T260955EF008E1DC3 /* TPPReadiumBookmarkTests.swift */; };
 		REAU002T260955EF008E1DC3 /* TPPReauthenticatorMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = REAU001T260955EF008E1DC3 /* TPPReauthenticatorMock.swift */; };
@@ -2119,6 +2120,7 @@
 		QATEST18FR00000000000001 /* SEMigrationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SEMigrationsTests.swift; sourceTree = "<group>"; };
 		QATEST19FR00000000000001 /* TPPSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsTests.swift; sourceTree = "<group>"; };
 		QATEST20FR00000000000001 /* TPPBookContentMetadataFilesHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookContentMetadataFilesHelperTests.swift; sourceTree = "<group>"; };
+		PP0758FR000000000000001 /* DownloadOnlyOnWiFiTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadOnlyOnWiFiTests.swift; sourceTree = "<group>"; };
 		R3LC001T260955EF008E1DC3 /* TPPBookmarkR3LocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookmarkR3LocationTests.swift; sourceTree = "<group>"; };
 		RDBM001T260955EF008E1DC3 /* TPPReadiumBookmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReadiumBookmarkTests.swift; sourceTree = "<group>"; };
 		REAU001T260955EF008E1DC3 /* TPPReauthenticatorMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReauthenticatorMock.swift; sourceTree = "<group>"; };
@@ -4296,6 +4298,7 @@
 			children = (
 				PP3671FR000000000000001 /* TPPAccountListDataSourceTests.swift */,
 				QATEST19FR00000000000001 /* TPPSettingsTests.swift */,
+				PP0758FR000000000000001 /* DownloadOnlyOnWiFiTests.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -4826,6 +4829,7 @@
 				QATEST17BF00000000000001 /* TPPUserFriendlyErrorTests.swift in Sources */,
 				QATEST18BF00000000000001 /* SEMigrationsTests.swift in Sources */,
 				QATEST19BF00000000000001 /* TPPSettingsTests.swift in Sources */,
+				PP0758BF000000000000001 /* DownloadOnlyOnWiFiTests.swift in Sources */,
 				PP3671BF000000000000001 /* TPPAccountListDataSourceTests.swift in Sources */,
 				QATEST20BF00000000000001 /* TPPBookContentMetadataFilesHelperTests.swift in Sources */,
 				E5LOGTEST012F0A10000003 /* DeviceLogCollectorTests.swift in Sources */,

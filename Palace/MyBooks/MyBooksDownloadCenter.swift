@@ -453,6 +453,20 @@ struct DownloadErrorInfo {
             return
         }
 
+        if TPPSettings.shared.downloadOnlyOnWiFi && !Reachability.shared.isOnWiFi {
+            Log.info(#file, "Download blocked for '\(book.title)' — Wi-Fi only mode is enabled and device is not on Wi-Fi")
+            runOnMainAsync {
+                self.publishAndAnnounceError(
+                    DownloadErrorInfo(
+                        bookId: book.identifier,
+                        title: DisplayStrings.wifiRequired,
+                        message: DisplayStrings.downloadRestrictedToWiFi
+                    )
+                )
+            }
+            return
+        }
+
         let canStart = await downloadCoordinator.canStartDownload(maxConcurrent: maxConcurrentDownloads)
         let activeCount = await downloadCoordinator.activeCount
 

@@ -13,6 +13,7 @@ struct TPPSettingsView: View {
     typealias DisplayStrings = Strings.Settings
 
     @AppStorage(TPPSettings.showDeveloperSettingsKey) private var showDeveloperSettings: Bool = false
+    @AppStorage(TPPSettings.downloadOnlyOnWiFiKey) private var downloadOnlyOnWiFi: Bool = false
     @State private var selectedView: Int? = 0
     @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
     @State private var showAddLibrarySheet: Bool = false
@@ -57,6 +58,7 @@ struct TPPSettingsView: View {
     @ViewBuilder private var listView: some View {
         List {
             librariesSection
+            downloadsSection
             infoSection
             developerSettingsSection
         }
@@ -103,6 +105,20 @@ struct TPPSettingsView: View {
         Section(header: Text(DisplayStrings.libraries)) {
             row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
                 .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
+        }
+    }
+
+    @ViewBuilder private var downloadsSection: some View {
+        Section(header: Text(DisplayStrings.downloads)) {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(DisplayStrings.downloadOnlyOnWiFi, isOn: $downloadOnlyOnWiFi)
+                    .tint(.green)
+                    .accessibilityIdentifier(AccessibilityID.Settings.downloadOnlyOnWiFiToggle)
+                Text(DisplayStrings.downloadOnlyOnWiFiDescription)
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 4)
         }
     }
 
