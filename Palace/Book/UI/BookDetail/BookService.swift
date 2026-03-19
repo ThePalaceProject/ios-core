@@ -331,9 +331,22 @@ enum BookService {
         Log.debug(#file, "  Has decryptor: \(decryptor != nil)")
         Log.debug(#file, "  Has bearer token: \(book.bearerToken != nil)")
 
+        // Pre-serialize JSON on the calling thread to avoid capturing the
+        // [String: Any] dictionary (which contains reference-typed values)
+        // across an async boundary. Capturing `Any` existentials in closures
+        // was causing EXC_BREAKPOINT in block_destroy_helper.
         var jsonDict = json
         jsonDict["id"] = book.identifier
 
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []) else {
+            Log.error(#file, "  ❌ Failed to serialize JSON dictionary to Data")
+            showAudiobookTryAgainError(book: book, onFinish: onFinish)
+            openingBooks.remove(book.identifier)
+            onFinish?()
+            return
+        }
+
+        // Capture only the serialized Data (value type) instead of the raw dictionary
         let vendorCompletion: (Foundation.NSError?) -> Void = { (error: Foundation.NSError?) in
             Task { @MainActor in
                 if let error = error {
@@ -346,16 +359,6 @@ enum BookService {
                 }
 
                 Log.debug(#file, "  Creating audiobook with bearerToken: '\(book.bearerToken ?? "nil")'")
-
-                guard let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []) else {
-                    Log.error(#file, "  ❌ Failed to serialize JSON dictionary to Data")
-                    Log.error(#file, "    JSON keys: \(jsonDict.keys.joined(separator: ", "))")
-                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                    openingBooks.remove(book.identifier)
-                    onFinish?()
-                    return
-                }
-
                 Log.debug(#file, "  JSON data size: \(jsonData.count) bytes")
 
                 let manifest: Manifest

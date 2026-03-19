@@ -111,8 +111,14 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             }
         }
 
+    /// When true, the `registry.didSet` observer is suppressed.
+    /// Used by `load(account:)` which handles its own notifications to avoid
+    /// double-dispatch race conditions that cause EXC_BAD_ACCESS.
+    private var suppressRegistryDidSet = false
+
     private var registry = [String: TPPBookRegistryRecord]() {
         didSet {
+            guard !suppressRegistryDidSet else { return }
             // Capture snapshot while on sync queue to avoid concurrent read/write crash.
             // Without this, the main thread block reads self.registry while sync queue
             // barrier blocks may be writing to it, causing EXC_BAD_ACCESS.
@@ -272,19 +278,22 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 Log.info(#file, "  No existing registry file found or failed to parse")
             }
 
+            // Suppress didSet notification — we handle everything in one main dispatch
+            // to avoid a double-dispatch race where registry records (reference types)
+            // are mutated on the sync queue between two main-queue blocks.
+            self.suppressRegistryDidSet = true
             self.registry = newRegistry
+            self.suppressRegistryDidSet = false
 
-            // Capture states and snapshot while on sync queue to avoid concurrent access
+            // Capture ONLY value types on the sync queue for safe cross-queue transfer
             let bookStates = newRegistry.map { ($0.key, $0.value.state) }
-            let snapshot = self.registry
-            let bookCount = snapshot.count
-            // Capture account to clear loading state
+            let snapshot = newRegistry
+            let bookCount = newRegistry.count
             let loadedAccount = account
 
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
 
-                // Clear loading state only if we're still loading this account
                 if self.loadingAccount == loadedAccount {
                     self.loadingAccount = nil
                 }
@@ -292,8 +301,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 self.state = .loaded
                 self.registrySubject.send(snapshot)
 
-                // Emit state events for ALL loaded books so ViewModels update their state
-                // This ensures any cached models or views created before load get the correct state
                 for (identifier, state) in bookStates {
                     self.bookStateSubject.send((identifier, state))
                 }

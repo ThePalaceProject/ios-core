@@ -260,8 +260,10 @@ public final class AudiobookSessionManager: ObservableObject {
         // Capture book ID before clearing state
         let bookId = currentBook?.identifier
 
-        // Save position before stopping
-        if let position = currentPosition {
+        // Prefer the live position from the player over the cached value, which
+        // may lag behind if the user scrubbed or the position update hadn't fired yet.
+        let livePosition = manager?.audiobook.player.currentTrackPosition ?? currentPosition
+        if let position = livePosition {
             manager?.saveLocation(position)
         }
 

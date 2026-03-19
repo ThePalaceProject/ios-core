@@ -22,7 +22,16 @@ struct HTMLTextView: View {
             .characterEncoding: String.Encoding.utf8.rawValue
         ]
 
-        if let nsAttributedString = try? NSAttributedString(data: data, options: options, documentAttributes: nil) {
+        // NSAttributedString HTML parsing uses WebKit internally and can throw
+        // ObjC NSExceptions that Swift's try? cannot catch.
+        var nsAttributedString: NSAttributedString?
+        let exception = TPPObjCExceptionCatcher.catchException {
+            nsAttributedString = try? NSAttributedString(data: data, options: options, documentAttributes: nil)
+        }
+
+        if exception != nil { return nil }
+
+        if let nsAttributedString = nsAttributedString {
             let mutableAttributedString = NSMutableAttributedString(attributedString: nsAttributedString)
             mutableAttributedString.addAttribute(.font, value: UIFont.palaceFont(ofSize: 15), range: NSRange(location: 0, length: mutableAttributedString.length))
             return AttributedString(mutableAttributedString)
