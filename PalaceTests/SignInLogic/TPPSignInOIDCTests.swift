@@ -203,6 +203,7 @@ final class OIDCMakeRequestTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
 
@@ -270,6 +271,7 @@ final class OIDCLoginRoutingTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
 
@@ -332,6 +334,8 @@ final class OIDCUpdateUserAccountTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
+
         libraryMock = TPPLibraryAccountMock()
 
         businessLogic = TPPSignInBusinessLogic(
@@ -467,6 +471,7 @@ final class OIDCCallbackHandlingTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
         networkExecutor = TPPRequestExecutorMock()
@@ -582,6 +587,7 @@ final class OIDCSelectedAuthenticationTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
 
         businessLogic = TPPSignInBusinessLogic(
@@ -640,6 +646,7 @@ final class OIDCRegressionTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
     }
 
@@ -843,6 +850,7 @@ final class OIDCCallbackEdgeCaseTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
         networkExecutor = TPPRequestExecutorMock()
@@ -985,6 +993,7 @@ final class OIDCRedirectURIConstructionTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
 
         businessLogic = TPPSignInBusinessLogic(
@@ -1054,6 +1063,7 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
         networkExecutor = TPPRequestExecutorMock()
@@ -1162,6 +1172,7 @@ final class OIDCSignOutRegressionTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
         bookRegistryMock = TPPBookRegistryMock()
@@ -1327,6 +1338,7 @@ final class OIDCTokenRefreshRegressionTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
         networkExecutor = TPPRequestExecutorMock()
 
@@ -1461,6 +1473,7 @@ final class OIDCIsolationRegressionTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
     }
 
@@ -1578,6 +1591,7 @@ final class OIDCReauthOnExpiredTokenTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
         networkExecutor = TPPRequestExecutorMock()

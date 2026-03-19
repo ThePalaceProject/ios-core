@@ -44,6 +44,12 @@ import Foundation
         let looksLikeOAuthToken = username.count > 50 || username.contains(".")
         Log.info(#file, "  Credential shape: usernameLen=\(username.count), pinLen=\(password.count), looksLikeBarcode=\(looksLikeBarcode), looksLikeOAuthToken=\(looksLikeOAuthToken)")
 
+        guard !username.isEmpty, !password.isEmpty else {
+            Log.error(#file, "Aborting token request: empty credentials (usernameLen=\(username.count), pinLen=\(password.count))")
+            return .failure(NSError(domain: "TokenRequest", code: -1,
+                                    userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"]))
+        }
+
         var request = URLRequest(url: url, applyingCustomUserAgent: true)
         request.httpMethod = HTTPMethodType.POST.rawValue
 

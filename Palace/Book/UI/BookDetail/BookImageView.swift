@@ -46,10 +46,10 @@ struct BookImageView: View {
         .accessibilityElement(children: treatImageAsDecorativeInLists ? .ignore : .combine)
         .frame(width: width, height: height)
         .onAppear {
-            // Skip skeleton if image already loaded
             if hasPreloadedCover {
                 showSkeleton = false
-            } else {
+            }
+            if book.coverImage == nil {
                 book.fetchCoverImage()
             }
         }

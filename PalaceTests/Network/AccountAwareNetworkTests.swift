@@ -14,6 +14,16 @@ import XCTest
 
 final class AccountAwareNetworkTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        HTTPStubURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        HTTPStubURLProtocol.reset()
+        super.tearDown()
+    }
+
     // MARK: - Request Creation with Account Context
 
     func testRequest_CapturesCurrentAccountToken() {
@@ -166,9 +176,9 @@ final class AccountAwareNetworkTests: XCTestCase {
             delegateQueue: nil
         )
 
-        // Register a slow stub so the task stays active
+        let stubSemaphore = DispatchSemaphore(value: 0)
         HTTPStubURLProtocol.register { request in
-            Thread.sleep(forTimeInterval: 5.0)
+            stubSemaphore.wait(timeout: .now() + 0.5)
             return HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data())
         }
 
