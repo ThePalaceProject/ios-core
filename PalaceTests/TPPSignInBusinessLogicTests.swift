@@ -17,6 +17,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
         drmAuthorizer = TPPDRMAuthorizingMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()

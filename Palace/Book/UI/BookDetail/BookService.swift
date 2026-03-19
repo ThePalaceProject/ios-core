@@ -44,35 +44,26 @@ enum BookService {
                 Log.info(#file, "    barcodeShape=\(barcodeShape), barcodeLen=\(barcode.count)")
             }
 
-            guard let username = userAccount.username,
-                  let password = userAccount.PIN,
+            guard let username = userAccount.username, !username.isEmpty,
+                  let password = userAccount.PIN, !password.isEmpty,
                   let tokenURL = userAccount.authDefinition?.tokenURL else {
-                Log.error(#file, "Cannot refresh token: missing credentials or tokenURL (username=\(userAccount.username != nil), PIN=\(userAccount.PIN != nil), tokenURL=\(authDef?.tokenURL?.absoluteString ?? "nil"))")
+                Log.error(#file, "Cannot refresh token: missing or empty credentials (usernameLen=\(userAccount.username?.count ?? -1), pinLen=\(userAccount.PIN?.count ?? -1), tokenURL=\(authDef?.tokenURL?.absoluteString ?? "nil"))")
                 openingBooks.remove(book.identifier)
                 showAudiobookTryAgainError(book: book, onFinish: onFinish)
                 onFinish?()
                 return
             }
 
-            TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
+            TPPNetworkExecutor.shared.refreshTokenAndResume(task: nil, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
                 switch result {
                 case .success:
-                    Log.info(#file, "✅ Token refresh successful - re-fetching manifest with fresh token")
+                    Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
+                    // Route through presentAudiobook so each book type gets proper handling:
+                    // LCP books go through the LCP pipeline, bearer token books through the
+                    // two-step fulfill flow, and open access books through fetchOpenAccessManifest.
+                    presentAudiobook(book, onFinish: onFinish)
 
-                    fetchOpenAccessManifest(for: book) { json in
-                        guard let json else {
-                            Log.error(#file, "❌ Failed to re-fetch manifest after token refresh")
-                            openingBooks.remove(book.identifier)
-                            showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                            onFinish?()
-                            return
-                        }
-
-                        Log.info(#file, "✅ Manifest re-fetched with fresh bearer token - opening audiobook")
-                        presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
-                    }
-
-                case .failure(let error):
+                case .failure(let error, _):
                     Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription) - cannot open audiobook")
                     openingBooks.remove(book.identifier)
                     showAudiobookTryAgainError(book: book, onFinish: onFinish)
@@ -144,6 +135,10 @@ enum BookService {
             } else {
                 Log.debug(#file, "  No LCP license file found")
             }
+
+            Log.info(#file, "  LCP audiobook with no local files - re-downloading LCP license from fulfill URL")
+            redownloadLCPLicenseAndPresent(book, onFinish: onFinish)
+            return
         } else {
             Log.debug(#file, "  Not an LCP audiobook")
         }
@@ -254,6 +249,73 @@ enum BookService {
                 Log.debug(#file, "    Dictionary keys: \(json.keys.joined(separator: ", "))")
                 presentAudiobookFrom(book: book, json: json, decryptor: lcpAudiobooks, onFinish: onFinish)
             }
+        }
+    }
+
+    /// Re-downloads the LCP license from the CM fulfill URL and processes it through the LCP pipeline.
+    /// Called when an LCP audiobook's local files are missing (cache cleared, storage pressure, etc.)
+    /// but the book still appears as downloaded in the registry.
+    private static func redownloadLCPLicenseAndPresent(_ book: TPPBook, onFinish: (() -> Void)?) {
+        guard let fulfillURL = book.defaultAcquisition?.hrefURL else {
+            Log.error(#file, "  ❌ No fulfill URL for LCP audiobook re-download")
+            showAudiobookTryAgainError(book: book, onFinish: onFinish)
+            openingBooks.remove(book.identifier)
+            onFinish?()
+            return
+        }
+
+        guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else {
+            Log.error(#file, "  ❌ Cannot determine content directory for LCP license")
+            showAudiobookTryAgainError(book: book, onFinish: onFinish)
+            openingBooks.remove(book.identifier)
+            onFinish?()
+            return
+        }
+
+        let licenseFileURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        Log.info(#file, "  📡 Fetching LCP license from: \(fulfillURL.host ?? "unknown")")
+
+        let _ = TPPNetworkExecutor.shared.GET(fulfillURL) { data, response, error in
+            if let error = error {
+                Log.error(#file, "  ❌ Network error re-downloading LCP license: \(error.localizedDescription)")
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
+                openingBooks.remove(book.identifier)
+                onFinish?()
+                return
+            }
+
+            guard let data = data, !data.isEmpty else {
+                Log.error(#file, "  ❌ No data received for LCP license re-download")
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
+                openingBooks.remove(book.identifier)
+                onFinish?()
+                return
+            }
+
+            if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
+                Log.error(#file, "  ❌ LCP license re-download failed with HTTP \(httpResponse.statusCode)")
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
+                openingBooks.remove(book.identifier)
+                onFinish?()
+                return
+            }
+
+            do {
+                let directory = licenseFileURL.deletingLastPathComponent()
+                if !FileManager.default.fileExists(atPath: directory.path) {
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                }
+                try data.write(to: licenseFileURL, options: .atomic)
+                Log.info(#file, "  ✅ LCP license saved to: \(licenseFileURL.lastPathComponent) (\(data.count) bytes)")
+            } catch {
+                Log.error(#file, "  ❌ Failed to save LCP license: \(error.localizedDescription)")
+                showAudiobookTryAgainError(book: book, onFinish: onFinish)
+                openingBooks.remove(book.identifier)
+                onFinish?()
+                return
+            }
+
+            buildAndPresentAudiobook(book: book, lcpSourceURL: licenseFileURL, onFinish: onFinish)
         }
     }
     #endif
@@ -532,9 +594,13 @@ enum BookService {
 
         Log.debug(#file, "  📡 Fetching manifest from URL: \(url.absoluteString)")
 
-        let task = TPPNetworkExecutor.shared.download(url) { data, response, error in
+        let _ = TPPNetworkExecutor.shared.GET(url) { data, response, error in
             if let error = error {
                 Log.error(#file, "  ❌ Network error fetching manifest: \(error.localizedDescription)")
+                if let httpResponse = response as? HTTPURLResponse {
+                    Log.error(#file, "    HTTP status: \(httpResponse.statusCode)")
+                    Log.error(#file, "    Content-Type: \(httpResponse.allHeaderFields["Content-Type"] ?? "unknown")")
+                }
                 completion(nil)
                 return
             }
@@ -575,7 +641,71 @@ enum BookService {
                 return
             }
 
+            // The CM fulfill endpoint for bearer-token audiobooks returns a bearer
+            // token response (with access_token/location), not the manifest itself.
+            // Detect this and follow the two-step flow: fulfill -> bearer token -> manifest.
+            if let bearerToken = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: json) {
+                Log.info(#file, "  🔑 Received bearer token response from fulfill URL - fetching actual manifest")
+                bearerToken.fulfillURL = url
+                book.bearerToken = bearerToken.accessToken
+                book.bearerTokenFulfillURL = url
+                fetchManifestWithBearerToken(bearerToken, for: book, completion: completion)
+                return
+            }
+
             Log.debug(#file, "  ✅ Successfully parsed manifest JSON")
+            Log.debug(#file, "    JSON keys: \(json.keys.joined(separator: ", "))")
+            completion(json)
+        }
+    }
+
+    /// Fetches the actual audiobook manifest using a book-specific bearer token.
+    /// Called when the fulfill URL returns a bearer token response instead of the manifest directly.
+    static func fetchManifestWithBearerToken(
+        _ token: MyBooksSimplifiedBearerToken,
+        for book: TPPBook,
+        session: URLSession = .shared,
+        completion: @escaping ([String: Any]?) -> Void
+    ) {
+        var request = URLRequest(url: token.location)
+        request.setValue("Bearer \(token.accessToken)", forHTTPHeaderField: "Authorization")
+        request.applyCustomUserAgent()
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        Log.info(#file, "  📡 Fetching manifest from bearer token location: \(token.location.host ?? "unknown")")
+
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                Log.error(#file, "  ❌ Network error fetching manifest via bearer token: \(error.localizedDescription)")
+                completion(nil)
+                return
+            }
+
+            guard let data = data, !data.isEmpty else {
+                Log.error(#file, "  ❌ No data received from bearer token manifest fetch")
+                completion(nil)
+                return
+            }
+
+            if let httpResponse = response as? HTTPURLResponse {
+                Log.debug(#file, "  Bearer token manifest response: HTTP \(httpResponse.statusCode)")
+                if !httpResponse.isSuccess() {
+                    Log.error(#file, "  ❌ Bearer token manifest fetch failed with HTTP \(httpResponse.statusCode)")
+                    completion(nil)
+                    return
+                }
+            }
+
+            guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
+                Log.error(#file, "  ❌ Failed to parse bearer token manifest as JSON")
+                if let preview = String(data: data, encoding: .utf8).map({ String($0.prefix(500)) }) {
+                    Log.error(#file, "    Data preview (\(data.count) bytes): \(preview)")
+                }
+                completion(nil)
+                return
+            }
+
+            Log.info(#file, "  ✅ Successfully fetched manifest via bearer token (\(data.count) bytes)")
             Log.debug(#file, "    JSON keys: \(json.keys.joined(separator: ", "))")
             completion(json)
         }

@@ -484,6 +484,7 @@ public class TPPBookCoverRegistryBridge: NSObject {
     public func coverImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
         // Capture all needed data early to avoid accessing potentially deallocated book later
         let bookIdentifier = book.identifier
+        let coverKey = "\(bookIdentifier)_cover"
         let imageURL = book.imageURL
         let thumbnailURL = book.imageThumbnailURL
         let title = book.title
@@ -510,10 +511,8 @@ public class TPPBookCoverRegistryBridge: NSObject {
             // Use main actor for UI-related cache operations
             await MainActor.run {
                 if let img = img {
-                    // Use shared cache directly instead of book.imageCache to prevent EXC_BAD_ACCESS
-                    sharedImageCache.set(img, for: bookIdentifier)
-                    // Only update book's cache if book is still alive
-                    book?.imageCache.set(img, for: bookIdentifier)
+                    sharedImageCache.set(img, for: coverKey)
+                    book?.imageCache.set(img, for: coverKey)
                 }
                 completion(img)
             }
@@ -525,6 +524,7 @@ public class TPPBookCoverRegistryBridge: NSObject {
     public func thumbnailImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
         // Capture all needed data early to avoid accessing potentially deallocated book later
         let bookIdentifier = book.identifier
+        let thumbnailKey = "\(bookIdentifier)_thumbnail"
         let thumbnailURL = book.imageThumbnailURL
         let title = book.title
         let authors = book.authors
@@ -545,10 +545,8 @@ public class TPPBookCoverRegistryBridge: NSObject {
             // Use main actor for UI-related cache operations
             await MainActor.run {
                 if let img = img {
-                    // Use shared cache directly instead of book.imageCache to prevent EXC_BAD_ACCESS
-                    sharedImageCache.set(img, for: bookIdentifier)
-                    // Only update book's cache if book is still alive
-                    book?.imageCache.set(img, for: bookIdentifier)
+                    sharedImageCache.set(img, for: thumbnailKey)
+                    book?.imageCache.set(img, for: thumbnailKey)
                 }
                 completion(img)
             }

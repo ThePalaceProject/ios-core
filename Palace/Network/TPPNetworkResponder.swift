@@ -405,8 +405,8 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task
 
         let canRefreshToken = (authDef?.isToken == true || authDef?.isOauth == true) &&
             authDef?.tokenURL != nil &&
-            userAccount.username != nil &&
-            userAccount.pin != nil
+            userAccount.username?.isEmpty == false &&
+            userAccount.pin?.isEmpty == false
 
         if canRefreshToken {
             Log.info(#file, "Server returned 401 - triggering token refresh (server authority)")
@@ -518,8 +518,8 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
 
     func refreshToken() async throws {
         guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL,
-              let username = TPPUserAccount.sharedAccount().username,
-              let password = TPPUserAccount.sharedAccount().pin
+              let username = TPPUserAccount.sharedAccount().username, !username.isEmpty,
+              let password = TPPUserAccount.sharedAccount().pin, !password.isEmpty
         else { return }
 
         let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
