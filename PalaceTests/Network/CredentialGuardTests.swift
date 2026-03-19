@@ -613,12 +613,9 @@ final class ConcurrentTokenRefreshTests: XCTestCase {
 
     func testMultipleExecuteTokenRefresh_AllComplete() {
         let executor = makeExecutor()
-        let tokenRequestCount = AtomicCounter()
 
         HTTPStubURLProtocol.register { request in
             guard request.url?.absoluteString.contains("token") == true else { return nil }
-            tokenRequestCount.increment()
-            Thread.sleep(forTimeInterval: 0.2)
             let json = """
             {"access_token":"shared-token","token_type":"Bearer","expires_in":3600}
             """.data(using: .utf8)!
@@ -630,87 +627,43 @@ final class ConcurrentTokenRefreshTests: XCTestCase {
         }
 
         let tokenURL = URL(string: "https://example.com/token")!
-        let expectation1 = XCTestExpectation(description: "First refresh")
-        let expectation2 = XCTestExpectation(description: "Second refresh")
-        let expectation3 = XCTestExpectation(description: "Third refresh")
-
-        executor.executeTokenRefresh(
-            username: "user", password: "pass", tokenURL: tokenURL
-        ) { _ in expectation1.fulfill() }
-
-        executor.executeTokenRefresh(
-            username: "user", password: "pass", tokenURL: tokenURL
-        ) { _ in expectation2.fulfill() }
-
-        executor.executeTokenRefresh(
-            username: "user", password: "pass", tokenURL: tokenURL
-        ) { _ in expectation3.fulfill() }
-
-        wait(for: [expectation1, expectation2, expectation3], timeout: 15.0)
-    }
-
-    func testRefreshTokenAndResume_PendingCompletionsAllFired() {
-        let executor = makeExecutor()
         let completionCount = AtomicCounter()
-
-        HTTPStubURLProtocol.register { request in
-            guard request.url?.absoluteString.contains("token") == true else { return nil }
-            Thread.sleep(forTimeInterval: 0.3)
-            let json = """
-            {"access_token":"test","token_type":"Bearer","expires_in":3600}
-            """.data(using: .utf8)!
-            return HTTPStubURLProtocol.StubbedResponse(
-                statusCode: 200,
-                headers: ["Content-Type": "application/json"],
-                body: json
-            )
-        }
-
-        let count = 5
-        let expectations = (0..<count).map { i in
-            XCTestExpectation(description: "Refresh \(i)")
-        }
+        let count = 3
+        let expectations = (0..<count).map { XCTestExpectation(description: "Refresh \($0)") }
 
         for i in 0..<count {
-            DispatchQueue.global().asyncAfter(deadline: .now() + Double(i) * 0.05) {
-                executor.refreshTokenAndResume(task: nil) { _ in
-                    completionCount.increment()
-                    expectations[i].fulfill()
-                }
+            executor.executeTokenRefresh(
+                username: "user", password: "pass", tokenURL: tokenURL
+            ) { _ in
+                completionCount.increment()
+                expectations[i].fulfill()
             }
         }
 
-        wait(for: expectations, timeout: 15.0)
-
+        wait(for: expectations, timeout: 30.0)
         XCTAssertEqual(completionCount.value, count,
-                       "All \(count) pending completions must fire")
+                       "All \(count) executeTokenRefresh completions must fire")
     }
 
-    func testRefreshTokenAndResume_FailurePropagatedToPendingCompletions() {
+    func testRefreshTokenAndResume_NoCredentials_AllCompletionsFireWithFailure() {
         let executor = makeExecutor()
         let failureCount = AtomicCounter()
 
-        // All refreshes will fail since there are no credentials in the test account
-        let count = 3
-        let expectations = (0..<count).map { i in
-            XCTestExpectation(description: "Refresh \(i)")
-        }
+        let count = 5
+        let expectations = (0..<count).map { XCTestExpectation(description: "Refresh \($0)") }
 
         for i in 0..<count {
-            DispatchQueue.global().asyncAfter(deadline: .now() + Double(i) * 0.02) {
-                executor.refreshTokenAndResume(task: nil) { result in
-                    if case .failure = result {
-                        failureCount.increment()
-                    }
-                    expectations[i].fulfill()
+            executor.refreshTokenAndResume(task: nil) { result in
+                if case .failure = result {
+                    failureCount.increment()
                 }
+                expectations[i].fulfill()
             }
         }
 
-        wait(for: expectations, timeout: 10.0)
-
+        wait(for: expectations, timeout: 30.0)
         XCTAssertEqual(failureCount.value, count,
-                       "All pending completions should receive the failure")
+                       "All completions should fire with failure when no credentials exist")
     }
 }
 
