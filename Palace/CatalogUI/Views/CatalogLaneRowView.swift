@@ -39,6 +39,7 @@ struct CatalogLaneRowView: View {
                             usePulseSkeleton: true,
                             treatImageAsDecorativeInLists: true
                         )
+                        .adaptiveShadow(radius: 4)
                         .padding(.vertical)
                     })
                     .buttonStyle(.plain)

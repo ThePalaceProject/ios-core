@@ -89,6 +89,7 @@ struct BookDetailView: View {
                 lastBookIdentifier = viewModel.book.identifier
 
                 showCompactHeader = false
+                isExpanded = false
                 headerHeight = viewModel.isFullSize ? 300 : 225
                 imageScale = 1.0
                 imageOpacity = 1.0
@@ -286,7 +287,7 @@ struct BookDetailView: View {
         BookImageView(book: viewModel.book, height: 280 * imageScale, treatImageAsDecorativeInLists: true)
             .accessibilityIdentifier(AccessibilityID.BookDetail.coverImage)
             .opacity(imageOpacity)
-            .adaptiveShadow()
+            .adaptiveShadow(backgroundColor: headerColor)
             .accessibleAnimation(scaleAnimation, value: imageScale)
             .accessibleAnimation(scaleAnimation, value: imageOpacity)
             .background(GeometryReader { _ in
@@ -374,38 +375,39 @@ struct BookDetailView: View {
 
     @ViewBuilder private var descriptionView: some View {
         if !self.descriptionText.isEmpty {
-            ZStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(DisplayStrings.description.uppercased())
-                        .font(.headline)
-                        .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(DisplayStrings.description.uppercased())
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
 
-                    Divider()
-                        .padding(.vertical)
+                Divider()
+                    .padding(.vertical)
 
-                    VStack {
-                        HTMLTextView(htmlContent: self.descriptionText)
-                            .lineLimit(nil)
-                            .frame(maxWidth: .infinity)
-                            .fixedSize(horizontal: false, vertical: true)
+                VStack {
+                    HTMLTextView(htmlContent: self.descriptionText)
+                        .lineLimit(nil)
+                        .frame(maxWidth: .infinity)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxHeight: isExpanded ? .infinity : 150, alignment: .top)
+                .clipped()
+                .mask(
+                    VStack(spacing: 0) {
+                        Color.white
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white,                location: 0.0),
+                                .init(color: .white.opacity(0.85), location: 0.25),
+                                .init(color: .white.opacity(0.45), location: 0.55),
+                                .init(color: .white.opacity(0.10), location: 0.80),
+                                .init(color: .clear,               location: 1.0),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: isExpanded ? 0 : 70)
                     }
-                    .padding(.bottom, 60)
-                    .frame(maxHeight: isExpanded ? .infinity : 100, alignment: .top)
-                    .clipped()
-                }
-
-                if !isExpanded {
-                    LinearGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: Color.colorInverseLabel.opacity(0.0), location: 0.0),
-                            .init(color: Color.colorInverseLabel.opacity(0.5), location: 0.7),
-                            .init(color: Color.colorInverseLabel, location: 1.0)
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 60)
-                }
+                )
 
                 Button(isExpanded ? DisplayStrings.less.capitalized : DisplayStrings.more.capitalized) {
                     withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) {
@@ -413,7 +415,7 @@ struct BookDetailView: View {
                     }
                 }
                 .foregroundColor(.primary)
-                .bottomrRightJustified()
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .padding(.bottom)
         }

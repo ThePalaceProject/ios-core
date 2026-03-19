@@ -46,12 +46,15 @@ struct BookImageView: View {
         .accessibilityElement(children: treatImageAsDecorativeInLists ? .ignore : .combine)
         .frame(width: width, height: height)
         .onAppear {
-            // Skip skeleton if image already loaded
+            // Suppress skeleton immediately if something is already available to show
             if hasPreloadedCover {
                 showSkeleton = false
-            } else {
-                book.fetchCoverImage()
             }
+            // Always fetch at the correct display size. The registry checks the size-specific
+            // cache key first, so this is instant when the right resolution is cached.
+            // Without this, a small thumbnail loaded earlier (e.g. catalog lane) would be
+            // displayed at full size, causing pixelation on large screens.
+            book.fetchCoverImage(forDisplayHeight: height)
         }
         .onChange(of: book.coverImage) { newImage in
             if newImage != nil {

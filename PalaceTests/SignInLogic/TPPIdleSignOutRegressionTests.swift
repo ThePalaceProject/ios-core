@@ -36,6 +36,7 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryMock = TPPLibraryAccountMock()
         drmAuthorizer = TPPDRMAuthorizingMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
