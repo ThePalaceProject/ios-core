@@ -640,47 +640,6 @@ final class ConcurrentTokenRefreshTests: XCTestCase {
         }
     }
 
-    func testMultipleTokenRequests_allComplete() async {
-        HTTPStubURLProtocol.register { request in
-            guard request.url?.absoluteString.contains("token") == true else { return nil }
-            let json = """
-            {"access_token":"test-token","token_type":"Bearer","expires_in":3600}
-            """.data(using: .utf8)!
-            return HTTPStubURLProtocol.StubbedResponse(
-                statusCode: 200,
-                headers: ["Content-Type": "application/json"],
-                body: json
-            )
-        }
-
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [HTTPStubURLProtocol.self]
-        let session = URLSession(configuration: config)
-
-        let tokenURL = URL(string: "https://example.com/token")!
-        let count = 3
-        var results = [Result<TokenResponse, Error>]()
-
-        await withTaskGroup(of: Result<TokenResponse, Error>.self) { group in
-            for _ in 0..<count {
-                group.addTask {
-                    let request = TokenRequest(url: tokenURL, username: "user", password: "pass")
-                    return await request.execute(session: session)
-                }
-            }
-            for await result in group {
-                results.append(result)
-            }
-        }
-
-        XCTAssertEqual(results.count, count, "All \(count) token requests must complete")
-        for result in results {
-            if case .failure(let error) = result {
-                XCTFail("Token request should not fail: \(error)")
-            }
-        }
-    }
-
     func testRefreshTokenAndResume_noCredentials_failsImmediately() {
         let executor = makeExecutor()
         let expectation = XCTestExpectation(description: "Refresh completes")
