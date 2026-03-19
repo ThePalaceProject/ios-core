@@ -241,10 +241,8 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         let userInfo = response.notification.request.content.userInfo
         let isHoldNotification = isHoldRelatedNotification(userInfo)
 
-        // Sync to fetch fresh data from server
-        // Uses throttle shared with applicationDidBecomeActive to avoid duplicate syncs
-        // Note: Server may send notifications before OPDS feed reflects availability
-        syncWithThrottle { [weak self] errorDocument, newBooks in
+        // Force sync on hold notification tap (server may send notification before loan is ready)
+        syncWithThrottle(forceSync: isHoldNotification) { [weak self] errorDocument, newBooks in
             if let errorDocument = errorDocument {
                 Log.error(#file, "[Notification] Sync failed: \(errorDocument)")
             } else {
@@ -281,27 +279,25 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
     /// Syncs the book registry with throttling to prevent redundant network calls.
     /// Uses the same throttle as applicationDidBecomeActive to coordinate syncs.
-    private func syncWithThrottle(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
-        // Skip if user isn't authenticated
+    /// - Parameter forceSync: Bypasses throttle (e.g. when user taps a hold notification).
+    private func syncWithThrottle(forceSync: Bool = false, completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
         guard TPPUserAccount.sharedAccount().hasCredentials() else {
             completion?(nil, false)
             return
         }
 
-        // Check throttle
         let lastSync = UserDefaults.standard.double(forKey: Self.lastSyncTimestampKey)
         let now = Date().timeIntervalSince1970
 
-        guard (now - lastSync) > Self.syncThrottleSeconds else {
+        guard forceSync || (now - lastSync) > Self.syncThrottleSeconds else {
             Log.debug(#file, "[Notification Sync] Skipped - synced recently")
             completion?(nil, false)
             return
         }
 
-        // Update timestamp before sync to prevent concurrent triggers
         UserDefaults.standard.set(now, forKey: Self.lastSyncTimestampKey)
 
-        Log.info(#file, "[Notification Sync] Starting sync")
+        Log.info(#file, "[Notification Sync] Starting sync (forced: \(forceSync))")
         TPPBookRegistry.shared.sync(completion: completion)
     }
 

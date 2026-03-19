@@ -55,26 +55,30 @@ private enum StorageKey: String {
 
             Log.debug(#file, "libraryUUID changed from \(oldValue ?? "nil") to \(libraryUUID ?? "nil")")
 
-            // Update keychain variable keys directly to access account-specific storage
-            // Setting the key property triggers didSet which resets alreadyInited (forces re-read from keychain)
-            _authorizationIdentifier.key = StorageKey.authorizationIdentifier.keyForLibrary(uuid: libraryUUID)
-            _adobeToken.key = StorageKey.adobeToken.keyForLibrary(uuid: libraryUUID)
-            _licensor.key = StorageKey.licensor.keyForLibrary(uuid: libraryUUID)
-            _patron.key = StorageKey.patron.keyForLibrary(uuid: libraryUUID)
-            _adobeVendor.key = StorageKey.adobeVendor.keyForLibrary(uuid: libraryUUID)
-            _provider.key = StorageKey.provider.keyForLibrary(uuid: libraryUUID)
-            _userID.key = StorageKey.userID.keyForLibrary(uuid: libraryUUID)
-            _deviceID.key = StorageKey.deviceID.keyForLibrary(uuid: libraryUUID)
-            _credentials.key = StorageKey.credentials.keyForLibrary(uuid: libraryUUID)
-            _authDefinition.key = StorageKey.authDefinition.keyForLibrary(uuid: libraryUUID)
-            _cookies.key = StorageKey.cookies.keyForLibrary(uuid: libraryUUID)
-            _authState.key = StorageKey.authState.keyForLibrary(uuid: libraryUUID)
-
-            // Legacy
-            _barcode.key = StorageKey.barcode.keyForLibrary(uuid: libraryUUID)
-            _pin.key = StorageKey.PIN.keyForLibrary(uuid: libraryUUID)
-            _authToken.key = StorageKey.authToken.keyForLibrary(uuid: libraryUUID)
+            updateKeychainKeys()
         }
+    }
+
+    /// Re-points every keychain variable at the current `libraryUUID` and
+    /// invalidates their caches so the next read fetches fresh data.
+    private func updateKeychainKeys() {
+        _authorizationIdentifier.key = StorageKey.authorizationIdentifier.keyForLibrary(uuid: libraryUUID)
+        _adobeToken.key = StorageKey.adobeToken.keyForLibrary(uuid: libraryUUID)
+        _licensor.key = StorageKey.licensor.keyForLibrary(uuid: libraryUUID)
+        _patron.key = StorageKey.patron.keyForLibrary(uuid: libraryUUID)
+        _adobeVendor.key = StorageKey.adobeVendor.keyForLibrary(uuid: libraryUUID)
+        _provider.key = StorageKey.provider.keyForLibrary(uuid: libraryUUID)
+        _userID.key = StorageKey.userID.keyForLibrary(uuid: libraryUUID)
+        _deviceID.key = StorageKey.deviceID.keyForLibrary(uuid: libraryUUID)
+        _credentials.key = StorageKey.credentials.keyForLibrary(uuid: libraryUUID)
+        _authDefinition.key = StorageKey.authDefinition.keyForLibrary(uuid: libraryUUID)
+        _cookies.key = StorageKey.cookies.keyForLibrary(uuid: libraryUUID)
+        _authState.key = StorageKey.authState.keyForLibrary(uuid: libraryUUID)
+
+        // Legacy
+        _barcode.key = StorageKey.barcode.keyForLibrary(uuid: libraryUUID)
+        _pin.key = StorageKey.PIN.keyForLibrary(uuid: libraryUUID)
+        _authToken.key = StorageKey.authToken.keyForLibrary(uuid: libraryUUID)
     }
 
     var authDefinition: AccountDetails.Authentication? {
@@ -598,10 +602,10 @@ private enum StorageKey: String {
     @discardableResult
     func refreshCredentialsFromKeychain() -> Bool {
         return accountInfoQueue.sync(flags: .barrier) {
-            guard let uuid = libraryUUID else { return hasCredentials() }
-
-            libraryUUID = nil
-            libraryUUID = uuid
+            // Invalidate caches and re-read from keychain without toggling
+            // libraryUUID. The old nil-toggle pattern caused EXC_BAD_ACCESS
+            // when swift_release_dealloc raced with concurrent property access.
+            updateKeychainKeys()
             return hasCredentials()
         }
     }
@@ -631,11 +635,10 @@ private enum StorageKey: String {
                 shared.libraryUUID = libraryUUID
             }
 
-            // Force keychain re-read by toggling UUID
-            if let uuid = shared.libraryUUID {
-                shared.libraryUUID = nil
-                shared.libraryUUID = uuid
-            }
+            // Invalidate caches so the next read fetches fresh keychain data.
+            // The old nil-toggle pattern (set nil then restore) caused
+            // EXC_BAD_ACCESS in swift_release_dealloc.
+            shared.updateKeychainKeys()
 
             let creds = shared.credentials
             let hasCreds = shared.hasCredentials()
