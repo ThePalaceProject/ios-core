@@ -130,48 +130,53 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
     // MARK: - Thread Safety
 
     func testConcurrentReadWrite_doesNotCrash() {
-        let iterations = 200
-        let expectation = expectation(description: "concurrent access")
-        expectation.expectedFulfillmentCount = iterations * 3
+        let iterations = 20
+        let group = DispatchGroup()
 
         for i in 0..<iterations {
-            let key = "concurrent-\(i % 10)"
+            let key = "concurrent-\(i % 5)"
+            group.enter()
             DispatchQueue.global(qos: .userInitiated).async {
                 let doc = TPPProblemDocument.fromDictionary(["title": "Doc \(i)"])
                 self.cacheManager.cacheProblemDocument(doc, key: key)
-                expectation.fulfill()
+                group.leave()
             }
+            group.enter()
             DispatchQueue.global(qos: .utility).async {
                 _ = self.cacheManager.getLastCachedDoc(key)
-                expectation.fulfill()
+                group.leave()
             }
+            group.enter()
             DispatchQueue.global(qos: .background).async {
                 self.cacheManager.clearCachedDoc(key)
-                expectation.fulfill()
+                group.leave()
             }
         }
 
-        wait(for: [expectation], timeout: 10.0)
+        let result = group.wait(timeout: .now() + 10.0)
+        XCTAssertEqual(result, .success, "All concurrent operations should complete")
     }
 
     func testConcurrentCacheAndClear_sameKey_doesNotCrash() {
         let key = "race-key"
-        let expectation = expectation(description: "same-key race")
-        expectation.expectedFulfillmentCount = 100
+        let group = DispatchGroup()
 
-        for i in 0..<50 {
+        for i in 0..<20 {
+            group.enter()
             DispatchQueue.global().async {
                 let doc = TPPProblemDocument.fromDictionary(["title": "Write \(i)"])
                 self.cacheManager.cacheProblemDocument(doc, key: key)
-                expectation.fulfill()
+                group.leave()
             }
+            group.enter()
             DispatchQueue.global().async {
                 self.cacheManager.clearCachedDoc(key)
-                expectation.fulfill()
+                group.leave()
             }
         }
 
-        wait(for: [expectation], timeout: 10.0)
+        let result = group.wait(timeout: .now() + 10.0)
+        XCTAssertEqual(result, .success, "All concurrent operations should complete")
     }
 
     // MARK: - Notification

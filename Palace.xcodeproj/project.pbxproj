@@ -582,6 +582,7 @@
 		CCD4CE5B21BED732364D2899 /* LCPAudiobooksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0E625DA84AEEFF9840A601 /* LCPAudiobooksTests.swift */; };
 		CE6ADDAE5A5A4796C2017A19 /* PDFReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A586098465213BD58E11860 /* PDFReaderTests.swift */; };
 		CF5E7A7A440833526AD827AB /* MyBooksDownloadCenterExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3572DBB51B1244AE18879435 /* MyBooksDownloadCenterExtendedTests.swift */; };
+		CG791BF000000000000001 /* CredentialGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CG791FR000000000000001 /* CredentialGuardTests.swift */; };
 		D19CE930C954410A845200318 /* RDServicesStubs.m in Sources */ = {isa = PBXBuildFile; fileRef = 75305888F6A941DDA9EEE592 /* RDServicesStubs.m */; };
 		D6E301B17A5D47A7887F5A7F /* EULAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CAA704224204121A301A289 /* EULAView.swift */; };
 		D6E301B27A5D47A7887F5A80 /* EULAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CAA704224204121A301A289 /* EULAView.swift */; };
@@ -1093,6 +1094,7 @@
 		HTVI00012F2600010000001A /* HTMLTextViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HTVI00012F2600010000001B /* HTMLTextViewTests.swift */; };
 		LRPP002T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LRPP001T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift */; };
 		LRPS002T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */; };
+		MF791BF000000000000001 /* ManifestFetchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF791FR000000000000001 /* ManifestFetchTests.swift */; };
 		NAVCOORDTESTS0001SOURCES /* NavigationCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NAVCOORDTESTS0001FILEREF /* NavigationCoordinatorTests.swift */; };
 		NSER002T260955EF008E1DC3 /* NSErrorAdditionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NSER001T260955EF008E1DC3 /* NSErrorAdditionsTests.swift */; };
 		NTCK002T260955EF008E1DC3 /* NetworkClientMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */; };
@@ -1765,6 +1767,7 @@
 		CB9CA89B135C85E23F0D907B /* MyBooksViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyBooksViewModelTests.swift; sourceTree = "<group>"; };
 		CBA39820CBA75D6BA9B763E2 /* CatalogRepositoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogRepositoryTests.swift; sourceTree = "<group>"; };
 		CD71C8FF18A443133C015DA8 /* KeyboardVoiceOverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeyboardVoiceOverTests.swift; sourceTree = "<group>"; };
+		CG791FR000000000000001 /* CredentialGuardTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CredentialGuardTests.swift; sourceTree = "<group>"; };
 		D2ADD2980F56FC974B6DEBAC /* TPPReaderSettingsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPReaderSettingsTests.swift; sourceTree = "<group>"; };
 		D56E264DEDFBBEDF6D4E79E3 /* AccessibleAnimation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AccessibleAnimation.swift; path = ../../../Palace/Utilities/SwiftUI/AccessibleAnimation.swift; sourceTree = "<group>"; };
 		D72DFEC346C543E50A57BE49 /* ReaderAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReaderAccessibilityTests.swift; sourceTree = "<group>"; };
@@ -2073,6 +2076,7 @@
 		HTVI00012F2600010000001B /* HTMLTextViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextViewTests.swift; sourceTree = "<group>"; };
 		LRPP001T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionPosterTests.swift; sourceTree = "<group>"; };
 		LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionSynchronizerTests.swift; sourceTree = "<group>"; };
+		MF791FR000000000000001 /* ManifestFetchTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ManifestFetchTests.swift; sourceTree = "<group>"; };
 		NAVCOORDTESTS0001FILEREF /* NavigationCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCoordinatorTests.swift; sourceTree = "<group>"; };
 		NSER001T260955EF008E1DC3 /* NSErrorAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NSErrorAdditionsTests.swift; path = ErrorHandling/NSErrorAdditionsTests.swift; sourceTree = "<group>"; };
 		NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkClientMock.swift; sourceTree = "<group>"; };
@@ -2266,6 +2270,8 @@
 				QATEST14FR00000000000001 /* TPPNetworkExecutorTests.swift */,
 				QATEST15FR00000000000001 /* ReachabilityTests.swift */,
 				PP3702FR000000000000002 /* AccountAwareNetworkTests.swift */,
+				CG791FR000000000000001 /* CredentialGuardTests.swift */,
+				MF791FR000000000000001 /* ManifestFetchTests.swift */,
 				F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */,
 			);
 			path = Network;
@@ -4482,7 +4488,6 @@
 				E795A7802A744F0A00314EC8 /* XCRemoteSwiftPackageReference "ULID.swift" */,
 				E50BC9DB2CBF6FE900660937 /* XCRemoteSwiftPackageReference "PureLayout" */,
 				E58EAE1F2ECCC53200CDA626 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */,
-				E58EAE262ECCC5BB00CDA626 /* XCRemoteSwiftPackageReference "Cucumberish" */,
 				E58EAE982ECCDC5D00CDA626 /* XCRemoteSwiftPackageReference "swift-atomics" */,
 				E58EB0792ECCFE0E00CDA626 /* XCRemoteSwiftPackageReference "transifex-swift" */,
 			);
@@ -4919,6 +4924,8 @@
 				PP3673BF000000000000003 /* AccessLintComplianceTests.swift in Sources */,
 				PP3702BF000000000000001 /* BookButtonMapperHoldReadyTests.swift in Sources */,
 				PP3702BF000000000000002 /* AccountAwareNetworkTests.swift in Sources */,
+				CG791BF000000000000001 /* CredentialGuardTests.swift in Sources */,
+				MF791BF000000000000001 /* ManifestFetchTests.swift in Sources */,
 				PP3702BF000000000000003 /* ArraySafetyTests.swift in Sources */,
 				PP3702BF000000000000004 /* AccountSwitchCleanupTests.swift in Sources */,
 				0F56EFAE3853AC2EEF6AD7E7 /* SAMLCookieSyncTests.swift in Sources */,
@@ -6246,7 +6253,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.2.4;
+				MARKETING_VERSION = 2.2.5;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -6307,7 +6314,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.2.4;
+				MARKETING_VERSION = 2.2.5;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "App Store";
@@ -6516,14 +6523,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.18.7;
-			};
-		};
-		E58EAE262ECCC5BB00CDA626 /* XCRemoteSwiftPackageReference "Cucumberish" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Ahmed-Ali/Cucumberish.git";
-			requirement = {
-				branch = master;
-				kind = branch;
 			};
 		};
 		E58EAE982ECCDC5D00CDA626 /* XCRemoteSwiftPackageReference "swift-atomics" */ = {

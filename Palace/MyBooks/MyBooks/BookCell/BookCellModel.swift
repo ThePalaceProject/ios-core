@@ -166,10 +166,9 @@ class BookCellModel: ObservableObject {
     }
 
     func loadBookCoverImage() {
-        let simpleKey = book.identifier
         let thumbnailKey = "\(book.identifier)_thumbnail"
 
-        if let cachedImage = imageCache.get(for: simpleKey) ?? imageCache.get(for: thumbnailKey) {
+        if let cachedImage = imageCache.get(for: thumbnailKey) {
             image = cachedImage
         } else if let registryImage = bookRegistry.cachedThumbnailImage(for: book) {
             setImageAndCache(registryImage)
@@ -196,9 +195,7 @@ class BookCellModel: ObservableObject {
     }
 
     private func setImageAndCache(_ image: UIImage) {
-        let simpleKey = book.identifier
         let thumbnailKey = "\(book.identifier)_thumbnail"
-        imageCache.set(image, for: simpleKey)
         imageCache.set(image, for: thumbnailKey)
         self.image = image
     }
