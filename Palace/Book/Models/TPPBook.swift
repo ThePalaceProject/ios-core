@@ -551,9 +551,12 @@ extension TPPBook {
         let simpleKey = identifier
         let coverKey = "\(identifier)_cover"
 
-        // For size-aware fetches use a dedicated cache key so different sizes don't collide
+        // For size-aware fetches use a dedicated cache key so different sizes don't collide.
+        // When a displayHeight is given, only check the size-specific key — falling back to
+        // the generic keys risks returning a small thumbnail that was cached from a list/lane
+        // view, which would appear pixelated at larger display sizes.
         let sizeKey: String? = displayHeight.map { "\(identifier)_\(Int($0))pt" }
-        let lookupKeys = [sizeKey, simpleKey, coverKey].compactMap { $0 }
+        let lookupKeys: [String] = sizeKey != nil ? [sizeKey!] : [simpleKey, coverKey]
 
         if let img = lookupKeys.lazy.compactMap({ [weak self] in
           self?.imageCache.get(for: $0) }).first {
