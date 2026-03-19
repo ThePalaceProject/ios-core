@@ -50,7 +50,8 @@ struct BookImageView: View {
             if hasPreloadedCover {
                 showSkeleton = false
             } else {
-                book.fetchCoverImage()
+                // Pass the display height so the fetch decodes at exactly the right resolution
+                book.fetchCoverImage(forDisplayHeight: height)
             }
         }
         .onChange(of: book.coverImage) { newImage in

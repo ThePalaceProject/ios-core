@@ -398,19 +398,17 @@ enum BookService {
 
                 let playbackModel = AudiobookPlaybackModel(audiobookManager: manager)
 
-                // Update cover image through both playback model and session manager
-                // Session manager coordinates Now Playing info centrally
-                if let cover = book.coverImage {
-                    playbackModel.updateCoverImage(cover)
-                    AudiobookSessionManager.shared.updateCoverImage(cover)
-                } else {
-                    Task {
-                        if let img = await TPPBookCoverRegistry.shared.coverImage(for: book) {
-                            await MainActor.run {
-                                playbackModel.updateCoverImage(img)
-                                AudiobookSessionManager.shared.updateCoverImage(img)
-                            }
-                        }
+                // Show any already-cached image immediately so the player isn't blank,
+                // then upgrade to full-resolution in the background and cross-fade it in.
+                if let lowRes = book.coverImage ?? book.thumbnailImage {
+                    playbackModel.updateCoverImage(lowRes)
+                    AudiobookSessionManager.shared.updateCoverImage(lowRes)
+                }
+                Task {
+                    guard let img = await TPPBookCoverRegistry.shared.playerCoverImage(for: book) else { return }
+                    await MainActor.run {
+                        playbackModel.updateCoverImageAnimated(img)
+                        AudiobookSessionManager.shared.updateCoverImage(img)
                     }
                 }
 
