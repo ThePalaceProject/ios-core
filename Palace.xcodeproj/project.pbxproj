@@ -4488,7 +4488,6 @@
 				E795A7802A744F0A00314EC8 /* XCRemoteSwiftPackageReference "ULID.swift" */,
 				E50BC9DB2CBF6FE900660937 /* XCRemoteSwiftPackageReference "PureLayout" */,
 				E58EAE1F2ECCC53200CDA626 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */,
-				E58EAE262ECCC5BB00CDA626 /* XCRemoteSwiftPackageReference "Cucumberish" */,
 				E58EAE982ECCDC5D00CDA626 /* XCRemoteSwiftPackageReference "swift-atomics" */,
 				E58EB0792ECCFE0E00CDA626 /* XCRemoteSwiftPackageReference "transifex-swift" */,
 			);
@@ -6524,14 +6523,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.18.7;
-			};
-		};
-		E58EAE262ECCC5BB00CDA626 /* XCRemoteSwiftPackageReference "Cucumberish" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Ahmed-Ali/Cucumberish.git";
-			requirement = {
-				branch = master;
-				kind = branch;
 			};
 		};
 		E58EAE982ECCDC5D00CDA626 /* XCRemoteSwiftPackageReference "swift-atomics" */ = {
