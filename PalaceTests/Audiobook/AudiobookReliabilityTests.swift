@@ -183,7 +183,7 @@ final class DownloadPersistenceStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    func testRegisterDownload() async {
+    func testRegisterDownload() {
         // Given
         let bookID = "test-book-\(UUID().uuidString)"
         let trackKey = "track-1"
@@ -199,10 +199,7 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             totalBytes: 1000000
         )
 
-        // Wait for async operation
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
-        // Then
+        // Then — getDownload uses queue.sync which drains all prior async barriers
         let download = store.getDownload(bookID: bookID, trackKey: trackKey)
         XCTAssertNotNil(download)
         XCTAssertEqual(download?.bookID, bookID)
@@ -211,7 +208,7 @@ final class DownloadPersistenceStoreTests: XCTestCase {
         XCTAssertEqual(download?.progress, 0)
     }
 
-    func testUpdateProgress() async {
+    func testUpdateProgress() {
         // Given
         let bookID = "test-book-\(UUID().uuidString)"
         let trackKey = "track-1"
@@ -223,8 +220,6 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             localFileURL: URL(fileURLWithPath: "/tmp/test.mp3"),
             totalBytes: 1000000
         )
-
-        try? await Task.sleep(nanoseconds: 100_000_000)
 
         // When
         store.updateProgress(
@@ -234,16 +229,14 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             state: .inProgress
         )
 
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
-        // Then
+        // Then — getDownload uses queue.sync which drains all prior async barriers
         let download = store.getDownload(bookID: bookID, trackKey: trackKey)
         XCTAssertEqual(download?.downloadedBytes, 500000)
         XCTAssertEqual(download?.state, .inProgress)
         XCTAssertEqual(Double(download?.progress ?? 0), 0.5, accuracy: 0.01)
     }
 
-    func testMarkCompleted() async {
+    func testMarkCompleted() {
         // Given
         let bookID = "test-book-\(UUID().uuidString)"
         let trackKey = "track-1"
@@ -256,20 +249,16 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             totalBytes: 1000000
         )
 
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
         // When
         store.markCompleted(bookID: bookID, trackKey: trackKey)
 
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
-        // Then
+        // Then — getDownload uses queue.sync which drains all prior async barriers
         let download = store.getDownload(bookID: bookID, trackKey: trackKey)
         XCTAssertEqual(download?.state, .completed)
         XCTAssertTrue(download?.isComplete ?? false)
     }
 
-    func testGetIncompleteDownloads() async {
+    func testGetIncompleteDownloads() {
         // Given
         let bookID = "test-book-\(UUID().uuidString)"
 
@@ -289,14 +278,11 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             totalBytes: 1000000
         )
 
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
         // Complete one download
         store.markCompleted(bookID: bookID, trackKey: "track-1")
 
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
-        // When
+        // When — getIncompleteDownloads uses queue.sync which drains all prior async barriers
+        // (register track-1, register track-2, markCompleted track-1) before reading
         let incomplete = store.getIncompleteDownloads(bookID: bookID)
 
         // Then
@@ -304,7 +290,7 @@ final class DownloadPersistenceStoreTests: XCTestCase {
         XCTAssertEqual(incomplete.first?.trackKey, "track-2")
     }
 
-    func testBookDownloadsOverallProgress() async {
+    func testBookDownloadsOverallProgress() {
         // Given
         let bookID = "test-book-\(UUID().uuidString)"
 
@@ -324,15 +310,11 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             totalBytes: 1000
         )
 
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
         // Update progress
         store.updateProgress(bookID: bookID, trackKey: "track-1", downloadedBytes: 500)
         store.updateProgress(bookID: bookID, trackKey: "track-2", downloadedBytes: 250)
 
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
-        // When
+        // When — getBookDownloads uses queue.sync which drains all prior async barriers
         let bookDownloads = store.getBookDownloads(bookID: bookID)
 
         // Then

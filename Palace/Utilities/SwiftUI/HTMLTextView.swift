@@ -1,20 +1,42 @@
 import SwiftUI
 import UIKit
 
+/// A view that renders HTML content as styled text.
+/// NSAttributedString HTML parsing uses WebKit internally and MUST run on the main thread
+/// and only when the app is active — calling it from the background causes
+/// NSInternalInconsistencyException "unexpected start state" crashes.
 struct HTMLTextView: View {
     let htmlContent: String
 
+    @State private var attributedString: AttributedString? = nil
+
     var body: some View {
-        if let attributedString = htmlToAttributedString(htmlContent) {
-            Text(attributedString)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            Text(htmlContent)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        Group {
+            if let attributedString {
+                Text(attributedString)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text(htmlContent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
+        .onAppear { parseHTML() }
+        .onChange(of: htmlContent) { _ in parseHTML() }
     }
 
-    private func htmlToAttributedString(_ html: String) -> AttributedString? {
+    @MainActor
+    private func parseHTML() {
+        // Guard: WebKit's HTML parser must not be invoked while the app is
+        // backgrounded. SwiftUI can trigger onAppear/onChange during state
+        // restoration in the background, which causes the WebKit state machine
+        // to crash with NSInternalInconsistencyException "unexpected start state".
+        guard UIApplication.shared.applicationState != .background else { return }
+        attributedString = Self.htmlToAttributedString(htmlContent)
+    }
+
+    @MainActor
+    private static func htmlToAttributedString(_ html: String) -> AttributedString? {
+        guard !html.isEmpty, html.contains("<") else { return nil }
         guard let data = html.data(using: .utf8) else { return nil }
 
         let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
@@ -31,12 +53,11 @@ struct HTMLTextView: View {
 
         if exception != nil { return nil }
 
-        if let nsAttributedString = nsAttributedString {
-            let mutableAttributedString = NSMutableAttributedString(attributedString: nsAttributedString)
-            mutableAttributedString.addAttribute(.font, value: UIFont.palaceFont(ofSize: 15), range: NSRange(location: 0, length: mutableAttributedString.length))
-            return AttributedString(mutableAttributedString)
-        }
+        guard let nsAttributedString else { return nil }
 
-        return nil
+        let mutableAttributedString = NSMutableAttributedString(attributedString: nsAttributedString)
+        let fullRange = NSRange(location: 0, length: mutableAttributedString.length)
+        mutableAttributedString.addAttribute(.font, value: UIFont.palaceFont(ofSize: 15), range: fullRange)
+        return AttributedString(mutableAttributedString)
     }
 }

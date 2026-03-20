@@ -240,6 +240,32 @@ import UIKit
                     completion?()
                     return
                 }
+                // Guard: VC may have a live transition coordinator (e.g. a push/pop
+                // animation still in flight) even when isBeingPresented is false.
+                // Presenting into an active transition causes UIKit to throw
+                // NSInternalInconsistencyException during the CA commit phase.
+                guard vc.transitionCoordinator == nil else {
+                    if retryCount < maxAlertRetries {
+                        Log.debug(#file, "Presenter has active transition coordinator, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
+                        retryPresentation(alertController: alertController, viewController: viewController,
+                                          animated: animated, completion: completion, retryCount: retryCount)
+                    } else {
+                        Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: presenter still has active transition")
+                        completion?()
+                    }
+                    return
+                }
+                guard !vc.isBeingPresented && !vc.isBeingDismissed else {
+                    if retryCount < maxAlertRetries {
+                        Log.debug(#file, "Presenter is in transition, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
+                        retryPresentation(alertController: alertController, viewController: viewController,
+                                          animated: animated, completion: completion, retryCount: retryCount)
+                    } else {
+                        Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: presenter still in transition")
+                        completion?()
+                    }
+                    return
+                }
                 safePresent(alertController, on: vc, animated: animated, completion: completion)
             }
             return
@@ -288,6 +314,25 @@ import UIKit
             guard top.isViewLoaded else {
                 Log.warn(#file, "Cannot present alert: view not loaded")
                 completion?()
+                return
+            }
+
+            // Guard: a live transition coordinator means a navigation push/pop or modal
+            // animation is still in-flight at the CALayer level, even if isBeingPresented
+            // is already false. Presenting into this window triggers UIKit's
+            // NSInternalInconsistencyException during _UIAfterCACommitBlock execution.
+            guard top.transitionCoordinator == nil else {
+                if retryCount < maxAlertRetries {
+                    Log.debug(#file, "Top controller has active transition coordinator, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
+                    retryPresentation(alertController: alertController, viewController: viewController,
+                                      animated: animated, completion: completion, retryCount: retryCount)
+                } else {
+                    Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: transition coordinator still active")
+                    if let msg = alertController.message {
+                        Log.warn(#file, "Dropped alert with message: \(msg)")
+                    }
+                    completion?()
+                }
                 return
             }
 
