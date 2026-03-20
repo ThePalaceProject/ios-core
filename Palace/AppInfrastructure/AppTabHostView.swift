@@ -103,15 +103,20 @@ private extension AppTabHostView {
             return
         }
 
-        // Move heavy registry access off main thread to avoid blocking UI
+        // Snapshot heldBooks on the calling (main) thread before dispatching to a
+        // background queue. TPPBookRegistry is not thread-safe; accessing heldBooks
+        // from a background thread races with registry mutations and can crash via
+        // Swift bridging or ObjC exceptions.
+        #if DEBUG
+        let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? TPPBookRegistry.shared.heldBooks
+        let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
+        #else
+        let held = TPPBookRegistry.shared.heldBooks
+        #endif
+
+        // Move the availability-matching work off main thread; the snapshot is
+        // an immutable copy so no thread-safety issues exist here.
         DispatchQueue.global(qos: .userInitiated).async {
-            // Use test books if debug configuration is enabled, otherwise use real registry data
-            #if DEBUG
-            let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? TPPBookRegistry.shared.heldBooks
-            let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
-            #else
-            let held = TPPBookRegistry.shared.heldBooks
-            #endif
 
             var readyCount = 0
 
