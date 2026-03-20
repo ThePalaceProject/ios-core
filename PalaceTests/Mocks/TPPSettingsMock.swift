@@ -52,6 +52,9 @@ final class TPPSettingsMock: NSObject, TPPSettingsProviding {
     /// Custom library registry server URL.
     var customLibraryRegistryServer: String?
 
+    /// Whether downloads are restricted to Wi-Fi only.
+    var downloadOnlyOnWiFi: Bool = false
+
     // MARK: - Initialization
 
     override init() {
@@ -77,7 +80,8 @@ final class TPPSettingsMock: NSObject, TPPSettingsProviding {
         userHasAcceptedEULA: Bool = false,
         enterLCPPassphraseManually: Bool = false,
         appVersion: String? = nil,
-        customLibraryRegistryServer: String? = nil
+        customLibraryRegistryServer: String? = nil,
+        downloadOnlyOnWiFi: Bool = false
     ) {
         self.accountMainFeedURL = accountMainFeedURL
         self.customMainFeedURL = customMainFeedURL
@@ -87,6 +91,7 @@ final class TPPSettingsMock: NSObject, TPPSettingsProviding {
         self.enterLCPPassphraseManually = enterLCPPassphraseManually
         self.appVersion = appVersion
         self.customLibraryRegistryServer = customLibraryRegistryServer
+        self.downloadOnlyOnWiFi = downloadOnlyOnWiFi
         super.init()
     }
 
@@ -110,5 +115,6 @@ final class TPPSettingsMock: NSObject, TPPSettingsProviding {
         enterLCPPassphraseManually = false
         appVersion = nil
         customLibraryRegistryServer = nil
+        downloadOnlyOnWiFi = false
     }
 }

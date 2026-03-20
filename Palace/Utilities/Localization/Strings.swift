@@ -381,6 +381,11 @@ struct Strings {
         static let authenticateToRevealPIN = NSLocalizedString("Authenticate to reveal your PIN.", comment: "")
         static let deleteServerData = NSLocalizedString("Delete Server Data", comment: "")
         static let aboutSectionHeader = NSLocalizedString("About and legal", comment: "VoiceOver: Settings list section header for About, Privacy, Licenses")
+        static let downloads = NSLocalizedString("Downloads", comment: "Section header for download-related settings")
+        static let downloadOnlyOnWiFi = NSLocalizedString("Download Only on Wi-Fi", comment: "Toggle label to restrict downloads to Wi-Fi connections")
+        static let downloadOnlyOnWiFiDescription = NSLocalizedString("When enabled, books and audiobooks will only download over Wi-Fi. Downloads will be blocked on cellular data.", comment: "Description for Download Only on Wi-Fi setting")
+        static let downloadRestrictedToWiFi = NSLocalizedString("Downloads are restricted to Wi-Fi in Settings. Connect to a Wi-Fi network or change your download settings to continue.", comment: "Alert message when download is blocked due to Wi-Fi only setting")
+        static let wifiRequired = NSLocalizedString("Wi-Fi Required", comment: "Alert title when download is blocked due to Wi-Fi only setting")
     }
 
     struct AccountDetail {
@@ -587,6 +592,8 @@ struct Strings {
         static let bookmarkSyncError = NSLocalizedString("There was an error syncing bookmarks to the server. Ensure your device is connected to the internet.", comment: "Alert message when bookmark sync fails")
         static let libraryLoadError = NSLocalizedString("We can\u{2019}t get your library right now. Please try again.", comment: "Alert message when library data fails to load, with retry option")
         static let libraryLoadErrorLegacy = NSLocalizedString("We can\u{2019}t get your library right now. Please close and reopen the app to try again.", comment: "Alert message when library data fails to load, no retry available")
+        static let wifiRequired = Strings.Settings.wifiRequired
+        static let downloadRestrictedToWiFi = Strings.Settings.downloadRestrictedToWiFi
     }
 
     struct BookDetailView {
