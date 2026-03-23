@@ -20,12 +20,15 @@ final class DeviceLogCollectorTests: XCTestCase {
     }
 
     func testCollectLogs_containsExpectedHeader() async {
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 7)
+        // Use a 1-day range here to avoid an expensive OSLogStore scan immediately
+        // before testCollectLogs_defaultParameterIs7Days (which tests the 7-day default).
+        // Running two 7-day collections back-to-back exceeds CI time budgets.
+        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
         let output = String(data: data, encoding: .utf8) ?? ""
 
         XCTAssertTrue(output.contains("=== Device Logs (OSLogStore) ==="), "Output should contain the header")
         XCTAssertTrue(output.contains("Generated:"), "Output should contain generation timestamp")
-        XCTAssertTrue(output.contains("Time Range: Last 7 day(s)"), "Output should contain time range")
+        XCTAssertTrue(output.contains("Time Range: Last 1 day(s)"), "Output should contain time range")
     }
 
     func testCollectLogs_containsEndMarker() async {
@@ -54,14 +57,16 @@ final class DeviceLogCollectorTests: XCTestCase {
 
     // MARK: - Log Capture Tests
 
-    /// Polls collectLogs until the marker appears (or times out at ~1 s).
+    /// Polls collectLogs until the marker appears (or times out at ~1.5 s).
     /// OSLogStore has its own flush schedule, so we poll rather than sleep a fixed amount.
+    /// Intentionally capped at 5 iterations to avoid monopolising the shared actor
+    /// (serialised calls) and blowing the CI test-suite time budget.
     private func pollForOSLogMarker(_ marker: String) async -> String {
-        for _ in 0..<10 {
+        for _ in 0..<5 {
             let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
             let output = String(data: data, encoding: .utf8) ?? ""
             if output.contains(marker) { return output }
-            try? await Task.sleep(nanoseconds: 100_000_000) // 100 ms per attempt
+            try? await Task.sleep(nanoseconds: 300_000_000) // 300 ms per attempt
         }
         let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
         return String(data: data, encoding: .utf8) ?? ""

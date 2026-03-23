@@ -76,20 +76,22 @@ final class AudiobookSessionManagerTests: XCTestCase {
         XCTAssertEqual(Double(info?.progress ?? 0), 0.5, accuracy: 0.01)
     }
 
-    func testBackgroundCompletionHandlerRegistration() {
+    func testBackgroundCompletionHandlerRegistration() async {
         // Given
         let sessionId = "test-session-\(UUID().uuidString)"
         let handlerExpectation = expectation(description: "Background completion handler should be called")
 
         // Both register and call use queue.async(flags: .barrier) on the same queue,
         // so callCompletionHandler is guaranteed to run after registerBackgroundCompletionHandler.
+        // The handler itself is dispatched to DispatchQueue.main — use await fulfillment(of:)
+        // (not the blocking wait(for:)) so the main actor stays free to receive that dispatch.
         AudiobookSessionManager.shared.registerBackgroundCompletionHandler({
             handlerExpectation.fulfill()
         }, forSessionIdentifier: sessionId)
 
         AudiobookSessionManager.shared.callCompletionHandler(forSessionIdentifier: sessionId)
 
-        wait(for: [handlerExpectation], timeout: 3.0)
+        await fulfillment(of: [handlerExpectation], timeout: 3.0)
     }
 }
 
