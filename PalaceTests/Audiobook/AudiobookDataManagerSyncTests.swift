@@ -17,6 +17,10 @@ class MockNetworkExecutorForSync: TPPNetworkExecutor {
     private let lock = NSLock()
     private var _responses: [URL: MockResponse] = [:]
     private var _requestHistory: [(request: URLRequest, body: Data?)] = []
+    // Incremented after completion?(…) returns so callers can wait until the
+    // full response-processing cycle (including AudiobookDataManager's closure)
+    // is done, not just until the request was dispatched.
+    private var _completionCalledCount: Int = 0
 
     struct MockResponse {
         let statusCode: Int
@@ -41,6 +45,20 @@ class MockNetworkExecutorForSync: TPPNetworkExecutor {
         lock.withLock { _requestHistory }
     }
 
+    /// Number of times a response completion callback has fully returned.
+    /// Use this to ensure the full request/response cycle has completed
+    /// before asserting on data-manager state.
+    var completionCalledCount: Int {
+        lock.withLock { _completionCalledCount }
+    }
+
+    func reset() {
+        lock.withLock {
+            _requestHistory.removeAll()
+            _completionCalledCount = 0
+        }
+    }
+
     func clearHistory() {
         lock.withLock { _requestHistory.removeAll() }
     }
@@ -59,13 +77,14 @@ class MockNetworkExecutorForSync: TPPNetworkExecutor {
 
         guard let url = request.url else {
             completion?(nil, nil, NSError(domain: "MockNetworkExecutor", code: -1, userInfo: [NSLocalizedDescriptionKey: "No URL"]))
+            lock.withLock { _completionCalledCount += 1 }
             return nil
         }
 
         let mockResponse = lock.withLock { _responses[url] } ?? MockResponse(statusCode: 200, data: nil)
 
         let dispatchDelay = mockResponse.delay
-        DispatchQueue.global().asyncAfter(deadline: .now() + dispatchDelay) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + dispatchDelay) { [weak self] in
             let httpResponse = HTTPURLResponse(
                 url: url,
                 statusCode: mockResponse.statusCode,
@@ -74,6 +93,9 @@ class MockNetworkExecutorForSync: TPPNetworkExecutor {
             )
 
             completion?(mockResponse.data, httpResponse, mockResponse.error)
+            // Increment AFTER completion returns so the counter reflects that
+            // AudiobookDataManager's response handler has fully executed.
+            self?.lock.withLock { self?._completionCalledCount += 1 }
         }
 
         return nil
@@ -339,13 +361,12 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         dataManager.save(time: entry)
         waitForEntry()
 
-        let mockRef = mockNetworkExecutor!
-        let requestFired = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in mockRef.requestHistory.count > 0 },
-            object: nil
-        )
         dataManager.syncValues()
-        wait(for: [requestFired], timeout: 5.0)
+        // Wait until the full response cycle completes (request fired + completion handler
+        // returned). Waiting only on requestHistory.count > 0 is a race: the mock appends
+        // to history synchronously but dispatches the completion asynchronously, so the
+        // assertion could run before AudiobookDataManager's 5xx handler has finished.
+        waitForSync { self.mockNetworkExecutor.completionCalledCount > 0 }
 
         XCTAssertEqual(dataManager.store.queue.count, 1, "Entries should be kept for retry on 5xx error")
     }
@@ -362,13 +383,8 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         dataManager.save(time: entry)
         waitForEntry()
 
-        let mockRef = mockNetworkExecutor!
-        let requestFired = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in mockRef.requestHistory.count > 0 },
-            object: nil
-        )
         dataManager.syncValues()
-        wait(for: [requestFired], timeout: 5.0)
+        waitForSync { self.mockNetworkExecutor.completionCalledCount > 0 }
 
         XCTAssertEqual(dataManager.store.queue.count, 1, "Entries should be kept for retry on 503")
     }
@@ -417,13 +433,8 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         dataManager.save(time: entry)
         waitForEntry()
 
-        let mockRef = mockNetworkExecutor!
-        let requestFired = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in mockRef.requestHistory.count > 0 },
-            object: nil
-        )
         dataManager.syncValues()
-        wait(for: [requestFired], timeout: 5.0)
+        waitForSync { self.mockNetworkExecutor.completionCalledCount > 0 }
 
         XCTAssertEqual(dataManager.store.queue.count, 1, "Entries should be kept on network error")
     }
