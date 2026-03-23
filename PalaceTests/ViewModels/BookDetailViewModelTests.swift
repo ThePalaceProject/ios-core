@@ -410,7 +410,7 @@ final class BookDetailViewModelTests: XCTestCase {
     // (like loan expiration date), the ViewModel's book is properly updated.
     // Regression test for: checkout duration message not showing on HalfSheet
 
-    func testViewModel_UpdatesBookWhenRegistryChanges() async {
+    func testViewModel_UpdatesBookWhenRegistryChanges() {
         let initialBook = createTestBook()
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(initialBook, location: nil, state: .downloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
@@ -432,12 +432,12 @@ final class BookDetailViewModelTests: XCTestCase {
 
         mockRegistry.addBook(borrowedBook, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        await fulfillment(of: [updated], timeout: 2.0)
+        wait(for: [updated], timeout: 2.0)
         XCTAssertNotNil(viewModel.book.defaultAcquisition?.availability,
                         "ViewModel's book should have availability data after registry update")
     }
 
-    func testViewModel_BookStatePublisher_TriggersBookUpdate() async {
+    func testViewModel_BookStatePublisher_TriggersBookUpdate() {
         let book = createTestBook()
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
@@ -456,11 +456,11 @@ final class BookDetailViewModelTests: XCTestCase {
         mockRegistry.setState(.downloadNeeded, for: book.identifier)
         mockRegistry.setState(.downloading, for: book.identifier)
 
-        await fulfillment(of: [reachedDownloading], timeout: 2.0)
+        wait(for: [reachedDownloading], timeout: 2.0)
         XCTAssertEqual(viewModel.bookState, .downloading)
     }
 
-    func testViewModel_ReceivesBookFromRegistry_NotCachedVersion() async {
+    func testViewModel_ReceivesBookFromRegistry_NotCachedVersion() {
         // Verifies that when the registry has a newer version of the book,
         // the ViewModel uses that version (not the original cached version).
         let originalBook = createTestBook()
@@ -485,7 +485,7 @@ final class BookDetailViewModelTests: XCTestCase {
 
         mockRegistry.addBook(updatedBook, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        await fulfillment(of: [updated], timeout: 2.0)
+        wait(for: [updated], timeout: 2.0)
         XCTAssertEqual(viewModel.book.title, "Updated Title",
                        "ViewModel should update book when registry changes, even when identifier stays the same")
         XCTAssertNotEqual(viewModel.book.title, originalTitle)
@@ -822,7 +822,7 @@ final class BookDetailViewModelTests: XCTestCase {
     /// Verifies that downloadProgress never goes backwards when the publisher
     /// sends a lower value (e.g., on retry, redirect, or race between download
     /// tasks). The view model clamps to max-seen-so-far.
-    func testDownloadProgress_NeverGoesBackwards() async {
+    func testDownloadProgress_NeverGoesBackwards() {
         let book = createTestBook()
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
@@ -850,7 +850,7 @@ final class BookDetailViewModelTests: XCTestCase {
         publisher.send((book.identifier, 0.3)) // Should be clamped to 0.5
         publisher.send((book.identifier, 0.8))
 
-        await fulfillment(of: [expectation], timeout: 3.0)
+        waitForExpectations(timeout: 3.0)
         cancellable.cancel()
 
         // Verify: progress should be [0.5, 0.5, 0.8] — never 0.3
