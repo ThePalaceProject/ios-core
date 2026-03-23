@@ -63,7 +63,12 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
     /// PP-3784 core regression: After a full sign-in flow (network → DRM → finalize),
     /// the barcode and PIN must be readable from the user account.
-    func testFullSignInFlow_credentialsRemainAccessible() {
+    ///
+    /// Uses `async` + `await fulfillment(of:)` instead of `waitForExpectations` to avoid
+    /// a deadlock: `finalizeSignIn` dispatches `businessLogicDidCompleteSignIn` back to
+    /// `DispatchQueue.main.async` via `TPPMainThreadRun.asyncIfNeeded`, so the main thread
+    /// must remain free to process that dispatch.
+    func testFullSignInFlow_credentialsRemainAccessible() async {
         let barcode = "23333012345678"
         let pin = "1234"
         uiDelegate.username = barcode
@@ -78,7 +83,7 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
         businessLogic.validateCredentials()
 
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [expectation], timeout: 5.0)
 
         let user = businessLogic.userAccount
         XCTAssertEqual(user.barcode, barcode,
@@ -91,7 +96,7 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
     /// PP-3784: After sign-in, the auth state must be .loggedIn (not .loggedOut).
     /// When auth state is wrong, accountDidChange() clears the text fields.
-    func testFullSignInFlow_authStateIsLoggedIn() {
+    func testFullSignInFlow_authStateIsLoggedIn() async {
         uiDelegate.username = "testbarcode"
         uiDelegate.pin = "testpin"
 
@@ -104,7 +109,7 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
         businessLogic.validateCredentials()
 
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [expectation], timeout: 5.0)
 
         let userAccount = businessLogic.userAccount as! TPPUserAccountMock
         XCTAssertEqual(userAccount.authState, .loggedIn,
@@ -113,7 +118,7 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
     /// Verifies that the UI delegate receives the sign-in completion callback
     /// exactly once per sign-in attempt.
-    func testFullSignInFlow_completionCalledOnce() {
+    func testFullSignInFlow_completionCalledOnce() async {
         uiDelegate.username = "barcode"
         uiDelegate.pin = "pin"
 
@@ -126,7 +131,7 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
         businessLogic.validateCredentials()
 
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [expectation], timeout: 5.0)
 
         XCTAssertEqual(uiDelegate.didCompleteSignInCallCount, 1,
                        "didCompleteSignIn should be called exactly once")
@@ -501,7 +506,7 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
     }
 
     /// loggedOut → sign in → loggedIn
-    func testSignIn_transitionsFromLoggedOutToLoggedIn() {
+    func testSignIn_transitionsFromLoggedOutToLoggedIn() async {
         let user = businessLogic.userAccount as! TPPUserAccountMock
         XCTAssertEqual(user.authState, .loggedOut, "Precondition: starts loggedOut")
 
@@ -511,14 +516,14 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
         uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
 
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [expectation], timeout: 5.0)
 
         XCTAssertEqual(user.authState, .loggedIn,
                        "Auth state should be .loggedIn after sign-in")
     }
 
     /// credentialsStale → re-authenticate → loggedIn
-    func testReauth_transitionsFromStaleToLoggedIn() {
+    func testReauth_transitionsFromStaleToLoggedIn() async {
         let user = businessLogic.userAccount as! TPPUserAccountMock
         user._credentials = .barcodeAndPin(barcode: "existing", pin: "creds")
         user.setAuthState(.credentialsStale)
@@ -529,7 +534,7 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
         uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
 
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [expectation], timeout: 5.0)
 
         XCTAssertEqual(user.authState, .loggedIn,
                        "Auth state should be .loggedIn after re-authentication")
@@ -540,7 +545,7 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
     /// PP-3784 regression: After a complete sign-in, the combination of
     /// hasCredentials + authState must make isSignedIn evaluate to true.
     /// This is the exact condition checked by accountDidChange().
-    func testSignIn_isSignedInConditionMet() {
+    func testSignIn_isSignedInConditionMet() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
         uiDelegate.username = "testBarcode"
         uiDelegate.pin = "testPin"
@@ -549,7 +554,7 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
         uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
 
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [expectation], timeout: 5.0)
 
         let user = businessLogic.userAccount as! TPPUserAccountMock
         let hasCreds = user.hasCredentials()
@@ -610,7 +615,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
 
     /// PP-3784: When the user profile doc has no DRM section at all, sign-in
     /// must still succeed with barcode visible.
-    func testSignIn_noDRMInProfileDoc_credentialsPreserved() {
+    func testSignIn_noDRMInProfileDoc_credentialsPreserved() async {
         let noDRMProfileUrl = URL(string: "https://circulation.librarysimplified.org/NYNYPL/patrons/me/")!
         let noDRMJson = """
         {
@@ -629,7 +634,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
         uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
 
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [expectation], timeout: 5.0)
 
         let user = businessLogic.userAccount
         XCTAssertEqual(user.barcode, "12345barcode",
@@ -641,7 +646,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
 
     /// PP-3784: When the profile doc is completely unparseable, sign-in
     /// must still succeed (the server already accepted the credentials).
-    func testSignIn_invalidProfileDoc_credentialsPreserved() {
+    func testSignIn_invalidProfileDoc_credentialsPreserved() async {
         let profileUrl = URL(string: "https://circulation.librarysimplified.org/NYNYPL/patrons/me/")!
         networkExecutor.responseBodies[profileUrl] = "NOT VALID JSON AT ALL"
 
@@ -653,7 +658,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
         uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
 
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [expectation], timeout: 5.0)
 
         let user = businessLogic.userAccount
         XCTAssertEqual(user.barcode, "myBarcode",
@@ -663,7 +668,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
     }
 
     /// Standard sign-in with valid DRM info should save both credentials and DRM data.
-    func testSignIn_validDRMProfileDoc_savesCredentialsAndDRM() {
+    func testSignIn_validDRMProfileDoc_savesCredentialsAndDRM() async {
         uiDelegate.username = "drmBarcode"
         uiDelegate.pin = "drmPin"
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
@@ -672,7 +677,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
         uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
 
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [expectation], timeout: 5.0)
 
         let user = businessLogic.userAccount
         XCTAssertEqual(user.barcode, "drmBarcode")
@@ -820,7 +825,7 @@ final class TPPCapturedCredentialsTests: XCTestCase {
     /// PP-3784: When the UI delegate's credentials are cleared between logIn()
     /// and finalizeSignIn() (e.g. by an intermediate accountDidChange notification),
     /// the captured credentials must still be used.
-    func testFinalizeSignIn_usesCapturedCredentials_whenUIDelegateCleared() {
+    func testFinalizeSignIn_usesCapturedCredentials_whenUIDelegateCleared() async {
         let barcode = "23333012345678"
         let pin = "1234"
         uiDelegate.username = barcode
@@ -842,7 +847,7 @@ final class TPPCapturedCredentialsTests: XCTestCase {
         uiDelegate.username = nil
         uiDelegate.pin = nil
 
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [expectation], timeout: 5.0)
 
         let user = businessLogic.userAccount
         XCTAssertEqual(user.barcode, barcode,
@@ -932,7 +937,7 @@ final class TPPCapturedCredentialsTests: XCTestCase {
 
     /// PP-3784: Multiple sign-in attempts must not accumulate stale captured
     /// credentials. Each logIn() call must refresh the captured values.
-    func testLogIn_refreshesCapturedCredentials_onSubsequentAttempts() {
+    func testLogIn_refreshesCapturedCredentials_onSubsequentAttempts() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
         uiDelegate.username = "firstBarcode"
@@ -941,7 +946,7 @@ final class TPPCapturedCredentialsTests: XCTestCase {
         let exp1 = expectation(description: "First sign-in completes")
         uiDelegate.didCompleteSignInHandler = { exp1.fulfill() }
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [exp1], timeout: 5.0)
 
         XCTAssertEqual(businessLogic.userAccount.barcode, "firstBarcode")
 
@@ -959,7 +964,7 @@ final class TPPCapturedCredentialsTests: XCTestCase {
         uiDelegate.username = nil
         uiDelegate.pin = nil
 
-        waitForExpectations(timeout: 5.0)
+        await fulfillment(of: [exp2], timeout: 5.0)
 
         XCTAssertEqual(businessLogic.userAccount.barcode, "secondBarcode",
                        "Second sign-in must use freshly captured credentials, not stale ones")
