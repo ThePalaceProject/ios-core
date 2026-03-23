@@ -411,73 +411,58 @@ final class BookDetailViewModelTests: XCTestCase {
     // Regression test for: checkout duration message not showing on HalfSheet
 
     func testViewModel_UpdatesBookWhenRegistryChanges() {
-        let expectation = XCTestExpectation(description: "ViewModel book should update")
-
-        // Create initial book (simulating catalog book before borrowing)
         let initialBook = createTestBook()
         let mockRegistry = TPPBookRegistryMock()
-
-        // Add initial book to registry
         mockRegistry.addBook(initialBook, location: nil, state: .downloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        // Create ViewModel with the initial book
         let viewModel = BookDetailViewModel(book: initialBook, registry: mockRegistry)
-
-        // Verify initial state
         XCTAssertEqual(viewModel.book.identifier, initialBook.identifier)
 
-        // Create a "borrowed" version of the book with availability data
-        // (simulating what happens after borrow completes)
         let borrowedBook = createBookWithLoanExpiration(from: initialBook)
 
-        // Update the registry with the borrowed book (simulates borrow completion)
+        // Wait for the ViewModel's $book to update and carry availability data.
+        // BookDetailViewModel uses receive(on: RunLoop.main) so delivery is async.
+        let updated = XCTestExpectation(description: "ViewModel book updated with availability")
+        var cancellables = Set<AnyCancellable>()
+        viewModel.$book
+            .filter { $0.defaultAcquisition?.availability != nil }
+            .first()
+            .sink { _ in updated.fulfill() }
+            .store(in: &cancellables)
+
         mockRegistry.addBook(borrowedBook, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        // Give the RunLoop a chance to process the Combine publisher update
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            // The ViewModel's book should now have the updated availability data
-            // This was the bug: ViewModel only updated if identifier/title changed
-            XCTAssertNotNil(viewModel.book.defaultAcquisition?.availability,
-                            "ViewModel's book should have availability data after registry update")
-            expectation.fulfill()
-        }
-
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [updated], timeout: 2.0)
+        XCTAssertNotNil(viewModel.book.defaultAcquisition?.availability,
+                        "ViewModel's book should have availability data after registry update")
     }
 
     func testViewModel_BookStatePublisher_TriggersBookUpdate() {
-        let expectation = XCTestExpectation(description: "ViewModel state should update")
-
         let book = createTestBook()
         let mockRegistry = TPPBookRegistryMock()
-
         mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
         let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
 
-        // Transition through states (simulating borrow -> download flow)
+        // Wait for bookState to reach .downloading via Combine's receive(on: RunLoop.main)
+        let reachedDownloading = XCTestExpectation(description: "bookState reaches .downloading")
+        var cancellables = Set<AnyCancellable>()
+        viewModel.$bookState
+            .filter { $0 == .downloading }
+            .first()
+            .sink { _ in reachedDownloading.fulfill() }
+            .store(in: &cancellables)
+
         mockRegistry.setState(.downloadNeeded, for: book.identifier)
+        mockRegistry.setState(.downloading, for: book.identifier)
 
-        // Use longer delays to allow Combine's receive(on: RunLoop.main) to process
-        // The ViewModel uses RunLoop.main scheduling which needs time to deliver
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            mockRegistry.setState(.downloading, for: book.identifier)
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                // The ViewModel should track state changes
-                XCTAssertEqual(viewModel.bookState, .downloading)
-                expectation.fulfill()
-            }
-        }
-
-        wait(for: [expectation], timeout: 2.0)
+        wait(for: [reachedDownloading], timeout: 2.0)
+        XCTAssertEqual(viewModel.bookState, .downloading)
     }
 
     func testViewModel_ReceivesBookFromRegistry_NotCachedVersion() {
-        let expectation = XCTestExpectation(description: "ViewModel should receive updated book")
-
-        // This test verifies that when the registry has a newer version of the book,
-        // the ViewModel uses that version (not the original cached version)
+        // Verifies that when the registry has a newer version of the book,
+        // the ViewModel uses that version (not the original cached version).
         let originalBook = createTestBook()
         let mockRegistry = TPPBookRegistryMock()
 
@@ -487,19 +472,23 @@ final class BookDetailViewModelTests: XCTestCase {
         let viewModel = BookDetailViewModel(book: originalBook, registry: mockRegistry)
         let originalTitle = viewModel.book.title
 
-        // Create an updated book with same identifier but different metadata
         let updatedBook = createBookWithUpdatedTitle(from: originalBook, newTitle: "Updated Title")
+
+        // Wait for $book to reflect the updated title
+        let updated = XCTestExpectation(description: "ViewModel book title updated")
+        var cancellables = Set<AnyCancellable>()
+        viewModel.$book
+            .filter { $0.title == "Updated Title" }
+            .first()
+            .sink { _ in updated.fulfill() }
+            .store(in: &cancellables)
+
         mockRegistry.addBook(updatedBook, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            // ViewModel should have the updated book from registry
-            XCTAssertEqual(viewModel.book.title, "Updated Title",
-                           "ViewModel should update book when registry changes, even when identifier stays the same")
-            XCTAssertNotEqual(viewModel.book.title, originalTitle)
-            expectation.fulfill()
-        }
-
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [updated], timeout: 2.0)
+        XCTAssertEqual(viewModel.book.title, "Updated Title",
+                       "ViewModel should update book when registry changes, even when identifier stays the same")
+        XCTAssertNotEqual(viewModel.book.title, originalTitle)
     }
 
     // MARK: - Expiration Date Tests
@@ -854,16 +843,12 @@ final class BookDetailViewModelTests: XCTestCase {
                 }
             }
 
-        // Send: 0.5 → 0.3 (backwards!) → 0.8
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            publisher.send((book.identifier, 0.5))
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            publisher.send((book.identifier, 0.3)) // Should be clamped to 0.5
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            publisher.send((book.identifier, 0.8))
-        }
+        // Send all three values synchronously on the main thread.
+        // receive(on: DispatchQueue.main) re-dispatches each as a separate async block,
+        // so they are delivered in order on the next run-loop cycle.
+        publisher.send((book.identifier, 0.5))
+        publisher.send((book.identifier, 0.3)) // Should be clamped to 0.5
+        publisher.send((book.identifier, 0.8))
 
         waitForExpectations(timeout: 3.0)
         cancellable.cancel()
@@ -888,14 +873,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
         let publisher = MyBooksDownloadCenter.shared.downloadProgressPublisher
 
-        // Wait for any deferred init tasks to settle
-        let settleExpectation = expectation(description: "Let init settle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            settleExpectation.fulfill()
-        }
-        waitForExpectations(timeout: 1.0)
-
-        // Record the baseline — should be 0.0 from init
+        // Record the baseline — ViewModel is synchronously initialized, no settle needed
         let baseline = viewModel.downloadProgress
 
         // Now subscribe and send progress for a DIFFERENT book

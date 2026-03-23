@@ -1068,12 +1068,15 @@ extension TPPAnnotationsTests {
         // Act
         TPPAnnotations.deleteBookmarks([b1, b2, b3])
 
-        // Wait for async operations
-        let waitExpectation = expectation(description: "Wait for deletes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            waitExpectation.fulfill()
-        }
-        waitForExpectations(timeout: 5.0)
+        // Poll until requests fire (or bail after 3s). b3 has no annotationId so only b1/b2
+        // generate requests; the exact count depends on sync-permission state.
+        // Primary assertion: the call does not crash.
+        let requestsFired = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in requestCount > 0 },
+            object: nil
+        )
+        requestsFired.isInverted = false
+        wait(for: [requestsFired], timeout: 3.0)
 
         // Note: Actual request count depends on sync permission state
         // The main validation is that the method doesn't crash

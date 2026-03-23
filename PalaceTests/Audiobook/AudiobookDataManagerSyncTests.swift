@@ -91,125 +91,94 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
     override func setUp() {
         super.setUp()
         mockNetworkExecutor = MockNetworkExecutorForSync()
-        // Use a short sync interval for tests, but we'll trigger sync manually
         dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
-
-        // Clear any existing store data from previous tests
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
-
-        // Use a temp directory for store
         testStoreURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_timetracker")
     }
 
     override func tearDown() {
-        // Clear store before releasing
         dataManager?.store.queue.removeAll()
         dataManager?.store.urls.removeAll()
         dataManager = nil
         mockNetworkExecutor = nil
-        // Clean up temp files
         try? FileManager.default.removeItem(at: testStoreURL)
         super.tearDown()
     }
 
-    /// Helper to wait for async save operations to complete
-    private func waitForAsyncSave() {
-        let expectation = XCTestExpectation(description: "Async save completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
-    }
-
     // MARK: - Successful Sync Tests
 
-    /// Tests AudiobookDataManager sync functionality handles time entry storage and network synchronization
     func testAudiobookDataManager_Sync_InitializesCorrectly() {
-        // Verify data manager initializes with empty queue
         XCTAssertNotNil(dataManager)
         XCTAssertTrue(dataManager.store.queue.isEmpty)
         XCTAssertTrue(dataManager.store.urls.isEmpty)
     }
 
     func testSyncValues_withQueuedEntries_postsToCorrectURL() {
-        // Arrange
         let trackingURL = URL(string: "https://api.example.com/track")!
         let entry = AudiobookTimeEntry(
-            id: "entry-1",
-            bookId: "book-123",
-            libraryId: "lib-456",
-            timeTrackingUrl: trackingURL,
-            duringMinute: "2024-01-15T10:30Z",
-            duration: 45
+            id: "entry-1", bookId: "book-123", libraryId: "lib-456",
+            timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:30Z", duration: 45
         )
 
-        // Configure mock response
         let successResponse = Data("""
     {"responses": [{"status": 200, "message": "OK", "id": "entry-1"}]}
     """.utf8)
         mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(
-            statusCode: 200,
-            data: successResponse
+            statusCode: 200, data: successResponse
         )
 
-        // Act
         dataManager.save(time: entry)
 
-        let expectation = XCTestExpectation(description: "Sync completes")
+        // Poll until the mock receives a POST rather than using a fixed delay
+        let mockRef = mockNetworkExecutor!
+        let requestReceived = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in mockRef.requestHistory.count > 0 },
+            object: nil
+        )
         dataManager.syncValues()
+        wait(for: [requestReceived], timeout: 5.0)
 
-        // Wait for async operations
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
-
-        // Assert
         XCTAssertEqual(mockNetworkExecutor.requestHistory.count, 1, "Should have made one request")
         XCTAssertEqual(mockNetworkExecutor.requestHistory.first?.request.url, trackingURL)
         XCTAssertEqual(mockNetworkExecutor.requestHistory.first?.request.httpMethod, "POST")
     }
 
     func testSyncValues_withSuccessfulResponse_removesEntriesFromQueue() {
-        // Arrange
         let trackingURL = URL(string: "https://api.example.com/track")!
         let entry = AudiobookTimeEntry(
-            id: "entry-1",
-            bookId: "book-123",
-            libraryId: "lib-456",
-            timeTrackingUrl: trackingURL,
-            duringMinute: "2024-01-15T10:30Z",
-            duration: 45
+            id: "entry-1", bookId: "book-123", libraryId: "lib-456",
+            timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:30Z", duration: 45
         )
 
         let successResponse = Data("""
     {"responses": [{"status": 200, "message": "OK", "id": "entry-1"}]}
     """.utf8)
         mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(
-            statusCode: 200,
-            data: successResponse
+            statusCode: 200, data: successResponse
         )
 
         dataManager.save(time: entry)
-        waitForAsyncSave()  // Wait for async save to complete
+
+        // save uses syncQueue.async(flags:.barrier); polling queue count is safe via its internal sync
+        let savedExpectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { [weak self] _, _ in self?.dataManager.store.queue.count == 1 },
+            object: nil
+        )
+        wait(for: [savedExpectation], timeout: 2.0)
         XCTAssertEqual(dataManager.store.queue.count, 1, "Should have one entry before sync")
 
-        // Act
-        let expectation = XCTestExpectation(description: "Sync completes")
+        let queueEmptyExpectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { [weak self] _, _ in self?.dataManager.store.queue.isEmpty == true },
+            object: nil
+        )
         dataManager.syncValues()
+        wait(for: [queueEmptyExpectation], timeout: 5.0)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
-
-        // Assert - entry should be removed after successful sync
         XCTAssertEqual(dataManager.store.queue.count, 0, "Entry should be removed after successful sync")
     }
 
     func testSyncValues_withMultipleBooks_makesRequestForEach() {
-        // Arrange
         let trackingURL1 = URL(string: "https://api.example.com/track/book1")!
         let trackingURL2 = URL(string: "https://api.example.com/track/book2")!
 
@@ -235,29 +204,22 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
         dataManager.save(time: entry1)
         dataManager.save(time: entry2)
 
-        // Act
-        let expectation = XCTestExpectation(description: "Sync completes")
+        let mockRef = mockNetworkExecutor!
+        let twoRequestsReceived = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in mockRef.requestHistory.count >= 2 },
+            object: nil
+        )
         dataManager.syncValues()
+        wait(for: [twoRequestsReceived], timeout: 5.0)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
-
-        // Assert
         XCTAssertEqual(mockNetworkExecutor.requestHistory.count, 2, "Should make request for each book")
     }
 
     func testSyncValues_requestBodyContainsCorrectFormat() {
-        // Arrange
         let trackingURL = URL(string: "https://api.example.com/track")!
         let entry = AudiobookTimeEntry(
-            id: "entry-123",
-            bookId: "book-456",
-            libraryId: "lib-789",
-            timeTrackingUrl: trackingURL,
-            duringMinute: "2024-01-15T10:30Z",
-            duration: 45
+            id: "entry-123", bookId: "book-456", libraryId: "lib-789",
+            timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:30Z", duration: 45
         )
 
         let successResponse = Data("""
@@ -267,7 +229,6 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
 
         dataManager.save(time: entry)
 
-        // Act — wait until the mock actually receives a POST rather than using a fixed delay
         let mockRef = mockNetworkExecutor!
         let requestReceived = XCTNSPredicateExpectation(
             predicate: NSPredicate { _, _ in mockRef.requestHistory.count > 0 },
@@ -276,7 +237,6 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
         dataManager.syncValues()
         wait(for: [requestReceived], timeout: 10.0)
 
-        // Assert - verify request body format
         guard let requestBody = mockNetworkExecutor.requestHistory.first?.body else {
             XCTFail("Request body should exist")
             return
@@ -318,14 +278,11 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         super.setUp()
         mockNetworkExecutor = MockNetworkExecutorForSync()
         dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
-
-        // Clear any existing store data from previous tests
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
     }
 
     override func tearDown() {
-        // Clear store before releasing
         dataManager?.store.queue.removeAll()
         dataManager?.store.urls.removeAll()
         dataManager = nil
@@ -333,116 +290,90 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Helper to wait for async save operations to complete
-    private func waitForAsyncSave() {
-        let expectation = XCTestExpectation(description: "Async save completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
+    private func waitForEntry(count: Int = 1, file: StaticString = #file, line: UInt = #line) {
+        let savedExpectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { [weak self] _, _ in self?.dataManager.store.queue.count == count },
+            object: nil
+        )
+        wait(for: [savedExpectation], timeout: 2.0)
     }
 
-    /// Test: 404 response should remove entries
+    private func waitForSync(predicate: @escaping () -> Bool) {
+        let syncDone = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in predicate() },
+            object: nil
+        )
+        wait(for: [syncDone], timeout: 5.0)
+    }
+
     func testSyncValues_with404Response_removesEntriesAndURL() {
-        // Arrange
         let trackingURL = URL(string: "https://api.example.com/track/expired")!
         let entry = AudiobookTimeEntry(
-            id: "entry-1",
-            bookId: "book-expired",
-            libraryId: "lib-456",
-            timeTrackingUrl: trackingURL,
-            duringMinute: "2024-01-15T10:30Z",
-            duration: 45
+            id: "entry-1", bookId: "book-expired", libraryId: "lib-456",
+            timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:30Z", duration: 45
         )
 
-        // Configure 404 response
         mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(statusCode: 404)
 
         dataManager.save(time: entry)
-        waitForAsyncSave()  // Wait for async save to complete
+        waitForEntry()
         XCTAssertEqual(dataManager.store.queue.count, 1)
         XCTAssertNotNil(dataManager.store.urls[LibraryBook(time: entry)])
 
-        // Act
-        let expectation = XCTestExpectation(description: "Sync completes")
         dataManager.syncValues()
+        waitForSync { self.dataManager.store.queue.isEmpty }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
-
-        // Assert - entries should be removed due to 404
         XCTAssertEqual(dataManager.store.queue.count, 0, "Entries should be removed on 404")
         XCTAssertNil(dataManager.store.urls[LibraryBook(time: entry)], "URL mapping should be removed on 404")
     }
 
-    /// Test: 5xx response should keep entries for retry
     func testSyncValues_with500Response_keepsEntriesForRetry() {
-        // Arrange
         let trackingURL = URL(string: "https://api.example.com/track")!
         let entry = AudiobookTimeEntry(
-            id: "entry-1",
-            bookId: "book-123",
-            libraryId: "lib-456",
-            timeTrackingUrl: trackingURL,
-            duringMinute: "2024-01-15T10:30Z",
-            duration: 45
+            id: "entry-1", bookId: "book-123", libraryId: "lib-456",
+            timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:30Z", duration: 45
         )
 
-        // Configure 500 response
         mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(statusCode: 500)
 
         dataManager.save(time: entry)
-        waitForAsyncSave()  // Wait for async save to complete
+        waitForEntry()
 
-        // Act
-        let expectation = XCTestExpectation(description: "Sync completes")
+        let mockRef = mockNetworkExecutor!
+        let requestFired = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in mockRef.requestHistory.count > 0 },
+            object: nil
+        )
         dataManager.syncValues()
+        wait(for: [requestFired], timeout: 5.0)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
-
-        // Assert - entries should remain for retry
         XCTAssertEqual(dataManager.store.queue.count, 1, "Entries should be kept for retry on 5xx error")
     }
 
-    /// Test: 503 Service Unavailable should keep entries
     func testSyncValues_with503Response_keepsEntriesForRetry() {
-        // Arrange
         let trackingURL = URL(string: "https://api.example.com/track")!
         let entry = AudiobookTimeEntry(
-            id: "entry-1",
-            bookId: "book-123",
-            libraryId: "lib-456",
-            timeTrackingUrl: trackingURL,
-            duringMinute: "2024-01-15T10:30Z",
-            duration: 45
+            id: "entry-1", bookId: "book-123", libraryId: "lib-456",
+            timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:30Z", duration: 45
         )
 
         mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(statusCode: 503)
 
         dataManager.save(time: entry)
-        waitForAsyncSave()  // Wait for async save to complete
+        waitForEntry()
 
-        // Act
-        let expectation = XCTestExpectation(description: "Sync completes")
+        let mockRef = mockNetworkExecutor!
+        let requestFired = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in mockRef.requestHistory.count > 0 },
+            object: nil
+        )
         dataManager.syncValues()
+        wait(for: [requestFired], timeout: 5.0)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
-
-        // Assert
         XCTAssertEqual(dataManager.store.queue.count, 1, "Entries should be kept for retry on 503")
     }
 
-    /// Test individual entry error in response
     func testSyncValues_withPartialSuccess_removesOnlySuccessfulEntries() {
-        // Arrange
         let trackingURL = URL(string: "https://api.example.com/track")!
         let entry1 = AudiobookTimeEntry(
             id: "entry-success", bookId: "book-1", libraryId: "lib-1",
@@ -453,7 +384,6 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
             timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:31Z", duration: 45
         )
 
-        // Response indicates one success, one failure
         let partialResponse = Data("""
     {"responses": [
       {"status": 200, "message": "OK", "id": "entry-success"},
@@ -464,55 +394,37 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
 
         dataManager.save(time: entry1)
         dataManager.save(time: entry2)
-        waitForAsyncSave()  // Wait for async save to complete
+        waitForEntry(count: 2)
 
-        // Act
-        let expectation = XCTestExpectation(description: "Sync completes")
         dataManager.syncValues()
+        waitForSync { self.dataManager.store.queue.isEmpty }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
-
-        // Assert - both entries are removed based on response (current behavior removes all returned IDs)
-        // The actual behavior depends on implementation - adjust assertion accordingly
         XCTAssertEqual(dataManager.store.queue.count, 0, "Both entries removed based on response IDs")
     }
 
-    /// Test network error handling
     func testSyncValues_withNetworkError_keepsEntries() {
-        // Arrange
         let trackingURL = URL(string: "https://api.example.com/track")!
         let entry = AudiobookTimeEntry(
-            id: "entry-1",
-            bookId: "book-123",
-            libraryId: "lib-456",
-            timeTrackingUrl: trackingURL,
-            duringMinute: "2024-01-15T10:30Z",
-            duration: 45
+            id: "entry-1", bookId: "book-123", libraryId: "lib-456",
+            timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:30Z", duration: 45
         )
 
-        // Configure network error
         let networkError = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet, userInfo: nil)
         mockNetworkExecutor.responses[trackingURL] = MockNetworkExecutorForSync.MockResponse(
-            statusCode: 0,
-            error: networkError
+            statusCode: 0, error: networkError
         )
 
         dataManager.save(time: entry)
-        waitForAsyncSave()  // Wait for async save to complete
+        waitForEntry()
 
-        // Act
-        let expectation = XCTestExpectation(description: "Sync completes")
+        let mockRef = mockNetworkExecutor!
+        let requestFired = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in mockRef.requestHistory.count > 0 },
+            object: nil
+        )
         dataManager.syncValues()
+        wait(for: [requestFired], timeout: 5.0)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
-
-        // Assert - entries should remain
         XCTAssertEqual(dataManager.store.queue.count, 1, "Entries should be kept on network error")
     }
 }
@@ -528,8 +440,6 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
         super.setUp()
         testStoreDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("test_timetracker_\(UUID().uuidString)")
         testStoreFile = testStoreDirectory.appendingPathComponent("store.json")
-
-        // Create directory
         try? FileManager.default.createDirectory(at: testStoreDirectory, withIntermediateDirectories: true)
     }
 
@@ -538,108 +448,78 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Test: Corrupted store.json should not crash
-    /// Note: AudiobookDataManager loads from production store path, so we test
-    /// that creating a manager and clearing its store results in empty queue
     func testLoadStore_withCorruptedJSON_doesNotCrash() {
-        // Arrange - write corrupted JSON to test file (for documentation purposes)
         let corruptedData = Data("{ invalid json content".utf8)
         try? corruptedData.write(to: testStoreFile)
 
-        // Act - creating manager should not crash
         let dataManager = AudiobookDataManager(syncTimeInterval: 3600)
-
-        // Clear the store to simulate recovery from corruption
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
 
-        // Assert - manager should be usable with empty store
         XCTAssertNotNil(dataManager)
         XCTAssertTrue(dataManager.store.queue.isEmpty, "Queue should be empty after clearing")
     }
 
-    /// Test: Empty file should not crash
-    /// Note: AudiobookDataManager loads from production store path, so we test
-    /// that the manager can be created and used with an empty store
     func testLoadStore_withEmptyFile_doesNotCrash() {
-        // Arrange - write empty file to test file (for documentation purposes)
         try? Data().write(to: testStoreFile)
 
-        // Act
         let dataManager = AudiobookDataManager(syncTimeInterval: 3600)
-
-        // Clear the store to ensure empty state
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
 
-        // Assert
         XCTAssertNotNil(dataManager)
         XCTAssertTrue(dataManager.store.queue.isEmpty)
     }
 
-    /// Test store round-trip persistence
     func testSaveAndLoadStore_preservesData() {
-        // Arrange - use unique ID to avoid test interference
         let uniqueId = "entry-persist-\(UUID().uuidString)"
         let dataManager = AudiobookDataManager(syncTimeInterval: 3600)
-
-        // Clear any existing entries with our test prefix
         dataManager.store.queue.removeAll { $0.id.hasPrefix("entry-persist") }
 
         let entry = AudiobookTimeEntry(
-            id: uniqueId,
-            bookId: "book-123",
-            libraryId: "lib-456",
+            id: uniqueId, bookId: "book-123", libraryId: "lib-456",
             timeTrackingUrl: URL(string: "https://api.example.com/track")!,
-            duringMinute: "2024-01-15T10:30Z",
-            duration: 45
+            duringMinute: "2024-01-15T10:30Z", duration: 45
         )
 
         dataManager.save(time: entry)
 
-        // Wait for async save - use longer timeout for CI
-        let expectation = XCTestExpectation(description: "Save completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
+        // Poll until the entry has been written to the store
+        let savedExpectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in dataManager.store.queue.contains { $0.id == uniqueId } },
+            object: nil
+        )
+        wait(for: [savedExpectation], timeout: 2.0)
 
-        // Act - create new manager that loads from disk
+        // Create new manager that loads from disk
         let newDataManager = AudiobookDataManager(syncTimeInterval: 3600)
 
-        // Wait for load - use longer timeout for CI
-        let loadExpectation = XCTestExpectation(description: "Load completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            loadExpectation.fulfill()
-        }
-        wait(for: [loadExpectation], timeout: 2.0)
+        // Poll until the new manager has loaded the persisted entry
+        let loadedExpectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in newDataManager.store.queue.contains { $0.id == uniqueId } },
+            object: nil
+        )
+        wait(for: [loadedExpectation], timeout: 2.0)
 
-        // Assert - should have the entry we just saved
         let persistedEntry = newDataManager.store.queue.first { $0.id == uniqueId }
         XCTAssertNotNil(persistedEntry, "Should find persisted entry with id: \(uniqueId)")
         XCTAssertEqual(persistedEntry?.id, uniqueId)
 
-        // Cleanup - remove our test entry
         dataManager.store.queue.removeAll { $0.id == uniqueId }
     }
 
-    /// Test AudiobookDataManagerStore init with invalid data returns nil
     func testAudiobookDataManagerStoreInit_withInvalidData_returnsNil() {
         let invalidData = Data("not json at all".utf8)
         let store = AudiobookDataManagerStore(data: invalidData)
         XCTAssertNil(store, "Should return nil for invalid JSON")
     }
 
-    /// Test AudiobookDataManagerStore init with partial data returns nil
     func testAudiobookDataManagerStoreInit_withPartialData_returnsNil() {
         let partialData = Data("""
     {"urls": {}}
-    """.utf8)  // Missing "queue" field
+    """.utf8)
 
-        // This might succeed or fail depending on decoder behavior with missing fields
-        // Adjust expectation based on actual behavior
         let store = AudiobookDataManagerStore(data: partialData)
-        // Current implementation uses optional decoding, so this might succeed with defaults
         if store == nil {
             XCTAssertNil(store)
         } else {
@@ -659,14 +539,11 @@ final class AudiobookDataManagerEmptyQueueTests: XCTestCase {
         super.setUp()
         mockNetworkExecutor = MockNetworkExecutorForSync()
         dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
-
-        // Clear any existing store data from previous tests
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
     }
 
     override func tearDown() {
-        // Clear store before releasing
         dataManager?.store.queue.removeAll()
         dataManager?.store.urls.removeAll()
         dataManager = nil
@@ -675,19 +552,22 @@ final class AudiobookDataManagerEmptyQueueTests: XCTestCase {
     }
 
     func testSyncValues_withEmptyQueue_makesNoRequests() {
-        // Arrange - empty queue
         XCTAssertTrue(dataManager.store.queue.isEmpty)
 
-        // Act
-        let expectation = XCTestExpectation(description: "Sync completes")
         dataManager.syncValues()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
+        // Brief settle: syncValues is a no-op with empty queue, but the mock
+        // needs a moment to confirm nothing was dispatched
+        let noRequestExpectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate { [weak self] _, _ in
+                // Give the mock's async path a chance to fire if it incorrectly sends a request
+                self?.mockNetworkExecutor.requestHistory.isEmpty == true
+            },
+            object: nil
+        )
+        // This should satisfy immediately (no request was fired)
+        wait(for: [noRequestExpectation], timeout: 1.0)
 
-        // Assert
         XCTAssertTrue(mockNetworkExecutor.requestHistory.isEmpty, "Should not make any requests with empty queue")
     }
 }

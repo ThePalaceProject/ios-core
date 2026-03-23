@@ -31,7 +31,7 @@ final class AudiobookSessionManagerTests: XCTestCase {
         super.tearDown()
     }
 
-    func testRegisterActiveDownload() async {
+    func testRegisterActiveDownload() {
         // Given
         let sessionId = "test-session-\(UUID().uuidString)"
         let bookId = "test-book-123"
@@ -48,17 +48,14 @@ final class AudiobookSessionManagerTests: XCTestCase {
             localDestination: localURL
         )
 
-        // Wait for async operation
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
-        // Then
+        // Then — activeDownloads(forBookID:) uses queue.sync which drains the prior barrier write
         let downloads = AudiobookSessionManager.shared.activeDownloads(forBookID: bookId)
         XCTAssertEqual(downloads.count, 1)
         XCTAssertEqual(downloads.first?.trackKey, trackKey)
         XCTAssertEqual(downloads.first?.state, .downloading)
     }
 
-    func testUpdateDownloadProgress() async {
+    func testUpdateDownloadProgress() {
         // Given
         let sessionId = "test-session-\(UUID().uuidString)"
         let bookId = "test-book-456"
@@ -71,16 +68,10 @@ final class AudiobookSessionManagerTests: XCTestCase {
             localDestination: URL(fileURLWithPath: "/tmp/test.mp3")
         )
 
-        // Wait for registration
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
         // When
         AudiobookSessionManager.shared.updateDownloadProgress(sessionIdentifier: sessionId, progress: 0.5)
 
-        // Wait for update
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
-        // Then
+        // Then — downloadInfo uses queue.sync which drains all prior barrier writes
         let info = AudiobookSessionManager.shared.downloadInfo(forSessionIdentifier: sessionId)
         XCTAssertEqual(Double(info?.progress ?? 0), 0.5, accuracy: 0.01)
     }
@@ -90,22 +81,14 @@ final class AudiobookSessionManagerTests: XCTestCase {
         let sessionId = "test-session-\(UUID().uuidString)"
         let handlerExpectation = expectation(description: "Background completion handler should be called")
 
-        // When - register the handler
+        // Both register and call use queue.async(flags: .barrier) on the same queue,
+        // so callCompletionHandler is guaranteed to run after registerBackgroundCompletionHandler.
         AudiobookSessionManager.shared.registerBackgroundCompletionHandler({
             handlerExpectation.fulfill()
         }, forSessionIdentifier: sessionId)
 
-        // Allow registration to complete on the concurrent queue
-        let registrationExpectation = expectation(description: "Registration completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            registrationExpectation.fulfill()
-        }
-        wait(for: [registrationExpectation], timeout: 1.0)
-
-        // Then call it
         AudiobookSessionManager.shared.callCompletionHandler(forSessionIdentifier: sessionId)
 
-        // Assert - wait for the handler to be called on the main thread
         wait(for: [handlerExpectation], timeout: 3.0)
     }
 }
@@ -144,24 +127,18 @@ final class DownloadWatchdogTests: XCTestCase {
         XCTAssertEqual(config.checkInterval, 10.0)
     }
 
-    func testStartAndStop() async {
+    func testStartAndStop() {
         // Given
         let watchdog = DownloadWatchdog()
 
         // When
         watchdog.start()
 
-        // Allow async task to initialize
-        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
-
-        // Then
+        // status uses queue.sync — drains the internal queue before reading
         XCTAssertTrue(watchdog.status.isEmpty) // No downloads monitored yet
 
         // Cleanup
         watchdog.stop()
-
-        // Allow cleanup to complete
-        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
     }
 }
 
