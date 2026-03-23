@@ -76,24 +76,30 @@ final class AudiobookSessionManagerTests: XCTestCase {
         XCTAssertEqual(Double(info?.progress ?? 0), 0.5, accuracy: 0.01)
     }
 
-    func testBackgroundCompletionHandlerRegistration() {
-        // Given
+    // @MainActor is required here: callCompletionHandler dispatches handler() via
+    // DispatchQueue.main.async from inside a background barrier. Any synchronous
+    // wait (wait(for:), semaphore) blocks the main thread before that dispatch can
+    // execute and the test always times out. The pending dispatch then fires during
+    // the next test and causes spurious failures there.
+    //
+    // Making this method @MainActor async means:
+    //  1. await fulfillment(of:) cooperatively suspends the main actor so the
+    //     DispatchQueue.main.async { handler() } can run immediately.
+    //  2. The method completes *on the main actor*, so XCTest's runner returns to
+    //     the main thread for subsequent non-async tests — preventing queue.sync
+    //     deadlocks that would occur if the runner resumed on a cooperative pool thread.
+    @MainActor
+    func testBackgroundCompletionHandlerRegistration() async {
         let sessionId = "test-session-\(UUID().uuidString)"
         let handlerExpectation = expectation(description: "Background completion handler should be called")
 
-        // Both register and call use queue.async(flags: .barrier) on the same queue,
-        // so callCompletionHandler is guaranteed to run after registerBackgroundCompletionHandler.
-        // The handler is dispatched to DispatchQueue.main; wait(for:) spins the RunLoop on
-        // the main thread so that dispatch is processed — keep this test synchronous to avoid
-        // leaving the XCTest runner on a cooperative thread pool thread, which can cause
-        // queue.sync deadlocks in subsequent non-async tests.
         AudiobookSessionManager.shared.registerBackgroundCompletionHandler({
             handlerExpectation.fulfill()
         }, forSessionIdentifier: sessionId)
 
         AudiobookSessionManager.shared.callCompletionHandler(forSessionIdentifier: sessionId)
 
-        wait(for: [handlerExpectation], timeout: 3.0)
+        await fulfillment(of: [handlerExpectation], timeout: 3.0)
     }
 }
 
