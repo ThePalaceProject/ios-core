@@ -556,18 +556,9 @@ final class AudiobookDataManagerEmptyQueueTests: XCTestCase {
 
         dataManager.syncValues()
 
-        // Brief settle: syncValues is a no-op with empty queue, but the mock
-        // needs a moment to confirm nothing was dispatched
-        let noRequestExpectation = XCTNSPredicateExpectation(
-            predicate: NSPredicate { [weak self] _, _ in
-                // Give the mock's async path a chance to fire if it incorrectly sends a request
-                self?.mockNetworkExecutor.requestHistory.isEmpty == true
-            },
-            object: nil
-        )
-        // This should satisfy immediately (no request was fired)
-        wait(for: [noRequestExpectation], timeout: 1.0)
-
+        // syncValues only POSTs when there are queued entries. With an empty queue the mock
+        // executor's POST method is never called, so requestHistory stays empty.
+        // No async wait needed — the absence of a network call is immediate.
         XCTAssertTrue(mockNetworkExecutor.requestHistory.isEmpty, "Should not make any requests with empty queue")
     }
 }

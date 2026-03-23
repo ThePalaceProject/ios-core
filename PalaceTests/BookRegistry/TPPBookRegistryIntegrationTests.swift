@@ -332,8 +332,13 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
         let expectation = self.expectation(description: "All states received")
         expectation.expectedFulfillmentCount = 3
 
+        // bookStatePublisher uses receive(on: RunLoop.main), so the addBook emission
+        // above is still pending on the RunLoop when we subscribe. Filter to exactly
+        // the three states we're about to dispatch so addBook's .downloadNeeded event
+        // doesn't cause an over-fulfillment.
+        let targetStates: Set<TPPBookState> = [.downloading, .downloadSuccessful, .used]
         registry.bookStatePublisher
-            .filter { $0.0 == book.identifier }
+            .filter { $0.0 == book.identifier && targetStates.contains($0.1) }
             .sink { _, state in
                 receivedStates.append(state)
                 expectation.fulfill()

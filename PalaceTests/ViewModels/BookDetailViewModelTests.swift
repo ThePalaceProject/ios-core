@@ -873,7 +873,14 @@ final class BookDetailViewModelTests: XCTestCase {
         let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
         let publisher = MyBooksDownloadCenter.shared.downloadProgressPublisher
 
-        // Record the baseline — ViewModel is synchronously initialized, no settle needed
+        // mockRegistry.addBook emits bookStatePublisher via receive(on: RunLoop.main).
+        // Drain one main-queue cycle before subscribing so that pending event is
+        // delivered and any resulting @Published changes are settled.
+        let flush = XCTestExpectation(description: "flush pending main-queue events")
+        DispatchQueue.main.async { flush.fulfill() }
+        wait(for: [flush], timeout: 0.5)
+
+        // Record the baseline after the flush — should be 0.0
         let baseline = viewModel.downloadProgress
 
         // Now subscribe and send progress for a DIFFERENT book
