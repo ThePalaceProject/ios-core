@@ -386,7 +386,13 @@ struct AccountDetailView: View {
     }
 
     private var logInSignOutCell: some View {
-        Button(action: { viewModel.signIn() }, label: {
+        Button(action: {
+            if viewModel.isSignedIn {
+                viewModel.signOut()
+            } else {
+                viewModel.signIn()
+            }
+        }, label: {
             HStack {
                 if viewModel.isLoading {
                     HStack(spacing: 8) {
