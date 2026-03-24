@@ -24,8 +24,14 @@ struct HTMLTextView: View {
     /// Parse HTML on the main thread to avoid WebKit threading crashes.
     /// NSAttributedString with .html documentType uses WebKit internally
     /// and will crash with EXC_BAD_ACCESS if called from a background thread.
+    ///
+    /// We also guard against app-backgrounded state: SwiftUI can trigger
+    /// onAppear/onChange during state restoration while the app is in the
+    /// background, causing NSInternalInconsistencyException "unexpected start
+    /// state" inside WebKit's HTML state machine.
     @MainActor
     private func parseHTML() {
+        guard UIApplication.shared.applicationState != .background else { return }
         isLoading = true
         attributedString = Self.makeAttributedString(from: htmlContent)
         isLoading = false

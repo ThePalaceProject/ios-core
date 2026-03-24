@@ -24,7 +24,6 @@ final class LogTests: XCTestCase {
     // MARK: - Log Level Tests
 
     func testDebug_doesNotCrash() {
-        // Verify debug logging completes without error
         Log.debug("LogTests", "Debug test message")
     }
 
@@ -50,19 +49,25 @@ final class LogTests: XCTestCase {
 
     // MARK: - Error Persistence Tests
 
+    /// Polls PersistentLogger until the marker appears, with a short interval
+    /// and a bounded total wait — far more reliable than a fixed sleep.
+    private func pollForLog(marker: String, timeout: TimeInterval = 2.0) async -> String {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let logs = await PersistentLogger.shared.retrieveAllLogs()
+            if logs.contains(marker) { return logs }
+            try? await Task.sleep(nanoseconds: 25_000_000) // 25 ms
+        }
+        return await PersistentLogger.shared.retrieveAllLogs()
+    }
+
     func testError_persistsToLogger() async {
-        // Clear existing logs to start fresh
         await PersistentLogger.shared.clearLogs()
 
-        // Log an error with a unique marker
         let marker = "PersistenceTest_\(UUID().uuidString)"
         Log.error("LogTests", marker)
 
-        // Allow async Task to complete
-        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
-
-        // Retrieve persisted logs
-        let logs = await PersistentLogger.shared.retrieveAllLogs()
+        let logs = await pollForLog(marker: marker)
 
         XCTAssertTrue(
             logs.contains(marker),
@@ -76,9 +81,7 @@ final class LogTests: XCTestCase {
         let marker = "FaultPersistenceTest_\(UUID().uuidString)"
         Log.fault("LogTests", marker)
 
-        try? await Task.sleep(nanoseconds: 500_000_000)
-
-        let logs = await PersistentLogger.shared.retrieveAllLogs()
+        let logs = await pollForLog(marker: marker)
 
         XCTAssertTrue(
             logs.contains(marker),
@@ -92,7 +95,8 @@ final class LogTests: XCTestCase {
         let marker = "DebugNoPersist_\(UUID().uuidString)"
         Log.debug("LogTests", marker)
 
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        // Short poll to give any erroneous persist attempt time to complete
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100 ms
 
         let logs = await PersistentLogger.shared.retrieveAllLogs()
 
@@ -108,7 +112,7 @@ final class LogTests: XCTestCase {
         let marker = "InfoNoPersist_\(UUID().uuidString)"
         Log.info("LogTests", marker)
 
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100 ms
 
         let logs = await PersistentLogger.shared.retrieveAllLogs()
 
@@ -123,15 +127,11 @@ final class LogTests: XCTestCase {
     func testLog_withFilePathTag_trimsProperly() async {
         await PersistentLogger.shared.clearLogs()
 
-        // Simulate the common pattern where #file is passed as tag
         let marker = "TagTrimTest_\(UUID().uuidString)"
         Log.error("/Users/dev/Projects/Palace/Logging/SomeFile.swift", marker)
 
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        let logs = await pollForLog(marker: marker)
 
-        let logs = await PersistentLogger.shared.retrieveAllLogs()
-
-        // The tag should be trimmed to just "Logging/SomeFile.swift"
         XCTAssertTrue(logs.contains(marker), "Message should be present in logs")
         if logs.contains("Logging/SomeFile.swift") {
             XCTAssertFalse(
@@ -147,7 +147,6 @@ final class LogTests: XCTestCase {
         let formatter = Log.dateFormatter
         let formatted = formatter.string(from: Date())
 
-        // Should match "yyyy-MM-dd HH:mm:ss" format
         XCTAssertFalse(formatted.isEmpty, "Date formatter should produce non-empty output")
         XCTAssertEqual(formatted.count, 19, "Date format 'yyyy-MM-dd HH:mm:ss' should be 19 characters")
     }

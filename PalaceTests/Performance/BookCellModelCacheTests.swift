@@ -178,8 +178,9 @@ final class BookCellModelCacheTests: XCTestCase {
         // Should be same model instance
         XCTAssertTrue(model === updatedModel)
 
-        // Book update is deferred via Task { @MainActor }, so wait for it
-        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        // Yield to allow the deferred Task { @MainActor } to run before asserting.
+        // Task.yield() suspends the current task so queued main-actor work can execute.
+        await Task.yield(); await Task.yield(); await Task.yield()
         XCTAssertEqual(updatedModel.book.title, "Updated Title")
     }
 
@@ -305,8 +306,8 @@ final class BookCellModelCacheTests: XCTestCase {
         _ = sut.model(for: oldBook)
         let model = sut.model(for: newBook)
 
-        // Book update is deferred via Task { @MainActor }, so wait for it
-        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        // Yield to allow the deferred Task { @MainActor } to run before asserting.
+        await Task.yield(); await Task.yield(); await Task.yield()
 
         // Model should have updated to new book data
         XCTAssertEqual(model.book.title, "New Title")
@@ -401,8 +402,8 @@ final class BookCellModelCacheTests: XCTestCase {
         let sameModel = sut.model(for: newBook)
         XCTAssertTrue(model === sameModel, "Should return same model instance")
 
-        // The update happens in a Task, so we need to wait
-        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        // Yield to allow the deferred Task { @MainActor } to run before asserting.
+        await Task.yield(); await Task.yield(); await Task.yield()
 
         // After the deferred update, the model should have the new book
         XCTAssertEqual(model.book.updated, newDate)
@@ -439,7 +440,8 @@ final class BookCellModelCacheTests: XCTestCase {
         let sameModel = sut.model(for: oldBook)
         XCTAssertTrue(model === sameModel)
 
-        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        // Yield to allow any deferred Task { @MainActor } a chance to run (it shouldn't update)
+        await Task.yield(); await Task.yield(); await Task.yield()
 
         // Book should still be the newer version
         XCTAssertEqual(model.book.title, "New Title")

@@ -898,9 +898,12 @@ final class TokenRefreshIntegrationTests: XCTestCase {
         super.tearDown()
     }
 
-    func testExecuteTokenRefresh_ValidatesBasicAuthHeaderOnWire() {
+    func testExecuteTokenRefresh_ValidatesBasicAuthHeaderOnWire() async {
+        // Use async test to avoid blocking the main thread with wait(for:).
+        // The sync + XCTestExpectation pattern blocks the main thread, which
+        // can deadlock when the success path calls notifyAccountDidChange()
+        // and any NotificationCenter observer tries to dispatch back to main.
         let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Token refresh completes")
         var capturedAuthHeader: String?
 
         HTTPStubURLProtocol.register { request in
@@ -916,15 +919,15 @@ final class TokenRefreshIntegrationTests: XCTestCase {
         }
 
         let tokenURL = URL(string: "https://example.com/token")!
-        executor.executeTokenRefresh(
-            username: "testbarcode",
-            password: "testpin",
-            tokenURL: tokenURL
-        ) { _ in
-            expectation.fulfill()
+        await withCheckedContinuation { continuation in
+            executor.executeTokenRefresh(
+                username: "testbarcode",
+                password: "testpin",
+                tokenURL: tokenURL
+            ) { _ in
+                continuation.resume()
+            }
         }
-
-        wait(for: [expectation], timeout: 15.0)
 
         let expectedBase64 = Data("testbarcode:testpin".utf8).base64EncodedString()
         XCTAssertEqual(capturedAuthHeader, "Basic \(expectedBase64)",
