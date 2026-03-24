@@ -1,9 +1,9 @@
 //
-//  TPPSignInBusinessLogic+OIDC.swift
-//  The Palace Project
+// TPPSignInBusinessLogic+OIDC.swift
+// The Palace Project
 //
-//  Created by Maurice Carrier on 2/26/26.
-//  Copyright © 2026 The Palace Project. All rights reserved.
+// Created by Maurice Carrier on 2/26/26.
+// Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import AuthenticationServices
@@ -15,12 +15,90 @@ extension TPPSignInBusinessLogic {
     /// this scheme with `access_token` and `patron_info` parameters after the
     /// identity provider completes authentication.
     static let oidcCallbackScheme = "palace-oidc-callback"
-    static let oidcCallbackHost   = "org.thepalaceproject.oidc"
+    static let oidcCallbackHost  = "org.thepalaceproject.oidc"
+
+    /// Post-logout redirect URI sent to the CM's end_session endpoint.
+    /// Uses the `/logout` path to distinguish the redirect from a login callback.
+    static let oidcPostLogoutRedirectURI =
+        "\(oidcCallbackScheme)://\(oidcCallbackHost)/logout"
 
     /// Builds the callback URL the CM should redirect to after OIDC login.
     /// Format: `palace-oidc-callback://org.thepalaceproject.oidc/callback`
     private var oidcRedirectURI: String {
         "\(Self.oidcCallbackScheme)://\(Self.oidcCallbackHost)/callback"
+    }
+
+    /// Terminates the OIDC browser session by opening the CM's end_session
+    /// endpoint in an `ASWebAuthenticationSession`.
+    ///
+    /// This mirrors the `clearWebViewData()` pattern used for SAML/OAuth: after
+    /// local credentials are wiped we must also invalidate the identity
+    /// provider's session that lives in the system Safari cookie store —
+    /// otherwise a subsequent OIDC login silently auto-authenticates the patron.
+    ///
+    /// The end_session URL is advertised by the CM via the "sign-out" rel link
+    /// in the OIDC authentication document. When absent, `completion` is called
+    /// immediately so the sign-out pipeline is never blocked.
+    ///
+    /// Logout is best-effort: cancellation and errors call `completion` without
+    /// surfacing an error to the patron.
+    func oidcLogOut(completion: @escaping () -> Void) {
+        // ASWebAuthenticationSession has no valid presentation context in the
+        // test runner — skip the browser step and complete immediately.
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            completion()
+            return
+        }
+        #endif
+
+        guard let endSessionURL = selectedAuthentication?.oidcEndSessionUrl else {
+            completion()
+            return
+        }
+
+        guard var urlComponents = URLComponents(url: endSessionURL, resolvingAgainstBaseURL: true) else {
+            Log.warn(#file, "OIDC end-session URL is malformed — skipping browser logout")
+            completion()
+            return
+        }
+
+        let redirectParam = URLQueryItem(name: "post_logout_redirect_uri",
+                                         value: Self.oidcPostLogoutRedirectURI)
+        if urlComponents.queryItems != nil {
+            urlComponents.queryItems?.append(redirectParam)
+        } else {
+            urlComponents.queryItems = [redirectParam]
+        }
+
+        guard let finalURL = urlComponents.url else {
+            Log.warn(#file, "OIDC end-session URL could not be constructed — skipping browser logout")
+            completion()
+            return
+        }
+
+        let session = ASWebAuthenticationSession(
+            url: finalURL,
+            callbackURLScheme: Self.oidcCallbackScheme
+        ) { _, _ in
+            completion()
+        }
+
+        TPPMainThreadRun.asyncIfNeeded { [weak self] in
+            guard let self = self else {
+                completion()
+                return
+            }
+            if let anchor = self.uiDelegate as? ASWebAuthenticationPresentationContextProviding {
+                session.presentationContextProvider = anchor
+            } else {
+                session.presentationContextProvider = self
+            }
+            // Non-ephemeral so the session operates in the shared Safari context
+            // where the IdP (e.g. Google) session cookies actually live.
+            session.prefersEphemeralWebBrowserSession = false
+            session.start()
+        }
     }
 
     /// Initiates the OIDC sign-in flow using `ASWebAuthenticationSession`.
