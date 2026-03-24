@@ -45,6 +45,10 @@ struct CatalogSearchView: View {
         VStack(spacing: 0) {
             searchBar
 
+            if viewModel.formatEntries.count > 1 {
+                formatFilterRow
+            }
+
             ScrollViewReader { proxy in
                 ScrollView {
                     BookListView(
@@ -86,6 +90,7 @@ struct CatalogSearchView: View {
         }
         .onAppear {
             viewModel.updateBooks(books)
+            viewModel.loadFormatEntryPoints()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 isSearchFieldFocused = true
             }
@@ -122,6 +127,38 @@ struct CatalogSearchView: View {
 
 // MARK: - Private Views
 private extension CatalogSearchView {
+    var formatFilterRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(viewModel.formatEntries.enumerated()), id: \.element.id) { index, entry in
+                    Button(action: { viewModel.selectFormat(at: index) }) {
+                        Text(entry.title)
+                            .font(.subheadline)
+                            .fontWeight(viewModel.selectedFormatIndex == index ? .semibold : .regular)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                viewModel.selectedFormatIndex == index
+                                    ? Color.accentColor
+                                    : Color(.systemGray5)
+                            )
+                            .foregroundColor(
+                                viewModel.selectedFormatIndex == index ? .white : .primary
+                            )
+                            .cornerRadius(16)
+                    }
+                    .accessibilityIdentifier(AccessibilityID.Search.formatFilterChip(entry.title))
+                    .accessibilityAddTraits(viewModel.selectedFormatIndex == index ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+        }
+        .accessibilityIdentifier(AccessibilityID.Search.formatFilterRow)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(NSLocalizedString("Format filter", comment: "VoiceOver label for format filter row"))
+    }
+
     var searchBar: some View {
         ZStack {
             TextField(

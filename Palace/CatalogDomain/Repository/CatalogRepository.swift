@@ -3,6 +3,10 @@ import Foundation
 public protocol CatalogRepositoryProtocol {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?
     func search(query: String, baseURL: URL) async throws -> CatalogFeed?
+    /// Search using a known OpenSearch descriptor URL, skipping the groups feed fetch.
+    func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed?
+    /// Fetch a groups feed and return its entry-point format facets.
+    func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry]
     func fetchFeed(at url: URL) async throws -> CatalogFeed?
     func invalidateCache(for url: URL)
 }
@@ -182,6 +186,14 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
     public func search(query: String, baseURL: URL) async throws -> CatalogFeed? {
         try await api.search(query: query, baseURL: baseURL)
+    }
+
+    public func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
+        try await api.search(query: query, searchDescriptorURL: searchDescriptorURL)
+    }
+
+    public func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
+        try await api.fetchSearchEntryPoints(from: url)
     }
 
     public func fetchFeed(at url: URL) async throws -> CatalogFeed? {

@@ -80,8 +80,12 @@ public enum AccessibilityID {
         public static let resultsScrollView = "search.resultsScrollView"
         public static let noResultsView = "search.noResultsView"
         public static let loadingIndicator = "search.loadingIndicator"
+        public static let formatFilterRow = "search.formatFilterRow"
 
         public static func resultCell(_ bookID: String) -> String { "search.result.\(bookID)" }
+        public static func formatFilterChip(_ title: String) -> String {
+            "search.formatFilter.\(title.lowercased())"
+        }
     }
 
     // MARK: - Book Detail Screen
