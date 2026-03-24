@@ -25,7 +25,10 @@ extension Notification.Name {
     }
 
     private var cache = [String: [DocWithTimestamp]]()
-    private let queue = DispatchQueue(label: "org.thepalaceproject.problemDocumentCache")
+    // NSLock blocks at the OS/kernel level and never consumes a GCD thread-pool slot.
+    // DispatchQueue.sync-based approaches can exhaust the 64-thread GCD pool when
+    // many callers block simultaneously, causing deadlocks in the whole process.
+    private let lock = NSLock()
 
     override init() {
         super.init()
@@ -35,29 +38,29 @@ extension Notification.Name {
 
     func cacheProblemDocument(_ doc: TPPProblemDocument, key: String) {
         let timeStampDoc = DocWithTimestamp(doc)
-        queue.sync {
-            var vals = cache[key] ?? []
-            if vals.count >= TPPProblemDocumentCacheManager.CACHE_SIZE {
-                vals.removeFirst(1)
-            }
-            vals.append(timeStampDoc)
-            cache[key] = vals
+        lock.lock()
+        var vals = cache[key] ?? []
+        if vals.count >= TPPProblemDocumentCacheManager.CACHE_SIZE {
+            vals.removeFirst(1)
         }
+        vals.append(timeStampDoc)
+        cache[key] = vals
+        lock.unlock()
         NotificationCenter.default.post(name: NSNotification.Name.TPPProblemDocumentWasCached, object: doc)
     }
 
     @objc(clearCachedDocForBookIdentifier:)
     func clearCachedDoc(_ key: String) {
-        queue.sync {
-            cache[key] = nil
-        }
+        lock.lock()
+        cache[key] = nil
+        lock.unlock()
     }
 
     // MARK: - Read
 
     func getLastCachedDoc(_ key: String) -> TPPProblemDocument? {
-        queue.sync {
-            cache[key]?.last?.doc
-        }
+        lock.lock()
+        defer { lock.unlock() }
+        return cache[key]?.last?.doc
     }
 }
