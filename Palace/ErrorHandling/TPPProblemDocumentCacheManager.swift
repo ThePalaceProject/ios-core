@@ -25,7 +25,12 @@ extension Notification.Name {
     }
 
     private var cache = [String: [DocWithTimestamp]]()
-    private let queue = DispatchQueue(label: "org.thepalaceproject.problemDocumentCache")
+    // Concurrent queue: multiple readers run in parallel; writers use .barrier for exclusivity.
+    // This avoids the thread-pool exhaustion that serial queue + sync causes under high concurrency.
+    private let queue = DispatchQueue(
+        label: "org.thepalaceproject.problemDocumentCache",
+        attributes: .concurrent
+    )
 
     override init() {
         super.init()
@@ -35,7 +40,7 @@ extension Notification.Name {
 
     func cacheProblemDocument(_ doc: TPPProblemDocument, key: String) {
         let timeStampDoc = DocWithTimestamp(doc)
-        queue.sync {
+        queue.sync(flags: .barrier) {
             var vals = cache[key] ?? []
             if vals.count >= TPPProblemDocumentCacheManager.CACHE_SIZE {
                 vals.removeFirst(1)
@@ -48,7 +53,7 @@ extension Notification.Name {
 
     @objc(clearCachedDocForBookIdentifier:)
     func clearCachedDoc(_ key: String) {
-        queue.sync {
+        queue.sync(flags: .barrier) {
             cache[key] = nil
         }
     }
