@@ -100,8 +100,8 @@ class PlaybackRateTests: XCTestCase {
     let result078 = PlaybackRate.nearest(to: 0.78)
     XCTAssertTrue([.threeQuartersTime, .p080].contains(result078))
 
-    // 1.22 is closer to 1.25 than to 1.20
-    XCTAssertEqual(PlaybackRate.nearest(to: 1.22), .oneAndAQuarterTime)
+    // 1.22 is closer to 1.20 (distance 0.02) than to 1.25 (distance 0.03)
+    XCTAssertEqual(PlaybackRate.nearest(to: 1.22), .p120)
 
     // 1.98 is closer to 2.00 than to 1.95
     XCTAssertEqual(PlaybackRate.nearest(to: 1.98), .doubleTime)
