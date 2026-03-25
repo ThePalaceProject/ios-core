@@ -54,6 +54,9 @@ jobs:
         if: steps.tickets.outputs.found == 'true'
         continue-on-error: true
         env:
+          # Personal credentials are always used for JIRA ticket updates (comments,
+          # transitions). Org credentials are available via JIRA_EMAIL / JIRA_API_TOKEN
+          # for other steps that need them.
           JIRA_URL: ${{ secrets.JIRA_URL }}
           JIRA_EMAIL: ${{ secrets.JIRA_PERSONAL_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_PERSONAL_API_TOKEN }}

@@ -3,6 +3,10 @@ import Foundation
 public protocol CatalogRepositoryProtocol {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?
     func search(query: String, baseURL: URL) async throws -> CatalogFeed?
+    /// Search using a known OpenSearch descriptor URL, skipping the groups feed fetch.
+    func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed?
+    /// Fetch a groups feed and return its entry-point format facets.
+    func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry]
     func fetchFeed(at url: URL) async throws -> CatalogFeed?
     func invalidateCache(for url: URL)
 }
@@ -12,6 +16,11 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     private var memoryCache: [String: CachedFeed] = [:]
     private let cacheQueue = DispatchQueue(label: "catalog.cache.queue", qos: .userInitiated)
     private static let lastAppLaunchKey = "CatalogRepository.lastAppLaunch"
+
+    /// Dedicated cache for format entry points, keyed by groups-feed URL.
+    /// Pre-warmed by loadTopLevelCatalog so search can display the format picker immediately
+    /// without an extra network round-trip when the user first opens search.
+    private var formatEntriesCache: [String: [SearchFormatEntry]] = [:]
 
     /// Track if we need to refresh stale content in background
     private var needsBackgroundRefresh = false
@@ -74,12 +83,14 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
         if let entry = cachedEntry, !entry.isExpired {
             Log.debug(#file, "Returning fresh cached catalog feed for \(url.absoluteString)")
+            prewarmFormatEntriesCache(from: entry.feed, cacheKey: cacheKey)
             return entry.feed
         }
 
         // Stale-while-revalidate: return stale content immediately, refresh in background
         if let entry = cachedEntry, entry.isStaleButUsable || needsBackgroundRefresh {
             Log.info(#file, "Returning stale cached catalog feed, refreshing in background: \(url.absoluteString)")
+            prewarmFormatEntriesCache(from: entry.feed, cacheKey: cacheKey)
 
             // Schedule background refresh
             Task.detached(priority: .utility) { [weak self] in
@@ -122,13 +133,13 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
                           userInfo: [NSLocalizedDescriptionKey: "Failed to fetch catalog feed"])
         }
 
-        // Cache the result
         await withCheckedContinuation { continuation in
             cacheQueue.async {
                 self.memoryCache[cacheKey] = CachedFeed(feed: feed, timestamp: Date())
                 continuation.resume()
             }
         }
+        prewarmFormatEntriesCache(from: feed, cacheKey: cacheKey)
 
         Task.detached(priority: .background) {
             await self.preloadRelatedFacets(from: feed)
@@ -156,9 +167,22 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
             // Preload related facets too
             await preloadRelatedFacets(from: feed)
+            prewarmFormatEntriesCache(from: feed, cacheKey: cacheKey)
 
         } catch {
             Log.warn(#file, "Background refresh failed (not critical): \(error.localizedDescription)")
+        }
+    }
+
+    /// Extract format entry points from a feed and store them in the format-entries cache
+    /// if not already populated. Called from all `loadTopLevelCatalog` code paths so the
+    /// search format picker has data immediately when the user opens search.
+    private func prewarmFormatEntriesCache(from feed: CatalogFeed, cacheKey: String) {
+        let entries = DefaultCatalogAPI.extractSearchEntryPoints(from: feed)
+        guard !entries.isEmpty else { return }
+        cacheQueue.async { [weak self] in
+            guard let self, self.formatEntriesCache[cacheKey] == nil else { return }
+            self.formatEntriesCache[cacheKey] = entries
         }
     }
 
@@ -182,6 +206,34 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
     public func search(query: String, baseURL: URL) async throws -> CatalogFeed? {
         try await api.search(query: query, baseURL: baseURL)
+    }
+
+    public func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
+        try await api.search(query: query, searchDescriptorURL: searchDescriptorURL)
+    }
+
+    public func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
+        let cacheKey = url.absoluteString
+
+        // Check the dedicated format-entries cache first. Pre-warmed by loadTopLevelCatalog
+        // so the search format picker has data without an extra network round-trip.
+        let cached = await withCheckedContinuation { (c: CheckedContinuation<[SearchFormatEntry]?, Never>) in
+            cacheQueue.async { [weak self] in
+                c.resume(returning: self?.formatEntriesCache[cacheKey])
+            }
+        }
+        if let cached, !cached.isEmpty {
+            return cached
+        }
+
+        // Cache miss — fetch from network and cache for next time.
+        let entries = try await api.fetchSearchEntryPoints(from: url)
+        if !entries.isEmpty {
+            cacheQueue.async { [weak self] in
+                self?.formatEntriesCache[cacheKey] = entries
+            }
+        }
+        return entries
     }
 
     public func fetchFeed(at url: URL) async throws -> CatalogFeed? {
