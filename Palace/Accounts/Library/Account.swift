@@ -80,7 +80,11 @@ protocol AccountLogoDelegate: AnyObject {
 
         let samlIdps: [OPDS2SamlIDP]?
         let oidcAuthenticationUrl: URL?
-        let oidcEndSessionUrl: URL?
+        /// Raw href from the OIDC auth document's "logout" rel link.
+        /// Stored as a String because the CM advertises a URI template
+        /// (RFC 6570) containing `{&post_logout_redirect_uri}`, which is
+        /// not a valid URL until the template variable is expanded.
+        let oidcLogoutHref: String?
 
         init(auth: OPDS2AuthenticationDocument.Authentication) {
             let authType = AuthType.from(auth.type)
@@ -102,7 +106,7 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
 
             case .oauthIntermediary:
                 oauthIntermediaryUrl = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
@@ -111,7 +115,7 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
 
             case .saml:
                 samlIdps = auth.links?.filter { $0.rel == "authenticate" }.compactMap { OPDS2SamlIDP(opdsLink: $0) }
@@ -120,11 +124,11 @@ protocol AccountLogoDelegate: AnyObject {
                 coppaOverUrl = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
 
             case .oidc:
                 oidcAuthenticationUrl = URL(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
-                oidcEndSessionUrl = URL(string: auth.links?.first(where: { $0.rel == "sign-out" })?.href ?? "")
+                oidcLogoutHref = auth.links?.first(where: { $0.rel == "logout" })?.href
                 oauthIntermediaryUrl = nil
                 coppaUnderUrl = nil
                 coppaOverUrl = nil
@@ -138,7 +142,7 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
             case .token:
                 tokenURL = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
                 oauthIntermediaryUrl = nil
@@ -146,7 +150,7 @@ protocol AccountLogoDelegate: AnyObject {
                 coppaOverUrl = nil
                 samlIdps = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
 
             }
         }
@@ -214,7 +218,7 @@ protocol AccountLogoDelegate: AnyObject {
             samlIdps = authentication.samlIdps
             tokenURL = authentication.tokenURL
             oidcAuthenticationUrl = authentication.oidcAuthenticationUrl
-            oidcEndSessionUrl = authentication.oidcEndSessionUrl
+            oidcLogoutHref = authentication.oidcLogoutHref
         }
     }
 

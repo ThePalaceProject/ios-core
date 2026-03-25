@@ -1877,23 +1877,40 @@ final class OIDCExplicitLogoutTests: XCTestCase {
         super.tearDown()
     }
 
-    func testOIDCExplicitLogout_endSessionUrl_isParsedFromAuthDocument() {
+    func testOIDCExplicitLogout_logoutHref_isParsedFromAuthDocument() {
         let auth = libraryMock.oidcAuthentication
-        XCTAssertNotNil(auth.oidcEndSessionUrl,
-                        "OIDC auth document must provide a sign-out (end-session) URL")
+        XCTAssertNotNil(auth.oidcLogoutHref,
+                        "OIDC auth document must provide a logout href")
         XCTAssertEqual(
-            auth.oidcEndSessionUrl?.absoluteString,
-            "https://circulation.example.com/NYNYPL/oidc/end-session",
-            "oidcEndSessionUrl must be parsed from the 'sign-out' rel link")
+            auth.oidcLogoutHref,
+            "https://circulation.example.com/NYNYPL/oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}",
+            "oidcLogoutHref must be parsed verbatim from the 'logout' rel link (URI template preserved)")
     }
 
-    func testOIDCExplicitLogout_endSessionUrl_isNilForNonOIDCAuthTypes() {
-        XCTAssertNil(libraryMock.barcodeAuthentication.oidcEndSessionUrl,
-                     "Basic auth must not have an oidcEndSessionUrl")
-        XCTAssertNil(libraryMock.oauthAuthentication.oidcEndSessionUrl,
-                     "OAuth auth must not have an oidcEndSessionUrl")
-        XCTAssertNil(libraryMock.samlAuthentication.oidcEndSessionUrl,
-                     "SAML auth must not have an oidcEndSessionUrl")
+    func testOIDCExplicitLogout_logoutHref_isNilForNonOIDCAuthTypes() {
+        XCTAssertNil(libraryMock.barcodeAuthentication.oidcLogoutHref,
+                     "Basic auth must not have an oidcLogoutHref")
+        XCTAssertNil(libraryMock.oauthAuthentication.oidcLogoutHref,
+                     "OAuth auth must not have an oidcLogoutHref")
+        XCTAssertNil(libraryMock.samlAuthentication.oidcLogoutHref,
+                     "SAML auth must not have an oidcLogoutHref")
+    }
+
+    func testOIDCExplicitLogout_uriTemplate_isExpandedCorrectly() {
+        let template = "https://example.com/oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}"
+        let redirectURI = TPPSignInBusinessLogic.oidcPostLogoutRedirectURI
+
+        let encoded = redirectURI.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? redirectURI
+        let expected = "https://example.com/oidc/logout?provider=OpenID+Connect&post_logout_redirect_uri=\(encoded)"
+        let expanded = template.replacingOccurrences(
+            of: "{&post_logout_redirect_uri}",
+            with: "&post_logout_redirect_uri=\(encoded)"
+        )
+
+        XCTAssertEqual(expanded, expected,
+                       "URI template {&post_logout_redirect_uri} must expand to &post_logout_redirect_uri=<encoded-value>")
+        XCTAssertNotNil(URL(string: expanded),
+                        "Expanded logout URL must be a valid URL")
     }
 
     func testOIDCExplicitLogout_postLogoutRedirectURI_usesOIDCCallbackScheme() {

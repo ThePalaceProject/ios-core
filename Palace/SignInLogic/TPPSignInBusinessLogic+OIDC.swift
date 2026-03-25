@@ -36,12 +36,11 @@ extension TPPSignInBusinessLogic {
     /// provider's session that lives in the system Safari cookie store —
     /// otherwise a subsequent OIDC login silently auto-authenticates the patron.
     ///
-    /// The end_session URL is advertised by the CM via the "sign-out" rel link
-    /// in the OIDC authentication document. When absent, `completion` is called
-    /// immediately so the sign-out pipeline is never blocked.
-    ///
-    /// Logout is best-effort: cancellation and errors call `completion` without
-    /// surfacing an error to the patron.
+    /// The end_session URL is advertised by the CM via the "logout" rel link
+    /// in the OIDC authentication document as an RFC 6570 URI template. When
+    /// absent, `completion` is called immediately so the pipeline is never
+    /// blocked. Logout is best-effort: errors call `completion` without
+    /// surfacing anything to the patron.
     func oidcLogOut(completion: @escaping () -> Void) {
         // ASWebAuthenticationSession has no valid presentation context in the
         // test runner — skip the browser step and complete immediately.
@@ -52,27 +51,41 @@ extension TPPSignInBusinessLogic {
         }
         #endif
 
-        guard let endSessionURL = selectedAuthentication?.oidcEndSessionUrl else {
+        guard let logoutHref = selectedAuthentication?.oidcLogoutHref else {
             completion()
             return
         }
 
-        guard var urlComponents = URLComponents(url: endSessionURL, resolvingAgainstBaseURL: true) else {
-            Log.warn(#file, "OIDC end-session URL is malformed — skipping browser logout")
-            completion()
-            return
-        }
+        // The CM advertises the logout endpoint as an RFC 6570 URI template, e.g.:
+        //   .../oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}
+        // The `{&post_logout_redirect_uri}` expression is a "query continuation"
+        // operator that expands to `&post_logout_redirect_uri=<encoded-value>`.
+        let encodedRedirect = Self.oidcPostLogoutRedirectURI
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+            ?? Self.oidcPostLogoutRedirectURI
 
-        let redirectParam = URLQueryItem(name: "post_logout_redirect_uri",
-                                         value: Self.oidcPostLogoutRedirectURI)
-        if urlComponents.queryItems != nil {
-            urlComponents.queryItems?.append(redirectParam)
+        let expandedHref: String
+        let templateToken = "{&post_logout_redirect_uri}"
+        if logoutHref.contains(templateToken) {
+            expandedHref = logoutHref.replacingOccurrences(
+                of: templateToken,
+                with: "&post_logout_redirect_uri=\(encodedRedirect)"
+            )
         } else {
-            urlComponents.queryItems = [redirectParam]
+            // Non-templated URL: append the parameter in the conventional way.
+            guard var components = URLComponents(string: logoutHref) else {
+                Log.warn(#file, "OIDC logout href is malformed — skipping browser logout")
+                completion()
+                return
+            }
+            let item = URLQueryItem(name: "post_logout_redirect_uri",
+                                    value: Self.oidcPostLogoutRedirectURI)
+            components.queryItems = (components.queryItems ?? []) + [item]
+            expandedHref = components.url?.absoluteString ?? logoutHref
         }
 
-        guard let finalURL = urlComponents.url else {
-            Log.warn(#file, "OIDC end-session URL could not be constructed — skipping browser logout")
+        guard let finalURL = URL(string: expandedHref) else {
+            Log.warn(#file, "OIDC logout URL could not be constructed — skipping browser logout")
             completion()
             return
         }
