@@ -18,90 +18,66 @@ extension TPPSignInBusinessLogic {
     static let oidcCallbackScheme = "palace-oidc-callback"
     static let oidcCallbackHost  = "org.thepalaceproject.oidc"
 
-    /// Post-logout redirect URI sent to the CM's end_session endpoint.
-    /// Uses the `/logout` path to distinguish the redirect from a login callback.
-    static let oidcPostLogoutRedirectURI =
-        "\(oidcCallbackScheme)://\(oidcCallbackHost)/logout"
-
     /// Builds the callback URL the CM should redirect to after OIDC login.
     /// Format: `palace-oidc-callback://org.thepalaceproject.oidc/callback`
     private var oidcRedirectURI: String {
         "\(Self.oidcCallbackScheme)://\(Self.oidcCallbackHost)/callback"
     }
 
-    /// Terminates the OIDC browser session by opening the CM's end_session
-    /// endpoint in an `ASWebAuthenticationSession`.
+    /// Calls the CM's OIDC logout endpoint as an authenticated REST request.
     ///
-    /// This mirrors the `clearWebViewData()` pattern used for SAML/OAuth: after
-    /// local credentials are wiped we must also invalidate the identity
-    /// provider's session that lives in the system Safari cookie store —
-    /// otherwise a subsequent OIDC login silently auto-authenticates the patron.
+    /// The CM's logout endpoint (`rel="logout"`) requires `Authorization: Bearer <token>`
+    /// to identify the patron's session. Because the access token is cleared from
+    /// the keychain by `userAccount.removeAll()` before this method is called, the
+    /// token must be captured beforehand and passed in as `accessToken`.
     ///
-    /// The end_session URL is advertised by the CM via the "logout" rel link
-    /// in the OIDC authentication document as an RFC 6570 URI template. When
-    /// absent, `completion` is called immediately so the pipeline is never
-    /// blocked. Logout is best-effort: errors call `completion` without
-    /// surfacing anything to the patron.
-    func oidcLogOut(completion: @escaping () -> Void) {
-        // ASWebAuthenticationSession has no valid presentation context in the
-        // test runner — skip the browser step and complete immediately.
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
-            completion()
-            return
-        }
-        #endif
-
+    /// The endpoint URL is an RFC 6570 URI template. We expand it without
+    /// `post_logout_redirect_uri` since this is a direct API call, not a browser redirect.
+    ///
+    /// Logout is best-effort: any server error calls `completion` without
+    /// surfacing anything to the patron, since local credentials are already cleared.
+    func oidcLogOut(accessToken: String?, completion: @escaping () -> Void) {
         guard let logoutHref = selectedAuthentication?.oidcLogoutHref else {
             completion()
             return
         }
 
-        // Expand the RFC 6570 URI template using std-uritemplate (same library
-        // as CPW uses). The CM advertises the logout href as a Level 4 template:
-        //   .../oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}
-        // StdUriTemplate handles percent-encoding, nil variable omission, and
-        // all four RFC 6570 operator types correctly.
-        let substitutions: [String: Any] = [
-            "post_logout_redirect_uri": Self.oidcPostLogoutRedirectURI
-        ]
+        guard let token = accessToken else {
+            Log.warn(#file, "OIDC logout: no access token available — skipping CM session invalidation")
+            completion()
+            return
+        }
 
+        // Expand the template without post_logout_redirect_uri — omitted optional
+        // variables are dropped cleanly by std-uritemplate.
         let expandedHref: String
         do {
-            expandedHref = try StdUriTemplate.expand(logoutHref, substitutions: substitutions)
+            expandedHref = try StdUriTemplate.expand(logoutHref, substitutions: [:])
         } catch {
-            Log.warn(#file, "OIDC logout URI template expansion failed: \(error) — skipping browser logout")
+            Log.warn(#file, "OIDC logout URI template expansion failed: \(error) — skipping CM session invalidation")
             completion()
             return
         }
 
-        guard let finalURL = URL(string: expandedHref) else {
-            Log.warn(#file, "OIDC logout URL could not be constructed — skipping browser logout")
+        guard let logoutURL = URL(string: expandedHref) else {
+            Log.warn(#file, "OIDC logout URL could not be constructed — skipping CM session invalidation")
             completion()
             return
         }
 
-        let session = ASWebAuthenticationSession(
-            url: finalURL,
-            callbackURLScheme: Self.oidcCallbackScheme
-        ) { _, _ in
-            completion()
-        }
+        var request = URLRequest(url: logoutURL, applyingCustomUserAgent: true)
+        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        TPPMainThreadRun.asyncIfNeeded { [weak self] in
-            guard let self = self else {
-                completion()
-                return
+        Log.debug(#file, "OIDC logout: calling CM end-session endpoint: \(logoutURL)")
+
+        networker.executeRequest(request, enableTokenRefresh: false) { result in
+            switch result {
+            case .success:
+                Log.debug(#file, "OIDC logout: CM session invalidated successfully")
+            case .failure(let error, _):
+                Log.warn(#file, "OIDC logout: CM session invalidation failed (best-effort): \(error.localizedDescription)")
             }
-            if let anchor = self.uiDelegate as? ASWebAuthenticationPresentationContextProviding {
-                session.presentationContextProvider = anchor
-            } else {
-                session.presentationContextProvider = self
-            }
-            // Non-ephemeral so the session operates in the shared Safari context
-            // where the IdP (e.g. Google) session cookies actually live.
-            session.prefersEphemeralWebBrowserSession = false
-            session.start()
+            completion()
         }
     }
 

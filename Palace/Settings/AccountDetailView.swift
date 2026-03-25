@@ -131,15 +131,11 @@ struct AccountDetailView: View {
     private func samlIDPList(idps: [OPDS2SamlIDP]) -> some View {
         VStack(spacing: Layout.buttonIDPSpacing) {
             ForEach(idps, id: \.displayName) { idp in
-                HStack {
-                    ActionButtonView(
-                        title: Strings.Generic.signin,
-                        isLoading: viewModel.isLoading,
-                        action: { viewModel.selectSAMLIDP(idp) }
-                    )
-                    .frame(width: Layout.buttonWidth)
-                    Spacer()
-                }
+                ActionButtonView(
+                    title: Strings.Generic.signin,
+                    isLoading: viewModel.isLoading,
+                    action: { viewModel.selectSAMLIDP(idp) }
+                )
             }
         }
         .padding(.horizontal, Layout.horizontalPadding)
@@ -149,15 +145,11 @@ struct AccountDetailView: View {
     }
 
     private var singleSignInButton: some View {
-        HStack {
-            ActionButtonView(
-                title: Strings.Generic.signin,
-                isLoading: viewModel.isLoading,
-                action: { viewModel.signIn() }
-            )
-            .frame(width: Layout.buttonWidth)
-            Spacer()
-        }
+        ActionButtonView(
+            title: Strings.Generic.signin,
+            isLoading: viewModel.isLoading,
+            action: { viewModel.signIn() }
+        )
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.top, Layout.verticalPaddingLarge)
         // Force view refresh when isLoading changes
@@ -167,13 +159,14 @@ struct AccountDetailView: View {
     @ViewBuilder
     private var registrationLinkIfAvailable: some View {
         if viewModel.businessLogic.registrationIsPossible() {
-            Button(action: { viewModel.openRegistration() }) {
-                Text(DisplayStrings.signUpForCard)
-                    .foregroundColor(Color(TPPConfiguration.mainColor()))
-                    .horizontallyCentered()
-            }
+            ActionButtonView(
+                title: DisplayStrings.signUpForCard,
+                isLoading: false,
+                style: .secondary,
+                action: { viewModel.openRegistration() }
+            )
             .padding(.horizontal, Layout.horizontalPadding)
-            .padding(.top, Layout.verticalPaddingLarge)
+            .padding(.top, Layout.verticalPaddingMedium)
         }
     }
 

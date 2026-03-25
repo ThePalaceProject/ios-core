@@ -1897,38 +1897,34 @@ final class OIDCExplicitLogoutTests: XCTestCase {
                      "SAML auth must not have an oidcLogoutHref")
     }
 
+    /// The CM logout endpoint is called as a direct REST API request (Authorization: Bearer).
+    /// We expand the URI template with no substitutions so the optional
+    /// `{&post_logout_redirect_uri}` variable is cleanly dropped.
     func testOIDCExplicitLogout_uriTemplate_isExpandedCorrectly() {
         let template = "https://example.com/oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}"
-        let redirectURI = TPPSignInBusinessLogic.oidcPostLogoutRedirectURI
 
-        let expanded = try? StdUriTemplate.expand(
-            template,
-            substitutions: ["post_logout_redirect_uri": redirectURI]
-        )
+        let expanded = try? StdUriTemplate.expand(template, substitutions: [:])
 
         XCTAssertNotNil(expanded,
                         "StdUriTemplate must expand the logout template without error")
-        XCTAssertTrue(expanded?.contains("post_logout_redirect_uri=") == true,
-                      "Expanded URL must contain the post_logout_redirect_uri parameter")
+        XCTAssertFalse(expanded?.contains("post_logout_redirect_uri") == true,
+                       "Expanded URL must NOT contain post_logout_redirect_uri when using direct API call")
         XCTAssertNotNil(expanded.flatMap { URL(string: $0) },
                         "Expanded logout URL must be a valid URL")
     }
 
-    func testOIDCExplicitLogout_postLogoutRedirectURI_usesOIDCCallbackScheme() {
-        XCTAssertTrue(
-            TPPSignInBusinessLogic.oidcPostLogoutRedirectURI.hasPrefix(
-                TPPSignInBusinessLogic.oidcCallbackScheme),
-            "Post-logout redirect URI must use the palace-oidc-callback scheme")
-        XCTAssertTrue(
-            TPPSignInBusinessLogic.oidcPostLogoutRedirectURI.hasSuffix("/logout"),
-            "Post-logout redirect URI must use the /logout path to distinguish it from a login callback")
+    func testOIDCLogin_callbackScheme_isCorrect() {
+        XCTAssertEqual(TPPSignInBusinessLogic.oidcCallbackScheme, "palace-oidc-callback",
+                       "OIDC callback scheme must match the registered URL scheme")
+        XCTAssertEqual(TPPSignInBusinessLogic.oidcCallbackHost, "org.thepalaceproject.oidc",
+                       "OIDC callback host must match the registered URL scheme host")
     }
 
     func testOIDCExplicitLogout_withNoEndSessionUrl_callsCompletionImmediately() {
         businessLogic.selectedAuthentication = nil
 
         let exp = expectation(description: "Completion called")
-        businessLogic.oidcLogOut {
+        businessLogic.oidcLogOut(accessToken: nil) {
             exp.fulfill()
         }
         waitForExpectations(timeout: 2.0)
@@ -1981,41 +1977,32 @@ final class OIDCExplicitLogoutTests: XCTestCase {
 
     // MARK: - URI template expansion: value correctness
 
-    func testOIDCExplicitLogout_expandedURL_containsRedirectURIValue() {
-        // More specific than testOIDCExplicitLogout_uriTemplate_isExpandedCorrectly:
-        // verifies the actual redirect URI value appears in the expanded URL, not just the key.
+    /// The CM logout endpoint is a REST API — we expand the template with empty
+    /// substitutions so the optional redirect URI variable is cleanly dropped.
+    /// The resulting URL is then called with Authorization: Bearer <token>.
+    func testOIDCExplicitLogout_expandedURL_doesNotContainRedirectURI() {
         let template = "https://example.com/oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}"
-        let redirectURI = TPPSignInBusinessLogic.oidcPostLogoutRedirectURI
 
-        let expanded = try? StdUriTemplate.expand(
-            template,
-            substitutions: ["post_logout_redirect_uri": redirectURI]
-        )
+        let expanded = try? StdUriTemplate.expand(template, substitutions: [:])
 
-        // StdUriTemplate percent-encodes the value per RFC 6570 (unreserved chars
-        // like letters, digits, -, _, ., ~ are NOT encoded; others are).
-        // The scheme "palace-oidc-callback" contains only unreserved chars after
-        // the colon, so the scheme name itself will appear literally.
-        XCTAssertTrue(
-            expanded?.contains("post_logout_redirect_uri=palace-oidc-callback") == true,
-            "Expanded URL must contain the redirect URI scheme as the parameter value; got: \(expanded ?? "nil")"
+        XCTAssertFalse(
+            expanded?.contains("post_logout_redirect_uri") == true,
+            "Direct API call must NOT include post_logout_redirect_uri; got: \(expanded ?? "nil")"
         )
         XCTAssertTrue(
-            expanded?.contains("/logout") == true,
-            "Expanded URL must include the /logout path from the redirect URI; got: \(expanded ?? "nil")"
+            expanded?.contains("provider=OpenID+Connect") == true,
+            "Existing query params must be preserved; got: \(expanded ?? "nil")"
         )
+        XCTAssertNotNil(expanded.flatMap { URL(string: $0) },
+                        "Expanded logout URL must be a valid URL for network request")
     }
 
-    func testOIDCExplicitLogout_icarusRealWorldTemplate_expandsToValidURL() {
-        // Uses the exact template format Icarus sends (provider param already in
-        // the href, logout variable in query-continuation position).
+    func testOIDCExplicitLogout_icarusRealWorldTemplate_expandsToValidAPIURL() {
+        // Uses the exact template Icarus sends. Expanding without substitutions
+        // produces the clean URL we send as a REST request with Bearer auth.
         let icarusTemplate = "https://minotaur.dev.palaceproject.io/icarus-test-library/oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}"
-        let redirectURI = TPPSignInBusinessLogic.oidcPostLogoutRedirectURI
 
-        let expanded = try? StdUriTemplate.expand(
-            icarusTemplate,
-            substitutions: ["post_logout_redirect_uri": redirectURI]
-        )
+        let expanded = try? StdUriTemplate.expand(icarusTemplate, substitutions: [:])
 
         XCTAssertNotNil(expanded, "Icarus real-world template must expand without error")
         XCTAssertNotNil(expanded.flatMap { URL(string: $0) },
@@ -2024,9 +2011,9 @@ final class OIDCExplicitLogoutTests: XCTestCase {
             expanded?.contains("provider=OpenID+Connect") == true,
             "Existing query params must be preserved in the expanded URL; got: \(expanded ?? "nil")"
         )
-        XCTAssertTrue(
-            expanded?.contains("post_logout_redirect_uri=") == true,
-            "Template variable must be expanded into the URL; got: \(expanded ?? "nil")"
+        XCTAssertFalse(
+            expanded?.contains("post_logout_redirect_uri") == true,
+            "API-style logout must not include redirect URI; got: \(expanded ?? "nil")"
         )
     }
 
