@@ -90,6 +90,9 @@
     "links": [{
       "href": "https://circulation.example.com/NYNYPL/oidc/authenticate?provider=OpenID+Connect",
       "rel": "authenticate"
+    }, {
+      "href": "https://circulation.example.com/NYNYPL/oidc/end-session",
+      "rel": "sign-out"
     }]
   }],
   "announcements": [],

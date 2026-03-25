@@ -80,6 +80,7 @@ protocol AccountLogoDelegate: AnyObject {
 
         let samlIdps: [OPDS2SamlIDP]?
         let oidcAuthenticationUrl: URL?
+        let oidcEndSessionUrl: URL?
 
         init(auth: OPDS2AuthenticationDocument.Authentication) {
             let authType = AuthType.from(auth.type)
@@ -101,6 +102,7 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
+                oidcEndSessionUrl = nil
 
             case .oauthIntermediary:
                 oauthIntermediaryUrl = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
@@ -109,6 +111,7 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
+                oidcEndSessionUrl = nil
 
             case .saml:
                 samlIdps = auth.links?.filter { $0.rel == "authenticate" }.compactMap { OPDS2SamlIDP(opdsLink: $0) }
@@ -117,9 +120,11 @@ protocol AccountLogoDelegate: AnyObject {
                 coppaOverUrl = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
+                oidcEndSessionUrl = nil
 
             case .oidc:
                 oidcAuthenticationUrl = URL(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
+                oidcEndSessionUrl = URL(string: auth.links?.first(where: { $0.rel == "sign-out" })?.href ?? "")
                 oauthIntermediaryUrl = nil
                 coppaUnderUrl = nil
                 coppaOverUrl = nil
@@ -133,6 +138,7 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
+                oidcEndSessionUrl = nil
             case .token:
                 tokenURL = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
                 oauthIntermediaryUrl = nil
@@ -140,6 +146,7 @@ protocol AccountLogoDelegate: AnyObject {
                 coppaOverUrl = nil
                 samlIdps = nil
                 oidcAuthenticationUrl = nil
+                oidcEndSessionUrl = nil
 
             }
         }
@@ -207,6 +214,7 @@ protocol AccountLogoDelegate: AnyObject {
             samlIdps = authentication.samlIdps
             tokenURL = authentication.tokenURL
             oidcAuthenticationUrl = authentication.oidcAuthenticationUrl
+            oidcEndSessionUrl = authentication.oidcEndSessionUrl
         }
     }
 

@@ -93,23 +93,14 @@ jobs:
           echo "date=$(git log -1 --format='%ai')" >> $GITHUB_OUTPUT
           echo "msg=$(git log -1 --format='%s')" >> $GITHUB_OUTPUT
 
-      - name: Resolve Jira credentials
-        id: jira-creds
-        run: |
-          if [ "${{ steps.pr.outputs.base }}" = "main" ]; then
-            echo "scope=org" >> $GITHUB_OUTPUT
-          else
-            echo "scope=personal" >> $GITHUB_OUTPUT
-          fi
-
       - name: Move tickets to Code Review
         id: jira-update
         if: steps.tickets.outputs.found == 'true'
         continue-on-error: true
         env:
-          JIRA_URL: ${{ steps.jira-creds.outputs.scope == 'org' && secrets.JIRA_URL || secrets.JIRA_URL }}
-          JIRA_EMAIL: ${{ steps.jira-creds.outputs.scope == 'org' && secrets.JIRA_EMAIL || secrets.JIRA_PERSONAL_EMAIL }}
-          JIRA_API_TOKEN: ${{ steps.jira-creds.outputs.scope == 'org' && secrets.JIRA_API_TOKEN || secrets.JIRA_PERSONAL_API_TOKEN }}
+          JIRA_URL: ${{ secrets.JIRA_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_PERSONAL_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_PERSONAL_API_TOKEN }}
           PR_NUM: ${{ steps.pr.outputs.num }}
           PR_URL: ${{ steps.pr.outputs.url }}
           PR_TITLE: ${{ steps.pr.outputs.title }}

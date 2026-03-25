@@ -1,11 +1,11 @@
 //
-//  TPPSignInOIDCTests.swift
-//  PalaceTests
+// TPPSignInOIDCTests.swift
+// PalaceTests
 //
-//  Tests for OIDC (OpenID Connect) patron authentication (PP-3474).
-//  Includes unit, integration, and regression tests.
+// Tests for OIDC (OpenID Connect) patron authentication
+// Includes unit, integration, and regression tests.
 //
-//  Copyright © 2026 The Palace Project. All rights reserved.
+// Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import XCTest
@@ -1230,7 +1230,10 @@ final class OIDCSignOutRegressionTests: XCTestCase {
                       "Sign-out must notify the UI delegate")
     }
 
-    func testSignOut_withOIDC_usesStandardPath_noSpecialLogoutFlow() {
+    /// OIDC sign-out now triggers an explicit browser-based logout (the
+    /// ASWebAuthenticationSession step is skipped in the test runner, so this
+    /// verifies the rest of the pipeline still completes cleanly).
+    func testSignOut_withOIDC_triggersExplicitLogoutFlowAndCompletesDeauthorization() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1250,7 +1253,7 @@ final class OIDCSignOutRegressionTests: XCTestCase {
         waitForExpectations(timeout: 5.0)
 
         XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
-                      "OIDC uses the same sign-out path as other auth types")
+                      "OIDC sign-out must notify the UI delegate when complete")
         XCTAssertNil(businessLogic.selectedIDP)
     }
 
@@ -1818,5 +1821,122 @@ final class OIDCNetworkLayer401Tests: XCTestCase {
 
         XCTAssertTrue(oidcNeedsBrowserReauth, "OIDC should match the browser re-auth path")
         XCTAssertTrue(samlNeedsBrowserReauth, "SAML should match the browser re-auth path")
+    }
+}
+
+// MARK: - OIDC Explicit Logout Tests
+
+/// OIDC login uses `ASWebAuthenticationSession` which shares the system Safari
+/// browser session (unlike SAML which uses WKWebView). On sign-out, clearing
+/// WKWebView data has no effect on the Safari session, so the IdP (e.g. Google)
+/// would auto-sign the patron back in on the next login attempt.
+///
+/// The fix mirrors the SAML pattern: after clearing local credentials, open an
+/// `ASWebAuthenticationSession` to the CM's end_session endpoint so the IdP
+/// session in Safari is also invalidated.
+final class OIDCExplicitLogoutTests: XCTestCase {
+
+    private var businessLogic: TPPSignInBusinessLogic!
+    private var libraryMock: TPPLibraryAccountMock!
+    private var uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock!
+    private var bookRegistryMock: TPPBookRegistryMock!
+    private var downloadsCenterMock: TPPMyBooksDownloadsCenterMock!
+    private var networkExecutor: TPPRequestExecutorMock!
+
+    override func setUp() {
+        super.setUp()
+        TPPUserAccountMock.resetShared()
+        libraryMock = TPPLibraryAccountMock()
+        uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
+        bookRegistryMock = TPPBookRegistryMock()
+        downloadsCenterMock = TPPMyBooksDownloadsCenterMock()
+        networkExecutor = TPPRequestExecutorMock()
+
+        businessLogic = TPPSignInBusinessLogic(
+            libraryAccountID: libraryMock.tppAccountUUID,
+            libraryAccountsProvider: libraryMock,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: bookRegistryMock,
+            bookDownloadsCenter: downloadsCenterMock,
+            userAccountProvider: TPPUserAccountMock.self,
+            networkExecutor: networkExecutor,
+            uiDelegate: uiDelegate,
+            drmAuthorizer: TPPDRMAuthorizingMock()
+        )
+    }
+
+    override func tearDown() {
+        networkExecutor.reset()
+        businessLogic.userAccount.removeAll()
+        businessLogic = nil
+        libraryMock = nil
+        uiDelegate = nil
+        bookRegistryMock = nil
+        downloadsCenterMock = nil
+        networkExecutor = nil
+        super.tearDown()
+    }
+
+    func testOIDCExplicitLogout_endSessionUrl_isParsedFromAuthDocument() {
+        let auth = libraryMock.oidcAuthentication
+        XCTAssertNotNil(auth.oidcEndSessionUrl,
+                        "OIDC auth document must provide a sign-out (end-session) URL")
+        XCTAssertEqual(
+            auth.oidcEndSessionUrl?.absoluteString,
+            "https://circulation.example.com/NYNYPL/oidc/end-session",
+            "oidcEndSessionUrl must be parsed from the 'sign-out' rel link")
+    }
+
+    func testOIDCExplicitLogout_endSessionUrl_isNilForNonOIDCAuthTypes() {
+        XCTAssertNil(libraryMock.barcodeAuthentication.oidcEndSessionUrl,
+                     "Basic auth must not have an oidcEndSessionUrl")
+        XCTAssertNil(libraryMock.oauthAuthentication.oidcEndSessionUrl,
+                     "OAuth auth must not have an oidcEndSessionUrl")
+        XCTAssertNil(libraryMock.samlAuthentication.oidcEndSessionUrl,
+                     "SAML auth must not have an oidcEndSessionUrl")
+    }
+
+    func testOIDCExplicitLogout_postLogoutRedirectURI_usesOIDCCallbackScheme() {
+        XCTAssertTrue(
+            TPPSignInBusinessLogic.oidcPostLogoutRedirectURI.hasPrefix(
+                TPPSignInBusinessLogic.oidcCallbackScheme),
+            "Post-logout redirect URI must use the palace-oidc-callback scheme")
+        XCTAssertTrue(
+            TPPSignInBusinessLogic.oidcPostLogoutRedirectURI.hasSuffix("/logout"),
+            "Post-logout redirect URI must use the /logout path to distinguish it from a login callback")
+    }
+
+    func testOIDCExplicitLogout_withNoEndSessionUrl_callsCompletionImmediately() {
+        businessLogic.selectedAuthentication = nil
+
+        let exp = expectation(description: "Completion called")
+        businessLogic.oidcLogOut {
+            exp.fulfill()
+        }
+        waitForExpectations(timeout: 2.0)
+    }
+
+    func testOIDCExplicitLogout_signOutPipeline_clearsTokenAndNotifiesDelegate() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.updateUserAccount(
+            forDRMAuthorization: true,
+            withBarcode: nil, pin: nil,
+            authToken: "oidc-token-to-clear",
+            expirationDate: nil,
+            patron: ["name": "Test Patron"],
+            cookies: nil
+        )
+        XCTAssertTrue(businessLogic.isSignedIn(), "Precondition: user must be signed in")
+
+        let exp = expectation(description: "Sign-out pipeline completes")
+        uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
+
+        businessLogic.performLogOut()
+        waitForExpectations(timeout: 5.0)
+
+        XCTAssertNil(businessLogic.userAccount.authToken,
+                     "OIDC access token must be cleared after explicit logout")
+        XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
+                      "UI delegate must be notified that deauthorization finished")
     }
 }
