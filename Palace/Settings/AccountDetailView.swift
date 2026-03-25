@@ -249,9 +249,13 @@ struct AccountDetailView: View {
 
             Spacer()
         }
-        .padding(.vertical, Layout.verticalPaddingSmall)
         .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets())
+        .listRowInsets(EdgeInsets(
+            top: Layout.verticalPaddingSmall,
+            leading: Layout.horizontalPadding,
+            bottom: Layout.verticalPaddingSmall,
+            trailing: Layout.horizontalPadding
+        ))
     }
 
     @ViewBuilder
