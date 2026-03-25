@@ -90,6 +90,9 @@ struct AccountDetailView: View {
     }
 
     private var libraryHeaderSection: some View {
+        // fixedSize makes the HStack shrink-wrap its content so the frame
+        // centers the tight logo+title unit rather than centering an
+        // expanded Text that has already consumed all available width.
         HStack(spacing: Layout.logoSpacing) {
             if let logo = viewModel.libraryLogo {
                 Image(uiImage: logo)
@@ -102,8 +105,10 @@ struct AccountDetailView: View {
             Text(viewModel.libraryName)
                 .palaceFont(.headline)
                 .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
         }
-        .horizontallyCentered()
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.vertical, Layout.verticalPaddingLarge)
     }
