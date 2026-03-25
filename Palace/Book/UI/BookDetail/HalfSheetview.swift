@@ -75,7 +75,14 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                         DispatchQueue.main.async {
                             viewModel.handleAction(for: type)
                         }
-                    case .return, .remove:
+                    case .return:
+                        if viewModel.isReturning {
+                            didChangeState = true
+                            viewModel.handleAction(for: .return)
+                        } else {
+                            viewModel.bookState = .returning
+                        }
+                    case .remove:
                         didChangeState = true
                         viewModel.handleAction(for: type)
                     default:
@@ -95,7 +102,14 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                         DispatchQueue.main.async {
                             viewModel.handleAction(for: type)
                         }
-                    case .return, .remove:
+                    case .return:
+                        if viewModel.isReturning {
+                            didChangeState = true
+                            viewModel.handleAction(for: .return)
+                        } else {
+                            viewModel.bookState = .returning
+                        }
+                    case .remove:
                         didChangeState = true
                         viewModel.handleAction(for: type)
                     default:
