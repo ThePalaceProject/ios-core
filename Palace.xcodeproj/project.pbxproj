@@ -649,6 +649,7 @@
 		E50547482E625377007CCFAB /* BookService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50547472E625377007CCFAB /* BookService.swift */; };
 		E50547492E625377007CCFAB /* BookService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50547472E625377007CCFAB /* BookService.swift */; };
 		E50BC9DD2CBF6FE900660937 /* PureLayout in Frameworks */ = {isa = PBXBuildFile; productRef = E50BC9DC2CBF6FE900660937 /* PureLayout */; };
+		B09BD42AE9864972885FDCD8 /* stduritemplate in Frameworks */ = {isa = PBXBuildFile; productRef = 7CE7C1867C784CE1A1ECBC0E /* stduritemplate */; };
 		E50D684326AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */; };
 		E50D684426AB235400F1042B /* TPPReaderTOCCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7386C1F9245276CA004C78BD /* TPPReaderTOCCell.swift */; };
 		E50D684626AB235400F1042B /* TPPReaderBookmarkCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */; };
@@ -2231,6 +2232,7 @@
 				E7498A8C2A0E7F460037DD93 /* FirebaseMessaging in Frameworks */,
 				E5E9AFF42CC0357500366A2E /* ReadiumStreamer in Frameworks */,
 				E50BC9DD2CBF6FE900660937 /* PureLayout in Frameworks */,
+				B09BD42AE9864972885FDCD8 /* stduritemplate in Frameworks */,
 				E7498A8A2A0E7F460037DD93 /* FirebaseDynamicLinks in Frameworks */,
 				E5E9AFF02CC0357500366A2E /* ReadiumNavigator in Frameworks */,
 				A823D811192BABA400B55DE2 /* Foundation.framework in Frameworks */,
@@ -4415,6 +4417,7 @@
 				E5E9B21D2CC1A7BB00366A2E /* ReadiumAdapterGCDWebServer */,
 				E5E4AAD02EB2929600CC1D67 /* FirebaseRemoteConfig */,
 				E5E4AAD22EB2929600CC1D67 /* FirebaseRemoteConfigSwift */,
+				7CE7C1867C784CE1A1ECBC0E /* stduritemplate */,
 			);
 			productName = Simplified;
 			productReference = A823D80D192BABA400B55DE2 /* Palace.app */;
@@ -4496,6 +4499,7 @@
 				E58EAE1F2ECCC53200CDA626 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */,
 				E58EAE982ECCDC5D00CDA626 /* XCRemoteSwiftPackageReference "swift-atomics" */,
 				E58EB0792ECCFE0E00CDA626 /* XCRemoteSwiftPackageReference "transifex-swift" */,
+				E7D51772BFB94BFBA1AE8862 /* XCRemoteSwiftPackageReference "std-uritemplate-swift" */,
 			);
 			productRefGroup = A823D80E192BABA400B55DE2 /* Products */;
 			projectDirPath = "";
@@ -6549,6 +6553,14 @@
 				version = 1.0.2;
 			};
 		};
+		E7D51772BFB94BFBA1AE8862 /* XCRemoteSwiftPackageReference "std-uritemplate-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/std-uritemplate/std-uritemplate-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.8;
+			};
+		};
 		E7498A842A0E7F460037DD93 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
@@ -6601,6 +6613,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E50BC9DB2CBF6FE900660937 /* XCRemoteSwiftPackageReference "PureLayout" */;
 			productName = PureLayout;
+		};
+		7CE7C1867C784CE1A1ECBC0E /* stduritemplate */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E7D51772BFB94BFBA1AE8862 /* XCRemoteSwiftPackageReference "std-uritemplate-swift" */;
+			productName = stduritemplate;
 		};
 		E5E4AAD02EB2929600CC1D67 /* FirebaseRemoteConfig */ = {
 			isa = XCSwiftPackageProductDependency;

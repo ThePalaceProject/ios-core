@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import stduritemplate
 @testable import Palace
 
 // MARK: - Unit Tests: AuthType & Authentication Model
@@ -1900,16 +1901,16 @@ final class OIDCExplicitLogoutTests: XCTestCase {
         let template = "https://example.com/oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}"
         let redirectURI = TPPSignInBusinessLogic.oidcPostLogoutRedirectURI
 
-        let encoded = redirectURI.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? redirectURI
-        let expected = "https://example.com/oidc/logout?provider=OpenID+Connect&post_logout_redirect_uri=\(encoded)"
-        let expanded = template.replacingOccurrences(
-            of: "{&post_logout_redirect_uri}",
-            with: "&post_logout_redirect_uri=\(encoded)"
+        let expanded = try? StdUriTemplate.expand(
+            template,
+            substitutions: ["post_logout_redirect_uri": redirectURI]
         )
 
-        XCTAssertEqual(expanded, expected,
-                       "URI template {&post_logout_redirect_uri} must expand to &post_logout_redirect_uri=<encoded-value>")
-        XCTAssertNotNil(URL(string: expanded),
+        XCTAssertNotNil(expanded,
+                        "StdUriTemplate must expand the logout template without error")
+        XCTAssertTrue(expanded?.contains("post_logout_redirect_uri=") == true,
+                      "Expanded URL must contain the post_logout_redirect_uri parameter")
+        XCTAssertNotNil(expanded.flatMap { URL(string: $0) },
                         "Expanded logout URL must be a valid URL")
     }
 

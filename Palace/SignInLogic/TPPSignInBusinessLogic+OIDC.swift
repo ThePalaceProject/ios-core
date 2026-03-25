@@ -7,6 +7,7 @@
 //
 
 import AuthenticationServices
+import stduritemplate
 
 extension TPPSignInBusinessLogic {
 
@@ -56,32 +57,22 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        // The CM advertises the logout endpoint as an RFC 6570 URI template, e.g.:
+        // Expand the RFC 6570 URI template using std-uritemplate (same library
+        // as CPW uses). The CM advertises the logout href as a Level 4 template:
         //   .../oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}
-        // The `{&post_logout_redirect_uri}` expression is a "query continuation"
-        // operator that expands to `&post_logout_redirect_uri=<encoded-value>`.
-        let encodedRedirect = Self.oidcPostLogoutRedirectURI
-            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-            ?? Self.oidcPostLogoutRedirectURI
+        // StdUriTemplate handles percent-encoding, nil variable omission, and
+        // all four RFC 6570 operator types correctly.
+        let substitutions: [String: Any] = [
+            "post_logout_redirect_uri": Self.oidcPostLogoutRedirectURI
+        ]
 
         let expandedHref: String
-        let templateToken = "{&post_logout_redirect_uri}"
-        if logoutHref.contains(templateToken) {
-            expandedHref = logoutHref.replacingOccurrences(
-                of: templateToken,
-                with: "&post_logout_redirect_uri=\(encodedRedirect)"
-            )
-        } else {
-            // Non-templated URL: append the parameter in the conventional way.
-            guard var components = URLComponents(string: logoutHref) else {
-                Log.warn(#file, "OIDC logout href is malformed — skipping browser logout")
-                completion()
-                return
-            }
-            let item = URLQueryItem(name: "post_logout_redirect_uri",
-                                    value: Self.oidcPostLogoutRedirectURI)
-            components.queryItems = (components.queryItems ?? []) + [item]
-            expandedHref = components.url?.absoluteString ?? logoutHref
+        do {
+            expandedHref = try StdUriTemplate.expand(logoutHref, substitutions: substitutions)
+        } catch {
+            Log.warn(#file, "OIDC logout URI template expansion failed: \(error) — skipping browser logout")
+            completion()
+            return
         }
 
         guard let finalURL = URL(string: expandedHref) else {
