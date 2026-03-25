@@ -91,7 +91,8 @@ public final class DefaultCatalogAPI: CatalogAPI {
         for case let link as TPPOPDSLink in opdsFeed.links {
             guard link.rel == TPPOPDSRelationFacet,
                   let href = link.href,
-                  let title = link.title else { continue }
+                  let title = link.title,
+                  !title.isEmpty else { continue }
 
             var isEntryPoint = false
             for (key, _) in link.attributes {

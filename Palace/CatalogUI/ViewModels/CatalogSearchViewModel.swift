@@ -167,7 +167,8 @@ class CatalogSearchViewModel: ObservableObject {
 
             // Post-search facets carry the current query in the URL — use them for fast
             // format switching without going through the OpenSearch descriptor flow again.
-            if let directURL = postSearchFacets[selectedEntry.title] {
+            // Keys are normalized to lowercase to handle backend title casing differences.
+            if let directURL = postSearchFacets[selectedEntry.title.lowercased()] {
                 return .directURL(directURL)
             }
 
@@ -317,7 +318,8 @@ class CatalogSearchViewModel: ObservableObject {
                 }
             }
             if isEntryPoint {
-                postSearchFacets[title] = href
+                // Lowercase key so lookups are case-insensitive across different backends
+                postSearchFacets[title.lowercased()] = href
             }
         }
     }

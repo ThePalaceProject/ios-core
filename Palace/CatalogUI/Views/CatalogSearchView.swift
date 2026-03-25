@@ -128,35 +128,26 @@ struct CatalogSearchView: View {
 // MARK: - Private Views
 private extension CatalogSearchView {
     var formatFilterRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(Array(viewModel.formatEntries.enumerated()), id: \.element.id) { index, entry in
-                    Button(action: { viewModel.selectFormat(at: index) }) {
-                        Text(entry.title)
-                            .font(.subheadline)
-                            .fontWeight(viewModel.selectedFormatIndex == index ? .semibold : .regular)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(
-                                viewModel.selectedFormatIndex == index
-                                    ? Color.accentColor
-                                    : Color(.systemGray5)
-                            )
-                            .foregroundColor(
-                                viewModel.selectedFormatIndex == index ? .white : .primary
-                            )
-                            .cornerRadius(16)
-                    }
-                    .accessibilityIdentifier(AccessibilityID.Search.formatFilterChip(entry.title))
-                    .accessibilityAddTraits(viewModel.selectedFormatIndex == index ? .isSelected : [])
+        HStack {
+            Picker(
+                NSLocalizedString("Format", comment: "Format filter picker label"),
+                selection: Binding(
+                    get: { viewModel.selectedFormatIndex },
+                    set: { viewModel.selectFormat(at: $0) }
+                )
+            ) {
+                ForEach(viewModel.formatEntries.indices, id: \.self) { idx in
+                    Text(viewModel.formatEntries[idx].title).tag(idx)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .pickerStyle(.segmented)
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier(AccessibilityID.Search.formatFilterRow)
         }
-        .accessibilityIdentifier(AccessibilityID.Search.formatFilterRow)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(NSLocalizedString("Format filter", comment: "VoiceOver label for format filter row"))
+        .frame(maxWidth: 700)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     var searchBar: some View {
