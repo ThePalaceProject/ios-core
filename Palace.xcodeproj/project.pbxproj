@@ -560,6 +560,7 @@
 		BSMA00012F0F000100000002 /* BookCellModelStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BSMA00012F0F000000000002 /* BookCellModelStateTests.swift */; };
 		BSMA00012F0F000100000003 /* BookCellModelCacheInvalidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BSMA00012F0F000000000003 /* BookCellModelCacheInvalidationTests.swift */; };
 		BSMA00012F0F000100000004 /* TPPBookRegistryRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BSMA00012F0F000000000004 /* TPPBookRegistryRecordTests.swift */; };
+		BSMA00012F0F000100000005 /* BookCellModelActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BSMA00012F0F000000000005 /* BookCellModelActionTests.swift */; };
 		BTRF00012F1900010000001B /* MyBooksSimplifiedBearerTokenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BTRF00012F1900010000001A /* MyBooksSimplifiedBearerTokenTests.swift */; };
 		BTRF00012F1900020000001B /* TPPBookBearerTokenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BTRF00012F1900020000001A /* TPPBookBearerTokenTests.swift */; };
 		C0FC0D33083455384EE64A71 /* AudiobookSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E5BAC81314C28A366BF6BB7 /* AudiobookSessionManager.swift */; };
@@ -1758,6 +1759,7 @@
 		BSMA00012F0F000000000002 /* BookCellModelStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModelStateTests.swift; sourceTree = "<group>"; };
 		BSMA00012F0F000000000003 /* BookCellModelCacheInvalidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModelCacheInvalidationTests.swift; sourceTree = "<group>"; };
 		BSMA00012F0F000000000004 /* TPPBookRegistryRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryRecordTests.swift; sourceTree = "<group>"; };
+		BSMA00012F0F000000000005 /* BookCellModelActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModelActionTests.swift; sourceTree = "<group>"; };
 		BTRF00012F1900010000001A /* MyBooksSimplifiedBearerTokenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksSimplifiedBearerTokenTests.swift; sourceTree = "<group>"; };
 		BTRF00012F1900020000001A /* TPPBookBearerTokenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookBearerTokenTests.swift; sourceTree = "<group>"; };
 		C36BFAE4E752CA9A1451CDCE /* EPUBPositionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EPUBPositionTests.swift; sourceTree = "<group>"; };
@@ -3687,6 +3689,7 @@
 				BSMA00012F0F000000000002 /* BookCellModelStateTests.swift */,
 				BSMA00012F0F000000000003 /* BookCellModelCacheInvalidationTests.swift */,
 				BSMA00012F0F000000000004 /* TPPBookRegistryRecordTests.swift */,
+				BSMA00012F0F000000000005 /* BookCellModelActionTests.swift */,
 				PP3702FR000000000000001 /* BookButtonMapperHoldReadyTests.swift */,
 			);
 			path = BookStateManagement;
@@ -4784,6 +4787,7 @@
 				BSMA00012F0F000100000002 /* BookCellModelStateTests.swift in Sources */,
 				BSMA00012F0F000100000003 /* BookCellModelCacheInvalidationTests.swift in Sources */,
 				BSMA00012F0F000100000004 /* TPPBookRegistryRecordTests.swift in Sources */,
+				BSMA00012F0F000100000005 /* BookCellModelActionTests.swift in Sources */,
 				7311FD2B25CBD086004447CB /* TPPSignInOutBusinessLogicUIDelegateMock.swift in Sources */,
 				E5A09A542F0D6F2A00CC23EA /* ProblemReportEmailTests.swift in Sources */,
 				2709574961502365B6E6808B /* CoverageGapTests.swift in Sources */,
