@@ -111,14 +111,8 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             }
         }
 
-    /// When true, the `registry.didSet` observer is suppressed.
-    /// Used by `load(account:)` which handles its own notifications to avoid
-    /// double-dispatch race conditions that cause EXC_BAD_ACCESS.
-    private var suppressRegistryDidSet = false
-
     private var registry = [String: TPPBookRegistryRecord]() {
         didSet {
-            guard !suppressRegistryDidSet else { return }
             // Capture snapshot while on sync queue to avoid concurrent read/write crash.
             // Without this, the main thread block reads self.registry while sync queue
             // barrier blocks may be writing to it, causing EXC_BAD_ACCESS.
@@ -278,22 +272,19 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 Log.info(#file, "  No existing registry file found or failed to parse")
             }
 
-            // Suppress didSet notification — we handle everything in one main dispatch
-            // to avoid a double-dispatch race where registry records (reference types)
-            // are mutated on the sync queue between two main-queue blocks.
-            self.suppressRegistryDidSet = true
             self.registry = newRegistry
-            self.suppressRegistryDidSet = false
 
-            // Capture ONLY value types on the sync queue for safe cross-queue transfer
+            // Capture states and snapshot while on sync queue to avoid concurrent access
             let bookStates = newRegistry.map { ($0.key, $0.value.state) }
-            let snapshot = newRegistry
-            let bookCount = newRegistry.count
+            let snapshot = self.registry
+            let bookCount = snapshot.count
+            // Capture account to clear loading state
             let loadedAccount = account
 
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
 
+                // Clear loading state only if we're still loading this account
                 if self.loadingAccount == loadedAccount {
                     self.loadingAccount = nil
                 }
@@ -301,6 +292,8 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 self.state = .loaded
                 self.registrySubject.send(snapshot)
 
+                // Emit state events for ALL loaded books so ViewModels update their state
+                // This ensures any cached models or views created before load get the correct state
                 for (identifier, state) in bookStates {
                     self.bookStateSubject.send((identifier, state))
                 }
@@ -391,21 +384,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             return
         }
 
-        // Simulate sync failure for testing the silent-error UX gap
-        if Bundle.main.applicationEnvironment != .production,
-           DebugSettings.shared.isSyncFailureSimulationEnabled {
-            let simType = DebugSettings.shared.simulatedSyncFailure
-            Log.warn(#file, "DEBUG: Simulating sync failure: \(simType.displayName)")
-            state = .syncing
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.state = .loaded
-                let errorDoc = simType == .emptyFeed ? nil : simType.errorDocument
-                self?.postSyncFailure(errorDoc)
-                completion?(errorDoc, false)
-            }
-            return
-        }
-
         state = .syncing
         syncUrl = loansUrl
 
@@ -417,7 +395,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 if let errorDocument = errorDocument {
                     self.state = .loaded
                     self.syncUrl = nil
-                    self.postSyncFailure(errorDocument)
                     completion?(errorDocument, false)
                     return
                 }
@@ -425,7 +402,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 guard let feed = feed else {
                     self.state = .loaded
                     self.syncUrl = nil
-                    self.postSyncFailure(nil)
                     completion?(nil, false)
                     return
                 }
@@ -520,16 +496,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 completion?(nil, changesMade)
             }
         }
-    }
-
-    static let syncFailureErrorDocumentKey = "errorDocument"
-
-    private func postSyncFailure(_ errorDocument: [AnyHashable: Any]?) {
-        var userInfo: [AnyHashable: Any] = [:]
-        if let errorDocument {
-            userInfo[TPPBookRegistry.syncFailureErrorDocumentKey] = errorDocument
-        }
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: userInfo)
     }
 
     private func save() {

@@ -1,6 +1,5 @@
 import Combine
 import SwiftUI
-import SafariServices
 import PalaceAudiobookToolkit
 
 #if LCP
@@ -738,16 +737,12 @@ final class BookDetailViewModel: ObservableObject {
 
     private func presentWebView(_ url: URL?) {
         guard let url = url else { return }
-        guard let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else { return }
+        let webController = BundledHTMLViewController(
+            fileURL: url,
+            title: AccountsManager.shared.currentAccount?.name ?? ""
+        )
 
-        if url.scheme == "http" || url.scheme == "https" {
-            let safari = SFSafariViewController(url: url)
-            top.present(safari, animated: true)
-        } else {
-            let webController = BundledHTMLViewController(
-                fileURL: url,
-                title: AccountsManager.shared.currentAccount?.name ?? ""
-            )
+        if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
             top.present(webController, animated: true)
         }
     }

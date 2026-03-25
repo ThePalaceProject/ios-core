@@ -1,12 +1,6 @@
 import SwiftUI
 import Combine
-import UIKit
 import PalaceUIKit
-
-// MARK: - Accessibility focus (list callout when entering My Books)
-private enum MyBooksAccessibilityFocus: Hashable {
-    case list
-}
 
 struct MyBooksView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator
@@ -16,7 +10,6 @@ struct MyBooksView: View {
     @StateObject private var logoObserver = CatalogLogoObserver()
     @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
     @FocusState private var isSearchFocused: Bool
-    @AccessibilityFocusState private var accessibilityFocus: MyBooksAccessibilityFocus?
     // Centralized sample preview manager overlay
 
     var body: some View {
@@ -61,23 +54,6 @@ struct MyBooksView: View {
             account?.logoDelegate = logoObserver
             account?.loadLogo()
             currentAccountUUID = account?.uuid ?? ""
-            // Move VoiceOver to list and announce "My Books list, X books" when entering the tab
-            if !model.isLoading, !model.showInstructionsLabel, UIAccessibility.isVoiceOverRunning {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    accessibilityFocus = .list
-                    let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.books.count)
-                    UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.myBooksListLabel), \(value)")
-                }
-            }
-        }
-        .onChange(of: model.isLoading) { isLoading in
-            if !isLoading, !model.showInstructionsLabel, UIAccessibility.isVoiceOverRunning {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    accessibilityFocus = .list
-                    let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.books.count)
-                    UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.myBooksListLabel), \(value)")
-                }
-            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
             let account = AccountsManager.shared.currentAccount
@@ -140,12 +116,7 @@ struct MyBooksView: View {
                         onSelect: { book in presentBookDetail(for: book) }
                     )
                 }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel(Strings.Generic.myBooksListLabel)
-                .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.books.count))
-                .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
                 .accessibilityIdentifier(AccessibilityID.MyBooks.gridView)
-                .accessibilityFocused($accessibilityFocus, equals: .list)
                 .scrollIndicators(.visible)
                 .refreshable { model.reloadData() }
                 .scrollDismissesKeyboard(.interactively)

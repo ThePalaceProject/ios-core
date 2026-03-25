@@ -24,22 +24,14 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
     var loadTopLevelCatalogError: Error?
     var searchResult: CatalogFeed?
     var searchError: Error?
-    var searchWithDescriptorResult: CatalogFeed?
-    var searchWithDescriptorError: Error?
-    var fetchSearchEntryPointsResult: [SearchFormatEntry] = []
-    var fetchSearchEntryPointsError: Error?
     var simulatedDelay: TimeInterval = 0
 
     // MARK: - Call Tracking
 
     private(set) var loadTopLevelCatalogCallCount = 0
     private(set) var searchCallCount = 0
-    private(set) var searchWithDescriptorCallCount = 0
-    private(set) var fetchSearchEntryPointsCallCount = 0
     private(set) var lastSearchQuery: String?
     private(set) var lastSearchURL: URL?
-    private(set) var lastSearchDescriptorURL: URL?
-    private(set) var lastFetchSearchEntryPointsURL: URL?
     private(set) var lastLoadURL: URL?
     private(set) var searchHistory: [(query: String, url: URL)] = []
 
@@ -77,37 +69,6 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
         return searchResult
     }
 
-    func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
-        searchWithDescriptorCallCount += 1
-        lastSearchQuery = query
-        lastSearchDescriptorURL = searchDescriptorURL
-
-        if simulatedDelay > 0 {
-            try await Task.sleep(nanoseconds: UInt64(simulatedDelay * 1_000_000_000))
-        }
-
-        if let error = searchWithDescriptorError ?? searchError {
-            throw error
-        }
-
-        return searchWithDescriptorResult ?? searchResult
-    }
-
-    func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
-        fetchSearchEntryPointsCallCount += 1
-        lastFetchSearchEntryPointsURL = url
-
-        if simulatedDelay > 0 {
-            try await Task.sleep(nanoseconds: UInt64(simulatedDelay * 1_000_000_000))
-        }
-
-        if let error = fetchSearchEntryPointsError {
-            throw error
-        }
-
-        return fetchSearchEntryPointsResult
-    }
-
     func fetchFeed(at url: URL) async throws -> CatalogFeed? {
         return try await loadTopLevelCatalog(at: url)
     }
@@ -123,19 +84,11 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
         loadTopLevelCatalogError = nil
         searchResult = nil
         searchError = nil
-        searchWithDescriptorResult = nil
-        searchWithDescriptorError = nil
-        fetchSearchEntryPointsResult = []
-        fetchSearchEntryPointsError = nil
         simulatedDelay = 0
         loadTopLevelCatalogCallCount = 0
         searchCallCount = 0
-        searchWithDescriptorCallCount = 0
-        fetchSearchEntryPointsCallCount = 0
         lastSearchQuery = nil
         lastSearchURL = nil
-        lastSearchDescriptorURL = nil
-        lastFetchSearchEntryPointsURL = nil
         lastLoadURL = nil
         searchHistory.removeAll()
     }
@@ -914,211 +867,6 @@ final class CatalogSearchViewModelTests: XCTestCase {
             secondSearchId,
             "Different searches should have different searchIds"
         )
-    }
-
-    // MARK: - Format Entry Points Tests
-
-    func testLoadFormatEntryPoints_WhenSuccessful_PopulatesFormatEntries() async {
-        mockRepository.fetchSearchEntryPointsResult = makeFormatEntries()
-        let viewModel = createViewModel()
-
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        XCTAssertEqual(viewModel.formatEntries.count, 3)
-        XCTAssertEqual(viewModel.formatEntries[0].title, "All")
-        XCTAssertEqual(viewModel.formatEntries[1].title, "eBooks")
-        XCTAssertEqual(viewModel.formatEntries[2].title, "Audiobooks")
-    }
-
-    func testLoadFormatEntryPoints_SelectsActiveEntry() async {
-        let entries = [
-            SearchFormatEntry(id: "all", title: "All",
-                              groupsFeedURL: URL(string: "https://example.com/groups/?entrypoint=All")!,
-                              searchDescriptorURL: nil, isActive: false),
-            SearchFormatEntry(id: "audio", title: "Audiobooks",
-                              groupsFeedURL: URL(string: "https://example.com/groups/?entrypoint=Audio")!,
-                              searchDescriptorURL: URL(string: "https://example.com/search/?entrypoint=Audio")!,
-                              isActive: true),
-        ]
-        mockRepository.fetchSearchEntryPointsResult = entries
-        let viewModel = createViewModel()
-
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        XCTAssertEqual(viewModel.selectedFormatIndex, 1, "Should pre-select the active entry point")
-    }
-
-    func testLoadFormatEntryPoints_WhenFeedHasNoEntryPoints_LeavesFormatEntriesEmpty() async {
-        mockRepository.fetchSearchEntryPointsResult = []
-        let viewModel = createViewModel()
-
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        XCTAssertTrue(viewModel.formatEntries.isEmpty)
-    }
-
-    func testLoadFormatEntryPoints_WhenFetchFails_LeavesFormatEntriesEmpty() async {
-        mockRepository.fetchSearchEntryPointsError = TestError.networkError
-        let viewModel = createViewModel()
-
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        XCTAssertTrue(viewModel.formatEntries.isEmpty)
-    }
-
-    func testLoadFormatEntryPoints_WithNilBaseURL_DoesNotCallRepository() async {
-        let viewModel = createViewModelWithNilURL()
-
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        XCTAssertEqual(mockRepository.fetchSearchEntryPointsCallCount, 0)
-        XCTAssertTrue(viewModel.formatEntries.isEmpty)
-    }
-
-    func testSelectFormat_ChangesSelectedIndex() async {
-        mockRepository.fetchSearchEntryPointsResult = makeFormatEntries()
-        let viewModel = createViewModel()
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        viewModel.selectFormat(at: 1)
-
-        XCTAssertEqual(viewModel.selectedFormatIndex, 1)
-    }
-
-    func testSelectFormat_SameIndex_DoesNotChangeIndex() async {
-        mockRepository.fetchSearchEntryPointsResult = makeFormatEntries()
-        let viewModel = createViewModel()
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        viewModel.selectFormat(at: 0)
-
-        XCTAssertEqual(viewModel.selectedFormatIndex, 0)
-        XCTAssertEqual(mockRepository.searchCallCount, 0, "Should not trigger search when selecting already-active format")
-    }
-
-    func testSelectFormat_WithActiveQuery_TriggersNewSearch() async {
-        mockRepository.fetchSearchEntryPointsResult = makeFormatEntries()
-        let viewModel = createViewModel()
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        viewModel.updateSearchQuery("mystery")
-        await waitForDebounce(interval: 0.25)
-        let callCountAfterFirstSearch = mockRepository.searchCallCount
-
-        viewModel.selectFormat(at: 1)
-        await waitForDebounce(interval: 0.25)
-
-        XCTAssertGreaterThan(
-            mockRepository.searchCallCount + mockRepository.searchWithDescriptorCallCount,
-            callCountAfterFirstSearch,
-            "Selecting a format should trigger a re-search when query is active"
-        )
-    }
-
-    func testSelectFormat_WithCachedDescriptorURL_UsesDescriptorSearch() async {
-        let descriptorURL = URL(string: "https://example.com/search/?entrypoint=Book")!
-        let entries = [
-            SearchFormatEntry(id: "all", title: "All",
-                              groupsFeedURL: URL(string: "https://example.com/groups/?entrypoint=All")!,
-                              searchDescriptorURL: URL(string: "https://example.com/search/?entrypoint=All")!,
-                              isActive: true),
-            SearchFormatEntry(id: "books", title: "eBooks",
-                              groupsFeedURL: URL(string: "https://example.com/groups/?entrypoint=Book")!,
-                              searchDescriptorURL: descriptorURL,
-                              isActive: false),
-        ]
-        mockRepository.fetchSearchEntryPointsResult = entries
-        let viewModel = createViewModel()
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        viewModel.updateSearchQuery("mystery")
-        await waitForDebounce(interval: 0.25)
-
-        // Select eBooks (index 1) — it has a searchDescriptorURL pre-populated
-        viewModel.selectFormat(at: 1)
-        await waitForDebounce(interval: 0.25)
-
-        XCTAssertEqual(mockRepository.lastSearchDescriptorURL, descriptorURL,
-                       "Should use cached search descriptor URL for eBooks format")
-    }
-
-    func testSelectFormat_WithEmptyQuery_DoesNotSearch() async {
-        mockRepository.fetchSearchEntryPointsResult = makeFormatEntries()
-        let viewModel = createViewModel()
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        viewModel.selectFormat(at: 2)
-        await waitForDebounce(interval: 0.2)
-
-        XCTAssertEqual(mockRepository.searchCallCount, 0, "Should not search when query is empty")
-        XCTAssertEqual(mockRepository.searchWithDescriptorCallCount, 0)
-    }
-
-    func testSearch_WithNoFormatEntries_UsesDefaultBaseURL() async {
-        mockRepository.fetchSearchEntryPointsResult = []
-        let viewModel = createViewModel()
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        viewModel.updateSearchQuery("ocean")
-        await waitForDebounce(interval: 0.25)
-
-        XCTAssertEqual(mockRepository.lastSearchURL, testBaseURL,
-                       "Should fall back to default base URL when no format entries")
-    }
-
-    func testClearSearch_ResetsSelectedFormat_DoesNotChangeFormatEntries() async {
-        mockRepository.fetchSearchEntryPointsResult = makeFormatEntries()
-        let viewModel = createViewModel()
-        viewModel.loadFormatEntryPoints()
-        await waitForDebounce(interval: 0.2)
-
-        viewModel.selectFormat(at: 2)
-        XCTAssertEqual(viewModel.selectedFormatIndex, 2)
-
-        viewModel.clearSearch()
-
-        // Format entries remain; selected index is unchanged (clear only resets search state)
-        XCTAssertEqual(viewModel.formatEntries.count, 3, "Format entries should persist after clear")
-        XCTAssertEqual(viewModel.selectedFormatIndex, 2, "Selected format should persist after clear")
-    }
-
-    // MARK: - Format Test Helper
-
-    private func makeFormatEntries() -> [SearchFormatEntry] {
-        [
-            SearchFormatEntry(
-                id: "all",
-                title: "All",
-                groupsFeedURL: URL(string: "https://example.com/groups/?entrypoint=All")!,
-                searchDescriptorURL: URL(string: "https://example.com/search/?entrypoint=All")!,
-                isActive: true
-            ),
-            SearchFormatEntry(
-                id: "books",
-                title: "eBooks",
-                groupsFeedURL: URL(string: "https://example.com/groups/?entrypoint=Book")!,
-                searchDescriptorURL: nil,
-                isActive: false
-            ),
-            SearchFormatEntry(
-                id: "audio",
-                title: "Audiobooks",
-                groupsFeedURL: URL(string: "https://example.com/groups/?entrypoint=Audio")!,
-                searchDescriptorURL: nil,
-                isActive: false
-            ),
-        ]
     }
 
     /// Test that clearing search changes searchId (to scroll to top of all books)

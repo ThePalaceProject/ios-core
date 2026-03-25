@@ -18,14 +18,16 @@ struct TPPPDFNavigation<Content>: View where Content: View {
             rawValue
         }
 
-        var image: some View {
+        // accesslint:disable A11Y.SWIFTUI.MISSING_LABEL - Decorative; accessibilityLabel set via accessibilityLabel computed property below
+        var image: Image {
             switch self {
-            case .previews: Image(systemName: "rectangle.grid.3x2").accessibilityHidden(true)
-            case .toc: Image(systemName: "list.bullet").accessibilityHidden(true)
-            case .bookmarks: Image(systemName: "bookmark").accessibilityHidden(true)
+            case .previews: return Image(systemName: "rectangle.grid.3x2")
+            case .toc: return Image(systemName: "list.bullet")
+            case .bookmarks: return Image(systemName: "bookmark")
             }
         }
 
+        /// Accessibility label for the tab - images are decorative, labels provide context
         var accessibilityLabel: String {
             switch self {
             case .previews: return Strings.Generic.pagePreviewsTab
@@ -80,6 +82,7 @@ struct TPPPDFNavigation<Content>: View where Content: View {
                 Picker("", selection: $pickerSelection.onChange(changeReaderMode)) {
                     ForEach(TPPPDFReaderModeValues.allValues) { readerModeValue in
                         readerModeValue.image
+                            .accessibilityHidden(true)
                             .tag(readerModeValue.rawValue)
                             .accessibilityLabel(readerModeValue.accessibilityLabel)
                     }

@@ -9,7 +9,6 @@
 import Foundation
 import Combine
 import SwiftUI
-import SafariServices
 import PalaceAudiobookToolkit
 
 enum BookCellState {
@@ -166,9 +165,10 @@ class BookCellModel: ObservableObject {
     }
 
     func loadBookCoverImage() {
+        let simpleKey = book.identifier
         let thumbnailKey = "\(book.identifier)_thumbnail"
 
-        if let cachedImage = imageCache.get(for: thumbnailKey) {
+        if let cachedImage = imageCache.get(for: simpleKey) ?? imageCache.get(for: thumbnailKey) {
             image = cachedImage
         } else if let registryImage = bookRegistry.cachedThumbnailImage(for: book) {
             setImageAndCache(registryImage)
@@ -195,7 +195,9 @@ class BookCellModel: ObservableObject {
     }
 
     private func setImageAndCache(_ image: UIImage) {
+        let simpleKey = book.identifier
         let thumbnailKey = "\(book.identifier)_thumbnail"
+        imageCache.set(image, for: simpleKey)
         imageCache.set(image, for: thumbnailKey)
         self.image = image
     }
@@ -518,10 +520,14 @@ extension BookCellModel {
         if book.defaultBookContentType == .audiobook {
             if book.sampleAcquisition?.type == "text/html" {
                 SamplePreviewManager.shared.close()
-                if let url = book.sampleAcquisition?.hrefURL,
-                   let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
-                    let safari = SFSafariViewController(url: url)
-                    top.present(safari, animated: true)
+                if let url = book.sampleAcquisition?.hrefURL {
+                    let webController = BundledHTMLViewController(
+                        fileURL: url,
+                        title: AccountsManager.shared.currentAccount?.name ?? ""
+                    )
+                    if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
+                        top.present(webController, animated: true)
+                    }
                 }
             } else {
                 SamplePreviewManager.shared.toggle(for: book)
@@ -537,9 +543,9 @@ extension BookCellModel {
                 return
             }
             if let sampleWebURL = sampleURL as? EpubSampleWebURL {
+                let web = BundledHTMLViewController(fileURL: sampleWebURL.url, title: self.book.title)
                 if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
-                    let safari = SFSafariViewController(url: sampleWebURL.url)
-                    top.present(safari, animated: true)
+                    top.present(web, animated: true)
                 }
                 return
             }

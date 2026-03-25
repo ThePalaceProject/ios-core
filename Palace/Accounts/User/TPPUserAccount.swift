@@ -55,67 +55,25 @@ private enum StorageKey: String {
 
             Log.debug(#file, "libraryUUID changed from \(oldValue ?? "nil") to \(libraryUUID ?? "nil")")
 
-            updateKeychainKeys()
-        }
-    }
+            // Update keychain variable keys directly to access account-specific storage
+            // Setting the key property triggers didSet which resets alreadyInited (forces re-read from keychain)
+            _authorizationIdentifier.key = StorageKey.authorizationIdentifier.keyForLibrary(uuid: libraryUUID)
+            _adobeToken.key = StorageKey.adobeToken.keyForLibrary(uuid: libraryUUID)
+            _licensor.key = StorageKey.licensor.keyForLibrary(uuid: libraryUUID)
+            _patron.key = StorageKey.patron.keyForLibrary(uuid: libraryUUID)
+            _adobeVendor.key = StorageKey.adobeVendor.keyForLibrary(uuid: libraryUUID)
+            _provider.key = StorageKey.provider.keyForLibrary(uuid: libraryUUID)
+            _userID.key = StorageKey.userID.keyForLibrary(uuid: libraryUUID)
+            _deviceID.key = StorageKey.deviceID.keyForLibrary(uuid: libraryUUID)
+            _credentials.key = StorageKey.credentials.keyForLibrary(uuid: libraryUUID)
+            _authDefinition.key = StorageKey.authDefinition.keyForLibrary(uuid: libraryUUID)
+            _cookies.key = StorageKey.cookies.keyForLibrary(uuid: libraryUUID)
+            _authState.key = StorageKey.authState.keyForLibrary(uuid: libraryUUID)
 
-    /// Re-points every keychain variable at the current `libraryUUID` and
-    /// invalidates their caches so the next read fetches fresh data.
-    ///
-    /// The UUID suffix (`_<uuid>`) is computed once and reused for all keys to
-    /// reduce peak heap pressure. Each `keyForLibrary` call allocates a new
-    /// String; under low-memory conditions (~100 MB free) doing this 15 times
-    /// in rapid succession can corrupt the heap allocator's free list.
-    private func updateKeychainKeys() {
-        // Compute the shared suffix once. If this UUID is the NYPL default UUID
-        // (or nil), keyForLibrary returns the raw key without a suffix — match
-        // that behaviour here so we can use the fast path below.
-        let uuid = libraryUUID
-        let isDefaultUUID = uuid == nil || uuid == AccountsManager.shared.tppAccountUUID
-
-        // Wrap all 15 string assignments in a single autoreleasepool so any
-        // temporary Obj-C objects (NSString bridges) are released promptly
-        // rather than accumulating in the calling autorelease pool, which
-        // further reduces peak memory pressure.
-        autoreleasepool {
-            if isDefaultUUID {
-                // Fast path: keys are just the raw enum values — no new allocations.
-                _authorizationIdentifier.key = StorageKey.authorizationIdentifier.rawValue
-                _adobeToken.key            = StorageKey.adobeToken.rawValue
-                _licensor.key              = StorageKey.licensor.rawValue
-                _patron.key                = StorageKey.patron.rawValue
-                _adobeVendor.key           = StorageKey.adobeVendor.rawValue
-                _provider.key              = StorageKey.provider.rawValue
-                _userID.key                = StorageKey.userID.rawValue
-                _deviceID.key              = StorageKey.deviceID.rawValue
-                _credentials.key           = StorageKey.credentials.rawValue
-                _authDefinition.key        = StorageKey.authDefinition.rawValue
-                _cookies.key               = StorageKey.cookies.rawValue
-                _authState.key             = StorageKey.authState.rawValue
-                _barcode.key               = StorageKey.barcode.rawValue
-                _pin.key                   = StorageKey.PIN.rawValue
-                _authToken.key             = StorageKey.authToken.rawValue
-            } else {
-                // Slow path: compute the suffix once, then append it to each raw value.
-                // This is one allocation for the suffix + one allocation per key,
-                // down from two allocations per key (rawValue + interpolated result).
-                let suffix = "_\(uuid!)"
-                _authorizationIdentifier.key = StorageKey.authorizationIdentifier.rawValue + suffix
-                _adobeToken.key            = StorageKey.adobeToken.rawValue + suffix
-                _licensor.key              = StorageKey.licensor.rawValue + suffix
-                _patron.key                = StorageKey.patron.rawValue + suffix
-                _adobeVendor.key           = StorageKey.adobeVendor.rawValue + suffix
-                _provider.key              = StorageKey.provider.rawValue + suffix
-                _userID.key                = StorageKey.userID.rawValue + suffix
-                _deviceID.key              = StorageKey.deviceID.rawValue + suffix
-                _credentials.key           = StorageKey.credentials.rawValue + suffix
-                _authDefinition.key        = StorageKey.authDefinition.rawValue + suffix
-                _cookies.key               = StorageKey.cookies.rawValue + suffix
-                _authState.key             = StorageKey.authState.rawValue + suffix
-                _barcode.key               = StorageKey.barcode.rawValue + suffix
-                _pin.key                   = StorageKey.PIN.rawValue + suffix
-                _authToken.key             = StorageKey.authToken.rawValue + suffix
-            }
+            // Legacy
+            _barcode.key = StorageKey.barcode.keyForLibrary(uuid: libraryUUID)
+            _pin.key = StorageKey.PIN.keyForLibrary(uuid: libraryUUID)
+            _authToken.key = StorageKey.authToken.keyForLibrary(uuid: libraryUUID)
         }
     }
 
@@ -411,7 +369,7 @@ private enum StorageKey: String {
 
     var needsAuth: Bool {
         let authType = authDefinition?.authType ?? .none
-        return authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token || authType == .oidc
+        return authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token
     }
 
     var needsAgeCheck: Bool {
@@ -640,10 +598,10 @@ private enum StorageKey: String {
     @discardableResult
     func refreshCredentialsFromKeychain() -> Bool {
         return accountInfoQueue.sync(flags: .barrier) {
-            // Invalidate caches and re-read from keychain without toggling
-            // libraryUUID. The old nil-toggle pattern caused EXC_BAD_ACCESS
-            // when swift_release_dealloc raced with concurrent property access.
-            updateKeychainKeys()
+            guard let uuid = libraryUUID else { return hasCredentials() }
+
+            libraryUUID = nil
+            libraryUUID = uuid
             return hasCredentials()
         }
     }
@@ -673,10 +631,11 @@ private enum StorageKey: String {
                 shared.libraryUUID = libraryUUID
             }
 
-            // Invalidate caches so the next read fetches fresh keychain data.
-            // The old nil-toggle pattern (set nil then restore) caused
-            // EXC_BAD_ACCESS in swift_release_dealloc.
-            shared.updateKeychainKeys()
+            // Force keychain re-read by toggling UUID
+            if let uuid = shared.libraryUUID {
+                shared.libraryUUID = nil
+                shared.libraryUUID = uuid
+            }
 
             let creds = shared.credentials
             let hasCreds = shared.hasCredentials()

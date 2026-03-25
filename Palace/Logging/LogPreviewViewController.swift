@@ -10,6 +10,7 @@ import UIKit
 /// A view controller for previewing collected log data locally.
 /// Provides a segmented control to switch between log sources,
 /// a search bar with match navigation, and share/copy functionality.
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in setupUI
 final class LogPreviewViewController: UIViewController {
 
     private let logData: ErrorLogData
@@ -52,7 +53,6 @@ final class LogPreviewViewController: UIViewController {
     init(logData: ErrorLogData) {
         self.logData = logData
         super.init(nibName: nil, bundle: nil)
-        title = NSLocalizedString("Log Preview", comment: "Log preview screen title")
     }
 
     @available(*, unavailable)
@@ -71,6 +71,7 @@ final class LogPreviewViewController: UIViewController {
     // MARK: - UI Setup
 
     private func setupUI() {
+        title = "Log Preview"
         view.backgroundColor = .systemBackground
 
         // Navigation bar buttons

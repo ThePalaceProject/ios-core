@@ -173,16 +173,11 @@ final class DeviceLogCollectorGapTests: XCTestCase {
         let logger = Logger(subsystem: "com.thepalaceproject.test", category: "Coverage")
         logger.info("Coverage DeviceLogCollector test log entry")
 
-        // OSLogStore has its own flush schedule — poll rather than using a fixed delay
-        var output = ""
-        for _ in 0..<10 {
-            let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-            output = String(data: data, encoding: .utf8) ?? ""
-            if !output.isEmpty { break }
-            try? await Task.sleep(nanoseconds: 50_000_000) // 50 ms
-        }
+        // Brief delay to allow log to be flushed to OSLogStore
+        try? await Task.sleep(nanoseconds: 100_000_000)
 
-        let data = Data(output.utf8)
+        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
+        let output = String(data: data, encoding: .utf8) ?? ""
 
         // If our log appears, it would contain level string (INFO/DEBUG/etc) and date format yyyy-MM-dd
         // At minimum verify the collector runs and produces valid output

@@ -24,7 +24,6 @@ final class DebugSettings {
         static let borrowErrorType = "debug.borrowErrorType"
         static let badgeLoggingEnabled = "debug.badgeLoggingEnabled"
         static let testHoldsConfiguration = "debug.testHoldsConfiguration"
-        static let syncFailureType = "debug.syncFailureType"
     }
 
     // MARK: - Simulated Error Types
@@ -119,70 +118,6 @@ final class DebugSettings {
         )
 
         return (error, problemDoc)
-    }
-
-    // MARK: - Simulated Sync Failure
-
-    enum SimulatedSyncFailure: Int, CaseIterable {
-        case none = 0
-        case profileDocumentError
-        case problemDocument
-        case requestCancelled
-        case emptyFeed
-
-        var displayName: String {
-            switch self {
-            case .none: return "None (Disabled)"
-            case .profileDocumentError: return "Profile Doc Failure (902)"
-            case .problemDocument: return "Problem Document (912)"
-            case .requestCancelled: return "Request Cancelled (911)"
-            case .emptyFeed: return "Empty Feed (stale data)"
-            }
-        }
-
-        var errorDocument: [AnyHashable: Any]? {
-            switch self {
-            case .none:
-                return nil
-            case .profileDocumentError:
-                return [
-                    "type": "http://librarysimplified.org/terms/problem/retrieval-error",
-                    "title": "Error retrieving user profile document",
-                    "status": 502,
-                    "detail": "The server did not respond in time. Please try again."
-                ]
-            case .problemDocument:
-                return [
-                    "type": "http://opds-spec.org/2010/catalog",
-                    "title": "Service temporarily unavailable",
-                    "status": 503,
-                    "detail": "The circulation manager is undergoing maintenance. Please try again later."
-                ]
-            case .requestCancelled:
-                return [
-                    "type": "http://librarysimplified.org/terms/problem/request-cancelled",
-                    "title": "Request Cancelled",
-                    "status": 0,
-                    "detail": "The network request was cancelled before it could complete."
-                ]
-            case .emptyFeed:
-                return nil
-            }
-        }
-    }
-
-    var simulatedSyncFailure: SimulatedSyncFailure {
-        get {
-            let rawValue = defaults.integer(forKey: Keys.syncFailureType)
-            return SimulatedSyncFailure(rawValue: rawValue) ?? .none
-        }
-        set {
-            defaults.set(newValue.rawValue, forKey: Keys.syncFailureType)
-        }
-    }
-
-    var isSyncFailureSimulationEnabled: Bool {
-        return simulatedSyncFailure != .none
     }
 
     // MARK: - Badge Logging
@@ -372,7 +307,6 @@ final class DebugSettings {
     /// Resets all debug settings to defaults
     func resetAll() {
         simulatedBorrowError = .none
-        simulatedSyncFailure = .none
         isBadgeLoggingEnabled = false
         testHoldsConfiguration = .none
     }

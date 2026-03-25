@@ -64,8 +64,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     var canSignIn: Bool {
         if businessLogic.selectedAuthentication?.isOauth == true ||
-            businessLogic.selectedAuthentication?.isSaml == true ||
-            businessLogic.selectedAuthentication?.isOidc == true {
+            businessLogic.selectedAuthentication?.isSaml == true {
             return true
         }
 
@@ -297,7 +296,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func cellsForAuthMethod(_ auth: AccountDetails.Authentication) -> [CellType] {
-        if auth.isOauth || auth.isOidc {
+        if auth.isOauth {
             return [.logInSignOut]
         }
 
@@ -319,8 +318,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     // MARK: - Actions
 
     func signIn() {
-        let needsReauth = selectedUserAccount.authState == .credentialsStale
-        guard !isSignedIn || needsReauth else {
+        guard !isSignedIn else {
             isSigningOut = true
             presentSignOutAlert()
             return
@@ -328,8 +326,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
         isSigningOut = false
 
-        if businessLogic.selectedAuthentication?.isOauth == true ||
-           businessLogic.selectedAuthentication?.isOidc == true {
+        if businessLogic.selectedAuthentication?.isOauth == true {
             businessLogic.logIn()
             return
         }
@@ -608,11 +605,10 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
         signInTimeoutTask?.cancel()
         signInTimeoutTask = nil
 
-        // For SAML/OAuth/OIDC, don't start a timeout here - the user will be in a WebView
+        // For SAML/OAuth, don't start a timeout here - the user will be in a WebView
         // The timeout will start when the WebView dismisses (in startDRMProcessingTimeout)
         let isSAMLOrOAuth = businessLogic.selectedAuthentication?.isSaml == true ||
-            businessLogic.selectedAuthentication?.isOauth == true ||
-            businessLogic.selectedAuthentication?.isOidc == true
+            businessLogic.selectedAuthentication?.isOauth == true
 
         if !isSAMLOrOAuth {
             startDRMProcessingTimeout()

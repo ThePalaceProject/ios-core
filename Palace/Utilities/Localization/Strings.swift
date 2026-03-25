@@ -102,12 +102,6 @@ struct Strings {
         static let moreBooksInLane = NSLocalizedString("More books in %@", comment: "VoiceOver: See more books in a catalog lane")
         static let expandSection = NSLocalizedString("Expand section", comment: "VoiceOver: Expand a collapsible section")
         static let collapseSection = NSLocalizedString("Collapse section", comment: "VoiceOver: Collapse an expanded section")
-        static let horizontalLaneHint = NSLocalizedString("Swipe horizontally to browse. Double tap to open a book.", comment: "VoiceOver: Hint for horizontal book lanes")
-        static let catalogRegion = NSLocalizedString("Catalog", comment: "VoiceOver: Label for main catalog / browse region")
-        static let booksListLabel = NSLocalizedString("Books list", comment: "VoiceOver: Label for a list of books")
-        static let myBooksListLabel = NSLocalizedString("My Books list", comment: "VoiceOver: Label for My Books tab list")
-        static let holdsListLabel = NSLocalizedString("Holds list", comment: "VoiceOver: Label for Holds list")
-        static let accountSettingsRegion = NSLocalizedString("Account settings", comment: "VoiceOver: Label for account/sign-in settings list")
 
         // Accessibility - Reader Navigation
         static let tableOfContents = NSLocalizedString("Table of contents", comment: "VoiceOver: Open table of contents")
@@ -155,20 +149,6 @@ struct Strings {
             String.localizedStringWithFormat(
                 NSLocalizedString("Download failed for %@.", comment: "VoiceOver announcement when a download fails"),
                 title
-            )
-        }
-
-        static func downloadingTitle(_ title: String) -> String {
-            String.localizedStringWithFormat(
-                NSLocalizedString("Downloading %@", comment: "VoiceOver accessibility label for download progress indicator, %@ is the book title"),
-                title
-            )
-        }
-
-        static func percentComplete(_ percent: Int) -> String {
-            String.localizedStringWithFormat(
-                NSLocalizedString("%d percent complete", comment: "VoiceOver accessibility value for download progress"),
-                percent
             )
         }
 
@@ -267,27 +247,6 @@ struct Strings {
             )
         }
 
-        /// VoiceOver value for the search results list (e.g. "5 books", "No results").
-        static func searchResultsListValue(bookCount: Int) -> String {
-            switch bookCount {
-            case 0:
-                return NSLocalizedString("No results", comment: "Accessibility value when search has no results")
-            case 1:
-                return NSLocalizedString("1 book", comment: "Accessibility value when search has one result")
-            default:
-                return String.localizedStringWithFormat(
-                    NSLocalizedString("%d books", comment: "Accessibility value for search results count. %d is number of books"),
-                    bookCount
-                )
-            }
-        }
-
-        /// VoiceOver hint for the search results list.
-        static let searchResultsListHint = NSLocalizedString(
-            "Swipe to browse results. Double tap to open a book.",
-            comment: "Accessibility hint for search results list"
-        )
-
         static func loadingMoreResults() -> String {
             NSLocalizedString(
                 "Loading more results.",
@@ -377,15 +336,9 @@ struct Strings {
         static let forgotPassword = NSLocalizedString("Forgot your password?", comment: "")
         static let signUpForCard = NSLocalizedString("Sign up for a library card", comment: "")
         static let eulaAgreement = NSLocalizedString("By signing in, you agree to the End User License Agreement.", comment: "")
-        static let syncDescription = NSLocalizedString("Toggle on sync bookmarks to save your reading position and bookmarks across all of your devices. This must be done on all devices where you are accessing Palace to synchronize reading position.", comment: "Instructional text under Sync Bookmarks in Settings")
+        static let syncDescription = NSLocalizedString("Save your reading position and bookmarks to all your other devices.", comment: "")
         static let authenticateToRevealPIN = NSLocalizedString("Authenticate to reveal your PIN.", comment: "")
         static let deleteServerData = NSLocalizedString("Delete Server Data", comment: "")
-        static let aboutSectionHeader = NSLocalizedString("About and legal", comment: "VoiceOver: Settings list section header for About, Privacy, Licenses")
-        static let downloads = NSLocalizedString("Downloads", comment: "Section header for download-related settings")
-        static let downloadOnlyOnWiFi = NSLocalizedString("Download Only on Wi-Fi", comment: "Toggle label to restrict downloads to Wi-Fi connections")
-        static let downloadOnlyOnWiFiDescription = NSLocalizedString("When enabled, books and audiobooks will only download over Wi-Fi. Downloads will be blocked on cellular data.", comment: "Description for Download Only on Wi-Fi setting")
-        static let downloadRestrictedToWiFi = NSLocalizedString("Downloads are restricted to Wi-Fi in Settings. Connect to a Wi-Fi network or change your download settings to continue.", comment: "Alert message when download is blocked due to Wi-Fi only setting")
-        static let wifiRequired = NSLocalizedString("Wi-Fi Required", comment: "Alert title when download is blocked due to Wi-Fi only setting")
     }
 
     struct AccountDetail {
@@ -563,8 +516,8 @@ struct Strings {
         static let remove = NSLocalizedString("Remove", comment: "")
         static let deleteMessage = NSLocalizedString("Are you sure you want to delete \"%@\"?", comment: "Message shown in an alert to the user prior to deleting a title")
         static let returnMessage = NSLocalizedString("Are you sure you want to return \"%@\"?", comment: "Message shown in an alert to the user prior to returning a title")
-        static let removeHold = NSLocalizedString("Remove Hold", comment: "")
-        static let removeHoldMessage = NSLocalizedString("Are you sure you want to remove \"%@\" from your holds? You will no longer be in line for this book.", comment: "Message shown in an alert to the user prior to removing a held title.")
+        static let removeReservation = NSLocalizedString("Remove Reservation", comment: "")
+        static let removeReservationMessage = NSLocalizedString("Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book.", comment: "Message shown in an alert to the user prior to returning a reserved title.")
         static let downloading = NSLocalizedString("Downloading", comment: "")
         static let downloadFailedMessage = NSLocalizedString("The download could not be completed.", comment: "")
     }
@@ -592,8 +545,6 @@ struct Strings {
         static let bookmarkSyncError = NSLocalizedString("There was an error syncing bookmarks to the server. Ensure your device is connected to the internet.", comment: "Alert message when bookmark sync fails")
         static let libraryLoadError = NSLocalizedString("We can\u{2019}t get your library right now. Please try again.", comment: "Alert message when library data fails to load, with retry option")
         static let libraryLoadErrorLegacy = NSLocalizedString("We can\u{2019}t get your library right now. Please close and reopen the app to try again.", comment: "Alert message when library data fails to load, no retry available")
-        static let wifiRequired = Strings.Settings.wifiRequired
-        static let downloadRestrictedToWiFi = Strings.Settings.downloadRestrictedToWiFi
     }
 
     struct BookDetailView {
@@ -650,19 +601,11 @@ struct Strings {
     }
 
     struct HoldsView {
-        static let holds = NSLocalizedString("Holds", comment: "Nav title for Holds tab")
+        static let reservations = NSLocalizedString("Reservations", comment: "Nav title")
         static let emptyMessage = NSLocalizedString("""
-            When you place a hold on a book from the catalog, it will show up here. \
+            When you reserve a book from the catalog, it will show up here. \
             Look here from time to time to see if your book is available to download.
             """, comment: "")
         static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "")
-        static let syncFailedMessage = NSLocalizedString(
-            "Your holds may be out of date. Pull down to try again.",
-            comment: "Shown when syncing the holds list fails"
-        )
-        static let syncFailedTitle = NSLocalizedString(
-            "Couldn't Update Holds",
-            comment: "Title for sync failure banner on holds screen"
-        )
     }
 }

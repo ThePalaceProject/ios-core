@@ -65,16 +65,6 @@ extension MyBooksDownloadCenter {
             throw simulated.error
         }
 
-        // PP-3649: If this book requires Adobe DRM, ensure the device is activated
-        // before proceeding with the borrow. This is the on-demand activation that
-        // replaces the previous login-time activation.
-        #if FEATURE_DRM_CONNECTOR
-        if book.requiresAdobeDRM {
-            Task { await ErrorActivityTracker.shared.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
-            try await AdobeDRMService.shared.ensureDeviceActivated()
-        }
-        #endif
-
         // Use modern OPDSFeedService instead of legacy callback-based TPPOPDSFeed
         guard let acquisitionURL = book.defaultAcquisition?.hrefURL else {
             Task { await ErrorActivityTracker.shared.log("No acquisition URL found for '\(book.title)'", category: .borrow) }
@@ -237,12 +227,12 @@ extension MyBooksDownloadCenter {
                     return true
                 }
 
-                // PP-3716: "no-active-loan" with SAML/OIDC credentials is likely a session
+                // PP-3716: "no-active-loan" with SAML credentials is likely a session
                 // expiry — the server returns 400 instead of 401 in some cases
                 if problemDoc.type == TPPProblemDocument.TypeNoActiveLoan,
-                   (authDef?.isSaml == true || authDef?.isOidc == true),
+                   authDef?.isSaml == true,
                    hasCredentials {
-                    Log.info(#file, "SAML/OIDC: 'no-active-loan' with active credentials — treating as auth error (PP-3716)")
+                    Log.info(#file, "SAML: 'no-active-loan' with active credentials — treating as auth error (PP-3716)")
                     return true
                 }
             }
@@ -274,30 +264,32 @@ extension MyBooksDownloadCenter {
         }
 
         // Handle based on auth type
-        let needsBrowserReauth = (authDef?.isSaml == true || authDef?.isOidc == true) && hasCredentials
-        if needsBrowserReauth {
-            let authLabel = authDef?.isOidc == true ? "OIDC" : "SAML"
-            Log.info(#file, "\(authLabel) session expired during borrow - credentials marked stale, triggering re-auth flow")
+        if authDef?.isSaml == true && hasCredentials {
+            // SAML: Session cookies expired - need to re-auth via IDP
+            Log.info(#file, "SAML session expired during borrow - credentials marked stale, triggering re-auth flow")
 
             await MainActor.run { [weak self] in
                 SignInModalPresenter.presentSignInModalForCurrentAccount {
                     guard let self else { return }
 
+                    // Only proceed if user successfully logged in, not if they cancelled
                     guard self.userAccount.hasCredentials() else {
-                        Log.info(#file, "\(authLabel) re-auth cancelled or failed, not retrying borrow for '\(book.title)'")
+                        Log.info(#file, "SAML re-auth cancelled or failed, not retrying borrow for '\(book.title)'")
                         Self.clearBorrowReauthAttempted(for: book.identifier)
                         return
                     }
 
-                    Log.info(#file, "\(authLabel) re-auth completed, retrying borrow for '\(book.title)'")
+                    Log.info(#file, "SAML re-auth completed, retrying borrow for '\(book.title)'")
 
+                    // Clear the re-auth flag after successful auth so future attempts can also re-auth
                     Self.clearBorrowReauthAttempted(for: book.identifier)
 
+                    // Retry the borrow
                     Task {
                         do {
                             _ = try await self.borrowAsync(book, attemptDownload: attemptDownload)
                         } catch {
-                            Log.error(#file, "Retry borrow failed after \(authLabel) re-auth: \(error.localizedDescription)")
+                            Log.error(#file, "Retry borrow failed after SAML re-auth: \(error.localizedDescription)")
                         }
                     }
                 }
@@ -334,9 +326,9 @@ extension MyBooksDownloadCenter {
             return true
         }
 
-        // For OAuth/Token auth, the network layer should have already tried token refresh.
-        // For other types, there's no automatic recovery path.
-        Log.warn(#file, "Auth error for \(authDef?.authType.rawValue ?? "unknown") auth type - no automatic recovery")
+        // For OAuth/Token auth, the network layer should have already tried token refresh
+        // If we got here, refresh failed - show the error
+        Log.warn(#file, "Auth error for non-SAML auth type - token refresh likely failed")
         return false
     }
 

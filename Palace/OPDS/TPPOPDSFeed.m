@@ -119,12 +119,6 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
         NSDictionary *problemDocDict = nil;
         if (response.isProblemDocument) {
           problemDocDict = [NSJSONSerialization JSONObjectWithData:data options:(NSJSONReadingOptions)0 error:nil];
-          if (!problemDocDict) {
-            // Server may return duplicated/malformed JSON — use the resilient
-            // parser that handles concatenated objects
-            TPPProblemDocument *doc = [TPPProblemDocument fromProblemResponseData:data];
-            problemDocDict = doc.dictionaryValue;
-          }
         }
 
         [TPPErrorLogger logNetworkError:error

@@ -28,7 +28,6 @@ struct BookDetailView: View {
     @State private var imageBottomPosition: CGFloat = 400
     @State private var pulseSkeleton: Bool = false
     @State private var lastBookIdentifier: String?
-    @AccessibilityFocusState private var isTitleFocused: Bool
     @State private var initialLayoutComplete: Bool = false
     @State private var currentOrientation: UIDeviceOrientation = UIDevice.current.orientation
 
@@ -89,7 +88,6 @@ struct BookDetailView: View {
                 lastBookIdentifier = viewModel.book.identifier
 
                 showCompactHeader = false
-                isExpanded = false
                 headerHeight = viewModel.isFullSize ? 300 : 225
                 imageScale = 1.0
                 imageOpacity = 1.0
@@ -100,11 +98,6 @@ struct BookDetailView: View {
                 self.descriptionText = viewModel.book.summary ?? ""
                 accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                     pulseSkeleton = true
-                }
-
-                NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    isTitleFocused = true
                 }
             }
             .onDisappear {
@@ -183,13 +176,11 @@ struct BookDetailView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
                             .font(.body.weight(.semibold))
-                            .accessibilityHidden(true)
                         Text(Strings.Generic.back)
                             .palaceFont(.body)
                     }
                     .foregroundColor(headerColor.isDark ? .white : .black)
                 })
-                .accessibilityLabel(Strings.Generic.goBack)
             }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -284,10 +275,10 @@ struct BookDetailView: View {
     }
 
     private var imageView: some View {
-        BookImageView(book: viewModel.book, height: 280 * imageScale, treatImageAsDecorativeInLists: true)
+        BookImageView(book: viewModel.book, height: 280 * imageScale)
             .accessibilityIdentifier(AccessibilityID.BookDetail.coverImage)
             .opacity(imageOpacity)
-            .adaptiveShadow(backgroundColor: headerColor)
+            .adaptiveShadow()
             .accessibleAnimation(scaleAnimation, value: imageScale)
             .accessibleAnimation(scaleAnimation, value: imageOpacity)
             .background(GeometryReader { _ in
@@ -305,7 +296,6 @@ struct BookDetailView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, alignment: viewModel.isFullSize ? .leading : .center)
                 .accessibilityIdentifier(AccessibilityID.BookDetail.title)
-                .accessibilityFocused($isTitleFocused)
 
             if let authors = viewModel.book.authors, !authors.isEmpty {
                 Text(authors)
@@ -375,39 +365,37 @@ struct BookDetailView: View {
 
     @ViewBuilder private var descriptionView: some View {
         if !self.descriptionText.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(DisplayStrings.description.uppercased())
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
+            ZStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(DisplayStrings.description.uppercased())
+                        .font(.headline)
 
-                Divider()
-                    .padding(.vertical)
+                    Divider()
+                        .padding(.vertical)
 
-                VStack {
-                    HTMLTextView(htmlContent: self.descriptionText)
-                        .lineLimit(nil)
-                        .frame(maxWidth: .infinity)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxHeight: isExpanded ? .infinity : 150, alignment: .top)
-                .clipped()
-                .mask(
-                    VStack(spacing: 0) {
-                        Color.white
-                        LinearGradient(
-                            stops: [
-                                .init(color: .white,                location: 0.0),
-                                .init(color: .white.opacity(0.85), location: 0.25),
-                                .init(color: .white.opacity(0.45), location: 0.55),
-                                .init(color: .white.opacity(0.10), location: 0.80),
-                                .init(color: .clear,               location: 1.0),
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: isExpanded ? 0 : 70)
+                    VStack {
+                        HTMLTextView(htmlContent: self.descriptionText)
+                            .lineLimit(nil)
+                            .frame(maxWidth: .infinity)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                )
+                    .padding(.bottom, 60)
+                    .frame(maxHeight: isExpanded ? .infinity : 100, alignment: .top)
+                    .clipped()
+                }
+
+                if !isExpanded {
+                    LinearGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: Color.colorInverseLabel.opacity(0.0), location: 0.0),
+                            .init(color: Color.colorInverseLabel.opacity(0.5), location: 0.7),
+                            .init(color: Color.colorInverseLabel, location: 1.0)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 60)
+                }
 
                 Button(isExpanded ? DisplayStrings.less.capitalized : DisplayStrings.more.capitalized) {
                     withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) {
@@ -415,7 +403,7 @@ struct BookDetailView: View {
                     }
                 }
                 .foregroundColor(.primary)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .bottomrRightJustified()
             }
             .padding(.bottom)
         }
@@ -427,7 +415,6 @@ struct BookDetailView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(DisplayStrings.otherBooks.uppercased())
                         .font(.headline)
-                        .accessibilityAddTraits(.isHeader)
 
                     Divider()
                         .padding(.vertical, 20)
@@ -461,7 +448,7 @@ struct BookDetailView: View {
                                             Button(action: {
                                                 viewModel.selectRelatedBook(book)
                                             }, label: {
-                                                BookImageView(book: book, height: 160, treatImageAsDecorativeInLists: true)
+                                                BookImageView(book: book, height: 160)
                                                     .padding()
                                                     .adaptiveShadow(radius: 5)
                                                     .transition(.opacity.combined(with: .scale))
@@ -478,10 +465,6 @@ struct BookDetailView: View {
                                 .padding(.horizontal, 30)
 
                             }
-                            .accessibilityElement(children: .contain)
-                            .accessibilityLabel(lane.title)
-                            .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: lane.books.count))
-                            .accessibilityHint(Strings.Generic.horizontalLaneHint)
                         }
                     }
                 }
@@ -505,17 +488,18 @@ struct BookDetailView: View {
 
     @ViewBuilder private var audiobookIndicator: some View {
         ImageProviders.MyBooksView.audiobookBadge
+            .resizable()
             .scaledToFit()
             .frame(width: 28, height: 28)
             .background(Circle().fill(Color.colorAudiobookBackground))
             .clipped()
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder private var informationView: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(DisplayStrings.information.uppercased())
                 .font(.headline)
-                .accessibilityAddTraits(.isHeader)
             Divider()
                 .padding(.vertical)
 
@@ -732,13 +716,11 @@ struct BookDetailView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
                             .font(.body.weight(.semibold))
-                            .accessibilityHidden(true)
-                        Text(Strings.Generic.back)
+                        Text("Back")
                             .palaceFont(.body)
                     }
                     .foregroundColor(headerColor.isDark ? .white : .black)
                 })
-                .accessibilityLabel(Strings.Generic.goBack)
                 .padding(.leading, 8)
                 .padding(.top, UIDevice.current.isIpad ? 8 : 0)
 

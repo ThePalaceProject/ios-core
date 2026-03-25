@@ -24,4 +24,3 @@
 #import "TPPOpenSearchDescription.h"
 #import "TPPJSON.h"
 #import "TPPOPDSFeed.h"
-#import "TPPObjCExceptionCatcher.h"

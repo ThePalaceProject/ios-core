@@ -191,9 +191,6 @@ extension TPPSignInBusinessLogic {
         userAccount.removeAll()
         selectedIDP = nil
 
-        TPPNetworkExecutor.shared.clearCache()
-        URLCache.shared.removeAllCachedResponses()
-
         // Clear WebView data to fully sign out of SAML/OAuth IdPs (e.g., Google)
         // Without this, the IdP session remains cached and auto-signs in on next attempt
         // CRITICAL: Wait for WebView data to be cleared BEFORE notifying UI that sign-out is complete

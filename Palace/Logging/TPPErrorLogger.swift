@@ -395,7 +395,6 @@ private let nullString = "null"
     /// to avoid flooding Crashlytics during mass failure events (e.g., a dead
     /// image host affecting every book in a swimlane).
     private static var lastImageErrorReport: [String: Date] = [:]
-    private static let imageErrorReportLock = NSLock()
     private static let imageErrorReportInterval: TimeInterval = 60
 
     /// Records a host-level image loading failure as a non-fatal error in
@@ -435,8 +434,6 @@ private let nullString = "null"
 
     private class func shouldReportImageError(key: String) -> Bool {
         let now = Date()
-        imageErrorReportLock.lock()
-        defer { imageErrorReportLock.unlock() }
         if let lastReport = lastImageErrorReport[key],
            now.timeIntervalSince(lastReport) < imageErrorReportInterval {
             return false

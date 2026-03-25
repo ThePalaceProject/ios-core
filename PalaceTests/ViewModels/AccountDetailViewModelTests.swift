@@ -588,10 +588,6 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
 
-        // Drain init's deferred Task { @MainActor in accountDidChange() } so any
-        // account state set by previous tests is reflected before we assert.
-        await Task.yield()
-
         XCTAssertTrue(viewModel.isPINHidden, "PIN should be hidden by default for security")
     }
 
@@ -603,30 +599,17 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
 
-        // Drain init's deferred Task { @MainActor in accountDidChange() }.
-        // accountDidChange() may set pinText to a non-empty value when the device has
-        // stored credentials (e.g. leftover from a previous test). If pinText is
-        // non-empty and isPINHidden is true, togglePINVisibility() takes the async
-        // LAContext biometric path, making the immediate assertion racy.
-        await Task.yield()
-
-        // Force the deterministic direct-toggle path by clearing pinText.
-        // togglePINVisibility() only goes async when pinText.nonEmpty && isPINHidden.
-        // Setting pinText = "" (or when isPINHidden is already false) uses the
-        // synchronous branch, which is what we need to assert immediately.
-        viewModel.pinText = ""
-
-        viewModel.togglePINVisibility()                 // direct: pinText empty → reveal
-        XCTAssertFalse(viewModel.isPINHidden)
-
-        viewModel.togglePINVisibility()                 // direct: isPINHidden false → hide
-        XCTAssertTrue(viewModel.isPINHidden)
-
-        viewModel.pinText = ""                          // ensure direct path for next reveal
+        // Toggle multiple times
         viewModel.togglePINVisibility()
         XCTAssertFalse(viewModel.isPINHidden)
 
-        viewModel.togglePINVisibility()                 // direct: isPINHidden false → hide
+        viewModel.togglePINVisibility()
+        XCTAssertTrue(viewModel.isPINHidden)
+
+        viewModel.togglePINVisibility()
+        XCTAssertFalse(viewModel.isPINHidden)
+
+        viewModel.togglePINVisibility()
         XCTAssertTrue(viewModel.isPINHidden)
     }
 
@@ -638,15 +621,10 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
 
-        // Drain init's deferred tasks, then clear pinText to guarantee the
-        // synchronous direct-toggle path (no async biometric challenge).
-        await Task.yield()
-        viewModel.pinText = ""
-
         viewModel.togglePINVisibility()
         XCTAssertFalse(viewModel.isPINHidden)
 
-        // Changing credentials shouldn't affect PIN visibility state.
+        // Changing credentials shouldn't affect visibility
         viewModel.pinText = "newpin"
 
         XCTAssertFalse(viewModel.isPINHidden)

@@ -32,7 +32,6 @@ jobs:
             echo "url=$(echo "$PR_JSON" | jq -r '.html_url')" >> $GITHUB_OUTPUT
             echo "author=$(echo "$PR_JSON" | jq -r '.user.login')" >> $GITHUB_OUTPUT
             echo "branch=$(echo "$PR_JSON" | jq -r '.head.ref')" >> $GITHUB_OUTPUT
-            echo "base=$(echo "$PR_JSON" | jq -r '.base.ref')" >> $GITHUB_OUTPUT
             echo "sha=$(echo "$PR_JSON" | jq -r '.head.sha')" >> $GITHUB_OUTPUT
             
             # PR body can be multiline — write to file
@@ -44,7 +43,6 @@ jobs:
             echo "url=${{ github.event.pull_request.html_url }}" >> $GITHUB_OUTPUT
             echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
             echo "branch=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
-            echo "base=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
             echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
             
             # Write PR body to file (via env var to avoid injection)
@@ -94,16 +92,11 @@ jobs:
           echo "msg=$(git log -1 --format='%s')" >> $GITHUB_OUTPUT
 
       - name: Move tickets to Code Review
-        id: jira-update
         if: steps.tickets.outputs.found == 'true'
-        continue-on-error: true
         env:
-          # Personal credentials are always used for JIRA ticket updates (comments,
-          # transitions). Org credentials are available via JIRA_EMAIL / JIRA_API_TOKEN
-          # for other steps that need them.
-          JIRA_URL: ${{ secrets.JIRA_URL }}
-          JIRA_EMAIL: ${{ secrets.JIRA_PERSONAL_EMAIL }}
-          JIRA_API_TOKEN: ${{ secrets.JIRA_PERSONAL_API_TOKEN }}
+          JIRA_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
           PR_NUM: ${{ steps.pr.outputs.num }}
           PR_URL: ${{ steps.pr.outputs.url }}
           PR_TITLE: ${{ steps.pr.outputs.title }}
@@ -140,26 +133,18 @@ jobs:
               print(text)
           " 2>/dev/null || true)
 
-          # Extract Test plan (preferred) or "How to verify" from Summary for JIRA
+          # Extract Test plan
           TESTING_STEPS=$(echo "$PR_BODY" | python3 -c "
           import sys, re
           body = sys.stdin.read()
-          # Try ## Test Plan section first
           m = re.search(r'##\s*Test [Pp]lan\s*\n(.*?)(?=\n##|\Z)', body, re.DOTALL)
           if m:
               text = m.group(1).strip()
+              # Convert markdown checklist to numbered steps
               lines = [re.sub(r'^\s*[-*]\s*\[.\]\s*', '', l).strip()
                        for l in text.splitlines() if l.strip()]
               for i, line in enumerate(lines, 1):
                   print(f'{i}. {line}')
-          else:
-              # Fallback: How to verify from Summary for JIRA
-              m2 = re.search(r'\*\*How to verify:\*\*\s*(.+?)(?=\n\*\*|\n---|\Z)', body, re.DOTALL)
-              if m2:
-                  text = m2.group(1).strip()
-                  lines = [l.strip() for l in text.splitlines() if l.strip()]
-                  for i, line in enumerate(lines, 1):
-                      print(f'{i}. {line}')
           " 2>/dev/null || true)
 
           # Fallback: use first 20 lines of PR body if no Summary section found
@@ -184,19 +169,32 @@ jobs:
                 echo "⚠️ Failed to add fix details to $TICKET"
               }
             fi
+
+            # Add PR link comment
+            PR_COMMENT=$(cat <<EOFCOMMENT
+          🔍 Pull Request Ready for Review
+
+          PR: #${PR_NUM} - ${PR_TITLE}
+          URL: ${PR_URL}
+          Author: ${AUTHOR}
+          Branch: ${BRANCH}
+          Build: ${BUILD_NUM}
+          EOFCOMMENT
+            )
+            ./scripts/jira-integration.sh comment "$TICKET" "$PR_COMMENT" || {
+              echo "⚠️ Failed to add PR comment to $TICKET"
+            }
           done
           
           # Cleanup
           rm -f .jira-config
           
       - name: Summary
-        if: always() && steps.tickets.outputs.found == 'true'
+        if: steps.tickets.outputs.found == 'true'
         run: |
           echo "## 🔍 Jira Code Review Update" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.jira-update.outcome }}" = "failure" ]; then
-            echo "⚠️ **JIRA step failed.** Check Actions log for errors. Common causes: missing repo secrets (JIRA_URL, JIRA_EMAIL, JIRA_API_TOKEN), or transition name mismatch (e.g. \"Code Review\")." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "**Tickets:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
-          echo "**PR:** #${{ steps.pr.outputs.num }} | **Build:** ${{ steps.build.outputs.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tickets moved to Code Review:** ${{ steps.tickets.outputs.list }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** #${{ steps.pr.outputs.num }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Build:** ${{ steps.build.outputs.number }}" >> $GITHUB_STEP_SUMMARY

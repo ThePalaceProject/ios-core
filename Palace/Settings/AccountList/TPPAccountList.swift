@@ -2,6 +2,7 @@ import Foundation
 
 /// List of available Libraries/Accounts to select as patron's primary
 /// when going through Welcome Screen flow.
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad from datasource.title
 @objc final class TPPAccountList: UIViewController {
 
     private let completion: (Account) -> Void
@@ -22,17 +23,6 @@ import Foundation
     @objc required init(completion: @escaping (Account) -> Void) {
         self.completion = completion
         super.init(nibName: nil, bundle: nil)
-        title = datasource.title
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(catalogDidLoad),
-            name: .TPPCatalogDidLoad,
-            object: nil
-        )
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
     }
 
     @available(*, unavailable)
@@ -43,6 +33,7 @@ import Foundation
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = TPPConfiguration.backgroundColor()
+        title = datasource.title
 
         if #available(iOS 13.0, *) {
             isModalInPresentation = requiresSelectionBeforeDismiss
@@ -54,26 +45,14 @@ import Foundation
             finishConfiguration()
         } else {
             showLoading()
-        }
-
-        // Always call loadCatalogs: if data is already in memory this returns immediately
-        // and triggers a silent background refresh when the cache is stale (>5 min).
-        AccountsManager.shared.loadCatalogs { [weak self] success in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.hideLoading()
-                success ? self.finishConfiguration() : self.showLoadingFailureAlert()
-                self.datasource.loadData()
-                self.tableView.reloadData()
+            AccountsManager.shared.loadCatalogs { success in
+                DispatchQueue.main.async {
+                    self.hideLoading()
+                    success ? self.finishConfiguration() : self.showLoadingFailureAlert()
+                    self.datasource.loadData()
+                    self.tableView.reloadData()
+                }
             }
-        }
-    }
-
-    @objc private func catalogDidLoad() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.datasource.loadData()
-            self.tableView.reloadData()
         }
     }
 
@@ -93,32 +72,12 @@ import Foundation
         tableView.backgroundColor = TPPConfiguration.backgroundColor()
         tableView.register(TPPAccountListCell.self, forCellReuseIdentifier: TPPAccountListCell.reuseIdentifier)
 
-        let refreshControl = UIRefreshControl()
-        refreshControl.addTarget(self, action: #selector(pullToRefresh), for: .valueChanged)
-        tableView.refreshControl = refreshControl
-
         stackView.addArrangedSubview(searchBar)
         stackView.addArrangedSubview(tableView)
         view.addSubview(stackView)
 
         stackView.autoPinEdge(toSuperviewMargin: .top)
         stackView.autoPinEdgesToSuperviewEdges(with: .zero, excludingEdge: .top)
-    }
-
-    @objc private func pullToRefresh() {
-        AccountsManager.shared.clearCache()
-        AccountsManager.shared.loadCatalogs { [weak self] success in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.tableView.refreshControl?.endRefreshing()
-                if success {
-                    self.datasource.loadData()
-                    self.tableView.reloadData()
-                } else {
-                    self.showLoadingFailureAlert()
-                }
-            }
-        }
     }
 
     private func finishConfiguration() {

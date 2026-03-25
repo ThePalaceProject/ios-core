@@ -5,8 +5,6 @@ struct BookImageView: View {
     var width: CGFloat?
     var height: CGFloat = 280
     var usePulseSkeleton: Bool = true
-    /// When true, the cover is not announced by VoiceOver (e.g. in list cells where the cell already announces title/author).
-    var treatImageAsDecorativeInLists: Bool = false
 
     @State private var showSkeleton: Bool = true
 
@@ -27,8 +25,7 @@ struct BookImageView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .transition(.opacity)
-                    .accessibilityLabel(treatImageAsDecorativeInLists ? "" : String(format: NSLocalizedString("Cover image for %@", comment: "Book cover accessibility"), book.title))
-                    .accessibilityHidden(treatImageAsDecorativeInLists)
+                    .accessibilityLabel(String(format: NSLocalizedString("Cover image for %@", comment: "Book cover accessibility"), book.title))
             }
 
             if book.isAudiobook {
@@ -40,21 +37,16 @@ struct BookImageView: View {
                     .clipShape(Circle())
                     .padding([.trailing, .bottom], 10)
                     .accessibilityLabel(NSLocalizedString("Audiobook", comment: "Audiobook badge accessibility"))
-                    .accessibilityHidden(treatImageAsDecorativeInLists)
             }
         }
-        .accessibilityElement(children: treatImageAsDecorativeInLists ? .ignore : .combine)
         .frame(width: width, height: height)
         .onAppear {
-            // Suppress skeleton immediately if something is already available to show
+            // Skip skeleton if image already loaded
             if hasPreloadedCover {
                 showSkeleton = false
+            } else {
+                book.fetchCoverImage()
             }
-            // Always fetch at the correct display size. The registry checks the size-specific
-            // cache key first, so this is instant when the right resolution is cached.
-            // Without this, a small thumbnail loaded earlier (e.g. catalog lane) would be
-            // displayed at full size, causing pixelation on large screens.
-            book.fetchCoverImage(forDisplayHeight: height)
         }
         .onChange(of: book.coverImage) { newImage in
             if newImage != nil {
