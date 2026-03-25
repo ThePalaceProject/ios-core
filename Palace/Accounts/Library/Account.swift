@@ -153,6 +153,16 @@ protocol AccountLogoDelegate: AnyObject {
                 oidcLogoutHref = nil
 
             }
+
+            // Log every link the server sends for this auth type so that rel
+            // values and href formats are visible in the console at parse time.
+            // This makes server contract mismatches (wrong rel, URI templates,
+            // unexpected fields) immediately observable during development.
+            let linkSummary = auth.links?
+                .map { "[\($0.rel ?? "no-rel"): \($0.href ?? "no-href")]" }
+                .joined(separator: ", ")
+                ?? "none"
+            Log.debug(#file, "Authentication[\(auth.type ?? "unknown")] links: \(linkSummary)")
         }
 
         var needsAuth: Bool {
