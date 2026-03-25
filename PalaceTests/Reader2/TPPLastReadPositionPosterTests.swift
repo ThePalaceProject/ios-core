@@ -259,7 +259,7 @@ final class PositionThrottlingTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func testPoster_rapidPositionUpdates_throttlesUploads() async throws {
+    func testPoster_rapidPositionUpdates_throttlesUploads() {
         let poster = TPPLastReadPositionPoster(
             book: testBook,
             publication: publication,
@@ -279,8 +279,8 @@ final class PositionThrottlingTests: XCTestCase {
             poster.storeReadPosition(locator: locator)
         }
 
-        // Small delay for serial queue processing
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // storeReadPosition saves locally (synchronous) then schedules server posting
+        // asynchronously on serialQueue. The local mock write is immediate — no wait needed.
 
         // Local storage should be updated with the latest position
         let storedLocation = bookRegistryMock.location(forIdentifier: testBook.identifier)

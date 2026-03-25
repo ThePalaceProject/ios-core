@@ -78,9 +78,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             #endif
         case .errorSimulation:
             #if DEBUG
-            return 2  // Simulate Borrow Error + Preview Error Details
+            return 3  // Simulate Borrow Error + Simulate Sync Failure + Preview Error Details
             #else
-            return 1  // Simulate Borrow Error (available in TestFlight for QA)
+            return 2  // Simulate Borrow Error + Simulate Sync Failure (available in TestFlight for QA)
             #endif
         default: return 1
         }
@@ -116,6 +116,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case .errorSimulation:
             switch indexPath.row {
             case 0: return cellForErrorSimulation()
+            case 1: return cellForSyncFailureSimulation()
             default:
                 #if DEBUG
                 return cellForPreviewErrorDetails()
@@ -264,6 +265,19 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
 
+    private func cellForSyncFailureSimulation() -> UITableViewCell {
+        let currentFailure = DebugSettings.shared.simulatedSyncFailure
+
+        let cell = UITableViewCell(style: .value1, reuseIdentifier: "syncFailureSimulationCell")
+        cell.selectionStyle = .default
+        cell.textLabel?.text = "Simulate Sync Failure"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.detailTextLabel?.text = currentFailure.displayName
+        cell.detailTextLabel?.textColor = currentFailure == .none ? .secondaryLabel : .systemRed
+        cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+
     #if DEBUG
     private func cellForPreviewErrorDetails() -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: "previewErrorDetailsCell")
@@ -350,6 +364,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             switch indexPath.row {
             case 0:
                 showErrorSimulationPicker()
+            case 1:
+                showSyncFailurePicker()
             default:
                 #if DEBUG
                 showPreviewErrorDetails()
@@ -384,7 +400,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 if config != .none {
                     let confirmAlert = TPPAlertUtils.alert(
                         title: "Test Holds Enabled",
-                        message: "Badge should show: \(config.expectedBadgeCount)\n\nGo to the Reservations tab to see the test books. Remember to disable when done testing."
+                        message: "Badge should show: \(config.expectedBadgeCount)\n\nGo to the Holds tab to see the test books. Remember to disable when done testing."
                     )
                     self?.present(confirmAlert, animated: true)
                 }
@@ -432,6 +448,41 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         if let popover = alert.popoverPresentationController {
             popover.sourceView = tableView
             popover.sourceRect = tableView.rectForRow(at: IndexPath(row: 0, section: Section.errorSimulation.rawValue))
+        }
+
+        present(alert, animated: true)
+    }
+
+    private func showSyncFailurePicker() {
+        let alert = UIAlertController(
+            title: "Simulate Sync Failure",
+            message: "Simulates the loans feed sync failing silently \u{2014} the exact scenario reported by users where hold notifications don't convert to checkouts.\n\nEnable, then pull-to-refresh on Holds or switch to foreground.",
+            preferredStyle: .actionSheet
+        )
+
+        for failureType in DebugSettings.SimulatedSyncFailure.allCases {
+            let isSelected = DebugSettings.shared.simulatedSyncFailure == failureType
+            let checkmark = isSelected ? " ✓" : ""
+
+            alert.addAction(UIAlertAction(title: failureType.displayName + checkmark, style: .default) { [weak self] _ in
+                DebugSettings.shared.simulatedSyncFailure = failureType
+                self?.tableView.reloadData()
+
+                if failureType != .none {
+                    let confirmAlert = TPPAlertUtils.alert(
+                        title: "Sync Failure Enabled",
+                        message: "'\(failureType.displayName)' will be simulated on every sync. Go to Holds and pull to refresh \u{2014} notice how nothing happens and no error is shown.\n\nDisable when done testing."
+                    )
+                    self?.present(confirmAlert, animated: true)
+                }
+            })
+        }
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = tableView
+            popover.sourceRect = tableView.rectForRow(at: IndexPath(row: 1, section: Section.errorSimulation.rawValue))
         }
 
         present(alert, animated: true)

@@ -14,6 +14,16 @@ import XCTest
 
 final class AccountAwareNetworkTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        HTTPStubURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        HTTPStubURLProtocol.reset()
+        super.tearDown()
+    }
+
     // MARK: - Request Creation with Account Context
 
     func testRequest_CapturesCurrentAccountToken() {
@@ -166,9 +176,9 @@ final class AccountAwareNetworkTests: XCTestCase {
             delegateQueue: nil
         )
 
-        // Register a slow stub so the task stays active
+        let stubSemaphore = DispatchSemaphore(value: 0)
         HTTPStubURLProtocol.register { request in
-            Thread.sleep(forTimeInterval: 5.0)
+            stubSemaphore.wait(timeout: .now() + 0.5)
             return HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data())
         }
 
@@ -182,7 +192,10 @@ final class AccountAwareNetworkTests: XCTestCase {
 
     // MARK: - executeTokenRefresh Account Parameter
 
-    func testExecuteTokenRefresh_AcceptsAccountId() {
+    // `wait(for:)` blocks the main thread and deadlocks if the completion handler is
+    // dispatched back to the main thread. Use async/await + withCheckedContinuation
+    // so the test runner's cooperative thread pool handles the suspension correctly.
+    func testExecuteTokenRefresh_AcceptsAccountId() async {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
 
@@ -201,29 +214,28 @@ final class AccountAwareNetworkTests: XCTestCase {
             delegateQueue: nil
         )
 
-        let expectation = XCTestExpectation(description: "Token refresh completes")
         let tokenURL = URL(string: "https://example.com/token")!
 
-        executor.executeTokenRefresh(
-            username: "testuser",
-            password: "testpass",
-            tokenURL: tokenURL,
-            accountId: "urn:uuid:test-account"
-        ) { result in
-            switch result {
-            case .success(let response):
-                XCTAssertEqual(response.accessToken, "test")
-            case .failure:
-                break // May fail due to test environment
-            }
-            expectation.fulfill()
+        let result: Result<TokenResponse, Error> = await withCheckedContinuation { continuation in
+            executor.executeTokenRefresh(
+                username: "testuser",
+                password: "testpass",
+                tokenURL: tokenURL,
+                accountId: "urn:uuid:test-account"
+            ) { continuation.resume(returning: $0) }
         }
 
-        wait(for: [expectation], timeout: 15.0)
+        switch result {
+        case .success(let response):
+            XCTAssertEqual(response.accessToken, "test")
+        case .failure:
+            break // May fail due to test environment
+        }
+
         HTTPStubURLProtocol.reset()
     }
 
-    func testExecuteTokenRefresh_NilAccountId_BackwardCompatible() {
+    func testExecuteTokenRefresh_NilAccountId_BackwardCompatible() async {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
 
@@ -242,25 +254,17 @@ final class AccountAwareNetworkTests: XCTestCase {
             delegateQueue: nil
         )
 
-        let expectation = XCTestExpectation(description: "Token refresh completes")
         let tokenURL = URL(string: "https://example.com/token")!
 
         // Call without accountId (default nil) — the key assertion is that this
         // compiles and runs without the accountId parameter (backward compatibility).
-        executor.executeTokenRefresh(
-            username: "testuser",
-            password: "testpass",
-            tokenURL: tokenURL
-        ) { result in
-            expectation.fulfill()
+        let _: Result<TokenResponse, Error> = await withCheckedContinuation { continuation in
+            executor.executeTokenRefresh(
+                username: "testuser",
+                password: "testpass",
+                tokenURL: tokenURL
+            ) { continuation.resume(returning: $0) }
         }
-
-        // The session delegate chain and Task scheduling add variable latency on CI
-        // (the sibling test with accountId took ~3.2s on CI), so use a generous timeout.
-        wait(for: [expectation], timeout: 15.0)
-
-        // Keep executor alive until completion to prevent session invalidation
-        _ = executor
 
         HTTPStubURLProtocol.reset()
     }

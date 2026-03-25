@@ -20,7 +20,7 @@ final class HoldsSnapshotTests: XCTestCase {
             Text(Strings.HoldsView.emptyMessage)
                 .multilineTextAlignment(.center)
                 .foregroundColor(Color(white: 0.667))
-                .font(.system(size: 18))
+                .font(.body)
                 .padding(.horizontal, 24)
         }
         .frame(width: 390, height: 400)
@@ -34,7 +34,7 @@ final class HoldsSnapshotTests: XCTestCase {
             Text(Strings.HoldsView.emptyMessage)
                 .multilineTextAlignment(.center)
                 .foregroundColor(Color(white: 0.667))
-                .font(.system(size: 18))
+                .font(.body)
                 .padding(.horizontal, 24)
         }
         .frame(width: 390, height: 400)
@@ -102,7 +102,7 @@ final class HoldsSnapshotTests: XCTestCase {
 
     func testHoldsSearchBar_empty() {
         let searchBar = HStack {
-            TextField(NSLocalizedString("Search Reservations", comment: ""), text: .constant(""))
+            TextField(NSLocalizedString("Search Holds", comment: ""), text: .constant(""))
                 .searchBarStyle()
             Button(action: {}, label: {
                 Image(systemName: "xmark.circle.fill")
@@ -120,7 +120,7 @@ final class HoldsSnapshotTests: XCTestCase {
 
     func testHoldsSearchBar_withText() {
         let searchBar = HStack {
-            TextField(NSLocalizedString("Search Reservations", comment: ""), text: .constant("Harry Potter"))
+            TextField(NSLocalizedString("Search Holds", comment: ""), text: .constant("Harry Potter"))
                 .searchBarStyle()
             Button(action: {}, label: {
                 Image(systemName: "xmark.circle.fill")

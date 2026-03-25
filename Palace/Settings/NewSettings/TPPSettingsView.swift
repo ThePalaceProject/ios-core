@@ -13,6 +13,7 @@ struct TPPSettingsView: View {
     typealias DisplayStrings = Strings.Settings
 
     @AppStorage(TPPSettings.showDeveloperSettingsKey) private var showDeveloperSettings: Bool = false
+    @AppStorage(TPPSettings.downloadOnlyOnWiFiKey) private var downloadOnlyOnWiFi: Bool = false
     @State private var selectedView: Int? = 0
     @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
     @State private var showAddLibrarySheet: Bool = false
@@ -23,7 +24,6 @@ struct TPPSettingsView: View {
         _currentAccounts = State(initialValue: TPPSettings.shared.settingsAccountsList)
     }
 
-    // accesslint:disable A11Y.UIKIT.ORIENTATION - Adapts layout for iPad landscape; does not restrict orientation
     private var sideBarEnabled: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
             &&  UIDevice.current.orientation != .portrait
@@ -58,6 +58,7 @@ struct TPPSettingsView: View {
     @ViewBuilder private var listView: some View {
         List {
             librariesSection
+            downloadsSection
             infoSection
             developerSettingsSection
         }
@@ -101,15 +102,29 @@ struct TPPSettingsView: View {
             .navigationBarItems(trailing: navButton)
             .id(librariesRefreshToken)
 
-        Section {
+        Section(header: Text(DisplayStrings.libraries)) {
             row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
                 .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
         }
     }
 
+    @ViewBuilder private var downloadsSection: some View {
+        Section(header: Text(DisplayStrings.downloads)) {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(DisplayStrings.downloadOnlyOnWiFi, isOn: $downloadOnlyOnWiFi)
+                    .tint(.green)
+                    .accessibilityIdentifier(AccessibilityID.Settings.downloadOnlyOnWiFiToggle)
+                Text(DisplayStrings.downloadOnlyOnWiFiDescription)
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
     @ViewBuilder private var infoSection: some View {
         let view: AnyView = showDeveloperSettings ? EmptyView().anyView() : versionInfo.anyView()
-        Section(footer: view) {
+        Section(header: Text(Strings.Settings.aboutSectionHeader), footer: view) {
             aboutRow
             privacyRow
             userAgreementRow
@@ -175,7 +190,7 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var developerSettingsSection: some View {
         if TPPSettings.shared.customMainFeedURL == nil && showDeveloperSettings {
-            Section(footer: versionInfo) {
+            Section(header: Text(DisplayStrings.developerSettings), footer: versionInfo) {
                 let viewController = TPPDeveloperSettingsTableViewController()
 
                 let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })

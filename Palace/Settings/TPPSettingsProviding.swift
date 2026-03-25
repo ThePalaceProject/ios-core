@@ -63,6 +63,12 @@ import Foundation
     /// Custom library registry server URL. When set, the app fetches
     /// the library list from this server instead of the default.
     var customLibraryRegistryServer: String? { get set }
+
+    // MARK: - Download Settings
+
+    /// When true, content downloads are restricted to Wi-Fi connections only.
+    /// Cellular/mobile data downloads are blocked with a user-facing message.
+    var downloadOnlyOnWiFi: Bool { get set }
 }
 
 // MARK: - TPPSettings Conformance

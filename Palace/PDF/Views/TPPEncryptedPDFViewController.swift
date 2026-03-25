@@ -9,7 +9,6 @@
 import UIKit
 
 /// Encrypted PDF view controller
-// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 class TPPEncryptedPDFViewController: UIPageViewController {
 
     var document: TPPEncryptedPDFDocument
@@ -31,11 +30,11 @@ class TPPEncryptedPDFViewController: UIPageViewController {
         self.document = encryptedPDF
         self.pageCount = encryptedPDF.pageCount
         super.init(transitionStyle: .scroll, navigationOrientation: .horizontal, options: [.interPageSpacing: 20])
+        title = NSLocalizedString("PDF Reader", comment: "PDF reader screen title")
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = NSLocalizedString("PDF Reader", comment: "PDF reader screen title")
         view.backgroundColor = .secondarySystemBackground
         dataSource = self
         currentPage = min(pageCount, max(0, currentPage))

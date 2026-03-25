@@ -42,7 +42,7 @@ struct AppTabHostView: View {
                 .tabItem {
                     VStack {
                         Image("Holds").renderingMode(.template)
-                        Text(Strings.HoldsView.reservations)
+                        Text(Strings.HoldsView.holds)
                     }
                 }
                 .badge(holdsBadgeCount)
@@ -56,7 +56,7 @@ struct AppTabHostView: View {
         }
         .tint(Color.accentColor)
         .onAppear { AppTabRouterHub.shared.router = router }
-        .onChange(of: router.selected) { _ in
+        .onChange(of: router.selected) { newTab in
             // Respect reduce motion accessibility setting
             if UIAccessibility.isReduceMotionEnabled {
                 NavigationCoordinatorHub.shared.coordinator?.popToRoot()
@@ -70,6 +70,13 @@ struct AppTabHostView: View {
                 top.dismiss(animated: true)
             }
             NotificationCenter.default.post(name: .AppTabSelectionDidChange, object: nil)
+            // Announce the new tab for VoiceOver when tab changes
+            if UIAccessibility.isVoiceOverRunning {
+                let message = Self.accessibilityLabel(for: newTab)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    UIAccessibility.post(notification: .announcement, argument: message)
+                }
+            }
         }
         .onAppear {
             updateHoldsBadge()
@@ -81,20 +88,35 @@ struct AppTabHostView: View {
 }
 
 private extension AppTabHostView {
+    /// VoiceOver announcement label for each tab (matches tab item text).
+    static func accessibilityLabel(for tab: AppTab) -> String {
+        switch tab {
+        case .catalog: return Strings.Settings.catalog
+        case .myBooks: return Strings.MyBooksView.navTitle
+        case .holds: return Strings.HoldsView.holds
+        case .settings: return Strings.Settings.settings
+        }
+    }
+
     func updateHoldsBadge() {
         guard TPPBookRegistry.shared.state == .loaded || TPPBookRegistry.shared.state == .synced else {
             return
         }
 
-        // Move heavy registry access off main thread to avoid blocking UI
+        // Snapshot heldBooks on the calling (main) thread before dispatching to a
+        // background queue. TPPBookRegistry is not thread-safe; accessing heldBooks
+        // from a background thread races with registry mutations and can crash via
+        // Swift bridging or ObjC exceptions.
+        #if DEBUG
+        let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? TPPBookRegistry.shared.heldBooks
+        let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
+        #else
+        let held = TPPBookRegistry.shared.heldBooks
+        #endif
+
+        // Move the availability-matching work off main thread; the snapshot is
+        // an immutable copy so no thread-safety issues exist here.
         DispatchQueue.global(qos: .userInitiated).async {
-            // Use test books if debug configuration is enabled, otherwise use real registry data
-            #if DEBUG
-            let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? TPPBookRegistry.shared.heldBooks
-            let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
-            #else
-            let held = TPPBookRegistry.shared.heldBooks
-            #endif
 
             var readyCount = 0
 
