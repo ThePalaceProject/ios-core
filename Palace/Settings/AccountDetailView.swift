@@ -102,8 +102,8 @@ struct AccountDetailView: View {
             Text(viewModel.libraryName)
                 .palaceFont(.headline)
                 .foregroundColor(.secondary)
-                .horizontallyCentered()
         }
+        .horizontallyCentered()
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.vertical, Layout.verticalPaddingLarge)
     }
