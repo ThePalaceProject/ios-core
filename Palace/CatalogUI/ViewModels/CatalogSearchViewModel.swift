@@ -37,9 +37,13 @@ class CatalogSearchViewModel: ObservableObject {
     private var searchDescriptorURLCache: [String: URL] = [:]
 
     /// Entry-point facet links extracted from the most recent search results.
-    /// Keys are format titles; values are direct search URLs with the query baked in.
-    /// Cleared at the start of each new search.
+    /// Keys are format titles (lowercased); values are direct search URLs with the query baked in.
+    /// Cleared when the query changes, but preserved across format switches for the same query.
     private var postSearchFacets: [String: URL] = [:]
+
+    /// The query string from the most recently executed search. Used to detect whether
+    /// `performSearch()` is re-running for the same query (format switch) or a new one.
+    private var lastSearchedQuery: String = ""
 
     init(
         repository: CatalogRepositoryProtocol,
@@ -62,7 +66,7 @@ class CatalogSearchViewModel: ObservableObject {
     func updateBooks(_ books: [TPPBook]) {
         allBooks = books
         if searchQuery.isEmpty {
-            filteredBooks = books
+            filteredBooks = filterBooks(books, forEntryAt: selectedFormatIndex)
         }
     }
 
@@ -84,10 +88,11 @@ class CatalogSearchViewModel: ObservableObject {
         searchTask?.cancel()
         isLoading = false
         errorMessage = nil
-        filteredBooks = allBooks
+        filteredBooks = filterBooks(allBooks, forEntryAt: selectedFormatIndex)
         nextPageURL = nil
         isLoadingMore = false
         postSearchFacets.removeAll()
+        lastSearchedQuery = ""
         // Generate new searchId to scroll to top of restored books
         searchId = UUID()
     }
@@ -107,6 +112,11 @@ class CatalogSearchViewModel: ObservableObject {
                 self.formatEntries = entries
                 if let activeIdx = entries.firstIndex(where: { $0.isActive }) {
                     self.selectedFormatIndex = activeIdx
+                }
+                // Re-filter the displayed books now that we know the active format.
+                // Only applies when no search is active; search results are unaffected.
+                if self.searchQuery.isEmpty {
+                    self.filteredBooks = self.filterBooks(self.allBooks, forEntryAt: self.selectedFormatIndex)
                 }
                 // Pre-populate the cache for entries that already have a descriptor URL
                 for entry in entries {
@@ -148,6 +158,31 @@ class CatalogSearchViewModel: ObservableObject {
         if !searchQuery.isEmpty {
             debounceTask?.cancel()
             performSearch()
+        } else {
+            filteredBooks = filterBooks(allBooks, forEntryAt: index)
+        }
+    }
+
+    // MARK: - Format Filtering (no-query state)
+
+    /// Filter a list of books by the entry-point format at the given index.
+    /// Used when no search query is active — selecting a facet immediately narrows
+    /// the displayed books to match that format using the book's content type.
+    ///
+    /// Title-based detection handles the common Palace formats:
+    ///   "all" prefix/suffix → show everything
+    ///   contains "audio"   → audiobooks only
+    ///   anything else      → non-audiobook titles (eBooks, PDF, etc.)
+    private func filterBooks(_ books: [TPPBook], forEntryAt index: Int) -> [TPPBook] {
+        guard !formatEntries.isEmpty, index < formatEntries.count else { return books }
+        let title = formatEntries[index].title.lowercased()
+
+        if title == "all" || title.hasPrefix("all ") || title.hasSuffix(" all") {
+            return books
+        } else if title.contains("audio") {
+            return books.filter { $0.isAudiobook }
+        } else {
+            return books.filter { !$0.isAudiobook }
         }
     }
 
@@ -192,26 +227,40 @@ class CatalogSearchViewModel: ObservableObject {
         searchTask?.cancel()
 
         guard !query.isEmpty else {
-            filteredBooks = allBooks
+            filteredBooks = filterBooks(allBooks, forEntryAt: selectedFormatIndex)
             nextPageURL = nil
             isLoading = false
+            lastSearchedQuery = ""
             return
         }
 
-        // Clear stale post-search facets so we pick up fresh ones from the new results.
-        postSearchFacets.removeAll()
+        // Post-search facets are keyed to the active query. Clear them when the query itself
+        // changes so stale direct URLs from a previous query aren't used. For format switches
+        // on the same query, preserve them so resolveSearchTarget can take the fast directURL path.
+        let isNewQuery = query != lastSearchedQuery
+        if isNewQuery {
+            postSearchFacets.removeAll()
+        }
 
         guard let searchTarget = resolveSearchTarget(for: query) else {
+            postSearchFacets.removeAll()
             filteredBooks = []
             nextPageURL = nil
             isLoading = false
             return
         }
 
+        // Clear facets after resolving so fresh ones from the new results replace them.
+        postSearchFacets.removeAll()
+
         nextPageURL = nil
         isLoadingMore = false
         isLoading = true
-        searchId = UUID()
+        // Only scroll to top for genuinely new queries; format switches filter in place.
+        if isNewQuery {
+            searchId = UUID()
+        }
+        lastSearchedQuery = query
 
         searchTask = Task { [weak self] in
             defer { self?.isLoading = false }
