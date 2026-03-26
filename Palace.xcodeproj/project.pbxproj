@@ -1127,6 +1127,7 @@
 		QATEST01BF00000000000001 /* ErrorActivityTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST01FR00000000000001 /* ErrorActivityTrackerTests.swift */; };
 		QATEST02BF00000000000001 /* ErrorDetailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST02FR00000000000001 /* ErrorDetailTests.swift */; };
 		QATEST03BF00000000000001 /* PalaceErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST03FR00000000000001 /* PalaceErrorTests.swift */; };
+		LNEX01BF00000000000001 /* LoanExpiryHandlingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */; };
 		QATEST04BF00000000000001 /* TPPAlertUtilsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST04FR00000000000001 /* TPPAlertUtilsTests.swift */; };
 		QATEST05BF00000000000001 /* PersistentLoggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST05FR00000000000001 /* PersistentLoggerTests.swift */; };
 		QATEST06BF00000000000001 /* TPPProblemDocumentCacheManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST06FR00000000000001 /* TPPProblemDocumentCacheManagerTests.swift */; };
@@ -2112,6 +2113,7 @@
 		QATEST01FR00000000000001 /* ErrorActivityTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorActivityTrackerTests.swift; sourceTree = "<group>"; };
 		QATEST02FR00000000000001 /* ErrorDetailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailTests.swift; sourceTree = "<group>"; };
 		QATEST03FR00000000000001 /* PalaceErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalaceErrorTests.swift; sourceTree = "<group>"; };
+		LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoanExpiryHandlingTests.swift; sourceTree = "<group>"; };
 		QATEST04FR00000000000001 /* TPPAlertUtilsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAlertUtilsTests.swift; sourceTree = "<group>"; };
 		QATEST05FR00000000000001 /* PersistentLoggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistentLoggerTests.swift; sourceTree = "<group>"; };
 		QATEST06FR00000000000001 /* TPPProblemDocumentCacheManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPProblemDocumentCacheManagerTests.swift; sourceTree = "<group>"; };
@@ -4280,6 +4282,7 @@
 				QATEST01FR00000000000001 /* ErrorActivityTrackerTests.swift */,
 				QATEST02FR00000000000001 /* ErrorDetailTests.swift */,
 				QATEST03FR00000000000001 /* PalaceErrorTests.swift */,
+				LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */,
 				QATEST04FR00000000000001 /* TPPAlertUtilsTests.swift */,
 				QATEST06FR00000000000001 /* TPPProblemDocumentCacheManagerTests.swift */,
 				QATEST17FR00000000000001 /* TPPUserFriendlyErrorTests.swift */,
@@ -4819,6 +4822,7 @@
 				QATEST01BF00000000000001 /* ErrorActivityTrackerTests.swift in Sources */,
 				QATEST02BF00000000000001 /* ErrorDetailTests.swift in Sources */,
 				QATEST03BF00000000000001 /* PalaceErrorTests.swift in Sources */,
+				LNEX01BF00000000000001 /* LoanExpiryHandlingTests.swift in Sources */,
 				QATEST04BF00000000000001 /* TPPAlertUtilsTests.swift in Sources */,
 				QATEST05BF00000000000001 /* PersistentLoggerTests.swift in Sources */,
 				QATEST06BF00000000000001 /* TPPProblemDocumentCacheManagerTests.swift in Sources */,

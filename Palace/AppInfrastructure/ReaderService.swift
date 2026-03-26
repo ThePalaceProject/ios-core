@@ -1,5 +1,8 @@
 import UIKit
 import ReadiumShared
+#if LCP
+import ReadiumLCP
+#endif
 
 final class ReaderService {
     static let shared = ReaderService()
@@ -31,8 +34,7 @@ final class ReaderService {
                     TPPPresentationUtils.safelyPresent(nav, animated: true, completion: nil)
                 }
             case .failure(let error):
-                let alert = TPPAlertUtils.alert(title: "Content Protection Error", message: error.localizedDescription)
-                TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+                self.presentOpenFailureAlert(for: error, book: book)
             }
         }
     }
@@ -51,10 +53,68 @@ final class ReaderService {
                     TPPPresentationUtils.safelyPresent(nav, animated: true, completion: nil)
                 }
             case .failure(let error):
+                // Samples are not owned loans — no cleanup needed on failure.
                 let alert = TPPAlertUtils.alert(title: "Content Protection Error", message: error.localizedDescription)
                 TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
             }
         }
+    }
+
+    /// Presents the appropriate alert for a failed book open.
+    ///
+    /// If the underlying error is a DRM license status error (expired, returned, revoked, or
+    /// cancelled), we show a friendly "Your Loan Has Expired" message and clean up the local
+    /// copy via `returnBook`. For all other failures we fall back to the generic
+    /// "Content Protection Error" alert.
+    @MainActor
+    private func presentOpenFailureAlert(for error: LibraryServiceError, book: TPPBook) {
+        // Unwrap the inner error from LibraryServiceError.openFailed
+        let inner: Error?
+        if case .openFailed(let e) = error { inner = e } else { inner = nil }
+
+        if let message = Self.expiredLoanMessage(for: inner) {
+            let alert = UIAlertController(
+                title: Strings.ExpiredLoan.title,
+                message: message,
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: Strings.Announcments.ok, style: .default) { _ in
+                MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+            })
+            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+        } else {
+            let alert = TPPAlertUtils.alert(title: "Content Protection Error", message: error.localizedDescription)
+            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+        }
+    }
+
+    /// Returns a user-facing message if `error` represents an expired or revoked DRM license,
+    /// `nil` for any other error type.
+    private static func expiredLoanMessage(for error: Error?) -> String? {
+        guard let error else { return nil }
+
+        #if LCP
+        if let lcpError = error as? LCPError,
+           case .licenseStatus(let statusError) = lcpError {
+            switch statusError {
+            case .expired(_, let end):
+                let formatter = DateFormatter()
+                formatter.dateStyle = .medium
+                formatter.timeStyle = .none
+                return String(format: Strings.ExpiredLoan.messageWithDate, formatter.string(from: end))
+            case .returned, .revoked, .cancelled:
+                return Strings.ExpiredLoan.message
+            }
+        }
+        #endif
+
+        #if FEATURE_DRM_CONNECTOR
+        if error is AdobeDRMError {
+            return Strings.ExpiredLoan.message
+        }
+        #endif
+
+        return nil
     }
 
     // MARK: - View Controller Creation (for SwiftUI integration)
