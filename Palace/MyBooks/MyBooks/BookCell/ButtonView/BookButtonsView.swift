@@ -29,7 +29,7 @@ struct BookButtonsView<T: BookButtonProvider>: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: size.buttonSpacing) {
             ForEach(filteredButtonTypes, id: \.self) { buttonType in
                 ActionButton(
                     type: buttonType,
@@ -167,6 +167,14 @@ enum ButtonSize {
         case .large: return EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
         case .medium: return EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)
         case .small: return EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
+        }
+    }
+
+    var buttonSpacing: CGFloat {
+        switch self {
+        case .large: return 18
+        case .medium: return 16
+        case .small: return 12
         }
     }
 }

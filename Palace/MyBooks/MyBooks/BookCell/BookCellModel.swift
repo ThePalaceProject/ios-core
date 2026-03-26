@@ -351,9 +351,11 @@ class BookCellModel: ObservableObject {
 
 extension BookCellModel {
     func callDelegate(for action: BookButtonType) {
-        // Set loading state for actions that need it
+        // Set loading state for actions that need it.
+        // .return and .cancelHold are excluded here because they show a
+        // confirmation alert first; loading starts only after the patron confirms.
         switch action {
-        case .download, .retry, .get, .reserve, .return, .remove, .returning, .cancelHold, .cancel:
+        case .download, .retry, .get, .reserve, .remove, .returning, .cancel:
             isLoading = true
         default:
             break
@@ -364,8 +366,34 @@ extension BookCellModel {
             didSelectDownload()
         case .reserve:
             didSelectReserve()
-        case .return, .remove, .returning, .cancelHold:
-            // Set state for visual feedback and perform return
+        case .return:
+            showAlert = AlertModel(
+                title: DisplayStrings.return,
+                message: String(format: DisplayStrings.returnMessage, book.title),
+                buttonTitle: DisplayStrings.return,
+                primaryAction: { [weak self] in
+                    self?.isManagingHold = false
+                    self?.bookState = .returning
+                    self?.didSelectReturn()
+                },
+                secondaryButtonTitle: Strings.Generic.cancel,
+                secondaryAction: { [weak self] in self?.isLoading = false }
+            )
+        case .cancelHold:
+            showAlert = AlertModel(
+                title: DisplayStrings.removeHold,
+                message: String(format: DisplayStrings.removeHoldMessage, book.title),
+                buttonTitle: DisplayStrings.removeHold,
+                primaryAction: { [weak self] in
+                    self?.isManagingHold = false
+                    self?.bookState = .returning
+                    self?.didSelectReturn()
+                },
+                secondaryButtonTitle: Strings.Generic.cancel,
+                secondaryAction: { [weak self] in self?.isLoading = false }
+            )
+        case .remove, .returning:
+            // Local delete and in-progress indicator: no confirmation needed
             isManagingHold = false
             bookState = .returning
             didSelectReturn()

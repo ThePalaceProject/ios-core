@@ -45,6 +45,10 @@ struct CatalogSearchView: View {
         VStack(spacing: 0) {
             searchBar
 
+            if viewModel.formatEntries.count > 1 {
+                formatFilterRow
+            }
+
             ScrollViewReader { proxy in
                 ScrollView {
                     BookListView(
@@ -86,6 +90,7 @@ struct CatalogSearchView: View {
         }
         .onAppear {
             viewModel.updateBooks(books)
+            viewModel.loadFormatEntryPoints()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 isSearchFieldFocused = true
             }
@@ -122,6 +127,29 @@ struct CatalogSearchView: View {
 
 // MARK: - Private Views
 private extension CatalogSearchView {
+    var formatFilterRow: some View {
+        HStack {
+            Picker(
+                NSLocalizedString("Format", comment: "Format filter picker label"),
+                selection: Binding(
+                    get: { viewModel.selectedFormatIndex },
+                    set: { viewModel.selectFormat(at: $0) }
+                )
+            ) {
+                ForEach(viewModel.formatEntries.indices, id: \.self) { idx in
+                    Text(viewModel.formatEntries[idx].title).tag(idx)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier(AccessibilityID.Search.formatFilterRow)
+        }
+        .frame(maxWidth: 700)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
     var searchBar: some View {
         ZStack {
             TextField(
