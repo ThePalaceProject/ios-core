@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "xcresult_path": "TestResults.xcresult",
+  "api_used": "none",
+  "build": {
+    "status": "succeeded",
+    "errors": [
+      "Unable to find a destination matching the provided destination specifier:\n\t\t{ id:0E9EC7B7-BD06-4CD5-B691-AC94F525C1C0 }\n\n\tIneligible destinations for the \"Palace\" scheme:\n\t\t{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device, error:iOS 26.4 is not installed. Please download and install the platform from Xcode > Settings > Components. }"
+    ],
+    "warnings": []
+  },
+  "summary": {
+    "tests": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "duration": 0,
+    "duration_formatted": "<1ms",
+    "pass_rate": "N/A"
+  },
+  "tests": [],
+  "classes": {},
+  "failed_tests": []
+}
