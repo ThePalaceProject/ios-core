@@ -1094,6 +1094,7 @@
 		FA346754BE76A48C92CF0754 /* OPDS2FeedParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD86C00D774B74F80D5B713 /* OPDS2FeedParsingTests.swift */; };
 		FC0AD7762077072EC062F780 /* AudiobookAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A77E63314ED6F70CC68C0DA0 /* AudiobookAccessibilityTests.swift */; };
 		HTVI00012F2600010000001A /* HTMLTextViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HTVI00012F2600010000001B /* HTMLTextViewTests.swift */; };
+		LNEX01BF00000000000001 /* LoanExpiryHandlingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */; };
 		LRPP002T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LRPP001T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift */; };
 		LRPS002T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */; };
 		MF791BF000000000000001 /* ManifestFetchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF791FR000000000000001 /* ManifestFetchTests.swift */; };
@@ -1127,7 +1128,6 @@
 		QATEST01BF00000000000001 /* ErrorActivityTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST01FR00000000000001 /* ErrorActivityTrackerTests.swift */; };
 		QATEST02BF00000000000001 /* ErrorDetailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST02FR00000000000001 /* ErrorDetailTests.swift */; };
 		QATEST03BF00000000000001 /* PalaceErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST03FR00000000000001 /* PalaceErrorTests.swift */; };
-		LNEX01BF00000000000001 /* LoanExpiryHandlingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */; };
 		QATEST04BF00000000000001 /* TPPAlertUtilsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST04FR00000000000001 /* TPPAlertUtilsTests.swift */; };
 		QATEST05BF00000000000001 /* PersistentLoggerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST05FR00000000000001 /* PersistentLoggerTests.swift */; };
 		QATEST06BF00000000000001 /* TPPProblemDocumentCacheManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QATEST06FR00000000000001 /* TPPProblemDocumentCacheManagerTests.swift */; };
@@ -2080,6 +2080,7 @@
 		F75B6896C9742C07208D935E /* MockVisualNavigator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MockVisualNavigator.swift; sourceTree = "<group>"; };
 		F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SAMLCookieSyncTests.swift; sourceTree = "<group>"; };
 		HTVI00012F2600010000001B /* HTMLTextViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextViewTests.swift; sourceTree = "<group>"; };
+		LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoanExpiryHandlingTests.swift; sourceTree = "<group>"; };
 		LRPP001T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionPosterTests.swift; sourceTree = "<group>"; };
 		LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionSynchronizerTests.swift; sourceTree = "<group>"; };
 		MF791FR000000000000001 /* ManifestFetchTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ManifestFetchTests.swift; sourceTree = "<group>"; };
@@ -2113,7 +2114,6 @@
 		QATEST01FR00000000000001 /* ErrorActivityTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorActivityTrackerTests.swift; sourceTree = "<group>"; };
 		QATEST02FR00000000000001 /* ErrorDetailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorDetailTests.swift; sourceTree = "<group>"; };
 		QATEST03FR00000000000001 /* PalaceErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalaceErrorTests.swift; sourceTree = "<group>"; };
-		LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoanExpiryHandlingTests.swift; sourceTree = "<group>"; };
 		QATEST04FR00000000000001 /* TPPAlertUtilsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAlertUtilsTests.swift; sourceTree = "<group>"; };
 		QATEST05FR00000000000001 /* PersistentLoggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistentLoggerTests.swift; sourceTree = "<group>"; };
 		QATEST06FR00000000000001 /* TPPProblemDocumentCacheManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPProblemDocumentCacheManagerTests.swift; sourceTree = "<group>"; };
@@ -6000,9 +6000,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 454;
 				CURRENT_PROJECT_VERSION = 453;
-				CURRENT_PROJECT_VERSION = 450;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6024,7 +6022,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.2.5;
-				MARKETING_VERSION = 2.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -6060,9 +6057,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 454;
 				CURRENT_PROJECT_VERSION = 453;
-				CURRENT_PROJECT_VERSION = 450;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6084,7 +6079,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.2.5;
-				MARKETING_VERSION = 2.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -6248,11 +6242,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 454;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 453;
 				CURRENT_PROJECT_VERSION = 450;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
@@ -6280,7 +6270,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.2.5;
-				MARKETING_VERSION = 2.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -6314,8 +6303,6 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 454;
-				CURRENT_PROJECT_VERSION = 453;
 				CURRENT_PROJECT_VERSION = 450;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
@@ -6344,7 +6331,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.2.5;
-				MARKETING_VERSION = 2.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "App Store";
