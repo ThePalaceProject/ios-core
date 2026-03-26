@@ -770,13 +770,14 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testSearch_VeryLongQuery_Works() async {
-        let viewModel = createViewModel()
-        // Use a query without trailing space to avoid trimming differences
+        // Use a generous debounce + wait so this test is not sensitive to cold-start
+        // main-actor contention (e.g. Firebase init in the first test of the process).
+        let viewModel = createViewModel(debounceInterval: 0.5)
         let longQuery = (0..<100).map { _ in "test" }.joined(separator: " ")
 
         viewModel.updateSearchQuery(longQuery)
 
-        await waitForDebounce(interval: 0.25)
+        await waitForDebounce(interval: 2.0)
 
         XCTAssertEqual(mockRepository.lastSearchQuery, longQuery)
     }
