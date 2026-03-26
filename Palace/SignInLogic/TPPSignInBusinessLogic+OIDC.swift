@@ -24,15 +24,24 @@ extension TPPSignInBusinessLogic {
         "\(Self.oidcCallbackScheme)://\(Self.oidcCallbackHost)/callback"
     }
 
+    /// Registered redirect URI supplied to the CM's logout endpoint.
+    /// The CM requires this parameter even for REST API calls to validate the request.
+    private var oidcPostLogoutRedirectURI: String {
+        "\(Self.oidcCallbackScheme)://\(Self.oidcCallbackHost)/logout"
+    }
+
     /// Calls the CM's OIDC logout endpoint as an authenticated REST request.
     ///
-    /// The CM's logout endpoint (`rel="logout"`) requires `Authorization: Bearer <token>`
-    /// to identify the patron's session. Because the access token is cleared from
-    /// the keychain by `userAccount.removeAll()` before this method is called, the
-    /// token must be captured beforehand and passed in as `accessToken`.
+    /// The CM's logout endpoint (`rel="logout"`) requires both:
+    ///  - `Authorization: Bearer <token>` to identify the patron's session
+    ///  - `post_logout_redirect_uri` query parameter (CM validates this even for API calls)
     ///
-    /// The endpoint URL is an RFC 6570 URI template. We expand it without
-    /// `post_logout_redirect_uri` since this is a direct API call, not a browser redirect.
+    /// Because the access token is cleared from the keychain by `userAccount.removeAll()`
+    /// before this method is called, the token must be captured beforehand and passed in
+    /// as `accessToken`.
+    ///
+    /// The endpoint URL is an RFC 6570 URI template; `post_logout_redirect_uri` is
+    /// expanded into it via std-uritemplate.
     ///
     /// Logout is best-effort: any server error calls `completion` without
     /// surfacing anything to the patron, since local credentials are already cleared.
@@ -48,11 +57,12 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        // Expand the template without post_logout_redirect_uri — omitted optional
-        // variables are dropped cleanly by std-uritemplate.
         let expandedHref: String
         do {
-            expandedHref = try StdUriTemplate.expand(logoutHref, substitutions: [:])
+            expandedHref = try StdUriTemplate.expand(
+                logoutHref,
+                substitutions: ["post_logout_redirect_uri": oidcPostLogoutRedirectURI]
+            )
         } catch {
             Log.warn(#file, "OIDC logout URI template expansion failed: \(error) — skipping CM session invalidation")
             completion()
