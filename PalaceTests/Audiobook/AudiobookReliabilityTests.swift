@@ -77,38 +77,25 @@ final class AudiobookSessionManagerTests: XCTestCase {
     }
 
     // callCompletionHandler dispatches handler() via DispatchQueue.main.async from
-    // inside a background barrier. Two earlier approaches both failed:
-    //
-    //  ✗ wait(for:, timeout:)          — blocks the main thread so the GCD dispatch can
-    //                                    never fire; test times out every time.
-    //  ✗ @MainActor async + fulfillment — fulfillment's internal polling loop runs on the
-    //                                    main actor and never yields to the GCD main queue,
-    //                                    so the dispatch still can't fire; same timeout.
-    //
-    // The correct fix is to spin RunLoop.main explicitly. RunLoop.main.run(until:) yields
-    // the main thread to the run loop in short 50 ms bursts, which allows GCD main-queue
-    // blocks to execute between bursts. The barriers on AudiobookSessionManager.shared.queue
-    // complete quickly (< 1 ms each), so handler() fires on the very first or second spin.
-    // Because the test is synchronous, XCTest returns to the main thread for every
-    // subsequent test — preventing the queue.sync deadlocks that happen when async tests
-    // leave XCTest resuming on a cooperative pool thread.
+    // inside a background barrier. The trick: call it from a background thread so the
+    // main thread stays free. waitForExpectations then spins the RunLoop, which drains
+    // the main queue and delivers the dispatch — regardless of which thread XCTest uses
+    // to run this test class (works on both main thread and parallel CI workers).
     func testBackgroundCompletionHandlerRegistration() {
         let sessionId = "test-session-\(UUID().uuidString)"
-        var handlerCalled = false
+        let expectation = expectation(description: "Background completion handler called")
 
         AudiobookSessionManager.shared.registerBackgroundCompletionHandler({
-            handlerCalled = true
+            expectation.fulfill()
         }, forSessionIdentifier: sessionId)
 
-        AudiobookSessionManager.shared.callCompletionHandler(forSessionIdentifier: sessionId)
-
-        // Spin the run loop until the GCD main-queue dispatch fires (typically < 50 ms).
-        let deadline = Date(timeIntervalSinceNow: 3.0)
-        while !handlerCalled && Date() < deadline {
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        // Dispatch from background so the main thread remains free to drain the
+        // main queue while waitForExpectations spins the run loop below.
+        DispatchQueue.global().async {
+            AudiobookSessionManager.shared.callCompletionHandler(forSessionIdentifier: sessionId)
         }
 
-        XCTAssertTrue(handlerCalled, "Background completion handler was not called within 3 seconds")
+        waitForExpectations(timeout: 3.0)
     }
 }
 
