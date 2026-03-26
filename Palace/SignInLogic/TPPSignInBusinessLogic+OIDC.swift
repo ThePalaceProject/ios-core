@@ -30,6 +30,28 @@ extension TPPSignInBusinessLogic {
         "\(Self.oidcCallbackScheme)://\(Self.oidcCallbackHost)/logout"
     }
 
+    /// Returns `true` when the error is an `NSURLErrorUnsupportedURL` (-1002) whose
+    /// failing URL starts with the OIDC callback scheme.
+    ///
+    /// On a successful RP-initiated logout the CM responds with a redirect to
+    /// `palace-oidc-callback://…/logout?logout_status=success`. URLSession cannot
+    /// follow custom-scheme redirects and surfaces this as NSURLErrorUnsupportedURL.
+    /// Detecting this pattern lets us log success rather than a spurious warning.
+    private static func isOIDCLogoutCallbackRedirect(_ error: Error) -> Bool {
+        func hasCallbackSchemeURL(_ nsError: NSError) -> Bool {
+            let key = NSURLErrorFailingURLStringErrorKey
+            if let url = nsError.userInfo[key] as? String,
+               url.hasPrefix("\(oidcCallbackScheme)://") {
+                return true
+            }
+            if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+                return hasCallbackSchemeURL(underlying)
+            }
+            return false
+        }
+        return hasCallbackSchemeURL(error as NSError)
+    }
+
     /// Calls the CM's OIDC logout endpoint as an authenticated REST request.
     ///
     /// The CM's logout endpoint (`rel="logout"`) requires:
@@ -90,7 +112,16 @@ extension TPPSignInBusinessLogic {
             case .success:
                 Log.debug(#file, "OIDC logout: CM session invalidated successfully")
             case .failure(let error, _):
-                Log.warn(#file, "OIDC logout: CM session invalidation failed (best-effort): \(error.localizedDescription)")
+                // The CM redirects to our post_logout_redirect_uri on success, e.g.:
+                //   palace-oidc-callback://org.thepalaceproject.oidc/logout?logout_status=success
+                // URLSession cannot follow custom-scheme redirects and surfaces this
+                // as NSURLErrorUnsupportedURL (-1002). If the failing URL is our callback
+                // scheme, the logout succeeded — this is not a real failure.
+                if Self.isOIDCLogoutCallbackRedirect(error) {
+                    Log.debug(#file, "OIDC logout: CM redirected to callback scheme — session invalidated successfully")
+                } else {
+                    Log.warn(#file, "OIDC logout: CM session invalidation failed (best-effort): \(error.localizedDescription)")
+                }
             }
             completion()
         }
