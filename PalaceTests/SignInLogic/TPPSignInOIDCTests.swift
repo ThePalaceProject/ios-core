@@ -1888,6 +1888,36 @@ final class OIDCExplicitLogoutTests: XCTestCase {
             "oidcLogoutHref must be parsed verbatim from the 'logout' rel link (URI template preserved)")
     }
 
+    func testOIDCExplicitLogout_templatedFlag_isParsedFromAuthDocument() {
+        // The fixture's logout link has "templated": true; the flag must be surfaced.
+        let auth = libraryMock.oidcAuthentication
+        XCTAssertEqual(auth.oidcLogoutHrefIsTemplated, true,
+                       "oidcLogoutHrefIsTemplated must reflect the 'templated' field on the logout link")
+    }
+
+    func testOIDCExplicitLogout_templatedFlag_isNilWhenAbsentFromLink() {
+        // A logout link without "templated" in the JSON should yield nil (not true).
+        let json = makeOIDCAuthJSON(logoutRel: "logout", templated: false)
+        let auth = decodeAccountAuth(from: json)
+        XCTAssertNotEqual(auth.oidcLogoutHrefIsTemplated, true,
+                          "oidcLogoutHrefIsTemplated must not be true when the link has no 'templated' field")
+    }
+
+    func testOIDCExplicitLogout_nonTemplatedHref_isUsedDirectly() {
+        // When the logout link is NOT templated the href is a plain URL.
+        // oidcLogOut should use it directly without attempting URI template expansion.
+        let plainURL = "https://example.com/oidc/logout?provider=OpenID+Connect"
+        let json = makeOIDCAuthJSON(logoutRel: "logout", plainHref: plainURL, templated: false)
+        let auth = decodeAccountAuth(from: json)
+
+        XCTAssertEqual(auth.oidcLogoutHref, plainURL,
+                       "Non-templated logout href must be stored verbatim")
+        XCTAssertNotEqual(auth.oidcLogoutHrefIsTemplated, true,
+                          "Non-templated logout link must not set oidcLogoutHrefIsTemplated to true")
+        XCTAssertNotNil(URL(string: plainURL),
+                        "Non-templated href must already be a valid URL (no expansion needed)")
+    }
+
     func testOIDCExplicitLogout_logoutHref_isNilForNonOIDCAuthTypes() {
         XCTAssertNil(libraryMock.barcodeAuthentication.oidcLogoutHref,
                      "Basic auth must not have an oidcLogoutHref")
@@ -2031,8 +2061,14 @@ final class OIDCExplicitLogoutTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeOIDCAuthJSON(logoutRel: String) -> Data {
-        """
+    private func makeOIDCAuthJSON(
+        logoutRel: String,
+        plainHref: String? = nil,
+        templated: Bool = true
+    ) -> Data {
+        let href = plainHref ?? "https://example.com/oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}"
+        let templatedField = templated ? ",\n                    \"templated\": true" : ""
+        return """
         {
             "type": "http://palaceproject.io/authtype/OpenIDConnect",
             "links": [
@@ -2041,9 +2077,8 @@ final class OIDCExplicitLogoutTests: XCTestCase {
                     "rel": "authenticate"
                 },
                 {
-                    "href": "https://example.com/oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}",
-                    "rel": "\(logoutRel)",
-                    "templated": true
+                    "href": "\(href)",
+                    "rel": "\(logoutRel)"\(templatedField)
                 }
             ]
         }

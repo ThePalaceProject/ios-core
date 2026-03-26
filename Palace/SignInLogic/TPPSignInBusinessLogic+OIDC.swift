@@ -32,16 +32,17 @@ extension TPPSignInBusinessLogic {
 
     /// Calls the CM's OIDC logout endpoint as an authenticated REST request.
     ///
-    /// The CM's logout endpoint (`rel="logout"`) requires both:
+    /// The CM's logout endpoint (`rel="logout"`) requires:
     ///  - `Authorization: Bearer <token>` to identify the patron's session
-    ///  - `post_logout_redirect_uri` query parameter (CM validates this even for API calls)
+    ///  - `post_logout_redirect_uri` (when the link is a URI template)
+    ///
+    /// Whether to expand the href as an RFC 6570 template is determined by the
+    /// `"templated": true` flag on the logout link in the auth document — this
+    /// avoids hard-coding assumptions that the endpoint will always be templated.
     ///
     /// Because the access token is cleared from the keychain by `userAccount.removeAll()`
     /// before this method is called, the token must be captured beforehand and passed in
     /// as `accessToken`.
-    ///
-    /// The endpoint URL is an RFC 6570 URI template; `post_logout_redirect_uri` is
-    /// expanded into it via std-uritemplate.
     ///
     /// Logout is best-effort: any server error calls `completion` without
     /// surfacing anything to the patron, since local credentials are already cleared.
@@ -58,15 +59,19 @@ extension TPPSignInBusinessLogic {
         }
 
         let expandedHref: String
-        do {
-            expandedHref = try StdUriTemplate.expand(
-                logoutHref,
-                substitutions: ["post_logout_redirect_uri": oidcPostLogoutRedirectURI]
-            )
-        } catch {
-            Log.warn(#file, "OIDC logout URI template expansion failed: \(error) — skipping CM session invalidation")
-            completion()
-            return
+        if selectedAuthentication?.oidcLogoutHrefIsTemplated == true {
+            do {
+                expandedHref = try StdUriTemplate.expand(
+                    logoutHref,
+                    substitutions: ["post_logout_redirect_uri": oidcPostLogoutRedirectURI]
+                )
+            } catch {
+                Log.warn(#file, "OIDC logout URI template expansion failed: \(error) — skipping CM session invalidation")
+                completion()
+                return
+            }
+        } else {
+            expandedHref = logoutHref
         }
 
         guard let logoutURL = URL(string: expandedHref) else {

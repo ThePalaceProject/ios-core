@@ -81,10 +81,13 @@ protocol AccountLogoDelegate: AnyObject {
         let samlIdps: [OPDS2SamlIDP]?
         let oidcAuthenticationUrl: URL?
         /// Raw href from the OIDC auth document's "logout" rel link.
-        /// Stored as a String because the CM advertises a URI template
-        /// (RFC 6570) containing `{&post_logout_redirect_uri}`, which is
-        /// not a valid URL until the template variable is expanded.
+        /// May be a plain URL or an RFC 6570 URI template — check
+        /// `oidcLogoutHrefIsTemplated` before expanding.
         let oidcLogoutHref: String?
+        /// True when the "logout" link has `"templated": true` in the
+        /// auth document, indicating `oidcLogoutHref` is an RFC 6570
+        /// URI template that must be expanded before use.
+        let oidcLogoutHrefIsTemplated: Bool?
 
         init(auth: OPDS2AuthenticationDocument.Authentication) {
             let authType = AuthType.from(auth.type)
@@ -107,6 +110,7 @@ protocol AccountLogoDelegate: AnyObject {
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
                 oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
 
             case .oauthIntermediary:
                 oauthIntermediaryUrl = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
@@ -116,6 +120,7 @@ protocol AccountLogoDelegate: AnyObject {
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
                 oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
 
             case .saml:
                 samlIdps = auth.links?.filter { $0.rel == "authenticate" }.compactMap { OPDS2SamlIDP(opdsLink: $0) }
@@ -125,10 +130,13 @@ protocol AccountLogoDelegate: AnyObject {
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
                 oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
 
             case .oidc:
                 oidcAuthenticationUrl = URL(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
-                oidcLogoutHref = auth.links?.first(where: { $0.rel == "logout" })?.href
+                let logoutLink = auth.links?.first(where: { $0.rel == "logout" })
+                oidcLogoutHref = logoutLink?.href
+                oidcLogoutHrefIsTemplated = logoutLink?.templated
                 oauthIntermediaryUrl = nil
                 coppaUnderUrl = nil
                 coppaOverUrl = nil
@@ -143,6 +151,7 @@ protocol AccountLogoDelegate: AnyObject {
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
                 oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
             case .token:
                 tokenURL = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
                 oauthIntermediaryUrl = nil
@@ -151,6 +160,7 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 oidcAuthenticationUrl = nil
                 oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
 
             }
 
@@ -229,6 +239,7 @@ protocol AccountLogoDelegate: AnyObject {
             tokenURL = authentication.tokenURL
             oidcAuthenticationUrl = authentication.oidcAuthenticationUrl
             oidcLogoutHref = authentication.oidcLogoutHref
+            oidcLogoutHrefIsTemplated = authentication.oidcLogoutHrefIsTemplated
         }
     }
 
