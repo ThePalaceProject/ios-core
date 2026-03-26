@@ -449,20 +449,21 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testSearch_Debounces_DoesNotSearchDuringDebounceWindow() async {
-        let viewModel = createViewModel(debounceInterval: 0.2)
+        // Use a 1s debounce so the mid-window check has a wide enough margin to be
+        // reliable on slow CI machines (Task.sleep can overshoot significantly under load).
+        let viewModel = createViewModel(debounceInterval: 1.0)
 
-        // Fire a search query
         viewModel.updateSearchQuery("test")
 
-        // Check immediately (within debounce window)
+        // Immediately after triggering — debounce has not fired.
         XCTAssertEqual(mockRepository.searchCallCount, 0, "Should not search immediately")
 
-        // Wait for partial debounce
-        await waitForDebounce(interval: 0.05)
+        // 300ms into a 1s debounce window — still should not have fired.
+        await waitForDebounce(interval: 0.3)
         XCTAssertEqual(mockRepository.searchCallCount, 0, "Should not search during debounce window")
 
-        // Wait for full debounce + search
-        await waitForDebounce(interval: 0.3)
+        // Wait past the full debounce period.
+        await waitForDebounce(interval: 1.0)
         XCTAssertEqual(mockRepository.searchCallCount, 1, "Should search after debounce completes")
     }
 
@@ -492,19 +493,20 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testSearch_CancelsDebounce_OnNewQuery() async {
-        let viewModel = createViewModel(debounceInterval: 0.2)
+        // 1s debounce gives a wide margin for CI: 300ms is safely inside the window
+        // even on a machine under load.
+        let viewModel = createViewModel(debounceInterval: 1.0)
 
-        // Start first search
         viewModel.updateSearchQuery("first")
 
-        // Before debounce completes, start second search
-        await waitForDebounce(interval: 0.05)
+        // 300ms into the 1s debounce — "first" has not fired yet. Trigger "second".
+        await waitForDebounce(interval: 0.3)
         viewModel.updateSearchQuery("second")
 
-        // Wait for second debounce to complete
-        await waitForDebounce(interval: 0.3)
+        // Wait past the full debounce period for "second".
+        await waitForDebounce(interval: 1.5)
 
-        // Only "second" should have been searched
+        // Only "second" should have been searched (first debounce was cancelled).
         XCTAssertEqual(mockRepository.searchCallCount, 1, "Should only search once")
         XCTAssertEqual(mockRepository.lastSearchQuery, "second", "Should search for 'second'")
     }
