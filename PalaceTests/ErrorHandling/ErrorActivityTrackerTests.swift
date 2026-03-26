@@ -17,6 +17,12 @@ final class ErrorActivityTrackerTests: XCTestCase {
         tracker = ErrorActivityTracker()
     }
 
+    override func tearDown() async throws {
+        await tracker.clear()
+        tracker = nil
+        try await super.tearDown()
+    }
+
     // MARK: - Basic Logging
 
     func testLog_singleEntry_appearsInSnapshot() async {

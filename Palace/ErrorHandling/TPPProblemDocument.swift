@@ -31,6 +31,10 @@ import Foundation
     static let TypePatronHoldLimit =
         "http://librarysimplified.org/terms/problem/hold-limit-reached"
 
+    /// Feedbooks/LCP: DRM license term limit reached; the loan is already expired server-side.
+    /// Appears in the `detail` field of a 500 problem document returned by the revoke endpoint.
+    static let DetailLoanTermLimitReached = "loan_term_limit_reached"
+
     private static let noStatus: Int = -1
 
     private static let typeKey = "type"

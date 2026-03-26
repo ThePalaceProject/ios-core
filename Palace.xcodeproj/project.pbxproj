@@ -560,6 +560,7 @@
 		BSMA00012F0F000100000002 /* BookCellModelStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BSMA00012F0F000000000002 /* BookCellModelStateTests.swift */; };
 		BSMA00012F0F000100000003 /* BookCellModelCacheInvalidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BSMA00012F0F000000000003 /* BookCellModelCacheInvalidationTests.swift */; };
 		BSMA00012F0F000100000004 /* TPPBookRegistryRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BSMA00012F0F000000000004 /* TPPBookRegistryRecordTests.swift */; };
+		BSMA00012F0F000100000005 /* BookCellModelActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BSMA00012F0F000000000005 /* BookCellModelActionTests.swift */; };
 		BTRF00012F1900010000001B /* MyBooksSimplifiedBearerTokenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BTRF00012F1900010000001A /* MyBooksSimplifiedBearerTokenTests.swift */; };
 		BTRF00012F1900020000001B /* TPPBookBearerTokenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BTRF00012F1900020000001A /* TPPBookBearerTokenTests.swift */; };
 		C0FC0D33083455384EE64A71 /* AudiobookSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E5BAC81314C28A366BF6BB7 /* AudiobookSessionManager.swift */; };
@@ -630,6 +631,7 @@
 		E50544882E60F6FE007CCFAB /* CatalogLaneRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50544862E60F6FE007CCFAB /* CatalogLaneRowView.swift */; };
 		E50546752E6201D4007CCFAB /* OPDSFeedParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */; };
 		E50546772E6201E6007CCFAB /* HTTPStubURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */; };
+		B09FFC77395CDFD5A43DA48D /* NoNetworkURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE20C7E18DE551AD81B9D2C6 /* NoNetworkURLProtocol.swift */; };
 		E50546792E62020D007CCFAB /* URLSession+Stubbing.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */; };
 		E50546C12E62194F007CCFAB /* AppTabHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C02E62194F007CCFAB /* AppTabHostView.swift */; };
 		E50546C22E62194F007CCFAB /* AppTabHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C02E62194F007CCFAB /* AppTabHostView.swift */; };
@@ -1093,6 +1095,7 @@
 		FA346754BE76A48C92CF0754 /* OPDS2FeedParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD86C00D774B74F80D5B713 /* OPDS2FeedParsingTests.swift */; };
 		FC0AD7762077072EC062F780 /* AudiobookAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A77E63314ED6F70CC68C0DA0 /* AudiobookAccessibilityTests.swift */; };
 		HTVI00012F2600010000001A /* HTMLTextViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HTVI00012F2600010000001B /* HTMLTextViewTests.swift */; };
+		LNEX01BF00000000000001 /* LoanExpiryHandlingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */; };
 		LRPP002T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LRPP001T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift */; };
 		LRPS002T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */; };
 		MF791BF000000000000001 /* ManifestFetchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF791FR000000000000001 /* ManifestFetchTests.swift */; };
@@ -1757,6 +1760,7 @@
 		BSMA00012F0F000000000002 /* BookCellModelStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModelStateTests.swift; sourceTree = "<group>"; };
 		BSMA00012F0F000000000003 /* BookCellModelCacheInvalidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModelCacheInvalidationTests.swift; sourceTree = "<group>"; };
 		BSMA00012F0F000000000004 /* TPPBookRegistryRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryRecordTests.swift; sourceTree = "<group>"; };
+		BSMA00012F0F000000000005 /* BookCellModelActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModelActionTests.swift; sourceTree = "<group>"; };
 		BTRF00012F1900010000001A /* MyBooksSimplifiedBearerTokenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksSimplifiedBearerTokenTests.swift; sourceTree = "<group>"; };
 		BTRF00012F1900020000001A /* TPPBookBearerTokenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookBearerTokenTests.swift; sourceTree = "<group>"; };
 		C36BFAE4E752CA9A1451CDCE /* EPUBPositionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EPUBPositionTests.swift; sourceTree = "<group>"; };
@@ -1800,6 +1804,7 @@
 		E50544862E60F6FE007CCFAB /* CatalogLaneRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogLaneRowView.swift; sourceTree = "<group>"; };
 		E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPDSFeedParsingTests.swift; sourceTree = "<group>"; };
 		E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPStubURLProtocol.swift; sourceTree = "<group>"; };
+		EE20C7E18DE551AD81B9D2C6 /* NoNetworkURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoNetworkURLProtocol.swift; sourceTree = "<group>"; };
 		E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLSession+Stubbing.swift"; sourceTree = "<group>"; };
 		E50546C02E62194F007CCFAB /* AppTabHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTabHostView.swift; sourceTree = "<group>"; };
 		E50546C32E621981007CCFAB /* NavigationHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationHostView.swift; sourceTree = "<group>"; };
@@ -2077,6 +2082,7 @@
 		F75B6896C9742C07208D935E /* MockVisualNavigator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MockVisualNavigator.swift; sourceTree = "<group>"; };
 		F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SAMLCookieSyncTests.swift; sourceTree = "<group>"; };
 		HTVI00012F2600010000001B /* HTMLTextViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextViewTests.swift; sourceTree = "<group>"; };
+		LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoanExpiryHandlingTests.swift; sourceTree = "<group>"; };
 		LRPP001T260955EF008E1DC3 /* TPPLastReadPositionPosterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionPosterTests.swift; sourceTree = "<group>"; };
 		LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionSynchronizerTests.swift; sourceTree = "<group>"; };
 		MF791FR000000000000001 /* ManifestFetchTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ManifestFetchTests.swift; sourceTree = "<group>"; };
@@ -3525,6 +3531,7 @@
 			children = (
 				E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */,
 				E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */,
+				EE20C7E18DE551AD81B9D2C6 /* NoNetworkURLProtocol.swift */,
 				E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */,
 				2D2B47761D08F808007F7764 /* Info.plist */,
 				2D2B47621D08F1ED007F7764 /* PalaceTests-Bridging-Header.h */,
@@ -3687,6 +3694,7 @@
 				BSMA00012F0F000000000002 /* BookCellModelStateTests.swift */,
 				BSMA00012F0F000000000003 /* BookCellModelCacheInvalidationTests.swift */,
 				BSMA00012F0F000000000004 /* TPPBookRegistryRecordTests.swift */,
+				BSMA00012F0F000000000005 /* BookCellModelActionTests.swift */,
 				PP3702FR000000000000001 /* BookButtonMapperHoldReadyTests.swift */,
 			);
 			path = BookStateManagement;
@@ -4277,6 +4285,7 @@
 				QATEST01FR00000000000001 /* ErrorActivityTrackerTests.swift */,
 				QATEST02FR00000000000001 /* ErrorDetailTests.swift */,
 				QATEST03FR00000000000001 /* PalaceErrorTests.swift */,
+				LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */,
 				QATEST04FR00000000000001 /* TPPAlertUtilsTests.swift */,
 				QATEST06FR00000000000001 /* TPPProblemDocumentCacheManagerTests.swift */,
 				QATEST17FR00000000000001 /* TPPUserFriendlyErrorTests.swift */,
@@ -4762,6 +4771,7 @@
 				REAU002T260955EF008E1DC3 /* TPPReauthenticatorMock.swift in Sources */,
 				73C3CF5A25CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift in Sources */,
 				E50546772E6201E6007CCFAB /* HTTPStubURLProtocol.swift in Sources */,
+				B09FFC77395CDFD5A43DA48D /* NoNetworkURLProtocol.swift in Sources */,
 				E5024A8F2A0EB9D6006BF653 /* AudiobookBookmarkBusinessLogicTests.swift in Sources */,
 				735771AE2537687D00067CEA /* TPPURLSettingsProviderMock.swift in Sources */,
 				735771B12537691800067CEA /* TPPDRMAuthorizingMock.swift in Sources */,
@@ -4784,6 +4794,7 @@
 				BSMA00012F0F000100000002 /* BookCellModelStateTests.swift in Sources */,
 				BSMA00012F0F000100000003 /* BookCellModelCacheInvalidationTests.swift in Sources */,
 				BSMA00012F0F000100000004 /* TPPBookRegistryRecordTests.swift in Sources */,
+				BSMA00012F0F000100000005 /* BookCellModelActionTests.swift in Sources */,
 				7311FD2B25CBD086004447CB /* TPPSignInOutBusinessLogicUIDelegateMock.swift in Sources */,
 				E5A09A542F0D6F2A00CC23EA /* ProblemReportEmailTests.swift in Sources */,
 				2709574961502365B6E6808B /* CoverageGapTests.swift in Sources */,
@@ -4815,6 +4826,7 @@
 				QATEST01BF00000000000001 /* ErrorActivityTrackerTests.swift in Sources */,
 				QATEST02BF00000000000001 /* ErrorDetailTests.swift in Sources */,
 				QATEST03BF00000000000001 /* PalaceErrorTests.swift in Sources */,
+				LNEX01BF00000000000001 /* LoanExpiryHandlingTests.swift in Sources */,
 				QATEST04BF00000000000001 /* TPPAlertUtilsTests.swift in Sources */,
 				QATEST05BF00000000000001 /* PersistentLoggerTests.swift in Sources */,
 				QATEST06BF00000000000001 /* TPPProblemDocumentCacheManagerTests.swift in Sources */,
@@ -5993,7 +6005,6 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 453;
-				CURRENT_PROJECT_VERSION = 450;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6015,7 +6026,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.2.5;
-				MARKETING_VERSION = 2.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -6052,7 +6062,6 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CURRENT_PROJECT_VERSION = 453;
-				CURRENT_PROJECT_VERSION = 450;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6074,7 +6083,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.2.5;
-				MARKETING_VERSION = 2.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -6238,12 +6246,8 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 453;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 453;
-				CURRENT_PROJECT_VERSION = 450;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -6270,7 +6274,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.2.5;
-				MARKETING_VERSION = 2.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -6305,7 +6308,6 @@
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 453;
-				CURRENT_PROJECT_VERSION = 450;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6333,7 +6335,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.2.5;
-				MARKETING_VERSION = 2.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "App Store";

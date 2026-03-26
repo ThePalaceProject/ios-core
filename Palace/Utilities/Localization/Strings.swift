@@ -578,6 +578,12 @@ struct Strings {
         static let openSettings = NSLocalizedString("Open Settings", comment: "")
     }
 
+    struct ExpiredLoan {
+        static let title = NSLocalizedString("Your Loan Has Expired", comment: "Alert title when a book's DRM license has expired")
+        static let message = NSLocalizedString("This title is no longer available because your loan period ended. It has been removed from your device.", comment: "Alert message when a book loan expires without a known end date")
+        static let messageWithDate = NSLocalizedString("This title is no longer available because your loan ended on %@. It has been removed from your device.", comment: "Alert message when a book loan expires; %@ is the formatted end date")
+    }
+
     struct MyDownloadCenter {
         static let borrowFailed = NSLocalizedString("Borrow Failed", comment: "")
         static let borrowFailedMessage = NSLocalizedString("Borrowing %@ could not be completed.", comment: "")
