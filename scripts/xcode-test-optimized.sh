@@ -35,7 +35,11 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     # Pick the first available iPhone simulator by UDID — never rely on device names
     # since those vary across Xcode / macOS image versions.
     # Use grep -oE with a UUID regex to extract just the UDID, not the trailing
-    # state word "(Shutdown)" which the old sed greedy match was capturing instead.
+    # state word "(Shutdown)" which a greedy sed match would capture instead.
+    # Also print installed runtimes for debugging in case no devices are found.
+    echo "Installed simulator runtimes:"
+    xcrun simctl list runtimes | grep iOS || echo "(none found)"
+
     SIMULATOR_ID=$(xcrun simctl list devices available \
         | grep "iPhone" \
         | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' \
