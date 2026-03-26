@@ -404,44 +404,35 @@ final class AccountsManagerTests: XCTestCase {
     // MARK: - Thread Safety Tests
 
     func testAccountLookup_FromMultipleThreads_DoesNotCrash() {
-        // Given: Multiple concurrent lookup operations
         let iterations = 100
-        let group = DispatchGroup()
+        let expectation = expectation(description: "All concurrent account lookups complete")
+        expectation.expectedFulfillmentCount = iterations
 
-        // When: Performing concurrent lookups
         for _ in 0..<iterations {
-            group.enter()
             DispatchQueue.global(qos: .userInitiated).async {
-                // Access accounts from background thread
                 _ = AccountsManager.shared.account(self.nyplUUID)
                 _ = AccountsManager.shared.currentAccount
                 _ = AccountsManager.shared.accountsHaveLoaded
-                group.leave()
+                expectation.fulfill()
             }
         }
 
-        // Then: Should complete without crashing
-        let result = group.wait(timeout: .now() + 10.0)
-        XCTAssertEqual(result, .success, "Concurrent access should complete without deadlock")
+        waitForExpectations(timeout: 10.0)
     }
 
     func testAccounts_FromMultipleThreads_DoesNotCrash() {
-        // Given: Multiple concurrent calls to accounts()
         let iterations = 100
-        let group = DispatchGroup()
+        let expectation = expectation(description: "All concurrent accounts() calls complete")
+        expectation.expectedFulfillmentCount = iterations
 
-        // When: Performing concurrent access
         for _ in 0..<iterations {
-            group.enter()
             DispatchQueue.global(qos: .userInitiated).async {
                 _ = AccountsManager.shared.accounts()
-                group.leave()
+                expectation.fulfill()
             }
         }
 
-        // Then: Should complete without crashing
-        let result = group.wait(timeout: .now() + 10.0)
-        XCTAssertEqual(result, .success, "Concurrent accounts() access should complete without deadlock")
+        waitForExpectations(timeout: 10.0)
     }
 
     // MARK: - Singleton Tests

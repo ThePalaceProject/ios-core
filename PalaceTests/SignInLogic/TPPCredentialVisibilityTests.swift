@@ -708,13 +708,13 @@ final class TPPCredentialConcurrencyTests: XCTestCase {
         user._credentials = .barcodeAndPin(barcode: "concurrentBarcode", pin: "concurrentPin")
         user.setAuthState(.loggedIn)
 
-        let group = DispatchGroup()
         let iterations = 100
+        let expectation = expectation(description: "All concurrent snapshots complete")
+        expectation.expectedFulfillmentCount = iterations
         var failures = 0
         let failureLock = NSLock()
 
         for _ in 0..<iterations {
-            group.enter()
             DispatchQueue.global().async {
                 let snapshot = TPPUserAccountMock.credentialSnapshot(for: nil)
                 if snapshot.barcode != "concurrentBarcode" ||
@@ -725,11 +725,11 @@ final class TPPCredentialConcurrencyTests: XCTestCase {
                     failures += 1
                     failureLock.unlock()
                 }
-                group.leave()
+                expectation.fulfill()
             }
         }
 
-        group.wait()
+        waitForExpectations(timeout: 10.0)
         XCTAssertEqual(failures, 0,
                        "All concurrent snapshots should return consistent credential data")
     }
@@ -759,18 +759,18 @@ final class TPPCredentialConcurrencyTests: XCTestCase {
         let user = TPPUserAccountMock.sharedAccount(libraryUUID: nil) as! TPPUserAccountMock
         user._credentials = .barcodeAndPin(barcode: "test", pin: "test")
 
-        let group = DispatchGroup()
         let iterations = 50
+        let expectation = expectation(description: "All concurrent credential refreshes complete")
+        expectation.expectedFulfillmentCount = iterations
 
         for _ in 0..<iterations {
-            group.enter()
             DispatchQueue.global().async {
                 _ = user.refreshCredentialsFromKeychain()
-                group.leave()
+                expectation.fulfill()
             }
         }
 
-        group.wait()
+        waitForExpectations(timeout: 10.0)
         XCTAssertTrue(user.hasCredentials(),
                       "Credentials should remain intact after concurrent refreshes")
     }

@@ -1,0 +1,132 @@
+---
+description: Async patterns that are safe to use in XCTest on CI. Apply whenever writing or reviewing test code that involves concurrency, background threads, or time-based waiting.
+globs: ["PalaceTests/**/*.swift", "PalaceUITests/**/*.swift"]
+alwaysApply: false
+---
+
+# CI-Safe Async Test Patterns
+
+XCTest runs test methods on the **main thread** with `-parallel-testing-enabled NO`.
+Any call that **blocks** the main thread prevents the run loop from draining, which
+can deadlock notification observers, Combine publishers, and async continuations —
+causing tests to time out or crash the test process, taking down unrelated tests with them.
+
+## Banned Patterns
+
+```swift
+// ❌ group.wait() / group.wait(timeout:) — blocks the calling thread.
+//    If called from the main thread (standard in XCTest), the run loop stops,
+//    deadlocking anything that needs to dispatch back to main.
+let result = group.wait(timeout: .now() + 10.0)
+
+// ❌ DispatchSemaphore.wait() in the test body — same blocking problem.
+semaphore.wait()
+
+// ❌ Thread.sleep in the test body — blocks thread, wastes CI time.
+Thread.sleep(forTimeInterval: 0.5)
+
+// ❌ RunLoop.current.run(until:) for timing delays — fragile; 500 ms on a
+//    developer machine may be 5 s on a loaded CI runner.
+RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
+
+// ❌ Task.sleep with tight timing windows for debounce/throttle assertions.
+//    CI machines run 3–10× slower; small margins always overshoot.
+await Task.sleep(nanoseconds: 50_000_000) // 50 ms — way too tight for CI
+```
+
+## Approved Replacements
+
+### Concurrent "does not crash" tests → XCTestExpectation
+
+```swift
+// ✅ waitForExpectations pumps the main run loop; background tasks complete normally.
+func testFoo_FromMultipleThreads_DoesNotCrash() {
+    let iterations = 100
+    let expectation = expectation(description: "All concurrent ops complete")
+    expectation.expectedFulfillmentCount = iterations
+
+    for _ in 0..<iterations {
+        DispatchQueue.global().async {
+            // ... work ...
+            expectation.fulfill()
+        }
+    }
+
+    waitForExpectations(timeout: 10.0)
+}
+```
+
+### Async completion callbacks → XCTestExpectation
+
+```swift
+// ✅
+func testAsync_CompletionFires() {
+    let expectation = expectation(description: "Completion called")
+
+    subject.doWork {
+        expectation.fulfill()
+    }
+
+    waitForExpectations(timeout: 5.0)
+}
+```
+
+### Swift async/await tests → async test method
+
+```swift
+// ✅ async test methods are suspended, not blocked; the cooperative pool stays healthy.
+func testAsync_WorkCompletes() async {
+    let result = await subject.doWork()
+    XCTAssertNotNil(result)
+}
+```
+
+### Debounce / timing-sensitive tests → generous margins
+
+```swift
+// ✅ Use debounce intervals of ≥ 1.0 s and mid-window checks at ≥ 30% of the window.
+//    This gives CI ≥ 300 ms of slack on either side of the assertion boundary.
+func testSearch_Debounces() async {
+    let viewModel = createViewModel(debounceInterval: 1.0)
+    viewModel.updateSearchQuery("test")
+    await waitForDebounce(interval: 0.3)   // 30% in — still in window
+    XCTAssertEqual(callCount, 0)
+    await waitForDebounce(interval: 1.0)   // full window — debounce should have fired
+    XCTAssertEqual(callCount, 1)
+}
+```
+
+### Draining state between tests → tearDown, not RunLoop spin
+
+```swift
+// ✅ Reset shared mutable state explicitly in tearDown rather than spinning the
+//    run loop and hoping 500 ms is enough.
+override func tearDown() {
+    subject.reset()          // or whatever clears the state you need cleared
+    super.tearDown()
+}
+
+// ✅ For actors, clear + nil in async tearDown.
+override func tearDown() async throws {
+    await tracker.clear()
+    tracker = nil
+    try await super.tearDown()
+}
+```
+
+## Acceptable Patterns (not violations)
+
+- `Thread.sleep` **inside a URLProtocol stub handler** to simulate network latency — runs
+  on a background URL session thread, never blocks the test thread.
+- `DispatchSemaphore.wait(timeout:)` **inside a stub** to gate response timing — same.
+- `waitForExpectations(timeout:)` — this is the recommended replacement for `group.wait`.
+- `wait(for: [expectation], timeout:)` — equivalent, also pumps the run loop.
+
+## Why This Keeps Happening
+
+When a `group.wait()` deadlocks in test class A, the test *process* may become
+unstable. XCTest continues running other classes, but classes B and C can be
+reported as "failed" even though their own logic is correct — making it look like
+three separate bugs when there is really only one.
+
+**Always fix the blocker, not the victim.**
