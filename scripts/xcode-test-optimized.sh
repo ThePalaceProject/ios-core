@@ -34,7 +34,12 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
 
     # Pick the first available iPhone simulator by UDID — never rely on device names
     # since those vary across Xcode / macOS image versions.
-    SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" | sed 's/.*(\([^)]*\)).*/\1/' | head -1)
+    # Use grep -oE with a UUID regex to extract just the UDID, not the trailing
+    # state word "(Shutdown)" which the old sed greedy match was capturing instead.
+    SIMULATOR_ID=$(xcrun simctl list devices available \
+        | grep "iPhone" \
+        | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' \
+        | head -1)
 
     if [ -z "$SIMULATOR_ID" ]; then
         echo "🔴 ERROR: No iPhone simulator available in this CI environment!"
@@ -43,7 +48,11 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         exit 1
     fi
 
-    SIMULATOR_NAME=$(xcrun simctl list devices available | grep "$SIMULATOR_ID" | sed 's/^[[:space:]]*//' | sed 's/ (.*//')
+    SIMULATOR_NAME=$(xcrun simctl list devices available \
+        | grep "$SIMULATOR_ID" \
+        | sed 's/^[[:space:]]*//' \
+        | sed 's/ (.*//' \
+        | head -1)
     echo "Using simulator: $SIMULATOR_NAME ($SIMULATOR_ID)"
 
     set +e
