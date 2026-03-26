@@ -122,11 +122,73 @@ override func tearDown() async throws {
 - `waitForExpectations(timeout:)` — this is the recommended replacement for `group.wait`.
 - `wait(for: [expectation], timeout:)` — equivalent, also pumps the run loop.
 
+## No Real Network Calls in Unit Tests
+
+This is a hard rule. A test that makes a real HTTP request is not a unit test.
+
+### How to spot a real network call
+
+```swift
+// ❌ Calling a production singleton whose initializer or methods hit the network.
+AccountsManager.shared.updateAccountSet { ... }   // fetches live catalog API
+
+// ❌ waitForExpectations with a multi-second timeout is a red flag.
+waitForExpectations(timeout: 30.0)   // only makes sense when waiting for the internet
+
+// ❌ URLSession.shared — not interceptable by URLProtocol in test targets.
+URLSession.shared.dataTask(with: url) { ... }
+```
+
+### Approved patterns
+
+```swift
+// ✅ Inject a mock via the type's initializer — the mock never touches the network.
+let sut = MyService(networkClient: MockNetworkClient())
+
+// ✅ Use HTTPStubURLProtocol on a custom session configuration.
+let config = URLSessionConfiguration.ephemeral
+config.protocolClasses = [HTTPStubURLProtocol.self]
+let session = URLSession(configuration: config)
+HTTPStubURLProtocol.register { _ in .init(statusCode: 200, headers: nil, body: data) }
+
+// ✅ Skip the test when the dependency is not available in unit-test context.
+func testSomething() throws {
+    try XCTSkipUnless(manager.isPreWarmed, "Requires live network; run as integration test")
+    ...
+}
+```
+
+### Technical guard: NoNetworkURLProtocol
+
+`PalaceTests/NoNetworkURLProtocol.swift` provides a URLProtocol subclass that
+calls `XCTFail` and returns a `NSURLErrorNotConnectedToInternet` error if any
+real outbound HTTP request is attempted during a test.
+
+Enable it in tests that should never touch the network:
+
+```swift
+override func setUp() {
+    super.setUp()
+    NoNetworkURLProtocol.enable()
+}
+
+override func tearDown() {
+    NoNetworkURLProtocol.disable()
+    super.tearDown()
+}
+```
+
+Note: `URLProtocol.registerClass` only intercepts sessions using
+`URLSessionConfiguration.default` or `.shared`. Sessions created with
+`.ephemeral` or custom configurations need `protocolClasses` set directly.
+Use `HTTPStubURLProtocol` for those (it already handles stubbing).
+
 ## Why This Keeps Happening
 
-When a `group.wait()` deadlocks in test class A, the test *process* may become
-unstable. XCTest continues running other classes, but classes B and C can be
-reported as "failed" even though their own logic is correct — making it look like
-three separate bugs when there is really only one.
+When a `group.wait()` deadlocks in test class A, or a real network call fires
+background tasks, the test *process* becomes unstable. XCTest continues running
+other classes, but classes B and C can be reported as "failed" even though their
+own logic is correct — making it look like three separate bugs when there is really
+only one.
 
 **Always fix the blocker, not the victim.**
