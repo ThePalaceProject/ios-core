@@ -217,17 +217,27 @@ public enum AccessibilityID {
 
         // Progress
         public static let progressSlider = "audiobookPlayer.progressSlider"
+        public static let progressBar = "audiobookPlayer.progressBar"
         public static let currentTimeLabel = "audiobookPlayer.currentTimeLabel"
         public static let remainingTimeLabel = "audiobookPlayer.remainingTimeLabel"
+        public static let timeElapsedLabel = "audiobookPlayer.timeElapsedLabel"
+        public static let timeRemainingLabel = "audiobookPlayer.timeRemainingLabel"
         public static let chapterTitle = "audiobookPlayer.chapterTitle"
+
+        // Book info
+        public static let coverImage = "audiobookPlayer.coverImage"
+        public static let titleLabel = "audiobookPlayer.titleLabel"
+        public static let authorLabel = "audiobookPlayer.authorLabel"
 
         // Settings
         public static let playbackSpeedButton = "audiobookPlayer.playbackSpeedButton"
+        public static let speedButton = "audiobookPlayer.speedButton"
         public static let sleepTimerButton = "audiobookPlayer.sleepTimerButton"
         public static let tocButton = "audiobookPlayer.tocButton"
 
-        // Table of contents
+        // Table of contents / Chapter list
         public static let tocView = "audiobookPlayer.toc"
+        public static let chapterList = "audiobookPlayer.chapterList"
         public static func tocChapter(_ index: Int) -> String { "audiobookPlayer.toc.chapter.\(index)" }
 
         // Playback speed menu
@@ -249,6 +259,10 @@ public enum AccessibilityID {
         public static let signInButton = "signIn.signInButton"
         public static let cancelButton = "signIn.cancelButton"
         public static let errorLabel = "signIn.errorLabel"
+        public static let forgotPasswordLink = "signIn.forgotPasswordLink"
+        public static let signUpLink = "signIn.signUpLink"
+        public static let errorMessage = "signIn.errorMessage"
+        public static let loadingIndicator = "signIn.loadingIndicator"
     }
 
     // MARK: - Common Elements
@@ -261,6 +275,79 @@ public enum AccessibilityID {
         public static let backButton = "common.backButton"
         public static let closeButton = "common.closeButton"
         public static let doneButton = "common.doneButton"
+    }
+
+    // MARK: - EPUB Reader
+
+    /// EPUB reader screen identifiers
+    public enum EPUBReader {
+        // Content
+        public static let pageContent = "epubReader.pageContent"
+
+        // Navigation bar buttons
+        public static let tocButton = "epubReader.tocButton"
+        public static let bookmarkButton = "epubReader.bookmarkButton"
+        public static let searchButton = "epubReader.searchButton"
+        public static let settingsButton = "epubReader.settingsButton"
+
+        // Page navigation
+        public static let previousPageButton = "epubReader.previousPageButton"
+        public static let nextPageButton = "epubReader.nextPageButton"
+        public static let progressSlider = "epubReader.progressSlider"
+
+        // Font settings
+        public static let fontSizeIncrease = "epubReader.fontSizeIncrease"
+        public static let fontSizeDecrease = "epubReader.fontSizeDecrease"
+        public static let brightnessSlider = "epubReader.brightnessSlider"
+
+        // Theme settings
+        public static let themeWhite = "epubReader.themeWhite"
+        public static let themeSepia = "epubReader.themeSepia"
+        public static let themeDark = "epubReader.themeDark"
+    }
+
+    // MARK: - PDF Reader
+
+    /// PDF reader screen identifiers
+    public enum PDFReader {
+        // Content
+        public static let pageContent = "pdfReader.pageContent"
+        public static let thumbnailStrip = "pdfReader.thumbnailStrip"
+
+        // Navigation bar buttons
+        public static let searchButton = "pdfReader.searchButton"
+        public static let bookmarkButton = "pdfReader.bookmarkButton"
+
+        // Page navigation
+        public static let pageNumberLabel = "pdfReader.pageNumberLabel"
+        public static let previousPageButton = "pdfReader.previousPageButton"
+        public static let nextPageButton = "pdfReader.nextPageButton"
+
+        // Zoom controls
+        public static let zoomInButton = "pdfReader.zoomInButton"
+        public static let zoomOutButton = "pdfReader.zoomOutButton"
+    }
+
+    // MARK: - Library Picker
+
+    /// Library selection screen identifiers
+    public enum LibraryPicker {
+        public static let searchField = "libraryPicker.searchField"
+        public static let libraryList = "libraryPicker.libraryList"
+        public static let libraryCell = "libraryPicker.libraryCell"
+        public static let addLibraryButton = "libraryPicker.addLibraryButton"
+        public static let currentLibraryBadge = "libraryPicker.currentLibraryBadge"
+    }
+
+    // MARK: - Tutorial
+
+    /// Onboarding/tutorial screen identifiers
+    public enum Tutorial {
+        public static let welcomeScreen = "tutorial.welcomeScreen"
+        public static let skipButton = "tutorial.skipButton"
+        public static let nextButton = "tutorial.nextButton"
+        public static let pageIndicator = "tutorial.pageIndicator"
+        public static let getStartedButton = "tutorial.getStartedButton"
     }
 
     // MARK: - Error Alerts (PP-3707)
