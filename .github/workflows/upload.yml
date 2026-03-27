@@ -69,10 +69,6 @@ jobs:
         with:
           xcode-version: '26'
 
-      - name: Download iOS platform SDK
-        run: xcodebuild -downloadPlatform iOS
-        timeout-minutes: 15
-
       - name: 📋 Log Xcode & Swift Info
         run: |
           echo "## 🔧 Toolchain Versions" >> $GITHUB_STEP_SUMMARY
@@ -166,7 +162,6 @@ jobs:
 
       - name: Export to binaries (Ad Hoc)
         id: export-adhoc
-        shell: bash -eo pipefail {0}
         run: |
           echo "## 📱 Ad Hoc Export" >> $GITHUB_STEP_SUMMARY
           ./scripts/xcode-export-adhoc.sh 2>&1 | tee adhoc-export.log
@@ -208,7 +203,6 @@ jobs:
 
       - name: Export for App Store
         id: export-appstore
-        shell: bash -eo pipefail {0}
         run: |
           echo "## 🚀 App Store Export" >> $GITHUB_STEP_SUMMARY
           ./scripts/xcode-export-appstore.sh 2>&1 | tee appstore-export.log
