@@ -892,6 +892,12 @@
 		E5E4A9DE2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9DC2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift */; };
 		E5E4A9E02EB0565800CC1D67 /* TPPBookRegistryAsync.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9DF2EB0565800CC1D67 /* TPPBookRegistryAsync.swift */; };
 		E5E4A9E12EB0565800CC1D67 /* TPPBookRegistryAsync.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9DF2EB0565800CC1D67 /* TPPBookRegistryAsync.swift */; };
+		7179B2C70F96786A9064BF4B /* BookRegistryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9234DD4339B85855A91CE3DE /* BookRegistryStore.swift */; };
+		42E6CF5F51913951B7DC5F9D /* BookRegistryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9234DD4339B85855A91CE3DE /* BookRegistryStore.swift */; };
+		D47EC2412CEC04D24BF6D1C5 /* BookRegistrySync.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECEB9F995C87FE2C71DFA9BC /* BookRegistrySync.swift */; };
+		1727CF183FBEFC2E3E5D9C53 /* BookRegistrySync.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECEB9F995C87FE2C71DFA9BC /* BookRegistrySync.swift */; };
+		036CA5499321FC544139010D /* BookmarkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68EFBB61877EFCAB44897E93 /* BookmarkManager.swift */; };
+		1266D86E87E4AA575EB966BD /* BookmarkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68EFBB61877EFCAB44897E93 /* BookmarkManager.swift */; };
 		E5E4A9E52EB0568F00CC1D67 /* MainActorHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9E32EB0568F00CC1D67 /* MainActorHelpers.swift */; };
 		E5E4A9E72EB0568F00CC1D67 /* MainActorHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4A9E32EB0568F00CC1D67 /* MainActorHelpers.swift */; };
 		E5E4AACE2EB2914B00CC1D67 /* RemoteFeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E4AACD2EB2914B00CC1D67 /* RemoteFeatureFlags.swift */; };
@@ -1989,6 +1995,9 @@
 		E5E4A9D92EB0562700CC1D67 /* DownloadErrorRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadErrorRecovery.swift; sourceTree = "<group>"; };
 		E5E4A9DC2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MyBooksDownloadCenter+Async.swift"; sourceTree = "<group>"; };
 		E5E4A9DF2EB0565800CC1D67 /* TPPBookRegistryAsync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryAsync.swift; sourceTree = "<group>"; };
+		9234DD4339B85855A91CE3DE /* BookRegistryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRegistryStore.swift; sourceTree = "<group>"; };
+		ECEB9F995C87FE2C71DFA9BC /* BookRegistrySync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRegistrySync.swift; sourceTree = "<group>"; };
+		68EFBB61877EFCAB44897E93 /* BookmarkManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarkManager.swift; sourceTree = "<group>"; };
 		E5E4A9E32EB0568F00CC1D67 /* MainActorHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainActorHelpers.swift; sourceTree = "<group>"; };
 		E5E4AACD2EB2914B00CC1D67 /* RemoteFeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFeatureFlags.swift; sourceTree = "<group>"; };
 		E5E4AADB2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSpecificErrorMonitor.swift; sourceTree = "<group>"; };
@@ -2969,6 +2978,9 @@
 				E523124A285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift */,
 				E523116928504B85007D1DB5 /* TPPBook+Extensions.swift */,
 				E5E4A9DF2EB0565800CC1D67 /* TPPBookRegistryAsync.swift */,
+				9234DD4339B85855A91CE3DE /* BookRegistryStore.swift */,
+				ECEB9F995C87FE2C71DFA9BC /* BookRegistrySync.swift */,
+				68EFBB61877EFCAB44897E93 /* BookmarkManager.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -5211,6 +5223,9 @@
 				21DCC39D27BE4AF900064B37 /* TPPReaderFont.swift in Sources */,
 				E7E9A22E298C6A82006C5D9E /* Reachability.swift in Sources */,
 				E78AE803291C1D8600884446 /* TPPBookRegistryRecord.swift in Sources */,
+				7179B2C70F96786A9064BF4B /* BookRegistryStore.swift in Sources */,
+				D47EC2412CEC04D24BF6D1C5 /* BookRegistrySync.swift in Sources */,
+				036CA5499321FC544139010D /* BookmarkManager.swift in Sources */,
 				E5BFCF0E2A5455170046A48D /* TokenRequest.swift in Sources */,
 				E57F92BC2D6918E4003D9180 /* BorderStyleModifier.swift in Sources */,
 				73EB0AA625821DF4006BC997 /* TPPOPDSGroup.m in Sources */,
@@ -5805,6 +5820,9 @@
 				2DEF10BA201ECCEA0082843A /* TPPMyBooksSimplifiedBearerToken.m in Sources */,
 				E706F60728638237000B7431 /* TPPPDFPage.swift in Sources */,
 				E78AE802291C1D8600884446 /* TPPBookRegistryRecord.swift in Sources */,
+				42E6CF5F51913951B7DC5F9D /* BookRegistryStore.swift in Sources */,
+				1727CF183FBEFC2E3E5D9C53 /* BookRegistrySync.swift in Sources */,
+				1266D86E87E4AA575EB966BD /* BookmarkManager.swift in Sources */,
 				2DF321831DC3B83500E1858F /* TPPAnnotations.swift in Sources */,
 				E5E4907229280597005BFC55 /* Strings.swift in Sources */,
 				21EC1B8F2501538600A12384 /* AudioBookVendors+Extensions.swift in Sources */,

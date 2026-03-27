@@ -56,3 +56,24 @@ public class TPPBookLocation: NSObject {
         ]
     }
 }
+
+extension TPPBookLocation {
+    func locationStringDictionary() -> [String: Any]? {
+        guard let data = locationString.data(using: .utf8),
+              let dictionary = try? JSONSerialization.jsonObject(with: data, options: .allowFragments) as? [String: Any]
+        else { return nil }
+        return dictionary
+    }
+
+    func isSimilarTo(_ location: TPPBookLocation) -> Bool {
+        guard renderer == location.renderer,
+              let locationDict = locationStringDictionary(),
+              let otherLocationDict = location.locationStringDictionary() else {
+            return false
+        }
+        let excludedKeys = ["timeStamp", "annotationId"]
+        let filteredDict = locationDict.filter { !excludedKeys.contains($0.key) }
+        let filteredOtherDict = otherLocationDict.filter { !excludedKeys.contains($0.key) }
+        return NSDictionary(dictionary: filteredDict).isEqual(to: filteredOtherDict)
+    }
+}
