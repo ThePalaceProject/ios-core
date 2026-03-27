@@ -1176,6 +1176,7 @@
 		SETPV002T260955EF008E1DC3 /* TPPSettingsProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = SETPV001T260955EF008E1DC3 /* TPPSettingsProviding.swift */; };
 		SETPV003T260955EF008E1DC3 /* TPPSettingsProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = SETPV001T260955EF008E1DC3 /* TPPSettingsProviding.swift */; };
 		SETVM002T260955EF008E1DC3 /* SettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SETVM001T260955EF008E1DC3 /* SettingsViewModelTests.swift */; };
+		VMCP002T270326AF008E1DC3 /* ViewModelComputedPropertyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = VMCP001T270326AF008E1DC3 /* ViewModelComputedPropertyTests.swift */; };
 		SETVM004T260955EF008E1DC3 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SETVM003T260955EF008E1DC3 /* SettingsViewModel.swift */; };
 		SETVM005T260955EF008E1DC3 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SETVM003T260955EF008E1DC3 /* SettingsViewModel.swift */; };
 		STMK002T260955EF008E1DC3 /* TPPSettingsMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = STMK001T260955EF008E1DC3 /* TPPSettingsMock.swift */; };
@@ -2175,6 +2176,7 @@
 		SCENEDEL0001FILEREF001 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		SETPV001T260955EF008E1DC3 /* TPPSettingsProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsProviding.swift; sourceTree = "<group>"; };
 		SETVM001T260955EF008E1DC3 /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
+		VMCP001T270326AF008E1DC3 /* ViewModelComputedPropertyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelComputedPropertyTests.swift; sourceTree = "<group>"; };
 		SETVM003T260955EF008E1DC3 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
 		STMK001T260955EF008E1DC3 /* TPPSettingsMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsMock.swift; sourceTree = "<group>"; };
 		TOCB001T260955EF008E1DC3 /* TPPReaderTOCBusinessLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderTOCBusinessLogicTests.swift; sourceTree = "<group>"; };
@@ -2553,6 +2555,7 @@
 				44E59F675A3E4419BE1E24BB /* FacetViewModelTests.swift */,
 				E739F55510A748E5A09E3398 /* CatalogLaneMoreViewModelTests.swift */,
 				SETVM001T260955EF008E1DC3 /* SettingsViewModelTests.swift */,
+				VMCP001T270326AF008E1DC3 /* ViewModelComputedPropertyTests.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -4943,6 +4946,7 @@
 				3F950AC5136B638265B1AB87 /* BookDetailViewModelTests.swift in Sources */,
 				612FD8DA16387F71EB3CA398 /* HoldsViewModelTests.swift in Sources */,
 				SETVM002T260955EF008E1DC3 /* SettingsViewModelTests.swift in Sources */,
+				VMCP002T270326AF008E1DC3 /* ViewModelComputedPropertyTests.swift in Sources */,
 				4E664E6EC32C604AFBC8A623 /* CatalogSearchViewModelTests.swift in Sources */,
 				42B90B321C764EAF8456945B /* FacetViewModelTests.swift in Sources */,
 				E3AC72206C314EE2A79943EA /* CatalogLaneMoreViewModelTests.swift in Sources */,
