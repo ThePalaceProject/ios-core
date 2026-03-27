@@ -70,6 +70,7 @@ import Foundation
     }
 
     @objc private func catalogDidLoad() {
+        guard isViewLoaded else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.datasource.loadData()
