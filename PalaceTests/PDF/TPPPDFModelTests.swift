@@ -54,7 +54,7 @@ final class TPPPDFPageTests: XCTestCase {
 
 // MARK: - TPPPDFLocation Tests
 
-final class TPPPDFLocationTests: XCTestCase {
+final class TPPPDFLocationCoverageTests: XCTestCase {
 
     // SRS: TPPPDFLocation initializes with all parameters
     func testPDFLocation_initWithAllParameters() {

@@ -15,7 +15,7 @@ import XCTest
 
 // MARK: - Float+TPPAdditions Tests
 
-final class FloatTPPAdditionsTests: XCTestCase {
+final class FloatTPPAdditionsCoverageTests: XCTestCase {
 
     // SRS: Float approximate equality returns true for equal values
     func testFloatApproxEqual_equalValues() {
@@ -59,7 +59,7 @@ final class FloatTPPAdditionsTests: XCTestCase {
 
 // MARK: - Int+Extensions Tests
 
-final class IntExtensionsTests: XCTestCase {
+final class IntExtensionsCoverageTests: XCTestCase {
 
     // SRS: Int ordinal returns "1st" for 1
     func testOrdinal_first() {
@@ -94,7 +94,7 @@ final class IntExtensionsTests: XCTestCase {
 
 // MARK: - Dictionary+Extensions Tests
 
-final class DictionaryExtensionsTests: XCTestCase {
+final class DictionaryExtensionsCoverageTests: XCTestCase {
 
     // SRS: Dictionary mapKeys transforms keys correctly
     func testMapKeys_transformsKeys() {
@@ -123,7 +123,7 @@ final class DictionaryExtensionsTests: XCTestCase {
 
 // MARK: - Array+Extensions Tests
 
-final class ArrayExtensionsTests: XCTestCase {
+final class ArrayExtensionsCoverageTests: XCTestCase {
 
     // SRS: Array safe subscript returns element at valid index
     func testSafeSubscript_validIndex() {
@@ -207,7 +207,7 @@ final class StringExtensionsCoverageTests: XCTestCase {
 
 // MARK: - Data+Base64 Tests
 
-final class DataBase64Tests: XCTestCase {
+final class DataBase64CoverageTests: XCTestCase {
 
     // SRS: Data URL-safe base64 replaces + with -
     func testBase64UrlSafe_replacesPlusWithDash() {
@@ -272,7 +272,7 @@ final class URLExtensionsCoverageTests: XCTestCase {
 
 // MARK: - URLResponse+NYPL Tests
 
-final class URLResponseNYPLTests: XCTestCase {
+final class URLResponseNYPLCoverageTests: XCTestCase {
 
     // SRS: URLResponse isProblemDocument for application/problem+json
     func testIsProblemDocument_problemJson() {

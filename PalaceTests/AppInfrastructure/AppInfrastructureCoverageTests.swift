@@ -159,7 +159,7 @@ final class TPPBookContentTypeTests: XCTestCase {
 
 // MARK: - URLRequest+Extensions Tests
 
-final class URLRequestExtensionsTests: XCTestCase {
+final class URLRequestExtensionsCoverageTests: XCTestCase {
 
     // SRS: URLRequest init with custom user agent sets header
     func testURLRequest_customUserAgent() {

@@ -85,7 +85,7 @@ final class AudiobookTimeEntryTests: XCTestCase {
 
 // MARK: - AudiobookEvents Tests
 
-final class AudiobookEventsTests: XCTestCase {
+final class AudiobookEventsCoverageTests: XCTestCase {
 
     // SRS: AudiobookEvents.managerCreated is a PassthroughSubject
     func testManagerCreated_isPassthroughSubject() {

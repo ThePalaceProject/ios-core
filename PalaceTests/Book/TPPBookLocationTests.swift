@@ -13,7 +13,7 @@ import XCTest
 
 // MARK: - TPPBookLocation Tests
 
-final class TPPBookLocationTests: XCTestCase {
+final class TPPBookLocationCoverageTests: XCTestCase {
 
     // SRS: TPPBookLocation init with valid strings succeeds
     func testBookLocation_initWithStrings() {
@@ -126,7 +126,7 @@ final class TPPBookContentTypeConverterTests: XCTestCase {
 
 // MARK: - TPPBookAuthor Tests
 
-final class TPPBookAuthorTests: XCTestCase {
+final class TPPBookAuthorCoverageTests: XCTestCase {
 
     // SRS: TPPBookAuthor initializes with name and URL
     func testBookAuthor_initWithNameAndURL() {
