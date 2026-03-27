@@ -85,7 +85,7 @@ final class TPPPDFLocationTests: XCTestCase {
     func testId_HandlesNilValues_WithEmptyStrings() {
         let location = TPPPDFLocation(title: nil, subtitle: nil, pageLabel: nil, pageNumber: 0)
         // Format: "\(pageNumber)-\(pv)-\(s)-\(t)-\(level)"
-        XCTAssertEqual(location.id, "0---0")
+        XCTAssertEqual(location.id, "0----0")
     }
 
     func testId_UniqueForDifferentSubtitles() {

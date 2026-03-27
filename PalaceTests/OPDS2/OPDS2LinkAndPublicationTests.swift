@@ -22,7 +22,8 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
     }
 
     func testHrefURL_InvalidURL_ReturnsNil() {
-        let link = OPDS2Link(href: "not a valid url with spaces")
+        // URLs with spaces get percent-encoded by Foundation, so use a truly invalid scheme
+        let link = OPDS2Link(href: "://")
         XCTAssertNil(link.hrefURL)
     }
 
