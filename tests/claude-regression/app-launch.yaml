@@ -1,0 +1,43 @@
+name: "App Launch"
+description: "Verify the app launches successfully, the catalog screen loads with book lanes, and the tab bar is visible with all four tabs."
+srs_requirements: ["CAT-001", "NAV-001"]
+preconditions:
+  - "App is installed on simulator"
+  - "No user is signed in"
+  - "Simulator is booted and at the home screen"
+steps:
+  - action: "launch_app"
+    target: "Palace app icon"
+    expect: "App launches and displays the Catalog screen"
+
+  - action: "wait_for_element"
+    target: "catalog.scrollView"
+    timeout: 10
+    expect: "Catalog content loads within 10 seconds"
+
+  - action: "verify_element_visible"
+    target: "Tab bar at bottom of screen"
+    expect: "Tab bar is visible with four tabs: Catalog, My Books, Reservations, Settings"
+
+  - action: "verify_element_visible"
+    target: "Catalog tab (selected)"
+    expect: "Catalog tab is highlighted as the active tab"
+
+  - action: "verify_element_visible"
+    target: "Navigation bar with library name"
+    expect: "Navigation bar displays the current library name or 'Catalog' title"
+
+  - action: "verify_element_visible"
+    target: "At least one book lane with covers"
+    expect: "At least one horizontal lane of book covers is visible in the catalog"
+
+  - action: "screenshot"
+    name: "app-launch-catalog"
+    description: "Initial app launch showing catalog screen with tab bar and book lanes"
+
+  - action: "verify_no_alerts"
+    expect: "No error alerts or popups are displayed"
+postconditions:
+  - "App is in a stable state on the Catalog tab"
+  - "No error alerts displayed"
+  - "Tab bar is visible and functional"

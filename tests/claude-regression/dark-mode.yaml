@@ -1,0 +1,89 @@
+name: "Dark Mode"
+description: "Verify the app adapts its UI correctly when the system dark mode is toggled via simulator settings."
+srs_requirements: ["UI-001", "A11Y-002", "THEME-001"]
+preconditions:
+  - "App is installed on simulator"
+  - "No user is signed in"
+  - "Simulator is in Light Mode (default)"
+steps:
+  - action: "launch_app"
+    target: "Palace app icon"
+    expect: "App launches and displays the Catalog screen in Light Mode"
+
+  - action: "wait_for_element"
+    target: "catalog.scrollView"
+    timeout: 10
+    expect: "Catalog content loads"
+
+  - action: "screenshot"
+    name: "light-mode-catalog"
+    description: "Catalog screen in Light Mode for baseline comparison"
+
+  - action: "tap_element"
+    target: "Settings tab in tab bar"
+    expect: "Settings screen is displayed in Light Mode"
+
+  - action: "screenshot"
+    name: "light-mode-settings"
+    description: "Settings screen in Light Mode for baseline comparison"
+
+  # Toggle to Dark Mode via simulator
+  - action: "simulator_command"
+    command: "toggle_appearance"
+    expect: "Simulator switches to Dark Mode"
+
+  - action: "wait"
+    duration: 2
+    expect: "UI updates to Dark Mode colors"
+
+  - action: "screenshot"
+    name: "dark-mode-settings"
+    description: "Settings screen after switching to Dark Mode"
+
+  - action: "verify_visual"
+    target: "Settings screen background"
+    expect: "Background color is dark (black or near-black) instead of white"
+
+  - action: "verify_visual"
+    target: "Text elements on Settings screen"
+    expect: "Text color is light (white or near-white) for readability against dark background"
+
+  - action: "verify_visual"
+    target: "Tab bar"
+    expect: "Tab bar adapts to dark mode with appropriate colors"
+
+  - action: "tap_element"
+    target: "Catalog tab in tab bar"
+    expect: "Catalog screen is displayed in Dark Mode"
+
+  - action: "screenshot"
+    name: "dark-mode-catalog"
+    description: "Catalog screen in Dark Mode showing adapted colors"
+
+  - action: "verify_visual"
+    target: "Catalog navigation bar"
+    expect: "Navigation bar uses dark mode colors"
+
+  - action: "verify_visual"
+    target: "Book lane titles and covers"
+    expect: "Lane titles use light text, book covers are still visible"
+
+  # Restore Light Mode
+  - action: "simulator_command"
+    command: "toggle_appearance"
+    expect: "Simulator switches back to Light Mode"
+
+  - action: "wait"
+    duration: 2
+    expect: "UI returns to Light Mode colors"
+
+  - action: "screenshot"
+    name: "light-mode-restored"
+    description: "Catalog screen after restoring Light Mode"
+
+  - action: "verify_no_alerts"
+    expect: "No error alerts appeared during appearance toggle"
+postconditions:
+  - "App is on the Catalog tab in Light Mode"
+  - "No error alerts displayed"
+  - "UI colors are correct for Light Mode"

@@ -1,0 +1,52 @@
+name: "My Books Empty State"
+description: "Verify the My Books tab displays an appropriate empty state message when no books have been borrowed or downloaded."
+srs_requirements: ["LIB-001", "LIB-002", "NAV-002"]
+preconditions:
+  - "App is installed on simulator"
+  - "No user is signed in"
+  - "No books have been borrowed or downloaded"
+steps:
+  - action: "launch_app"
+    target: "Palace app icon"
+    expect: "App launches and displays the Catalog screen"
+
+  - action: "wait_for_element"
+    target: "catalog.scrollView"
+    timeout: 10
+    expect: "Catalog content loads"
+
+  - action: "tap_element"
+    target: "My Books tab in tab bar"
+    expect: "My Books screen is displayed"
+
+  - action: "wait_for_element"
+    target: "myBooks.navigationBar"
+    timeout: 5
+    expect: "My Books navigation bar is visible with 'My Books' title"
+
+  - action: "verify_element_visible"
+    target: "myBooks.emptyStateView"
+    expect: "Empty state view is displayed indicating no books are available"
+
+  - action: "verify_text_visible"
+    target: "Empty state message"
+    expect: "A message explains that the user has no books and may suggest browsing the catalog"
+
+  - action: "screenshot"
+    name: "my-books-empty"
+    description: "My Books screen showing empty state with no borrowed books"
+
+  - action: "verify_element_not_visible"
+    target: "Book cells or grid items"
+    expect: "No book cells or covers are displayed in the grid"
+
+  - action: "verify_element_visible"
+    target: "Tab bar at bottom"
+    expect: "Tab bar remains visible with My Books tab selected/highlighted"
+
+  - action: "verify_no_alerts"
+    expect: "No error alerts are displayed"
+postconditions:
+  - "App is on the My Books tab showing empty state"
+  - "No error alerts displayed"
+  - "Tab bar is visible and functional"

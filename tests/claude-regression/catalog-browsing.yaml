@@ -1,0 +1,61 @@
+name: "Catalog Browsing"
+description: "Verify catalog lanes display correctly, book covers are visible, horizontal and vertical scrolling works, and lane titles are present."
+srs_requirements: ["CAT-001", "CAT-002", "CAT-003"]
+preconditions:
+  - "App is installed on simulator"
+  - "No user is signed in"
+  - "App is launched and on the Catalog tab"
+steps:
+  - action: "launch_app"
+    target: "Palace app icon"
+    expect: "App launches and displays the Catalog screen"
+
+  - action: "wait_for_element"
+    target: "catalog.scrollView"
+    timeout: 10
+    expect: "Catalog content loads with book lanes"
+
+  - action: "verify_element_visible"
+    target: "catalog.lane.0.title"
+    expect: "First lane has a visible title label"
+
+  - action: "verify_element_visible"
+    target: "Book covers in first lane"
+    expect: "Book cover images are displayed in the first lane"
+
+  - action: "screenshot"
+    name: "catalog-initial"
+    description: "Catalog screen showing first visible lanes and book covers"
+
+  - action: "swipe"
+    target: "First book lane"
+    direction: "left"
+    expect: "Lane scrolls horizontally to reveal additional book covers"
+
+  - action: "screenshot"
+    name: "catalog-lane-scrolled"
+    description: "First lane after horizontal scroll showing additional books"
+
+  - action: "swipe"
+    target: "Catalog scroll view"
+    direction: "up"
+    expect: "Catalog scrolls vertically to reveal additional lanes"
+
+  - action: "verify_element_visible"
+    target: "Additional book lanes below the fold"
+    expect: "More lanes with titles and book covers are visible after scrolling"
+
+  - action: "screenshot"
+    name: "catalog-scrolled-down"
+    description: "Catalog after vertical scroll showing additional lanes"
+
+  - action: "verify_element_visible"
+    target: "More button on a lane"
+    expect: "At least one lane has a 'More' or 'See All' button to view the full list"
+
+  - action: "verify_no_alerts"
+    expect: "No error alerts are displayed during browsing"
+postconditions:
+  - "App is in a stable state on the Catalog tab"
+  - "No error alerts displayed"
+  - "Catalog content remains loaded after scrolling"
