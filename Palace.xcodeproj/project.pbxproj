@@ -1090,6 +1090,11 @@
 		NTCK002T260955EF008E1DC3 /* NetworkClientMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */; };
 		OBJC00012F2600020000001A /* ObjCExceptionCatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = OBJC00012F2600020000001B /* ObjCExceptionCatcher.m */; };
 		PLAYBOOTTEST0001SOURCES /* PlaybackBootstrapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */; };
+		ABSSTATE0001BSRC000001 /* AudiobookSessionStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABSSTATE0001FREF000001 /* AudiobookSessionStateTests.swift */; };
+		NPCOORD0001BSRC000001 /* NowPlayingCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NPCOORD0001FREF000001 /* NowPlayingCoordinatorTests.swift */; };
+		ABTEDGE0001BSRC000001 /* AudiobookTimeTrackerEdgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABTEDGE0001FREF000001 /* AudiobookTimeTrackerEdgeTests.swift */; };
+		RETPROM0001BSRC000001 /* TPPReturnPromptHelperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RETPROM0001FREF000001 /* TPPReturnPromptHelperTests.swift */; };
+		ABEVTS00001BSRC000001 /* AudiobookEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABEVTS00001FREF000001 /* AudiobookEventsTests.swift */; };
 		PP3346A11B0000000000001B /* CatalogLaneRowViewAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3346A11A0000000000001A /* CatalogLaneRowViewAccessibilityTests.swift */; };
 		PP3583TRACKER00001TESTS /* AudiobookTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544E7132C8A14D400802EB9 /* AudiobookTrackerTests.swift */; };
 		PP3629BF000000000000001 /* CatalogLaneSortingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3629FR000000000000001 /* CatalogLaneSortingTests.swift */; };
@@ -2062,6 +2067,11 @@
 		OBJC00012F2600020000001B /* ObjCExceptionCatcher.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ObjCExceptionCatcher.m; sourceTree = "<group>"; };
 		OBJC00012F2600020000001C /* ObjCExceptionCatcher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ObjCExceptionCatcher.h; sourceTree = "<group>"; };
 		PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackBootstrapperTests.swift; sourceTree = "<group>"; };
+		ABSSTATE0001FREF000001 /* AudiobookSessionStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookSessionStateTests.swift; sourceTree = "<group>"; };
+		NPCOORD0001FREF000001 /* NowPlayingCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingCoordinatorTests.swift; sourceTree = "<group>"; };
+		ABTEDGE0001FREF000001 /* AudiobookTimeTrackerEdgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookTimeTrackerEdgeTests.swift; sourceTree = "<group>"; };
+		RETPROM0001FREF000001 /* TPPReturnPromptHelperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReturnPromptHelperTests.swift; sourceTree = "<group>"; };
+		ABEVTS00001FREF000001 /* AudiobookEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookEventsTests.swift; sourceTree = "<group>"; };
 		PP3346A11A0000000000001A /* CatalogLaneRowViewAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogLaneRowViewAccessibilityTests.swift; sourceTree = "<group>"; };
 		PP3629FR000000000000001 /* CatalogLaneSortingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogLaneSortingTests.swift; sourceTree = "<group>"; };
 		PP3671FR000000000000001 /* TPPAccountListDataSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountListDataSourceTests.swift; sourceTree = "<group>"; };
@@ -3620,6 +3630,11 @@
 		AUDIOBOOKSTEST0001GROUP /* Audiobooks */ = {
 			isa = PBXGroup;
 			children = (
+				ABSSTATE0001FREF000001 /* AudiobookSessionStateTests.swift */,
+				NPCOORD0001FREF000001 /* NowPlayingCoordinatorTests.swift */,
+				ABTEDGE0001FREF000001 /* AudiobookTimeTrackerEdgeTests.swift */,
+				RETPROM0001FREF000001 /* TPPReturnPromptHelperTests.swift */,
+				ABEVTS00001FREF000001 /* AudiobookEventsTests.swift */,
 				PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */,
 			);
 			path = Audiobooks;
@@ -4694,6 +4709,11 @@
 				CARPLAYTESTS00002SOURCES /* CarPlayTests.swift in Sources */,
 				NAVCOORDTESTS0001SOURCES /* NavigationCoordinatorTests.swift in Sources */,
 				PLAYBOOTTEST0001SOURCES /* PlaybackBootstrapperTests.swift in Sources */,
+				ABSSTATE0001BSRC000001 /* AudiobookSessionStateTests.swift in Sources */,
+				NPCOORD0001BSRC000001 /* NowPlayingCoordinatorTests.swift in Sources */,
+				ABTEDGE0001BSRC000001 /* AudiobookTimeTrackerEdgeTests.swift in Sources */,
+				RETPROM0001BSRC000001 /* TPPReturnPromptHelperTests.swift in Sources */,
+				ABEVTS00001BSRC000001 /* AudiobookEventsTests.swift in Sources */,
 				PP3583TRACKER00001TESTS /* AudiobookTrackerTests.swift in Sources */,
 				AUDITSYNC00001SOURCES001 /* AudiobookDataManagerSyncTests.swift in Sources */,
 				7384C800242BB43400D5F960 /* TPPCachingTests.swift in Sources */,
