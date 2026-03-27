@@ -1092,7 +1092,6 @@
 		E7FFEAA62A745F600006030A /* ULID in Frameworks */ = {isa = PBXBuildFile; productRef = E7FFEAA52A745F600006030A /* ULID */; };
 		E861F14A001F228C7E96F790 /* KeyboardVoiceOverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71C8FF18A443133C015DA8 /* KeyboardVoiceOverTests.swift */; };
 		EA12FB34567890ABCDEF0002 /* EPUBToolbarToggleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA12FB34567890ABCDEF0001 /* EPUBToolbarToggleTests.swift */; };
-		B9AGENT01BF000000000001 /* BookButtonMapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9AGENT01FR000000000001 /* BookButtonMapperTests.swift */; };
 		B9AGENT02BF000000000001 /* PalaceErrorExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9AGENT02FR000000000001 /* PalaceErrorExtendedTests.swift */; };
 		B9AGENT03BF000000000001 /* KeyboardNavigationFKATests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9AGENT03FR000000000001 /* KeyboardNavigationFKATests.swift */; };
 		EE62CB8A78482228B1365D4E /* PlaybackBootstrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9E7460F23BAEC7FED016069 /* PlaybackBootstrapper.swift */; };
@@ -2170,7 +2169,6 @@
 		RTRT00012F0300030000001A /* RetryClassificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryClassificationTests.swift; sourceTree = "<group>"; };
 		RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadErrorInfoTests.swift; sourceTree = "<group>"; };
 		RTRT00012F0300050000001A /* AlertModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertModelTests.swift; sourceTree = "<group>"; };
-		B9AGENT01FR000000000001 /* BookButtonMapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonMapperTests.swift; sourceTree = "<group>"; };
 		B9AGENT02FR000000000001 /* PalaceErrorExtendedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalaceErrorExtendedTests.swift; sourceTree = "<group>"; };
 		B9AGENT03FR000000000001 /* KeyboardNavigationFKATests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardNavigationFKATests.swift; sourceTree = "<group>"; };
 		SCENEDEL0001FILEREF001 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -4365,7 +4363,6 @@
 		B9AGENT0GRP00000000001 /* Book */ = {
 			isa = PBXGroup;
 			children = (
-				B9AGENT01FR000000000001 /* BookButtonMapperTests.swift */,
 			);
 			path = Book;
 			sourceTree = "<group>";
@@ -5031,7 +5028,6 @@
 				E861F14A001F228C7E96F790 /* KeyboardVoiceOverTests.swift in Sources */,
 				B9AGENT03BF000000000001 /* KeyboardNavigationFKATests.swift in Sources */,
 				EA12FB34567890ABCDEF0002 /* EPUBToolbarToggleTests.swift in Sources */,
-				B9AGENT01BF000000000001 /* BookButtonMapperTests.swift in Sources */,
 				B9AGENT02BF000000000001 /* PalaceErrorExtendedTests.swift in Sources */,
 				PP3673BF000000000000001 /* AccessibilityAnnouncementCenterTests.swift in Sources */,
 				PP3673BF000000000000002 /* StatusAnnouncementTests.swift in Sources */,

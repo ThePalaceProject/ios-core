@@ -12,7 +12,7 @@
 import XCTest
 @testable import Palace
 
-final class BookButtonMapperTests: XCTestCase {
+final class BookButtonMapperExtendedTests: XCTestCase {
 
     // MARK: - Registry State Priority Tests
 

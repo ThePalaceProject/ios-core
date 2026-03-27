@@ -382,7 +382,7 @@ final class BookCellStateComprehensiveTests: XCTestCase {
 
 /// Tests BookButtonMapper.map() for all state combinations.
 /// SRS: BookButtonMapper is the central mapping from registry state + availability to UI state.
-final class BookButtonMapperTests: XCTestCase {
+final class BookButtonMapperViewModelTests: XCTestCase {
 
     func testMap_Downloading_ReturnsDownloadInProgress() {
         let result = BookButtonMapper.map(

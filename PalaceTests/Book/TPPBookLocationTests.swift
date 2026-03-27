@@ -11,7 +11,7 @@
 import XCTest
 @testable import Palace
 
-final class TPPBookLocationTests: XCTestCase {
+final class TPPBookLocationExtendedTests: XCTestCase {
 
     // MARK: - Init with strings
 
