@@ -1,0 +1,48 @@
+{
+  "profiles": {
+    "local": {
+      "platform": "ios",
+      "driver": "appium",
+      "appiumUrl": "http://127.0.0.1:4723/wd/hub",
+      "capabilities": {
+        "platformName": "iOS",
+        "appium:automationName": "XCUITest",
+        "appium:deviceName": "iPhone 16 Pro",
+        "appium:platformVersion": "18.4",
+        "appium:udid": "DF4A2A27-9888-429D-A749-2E157A049A37",
+        "appium:app": "Palace.app",
+        "appium:noReset": false,
+        "appium:fullReset": false,
+        "appium:wdaLaunchTimeout": 120000,
+        "appium:wdaConnectionTimeout": 240000,
+        "appium:useNewWDA": true
+      }
+    },
+    "browserstack": {
+      "platform": "ios",
+      "driver": "browserstack",
+      "browserstackUrl": "https://hub-cloud.browserstack.com/wd/hub",
+      "capabilities": {
+        "platformName": "iOS",
+        "appium:automationName": "XCUITest",
+        "appium:deviceName": "iPhone 16 Pro",
+        "appium:platformVersion": "18",
+        "appium:app": "${BROWSERSTACK_APP_URL}",
+        "bstack:options": {
+          "projectName": "Palace iOS",
+          "buildName": "${BUILD_NAME}",
+          "sessionName": "Integration Tests",
+          "debug": true,
+          "networkLogs": true,
+          "appiumVersion": "2.6.0"
+        }
+      }
+    }
+  },
+  "activeProfile": "local",
+  "timeouts": {
+    "implicitWait": 15,
+    "explicitWait": 30,
+    "pageLoad": 60
+  }
+}
