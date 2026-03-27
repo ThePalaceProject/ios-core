@@ -1942,14 +1942,7 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
 }
 #endif
 
-// MARK: - BackgroundDownloadHandlerDelegate
+// MARK: - Delegate Conformances
 
-extension MyBooksDownloadCenter: BackgroundDownloadHandlerDelegate {
-    func handleTaskCompletionError(task: URLSessionTask, error: Error?) async {
-        // Forwarded from background handler - already handled via urlSession delegate
-    }
-}
-
-// MARK: - TokenRefreshInterceptorDelegate
-
+extension MyBooksDownloadCenter: BackgroundDownloadHandlerDelegate {}
 extension MyBooksDownloadCenter: TokenRefreshInterceptorDelegate {}
