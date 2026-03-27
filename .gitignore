@@ -11,7 +11,8 @@ adobe-rmsdk
 accesslint-reports/
 artifacts/
 reports/
-tools/
+tools/*
+!tools/palace-test-orchestrator/
 **/ReaderClientCert.sig
 **/APIKeys.swift
 Carthage*
