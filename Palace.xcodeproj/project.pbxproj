@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B4CONC001BF000000000001 /* MainActorHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4CONC001FR000000000001 /* MainActorHelpersTests.swift */; };
+		B4CONC002BF000000000001 /* TPPMainThreadCheckerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4CONC002FR000000000001 /* TPPMainThreadCheckerTests.swift */; };
+		B4NETW001BF000000000001 /* URLExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4NETW001FR000000000001 /* URLExtensionsTests.swift */; };
+		B4NETW002BF000000000001 /* URLRequestExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4NETW002FR000000000001 /* URLRequestExtensionsTests.swift */; };
+		B4NETW003BF000000000001 /* URLResponseNYPLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4NETW003FR000000000001 /* URLResponseNYPLTests.swift */; };
 		0345BFE81DBF027200398B6F /* APIKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0345BFD61DBF002E00398B6F /* APIKeys.swift */; };
 		03690E291EB2B44300F75D5F /* TPPReadiumBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E281EB2B44300F75D5F /* TPPReadiumBookmark.swift */; };
 		03B092241E78839D00AD338D /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03B092231E78839D00AD338D /* QuartzCore.framework */; };
@@ -1263,6 +1268,11 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B4CONC001FR000000000001 /* MainActorHelpersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainActorHelpersTests.swift; sourceTree = "<group>"; };
+		B4CONC002FR000000000001 /* TPPMainThreadCheckerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMainThreadCheckerTests.swift; sourceTree = "<group>"; };
+		B4NETW001FR000000000001 /* URLExtensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLExtensionsTests.swift; sourceTree = "<group>"; };
+		B4NETW002FR000000000001 /* URLRequestExtensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLRequestExtensionsTests.swift; sourceTree = "<group>"; };
+		B4NETW003FR000000000001 /* URLResponseNYPLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLResponseNYPLTests.swift; sourceTree = "<group>"; };
 		0345BFD61DBF002E00398B6F /* APIKeys.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = APIKeys.swift; sourceTree = "<group>"; };
 		03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReaderBookmarkCell.swift; sourceTree = "<group>"; };
 		03690E281EB2B44300F75D5F /* TPPReadiumBookmark.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReadiumBookmark.swift; sourceTree = "<group>"; };
@@ -2505,8 +2515,20 @@
 				DCAP001T260955EF008E1DC3 /* DefaultCatalogAPITests.swift */,
 				7F31B83CAB15F0245AEEE83C /* NetworkRetryTests.swift */,
 				E5A09A802F0D72D000CC23EA /* URLResponseAuthenticationTests.swift */,
+				B4NETW001FR000000000001 /* URLExtensionsTests.swift */,
+				B4NETW002FR000000000001 /* URLRequestExtensionsTests.swift */,
+				B4NETW003FR000000000001 /* URLResponseNYPLTests.swift */,
 			);
 			path = Network;
+			sourceTree = "<group>";
+		};
+		B4CONC000GR000000000001 /* Concurrency */ = {
+			isa = PBXGroup;
+			children = (
+				B4CONC001FR000000000001 /* MainActorHelpersTests.swift */,
+				B4CONC002FR000000000001 /* TPPMainThreadCheckerTests.swift */,
+			);
+			path = Concurrency;
 			sourceTree = "<group>";
 		};
 		5A569A271B8351C6003B5B61 /* Products */ = {
@@ -3565,6 +3587,7 @@
 				QATESTGRPKEYCHAIN000001 /* Keychain */,
 				QATESTGRPMIGRATIONS0001 /* Migrations */,
 				QATESTGRPSETTINGS000001 /* Settings */,
+				B4CONC000GR000000000001 /* Concurrency */,
 			);
 			path = PalaceTests;
 			sourceTree = "<group>";
@@ -4881,6 +4904,11 @@
 				PP3702BF000000000000002 /* AccountAwareNetworkTests.swift in Sources */,
 				PP3702BF000000000000003 /* ArraySafetyTests.swift in Sources */,
 				PP3702BF000000000000004 /* AccountSwitchCleanupTests.swift in Sources */,
+				B4CONC001BF000000000001 /* MainActorHelpersTests.swift in Sources */,
+				B4CONC002BF000000000001 /* TPPMainThreadCheckerTests.swift in Sources */,
+				B4NETW001BF000000000001 /* URLExtensionsTests.swift in Sources */,
+				B4NETW002BF000000000001 /* URLRequestExtensionsTests.swift in Sources */,
+				B4NETW003BF000000000001 /* URLResponseNYPLTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
