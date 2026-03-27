@@ -8,6 +8,33 @@
 
 import Foundation
 
+typealias TPPBookRegistryData = [String: Any]
+
+extension TPPBookRegistryData {
+    func value(for key: TPPBookRegistryKey) -> Any? {
+        return self[key.rawValue]
+    }
+    mutating func setValue(_ value: Any?, for key: TPPBookRegistryKey) {
+        self[key.rawValue] = value
+    }
+    func object(for key: TPPBookRegistryKey) -> TPPBookRegistryData? {
+        self[key.rawValue] as? TPPBookRegistryData
+    }
+    func array(for key: TPPBookRegistryKey) -> [TPPBookRegistryData]? {
+        self[key.rawValue] as? [TPPBookRegistryData]
+    }
+}
+
+enum TPPBookRegistryKey: String {
+    case records = "records"
+    case book = "metadata"
+    case state = "state"
+    case fulfillmentId = "fulfillmentId"
+    case location = "location"
+    case readiumBookmarks = "bookmarks"
+    case genericBookmarks = "genericBookmarks"
+}
+
 /// An element of `TPPBookRegistry`
 @objcMembers
 class TPPBookRegistryRecord: NSObject {
