@@ -1,0 +1,113 @@
+name: "Accessibility Check"
+description: "Verify key UI elements across the app have proper VoiceOver accessibility labels, traits, and identifiers for assistive technology users."
+srs_requirements: ["A11Y-001", "A11Y-003", "A11Y-004", "WCAG-001"]
+preconditions:
+  - "App is installed on simulator"
+  - "No user is signed in"
+  - "VoiceOver or Accessibility Inspector is available"
+steps:
+  - action: "launch_app"
+    target: "Palace app icon"
+    expect: "App launches and displays the Catalog screen"
+
+  - action: "wait_for_element"
+    target: "catalog.scrollView"
+    timeout: 10
+    expect: "Catalog content loads"
+
+  # Check tab bar accessibility
+  - action: "verify_accessibility_label"
+    target: "Catalog tab"
+    expect: "Tab has accessibility label 'Catalog' and button trait"
+
+  - action: "verify_accessibility_label"
+    target: "My Books tab"
+    expect: "Tab has accessibility label 'My Books' and button trait"
+
+  - action: "verify_accessibility_label"
+    target: "Reservations tab"
+    expect: "Tab has accessibility label 'Reservations' and button trait"
+
+  - action: "verify_accessibility_label"
+    target: "Settings tab"
+    expect: "Tab has accessibility label 'Settings' and button trait"
+
+  - action: "screenshot"
+    name: "a11y-tab-bar"
+    description: "Tab bar with accessibility labels verified"
+
+  # Check catalog search button
+  - action: "verify_accessibility_label"
+    target: "catalog.searchButton"
+    expect: "Search button has a descriptive accessibility label (e.g., 'Search')"
+
+  # Check book cover accessibility in catalog
+  - action: "verify_accessibility_label"
+    target: "First book cover in catalog lane"
+    expect: "Book cover has accessibility label with book title for VoiceOver"
+
+  - action: "verify_accessibility_trait"
+    target: "First book cover in catalog lane"
+    expect: "Book cover has 'button' or 'image' accessibility trait"
+
+  - action: "screenshot"
+    name: "a11y-catalog-elements"
+    description: "Catalog screen elements with accessibility properties"
+
+  # Navigate to book detail and check accessibility
+  - action: "tap_element"
+    target: "First book cover in catalog lane"
+    expect: "Book detail screen opens"
+
+  - action: "wait_for_element"
+    target: "bookDetail.title"
+    timeout: 5
+    expect: "Book detail loads"
+
+  - action: "verify_accessibility_label"
+    target: "bookDetail.title"
+    expect: "Title element has accessibility label matching the book title"
+
+  - action: "verify_accessibility_label"
+    target: "bookDetail.author"
+    expect: "Author element has accessibility label with author name"
+
+  - action: "verify_accessibility_label"
+    target: "bookDetail.coverImage"
+    expect: "Cover image has accessibility label describing the book cover"
+
+  - action: "verify_accessibility_label"
+    target: "Action button (Get/Borrow/Reserve)"
+    expect: "Action button has clear accessibility label describing the action"
+
+  - action: "screenshot"
+    name: "a11y-book-detail"
+    description: "Book detail screen with accessibility labels on key elements"
+
+  # Return to catalog and check Settings accessibility
+  - action: "tap_element"
+    target: "Back button"
+    expect: "Returns to catalog"
+
+  - action: "tap_element"
+    target: "Settings tab in tab bar"
+    expect: "Settings screen loads"
+
+  - action: "verify_accessibility_label"
+    target: "settings.signInButton"
+    expect: "Sign in button has descriptive accessibility label"
+
+  - action: "verify_accessibility_label"
+    target: "settings.aboutPalaceButton"
+    expect: "About Palace button has descriptive accessibility label"
+
+  - action: "screenshot"
+    name: "a11y-settings"
+    description: "Settings screen with accessibility labels on interactive elements"
+
+  - action: "verify_no_alerts"
+    expect: "No error alerts displayed"
+postconditions:
+  - "App is on the Settings tab"
+  - "No error alerts displayed"
+  - "All checked elements have appropriate accessibility properties"

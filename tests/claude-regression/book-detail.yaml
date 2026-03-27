@@ -1,0 +1,74 @@
+name: "Book Detail"
+description: "Verify the book detail screen displays all expected elements: cover image, title, author, description, and action buttons."
+srs_requirements: ["CAT-005", "BOOK-001", "BOOK-002"]
+preconditions:
+  - "App is installed on simulator"
+  - "No user is signed in"
+  - "App is launched and on the Catalog tab with book lanes loaded"
+steps:
+  - action: "launch_app"
+    target: "Palace app icon"
+    expect: "App launches and displays the Catalog screen"
+
+  - action: "wait_for_element"
+    target: "catalog.scrollView"
+    timeout: 10
+    expect: "Catalog content loads with book lanes"
+
+  - action: "tap_element"
+    target: "First book cover in the first lane"
+    expect: "Book detail screen opens"
+
+  - action: "wait_for_element"
+    target: "bookDetail.title"
+    timeout: 5
+    expect: "Book detail screen loads with the book title visible"
+
+  - action: "verify_element_visible"
+    target: "bookDetail.coverImage"
+    expect: "Book cover image is displayed prominently"
+
+  - action: "verify_element_visible"
+    target: "bookDetail.title"
+    expect: "Book title text is displayed"
+
+  - action: "verify_element_visible"
+    target: "bookDetail.author"
+    expect: "Author name is displayed below the title"
+
+  - action: "screenshot"
+    name: "book-detail-top"
+    description: "Top portion of book detail screen showing cover, title, and author"
+
+  - action: "verify_element_visible"
+    target: "Action button (Get, Borrow, Reserve, or Sample)"
+    expect: "At least one action button is visible (e.g., Get, Borrow, Reserve, or Sample)"
+
+  - action: "swipe"
+    target: "Book detail screen"
+    direction: "up"
+    expect: "Screen scrolls to reveal description and metadata"
+
+  - action: "verify_element_visible"
+    target: "bookDetail.description"
+    expect: "Book description/summary text is visible"
+
+  - action: "screenshot"
+    name: "book-detail-description"
+    description: "Book detail screen scrolled to show description and metadata"
+
+  - action: "verify_element_visible"
+    target: "bookDetail.informationSection"
+    expect: "Information section with publisher, categories, or distributor is visible"
+
+  - action: "tap_element"
+    target: "Back button or navigation back"
+    expect: "Returns to the catalog screen"
+
+  - action: "verify_element_visible"
+    target: "catalog.scrollView"
+    expect: "Catalog screen is visible again"
+postconditions:
+  - "App is on the Catalog tab"
+  - "No error alerts displayed"
+  - "Navigation stack is back to the catalog root"

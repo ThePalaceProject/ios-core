@@ -1,0 +1,72 @@
+name: "Settings Screen"
+description: "Verify the Settings screen displays account section, library information, and app info links."
+srs_requirements: ["SET-001", "SET-002", "SET-003"]
+preconditions:
+  - "App is installed on simulator"
+  - "No user is signed in"
+steps:
+  - action: "launch_app"
+    target: "Palace app icon"
+    expect: "App launches and displays the Catalog screen"
+
+  - action: "wait_for_element"
+    target: "catalog.scrollView"
+    timeout: 10
+    expect: "Catalog content loads"
+
+  - action: "tap_element"
+    target: "Settings tab in tab bar"
+    expect: "Settings screen is displayed"
+
+  - action: "wait_for_element"
+    target: "settings.navigationBar"
+    timeout: 5
+    expect: "Settings navigation bar is visible with 'Settings' title"
+
+  - action: "screenshot"
+    name: "settings-top"
+    description: "Settings screen top section showing account and library info"
+
+  - action: "verify_element_visible"
+    target: "settings.accountSection"
+    expect: "Account section is visible with library name"
+
+  - action: "verify_element_visible"
+    target: "settings.libraryName"
+    expect: "Current library name is displayed"
+
+  - action: "verify_element_visible"
+    target: "Sign in button or account info"
+    expect: "Sign In button is visible (since no user is signed in) or account info is shown"
+
+  - action: "swipe"
+    target: "settings.scrollView"
+    direction: "up"
+    expect: "Settings screen scrolls to reveal additional options"
+
+  - action: "verify_element_visible"
+    target: "settings.aboutPalaceButton"
+    expect: "'About Palace' link or button is visible"
+
+  - action: "verify_element_visible"
+    target: "settings.privacyPolicyButton"
+    expect: "'Privacy Policy' link is visible"
+
+  - action: "verify_element_visible"
+    target: "settings.userAgreementButton"
+    expect: "'User Agreement' link is visible"
+
+  - action: "verify_element_visible"
+    target: "settings.softwareLicensesButton"
+    expect: "'Software Licenses' link is visible"
+
+  - action: "screenshot"
+    name: "settings-bottom"
+    description: "Settings screen scrolled down showing app info links"
+
+  - action: "verify_no_alerts"
+    expect: "No error alerts are displayed"
+postconditions:
+  - "App is on the Settings tab"
+  - "No error alerts displayed"
+  - "All settings sections are accessible"

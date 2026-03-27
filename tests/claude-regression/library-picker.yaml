@@ -1,0 +1,66 @@
+name: "Library Picker"
+description: "Verify the library picker can be opened from Settings, displays a list of available libraries, and allows selection."
+srs_requirements: ["SET-004", "LIB-003", "LIB-004"]
+preconditions:
+  - "App is installed on simulator"
+  - "No user is signed in"
+steps:
+  - action: "launch_app"
+    target: "Palace app icon"
+    expect: "App launches and displays the Catalog screen"
+
+  - action: "wait_for_element"
+    target: "catalog.scrollView"
+    timeout: 10
+    expect: "Catalog content loads"
+
+  - action: "tap_element"
+    target: "Settings tab in tab bar"
+    expect: "Settings screen is displayed"
+
+  - action: "wait_for_element"
+    target: "settings.navigationBar"
+    timeout: 5
+    expect: "Settings screen loads"
+
+  - action: "tap_element"
+    target: "settings.addLibraryButton"
+    expect: "Library picker screen opens with a list of available libraries"
+
+  - action: "wait_for_element"
+    target: "Library list or search field"
+    timeout: 10
+    expect: "Library picker loads with a searchable list of libraries"
+
+  - action: "screenshot"
+    name: "library-picker-list"
+    description: "Library picker showing available libraries"
+
+  - action: "verify_element_visible"
+    target: "At least one library entry in the list"
+    expect: "Library entries are displayed with names"
+
+  - action: "verify_element_visible"
+    target: "Search or filter field for libraries"
+    expect: "A search field is available to filter the library list"
+
+  - action: "type_text"
+    target: "Library search field"
+    value: "New York"
+    expect: "Library list filters to show libraries matching 'New York'"
+
+  - action: "screenshot"
+    name: "library-picker-filtered"
+    description: "Library picker filtered by 'New York' search term"
+
+  - action: "tap_element"
+    target: "Cancel or Back button"
+    expect: "Library picker is dismissed and Settings screen is restored"
+
+  - action: "verify_element_visible"
+    target: "settings.navigationBar"
+    expect: "Settings screen is visible again"
+postconditions:
+  - "App is on the Settings tab"
+  - "No error alerts displayed"
+  - "Library selection was not changed"
