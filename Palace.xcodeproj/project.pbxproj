@@ -73,7 +73,6 @@
 		1112A8431A3249B4002B8CC1 /* libTenPrintCover.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 1112A81F1A322C53002B8CC1 /* libTenPrintCover.a */; };
 		113DB8A719C24E54004E1154 /* TPPIndeterminateProgressView.m in Sources */ = {isa = PBXBuildFile; fileRef = 113DB8A619C24E54004E1154 /* TPPIndeterminateProgressView.m */; };
 		116A5EB91947B57500491A21 /* TPPConfiguration.m in Sources */ = {isa = PBXBuildFile; fileRef = 116A5EB81947B57500491A21 /* TPPConfiguration.m */; };
-		1183F35B194F847100DC322F /* TPPAsync.m in Sources */ = {isa = PBXBuildFile; fileRef = 1183F35A194F847100DC322F /* TPPAsync.m */; };
 		119503E71993F914009FB788 /* libxml2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 119503E61993F914009FB788 /* libxml2.dylib */; };
 		119503E91993F919009FB788 /* libz.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 119503E81993F919009FB788 /* libz.dylib */; };
 		119BEBB919902A8800121439 /* TPPOpenSearchDescription.m in Sources */ = {isa = PBXBuildFile; fileRef = 119BEBB819902A8800121439 /* TPPOpenSearchDescription.m */; };
@@ -284,7 +283,6 @@
 		47068087F9B7FA9ECFEF5D30 /* UIView+TPPViewAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C6262DCFA3904E897FC508 /* UIView+TPPViewAdditions.swift */; };
 		4714FCCE477E3480FCAB241C /* BadgeServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C927D5FB4DCC629EEF09DE4C /* BadgeServiceTests.swift */; };
 		4760DD74BC0D99279B836B47 /* String+TPPStringAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6777AB8FBA1CE8E0FB87908 /* String+TPPStringAdditions.swift */; };
-		4787637699BF4C058F513990 /* ObjCExceptionCatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = 48B834DC53BA4A1C8B4EBDC6 /* ObjCExceptionCatcher.m */; };
 		487989630A782630C96BAF54 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5431B832D502714505B6EAF5 /* StatsView.swift */; };
 		4B84308F491248C725AC0EFB /* TPPOPDSRelation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FEC45A9EB60A12B5E7A0612 /* TPPOPDSRelation.swift */; };
 		4B9C486DBBBC4D1EA9C50D4B /* TPPOPDSAcquisitionPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AE6A73B48B141F3A0E2A587 /* TPPOPDSAcquisitionPath.swift */; };
@@ -1245,7 +1243,6 @@
 		E75499F72A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75499F62A1D6863009FF821 /* TPPAppDelegate+Extensions.swift */; };
 		E75499F82A1D6863009FF821 /* TPPAppDelegate+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75499F62A1D6863009FF821 /* TPPAppDelegate+Extensions.swift */; };
 		E75ED6D2297720DE006BBD5F /* TXNativeExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E549955128EE1ADB00EA0D9B /* TXNativeExtensions.swift */; };
-		E75ED6DB29772C4B006BBD5F /* NYPLXMLTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 111559EE19B8FA8E0003BE94 /* NYPLXMLTests.m */; };
 		E75ED6DC29772E6D006BBD5F /* valid.xml in Resources */ = {isa = PBXBuildFile; fileRef = 111559F119B8FAA10003BE94 /* valid.xml */; };
 		E75ED6DD29772EBE006BBD5F /* invalid.xml in Resources */ = {isa = PBXBuildFile; fileRef = 111559F019B8FAA10003BE94 /* invalid.xml */; };
 		E75ED6DE29772EC1006BBD5F /* main.xml in Resources */ = {isa = PBXBuildFile; fileRef = 11F54C1D194109120086FCAF /* main.xml */; };
@@ -5210,7 +5207,6 @@
 				E795A7802A744F0A00314EC8 /* XCRemoteSwiftPackageReference "ULID.swift" */,
 				E50BC9DB2CBF6FE900660937 /* XCRemoteSwiftPackageReference "PureLayout" */,
 				E58EAE1F2ECCC53200CDA626 /* XCRemoteSwiftPackageReference "swift-snapshot-testing" */,
-				E58EAE262ECCC5BB00CDA626 /* XCRemoteSwiftPackageReference "Cucumberish" */,
 				E58EAE982ECCDC5D00CDA626 /* XCRemoteSwiftPackageReference "swift-atomics" */,
 				E58EB0792ECCFE0E00CDA626 /* XCRemoteSwiftPackageReference "transifex-swift" */,
 				E7D51772BFB94BFBA1AE8862 /* XCRemoteSwiftPackageReference "std-uritemplate-swift" */,
@@ -5517,7 +5513,6 @@
 				735771A8253763E800067CEA /* TPPBookRegistryMock.swift in Sources */,
 				735771A02537635600067CEA /* TPPSignInBusinessLogicTests.swift in Sources */,
 				17BE24DA25F85D2300AE707F /* TPPAgeCheckTests.swift in Sources */,
-				E75ED6DB29772C4B006BBD5F /* NYPLXMLTests.m in Sources */,
 				17BE24E025FABA0900AE707F /* TPPAgeCheckChoiceStorageMock.swift in Sources */,
 				7375AE5A25382AC900C85211 /* TPPUserAccountMock.swift in Sources */,
 				DE8F7A1FFA894C20AC3C1101 /* TPPSettingsMock.swift in Sources */,
@@ -5535,7 +5530,6 @@
 				B51C1DFE22860563003B49A5 /* OPDS2CatalogsFeedTests.swift in Sources */,
 				E50546792E62020D007CCFAB /* URLSession+Stubbing.swift in Sources */,
 				E5A0CEA42AA9855200C304EC /* TPPBookMock.swift in Sources */,
-				4787637699BF4C058F513990 /* ObjCExceptionCatcher.m in Sources */,
 				73A794BD2548E36100C59CC1 /* TPPBookCreationTests.swift in Sources */,
 				E534510529FA238500D88BC6 /* AudiobookmarkTests.swift in Sources */,
 				730D17C02552124B004CAC83 /* TPPMyBooksDownloadsCenterMock.swift in Sources */,
@@ -6382,7 +6376,6 @@
 				E5AD72E82E5520FB005A8070 /* CatalogModels.swift in Sources */,
 				E5AD72E92E5520FB005A8070 /* CatalogAPI.swift in Sources */,
 				E5AD72EA2E5520FB005A8070 /* CatalogView.swift in Sources */,
-				1183F35B194F847100DC322F /* TPPAsync.m in Sources */,
 				E52E3C0928C19BAD0073DC4D /* SamplePlayerError.swift in Sources */,
 				732F929323ECB51F0099244C /* TPPBackgroundExecutor.swift in Sources */,
 				E544A1A12DF0BBF1008679D6 /* HoldsViewModel.swift in Sources */,
@@ -7493,14 +7486,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.18.7;
-			};
-		};
-		E58EAE262ECCC5BB00CDA626 /* XCRemoteSwiftPackageReference "Cucumberish" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Ahmed-Ali/Cucumberish.git";
-			requirement = {
-				branch = master;
-				kind = branch;
 			};
 		};
 		E58EAE982ECCDC5D00CDA626 /* XCRemoteSwiftPackageReference "swift-atomics" */ = {

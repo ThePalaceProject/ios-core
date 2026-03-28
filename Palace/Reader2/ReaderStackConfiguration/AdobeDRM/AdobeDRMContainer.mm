@@ -16,6 +16,20 @@
 #include "dp_all.h"
 #pragma clang diagnostic pop
 
+#import <WebKit/WebKit.h>
+#import <MessageUI/MessageUI.h>
+#import <CoreLocation/CoreLocation.h>
+#import <AVFoundation/AVFoundation.h>
+#import <PDFKit/PDFKit.h>
+#import <UserNotifications/UserNotifications.h>
+#import <AuthenticationServices/AuthenticationServices.h>
+#import <CarPlay/CarPlay.h>
+
+// Forward-declare protocols from frameworks that Palace-Swift.h references
+// but can't be imported via #import in ObjC++ context
+@protocol FIRMessagingDelegate;
+@protocol AudiobookPlaybackTrackerDelegate;
+
 #import "Palace-Swift.h"
 
 static id acsdrm_lock = nil;
