@@ -24,8 +24,11 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
         do {
             let (data, _) = try await TPPNetworkExecutor.shared.GET(loansUrl, useTokenIfAvailable: true)
 
-            guard let xml = TPPXML(data: data),
-                  let entries = xml.children(withName: "entry") as? [TPPXML] else {
+            guard let xml = TPPXML.xml(with: data) else {
+                logError("LCP passphrase retrieval error: loans XML parsing failed", "responseBody", String(data: data, encoding: .utf8) ?? "N/A")
+                return nil
+            }
+            guard let entries = xml.children(withName: "entry") as? [TPPXML] else {
                 logError("LCP passphrase retrieval error: loans XML parsing failed", "responseBody", String(data: data, encoding: .utf8) ?? "N/A")
                 return nil
             }

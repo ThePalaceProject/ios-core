@@ -1,5 +1,3 @@
-#import "TPPSession.h"
-#import "TPPXML.h"
 #import "Palace-Swift.h"
 
 #import "TPPOpenSearchDescription.h"

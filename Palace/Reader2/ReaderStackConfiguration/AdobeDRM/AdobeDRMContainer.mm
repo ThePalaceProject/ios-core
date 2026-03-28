@@ -16,7 +16,7 @@
 #include "dp_all.h"
 #pragma clang diagnostic pop
 
-#import "TPPXML.h"
+#import "Palace-Swift.h"
 
 static id acsdrm_lock = nil;
 

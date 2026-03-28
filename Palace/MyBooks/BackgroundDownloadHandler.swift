@@ -151,7 +151,7 @@ final class BackgroundDownloadHandler: NSObject {
             return false
         }
 
-        guard let entry = TPPOPDSEntry(xml: TPPXML(data: xmlData)) else {
+        guard let xml = TPPXML.xml(with: xmlData), let entry = TPPOPDSEntry(xml: xml) else {
             Log.warn(#file, "Failed to parse XML as OPDS entry for \(book.identifier)")
             return false
         }

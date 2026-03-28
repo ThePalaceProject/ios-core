@@ -14,7 +14,7 @@ public final class OPDSParser {
     }
 
     func parseFeed(from data: Data) throws -> CatalogFeed {
-        guard let xml = TPPXML(data: data) else { throw ParserError.invalidXML }
+        guard let xml = TPPXML.xml(with: data) else { throw ParserError.invalidXML }
         let feed = TPPOPDSFeed(xml: xml)
         guard let catalogFeed = CatalogFeed(feed: feed) else { throw ParserError.invalidFeed }
         return catalogFeed

@@ -7,143 +7,82 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		02B5BE224BAD4418ADA8A4AF /* PlaybackSpeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAEF18ABE4491BC8B2277E65 /* PlaybackSpeed.swift */; };
 		0469ADBAE6CAC0F21823D1E7 /* BadgeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59814D0AE9FAF49E9A52426A /* BadgeService.swift */; };
 		05BD558BEDC45D091DFEA283 /* FontManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3260782E24602A4B3FF7E20B /* FontManagerTests.swift */; };
 		08E5DBD9DF8A02E6C155BA2C /* ReaderTypographyButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41E92244AABB4F1FE944CF8 /* ReaderTypographyButton.swift */; };
-		0D9CA412C5C8B2BBDE47B81D /* ClaudeDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9F5CA71B9FB620537CC599 /* ClaudeDiscoveryService.swift */; };
-		0DEF60707090701AA8343B1B /* CrossLibraryAvailabilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F40EC5CD2A41572C74C76C /* CrossLibraryAvailabilityView.swift */; };
-		0E8C4BE6813548BF5E7A62C3 /* DiscoveryRecommendation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDEE3557966080C751D943E /* DiscoveryRecommendation.swift */; };
 		10BDB9803CA69D9968DD25B0 /* StreakView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1D8E96BB21CEA1AB690046 /* StreakView.swift */; };
 		18EAAA05A58EBDD4FCD5B5E8 /* StatsCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17628BE0EB1E554ECF46071E /* StatsCardView.swift */; };
-		19B65D675FAB06628ABAADA0 /* CrossLibrarySearchServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E19CD465746A747F6B49FBA /* CrossLibrarySearchServiceTests.swift */; };
 		1BD28F76C1C3B5B76ABC3C80 /* ReadingStreak.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A6CA6654994D77041AE0F79 /* ReadingStreak.swift */; };
 		1F59F8B778BF885C5C1FFA67 /* ReadingChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6EF9481386FFCE35AA787B5 /* ReadingChartView.swift */; };
 		2476CF4E6F4779F55BC68933 /* StatsCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17628BE0EB1E554ECF46071E /* StatsCardView.swift */; };
-		261AFC72225221096DDB2AD2 /* DiscoveryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71BC0E5F2F1CD7DADCF1D9 /* DiscoveryViewModel.swift */; };
 		269B4BB49D943C41E65D3F93 /* StatsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B365956298AA1A7256D63D8E /* StatsViewModel.swift */; };
-		2A114B30795FFA695A05EEA9 /* CarModeEntryButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5818F11E1C4F6A10799AC0AE /* CarModeEntryButton.swift */; };
 		2DB7FEF66BE7D0AF90930C47 /* ReaderTypographyButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41E92244AABB4F1FE944CF8 /* ReaderTypographyButton.swift */; };
 		30B392104E9FCA6F9CBEEF01 /* ReadingSessionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0592B4A4D666ED6705BF8093 /* ReadingSessionTracker.swift */; };
 		37FF2E4F346CFD20EDC64D3F /* BadgeDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2808F34E9EFB0F133F99262B /* BadgeDefinition.swift */; };
-		381880BDA4C02E9618FBB6F9 /* CarModeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237A0D61157570C5981A11FA /* CarModeService.swift */; };
 		38E52EB89550AF93D37D2E59 /* PresetCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B293519F9B55B6F4F17CC7 /* PresetCard.swift */; };
 		3A98AD201DEDB483FECEF28F /* ReadingStatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB660AAD998ACFC41771539E /* ReadingStatsStore.swift */; };
 		3CC7207CA0819A75DDE8D1F2 /* BadgesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55ABB7E13EF5B68C8635A58F /* BadgesViewModel.swift */; };
-		4115CAE641E2DE3779F69465 /* LibrarySearchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8F6DC988BD1299FD795A864 /* LibrarySearchResult.swift */; };
-		42DEEAF8B792F5D3B40A9C6D /* CarModeServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325313C8EC16FF0239801855 /* CarModeServiceProtocol.swift */; };
 		43600F4D687C6122CFA1AAE2 /* ReadingSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16B28BFC973E94C02E7E117D /* ReadingSession.swift */; };
-		43E5AFBBAAD127B6B28DCCFD /* DiscoveryTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D723CD73897800A0AAB5FB2 /* DiscoveryTab.swift */; };
-		448D6BE9AE0BCCC6F742F940 /* DiscoveryServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36B716E0256BACD2606B80ED /* DiscoveryServiceProtocol.swift */; };
 		4714FCCE477E3480FCAB241C /* BadgeServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C927D5FB4DCC629EEF09DE4C /* BadgeServiceTests.swift */; };
 		487989630A782630C96BAF54 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5431B832D502714505B6EAF5 /* StatsView.swift */; };
-		4B35024540E24CCB2D848D38 /* DiscoveryRecommendation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDEE3557966080C751D943E /* DiscoveryRecommendation.swift */; };
 		4CDD905D1ADE26FEC63558EB /* BadgeServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7140DF0127F1C8BA633644 /* BadgeServiceProtocol.swift */; };
 		510C6DAC28570835F7208CFC /* StatsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCA63D51A4176FB08ED1941 /* StatsTab.swift */; };
-		555039B35569633425B3435C /* CrossLibraryAvailabilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F40EC5CD2A41572C74C76C /* CrossLibraryAvailabilityView.swift */; };
-		56D58013DA98465F98A7899B /* CarModeSpeedPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BC5288EB50B22BAA3FEC1FA /* CarModeSpeedPicker.swift */; };
-		574CEFAB888D9D49F6DA3DDA /* SearchResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EEEDCA3A2A6760AA2DC43F /* SearchResultsView.swift */; };
 		582431D4978FAFF6C12F1599 /* StreakView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1D8E96BB21CEA1AB690046 /* StreakView.swift */; };
 		5BC5CECCF20A561F61CB8CEE /* TypographySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05A876C0044C35648AE92BD7 /* TypographySettingsView.swift */; };
 		5BCEAC8C8D29E0CE661E127D /* PresetCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B293519F9B55B6F4F17CC7 /* PresetCard.swift */; };
-		5C9AD28F46EEAF224CAF68EF /* DiscoveryConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E44E59A8C2886A5A04E6F2A /* DiscoveryConfiguration.swift */; };
-		5CC8895190D082858DAA719F /* DiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73605CB7B7F89F99584D0882 /* DiscoveryView.swift */; };
-		5FD1C501554BA4383C12B3D3 /* CarModeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237A0D61157570C5981A11FA /* CarModeService.swift */; };
-		6061EF52B442A05D529AD468 /* RecommendationCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F5CEBB42D6049F0680F42C /* RecommendationCard.swift */; };
-		6274888D2E5C0E90D333F4AC /* CarModeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5577D704F5F0C223E8CED97 /* CarModeViewModel.swift */; };
 		62DC318F5CB4BE231F67FE14 /* TypographyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59857C4239FBD7A4ABA37871 /* TypographyService.swift */; };
-		64053617209B94200D66A8C0 /* SleepTimerOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF81DF90FD790010A1050888 /* SleepTimerOption.swift */; };
-		646C15C74B237F4C366E6CE3 /* DiscoveryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B426971F2D8FBDAFFDE119E /* DiscoveryViewModelTests.swift */; };
 		651351CF68126FDB818F83F7 /* SleepTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B38648384F5A57B12842F24 /* SleepTimerTests.swift */; };
-		6599D677207BD16CD68D9669 /* SearchResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EEEDCA3A2A6760AA2DC43F /* SearchResultsView.swift */; };
 		66AE9D42FA4F53E26C31747C /* ReadingStreak.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A6CA6654994D77041AE0F79 /* ReadingStreak.swift */; };
-		66FBE3C6EBC48184946CB231 /* LocalDiscoveryFallback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 874C260EDA4348FC05E8FE2A /* LocalDiscoveryFallback.swift */; };
 		68F27DEBDED5D751249088B3 /* BadgesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02060A0117F26B0E56F3F606 /* BadgesView.swift */; };
 		6DEB021C53F567192EC579C5 /* Badge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B60ACDE3E15FC832885E932 /* Badge.swift */; };
 		6F1E28BFDD2B51A198F52989 /* TypographySettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA121652A5D3675E6CEE9849 /* TypographySettingsViewModel.swift */; };
-		7242702EEBD1651E65B60EDC /* CarModeChapterList.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1C1CACD11BEE983444DF0E /* CarModeChapterList.swift */; };
-		74AD3F15226273AA5C039E7A /* CarModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E367781DF09FAE70BFB4A94 /* CarModeView.swift */; };
 		766C1BDB436AA9586293ABF7 /* ReadingStatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB660AAD998ACFC41771539E /* ReadingStatsStore.swift */; };
 		76A3FDFF52B8F948C2C13A65 /* ReadingStatsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8F8EBC8684EF42942C688A7 /* ReadingStatsService.swift */; };
-		78BEAD5830F2B6B4C31790CF /* CrossLibrarySearchResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3045936B5A27DC51DD1E64 /* CrossLibrarySearchResponse.swift */; };
-		792DA4665FFCEBFDEA2A8CD6 /* DiscoveryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71BC0E5F2F1CD7DADCF1D9 /* DiscoveryViewModel.swift */; };
 		79D7234B5BFAE38BC05CBBEA /* Badge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B60ACDE3E15FC832885E932 /* Badge.swift */; };
-		80F0182F3A2261A3F61F5986 /* CarModeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6151708139FDC618513C334 /* CarModeState.swift */; };
 		82081EC71E1591C3E61B4BF4 /* BadgesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02060A0117F26B0E56F3F606 /* BadgesView.swift */; };
-		8467D5E1177DAEE24E74FD57 /* PlaybackSpeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAEF18ABE4491BC8B2277E65 /* PlaybackSpeed.swift */; };
 		8753EC265A5DF6362FFF71B9 /* ReadingSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16B28BFC973E94C02E7E117D /* ReadingSession.swift */; };
 		89952B99496C6D204701B8A0 /* ReadingSessionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0592B4A4D666ED6705BF8093 /* ReadingSessionTracker.swift */; };
-		8A5A65781D53DAB6D2CF7449 /* CrossLibrarySearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E23B721AF3657594B87E2D0 /* CrossLibrarySearchService.swift */; };
-		8B268B08B5B33F8ED19833CC /* DiscoveryPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0230FAAD08067F389DA9172B /* DiscoveryPrompt.swift */; };
 		8BBAC69C617313D695562036 /* ReadingStatsServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB416026EE34EBDB68AD788B /* ReadingStatsServiceTests.swift */; };
-		8C796FFAF6FF4B4140206184 /* DiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73605CB7B7F89F99584D0882 /* DiscoveryView.swift */; };
 		8F0F91D96D8F6EA8F3588475 /* FontManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFA10178BD2885EBF24673F3 /* FontManager.swift */; };
 		910440BEAFA83A16181BBA27 /* ThemePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95524DFA311D1BE65A9F5FF3 /* ThemePickerView.swift */; };
 		9242ED62B26248A2F20DF7D6 /* ReadingStatsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8F8EBC8684EF42942C688A7 /* ReadingStatsService.swift */; };
 		9309887A8360976E65C6AE04 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5431B832D502714505B6EAF5 /* StatsView.swift */; };
 		953B933A06DA6AF6ABAFB7EC /* BadgeDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6837ACC21376FE419332599B /* BadgeDetailView.swift */; };
-		963D8C24B1E422010D706961 /* CrossLibrarySearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E23B721AF3657594B87E2D0 /* CrossLibrarySearchService.swift */; };
-		978348C79CFD19FFB184C580 /* SleepTimerOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF81DF90FD790010A1050888 /* SleepTimerOption.swift */; };
-		97C1FD54D06ACFF0803398FE /* CarModeSleepTimerPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E45E306F7C79073049F3ECE /* CarModeSleepTimerPicker.swift */; };
-		98ACA14779D89B7DA21055FD /* DiscoveryTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D723CD73897800A0AAB5FB2 /* DiscoveryTab.swift */; };
 		9AADE85EC7784278CCF12FA8 /* StatsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B365956298AA1A7256D63D8E /* StatsViewModel.swift */; };
-		9B24B24A9667723BD659D0E8 /* LibrarySearchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8F6DC988BD1299FD795A864 /* LibrarySearchResult.swift */; };
 		9D5DE68418C31F9D88044C89 /* ReadingStatsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F16E79F7C14C0F72FC36B3 /* ReadingStatsStoreTests.swift */; };
-		9DD1EB38C990FC718AC10906 /* DiscoveryConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E44E59A8C2886A5A04E6F2A /* DiscoveryConfiguration.swift */; };
 		A0EF4D630835291C699A377A /* BadgesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55ABB7E13EF5B68C8635A58F /* BadgesViewModel.swift */; };
-		A332AFC14B741366D8B5939A /* LocalDiscoveryFallback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 874C260EDA4348FC05E8FE2A /* LocalDiscoveryFallback.swift */; };
-		A38F1ABCA7AFC6AB4D15F9F1 /* BluetoothCarModeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C80EC81CE79039F1835CCD /* BluetoothCarModeDetector.swift */; };
-		A4463189D19C49AF222A0064 /* ClaudeDiscoveryServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6A87C52856D2D19793E520 /* ClaudeDiscoveryServiceTests.swift */; };
 		A6B46B564D17521FD9892D70 /* TypographyPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A78DE6D235AA54DC8F02DA /* TypographyPreset.swift */; };
 		A7D3A61E77E6B8C0FD9AEA5D /* TypographySettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C1C917A6BF4317D7FA6567 /* TypographySettings.swift */; };
 		A8275030D06977B9FD11A533 /* TypographyServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1B8AF7EB40C9DE22ED5ED0 /* TypographyServiceProtocol.swift */; };
 		A961D381DEBCF6341C9C7AA2 /* FontManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFA10178BD2885EBF24673F3 /* FontManager.swift */; };
 		A9701CD50E8850215EA9FD69 /* ReadingRulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 422FFD436DFCCB056CCF6302 /* ReadingRulerView.swift */; };
 		AAC98E03ABBDB9DA0D80BE08 /* TypographySettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA121652A5D3675E6CEE9849 /* TypographySettingsViewModel.swift */; };
-		ABAB459916B5DE60C559727D /* CarModeSleepTimerPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E45E306F7C79073049F3ECE /* CarModeSleepTimerPicker.swift */; };
 		AC7976569F7EDBAB30C096A4 /* ThemePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95524DFA311D1BE65A9F5FF3 /* ThemePickerView.swift */; };
 		ADC762F8876B7DD97B60178D /* TypographySettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C1C917A6BF4317D7FA6567 /* TypographySettings.swift */; };
 		B1E22740A69E3E6638073644 /* ReadingStatsServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCA7B3D060EF65547DF53DA /* ReadingStatsServiceProtocol.swift */; };
-		B2DB5878D850B25C262822B2 /* SearchResultsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B78F73FE1AEC101DA26CD3A /* SearchResultsViewModel.swift */; };
-		B4F870CCD03C5E482146DF88 /* CrossLibrarySearchResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3045936B5A27DC51DD1E64 /* CrossLibrarySearchResponse.swift */; };
 		B5B4BA6705E98259BC0D2E68 /* FontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D99051FE5305ABE13531F76 /* FontPickerView.swift */; };
 		B69FB320CECF1E0EB2AF98DE /* ReaderTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F994F35E532ACAA0F6C45035 /* ReaderTheme.swift */; };
 		B7C539A67E10A0EBB7D897F3 /* BadgeServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7140DF0127F1C8BA633644 /* BadgeServiceProtocol.swift */; };
-		B98EFC297882B9BF1072A76F /* CarModeServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD405AED47651832F0F573AE /* CarModeServiceTests.swift */; };
 		BB800AA2A27632EBDEF6758B /* TypographyPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A78DE6D235AA54DC8F02DA /* TypographyPreset.swift */; };
 		BF0FD554A5AA86C241E2CA9F /* StatsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCA63D51A4176FB08ED1941 /* StatsTab.swift */; };
 		BF2B5B79D36596C9F06C43A5 /* ReadingStatsServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCA7B3D060EF65547DF53DA /* ReadingStatsServiceProtocol.swift */; };
-		C163475CB46F00070D2A3DDB /* CarModeEntryButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5818F11E1C4F6A10799AC0AE /* CarModeEntryButton.swift */; };
 		C68C9469871DE1074439C449 /* TypographyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59857C4239FBD7A4ABA37871 /* TypographyService.swift */; };
 		C6C2BB5EDA39F3116659A4A6 /* FontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D99051FE5305ABE13531F76 /* FontPickerView.swift */; };
 		C89594A0D21089924B82E71D /* TypographyServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1B8AF7EB40C9DE22ED5ED0 /* TypographyServiceProtocol.swift */; };
 		C998049BB2CFF2AE01EA1C36 /* TypographySettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D440766BDBF7EFBBA87B19A /* TypographySettingsViewModelTests.swift */; };
-		CC91CE08FB8250A533A74406 /* CarModeServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325313C8EC16FF0239801855 /* CarModeServiceProtocol.swift */; };
 		CCCDB216C7E807F461826B81 /* StatsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74D09C16D15567198A0A9194 /* StatsViewModelTests.swift */; };
 		D1662F093947D3C2F76B25D1 /* ReaderTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F994F35E532ACAA0F6C45035 /* ReaderTheme.swift */; };
-		D420918FF18C6BBAB91CF955 /* ClaudeDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9F5CA71B9FB620537CC599 /* ClaudeDiscoveryService.swift */; };
-		D53B36A8221413AF7C0355AE /* CarModeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6151708139FDC618513C334 /* CarModeState.swift */; };
-		D8BF12417544D2E77655500E /* DiscoveryPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0230FAAD08067F389DA9172B /* DiscoveryPrompt.swift */; };
-		DDDFAEEFB4D1A3C370C0CC95 /* RecommendationCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F5CEBB42D6049F0680F42C /* RecommendationCard.swift */; };
-		E00E62A02C10263E7DF15B11 /* CarModeViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B8BA0D1E31B3C9BAA84501 /* CarModeViewModelTests.swift */; };
-		E11A203872A5AA73CC27F408 /* CarModeChapterList.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1C1CACD11BEE983444DF0E /* CarModeChapterList.swift */; };
 		E58A6E33B84B1CACFD91F346 /* FontFamily.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA20DE46939562EEA2DF764 /* FontFamily.swift */; };
-		E6AB0C8A385DB8FB534AD474 /* SearchResultsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B78F73FE1AEC101DA26CD3A /* SearchResultsViewModel.swift */; };
-		E9B49D80399D570727A7DC1A /* CarModeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5577D704F5F0C223E8CED97 /* CarModeViewModel.swift */; };
 		ED121CB96E52B81CED187442 /* ReadingStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA4D17463BADFD0DEBC53FA /* ReadingStats.swift */; };
 		F042F1649763CFEADC848065 /* TypographyServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD321623DBDDEC02C16FE9A9 /* TypographyServiceTests.swift */; };
 		F07B88C83608E0749DA9B454 /* BadgeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59814D0AE9FAF49E9A52426A /* BadgeService.swift */; };
 		F13A3578C7B25C2B8B739B69 /* ReadingRulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 422FFD436DFCCB056CCF6302 /* ReadingRulerView.swift */; };
-		F4EA5E42C27D5081DC16D0B3 /* BluetoothCarModeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C80EC81CE79039F1835CCD /* BluetoothCarModeDetector.swift */; };
-		F50AA3B20D4D9C93BB7FBE43 /* DiscoveryServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36B716E0256BACD2606B80ED /* DiscoveryServiceProtocol.swift */; };
 		F60F86661D937A10DC714825 /* TypographySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05A876C0044C35648AE92BD7 /* TypographySettingsView.swift */; };
 		FB46AF138CFC75BE9AA9EA73 /* BadgeDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6837ACC21376FE419332599B /* BadgeDetailView.swift */; };
 		FBD6C78029C5F836DA8B1EB1 /* BadgeDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2808F34E9EFB0F133F99262B /* BadgeDefinition.swift */; };
 		FC1B7D899D35F336F1469191 /* FontFamily.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA20DE46939562EEA2DF764 /* FontFamily.swift */; };
-		FCC8FDF250C47895BBD4F7DB /* CarModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E367781DF09FAE70BFB4A94 /* CarModeView.swift */; };
 		FD944841337FCB9D26209ED4 /* ReadingStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA4D17463BADFD0DEBC53FA /* ReadingStats.swift */; };
 		FE48F9C21D03088224767755 /* TypographyPresetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABACD6237FD75664BEADFF58 /* TypographyPresetTests.swift */; };
-		FEBCDDB32AF691793539E77A /* CarModeSpeedPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BC5288EB50B22BAA3FEC1FA /* CarModeSpeedPicker.swift */; };
 		FF6829BDA60EAB8518CE8326 /* ReadingChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6EF9481386FFCE35AA787B5 /* ReadingChartView.swift */; };
 		FF85C4C3F1A0FCCC77B56C79 /* TPPLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A92CD71BB361DD81BDE15808 /* TPPLocalization.swift */; };
 		DF36DFA2D2ACF916E5CD91E7 /* TPPLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A92CD71BB361DD81BDE15808 /* TPPLocalization.swift */; };
@@ -159,6 +98,37 @@
 		A12313CAF7F981BF5AA2BA48 /* Date+TPPDateAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 954AEC5A6FF765EFA3564A39 /* Date+TPPDateAdditions.swift */; };
 		269D560925227D951B66CBD1 /* String+TPPStringAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6777AB8FBA1CE8E0FB87908 /* String+TPPStringAdditions.swift */; };
 		4760DD74BC0D99279B836B47 /* String+TPPStringAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6777AB8FBA1CE8E0FB87908 /* String+TPPStringAdditions.swift */; };
+		A1B2C3D4E5F607080910AB06 /* KeyboardNavigationHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144BB5C0F2D1B2C0C398BD98 /* KeyboardNavigationHandler.swift */; };
+		A1B2C3D4E5F607080910AB05 /* BookCellModelCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72DCAEB765B50E04217F0CB7 /* BookCellModelCache.swift */; };
+		A1B2C3D4E5F607080910AB01 /* AccessibleAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D56E264DEDFBBEDF6D4E79E3 /* AccessibleAnimation.swift */; };
+		A1B2C3D4E5F607080910AB02 /* TPPBookmarkDeletionLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0452B249AF7C21DDAACD5C58 /* TPPBookmarkDeletionLog.swift */; };
+		A1B2C3D4E5F607080910AB03 /* DebugSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEF1F7C70AC93BF8E2F22148 /* DebugSettings.swift */; };
+		A1B2C3D4E5F607080910AB04 /* TPPAccessibilityAnnouncementCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0AB00222E8E600100000003 /* TPPAccessibilityAnnouncementCenter.swift */; };
+		D5B7C7A6055EFD9E46738642 /* TPPSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FC39D09AF01C3230606194 /* TPPSession.swift */; };
+		046A63653334414BCA4E7BD8 /* TPPSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FC39D09AF01C3230606194 /* TPPSession.swift */; };
+		E14ADD9898954E818F936B87 /* TPPXML.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13429D82F691D01956B6392D /* TPPXML.swift */; };
+		AECF372D4DD6F025741E67AC /* TPPXML.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13429D82F691D01956B6392D /* TPPXML.swift */; };
+		5985188AB287AB4EA5323169 /* NSURL+NYPLURLAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D412D5DAFC64775B865EA80 /* NSURL+NYPLURLAdditions.swift */; };
+		9C1F954DF307B86BD7C741CB /* NSURL+NYPLURLAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D412D5DAFC64775B865EA80 /* NSURL+NYPLURLAdditions.swift */; };
+		F921AA9B9081DD0B6F199AD6 /* NSURLRequest+NYPLURLRequestAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 365A82805B225A5CC76875B1 /* NSURLRequest+NYPLURLRequestAdditions.swift */; };
+		91F2C77587AC25155DC2A969 /* NSURLRequest+NYPLURLRequestAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 365A82805B225A5CC76875B1 /* NSURLRequest+NYPLURLRequestAdditions.swift */; };
+		E391F1AD17AF4F064DC2AD41 /* UIButton+NYPLAppearanceAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A85EA25220061F89DEB548B4 /* UIButton+NYPLAppearanceAdditions.swift */; };
+		B111489599FF94341D069CFA /* UIButton+NYPLAppearanceAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A85EA25220061F89DEB548B4 /* UIButton+NYPLAppearanceAdditions.swift */; };
+		40071715921E07C147F02DD9 /* UIColor+TPPColorAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58517675741A9E89D5B9FF57 /* UIColor+TPPColorAdditions.swift */; };
+		400703FF1C095172A6164FF9 /* UIColor+TPPColorAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58517675741A9E89D5B9FF57 /* UIColor+TPPColorAdditions.swift */; };
+		922751C91132DF6CAFA080BA /* UIFont+TPPSystemFontOverride.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FA52CE8971262118BF1E2A /* UIFont+TPPSystemFontOverride.swift */; };
+		8040475BC615EA4FBD5ED6DA /* UIFont+TPPSystemFontOverride.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FA52CE8971262118BF1E2A /* UIFont+TPPSystemFontOverride.swift */; };
+		C0F5612F6BAE49B8303F0CAE /* UILabel+NYPLAppearanceAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C408E2CB312EEC8F849712E /* UILabel+NYPLAppearanceAdditions.swift */; };
+		F523AE4C70865C6B0D4A024E /* UILabel+NYPLAppearanceAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C408E2CB312EEC8F849712E /* UILabel+NYPLAppearanceAdditions.swift */; };
+		47068087F9B7FA9ECFEF5D30 /* UIView+TPPViewAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C6262DCFA3904E897FC508 /* UIView+TPPViewAdditions.swift */; };
+		37DFC30F39C1017A49F12741 /* UIView+TPPViewAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C6262DCFA3904E897FC508 /* UIView+TPPViewAdditions.swift */; };
+		B4CONC001BF000000000001 /* MainActorHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4CONC001FR000000000001 /* MainActorHelpersTests.swift */; };
+		B4CONC002BF000000000001 /* TPPMainThreadCheckerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4CONC002FR000000000001 /* TPPMainThreadCheckerTests.swift */; };
+		B4NETW001BF000000000001 /* URLExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4NETW001FR000000000001 /* URLExtensionsTests.swift */; };
+		B4NETW002BF000000000001 /* URLRequestExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4NETW002FR000000000001 /* URLRequestExtensionsTests.swift */; };
+		B4NETW003BF000000000001 /* URLResponseNYPLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4NETW003FR000000000001 /* URLResponseNYPLTests.swift */; };
+		B11A01BF0000000000000001 /* StringExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11A01FR0000000000000001 /* StringExtensionsTests.swift */; };
+		B11A02BF0000000000000001 /* TPPBookCoverRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11A02FR0000000000000001 /* TPPBookCoverRegistryTests.swift */; };
 		0345BFE81DBF027200398B6F /* APIKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0345BFD61DBF002E00398B6F /* APIKeys.swift */; };
 		03690E291EB2B44300F75D5F /* TPPReadiumBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E281EB2B44300F75D5F /* TPPReadiumBookmark.swift */; };
 		036CA5499321FC544139010D /* BookmarkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68EFBB61877EFCAB44897E93 /* BookmarkManager.swift */; };
@@ -173,17 +143,13 @@
 		03F94CD11DD6288C00CE8F4F /* AccountsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03F94CD01DD6288C00CE8F4F /* AccountsManager.swift */; };
 		06560AD2E5A43C1BFA2EBEE1 /* DownloadProgressPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA6421E95950580E36277F0 /* DownloadProgressPublisher.swift */; };
 		06A3D1FBD9EAD882D6F86181 /* OPDSFeedCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A97CD1F92B404EA664C6968 /* OPDSFeedCacheTests.swift */; };
-		081387571BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 081387561BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.m */; };
-		0813875A1BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 081387591BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.m */; };
 		0824D44E24B8DFE400C85A7E /* NSString+JSONParse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0824D44D24B8DFE400C85A7E /* NSString+JSONParse.swift */; };
 		0826CD2924AA21B2000F4030 /* TPPSamlIDPCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0826CD2824AA21B2000F4030 /* TPPSamlIDPCell.swift */; };
 		0826CD2F24AA2801000F4030 /* TPPLibraryDescriptionCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0826CD2E24AA2801000F4030 /* TPPLibraryDescriptionCell.swift */; };
-		085640CE1BB99FC30088BDBF /* NSURL+NYPLURLAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 085640CD1BB99FC30088BDBF /* NSURL+NYPLURLAdditions.m */; };
 		0857A0F72478337D00C7984E /* TPPCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0857A0F62478337D00C7984E /* TPPCredentials.swift */; };
 		0857A0FF247835FF00C7984E /* TPPKeychainStoredVariable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0857A0FE247835FF00C7984E /* TPPKeychainStoredVariable.swift */; };
 		085D31D71BE29E38007F7672 /* TPPProblemReportViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 085D31D61BE29E38007F7672 /* TPPProblemReportViewController.m */; };
 		085D31D91BE29ED4007F7672 /* TPPProblemReportViewController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 085D31D81BE29ED4007F7672 /* TPPProblemReportViewController.xib */; };
-		085D31DF1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 085D31DE1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.m */; };
 		086C45D624AE77CA00F5108E /* TPPBasicAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086C45D524AE77CA00F5108E /* TPPBasicAuth.swift */; };
 		089E42C6249A823800310360 /* TPPCookiesWebViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 089E42C5249A823800310360 /* TPPCookiesWebViewController.swift */; };
 		089E430C24A2459100310360 /* TPPLoginCellTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 089E430B24A2459100310360 /* TPPLoginCellTypes.swift */; };
@@ -200,20 +166,23 @@
 		0E30C344B6144C2F916F87B9 /* AdvancedSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 235EA7E92C25400C81AC469D /* AdvancedSettingsView.swift */; };
 		0E30C345B6144C2F916F87BA /* AdvancedSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 235EA7E92C25400C81AC469D /* AdvancedSettingsView.swift */; };
 		1107835E19816E3D0071AB1E /* UIView+TPPViewAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 1107835D19816E3D0071AB1E /* UIView+TPPViewAdditions.m */; };
+		11068C55196DD37900E8A94B /* TPPNull.m in Sources */ = {isa = PBXBuildFile; fileRef = 11068C54196DD37900E8A94B /* TPPNull.m */; };
+		110AD83D19E497D6005724C3 /* TPPOPDSAttribute.m in Sources */ = {isa = PBXBuildFile; fileRef = 110AD83B19E497D6005724C3 /* TPPOPDSAttribute.m */; };
 		110F853E19D5FA7300052DF7 /* DetailSummaryTemplate.html in Resources */ = {isa = PBXBuildFile; fileRef = 110F853C19D5FA7300052DF7 /* DetailSummaryTemplate.html */; };
 		1111973C19880E8D0014462F /* TPPLinearView.m in Sources */ = {isa = PBXBuildFile; fileRef = 1111973B19880E8D0014462F /* TPPLinearView.m */; };
 		1111973F1988226F0014462F /* TPPBookDetailDownloadFailedView.m in Sources */ = {isa = PBXBuildFile; fileRef = 1111973E1988226F0014462F /* TPPBookDetailDownloadFailedView.m */; };
 		1112A8431A3249B4002B8CC1 /* libTenPrintCover.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 1112A81F1A322C53002B8CC1 /* libTenPrintCover.a */; };
 		111559ED19B8FA590003BE94 /* TPPXML.m in Sources */ = {isa = PBXBuildFile; fileRef = 111559EC19B8FA590003BE94 /* TPPXML.m */; };
+		11369D48199527C200BB11F8 /* TPPJSON.m in Sources */ = {isa = PBXBuildFile; fileRef = 11369D47199527C200BB11F8 /* TPPJSON.m */; };
+		11396FB9193D289100E16EE8 /* NSDate+NYPLDateAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 11396FB8193D289100E16EE8 /* NSDate+NYPLDateAdditions.m */; };
 		113DB8A719C24E54004E1154 /* TPPIndeterminateProgressView.m in Sources */ = {isa = PBXBuildFile; fileRef = 113DB8A619C24E54004E1154 /* TPPIndeterminateProgressView.m */; };
 		116A5EB91947B57500491A21 /* TPPConfiguration.m in Sources */ = {isa = PBXBuildFile; fileRef = 116A5EB81947B57500491A21 /* TPPConfiguration.m */; };
 		118B7ABF195CBF72005CE3E7 /* TPPSession.m in Sources */ = {isa = PBXBuildFile; fileRef = 118B7ABE195CBF72005CE3E7 /* TPPSession.m */; };
+		1183F35B194F847100DC322F /* TPPAsync.m in Sources */ = {isa = PBXBuildFile; fileRef = 1183F35A194F847100DC322F /* TPPAsync.m */; };
 		119503E71993F914009FB788 /* libxml2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 119503E61993F914009FB788 /* libxml2.dylib */; };
 		119503E91993F919009FB788 /* libz.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 119503E81993F919009FB788 /* libz.dylib */; };
 		119BEBB919902A8800121439 /* TPPOpenSearchDescription.m in Sources */ = {isa = PBXBuildFile; fileRef = 119BEBB819902A8800121439 /* TPPOpenSearchDescription.m */; };
-		11A14DF41A1BF94F00D6C510 /* UIColor+TPPColorAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 11A14DF31A1BF94F00D6C510 /* UIColor+TPPColorAdditions.m */; };
 		11C5DD16197727A6005A9945 /* TPPKeychain.m in Sources */ = {isa = PBXBuildFile; fileRef = 11C5DD15197727A6005A9945 /* TPPKeychain.m */; };
-		11E0208D197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.m in Sources */ = {isa = PBXBuildFile; fileRef = 11E0208C197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.m */; };
 		121E8B66B8634CD720E7C524 /* CatalogRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBA39820CBA75D6BA9B763E2 /* CatalogRepositoryTests.swift */; };
 		1266D86E87E4AA575EB966BD /* BookmarkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68EFBB61877EFCAB44897E93 /* BookmarkManager.swift */; };
 		13A7D5809E780B24295767D7 /* NowPlayingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB9B49899F1C10F43D4FAAD8 /* NowPlayingCoordinator.swift */; };
@@ -489,6 +458,7 @@
 		73EB0A6E25821DF4006BC997 /* TPPAgeCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6BC315C1E009F3E0021B65E /* TPPAgeCheck.swift */; };
 		73EB0A6F25821DF4006BC997 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D382BD61D08BA99002C423D /* Log.swift */; };
 		73EB0A7125821DF4006BC997 /* UILabel+NYPLAppearanceAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 081387561BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.m */; };
+		73EB0A7325821DF4006BC997 /* TPPJSON.m in Sources */ = {isa = PBXBuildFile; fileRef = 11369D47199527C200BB11F8 /* TPPJSON.m */; };
 		73EB0A7425821DF4006BC997 /* TPPMainThreadChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7327A89223EE017300954748 /* TPPMainThreadChecker.swift */; };
 		73EB0A7525821DF4006BC997 /* TPPConfiguration.m in Sources */ = {isa = PBXBuildFile; fileRef = 116A5EB81947B57500491A21 /* TPPConfiguration.m */; };
 		73EB0A7625821DF4006BC997 /* TPPAlertUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1B142922CC179F0006C964 /* TPPAlertUtils.swift */; };
@@ -497,10 +467,10 @@
 		73EB0A7925821DF4006BC997 /* TPPNetworkQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = E671FF7C1E3A7068002AB13F /* TPPNetworkQueue.swift */; };
 		73EB0A7B25821DF4006BC997 /* TPPSignInBusinessLogicUIDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 739062D125358CF900D0743D /* TPPSignInBusinessLogicUIDelegate.swift */; };
 		73EB0A7D25821DF4006BC997 /* TPPKeychainStoredVariable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0857A0FE247835FF00C7984E /* TPPKeychainStoredVariable.swift */; };
-		73EB0A7E25821DF4006BC997 /* TPPXML.m in Sources */ = {isa = PBXBuildFile; fileRef = 111559EC19B8FA590003BE94 /* TPPXML.m */; };
 		73EB0A7F25821DF4006BC997 /* TPPSignInBusinessLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 731A5B1124621F2B00B5E663 /* TPPSignInBusinessLogic.swift */; };
 		73EB0A8125821DF4006BC997 /* TPPConfiguration+SE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 738CB2052509A87700891F31 /* TPPConfiguration+SE.swift */; };
 		73EB0A8225821DF4006BC997 /* NSURL+NYPLURLAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 085640CD1BB99FC30088BDBF /* NSURL+NYPLURLAdditions.m */; };
+		73EB0A8325821DF4006BC997 /* TPPAsync.m in Sources */ = {isa = PBXBuildFile; fileRef = 1183F35A194F847100DC322F /* TPPAsync.m */; };
 		73EB0A8825821DF4006BC997 /* TPPBackgroundExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 732F929223ECB51F0099244C /* TPPBackgroundExecutor.swift */; };
 		73EB0A8925821DF4006BC997 /* TPPProblemDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1B141422CBE3570006C964 /* TPPProblemDocument.swift */; };
 		73EB0A8A25821DF4006BC997 /* TPPReturnPromptHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A92FB0F821CDCE3D004740F4 /* TPPReturnPromptHelper.swift */; };
@@ -508,19 +478,15 @@
 		73EB0A8E25821DF4006BC997 /* TPPSignInBusinessLogic+UI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A794A525477D8F00C59CC1 /* TPPSignInBusinessLogic+UI.swift */; };
 		73EB0A9025821DF4006BC997 /* OPDS2CatalogsFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51C1DF92285FDF9003B49A5 /* OPDS2CatalogsFeed.swift */; };
 		73EB0A9125821DF4006BC997 /* BundledHTMLViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D62568A1D412BCB0080A81F /* BundledHTMLViewController.swift */; };
-		73EB0A9425821DF4006BC997 /* UIButton+NYPLAppearanceAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 081387591BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.m */; };
 		73EB0A9625821DF4006BC997 /* SEMigrations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73085E3425030D27008F6244 /* SEMigrations.swift */; };
 		73EB0A9A25821DF4006BC997 /* TPPUserFriendlyError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7360D0D424BFCB9700C8AD16 /* TPPUserFriendlyError.swift */; };
 		73EB0A9C25821DF4006BC997 /* TPPLinearView.m in Sources */ = {isa = PBXBuildFile; fileRef = 1111973B19880E8D0014462F /* TPPLinearView.m */; };
 		73EB0A9F25821DF4006BC997 /* DPLAAudiobooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E7E07A24FEA7E800189224 /* DPLAAudiobooks.swift */; };
 		73EB0AA825821DF4006BC997 /* TPPAppReviewPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93F9F9621CDACF700BD3B0C /* TPPAppReviewPrompt.swift */; };
 		73EB0AAC25821DF4006BC997 /* TPPCaching.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733875662423E540000FEB67 /* TPPCaching.swift */; };
-		73EB0AAD25821DF4006BC997 /* UIView+TPPViewAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 1107835D19816E3D0071AB1E /* UIView+TPPViewAdditions.m */; };
 		73EB0AB025821DF4006BC997 /* JWKResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2199020724FD35DC001BC727 /* JWKResponse.swift */; };
-		73EB0AB125821DF4006BC997 /* UIFont+TPPSystemFontOverride.m in Sources */ = {isa = PBXBuildFile; fileRef = 11E0208C197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.m */; };
 		73EB0AB225821DF4006BC997 /* TPPReadiumBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E281EB2B44300F75D5F /* TPPReadiumBookmark.swift */; };
 		73EB0AB425821DF4006BC997 /* TPPAppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6207B642118973800864143 /* TPPAppTheme.swift */; };
-		73EB0AB525821DF4006BC997 /* UIColor+TPPColorAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 11A14DF31A1BF94F00D6C510 /* UIColor+TPPColorAdditions.m */; };
 		73EB0AB625821DF4006BC997 /* TPPSignInBusinessLogic+DRM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 737F4A6A254A137900A3C34B /* TPPSignInBusinessLogic+DRM.swift */; };
 		73EB0AB725821DF4006BC997 /* URLRequest+Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CDA120243EDAD8009CC6A6 /* URLRequest+Logging.swift */; };
 		73EB0AB825821DF4006BC997 /* TPPCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0857A0F62478337D00C7984E /* TPPCredentials.swift */; };
@@ -531,7 +497,6 @@
 		73EB0AC525821DF4006BC997 /* TPPSettings+SE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7347312825142FE200BE3D2C /* TPPSettings+SE.swift */; };
 		73EB0AC725821DF4006BC997 /* AudioBookVendorsHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2198F90F250A90EE000D9DAB /* AudioBookVendorsHelper.swift */; };
 		73EB0AC925821DF4006BC997 /* TPPBarcode.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68CCFC41F9F80CF003DDA6C /* TPPBarcode.swift */; };
-		73EB0ACA25821DF4006BC997 /* TPPSession.m in Sources */ = {isa = PBXBuildFile; fileRef = 118B7ABE195CBF72005CE3E7 /* TPPSession.m */; };
 		73EB0ACC25821DF4006BC997 /* TPPPresentationUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73085E192502DE88008F6244 /* TPPPresentationUtils.swift */; };
 		73EB0ACD25821DF4006BC997 /* TPPMyBooksDownloadInfo.m in Sources */ = {isa = PBXBuildFile; fileRef = A4276F471B00046300CA7194 /* TPPMyBooksDownloadInfo.m */; };
 		73EB0AD125821DF4006BC997 /* ProblemReportEmail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145798F5215BE9E300F68AFD /* ProblemReportEmail.swift */; };
@@ -551,6 +516,7 @@
 		73EB0AF325821DF4006BC997 /* TPPSettingsAccountsList.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6B1F4FA1DD20EA900D73CA1 /* TPPSettingsAccountsList.swift */; };
 		73EB0AF425821DF4006BC997 /* Data+Base64.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD567B422B97344001F0C83 /* Data+Base64.swift */; };
 		73EB0AF825821DF4006BC997 /* NSURLRequest+NYPLURLRequestAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 085D31DE1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.m */; };
+		73EB0AF725821DF4006BC997 /* TPPOPDSAcquisition.m in Sources */ = {isa = PBXBuildFile; fileRef = 2D754BBA2002E2FB0061D34F /* TPPOPDSAcquisition.m */; };
 		73EB0AFA25821DF4006BC997 /* ExtendedNavBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E63F2C6B1EAA81B3002B6373 /* ExtendedNavBarView.swift */; };
 		73EB0AFB25821DF4006BC997 /* OPDS2Link.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51C1DFF22861BAD003B49A5 /* OPDS2Link.swift */; };
 		73EB0AFC25821DF4006BC997 /* TPPSignInBusinessLogic+BookmarkSyncing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730D17CB25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift */; };
@@ -1573,6 +1539,22 @@
 		A72D57799C1CD0B547F1162A /* TPPAttributedString.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAttributedString.swift; sourceTree = "<group>"; };
 		954AEC5A6FF765EFA3564A39 /* Date+TPPDateAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+TPPDateAdditions.swift"; sourceTree = "<group>"; };
 		A6777AB8FBA1CE8E0FB87908 /* String+TPPStringAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+TPPStringAdditions.swift"; sourceTree = "<group>"; };
+		65FC39D09AF01C3230606194 /* TPPSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSession.swift"; sourceTree = "<group>"; };
+		13429D82F691D01956B6392D /* TPPXML.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPXML.swift"; sourceTree = "<group>"; };
+		5D412D5DAFC64775B865EA80 /* NSURL+NYPLURLAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSURL+NYPLURLAdditions.swift"; sourceTree = "<group>"; };
+		365A82805B225A5CC76875B1 /* NSURLRequest+NYPLURLRequestAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSURLRequest+NYPLURLRequestAdditions.swift"; sourceTree = "<group>"; };
+		A85EA25220061F89DEB548B4 /* UIButton+NYPLAppearanceAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIButton+NYPLAppearanceAdditions.swift"; sourceTree = "<group>"; };
+		58517675741A9E89D5B9FF57 /* UIColor+TPPColorAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIColor+TPPColorAdditions.swift"; sourceTree = "<group>"; };
+		84FA52CE8971262118BF1E2A /* UIFont+TPPSystemFontOverride.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIFont+TPPSystemFontOverride.swift"; sourceTree = "<group>"; };
+		4C408E2CB312EEC8F849712E /* UILabel+NYPLAppearanceAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UILabel+NYPLAppearanceAdditions.swift"; sourceTree = "<group>"; };
+		91C6262DCFA3904E897FC508 /* UIView+TPPViewAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIView+TPPViewAdditions.swift"; sourceTree = "<group>"; };
+		B4CONC001FR000000000001 /* MainActorHelpersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainActorHelpersTests.swift; sourceTree = "<group>"; };
+		B4CONC002FR000000000001 /* TPPMainThreadCheckerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMainThreadCheckerTests.swift; sourceTree = "<group>"; };
+		B4NETW001FR000000000001 /* URLExtensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLExtensionsTests.swift; sourceTree = "<group>"; };
+		B4NETW002FR000000000001 /* URLRequestExtensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLRequestExtensionsTests.swift; sourceTree = "<group>"; };
+		B4NETW003FR000000000001 /* URLResponseNYPLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLResponseNYPLTests.swift; sourceTree = "<group>"; };
+		B11A01FR0000000000000001 /* StringExtensionsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StringExtensionsTests.swift; sourceTree = "<group>"; };
+		B11A02FR0000000000000001 /* TPPBookCoverRegistryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPBookCoverRegistryTests.swift; sourceTree = "<group>"; };
 		0345BFD61DBF002E00398B6F /* APIKeys.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = APIKeys.swift; sourceTree = "<group>"; };
 		03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReaderBookmarkCell.swift; sourceTree = "<group>"; };
 		03690E281EB2B44300F75D5F /* TPPReadiumBookmark.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReadiumBookmark.swift; sourceTree = "<group>"; };
@@ -1588,23 +1570,15 @@
 		0452B249AF7C21DDAACD5C58 /* TPPBookmarkDeletionLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TPPBookmarkDeletionLog.swift; path = Palace/Reader2/Bookmarks/TPPBookmarkDeletionLog.swift; sourceTree = SOURCE_ROOT; };
 		04CF94B049964380A3A35DA9 /* EULAViewHosting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EULAViewHosting.swift; sourceTree = "<group>"; };
 		06B2D269BFF440A381A893E3 /* CarPlayAudiobookBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayAudiobookBridge.swift; sourceTree = "<group>"; };
-		081387551BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UILabel+NYPLAppearanceAdditions.h"; sourceTree = "<group>"; };
-		081387561BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UILabel+NYPLAppearanceAdditions.m"; sourceTree = "<group>"; };
-		081387581BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UIButton+NYPLAppearanceAdditions.h"; sourceTree = "<group>"; };
-		081387591BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UIButton+NYPLAppearanceAdditions.m"; sourceTree = "<group>"; };
 		0824D44D24B8DFE400C85A7E /* NSString+JSONParse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSString+JSONParse.swift"; sourceTree = "<group>"; };
 		0826CD2824AA21B2000F4030 /* TPPSamlIDPCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSamlIDPCell.swift; sourceTree = "<group>"; };
 		0826CD2E24AA2801000F4030 /* TPPLibraryDescriptionCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLibraryDescriptionCell.swift; sourceTree = "<group>"; };
-		085640CC1BB99FC30088BDBF /* NSURL+NYPLURLAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSURL+NYPLURLAdditions.h"; sourceTree = "<group>"; };
-		085640CD1BB99FC30088BDBF /* NSURL+NYPLURLAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSURL+NYPLURLAdditions.m"; sourceTree = "<group>"; };
 		0857A0F62478337D00C7984E /* TPPCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPCredentials.swift; sourceTree = "<group>"; };
 		0857A0FE247835FF00C7984E /* TPPKeychainStoredVariable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPKeychainStoredVariable.swift; sourceTree = "<group>"; };
 		085A2D3663F363348BE14190 /* TokenRefreshInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenRefreshInterceptor.swift; sourceTree = "<group>"; };
 		085D31D51BE29E38007F7672 /* TPPProblemReportViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPProblemReportViewController.h; sourceTree = "<group>"; };
 		085D31D61BE29E38007F7672 /* TPPProblemReportViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPProblemReportViewController.m; sourceTree = "<group>"; };
 		085D31D81BE29ED4007F7672 /* TPPProblemReportViewController.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = TPPProblemReportViewController.xib; sourceTree = "<group>"; };
-		085D31DD1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSURLRequest+NYPLURLRequestAdditions.h"; sourceTree = "<group>"; };
-		085D31DE1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSURLRequest+NYPLURLRequestAdditions.m"; sourceTree = "<group>"; };
 		085D31FB1BE7BE86007F7672 /* ReaderClientCert.sig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = ReaderClientCert.sig; sourceTree = "<group>"; };
 		086C45D524AE77CA00F5108E /* TPPBasicAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBasicAuth.swift; sourceTree = "<group>"; };
 		089E42C5249A823800310360 /* TPPCookiesWebViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPCookiesWebViewController.swift; sourceTree = "<group>"; };
@@ -1617,6 +1591,8 @@
 		1020FD76B5E7EA7D89A58124 /* KeyboardNavigationHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeyboardNavigationHandlerTests.swift; sourceTree = "<group>"; };
 		1107835C19816E3D0071AB1E /* UIView+TPPViewAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UIView+TPPViewAdditions.h"; sourceTree = "<group>"; };
 		1107835D19816E3D0071AB1E /* UIView+TPPViewAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UIView+TPPViewAdditions.m"; sourceTree = "<group>"; };
+		11068C53196DD37900E8A94B /* TPPNull.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPNull.h; sourceTree = "<group>"; };
+		11068C54196DD37900E8A94B /* TPPNull.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPNull.m; sourceTree = "<group>"; };
 		110AD83A19E4960C005724C3 /* TPPOPDSAttribute.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPOPDSAttribute.h; sourceTree = "<group>"; };
 		110F853C19D5FA7300052DF7 /* DetailSummaryTemplate.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = DetailSummaryTemplate.html; sourceTree = "<group>"; };
 		1111973A19880E8D0014462F /* TPPLinearView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPLinearView.h; sourceTree = "<group>"; };
@@ -1625,8 +1601,6 @@
 		1111973E1988226F0014462F /* TPPBookDetailDownloadFailedView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPBookDetailDownloadFailedView.m; sourceTree = "<group>"; };
 		1112A8191A322C53002B8CC1 /* TenPrintCover.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = TenPrintCover.xcodeproj; path = "ios-tenprintcover/TenPrintCover.xcodeproj"; sourceTree = "<group>"; };
 		1114A6AC1958B215007507A2 /* TPPLOG.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; lineEnding = 0; path = TPPLOG.h; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objcpp; };
-		111559EB19B8FA530003BE94 /* TPPXML.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPXML.h; sourceTree = "<group>"; };
-		111559EC19B8FA590003BE94 /* TPPXML.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPXML.m; sourceTree = "<group>"; };
 		111559EE19B8FA8E0003BE94 /* NYPLXMLTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = NYPLXMLTests.m; sourceTree = "<group>"; };
 		111559F019B8FAA10003BE94 /* invalid.xml */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = invalid.xml; sourceTree = "<group>"; };
 		111559F119B8FAA10003BE94 /* valid.xml */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = valid.xml; sourceTree = "<group>"; };
@@ -1639,21 +1613,19 @@
 		116A5EB81947B57500491A21 /* TPPConfiguration.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPConfiguration.m; sourceTree = "<group>"; };
 		118B7ABD195CBF72005CE3E7 /* TPPSession.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPSession.h; sourceTree = "<group>"; };
 		118B7ABE195CBF72005CE3E7 /* TPPSession.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPSession.m; sourceTree = "<group>"; };
+		1183F359194F847100DC322F /* TPPAsync.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPAsync.h; sourceTree = "<group>"; };
+		1183F35A194F847100DC322F /* TPPAsync.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; lineEnding = 0; path = TPPAsync.m; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.objc; };
 		119503E61993F914009FB788 /* libxml2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxml2.dylib; path = usr/lib/libxml2.dylib; sourceTree = SDKROOT; };
 		119503E81993F919009FB788 /* libz.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libz.dylib; path = usr/lib/libz.dylib; sourceTree = SDKROOT; };
 		119503EA1993F91E009FB788 /* libc++.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libc++.dylib"; path = "usr/lib/libc++.dylib"; sourceTree = SDKROOT; };
 		119BEB8D19901E1000121439 /* TPPOPDS.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TPPOPDS.h; sourceTree = "<group>"; };
 		119BEBB719902A8800121439 /* TPPOpenSearchDescription.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPOpenSearchDescription.h; sourceTree = "<group>"; };
 		119BEBB819902A8800121439 /* TPPOpenSearchDescription.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPOpenSearchDescription.m; sourceTree = "<group>"; };
-		11A14DF21A1BF94F00D6C510 /* UIColor+TPPColorAdditions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UIColor+TPPColorAdditions.h"; sourceTree = "<group>"; };
-		11A14DF31A1BF94F00D6C510 /* UIColor+TPPColorAdditions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UIColor+TPPColorAdditions.m"; sourceTree = "<group>"; };
 		11C5DD14197727A6005A9945 /* TPPKeychain.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPKeychain.h; sourceTree = "<group>"; };
 		11C5DD15197727A6005A9945 /* TPPKeychain.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPKeychain.m; sourceTree = "<group>"; };
 		11C5DD171977335E005A9945 /* TPPKeychainTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPKeychainTests.m; sourceTree = "<group>"; };
 		11D521991A44980D00636240 /* librmservices_iphone.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = librmservices_iphone.a; path = "../../Code/RMSDK-10_0_2014-08-25/samples/rmservices/build/xc3/build/Release-iphoneos/librmservices_iphone.a"; sourceTree = "<group>"; };
 		11D5219B1A449ABA00636240 /* libstdc++.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libstdc++.dylib"; path = "usr/lib/libstdc++.dylib"; sourceTree = SDKROOT; };
-		11E0208B197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UIFont+TPPSystemFontOverride.h"; sourceTree = "<group>"; };
-		11E0208C197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UIFont+TPPSystemFontOverride.m"; sourceTree = "<group>"; };
 		11F54C1D194109120086FCAF /* main.xml */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = main.xml; sourceTree = "<group>"; };
 		11F54C2419410BE40086FCAF /* single_entry.xml */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = single_entry.xml; sourceTree = "<group>"; };
 		11F54C2619410C700086FCAF /* NYPLOPDSEntryTests.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = NYPLOPDSEntryTests.m; sourceTree = "<group>"; };
@@ -3075,11 +3047,10 @@
 				E5FFFF001234567800000001 /* Core */,
 				733875662423E540000FEB67 /* TPPCaching.swift */,
 				733875642423E1B0000FEB67 /* TPPNetworkExecutor.swift */,
+				65FC39D09AF01C3230606194 /* TPPSession.swift */,
 				735FED252427494900144C97 /* TPPNetworkResponder.swift */,
 				E7E9A22C298C6A82006C5D9E /* Reachability.swift */,
 				73DE8979260BEA13003D9135 /* TPPRequestExecuting.swift */,
-				118B7ABD195CBF72005CE3E7 /* TPPSession.h */,
-				118B7ABE195CBF72005CE3E7 /* TPPSession.m */,
 				E671FF7C1E3A7068002AB13F /* TPPNetworkQueue.swift */,
 				7360D0D424BFCB9700C8AD16 /* TPPUserFriendlyError.swift */,
 				2D62568A1D412BCB0080A81F /* BundledHTMLViewController.swift */,
@@ -3320,13 +3291,11 @@
 		73B5DFF826055DE300225C12 /* Networking */ = {
 			isa = PBXGroup;
 			children = (
-				085640CC1BB99FC30088BDBF /* NSURL+NYPLURLAdditions.h */,
-				085640CD1BB99FC30088BDBF /* NSURL+NYPLURLAdditions.m */,
-				085D31DD1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.h */,
-				085D31DE1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.m */,
 				7340DA6124B7E45C00361387 /* URLResponse+NYPL.swift */,
 				E7498A7D2A0E4F6A0037DD93 /* URL+Extensions.swift */,
 				E51919D72B508EE400C08E86 /* URLRequest+Extensions.swift */,
+				5D412D5DAFC64775B865EA80 /* NSURL+NYPLURLAdditions.swift */,
+				365A82805B225A5CC76875B1 /* NSURLRequest+NYPLURLRequestAdditions.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -3356,6 +3325,9 @@
 				111559EB19B8FA530003BE94 /* TPPXML.h */,
 				111559EC19B8FA590003BE94 /* TPPXML.m */,
 				B9B8972F24E830DD3208DB51 /* TPPJSON.swift */,
+				11369D46199527C200BB11F8 /* TPPJSON.h */,
+				11369D47199527C200BB11F8 /* TPPJSON.m */,
+				13429D82F691D01956B6392D /* TPPXML.swift */,
 			);
 			path = Parsing;
 			sourceTree = "<group>";
@@ -3363,19 +3335,14 @@
 		73B5DFFC2605606600225C12 /* UI */ = {
 			isa = PBXGroup;
 			children = (
-				081387581BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.h */,
-				081387591BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.m */,
-				11A14DF21A1BF94F00D6C510 /* UIColor+TPPColorAdditions.h */,
-				11A14DF31A1BF94F00D6C510 /* UIColor+TPPColorAdditions.m */,
 				21C184DB27B12347008CC4F8 /* UINavigationBar+appearance.swift */,
-				11E0208B197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.h */,
-				11E0208C197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.m */,
-				081387551BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.h */,
-				081387561BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.m */,
-				1107835C19816E3D0071AB1E /* UIView+TPPViewAdditions.h */,
-				1107835D19816E3D0071AB1E /* UIView+TPPViewAdditions.m */,
 				E551B359267D396A0026FC1B /* TPPLoadingViewController.swift */,
 				E523124C28641505007D1DB5 /* LoadingViewController.swift */,
+				A85EA25220061F89DEB548B4 /* UIButton+NYPLAppearanceAdditions.swift */,
+				58517675741A9E89D5B9FF57 /* UIColor+TPPColorAdditions.swift */,
+				84FA52CE8971262118BF1E2A /* UIFont+TPPSystemFontOverride.swift */,
+				4C408E2CB312EEC8F849712E /* UILabel+NYPLAppearanceAdditions.swift */,
+				91C6262DCFA3904E897FC508 /* UIView+TPPViewAdditions.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -5366,12 +5333,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B98EFC297882B9BF1072A76F /* CarModeServiceTests.swift in Sources */,
-				E00E62A02C10263E7DF15B11 /* CarModeViewModelTests.swift in Sources */,
 				651351CF68126FDB818F83F7 /* SleepTimerTests.swift in Sources */,
-				A4463189D19C49AF222A0064 /* ClaudeDiscoveryServiceTests.swift in Sources */,
-				19B65D675FAB06628ABAADA0 /* CrossLibrarySearchServiceTests.swift in Sources */,
-				646C15C74B237F4C366E6CE3 /* DiscoveryViewModelTests.swift in Sources */,
 				05BD558BEDC45D091DFEA283 /* FontManagerTests.swift in Sources */,
 				FE48F9C21D03088224767755 /* TypographyPresetTests.swift in Sources */,
 				F042F1649763CFEADC848065 /* TypographyServiceTests.swift in Sources */,
@@ -5595,7 +5557,7 @@
 				B4CONC001BF000000000001 /* MainActorHelpersTests.swift in Sources */,
 				B4CONC002BF000000000001 /* TPPMainThreadCheckerTests.swift in Sources */,
 				B4NETW001BF000000000001 /* URLExtensionsTests.swift in Sources */,
-				B4NETW002BF000000000001 /* URLRequestExtensionsTests.swift in Sources */,
+				B4NETW002BF000000000001 /* URLRequestExtensionsTests.swift
 				B4NETW003BF000000000001 /* URLResponseNYPLTests.swift in Sources */,
 				AGNT0B5100000001NET001 /* OPDSFormatTests.swift in Sources */,
 				AGNT0B5100000003NET001 /* TPPNetworkResponderTests.swift in Sources */,
@@ -5617,34 +5579,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A38F1ABCA7AFC6AB4D15F9F1 /* BluetoothCarModeDetector.swift in Sources */,
-				E11A203872A5AA73CC27F408 /* CarModeChapterList.swift in Sources */,
-				C163475CB46F00070D2A3DDB /* CarModeEntryButton.swift in Sources */,
-				381880BDA4C02E9618FBB6F9 /* CarModeService.swift in Sources */,
-				CC91CE08FB8250A533A74406 /* CarModeServiceProtocol.swift in Sources */,
-				97C1FD54D06ACFF0803398FE /* CarModeSleepTimerPicker.swift in Sources */,
-				56D58013DA98465F98A7899B /* CarModeSpeedPicker.swift in Sources */,
-				D53B36A8221413AF7C0355AE /* CarModeState.swift in Sources */,
-				FCC8FDF250C47895BBD4F7DB /* CarModeView.swift in Sources */,
-				6274888D2E5C0E90D333F4AC /* CarModeViewModel.swift in Sources */,
-				8467D5E1177DAEE24E74FD57 /* PlaybackSpeed.swift in Sources */,
-				64053617209B94200D66A8C0 /* SleepTimerOption.swift in Sources */,
-				43E5AFBBAAD127B6B28DCCFD /* DiscoveryTab.swift in Sources */,
-				78BEAD5830F2B6B4C31790CF /* CrossLibrarySearchResponse.swift in Sources */,
-				8B268B08B5B33F8ED19833CC /* DiscoveryPrompt.swift in Sources */,
-				0E8C4BE6813548BF5E7A62C3 /* DiscoveryRecommendation.swift in Sources */,
-				4115CAE641E2DE3779F69465 /* LibrarySearchResult.swift in Sources */,
-				0D9CA412C5C8B2BBDE47B81D /* ClaudeDiscoveryService.swift in Sources */,
-				963D8C24B1E422010D706961 /* CrossLibrarySearchService.swift in Sources */,
-				9DD1EB38C990FC718AC10906 /* DiscoveryConfiguration.swift in Sources */,
-				F50AA3B20D4D9C93BB7FBE43 /* DiscoveryServiceProtocol.swift in Sources */,
-				A332AFC14B741366D8B5939A /* LocalDiscoveryFallback.swift in Sources */,
-				261AFC72225221096DDB2AD2 /* DiscoveryViewModel.swift in Sources */,
-				E6AB0C8A385DB8FB534AD474 /* SearchResultsViewModel.swift in Sources */,
-				0DEF60707090701AA8343B1B /* CrossLibraryAvailabilityView.swift in Sources */,
-				8C796FFAF6FF4B4140206184 /* DiscoveryView.swift in Sources */,
-				DDDFAEEFB4D1A3C370C0CC95 /* RecommendationCard.swift in Sources */,
-				6599D677207BD16CD68D9669 /* SearchResultsView.swift in Sources */,
 				FC1B7D899D35F336F1469191 /* FontFamily.swift in Sources */,
 				A961D381DEBCF6341C9C7AA2 /* FontManager.swift in Sources */,
 				C6C2BB5EDA39F3116659A4A6 /* FontPickerView.swift in Sources */,
@@ -5686,6 +5620,21 @@
 				8E3C83458C8081EBB7A01201 /* TPPAttributedString.swift in Sources */,
 				A12313CAF7F981BF5AA2BA48 /* Date+TPPDateAdditions.swift in Sources */,
 				4760DD74BC0D99279B836B47 /* String+TPPStringAdditions.swift in Sources */,
+				A1B2C3D4E5F607080910AB01 /* AccessibleAnimation.swift in Sources */,
+				A1B2C3D4E5F607080910AB02 /* TPPBookmarkDeletionLog.swift in Sources */,
+				A1B2C3D4E5F607080910AB03 /* DebugSettings.swift in Sources */,
+				A1B2C3D4E5F607080910AB04 /* TPPAccessibilityAnnouncementCenter.swift in Sources */,
+				A1B2C3D4E5F607080910AB05 /* BookCellModelCache.swift in Sources */,
+				A1B2C3D4E5F607080910AB06 /* KeyboardNavigationHandler.swift in Sources */,
+				046A63653334414BCA4E7BD8 /* TPPSession.swift in Sources */,
+				AECF372D4DD6F025741E67AC /* TPPXML.swift in Sources */,
+				9C1F954DF307B86BD7C741CB /* NSURL+NYPLURLAdditions.swift in Sources */,
+				91F2C77587AC25155DC2A969 /* NSURLRequest+NYPLURLRequestAdditions.swift in Sources */,
+				B111489599FF94341D069CFA /* UIButton+NYPLAppearanceAdditions.swift in Sources */,
+				400703FF1C095172A6164FF9 /* UIColor+TPPColorAdditions.swift in Sources */,
+				8040475BC615EA4FBD5ED6DA /* UIFont+TPPSystemFontOverride.swift in Sources */,
+				F523AE4C70865C6B0D4A024E /* UILabel+NYPLAppearanceAdditions.swift in Sources */,
+				37DFC30F39C1017A49F12741 /* UIView+TPPViewAdditions.swift in Sources */,
 				SCENEDEL0001PALACE00001 /* SceneDelegate.swift in Sources */,
 				ABEVENTS0001PALACE0001 /* AudiobookEvents.swift in Sources */,
 				CARPLAY1001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,
@@ -5706,7 +5655,6 @@
 				E5BDA0262A2A7DC100C133CB /* RegistrationCell.swift in Sources */,
 				73EB0A6E25821DF4006BC997 /* TPPAgeCheck.swift in Sources */,
 				73EB0A6F25821DF4006BC997 /* Log.swift in Sources */,
-				73EB0A7125821DF4006BC997 /* UILabel+NYPLAppearanceAdditions.m in Sources */,
 				21399902268F9F4C00B4EB60 /* TPPAccountListDataSource.swift in Sources */,
 				21E41789292810F600A78606 /* TPPPDFPreviewThumbnail.swift in Sources */,
 				73EB0A7425821DF4006BC997 /* TPPMainThreadChecker.swift in Sources */,
@@ -5735,7 +5683,6 @@
 				21E41783292810EE00A78606 /* View.swift in Sources */,
 				21E4177B292810E000A78606 /* TPPPDFDocument.swift in Sources */,
 				21E4178C292810F600A78606 /* TPPPDFToolbarButton.swift in Sources */,
-				73EB0A7E25821DF4006BC997 /* TPPXML.m in Sources */,
 				73EB0A7F25821DF4006BC997 /* TPPSignInBusinessLogic.swift in Sources */,
 				73EB0A8125821DF4006BC997 /* TPPConfiguration+SE.swift in Sources */,
 				E5BEF01A26BD94D600C2A50B /* UIFont+Extensions.swift in Sources */,
@@ -5744,7 +5691,6 @@
 				E50543922E600145007CCFAB /* BookListSkeletonView.swift in Sources */,
 				E5D8C8DF2D829B2000667A99 /* HTMLTextView.swift in Sources */,
 				E708F724284783250028405B /* TPPEncryptedPDFViewer.swift in Sources */,
-				73EB0A8225821DF4006BC997 /* NSURL+NYPLURLAdditions.m in Sources */,
 				E5AD72F62E552A36005A8070 /* FacetsSelectorView.swift in Sources */,
 				21E41778292810E000A78606 /* TPPEncryptedPDFDocument.swift in Sources */,
 				E5AD72ED2E55218A005A8070 /* URLSessionNetworkClient.swift in Sources */,
@@ -5793,7 +5739,6 @@
 				E57F92B62D6918CC003D9180 /* DeviceOrientation.swift in Sources */,
 				21D746E82718A4C000C0E1B4 /* AdobeDRMError.swift in Sources */,
 				E5AD72F32E5526B1005A8070 /* CatalogLaneMoreView.swift in Sources */,
-				73EB0A9425821DF4006BC997 /* UIButton+NYPLAppearanceAdditions.m in Sources */,
 				E58EAD5E2EC7746700CDA626 /* UserAccountPublisher+Extensions.swift in Sources */,
 				E58EAD5F2EC7746700CDA626 /* UserAccountPublisher.swift in Sources */,
 				9D5BD91CC07167E673AA264A /* TPPAccountAuthState.swift in Sources */,
@@ -5837,20 +5782,17 @@
 				73EB0AAC25821DF4006BC997 /* TPPCaching.swift in Sources */,
 				E57F92B22D683564003D9180 /* BookListView.swift in Sources */,
 				21E417922928115A00A78606 /* AudiobookSample.swift in Sources */,
-				73EB0AAD25821DF4006BC997 /* UIView+TPPViewAdditions.m in Sources */,
 				E53573D0295612BA008BDCA4 /* MyBooksView.swift in Sources */,
 				E7862A232773924900BE8AB8 /* UIViewControllerWrapper.swift in Sources */,
 				21E4177A292810E000A78606 /* TPPPDFPage.swift in Sources */,
 				E795A7682A74074300314EC8 /* AudiobookTimeEntry.swift in Sources */,
 				73EB0AB025821DF4006BC997 /* JWKResponse.swift in Sources */,
 				E544C4ED2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift in Sources */,
-				73EB0AB125821DF4006BC997 /* UIFont+TPPSystemFontOverride.m in Sources */,
 				73EB0AB225821DF4006BC997 /* TPPReadiumBookmark.swift in Sources */,
 				E7C0F2F2299586E8003A10C5 /* Strings+objC.swift in Sources */,
 				E5E4AADC2EB29DE700CC1D67 /* DeviceSpecificErrorMonitor.swift in Sources */,
 				73EB0AB425821DF4006BC997 /* TPPAppTheme.swift in Sources */,
 				E596C14F2E9450AA00214F78 /* CatalogLaneMoreViewModel.swift in Sources */,
-				73EB0AB525821DF4006BC997 /* UIColor+TPPColorAdditions.m in Sources */,
 				732F474E260B224A00E2CB64 /* TPPBookmarkSpec.swift in Sources */,
 				73EB0AB625821DF4006BC997 /* TPPSignInBusinessLogic+DRM.swift in Sources */,
 				73EB0AB725821DF4006BC997 /* URLRequest+Logging.swift in Sources */,
@@ -5891,7 +5833,6 @@
 				73D8D28025A68D4300DF5F69 /* TPPBookLocation+Locator.swift in Sources */,
 				73EB0AC925821DF4006BC997 /* TPPBarcode.swift in Sources */,
 				215C866E27064198005F9621 /* BundleExtension.swift in Sources */,
-				73EB0ACA25821DF4006BC997 /* TPPSession.m in Sources */,
 				E56D85A02E68E58E00DFF16C /* TPPReloadView.swift in Sources */,
 				D6E301B17A5D47A7887F5A7F /* EULAView.swift in Sources */,
 				C64399E81697447CA4F20ABA /* EULAViewHosting.swift in Sources */,
@@ -5980,7 +5921,6 @@
 				E512240D2DDFC41D00D034A4 /* UIViewController+Extensions.swift in Sources */,
 				E523A459299FD82100EF833B /* NormalBookCell.swift in Sources */,
 				21E4179B292813E200A78606 /* EpubSampleFactory.swift in Sources */,
-				73EB0AF825821DF4006BC997 /* NSURLRequest+NYPLURLRequestAdditions.m in Sources */,
 				E562DD9A2D35ABC4003A1A40 /* BookDetailView.swift in Sources */,
 				E7B20B47285B3BC800C49FE1 /* TPPPDFPreviewGridController.swift in Sources */,
 				21E417942928125500A78606 /* OPDS2LinkArray.swift in Sources */,
@@ -6064,7 +6004,7 @@
 				E544A1A22DF0BBF1008679D6 /* HoldsViewModel.swift in Sources */,
 				73EB0B2425821DF4006BC997 /* TPPBookDetailDownloadFailedView.m in Sources */,
 				21E4178A292810F600A78606 /* TPPPDFPreviewGridCell.swift in Sources */,
-				E7862A1E277391E200BE8AB8 /* TPPSettingsView.swift in Sources */,
+				E7862A1E277391E200BE8AB8 /* TPPSettingsView.swift in Sourc
 				SETVM005T260955EF008E1DC3 /* SettingsViewModel.swift in Sources */,
 				E58EB2932ECF76FC00CDA626 /* EPUBReaderView.swift in Sources */,
 				E7862A1D277391C100BE8AB8 /* TPPSettingsViewController.swift in Sources */,
@@ -6099,34 +6039,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F4EA5E42C27D5081DC16D0B3 /* BluetoothCarModeDetector.swift in Sources */,
-				7242702EEBD1651E65B60EDC /* CarModeChapterList.swift in Sources */,
-				2A114B30795FFA695A05EEA9 /* CarModeEntryButton.swift in Sources */,
-				5FD1C501554BA4383C12B3D3 /* CarModeService.swift in Sources */,
-				42DEEAF8B792F5D3B40A9C6D /* CarModeServiceProtocol.swift in Sources */,
-				ABAB459916B5DE60C559727D /* CarModeSleepTimerPicker.swift in Sources */,
-				FEBCDDB32AF691793539E77A /* CarModeSpeedPicker.swift in Sources */,
-				80F0182F3A2261A3F61F5986 /* CarModeState.swift in Sources */,
-				74AD3F15226273AA5C039E7A /* CarModeView.swift in Sources */,
-				E9B49D80399D570727A7DC1A /* CarModeViewModel.swift in Sources */,
-				02B5BE224BAD4418ADA8A4AF /* PlaybackSpeed.swift in Sources */,
-				978348C79CFD19FFB184C580 /* SleepTimerOption.swift in Sources */,
-				98ACA14779D89B7DA21055FD /* DiscoveryTab.swift in Sources */,
-				B4F870CCD03C5E482146DF88 /* CrossLibrarySearchResponse.swift in Sources */,
-				D8BF12417544D2E77655500E /* DiscoveryPrompt.swift in Sources */,
-				4B35024540E24CCB2D848D38 /* DiscoveryRecommendation.swift in Sources */,
-				9B24B24A9667723BD659D0E8 /* LibrarySearchResult.swift in Sources */,
-				D420918FF18C6BBAB91CF955 /* ClaudeDiscoveryService.swift in Sources */,
-				8A5A65781D53DAB6D2CF7449 /* CrossLibrarySearchService.swift in Sources */,
-				5C9AD28F46EEAF224CAF68EF /* DiscoveryConfiguration.swift in Sources */,
-				448D6BE9AE0BCCC6F742F940 /* DiscoveryServiceProtocol.swift in Sources */,
-				66FBE3C6EBC48184946CB231 /* LocalDiscoveryFallback.swift in Sources */,
-				792DA4665FFCEBFDEA2A8CD6 /* DiscoveryViewModel.swift in Sources */,
-				B2DB5878D850B25C262822B2 /* SearchResultsViewModel.swift in Sources */,
-				555039B35569633425B3435C /* CrossLibraryAvailabilityView.swift in Sources */,
-				5CC8895190D082858DAA719F /* DiscoveryView.swift in Sources */,
-				6061EF52B442A05D529AD468 /* RecommendationCard.swift in Sources */,
-				574CEFAB888D9D49F6DA3DDA /* SearchResultsView.swift in Sources */,
 				E58A6E33B84B1CACFD91F346 /* FontFamily.swift in Sources */,
 				8F0F91D96D8F6EA8F3588475 /* FontManager.swift in Sources */,
 				B5B4BA6705E98259BC0D2E68 /* FontPickerView.swift in Sources */,
@@ -6168,6 +6080,15 @@
 				130D41B5377E440288C06293 /* TPPAttributedString.swift in Sources */,
 				82E5AD7CBB375A5F50CC8EF9 /* Date+TPPDateAdditions.swift in Sources */,
 				269D560925227D951B66CBD1 /* String+TPPStringAdditions.swift in Sources */,
+				D5B7C7A6055EFD9E46738642 /* TPPSession.swift in Sources */,
+				E14ADD9898954E818F936B87 /* TPPXML.swift in Sources */,
+				5985188AB287AB4EA5323169 /* NSURL+NYPLURLAdditions.swift in Sources */,
+				F921AA9B9081DD0B6F199AD6 /* NSURLRequest+NYPLURLRequestAdditions.swift in Sources */,
+				E391F1AD17AF4F064DC2AD41 /* UIButton+NYPLAppearanceAdditions.swift in Sources */,
+				40071715921E07C147F02DD9 /* UIColor+TPPColorAdditions.swift in Sources */,
+				922751C91132DF6CAFA080BA /* UIFont+TPPSystemFontOverride.swift in Sources */,
+				C0F5612F6BAE49B8303F0CAE /* UILabel+NYPLAppearanceAdditions.swift in Sources */,
+				47068087F9B7FA9ECFEF5D30 /* UIView+TPPViewAdditions.swift in Sources */,
 				SCENEDEL0002SIMPLYE0001 /* SceneDelegate.swift in Sources */,
 				ABEVENTS0002SIMPLYE001 /* AudiobookEvents.swift in Sources */,
 				CARPLAY0001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,
@@ -6189,7 +6110,6 @@
 				2D382BD71D08BA99002C423D /* Log.swift in Sources */,
 				21DCC39C27BE4AF900064B37 /* TPPReaderFont.swift in Sources */,
 				E596C1872E94541600214F78 /* CatalogSortService.swift in Sources */,
-				081387571BC574DA003DEA6A /* UILabel+NYPLAppearanceAdditions.m in Sources */,
 				E50543822E5F949D007CCFAB /* LibraryLogoNotifier.swift in Sources */,
 				21F4BF3A26BC62D4000CF592 /* AdobeCertificate.swift in Sources */,
 				216D2E39274286D200472538 /* TPPLCPLicense.swift in Sources */,
@@ -6237,7 +6157,6 @@
 				E57E798429D4D407006D0F87 /* String+Extensions.swift in Sources */,
 				E7376EC0287DE9C00095AADF /* CGSize.swift in Sources */,
 				0857A0FF247835FF00C7984E /* TPPKeychainStoredVariable.swift in Sources */,
-				111559ED19B8FA590003BE94 /* TPPXML.m in Sources */,
 				E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */,
 				E5E4A9DD2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift in Sources */,
 				731A5B1224621F2B00B5E663 /* TPPSignInBusinessLogic.swift in Sources */,
@@ -6250,6 +6169,7 @@
 				E5AD72E92E5520FB005A8070 /* CatalogAPI.swift in Sources */,
 				E5AD72EA2E5520FB005A8070 /* CatalogView.swift in Sources */,
 				085640CE1BB99FC30088BDBF /* NSURL+NYPLURLAdditions.m in Sources */,
+				1183F35B194F847100DC322F /* TPPAsync.m in Sources */,
 				E52E3C0928C19BAD0073DC4D /* SamplePlayerError.swift in Sources */,
 				732F929323ECB51F0099244C /* TPPBackgroundExecutor.swift in Sources */,
 				E544A1A12DF0BBF1008679D6 /* HoldsViewModel.swift in Sources */,
@@ -6279,7 +6199,6 @@
 				73B5DFFE2605679800225C12 /* TPPBook+Additions.swift in Sources */,
 				E5B8E9832E0F0492002E0F3D /* ImageCacheType.swift in Sources */,
 				21DDE31325D2CE9A002CBCE3 /* AdobeDRMLibraryService.swift in Sources */,
-				0813875A1BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.m in Sources */,
 				E704804E2859253900019B31 /* TPPPDFReaderView.swift in Sources */,
 				21D746E72718A4C000C0E1B4 /* AdobeDRMError.swift in Sources */,
 				E5515EBE2AD8E13E000BDFE9 /* TPPEPUBViewController.swift in Sources */,
@@ -6309,7 +6228,6 @@
 				E7861C492846875D00B3A38A /* TPPPDFView.swift in Sources */,
 				73F713682417240100C63B81 /* UIViewController+TPP.swift in Sources */,
 				733875672423E540000FEB67 /* TPPCaching.swift in Sources */,
-				1107835E19816E3D0071AB1E /* UIView+TPPViewAdditions.m in Sources */,
 				E551B35A267D396A0026FC1B /* TPPLoadingViewController.swift in Sources */,
 				E5B0ACEF2D6EBE6D00F9B89B /* Array+Extensions.swift in Sources */,
 				E521EADC2D56B5A000C08ADF /* HalfSheetview.swift in Sources */,
@@ -6317,7 +6235,6 @@
 				E50D684726AB235400F1042B /* TPPReaderTOCCell.swift in Sources */,
 				2199020824FD35DC001BC727 /* JWKResponse.swift in Sources */,
 				E7F8DA5F287854F2006996BC /* TPPPDFThumbnailView.swift in Sources */,
-				11E0208D197F05D9009DEA93 /* UIFont+TPPSystemFontOverride.m in Sources */,
 				03690E291EB2B44300F75D5F /* TPPReadiumBookmark.swift in Sources */,
 				E5BEF01926BD94D600C2A50B /* UIFont+Extensions.swift in Sources */,
 				73B5DFDC26052A1800225C12 /* TPPBookButtonsState.m in Sources */,
@@ -6325,7 +6242,6 @@
 				E56576002C933527005953BD /* AudiobookFileLogger.swift in Sources */,
 				E57F92BA2D6918E4003D9180 /* BorderStyleModifier.swift in Sources */,
 				E7B20B39285B3AC400C49FE1 /* TPPPDFPreviewGrid.swift in Sources */,
-				11A14DF41A1BF94F00D6C510 /* UIColor+TPPColorAdditions.m in Sources */,
 				E562DD9C2D35ABC4003A1A40 /* BookDetailView.swift in Sources */,
 				E5DF75322E6B4AF700971F19 /* SamplePreviewManager.swift in Sources */,
 				E58EB2942ECF76FC00CDA626 /* EPUBReaderView.swift in Sources */,
@@ -6355,7 +6271,6 @@
 				21DF7F9325AF5E1E0090402A /* ReaderModule.swift in Sources */,
 				E56D85A12E68E58E00DFF16C /* TPPReloadView.swift in Sources */,
 				E78AE7F6291BFC6200884446 /* TPPBookCoverRegistry.swift in Sources */,
-				118B7ABF195CBF72005CE3E7 /* TPPSession.m in Sources */,
 				D6E301B27A5D47A7887F5A80 /* EULAView.swift in Sources */,
 				C64399E91697447CA4F20ABB /* EULAViewHosting.swift in Sources */,
 				7353940D25085DBB0043C800 /* TPPPresentationUtils.swift in Sources */,
@@ -6431,7 +6346,6 @@
 				E5E4A9CC2EB055BB00CC1D67 /* PersistentLogger.swift in Sources */,
 				E5E4A9CD2EB055BB00CC1D67 /* ErrorLogExporter.swift in Sources */,
 				E53573CF295612BA008BDCA4 /* MyBooksView.swift in Sources */,
-				085D31DF1BE3CD3C007F7672 /* NSURLRequest+NYPLURLRequestAdditions.m in Sources */,
 				E731FF4A2864C716001DB7F2 /* TPPPDFPreviewGridDelegate.swift in Sources */,
 				E731FF452864C2A4001DB7F2 /* Binding+onChange.swift in Sources */,
 				E544A1A02DF0BB6C008679D6 /* HoldsView.swift in Sources */,
@@ -6553,7 +6467,7 @@
 				E73549DE28A53982001B0D0A /* TPPPDFPageBookmark.swift in Sources */,
 				73B501C524F48D4C00FBAD7D /* TPPUserAccountFrontEndValidation.swift in Sources */,
 				E5EE38102D5DB1A100252001 /* Color+Extension.swift in Sources */,
-				E5E4A9C82EB0559500CC1D67 /* PalaceError.swift in Sources */,
+				E5E4A9C82EB0559500CC1D67 /* Palace
 				E5PP3439012F0B10000EB002 /* ErrorActivityTracker.swift in Sources */,
 				E5PP3439012F0B10000EB004 /* ErrorDetail.swift in Sources */,
 				E5PP3439012F0B10000EB006 /* ErrorDetailViewController.swift in Sources */,

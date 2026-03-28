@@ -4,8 +4,6 @@
 
 #import "TPPConfiguration.h"
 #import "TPPLinearView.h"
-#import "UIView+TPPViewAdditions.h"
-#import "UIFont+TPPSystemFontOverride.h"
 #import "TPPBookDetailDownloadFailedView.h"
 
 @interface TPPBookDetailDownloadFailedView ()
