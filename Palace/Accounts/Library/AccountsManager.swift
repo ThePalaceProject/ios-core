@@ -39,6 +39,70 @@ struct CatalogCacheMetadata: Codable {
     func account(_ uuid: String) -> Account?
 }
 
+/// Actor that protects AccountsManager's shared mutable state.
+/// Replaces the concurrent DispatchQueue + barrier reader/writer pattern.
+private actor AccountsState {
+    var accountSet: String
+    var accountSets = [String: [Account]]()
+    var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
+
+    init(accountSet: String) {
+        self.accountSet = accountSet
+    }
+
+    // MARK: - Account Sets
+
+    func getAccountSet() -> String { accountSet }
+    func setAccountSet(_ value: String) { accountSet = value }
+
+    func getAccounts(_ key: String?) -> [Account] {
+        let k = key ?? accountSet
+        return accountSets[k] ?? []
+    }
+
+    func setAccounts(_ accounts: [Account], for key: String) {
+        accountSets[key] = accounts
+    }
+
+    func accountsHaveLoaded() -> Bool {
+        !(accountSets[accountSet]?.isEmpty ?? true)
+    }
+
+    func accountsEmpty(for key: String) -> Bool {
+        accountSets[key]?.isEmpty ?? true
+    }
+
+    func findAccount(_ uuid: String) -> Account? {
+        accountSets.values
+            .first { $0.contains(where: { $0.uuid == uuid }) }?
+            .first(where: { $0.uuid == uuid })
+    }
+
+    // MARK: - Loading Handlers
+
+    /// Returns true if a load is already in progress for this hash.
+    func addLoadingHandler(for hash: String, _ handler: ((Bool) -> Void)?) -> Bool {
+        let alreadyLoading = loadingCompletionHandlers[hash] != nil
+
+        if alreadyLoading {
+            if let h = handler {
+                loadingCompletionHandlers[hash]?.append(h)
+            }
+            return true
+        }
+
+        // First request for this hash
+        loadingCompletionHandlers[hash] = handler.map { [$0] } ?? []
+        return false
+    }
+
+    func drainLoadingHandlers(for hash: String) -> [(Bool) -> Void] {
+        let handlers = loadingCompletionHandlers[hash] ?? []
+        loadingCompletionHandlers[hash] = nil
+        return handlers
+    }
+}
+
 /// Manages library accounts asynchronously with authentication & image loading
 @objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider {
 
@@ -82,19 +146,14 @@ struct CatalogCacheMetadata: Codable {
     let tppAccountUUID = AccountsManager.TPPAccountUUIDs[0]
 
     let ageCheck: TPPAgeCheckVerifying
-    private var accountSet: String
-    private var accountSets = [String: [Account]]()
-    private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
-
-    // Per‐catalog in‐flight tracking:
-    private var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
-    private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
+    private let state: AccountsState
 
     private override init() {
-        self.accountSet = TPPConfiguration.customUrlHash()
+        let initialAccountSet = TPPConfiguration.customUrlHash()
             ?? (TPPSettings.shared.useBetaLibraries
                     ? TPPConfiguration.betaUrlHash
                     : TPPConfiguration.prodUrlHash)
+        self.state = AccountsState(accountSet: initialAccountSet)
         self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: TPPSettings.shared)
         super.init()
         NotificationCenter.default.addObserver(
@@ -104,22 +163,33 @@ struct CatalogCacheMetadata: Codable {
             object: nil
         )
 
-        DispatchQueue.global(qos: .background).async { [weak self] in
+        Task { [weak self] in
             self?.loadCatalogs(completion: nil)
         }
     }
 
-    // MARK: – Thread‐safe accountSets access
+    // MARK: – Thread‐safe accountSets access (actor-backed)
 
-    private func performRead<T>(_ block: () -> T) -> T {
-        return accountSetsLock.sync {
-            block()
+    /// Synchronous read for backward compatibility. Uses semaphore to block
+    /// the calling thread while the actor processes the request.
+    /// Prefer the async variants for new code.
+    private func performRead<T>(_ block: @escaping (AccountsState) async -> T) -> T {
+        // Fast path: if we're already in a Task context, this will work.
+        // For synchronous callers, we use a semaphore to bridge.
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: T!
+        Task {
+            result = await block(self.state)
+            semaphore.signal()
         }
+        semaphore.wait()
+        return result
     }
 
-    private func performWrite(_ block: @escaping () -> Void) {
-        accountSetsLock.async(flags: .barrier) {
-            block()
+    /// Fire-and-forget write for backward compatibility.
+    private func performWrite(_ block: @escaping (AccountsState) async -> Void) {
+        Task {
+            await block(self.state)
         }
     }
 
@@ -178,23 +248,20 @@ struct CatalogCacheMetadata: Codable {
     }
 
     func account(_ uuid: String) -> Account? {
-        return performRead {
-            accountSets.values
-                .first { $0.contains(where: { $0.uuid == uuid }) }?
-                .first(where: { $0.uuid == uuid })
+        return performRead { state in
+            await state.findAccount(uuid)
         }
     }
 
     func accounts(_ key: String? = nil) -> [Account] {
-        return performRead {
-            let k = key ?? self.accountSet
-            return self.accountSets[k] ?? []
+        return performRead { state in
+            await state.getAccounts(key)
         }
     }
 
     var accountsHaveLoaded: Bool {
-        return performRead {
-            !(self.accountSets[self.accountSet]?.isEmpty ?? true)
+        return performRead { state in
+            await state.accountsHaveLoaded()
         }
     }
 
@@ -203,37 +270,17 @@ struct CatalogCacheMetadata: Codable {
     /// Adds a completion handler for the given catalog hash,
     /// returns true if a load is already underway.
     private func addLoadingHandler(for hash: String, _ handler: ((Bool) -> Void)?) -> Bool {
-        var alreadyLoading = false
-        loadingHandlersQueue.sync {
-            alreadyLoading = loadingCompletionHandlers[hash] != nil
+        return performRead { state in
+            await state.addLoadingHandler(for: hash, handler)
         }
-
-        guard !alreadyLoading else {
-            if let h = handler {
-                loadingHandlersQueue.async(flags: .barrier) { [weak self] in
-                    self?.loadingCompletionHandlers[hash]?.append(h)
-                }
-            }
-            return true
-        }
-
-        // first request for this hash
-        loadingHandlersQueue.async(flags: .barrier) {
-            self.loadingCompletionHandlers[hash] = handler.map { [$0] } ?? []
-        }
-        return false
     }
 
     /// Calls & clears all handlers for the given hash
     private func callAndClearLoadingHandlers(for hash: String, _ success: Bool) {
-        var handlers: [(Bool) -> Void] = []
-        loadingHandlersQueue.sync {
-            handlers = loadingCompletionHandlers[hash] ?? []
+        Task {
+            let handlers = await self.state.drainLoadingHandlers(for: hash)
+            handlers.forEach { $0(success) }
         }
-        loadingHandlersQueue.async(flags: .barrier) {
-            self.loadingCompletionHandlers[hash] = nil
-        }
-        handlers.forEach { $0(success) }
     }
 
     /// Public entrypoint - implements stale-while-revalidate pattern
@@ -251,7 +298,7 @@ struct CatalogCacheMetadata: Codable {
             .trimmingCharacters(in: ["="])
 
         // 1. If already loaded in memory, return immediately
-        if performRead({ self.accountSets[hash]?.isEmpty == false }) {
+        if performRead({ state in await !state.accountsEmpty(for: hash) }) {
             completion?(true)
             // Still refresh in background if stale
             if isCacheStale(hash: hash) {
@@ -321,7 +368,7 @@ struct CatalogCacheMetadata: Codable {
 
     /// Refreshes catalog data in background without blocking the UI
     private func refreshInBackground(targetUrl: URL, hash: String) {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        Task.detached(priority: .utility) { [weak self] in
             Log.debug(#file, "Starting background refresh for catalog hash \(hash)")
 
             TPPNetworkExecutor.shared.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
@@ -434,8 +481,8 @@ struct CatalogCacheMetadata: Codable {
                 }
             }
 
-            self.performWrite {
-                self.accountSets[hash] = newAccounts
+            self.performWrite { state in
+                await state.setAccounts(newAccounts, for: hash)
             }
 
             let group = DispatchGroup()
@@ -486,8 +533,8 @@ struct CatalogCacheMetadata: Codable {
                     ? TPPConfiguration.betaUrlHash
                     : TPPConfiguration.prodUrlHash)
 
-        performWrite { self.accountSet = newHash }
-        if performRead({ self.accountSets[newHash]?.isEmpty ?? true }) || TPPConfiguration.customUrlHash() != nil {
+        performWrite { state in await state.setAccountSet(newHash) }
+        if performRead({ state in await state.accountsEmpty(for: newHash) }) || TPPConfiguration.customUrlHash() != nil {
             loadCatalogs(completion: completion)
         } else {
             completion?(true)

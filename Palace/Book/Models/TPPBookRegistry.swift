@@ -36,11 +36,36 @@ protocol TPPBookRegistryProvider {
     func thumbnailImage(for book: TPPBook?, handler: @escaping (_ image: UIImage?) -> Void)
 }
 
-// TPPBookRegistryData and TPPBookRegistryKey are defined in TPPBookRegistryRecord.swift
+typealias TPPBookRegistryData = [String: Any]
+
+extension TPPBookRegistryData {
+    func value(for key: TPPBookRegistryKey) -> Any? {
+        return self[key.rawValue]
+    }
+    mutating func setValue(_ value: Any?, for key: TPPBookRegistryKey) {
+        self[key.rawValue] = value
+    }
+    func object(for key: TPPBookRegistryKey) -> TPPBookRegistryData? {
+        self[key.rawValue] as? TPPBookRegistryData
+    }
+    func array(for key: TPPBookRegistryKey) -> [TPPBookRegistryData]? {
+        self[key.rawValue] as? [TPPBookRegistryData]
+    }
+}
+
+enum TPPBookRegistryKey: String {
+    case records = "records"
+    case book = "metadata"
+    case state = "state"
+    case fulfillmentId = "fulfillmentId"
+    case location = "location"
+    case readiumBookmarks = "bookmarks"
+    case genericBookmarks = "genericBookmarks"
+}
 
 private class BoolWithDelay {
     private var switchBackDelay: Double
-    private var resetTask: DispatchWorkItem?
+    private var resetTask: Task<Void, Never>?
     private var onChange: ((_ value: Bool) -> Void)?
     init(delay: Double = 5, onChange: ((_ value: Bool) -> Void)? = nil) {
         self.switchBackDelay = delay
@@ -55,11 +80,12 @@ private class BoolWithDelay {
         didSet {
             resetTask?.cancel()
             if value {
-                let task = DispatchWorkItem { [weak self] in
+                let delay = switchBackDelay
+                resetTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    guard !Task.isCancelled else { return }
                     self?.value = false
                 }
-                resetTask = task
-                DispatchQueue.main.asyncAfter(deadline: .now() + switchBackDelay, execute: task)
             }
         }
     }
@@ -76,12 +102,15 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     private let registryFolderName = "registry"
     private let registryFileName = "registry.json"
 
-    private var accountDidChange = AccountsManager.shared.currentAccountDidChange
+    private var accountDidChange = NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
         .receive(on: RunLoop.main)
         .sink { _ in
             TPPBookRegistry.shared.load()
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            // Delay sync briefly to allow the load to complete.
+            // Uses Task.sleep instead of DispatchQueue.main.asyncAfter.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
                 TPPBookRegistry.shared.sync()
             }
         }
@@ -92,7 +121,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             // Without this, the main thread block reads self.registry while sync queue
             // barrier blocks may be writing to it, causing EXC_BAD_ACCESS.
             let snapshot = registry
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 registrySubject.send(snapshot)
                 NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
@@ -117,27 +146,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     private let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
     private let bookStateSubject = PassthroughSubject<(String, TPPBookState), Never>()
 
-    /// Publishes sync state changes (replaces `.TPPSyncBegan` / `.TPPSyncEnded` notifications)
-    private let syncStateSubject = CurrentValueSubject<Bool, Never>(false)
-
-    /// Publisher for sync state. Emits `true` when syncing begins, `false` when it ends.
-    var syncStatePublisher: AnyPublisher<Bool, Never> {
-        syncStateSubject
-            .removeDuplicates()
-            .receive(on: RunLoop.main)
-            .eraseToAnyPublisher()
-    }
-
-    /// Publishes book processing changes (replaces `.TPPBookProcessingDidChange` notification)
-    private let bookProcessingSubject = PassthroughSubject<(bookID: String, processing: Bool), Never>()
-
-    /// Publisher for book processing state changes.
-    var bookProcessingPublisher: AnyPublisher<(bookID: String, processing: Bool), Never> {
-        bookProcessingSubject
-            .receive(on: RunLoop.main)
-            .eraseToAnyPublisher()
-    }
-
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
         registrySubject
             .receive(on: RunLoop.main)
@@ -149,8 +157,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             .eraseToAnyPublisher()
     }
 
-    private lazy var syncState = BoolWithDelay { [weak self] value in
-        self?.syncStateSubject.send(value)
+    private var syncState = BoolWithDelay { value in
         if value {
             NotificationCenter.default.post(name: .TPPSyncBegan, object: nil, userInfo: nil)
         } else {
@@ -161,7 +168,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     private(set) var state: RegistryState = .unloaded {
         didSet {
             syncState.value = (state == .syncing)
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil, userInfo: nil)
             }
         }
@@ -209,7 +216,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
         loadingAccount = account
         Log.info(#file, "📖 Loading registry for account: \(account)")
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             self?.state = .loading
         }
 
@@ -278,7 +285,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             // Capture account to clear loading state
             let loadedAccount = account
 
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self = self else { return }
 
                 // Clear loading state only if we're still loading this account
@@ -353,7 +360,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         }
         if didChange {
             save()
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
             }
         }
@@ -385,7 +392,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         syncUrl = loansUrl
 
         TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: true) { [weak self] feed, errorDocument in
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 if self.syncUrl != loansUrl { return }
 
@@ -505,7 +512,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         }
         let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
 
-        DispatchQueue.global(qos: .utility).async {
+        Task.detached(priority: .utility) {
             do {
                 let directoryURL = registryUrl.deletingLastPathComponent()
                 if !FileManager.default.fileExists(atPath: directoryURL.path) {
@@ -513,7 +520,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 }
                 let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
                 try registryData.write(to: registryUrl, options: .atomic)
-                DispatchQueue.main.async {
+                await MainActor.run {
                     NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
                 }
             } catch {
@@ -610,12 +617,13 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             )
             self.save()
             let snapshot = self.registry
-            DispatchQueue.main.async {
-                self.registrySubject.send(snapshot)
+            let bookId = book.identifier
+            Task { @MainActor [weak self] in
+                self?.registrySubject.send(snapshot)
                 // CRITICAL: Also publish state change so ViewModels receive it
-                self.bookStateSubject.send((book.identifier, state))
+                self?.bookStateSubject.send((bookId, state))
                 // Also post notification for views using legacy observation
-                self.postStateNotification(bookIdentifier: book.identifier, state: state)
+                self?.postStateNotification(bookIdentifier: bookId, state: state)
             }
         }
     }
@@ -630,10 +638,11 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             self.save()
 
             let snapshot = self.registry
-            DispatchQueue.main.async {
-                self.registrySubject.send(snapshot)
-                self.bookStateSubject.send((book.identifier, .unregistered))
-                self.postStateNotification(bookIdentifier: book.identifier, state: .unregistered)
+            let bookId = book.identifier
+            Task { @MainActor [weak self] in
+                self?.registrySubject.send(snapshot)
+                self?.bookStateSubject.send((bookId, .unregistered))
+                self?.postStateNotification(bookIdentifier: bookId, state: .unregistered)
             }
         }
     }
@@ -655,11 +664,11 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             self.registry.removeValue(forKey: bookIdentifier)
             self.save()
             let snapshot = self.registry
-            DispatchQueue.main.async {
-                self.registrySubject.send(snapshot)
+            Task { @MainActor [weak self] in
+                self?.registrySubject.send(snapshot)
                 // Publish state change for removed book
-                self.bookStateSubject.send((bookIdentifier, .unregistered))
-                self.postStateNotification(bookIdentifier: bookIdentifier, state: .unregistered)
+                self?.bookStateSubject.send((bookIdentifier, .unregistered))
+                self?.postStateNotification(bookIdentifier: bookIdentifier, state: .unregistered)
                 if let book = removedBook {
                     TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
                 }
@@ -695,12 +704,13 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             self.save()
 
             let snapshot = self.registry
-            DispatchQueue.main.async {
-                self.registrySubject.send(snapshot)
+            let bookId = book.identifier
+            Task { @MainActor [weak self] in
+                self?.registrySubject.send(snapshot)
                 // Publish state change if it changed
                 if nextState != previousState {
-                    self.bookStateSubject.send((book.identifier, nextState))
-                    self.postStateNotification(bookIdentifier: book.identifier, state: nextState)
+                    self?.bookStateSubject.send((bookId, nextState))
+                    self?.postStateNotification(bookIdentifier: bookId, state: nextState)
                 }
             }
         }
@@ -740,15 +750,15 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             self.postStateNotification(bookIdentifier: bookIdentifier, state: state)
             self.save()
 
-            DispatchQueue.main.async {
-                self.bookStateSubject.send((bookIdentifier, state))
+            Task { @MainActor [weak self] in
+                self?.bookStateSubject.send((bookIdentifier, state))
             }
         }
     }
 
     @available(*, deprecated, message: "Use Combine publishers instead.")
     private func postStateNotification(bookIdentifier: String, state: TPPBookState) {
-        DispatchQueue.main.async {
+        Task { @MainActor in
             NotificationCenter.default.post(
                 name: .TPPBookRegistryStateDidChange,
                 object: nil,
@@ -791,8 +801,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             } else {
                 self.processingIdentifiers.remove(bookIdentifier)
             }
-            DispatchQueue.main.async {
-                self.bookProcessingSubject.send((bookID: bookIdentifier, processing: processing))
+            Task { @MainActor in
                 NotificationCenter.default.post(name: .TPPBookProcessingDidChange, object: nil, userInfo: [
                     TPPNotificationKeys.bookProcessingBookIDKey: bookIdentifier,
                     TPPNotificationKeys.bookProcessingValueKey: processing
@@ -1026,4 +1035,23 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     }
 }
 
-// TPPBookLocation extensions are defined in TPPBookLocation.swift
+extension TPPBookLocation {
+    func locationStringDictionary() -> [String: Any]? {
+        guard let data = locationString.data(using: .utf8),
+              let dictionary = try? JSONSerialization.jsonObject(with: data, options: .allowFragments) as? [String: Any]
+        else { return nil }
+        return dictionary
+    }
+
+    func isSimilarTo(_ location: TPPBookLocation) -> Bool {
+        guard renderer == location.renderer,
+              let locationDict = locationStringDictionary(),
+              let otherLocationDict = location.locationStringDictionary() else {
+            return false
+        }
+        let excludedKeys = ["timeStamp", "annotationId"]
+        let filteredDict = locationDict.filter { !excludedKeys.contains($0.key) }
+        let filteredOtherDict = otherLocationDict.filter { !excludedKeys.contains($0.key) }
+        return NSDictionary(dictionary: filteredDict).isEqual(to: filteredOtherDict)
+    }
+}
