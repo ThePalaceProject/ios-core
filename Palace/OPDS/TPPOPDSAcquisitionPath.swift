@@ -104,7 +104,7 @@ public final class TPPOPDSAcquisitionPath: NSObject {
 
     #if FEATURE_DRM_CONNECTOR
     types.insert(OPDSContentType.adobeAdept)
-    if AdobeCertificate.defaultCertificate.hasExpired {
+    if AdobeCertificate.defaultCertificate?.hasExpired ?? false {
       types.remove(OPDSContentType.adobeAdept)
     }
     #endif

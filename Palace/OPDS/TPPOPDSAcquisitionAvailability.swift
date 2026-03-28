@@ -192,7 +192,7 @@ public final class TPPOPDSAcquisitionAvailabilityReady: NSObject, TPPOPDSAcquisi
 
 /// Parses availability from an OPDS link XML element.
 /// Returns `TPPOPDSAcquisitionAvailabilityUnlimited` as the default.
-public func NYPLOPDSAcquisitionAvailabilityWithLinkXML(_ linkXML: TPPXML) -> TPPOPDSAcquisitionAvailability {
+func NYPLOPDSAcquisitionAvailabilityWithLinkXML(_ linkXML: TPPXML) -> TPPOPDSAcquisitionAvailability {
   let copiesUnknown = TPPOPDSAcquisitionAvailabilityCopiesUnknown
 
   var copiesHeld: UInt = copiesUnknown

@@ -22,7 +22,7 @@ final class TPPXML: NSObject {
   private var mutableChildren: NSMutableArray?
 
   // Internal initializer used during parsing
-  fileprivate override init() {
+  override init() {
     self.attributes = [:]
     self.children = []
     self.name = ""
@@ -33,7 +33,7 @@ final class TPPXML: NSObject {
     super.init()
   }
 
-  fileprivate init(
+  init(
     attributes: [String: String],
     name: String,
     namespaceURI: String?,
@@ -89,11 +89,11 @@ final class TPPXML: NSObject {
 
   // MARK: - Internal mutation (used by parser delegate)
 
-  fileprivate func appendChild(_ child: TPPXML) {
+  func appendChild(_ child: TPPXML) {
     children.append(child)
   }
 
-  fileprivate func appendValue(_ string: String) {
+  func appendValue(_ string: String) {
     value += string
   }
 }

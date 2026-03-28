@@ -33,7 +33,7 @@ public final class TPPOPDSIndirectAcquisition: NSObject {
   }
 
   /// Convenience initializer from XML.
-  @objc public convenience init?(xml: TPPXML) {
+  @objc convenience init?(xml: TPPXML) {
     guard let type = xml.attributes["type"] as? String else {
       return nil
     }
@@ -61,7 +61,7 @@ public final class TPPOPDSIndirectAcquisition: NSObject {
 
   /// Factory method that parses from XML.
   /// Returns `nil` if the XML element lacks a `type` attribute.
-  @objc public static func indirectAcquisition(withXML xml: TPPXML) -> TPPOPDSIndirectAcquisition? {
+  @objc static func indirectAcquisition(withXML xml: TPPXML) -> TPPOPDSIndirectAcquisition? {
     guard let type = xml.attributes["type"] as? String else {
       return nil
     }

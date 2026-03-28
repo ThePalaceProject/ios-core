@@ -16,7 +16,7 @@ public final class TPPOPDSLink: NSObject {
 
   /// Designated initializer.
   /// Returns `nil` if the XML element lacks a valid `href` attribute.
-  @objc public init?(xml linkXML: TPPXML) {
+  @objc init?(xml linkXML: TPPXML) {
     guard let hrefString = linkXML.attributes["href"] as? String,
           let hrefURL = URL(string: hrefString) else {
       Log.warn(#file, "Missing or invalid required 'href' attribute.")

@@ -148,7 +148,7 @@ public final class TPPOPDSAcquisition: NSObject {
   }
 
   /// Convenience initializer from link XML.
-  @objc public convenience init?(linkXML: TPPXML) {
+  @objc convenience init?(linkXML: TPPXML) {
     guard let result = TPPOPDSAcquisition.acquisition(withLinkXML: linkXML) else {
       return nil
     }
@@ -167,7 +167,7 @@ public final class TPPOPDSAcquisition: NSObject {
 
   /// Factory method that parses from a link XML element.
   /// Returns `nil` if the XML element lacks required attributes.
-  @objc public static func acquisition(withLinkXML linkXML: TPPXML) -> TPPOPDSAcquisition? {
+  @objc static func acquisition(withLinkXML linkXML: TPPXML) -> TPPOPDSAcquisition? {
     guard let relationString = linkXML.attributes[acqRelAttribute] as? String,
           let relation = NYPLOPDSAcquisitionRelationFromString(relationString) else {
       return nil

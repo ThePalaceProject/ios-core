@@ -71,7 +71,7 @@ public final class TPPOPDSFeed: NSObject {
   }
 
   /// Designated initializer. Returns `nil` if the XML is missing required fields.
-  @objc public init?(xml feedXML: TPPXML?) {
+  @objc init?(xml feedXML: TPPXML?) {
     guard let feedXML = feedXML else {
       return nil
     }
@@ -150,11 +150,10 @@ public final class TPPOPDSFeed: NSObject {
 
     // licensor
     if let licensorXML = feedXML.firstChild(withName: "licensor"),
-       let attrs = licensorXML.attributes as? [String: String],
-       !attrs.isEmpty,
-       let vendor = attrs["drm:vendor"],
-       let tokenXML = licensorXML.firstChild(withName: "clientToken"),
-       let clientToken = tokenXML.value {
+       !licensorXML.attributes.isEmpty,
+       let vendor = licensorXML.attributes["drm:vendor"],
+       let tokenXML = licensorXML.firstChild(withName: "clientToken") {
+      let clientToken = tokenXML.value
       self.licensor = ["vendor": vendor, "clientToken": clientToken] as NSDictionary
     } else {
       self.licensor = nil
@@ -238,7 +237,7 @@ public final class TPPOPDSFeed: NSObject {
         return
       }
 
-      guard let feedXML = TPPXML(data: data) else {
+      guard let feedXML = TPPXML.xml(with: data) else {
         Log.info(#file, "Failed to parse data as XML.")
         TPPErrorLogger.logError(
           withCode: .feedParseFail,

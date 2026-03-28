@@ -48,8 +48,8 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
                         if let children = link.children as? [TPPXML], !children.isEmpty {
                             for child in children {
 
-                                if child.name == "hashed_passphrase", let passphrase = child.value {
-                                    return passphrase
+                                if child.name == "hashed_passphrase" {
+                                    return child.value
                                 }
                             }
                         }

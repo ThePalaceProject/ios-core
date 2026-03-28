@@ -31,13 +31,12 @@ public final class TPPOPDSEntry: NSObject {
   @objc public let duration: String?
 
   /// Designated initializer. Returns `nil` if the XML is missing required fields.
-  @objc public init?(xml entryXML: TPPXML) {
+  @objc init?(xml entryXML: TPPXML) {
     // alternativeHeadline
     self.alternativeHeadline = entryXML.firstChild(withName: "alternativeHeadline")?.value
 
     // duration
-    let durationXML = (entryXML.children(withName: "duration") as? [TPPXML])?.first
-    self.duration = durationXML?.value
+    self.duration = entryXML.firstChild(withName: "duration")?.value
 
     // authors
     var authorStrs: [String] = []
@@ -48,9 +47,7 @@ public final class TPPOPDSEntry: NSObject {
         Log.warn(#file, "'author' element missing required 'name' element. Ignoring malformed 'author' element.")
         continue
       }
-      if let name = nameXML.value {
-        authorStrs.append(name)
-      }
+      authorStrs.append(nameXML.value)
       if let linkXML = authorXML.firstChild(withName: "link"),
          let link = TPPOPDSLink(xml: linkXML),
          link.rel == "contributor" {
@@ -65,7 +62,7 @@ public final class TPPOPDSEntry: NSObject {
     for contributorObj in entryXML.children(withName: "contributor") {
       guard let contributorXML = contributorObj as? TPPXML else { continue }
       let role = contributorXML.attributes["opf:role"] as? String ?? ""
-      if let name = contributorXML.firstChild(withName: "name")?.value?.stringByDecodingHTMLEntities {
+      if let name = contributorXML.firstChild(withName: "name")?.value.stringByDecodingHTMLEntities {
         contribs[role, default: []].append(name)
       }
     }
@@ -107,7 +104,7 @@ public final class TPPOPDSEntry: NSObject {
     self.publisher = entryXML.firstChild(withName: "publisher")?.value
 
     // summary
-    self.summary = entryXML.firstChild(withName: "summary")?.value?.stringByDecodingHTMLEntities
+    self.summary = entryXML.firstChild(withName: "summary")?.value.stringByDecodingHTMLEntities
 
     // title (required)
     guard let titleValue = entryXML.firstChild(withName: "title")?.value else {
