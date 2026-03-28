@@ -43,32 +43,7 @@ protocol TPPBookRegistryProvider {
     func thumbnailImage(for book: TPPBook?, handler: @escaping (_ image: UIImage?) -> Void)
 }
 
-typealias TPPBookRegistryData = [String: Any]
-
-extension TPPBookRegistryData {
-    func value(for key: TPPBookRegistryKey) -> Any? {
-        return self[key.rawValue]
-    }
-    mutating func setValue(_ value: Any?, for key: TPPBookRegistryKey) {
-        self[key.rawValue] = value
-    }
-    func object(for key: TPPBookRegistryKey) -> TPPBookRegistryData? {
-        self[key.rawValue] as? TPPBookRegistryData
-    }
-    func array(for key: TPPBookRegistryKey) -> [TPPBookRegistryData]? {
-        self[key.rawValue] as? [TPPBookRegistryData]
-    }
-}
-
-enum TPPBookRegistryKey: String {
-    case records = "records"
-    case book = "metadata"
-    case state = "state"
-    case fulfillmentId = "fulfillmentId"
-    case location = "location"
-    case readiumBookmarks = "bookmarks"
-    case genericBookmarks = "genericBookmarks"
-}
+// TPPBookRegistryData and TPPBookRegistryKey defined in TPPBookRegistryRecord.swift
 
 private class BoolWithDelay {
     private var switchBackDelay: Double
@@ -425,7 +400,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 guard let self = self else { return }
                 if self.syncUrl != loansUrl { return }
 
-                if let errorDocument = errorDocument {
+                if let errorDocument = errorDocument as? [AnyHashable: Any] {
                     self.state = .loaded
                     self.syncUrl = nil
                     completion?(errorDocument, false)
@@ -1065,23 +1040,4 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     }
 }
 
-extension TPPBookLocation {
-    func locationStringDictionary() -> [String: Any]? {
-        guard let data = locationString.data(using: .utf8),
-              let dictionary = try? JSONSerialization.jsonObject(with: data, options: .allowFragments) as? [String: Any]
-        else { return nil }
-        return dictionary
-    }
-
-    func isSimilarTo(_ location: TPPBookLocation) -> Bool {
-        guard renderer == location.renderer,
-              let locationDict = locationStringDictionary(),
-              let otherLocationDict = location.locationStringDictionary() else {
-            return false
-        }
-        let excludedKeys = ["timeStamp", "annotationId"]
-        let filteredDict = locationDict.filter { !excludedKeys.contains($0.key) }
-        let filteredOtherDict = otherLocationDict.filter { !excludedKeys.contains($0.key) }
-        return NSDictionary(dictionary: filteredDict).isEqual(to: filteredOtherDict)
-    }
-}
+// TPPBookLocation extensions defined in TPPBookLocation.swift
