@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B11A01BF0000000000000001 /* StringExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11A01FR0000000000000001 /* StringExtensionsTests.swift */; };
+		B11A02BF0000000000000001 /* TPPBookCoverRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11A02FR0000000000000001 /* TPPBookCoverRegistryTests.swift */; };
+		B11A03BF0000000000000001 /* AccountDetailsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11A03FR0000000000000001 /* AccountDetailsTests.swift */; };
 		0345BFE81DBF027200398B6F /* APIKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0345BFD61DBF002E00398B6F /* APIKeys.swift */; };
 		03690E291EB2B44300F75D5F /* TPPReadiumBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E281EB2B44300F75D5F /* TPPReadiumBookmark.swift */; };
 		03B092241E78839D00AD338D /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03B092231E78839D00AD338D /* QuartzCore.framework */; };
@@ -1263,6 +1266,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B11A01FR0000000000000001 /* StringExtensionsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StringExtensionsTests.swift; sourceTree = "<group>"; };
+		B11A02FR0000000000000001 /* TPPBookCoverRegistryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPBookCoverRegistryTests.swift; sourceTree = "<group>"; };
+		B11A03FR0000000000000001 /* AccountDetailsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountDetailsTests.swift; sourceTree = "<group>"; };
 		0345BFD61DBF002E00398B6F /* APIKeys.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = APIKeys.swift; sourceTree = "<group>"; };
 		03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReaderBookmarkCell.swift; sourceTree = "<group>"; };
 		03690E281EB2B44300F75D5F /* TPPReadiumBookmark.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReadiumBookmark.swift; sourceTree = "<group>"; };
@@ -3525,6 +3531,7 @@
 				17ADCF4E254BB84800D0A5FE /* TPPReaderBookmarksBusinessLogicTests.swift */,
 				17BE24D625F85D2300AE707F /* TPPAgeCheckTests.swift */,
 				E5A09A532F0D6F2A00CC23EA /* ProblemReportEmailTests.swift */,
+				B11A02FR0000000000000001 /* TPPBookCoverRegistryTests.swift */,
 				903F56D4F2AA03D69839AB3F /* CoverageGapTests.swift */,
 				QAGAP2FR000000000000001 /* CoverageGapTests2.swift */,
 				913F56D4F2AA03D69839AB40 /* CoverageGapTests3.swift */,
@@ -3604,6 +3611,7 @@
 				QAAUT001T260955EF00000001 /* AccountDetailsURLTests.swift */,
 				QAAPD001T260955EF00000001 /* AccountProfileDocumentTests.swift */,
 				PP3702FR000000000000004 /* AccountSwitchCleanupTests.swift */,
+				B11A03FR0000000000000001 /* AccountDetailsTests.swift */,
 			);
 			path = Accounts;
 			sourceTree = "<group>";
@@ -3692,6 +3700,7 @@
 				QATEST08FR00000000000001 /* SafeDictionaryTests.swift */,
 				QATEST10FR00000000000001 /* EmailAddressTests.swift */,
 				QATEST20FR00000000000001 /* TPPBookContentMetadataFilesHelperTests.swift */,
+				B11A01FR0000000000000001 /* StringExtensionsTests.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -4881,6 +4890,9 @@
 				PP3702BF000000000000002 /* AccountAwareNetworkTests.swift in Sources */,
 				PP3702BF000000000000003 /* ArraySafetyTests.swift in Sources */,
 				PP3702BF000000000000004 /* AccountSwitchCleanupTests.swift in Sources */,
+				B11A01BF0000000000000001 /* StringExtensionsTests.swift in Sources */,
+				B11A02BF0000000000000001 /* TPPBookCoverRegistryTests.swift in Sources */,
+				B11A03BF0000000000000001 /* AccountDetailsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
