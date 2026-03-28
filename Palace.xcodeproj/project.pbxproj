@@ -316,6 +316,8 @@
 		73B5E0012605679B00225C12 /* TPPBook+Additions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B5DFFB26055F8B00225C12 /* TPPBook+Additions.swift */; };
 		73C3CF5425C8EB6900CA8166 /* TPPUserAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CE5304243C020800315E63 /* TPPUserAccount.swift */; };
 		73C3CF5825C8EB6B00CA8166 /* TPPUserAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CE5304243C020800315E63 /* TPPUserAccount.swift */; };
+		UAAS00010001SIMPLYE001 /* UserAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = UAAS00010000FILEREF01 /* UserAccountAuthState.swift */; };
+		UAAS00010002PALACE0001 /* UserAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = UAAS00010000FILEREF01 /* UserAccountAuthState.swift */; };
 		73C3CF5A25CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73C3CF5925CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift */; };
 		73CDA121243EDAD8009CC6A6 /* URLRequest+Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CDA120243EDAD8009CC6A6 /* URLRequest+Logging.swift */; };
 		73D8D26825A68C6500DF5F69 /* TPPR3Owner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A2299A240F3B9B006B9EAD /* TPPR3Owner.swift */; };
@@ -579,6 +581,9 @@
 		C9A9B85299EEDD6939D79149 /* BuildFile in Sources */ = {isa = PBXBuildFile; };
 		CARPLAY0001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F8D8A0D1A094920B67DC0E2 /* CarPlaySceneDelegate.swift */; };
 		CARPLAY0002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B6CFD936164F32A7FD6A84 /* CarPlayTemplateManager.swift */; };
+		CPTB00010001SIMPLYE001 /* CarPlayTemplateBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CPTB00010000FILEREF01 /* CarPlayTemplateBuilder.swift */; };
+		CPTB00010002PALACE0001 /* CarPlayTemplateBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CPTB00010000FILEREF01 /* CarPlayTemplateBuilder.swift */; };
+		CPTB00010003PALACE0002 /* CarPlayTemplateBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CPTB00010000FILEREF01 /* CarPlayTemplateBuilder.swift */; };
 		CARPLAY0003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B2D269BFF440A381A893E3 /* CarPlayAudiobookBridge.swift */; };
 		CARPLAY0004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 639A868F3BDA4A7F97660BEA /* CarPlayImageProvider.swift */; };
 		CARPLAY1001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F8D8A0D1A094920B67DC0E2 /* CarPlaySceneDelegate.swift */; };
@@ -1443,12 +1448,14 @@
 		17A5AB4E25D201BD005DFF05 /* LCPPassphraseAuthenticationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LCPPassphraseAuthenticationService.swift; sourceTree = "<group>"; };
 		17ADCF4E254BB84800D0A5FE /* TPPReaderBookmarksBusinessLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReaderBookmarksBusinessLogicTests.swift; sourceTree = "<group>"; };
 		17B6CFD936164F32A7FD6A84 /* CarPlayTemplateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayTemplateManager.swift; sourceTree = "<group>"; };
+		CPTB00010000FILEREF01 /* CarPlayTemplateBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayTemplateBuilder.swift; sourceTree = "<group>"; };
 		17BE24D625F85D2300AE707F /* TPPAgeCheckTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAgeCheckTests.swift; sourceTree = "<group>"; };
 		17BE24DF25FABA0900AE707F /* TPPAgeCheckChoiceStorageMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAgeCheckChoiceStorageMock.swift; sourceTree = "<group>"; };
 		17BE24E625FABCDE00AE707F /* TPPUserAccountProviderMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserAccountProviderMock.swift; sourceTree = "<group>"; };
 		17BE24EC25FB09F000AE707F /* TPPCurrentLibraryAccountProviderMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPCurrentLibraryAccountProviderMock.swift; sourceTree = "<group>"; };
 		17BE24EE25FB114900AE707F /* simplye_authentication_document.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = simplye_authentication_document.json; sourceTree = "<group>"; };
 		17CE5304243C020800315E63 /* TPPUserAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserAccount.swift; sourceTree = "<group>"; };
+		UAAS00010000FILEREF01 /* UserAccountAuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAccountAuthState.swift; sourceTree = "<group>"; };
 		17D08378248E8EEB00092AA9 /* OverdriveProcessor.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OverdriveProcessor.framework; path = Carthage/Build/iOS/OverdriveProcessor.framework; sourceTree = "<group>"; };
 		17E81F07261522B3001003C2 /* TPPRoundedButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRoundedButton.swift; sourceTree = "<group>"; };
 		17E81F31261FF758001003C2 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = en; path = en.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
@@ -3271,6 +3278,7 @@
 				E58EAD5B2EC7746700CDA626 /* UserAccountPublisher+Extensions.swift */,
 				0857A0F62478337D00C7984E /* TPPCredentials.swift */,
 				17CE5304243C020800315E63 /* TPPUserAccount.swift */,
+				UAAS00010000FILEREF01 /* UserAccountAuthState.swift */,
 				5D3A28CB22D3DA850042B3BD /* UserProfileDocument.swift */,
 				E75423242AFC381E008CB7EF /* UserProfileDocument+Links.swift */,
 			);
@@ -4356,6 +4364,7 @@
 			children = (
 				4F8D8A0D1A094920B67DC0E2 /* CarPlaySceneDelegate.swift */,
 				17B6CFD936164F32A7FD6A84 /* CarPlayTemplateManager.swift */,
+				CPTB00010000FILEREF01 /* CarPlayTemplateBuilder.swift */,
 				06B2D269BFF440A381A893E3 /* CarPlayAudiobookBridge.swift */,
 				639A868F3BDA4A7F97660BEA /* CarPlayImageProvider.swift */,
 			);
@@ -5100,6 +5109,7 @@
 				ABEVENTS0001PALACE0001 /* AudiobookEvents.swift in Sources */,
 				CARPLAY1001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,
 				CARPLAY1002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */,
+				CPTB00010002PALACE0001 /* CarPlayTemplateBuilder.swift in Sources */,
 				CARPLAY1003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */,
 				CARPLAY1004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */,
 				73D8D26E25A68CA900DF5F69 /* LibraryService.swift in Sources */,
@@ -5481,6 +5491,7 @@
 				E5E4AC582EB4FF7500CC1D67 /* SafeDictionary.swift in Sources */,
 				E50D684426AB235400F1042B /* TPPReaderTOCCell.swift in Sources */,
 				73C3CF5825C8EB6B00CA8166 /* TPPUserAccount.swift in Sources */,
+				UAAS00010001SIMPLYE001 /* UserAccountAuthState.swift in Sources */,
 				E544A1A22DF0BBF1008679D6 /* HoldsViewModel.swift in Sources */,
 				73EB0B2425821DF4006BC997 /* TPPBookDetailDownloadFailedView.m in Sources */,
 				21E4178A292810F600A78606 /* TPPPDFPreviewGridCell.swift in Sources */,
@@ -5513,6 +5524,7 @@
 				ABEVENTS0002SIMPLYE001 /* AudiobookEvents.swift in Sources */,
 				CARPLAY0001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,
 				CARPLAY0002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */,
+				CPTB00010001SIMPLYE001 /* CarPlayTemplateBuilder.swift in Sources */,
 				CARPLAY0003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */,
 				CARPLAY0004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */,
 				0826CD2F24AA2801000F4030 /* TPPLibraryDescriptionCell.swift in Sources */,
@@ -5866,6 +5878,7 @@
 				73A2299B240F3B9B006B9EAD /* TPPR3Owner.swift in Sources */,
 				E7CBF977285CA41400F00C02 /* TPPPDFDocument.swift in Sources */,
 				73C3CF5425C8EB6900CA8166 /* TPPUserAccount.swift in Sources */,
+				UAAS00010002PALACE0001 /* UserAccountAuthState.swift in Sources */,
 				E7FD4E54286CD0E000D26A3B /* TPPPDFLocationView.swift in Sources */,
 				7384C757252D20AA0012C2DD /* TPPBook+DistributorChecks.swift in Sources */,
 				E5D8C8DE2D829B2000667A99 /* HTMLTextView.swift in Sources */,
@@ -5922,6 +5935,7 @@
 				C9A9B85299EEDD6939D79149 /* BuildFile in Sources */,
 				CARPLAY0001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,
 				CARPLAY0002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */,
+				CPTB00010003PALACE0002 /* CarPlayTemplateBuilder.swift in Sources */,
 				CARPLAY0003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */,
 				CARPLAY0004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */,
 				9551D5385E148DD1FA10C632 /* TPPBookmarkDeletionLog.swift in Sources */,
