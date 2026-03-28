@@ -68,9 +68,8 @@ struct CatalogSearchView: View {
         .onChange(of: books) { newBooks in
             viewModel.updateBooks(newBooks)
         }
-        .onReceive(registryChangePublisher) { note in
-            let changedId = (note.userInfo as? [String: Any])?["bookIdentifier"] as? String
-            viewModel.applyRegistryUpdates(changedIdentifier: changedId)
+        .onReceive(registryChangePublisher) { (bookID, _) in
+            viewModel.applyRegistryUpdates(changedIdentifier: bookID)
         }
         .onReceive(downloadProgressPublisher) { changedId in
             viewModel.applyRegistryUpdates(changedIdentifier: changedId)
@@ -79,9 +78,8 @@ struct CatalogSearchView: View {
 
     // MARK: - Publishers
 
-    private var registryChangePublisher: AnyPublisher<Notification, Never> {
-        NotificationCenter.default
-            .publisher(for: .TPPBookRegistryStateDidChange)
+    private var registryChangePublisher: AnyPublisher<(String, TPPBookState), Never> {
+        TPPBookRegistry.shared.bookStatePublisher
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .eraseToAnyPublisher()
     }

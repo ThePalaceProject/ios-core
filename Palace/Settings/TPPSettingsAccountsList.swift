@@ -1,5 +1,6 @@
 import UIKit
 import SwiftUI
+import Combine
 
 /// UITableView to display or add library accounts that the user
 /// can then log in and adjust settings after selecting Accounts.
@@ -26,6 +27,7 @@ import SwiftUI
     fileprivate var userAddedSecondaryAccounts: [Account]!
     fileprivate let manager: AccountsManager
     fileprivate var accountsLoadingLogos: Set<String> = []
+    private var cancellables = Set<AnyCancellable>()
 
     required init(accounts: [Account]) {
         self.accounts = accounts
@@ -35,9 +37,7 @@ import SwiftUI
         super.init(nibName: nil, bundle: nil)
     }
 
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
+    deinit { }
 
     @available(*, unavailable)
     required init(coder aDecoder: NSCoder) {
@@ -86,14 +86,12 @@ import SwiftUI
         self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != AccountsManager.shared.currentAccount?.uuid }
 
         updateSettingsAccountList()
-        NotificationCenter.default.addObserver(self,
-                                               selector: #selector(reloadAfterAccountChange),
-                                               name: NSNotification.Name.TPPCurrentAccountDidChange,
-                                               object: nil)
-        NotificationCenter.default.addObserver(self,
-                                               selector: #selector(catalogChangeHandler),
-                                               name: NSNotification.Name.TPPCatalogDidLoad,
-                                               object: nil)
+        AccountsManager.shared.currentAccountDidChange
+            .sink { [weak self] _ in self?.reloadAfterAccountChange() }
+            .store(in: &cancellables)
+        AccountsManager.shared.catalogDidLoad
+            .sink { [weak self] _ in self?.catalogChangeHandler() }
+            .store(in: &cancellables)
 
         self.libraryAccounts = manager.accounts()
         updateNavBar()
@@ -180,12 +178,12 @@ import SwiftUI
             TPPSettings.shared.accountMainFeedURL = url
         }
 
+        // Setting currentAccount triggers both Combine publisher and NotificationCenter
         AccountsManager.shared.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
 
         self.tableView.reloadData()
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         self.tabBarController?.selectedIndex = 0
         (navigationController?.parent as? UINavigationController)?.popToRootViewController(animated: false)
     }

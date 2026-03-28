@@ -344,7 +344,7 @@ private actor AccountsState {
                 self.cacheAccountsCatalogData(data, hash: hash)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
                     self.catalogDidLoadSubject.send()
-                NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     self.callAndClearLoadingHandlers(for: hash, success)
                 }
 
@@ -355,7 +355,7 @@ private actor AccountsState {
                     Log.info(#file, "Using cached catalog data as fallback after network failure")
                     self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
                         self.catalogDidLoadSubject.send()
-                NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                         self.callAndClearLoadingHandlers(for: hash, success)
                     }
                 } else {
@@ -381,7 +381,7 @@ private actor AccountsState {
                     self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { _ in
                         // Notify UI that fresh data is available
                         self.catalogDidLoadSubject.send()
-                NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     }
 
                 case .failure(let error, _):

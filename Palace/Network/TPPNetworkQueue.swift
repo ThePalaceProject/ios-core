@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import SQLite
 
 /**
@@ -25,14 +26,11 @@ final class NetworkQueue: NSObject {
     typealias Expression = SQLite.Expression
 
     static let sharedInstance = NetworkQueue()
+    private var cancellables = Set<AnyCancellable>()
 
     // For Objective-C classes
     @objc static func shared() -> NetworkQueue {
         return NetworkQueue.sharedInstance
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
     }
 
     static let StatusCodes = [NSURLErrorTimedOut,
@@ -71,7 +69,10 @@ final class NetworkQueue: NSObject {
     // MARK: - Public Functions
 
     @objc func addObserverForOfflineQueue() {
-        NotificationCenter.default.addObserver(self, selector: #selector(retryQueue), name: .TPPReachabilityChanged, object: nil)
+        Reachability.shared.connectivityPublisher
+            .filter { $0 }
+            .sink { [weak self] _ in self?.retryQueue() }
+            .store(in: &cancellables)
     }
 
     func addRequest(_ libraryID: String,
