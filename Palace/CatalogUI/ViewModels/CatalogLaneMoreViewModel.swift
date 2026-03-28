@@ -34,7 +34,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
   let url: URL
   private let filterService = CatalogFilterService.self
   private let api: DefaultCatalogAPI
-  
+  private let bookRegistry: TPPBookRegistryProvider
+
   private var cancellables = Set<AnyCancellable>()
   
   /// Original catalog books (before registry updates) - used to restore state after returns
@@ -59,14 +60,20 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   // MARK: - Initialization
   
-  init(title: String, url: URL, api: DefaultCatalogAPI? = nil) {
+  init(
+    title: String,
+    url: URL,
+    api: DefaultCatalogAPI? = nil,
+    bookRegistry: TPPBookRegistryProvider = AppContainer.shared.bookRegistry
+  ) {
     self.title = title
     self.url = url
     self.api = api ?? DefaultCatalogAPI(
       client: URLSessionNetworkClient(),
       parser: OPDSParser()
     )
-    
+    self.bookRegistry = bookRegistry
+
     setupObservers()
   }
   
@@ -251,7 +258,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
           let book = books[bIdx]
           if let changedIdentifier, book.identifier != changedIdentifier { continue }
           
-          if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+          if let registryBook = bookRegistry.book(forIdentifier: book.identifier) {
             // Book is in registry - use registry version
             books[bIdx] = registryBook
             changed = true
@@ -284,7 +291,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
         let book = books[idx]
         if let changedIdentifier, book.identifier != changedIdentifier { continue }
         
-        if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+        if let registryBook = bookRegistry.book(forIdentifier: book.identifier) {
           // Book is in registry - use registry version
           books[idx] = registryBook
           anyChanged = true

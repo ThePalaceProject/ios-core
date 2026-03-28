@@ -73,7 +73,8 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Dependencies
 
     let registry: TPPBookRegistryProvider
-    let downloadCenter = MyBooksDownloadCenter.shared
+    let downloadCenter: MyBooksDownloadCenter
+    private let accounts: TPPLibraryAccountsProvider
     private var cancellables = Set<AnyCancellable>()
 
     // Note: audiobook management moved to BookService
@@ -97,13 +98,25 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Initializer
 
     @objc convenience init(book: TPPBook) {
-        self.init(book: book, registry: TPPBookRegistry.shared)
+        self.init(
+            book: book,
+            registry: AppContainer.shared.bookRegistry,
+            downloadCenter: AppContainer.shared.downloadCenter,
+            accounts: AppContainer.shared.accounts
+        )
     }
 
     /// Initializer with dependency injection for testing
-    init(book: TPPBook, registry: TPPBookRegistryProvider) {
+    init(
+        book: TPPBook,
+        registry: TPPBookRegistryProvider,
+        downloadCenter: MyBooksDownloadCenter = AppContainer.shared.downloadCenter,
+        accounts: TPPLibraryAccountsProvider = AppContainer.shared.accounts
+    ) {
         self.book = book
         self.registry = registry
+        self.downloadCenter = downloadCenter
+        self.accounts = accounts
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
@@ -471,11 +484,11 @@ final class BookDetailViewModel: ObservableObject {
     /// Ensures authentication document is loaded and handles sign-in if needed.
     private func ensureAuthAndExecute(_ action: @escaping () -> Void) {
         let businessLogic = TPPSignInBusinessLogic(
-            libraryAccountID: AccountsManager.shared.currentAccount?.uuid ?? "",
-            libraryAccountsProvider: AccountsManager.shared,
+            libraryAccountID: accounts.currentAccount?.uuid ?? "",
+            libraryAccountsProvider: accounts,
             urlSettingsProvider: TPPSettings.shared,
             bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
@@ -739,7 +752,7 @@ final class BookDetailViewModel: ObservableObject {
         guard let url = url else { return }
         let webController = BundledHTMLViewController(
             fileURL: url,
-            title: AccountsManager.shared.currentAccount?.name ?? ""
+            title: accounts.currentAccount?.name ?? ""
         )
 
         if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {

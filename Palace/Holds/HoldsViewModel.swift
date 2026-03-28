@@ -36,13 +36,21 @@ final class HoldsViewModel: ObservableObject {
     @Published var visibleBooks: [TPPBook] = []
     private var cancellables = Set<AnyCancellable>()
     private let bookRegistry: TPPBookRegistryProvider
+    private let settings: TPPSettingsProviding
 
     convenience init() {
-        self.init(bookRegistry: TPPBookRegistry.shared)
+        self.init(
+            bookRegistry: AppContainer.shared.bookRegistry,
+            settings: AppContainer.shared.settings
+        )
     }
 
-    init(bookRegistry: TPPBookRegistryProvider) {
+    init(
+        bookRegistry: TPPBookRegistryProvider,
+        settings: TPPSettingsProviding = AppContainer.shared.settings
+    ) {
         self.bookRegistry = bookRegistry
+        self.settings = settings
 
         NotificationCenter.default.publisher(for: .TPPSyncBegan)
             .receive(on: DispatchQueue.main)
@@ -125,7 +133,7 @@ final class HoldsViewModel: ObservableObject {
 
     private func updateFeed(_ account: Account) {
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
         AccountsManager.shared.currentAccount = account
 
