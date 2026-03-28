@@ -101,6 +101,9 @@ struct CatalogCacheMetadata: Codable {
     }
 
     // MARK: - Account Retrieval
+    /// Indicates an account switch is in progress; prevents registry loads during transition
+    private(set) var isAccountSwitching = false
+
     var currentAccount: Account? {
         get {
             guard let uuid = currentAccountId else { return nil }
@@ -114,20 +117,35 @@ struct CatalogCacheMetadata: Codable {
             Log.debug(#file, "Previous account: \(previousAccountId ?? "nil") → New account: \(newAccountId ?? "nil")")
 
             if previousAccountId != newAccountId, previousAccountId != nil {
-                Log.info(#file, "🔄 Account switch detected - cleaning up active content")
-                cleanupActiveContentBeforeAccountSwitch(from: previousAccountId, to: newAccountId)
+                Log.info(#file, "Account switch detected - cleaning up active content")
+                isAccountSwitching = true
+                cleanupActiveContentBeforeAccountSwitch(from: previousAccountId, to: newAccountId) { [weak self] in
+                    guard let self = self else { return }
+                    self.completeAccountSwitch(newValue: newValue)
+                }
+            } else {
+                completeAccountSwitch(newValue: newValue)
             }
-
-            self.currentAccount?.hasUpdatedToken = false
-            currentAccountId = newValue?.uuid
-            TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
-            NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         }
+    }
+
+    /// Finishes the account switch after cleanup completes (or immediately if no cleanup needed).
+    private func completeAccountSwitch(newValue: Account?) {
+        self.currentAccount?.hasUpdatedToken = false
+        currentAccountId = newValue?.uuid
+        TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
+        isAccountSwitching = false
+        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
 
     /// Cleans up active audiobook playback, in-flight network requests, and other
     /// content before switching accounts to prevent cross-account credential leaks.
-    private func cleanupActiveContentBeforeAccountSwitch(from previousId: String?, to newId: String?) {
+    /// Calls `completion` on the main thread when cleanup is done.
+    private func cleanupActiveContentBeforeAccountSwitch(
+        from previousId: String?,
+        to newId: String?,
+        completion: @escaping () -> Void
+    ) {
         TPPNetworkExecutor.shared.cancelNonEssentialTasks()
 
         Task { @MainActor in
@@ -136,12 +154,13 @@ struct CatalogCacheMetadata: Codable {
                 Log.debug(#file, "  Navigation path has \(pathCount) items")
 
                 if pathCount > 0 {
-                    Log.info(#file, "  🔄 Popping to root to clean up active content before account switch")
+                    Log.info(#file, "  Popping to root to clean up active content before account switch")
                     coordinator.popToRoot()
 
                     try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
                 }
             }
+            completion()
         }
     }
 
