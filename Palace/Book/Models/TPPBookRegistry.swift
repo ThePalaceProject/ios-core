@@ -9,6 +9,7 @@ protocol TPPBookRegistryProvider {
     var myBooks: [TPPBook] { get }
     var isSyncing: Bool { get }
     var state: TPPBookRegistry.RegistryState { get }
+    var syncStatePublisher: AnyPublisher<Bool, Never> { get }
 
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?)
     func sync()

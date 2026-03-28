@@ -13,7 +13,7 @@ public final class TPPOpenSearchDescriptionSwift: NSObject {
 
   /// Initializes from an OpenSearch description XML document.
   /// Returns `nil` if the XML does not contain a valid description or OPDS URL.
-  @objc public init?(xml osdXML: TPPXML) {
+  @objc init?(xml osdXML: TPPXML) {
     guard let description = osdXML.firstChild(withName: "Description")?.value else {
       Log.warn(#file, "Missing required description element.")
       return nil
