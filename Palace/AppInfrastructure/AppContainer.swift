@@ -28,6 +28,10 @@ protocol AppContainerProtocol {
 /// All services are lazily initialized and shared within the container.
 final class AppContainer: AppContainerProtocol {
 
+    /// Shared instance for use as default parameter values.
+    /// Prefer passing through SwiftUI environment or init injection.
+    static let shared = AppContainer()
+
     // MARK: - Services
 
     let bookRegistry: TPPBookRegistryProvider

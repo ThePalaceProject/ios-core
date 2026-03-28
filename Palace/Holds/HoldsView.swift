@@ -1,13 +1,18 @@
 import SwiftUI
 import UIKit
 
+@MainActor
 struct HoldsView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator
     typealias DisplayStrings = Strings.HoldsView
 
     @StateObject private var model: HoldsViewModel
 
-    init(viewModel: HoldsViewModel = HoldsViewModel()) {
+    init() {
+        self._model = StateObject(wrappedValue: HoldsViewModel())
+    }
+
+    init(viewModel: HoldsViewModel) {
         self._model = StateObject(wrappedValue: viewModel)
     }
     @StateObject private var logoObserver = CatalogLogoObserver()

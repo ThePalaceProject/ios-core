@@ -457,7 +457,7 @@ final class BookDetailViewModel: ObservableObject {
         }
     }
 
-    func removeProcessingButton(_ button: BookButtonType) {
+    private func removeProcessingButton(_ button: BookButtonType) {
         self.processingButtons.remove(button)
     }
 

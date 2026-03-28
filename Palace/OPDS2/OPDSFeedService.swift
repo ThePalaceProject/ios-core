@@ -46,7 +46,7 @@ actor OPDSFeedService {
                 ) { feed, errorDict in
                     if let feed = feed {
                         continuation.resume(returning: feed)
-                    } else if let errorDict = errorDict {
+                    } else if let errorDict = errorDict as? [AnyHashable: Any] {
                         // Try to extract problem document for user-friendly error messages
                         let problemDoc = Self.problemDocumentFromDictionary(errorDict)
                         let error = self.parseError(from: errorDict, url: url)

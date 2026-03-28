@@ -206,7 +206,7 @@ public class TPPBook: NSObject, ObservableObject {
             revokeURL: revoke,
             reportURL: report,
             timeTrackingURL: entry.timeTrackingLink?.href,
-            contributors: entry.contributors,
+            contributors: entry.contributors as? [String: Any],
             bookDuration: entry.duration,
             imageCache: ImageCache.shared
         )
@@ -220,7 +220,7 @@ public class TPPBook: NSObject, ObservableObject {
         }
 
         let acquisitions: [TPPOPDSAcquisition] = (dictionary[AcquisitionsKey] as? [[String: Any]] ?? []).compactMap {
-            TPPOPDSAcquisition(dictionary: $0)
+            TPPOPDSAcquisition(dictionary: $0 as NSDictionary)
         }
 
         let authorStrings: [String] = {
@@ -273,7 +273,7 @@ public class TPPBook: NSObject, ObservableObject {
             analyticsURL: URL(string: dictionary[AnalyticsURLKey] as? String ?? ""),
             alternateURL: URL(string: dictionary[AlternateURLKey] as? String ?? ""),
             relatedWorksURL: URL(string: dictionary[RelatedURLKey] as? String ?? ""),
-            previewLink: (dictionary[PreviewURLKey] as? [AnyHashable: Any]).flatMap { TPPOPDSAcquisition(dictionary: $0) },
+            previewLink: (dictionary[PreviewURLKey] as? NSDictionary).flatMap { TPPOPDSAcquisition(dictionary: $0) },
             seriesURL: URL(string: dictionary[SeriesLinkKey] as? String ?? ""),
             revokeURL: revokeURL,
             reportURL: reportURL,

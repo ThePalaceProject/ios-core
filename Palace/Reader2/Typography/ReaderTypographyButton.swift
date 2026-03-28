@@ -38,8 +38,9 @@ struct ReaderTypographyButton: View {
         self.typographyService = typographyService
     }
 
+    @ViewBuilder
     var body: some View {
-        if !Self.isEnabled { EmptyView(); return }
+        if !Self.isEnabled { EmptyView() } else {
         Button {
             showTypographySheet = true
         } label: {
@@ -55,6 +56,7 @@ struct ReaderTypographyButton: View {
                     typographyService: typographyService
                 )
             )
+        }
         }
     }
 }
