@@ -114,14 +114,8 @@ struct BookDetailView: View {
                     headerColor = Color(newColor)
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
-                guard
-                    let info = note.userInfo as? [String: Any],
-                    let identifier = info["bookIdentifier"] as? String,
-                    identifier == viewModel.book.identifier,
-                    let raw = info["state"] as? Int,
-                    let newState = TPPBookState(rawValue: raw)
-                else { return }
+            .onReceive(TPPBookRegistry.shared.bookStatePublisher.receive(on: RunLoop.main)) { (identifier, newState) in
+                guard identifier == viewModel.book.identifier else { return }
 
                 // Only handle critical state changes that require navigation
                 if newState == .unregistered {
@@ -144,31 +138,6 @@ struct BookDetailView: View {
                     }
             }
             .presentationDetents([.height(0), .height(300)])
-            .alert(item: $viewModel.confirmationAlert) { alert in
-                if let secondaryTitle = alert.secondaryButtonTitle {
-                    Alert(
-                        title: Text(alert.title),
-                        message: Text(alert.message),
-                        primaryButton: .destructive(
-                            Text(alert.buttonTitle ?? Strings.Generic.ok),
-                            action: alert.primaryAction
-                        ),
-                        secondaryButton: .cancel(
-                            Text(secondaryTitle),
-                            action: alert.secondaryAction
-                        )
-                    )
-                } else {
-                    Alert(
-                        title: Text(alert.title),
-                        message: Text(alert.message),
-                        dismissButton: .default(
-                            Text(alert.buttonTitle ?? Strings.Generic.ok),
-                            action: alert.primaryAction
-                        )
-                    )
-                }
-            }
 
             if !viewModel.isFullSize {
                 backgroundView
@@ -680,20 +649,6 @@ struct BookDetailView: View {
             if needsAuth {
                 // Present sign-in for return/cancel actions
                 viewModel.handleAction(for: buttonType)
-            } else if buttonType == .cancelHold {
-                // Guard hold cancellations with a confirmation alert — the action
-                // fires a server-side revoke with no other confirmation gate here.
-                viewModel.confirmationAlert = AlertModel(
-                    title: Strings.BookCell.removeHold,
-                    message: String(format: Strings.BookCell.removeHoldMessage, viewModel.book.title),
-                    buttonTitle: Strings.BookCell.removeHold,
-                    primaryAction: { [weak viewModel] in
-                        viewModel?.showHalfSheet = true
-                        viewModel?.handleAction(for: .cancelHold)
-                    },
-                    secondaryButtonTitle: Strings.Generic.cancel,
-                    secondaryAction: {}
-                )
             } else {
                 if buttonType == .return {
                     viewModel.bookState = .returning

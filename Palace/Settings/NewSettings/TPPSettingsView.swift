@@ -69,11 +69,11 @@ struct TPPSettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
             self.orientation = UIDevice.current.orientation
         }
-        .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+        .onReceive(AccountsManager.shared.currentAccountDidChange) { _ in
             updateAccountsList()
             librariesRefreshToken = UUID()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)) { _ in
+        .onReceive(TPPBookRegistry.shared.registryPublisher.map { _ in () }) { _ in
             updateAccountsList()
             librariesRefreshToken = UUID()
         }

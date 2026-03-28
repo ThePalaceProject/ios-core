@@ -40,7 +40,7 @@ private let stringToRelationMap: [String: TPPOPDSAcquisitionRelation] = [
 // MARK: - Free Functions (Swift ports)
 
 /// Converts a relation enum value to a relation set (single-element).
-@objc public func NYPLOPDSAcquisitionRelationSetWithRelationSwift(
+public func NYPLOPDSAcquisitionRelationSetWithRelationSwift(
   _ relation: TPPOPDSAcquisitionRelation
 ) -> TPPOPDSAcquisitionRelationSet {
   switch relation {
@@ -56,7 +56,7 @@ private let stringToRelationMap: [String: TPPOPDSAcquisitionRelation] = [
 }
 
 /// Returns `true` if `relation` is contained in `relationSet`.
-@objc public func NYPLOPDSAcquisitionRelationSetContainsRelationSwift(
+public func NYPLOPDSAcquisitionRelationSetContainsRelationSwift(
   _ relationSet: TPPOPDSAcquisitionRelationSet,
   _ relation: TPPOPDSAcquisitionRelation
 ) -> Bool {
@@ -195,14 +195,14 @@ public final class TPPOPDSAcquisitionSwift: NSObject {
 
     var mutableIndirect: [TPPOPDSIndirectAcquisition] = []
     for dict in indirectDicts {
-      guard let indirect = TPPOPDSIndirectAcquisition(dictionary: dict) else {
+      guard let indirect = TPPOPDSIndirectAcquisition(dictionary: dict as! [AnyHashable: Any]) else {
         return nil
       }
       mutableIndirect.append(indirect)
     }
 
     guard let availDict = dictionary[acqAvailabilityKey] as? NSDictionary,
-          let availability = NYPLOPDSAcquisitionAvailabilityWithDictionary(availDict) else {
+          let availability = NYPLOPDSAcquisitionAvailabilityWithDictionary(availDict as! [AnyHashable: Any]) else {
       return nil
     }
 

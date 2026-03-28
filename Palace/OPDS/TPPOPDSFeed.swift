@@ -163,22 +163,6 @@ public final class TPPOPDSFeedSwift: NSObject {
     super.init()
   }
 
-  // MARK: - Network Fetch
-
-  /// Executes a GET request (or PUT for `borrow`) for the given URL.
-  @objc public static func withURL(
-    _ url: URL?,
-    shouldResetCache: Bool,
-    useTokenIfAvailable: Bool,
-    completionHandler handler: @escaping (TPPOPDSFeed?, NSDictionary?) -> Void
-  ) {
-    // Delegate to the existing ObjC implementation since it uses
-    // TPPNetworkExecutor, TPPSession, and error logging infrastructure.
-    TPPOPDSFeed.withURL(
-      url,
-      shouldResetCache: shouldResetCache,
-      useTokenIfAvailable: useTokenIfAvailable,
-      completionHandler: handler
-    )
-  }
+  // NOTE: Network fetch (withURL:) is provided by the ObjC TPPOPDSFeed class
+  // via the bridging header. This Swift port covers the model/parsing layer only.
 }

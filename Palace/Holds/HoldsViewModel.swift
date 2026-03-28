@@ -36,40 +36,54 @@ final class HoldsViewModel: ObservableObject {
     @Published var visibleBooks: [TPPBook] = []
     private var cancellables = Set<AnyCancellable>()
     private let bookRegistry: TPPBookRegistryProvider
-    private let settings: TPPSettingsProviding
 
     convenience init() {
-        self.init(
-            bookRegistry: AppContainer.shared.bookRegistry,
-            settings: AppContainer.shared.settings
-        )
+        self.init(bookRegistry: TPPBookRegistry.shared)
     }
 
-    init(
-        bookRegistry: TPPBookRegistryProvider,
-        settings: TPPSettingsProviding = AppContainer.shared.settings
-    ) {
+    init(bookRegistry: TPPBookRegistryProvider) {
         self.bookRegistry = bookRegistry
-        self.settings = settings
 
-        NotificationCenter.default.publisher(for: .TPPSyncBegan)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.isLoading = true
-            }
-            .store(in: &cancellables)
+        // Use Combine publishers from TPPBookRegistry directly
+        if let registry = bookRegistry as? TPPBookRegistry {
+            registry.syncStatePublisher
+                .sink { [weak self] isSyncing in
+                    if isSyncing {
+                        self?.isLoading = true
+                    }
+                }
+                .store(in: &cancellables)
 
-        let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
-        let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
+            let syncEnd = registry.syncStatePublisher.filter { !$0 }.map { _ in () }
+            let registryChange = registry.registryPublisher.map { _ in () }
 
-        syncEnd
-            .merge(with: registryChange)
-            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.isLoading = false
-                self?.reloadData()
-            }
-            .store(in: &cancellables)
+            syncEnd
+                .merge(with: registryChange)
+                .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.isLoading = false
+                    self?.reloadData()
+                }
+                .store(in: &cancellables)
+        } else {
+            // Fallback for test mocks that don't support Combine publishers yet
+            NotificationCenter.default.publisher(for: .TPPSyncBegan)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in self?.isLoading = true }
+                .store(in: &cancellables)
+
+            let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
+            let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
+
+            syncEnd
+                .merge(with: registryChange)
+                .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.isLoading = false
+                    self?.reloadData()
+                }
+                .store(in: &cancellables)
+        }
 
         reloadData()
     }
@@ -133,13 +147,12 @@ final class HoldsViewModel: ObservableObject {
 
     private func updateFeed(_ account: Account) {
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            settings.accountMainFeedURL = url
+            TPPSettings.shared.accountMainFeedURL = url
         }
+        // Setting currentAccount triggers both Combine publisher and NotificationCenter
         AccountsManager.shared.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
-
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
 
     var openSearchDescription: TPPOpenSearchDescription {

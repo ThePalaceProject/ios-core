@@ -14,6 +14,17 @@ set -euo pipefail
 API_URL="https://forgeos-api.synctek.io"
 PROJECT_ID="proj_87884c17"
 
+# Auto-detect base branch (origin/main, origin/develop, or fallback)
+detect_base_branch() {
+  for candidate in origin/main origin/develop origin/master; do
+    if git rev-parse --verify "$candidate" &>/dev/null; then
+      echo "$candidate"
+      return
+    fi
+  done
+  echo "HEAD~10"  # fallback: compare against recent history
+}
+
 # Read API key from env or .cursor/mcp.json
 if [ -z "${FORGEOS_API_KEY:-}" ]; then
   SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -46,21 +57,31 @@ api() {
 
 cmd_start() {
   local init_id="$1" branch="$2" description="$3"
+  local base_branch
+  base_branch=$(detect_base_branch)
+  echo "Using base branch: $base_branch"
 
   # Get git diff stats
   local stats
-  stats=$(git diff --stat "origin/develop...HEAD" 2>/dev/null | tail -1)
+  stats=$(git diff --stat "${base_branch}...HEAD" 2>/dev/null | tail -1)
   local additions deletions files_count
   additions=$(echo "$stats" | grep -o '[0-9]* insertion' | grep -o '[0-9]*' || echo "0")
   deletions=$(echo "$stats" | grep -o '[0-9]* deletion' | grep -o '[0-9]*' || echo "0")
-  files_count=$(git diff --name-only "origin/develop...HEAD" 2>/dev/null | wc -l | tr -d ' ')
+  files_count=$(git diff --name-only "${base_branch}...HEAD" 2>/dev/null | wc -l | tr -d ' ')
 
   # Get changed files
   local files_json
-  files_json=$(git diff --name-only "origin/develop...HEAD" 2>/dev/null | python3 -c "
+  files_json=$(git diff --name-only "${base_branch}...HEAD" 2>/dev/null | python3 -c "
 import sys, json
 print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))
 " 2>/dev/null || echo '[]')
+
+  # initiative_id is required by the API
+  if [ -z "$init_id" ]; then
+    echo "Error: initiative_id is required. List initiatives with:"
+    echo "  curl -s -H 'X-ForgeOS-API-Key: \$FORGEOS_API_KEY' ${API_URL}/api/projects/${PROJECT_ID}/initiatives"
+    exit 1
+  fi
 
   echo "Creating changeset..."
   local result
@@ -76,8 +97,14 @@ print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))
     }
   }")
 
+  # Surface API errors instead of silently failing
   local cs_id
-  cs_id=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])" 2>/dev/null)
+  cs_id=$(echo "$result" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['id'])" 2>/dev/null)
+  if [ -z "$cs_id" ]; then
+    echo "Error: Failed to create changeset. API response:"
+    echo "$result"
+    exit 1
+  fi
   echo "Changeset created: $cs_id"
 
   # Configure gates with roles matching the review API
@@ -192,10 +219,12 @@ for g in gates:
 
 cmd_close() {
   local cs_id="$1"
+  local base_branch
+  base_branch=$(detect_base_branch)
 
   # Get git stats for outcome
   local stats
-  stats=$(git diff --stat "origin/develop...HEAD" 2>/dev/null | tail -1)
+  stats=$(git diff --stat "${base_branch}...HEAD" 2>/dev/null | tail -1)
   local additions
   additions=$(echo "$stats" | grep -o '[0-9]* insertion' | grep -o '[0-9]*' || echo "0")
   local deletions

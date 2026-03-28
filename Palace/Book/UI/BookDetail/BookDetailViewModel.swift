@@ -39,10 +39,6 @@ final class BookDetailViewModel: ObservableObject {
     /// on top of the half sheet instead of being swallowed by UIKit.
     @Published var downloadErrorAlert: AlertModel?
 
-    /// Confirmation alert shown before a destructive action (e.g. cancel hold)
-    /// that would otherwise execute immediately without a second confirmation step.
-    @Published var confirmationAlert: AlertModel?
-
     @Published var relatedBooksByLane: [String: BookLane] = [:]
     @Published var isLoadingRelatedBooks = false
 
@@ -77,8 +73,7 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Dependencies
 
     let registry: TPPBookRegistryProvider
-    let downloadCenter: MyBooksDownloadCenter
-    private let accounts: TPPLibraryAccountsProvider
+    let downloadCenter = MyBooksDownloadCenter.shared
     private var cancellables = Set<AnyCancellable>()
 
     // Note: audiobook management moved to BookService
@@ -102,25 +97,13 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Initializer
 
     @objc convenience init(book: TPPBook) {
-        self.init(
-            book: book,
-            registry: AppContainer.shared.bookRegistry,
-            downloadCenter: AppContainer.shared.downloadCenter,
-            accounts: AppContainer.shared.accounts
-        )
+        self.init(book: book, registry: TPPBookRegistry.shared)
     }
 
     /// Initializer with dependency injection for testing
-    init(
-        book: TPPBook,
-        registry: TPPBookRegistryProvider,
-        downloadCenter: MyBooksDownloadCenter = AppContainer.shared.downloadCenter,
-        accounts: TPPLibraryAccountsProvider = AppContainer.shared.accounts
-    ) {
+    init(book: TPPBook, registry: TPPBookRegistryProvider) {
         self.book = book
         self.registry = registry
-        self.downloadCenter = downloadCenter
-        self.accounts = accounts
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
@@ -143,7 +126,6 @@ final class BookDetailViewModel: ObservableObject {
     deinit {
         timer?.cancel()
         timer = nil
-        NotificationCenter.default.removeObserver(self)
         #if LCP
         if let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) {
             var lcpAudiobooks: LCPAudiobooks?
@@ -229,12 +211,12 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     private func setupObservers() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleBookRegistryChange(_:)),
-            name: .TPPBookRegistryDidChange,
-            object: nil
-        )
+        registry.registryPublisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.handleBookRegistryChange()
+            }
+            .store(in: &cancellables)
 
         // Avoid general download center change notifications; we already subscribe to fine-grained progress and registry state publishers
 
@@ -292,7 +274,7 @@ final class BookDetailViewModel: ObservableObject {
             .assign(to: &self.$stableButtonState)
     }
 
-    @objc func handleBookRegistryChange(_ notification: Notification) {
+    func handleBookRegistryChange() {
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
         // Always update book from registry - it has authoritative data including loan duration
         // after borrowing completes
@@ -488,11 +470,11 @@ final class BookDetailViewModel: ObservableObject {
     /// Ensures authentication document is loaded and handles sign-in if needed.
     private func ensureAuthAndExecute(_ action: @escaping () -> Void) {
         let businessLogic = TPPSignInBusinessLogic(
-            libraryAccountID: accounts.currentAccount?.uuid ?? "",
-            libraryAccountsProvider: accounts,
+            libraryAccountID: AccountsManager.shared.currentAccount?.uuid ?? "",
+            libraryAccountsProvider: AccountsManager.shared,
             urlSettingsProvider: TPPSettings.shared,
             bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: downloadCenter,
+            bookDownloadsCenter: MyBooksDownloadCenter.shared,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
@@ -756,7 +738,7 @@ final class BookDetailViewModel: ObservableObject {
         guard let url = url else { return }
         let webController = BundledHTMLViewController(
             fileURL: url,
-            title: accounts.currentAccount?.name ?? ""
+            title: AccountsManager.shared.currentAccount?.name ?? ""
         )
 
         if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {

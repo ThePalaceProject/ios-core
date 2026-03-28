@@ -177,8 +177,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             .store(in: &cancellables)
 
         // Subscribe to account changes to update library name
-        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
-            .receive(on: DispatchQueue.main)
+        AccountsManager.shared.currentAccountDidChange
             .sink { [weak self] _ in
                 Log.info(#file, "🚗 Account changed - updating CarPlay library name and refreshing")
                 self?.templateManager?.updateLibraryName()

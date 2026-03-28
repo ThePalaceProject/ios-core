@@ -18,17 +18,18 @@ extension URL {
   }
 }
 
-// MARK: - ObjC compatibility on NSURL
-
-extension NSURL {
-
-  /// Returns `true` if the URL points to an external resource.
-  @objc var isNYPLExternal: Bool {
-    (self as URL).isNYPLExternal
-  }
-
-  /// Returns a new URL with the given scheme swapped in.
-  @objc func urlBySwapping(forScheme scheme: String) -> NSURL? {
-    (self as URL).swappingScheme(scheme) as NSURL?
-  }
-}
+// COEXISTENCE: ObjC originals provide these. Uncomment when ObjC files are removed.
+//// MARK: - ObjC compatibility on NSURL
+//
+//extension NSURL {
+//
+//  /// Returns `true` if the URL points to an external resource.
+//  @objc var isNYPLExternal: Bool {
+//    (self as URL).isNYPLExternal
+//  }
+//
+//  /// Returns a new URL with the given scheme swapped in.
+//  @objc func urlBySwapping(forScheme scheme: String) -> NSURL? {
+//    (self as URL).swappingScheme(scheme) as NSURL?
+//  }
+//}

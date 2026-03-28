@@ -55,36 +55,37 @@ extension String {
   }
 }
 
-// MARK: - NSString ObjC compatibility
-
-extension NSString {
-
-  @objc(fileSystemSafeBase64DecodedStringUsingEncoding:)
-  func _fileSystemSafeBase64DecodedString(encoding: UInt) -> NSString? {
-    return (self as String).fileSystemSafeBase64DecodedString(
-      encoding: String.Encoding(rawValue: encoding)
-    ) as NSString?
-  }
-
-  @objc(fileSystemSafeBase64EncodedStringUsingEncoding:)
-  func _fileSystemSafeBase64EncodedString(encoding: UInt) -> NSString? {
-    return (self as String).fileSystemSafeBase64EncodedString(
-      encoding: String.Encoding(rawValue: encoding)
-    ) as NSString?
-  }
-
-  @objc(SHA256)
-  func _sha256() -> NSString {
-    return (self as String).sha256() as NSString
-  }
-
-  @objc(stringURLEncodedAsQueryParamValue)
-  var _stringURLEncodedAsQueryParamValue: NSString? {
-    return (self as String).stringURLEncodedAsQueryParamValue as NSString?
-  }
-
-  @objc(isEmptyNoWhitespace)
-  var _isEmptyNoWhitespace: Bool {
-    return (self as String).isEmptyNoWhitespace
-  }
-}
+// COEXISTENCE: ObjC originals provide these. Uncomment when ObjC files are removed.
+//// MARK: - NSString ObjC compatibility
+//
+//extension NSString {
+//
+//  @objc(fileSystemSafeBase64DecodedStringUsingEncoding:)
+//  func _fileSystemSafeBase64DecodedString(encoding: UInt) -> NSString? {
+//    return (self as String).fileSystemSafeBase64DecodedString(
+//      encoding: String.Encoding(rawValue: encoding)
+//    ) as NSString?
+//  }
+//
+//  @objc(fileSystemSafeBase64EncodedStringUsingEncoding:)
+//  func _fileSystemSafeBase64EncodedString(encoding: UInt) -> NSString? {
+//    return (self as String).fileSystemSafeBase64EncodedString(
+//      encoding: String.Encoding(rawValue: encoding)
+//    ) as NSString?
+//  }
+//
+//  @objc(SHA256)
+//  func _sha256() -> NSString {
+//    return (self as String).sha256() as NSString
+//  }
+//
+//  @objc(stringURLEncodedAsQueryParamValue)
+//  var _stringURLEncodedAsQueryParamValue: NSString? {
+//    return (self as String).stringURLEncodedAsQueryParamValue as NSString?
+//  }
+//
+//  @objc(isEmptyNoWhitespace)
+//  var _isEmptyNoWhitespace: Bool {
+//    return (self as String).isEmptyNoWhitespace
+//  }
+//}

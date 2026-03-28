@@ -7,6 +7,144 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		02B5BE224BAD4418ADA8A4AF /* PlaybackSpeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAEF18ABE4491BC8B2277E65 /* PlaybackSpeed.swift */; };
+		0469ADBAE6CAC0F21823D1E7 /* BadgeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59814D0AE9FAF49E9A52426A /* BadgeService.swift */; };
+		05BD558BEDC45D091DFEA283 /* FontManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3260782E24602A4B3FF7E20B /* FontManagerTests.swift */; };
+		08E5DBD9DF8A02E6C155BA2C /* ReaderTypographyButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41E92244AABB4F1FE944CF8 /* ReaderTypographyButton.swift */; };
+		0D9CA412C5C8B2BBDE47B81D /* ClaudeDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9F5CA71B9FB620537CC599 /* ClaudeDiscoveryService.swift */; };
+		0DEF60707090701AA8343B1B /* CrossLibraryAvailabilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F40EC5CD2A41572C74C76C /* CrossLibraryAvailabilityView.swift */; };
+		0E8C4BE6813548BF5E7A62C3 /* DiscoveryRecommendation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDEE3557966080C751D943E /* DiscoveryRecommendation.swift */; };
+		10BDB9803CA69D9968DD25B0 /* StreakView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1D8E96BB21CEA1AB690046 /* StreakView.swift */; };
+		18EAAA05A58EBDD4FCD5B5E8 /* StatsCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17628BE0EB1E554ECF46071E /* StatsCardView.swift */; };
+		19B65D675FAB06628ABAADA0 /* CrossLibrarySearchServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E19CD465746A747F6B49FBA /* CrossLibrarySearchServiceTests.swift */; };
+		1BD28F76C1C3B5B76ABC3C80 /* ReadingStreak.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A6CA6654994D77041AE0F79 /* ReadingStreak.swift */; };
+		1F59F8B778BF885C5C1FFA67 /* ReadingChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6EF9481386FFCE35AA787B5 /* ReadingChartView.swift */; };
+		2476CF4E6F4779F55BC68933 /* StatsCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17628BE0EB1E554ECF46071E /* StatsCardView.swift */; };
+		261AFC72225221096DDB2AD2 /* DiscoveryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71BC0E5F2F1CD7DADCF1D9 /* DiscoveryViewModel.swift */; };
+		269B4BB49D943C41E65D3F93 /* StatsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B365956298AA1A7256D63D8E /* StatsViewModel.swift */; };
+		2A114B30795FFA695A05EEA9 /* CarModeEntryButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5818F11E1C4F6A10799AC0AE /* CarModeEntryButton.swift */; };
+		2DB7FEF66BE7D0AF90930C47 /* ReaderTypographyButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C41E92244AABB4F1FE944CF8 /* ReaderTypographyButton.swift */; };
+		30B392104E9FCA6F9CBEEF01 /* ReadingSessionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0592B4A4D666ED6705BF8093 /* ReadingSessionTracker.swift */; };
+		37FF2E4F346CFD20EDC64D3F /* BadgeDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2808F34E9EFB0F133F99262B /* BadgeDefinition.swift */; };
+		381880BDA4C02E9618FBB6F9 /* CarModeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237A0D61157570C5981A11FA /* CarModeService.swift */; };
+		38E52EB89550AF93D37D2E59 /* PresetCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B293519F9B55B6F4F17CC7 /* PresetCard.swift */; };
+		3A98AD201DEDB483FECEF28F /* ReadingStatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB660AAD998ACFC41771539E /* ReadingStatsStore.swift */; };
+		3CC7207CA0819A75DDE8D1F2 /* BadgesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55ABB7E13EF5B68C8635A58F /* BadgesViewModel.swift */; };
+		4115CAE641E2DE3779F69465 /* LibrarySearchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8F6DC988BD1299FD795A864 /* LibrarySearchResult.swift */; };
+		42DEEAF8B792F5D3B40A9C6D /* CarModeServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325313C8EC16FF0239801855 /* CarModeServiceProtocol.swift */; };
+		43600F4D687C6122CFA1AAE2 /* ReadingSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16B28BFC973E94C02E7E117D /* ReadingSession.swift */; };
+		43E5AFBBAAD127B6B28DCCFD /* DiscoveryTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D723CD73897800A0AAB5FB2 /* DiscoveryTab.swift */; };
+		448D6BE9AE0BCCC6F742F940 /* DiscoveryServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36B716E0256BACD2606B80ED /* DiscoveryServiceProtocol.swift */; };
+		4714FCCE477E3480FCAB241C /* BadgeServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C927D5FB4DCC629EEF09DE4C /* BadgeServiceTests.swift */; };
+		487989630A782630C96BAF54 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5431B832D502714505B6EAF5 /* StatsView.swift */; };
+		4B35024540E24CCB2D848D38 /* DiscoveryRecommendation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDEE3557966080C751D943E /* DiscoveryRecommendation.swift */; };
+		4CDD905D1ADE26FEC63558EB /* BadgeServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7140DF0127F1C8BA633644 /* BadgeServiceProtocol.swift */; };
+		510C6DAC28570835F7208CFC /* StatsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCA63D51A4176FB08ED1941 /* StatsTab.swift */; };
+		555039B35569633425B3435C /* CrossLibraryAvailabilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F40EC5CD2A41572C74C76C /* CrossLibraryAvailabilityView.swift */; };
+		56D58013DA98465F98A7899B /* CarModeSpeedPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BC5288EB50B22BAA3FEC1FA /* CarModeSpeedPicker.swift */; };
+		574CEFAB888D9D49F6DA3DDA /* SearchResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EEEDCA3A2A6760AA2DC43F /* SearchResultsView.swift */; };
+		582431D4978FAFF6C12F1599 /* StreakView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1D8E96BB21CEA1AB690046 /* StreakView.swift */; };
+		5BC5CECCF20A561F61CB8CEE /* TypographySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05A876C0044C35648AE92BD7 /* TypographySettingsView.swift */; };
+		5BCEAC8C8D29E0CE661E127D /* PresetCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B293519F9B55B6F4F17CC7 /* PresetCard.swift */; };
+		5C9AD28F46EEAF224CAF68EF /* DiscoveryConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E44E59A8C2886A5A04E6F2A /* DiscoveryConfiguration.swift */; };
+		5CC8895190D082858DAA719F /* DiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73605CB7B7F89F99584D0882 /* DiscoveryView.swift */; };
+		5FD1C501554BA4383C12B3D3 /* CarModeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237A0D61157570C5981A11FA /* CarModeService.swift */; };
+		6061EF52B442A05D529AD468 /* RecommendationCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F5CEBB42D6049F0680F42C /* RecommendationCard.swift */; };
+		6274888D2E5C0E90D333F4AC /* CarModeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5577D704F5F0C223E8CED97 /* CarModeViewModel.swift */; };
+		62DC318F5CB4BE231F67FE14 /* TypographyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59857C4239FBD7A4ABA37871 /* TypographyService.swift */; };
+		64053617209B94200D66A8C0 /* SleepTimerOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF81DF90FD790010A1050888 /* SleepTimerOption.swift */; };
+		646C15C74B237F4C366E6CE3 /* DiscoveryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B426971F2D8FBDAFFDE119E /* DiscoveryViewModelTests.swift */; };
+		651351CF68126FDB818F83F7 /* SleepTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B38648384F5A57B12842F24 /* SleepTimerTests.swift */; };
+		6599D677207BD16CD68D9669 /* SearchResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EEEDCA3A2A6760AA2DC43F /* SearchResultsView.swift */; };
+		66AE9D42FA4F53E26C31747C /* ReadingStreak.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A6CA6654994D77041AE0F79 /* ReadingStreak.swift */; };
+		66FBE3C6EBC48184946CB231 /* LocalDiscoveryFallback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 874C260EDA4348FC05E8FE2A /* LocalDiscoveryFallback.swift */; };
+		68F27DEBDED5D751249088B3 /* BadgesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02060A0117F26B0E56F3F606 /* BadgesView.swift */; };
+		6DEB021C53F567192EC579C5 /* Badge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B60ACDE3E15FC832885E932 /* Badge.swift */; };
+		6F1E28BFDD2B51A198F52989 /* TypographySettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA121652A5D3675E6CEE9849 /* TypographySettingsViewModel.swift */; };
+		7242702EEBD1651E65B60EDC /* CarModeChapterList.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1C1CACD11BEE983444DF0E /* CarModeChapterList.swift */; };
+		74AD3F15226273AA5C039E7A /* CarModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E367781DF09FAE70BFB4A94 /* CarModeView.swift */; };
+		766C1BDB436AA9586293ABF7 /* ReadingStatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB660AAD998ACFC41771539E /* ReadingStatsStore.swift */; };
+		76A3FDFF52B8F948C2C13A65 /* ReadingStatsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8F8EBC8684EF42942C688A7 /* ReadingStatsService.swift */; };
+		78BEAD5830F2B6B4C31790CF /* CrossLibrarySearchResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3045936B5A27DC51DD1E64 /* CrossLibrarySearchResponse.swift */; };
+		792DA4665FFCEBFDEA2A8CD6 /* DiscoveryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71BC0E5F2F1CD7DADCF1D9 /* DiscoveryViewModel.swift */; };
+		79D7234B5BFAE38BC05CBBEA /* Badge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B60ACDE3E15FC832885E932 /* Badge.swift */; };
+		80F0182F3A2261A3F61F5986 /* CarModeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6151708139FDC618513C334 /* CarModeState.swift */; };
+		82081EC71E1591C3E61B4BF4 /* BadgesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02060A0117F26B0E56F3F606 /* BadgesView.swift */; };
+		8467D5E1177DAEE24E74FD57 /* PlaybackSpeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAEF18ABE4491BC8B2277E65 /* PlaybackSpeed.swift */; };
+		8753EC265A5DF6362FFF71B9 /* ReadingSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16B28BFC973E94C02E7E117D /* ReadingSession.swift */; };
+		89952B99496C6D204701B8A0 /* ReadingSessionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0592B4A4D666ED6705BF8093 /* ReadingSessionTracker.swift */; };
+		8A5A65781D53DAB6D2CF7449 /* CrossLibrarySearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E23B721AF3657594B87E2D0 /* CrossLibrarySearchService.swift */; };
+		8B268B08B5B33F8ED19833CC /* DiscoveryPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0230FAAD08067F389DA9172B /* DiscoveryPrompt.swift */; };
+		8BBAC69C617313D695562036 /* ReadingStatsServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB416026EE34EBDB68AD788B /* ReadingStatsServiceTests.swift */; };
+		8C796FFAF6FF4B4140206184 /* DiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73605CB7B7F89F99584D0882 /* DiscoveryView.swift */; };
+		8F0F91D96D8F6EA8F3588475 /* FontManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFA10178BD2885EBF24673F3 /* FontManager.swift */; };
+		910440BEAFA83A16181BBA27 /* ThemePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95524DFA311D1BE65A9F5FF3 /* ThemePickerView.swift */; };
+		9242ED62B26248A2F20DF7D6 /* ReadingStatsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8F8EBC8684EF42942C688A7 /* ReadingStatsService.swift */; };
+		9309887A8360976E65C6AE04 /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5431B832D502714505B6EAF5 /* StatsView.swift */; };
+		953B933A06DA6AF6ABAFB7EC /* BadgeDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6837ACC21376FE419332599B /* BadgeDetailView.swift */; };
+		963D8C24B1E422010D706961 /* CrossLibrarySearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E23B721AF3657594B87E2D0 /* CrossLibrarySearchService.swift */; };
+		978348C79CFD19FFB184C580 /* SleepTimerOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF81DF90FD790010A1050888 /* SleepTimerOption.swift */; };
+		97C1FD54D06ACFF0803398FE /* CarModeSleepTimerPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E45E306F7C79073049F3ECE /* CarModeSleepTimerPicker.swift */; };
+		98ACA14779D89B7DA21055FD /* DiscoveryTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D723CD73897800A0AAB5FB2 /* DiscoveryTab.swift */; };
+		9AADE85EC7784278CCF12FA8 /* StatsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B365956298AA1A7256D63D8E /* StatsViewModel.swift */; };
+		9B24B24A9667723BD659D0E8 /* LibrarySearchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8F6DC988BD1299FD795A864 /* LibrarySearchResult.swift */; };
+		9D5DE68418C31F9D88044C89 /* ReadingStatsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F16E79F7C14C0F72FC36B3 /* ReadingStatsStoreTests.swift */; };
+		9DD1EB38C990FC718AC10906 /* DiscoveryConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E44E59A8C2886A5A04E6F2A /* DiscoveryConfiguration.swift */; };
+		A0EF4D630835291C699A377A /* BadgesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55ABB7E13EF5B68C8635A58F /* BadgesViewModel.swift */; };
+		A332AFC14B741366D8B5939A /* LocalDiscoveryFallback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 874C260EDA4348FC05E8FE2A /* LocalDiscoveryFallback.swift */; };
+		A38F1ABCA7AFC6AB4D15F9F1 /* BluetoothCarModeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C80EC81CE79039F1835CCD /* BluetoothCarModeDetector.swift */; };
+		A4463189D19C49AF222A0064 /* ClaudeDiscoveryServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6A87C52856D2D19793E520 /* ClaudeDiscoveryServiceTests.swift */; };
+		A6B46B564D17521FD9892D70 /* TypographyPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A78DE6D235AA54DC8F02DA /* TypographyPreset.swift */; };
+		A7D3A61E77E6B8C0FD9AEA5D /* TypographySettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C1C917A6BF4317D7FA6567 /* TypographySettings.swift */; };
+		A8275030D06977B9FD11A533 /* TypographyServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1B8AF7EB40C9DE22ED5ED0 /* TypographyServiceProtocol.swift */; };
+		A961D381DEBCF6341C9C7AA2 /* FontManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFA10178BD2885EBF24673F3 /* FontManager.swift */; };
+		A9701CD50E8850215EA9FD69 /* ReadingRulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 422FFD436DFCCB056CCF6302 /* ReadingRulerView.swift */; };
+		AAC98E03ABBDB9DA0D80BE08 /* TypographySettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA121652A5D3675E6CEE9849 /* TypographySettingsViewModel.swift */; };
+		ABAB459916B5DE60C559727D /* CarModeSleepTimerPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E45E306F7C79073049F3ECE /* CarModeSleepTimerPicker.swift */; };
+		AC7976569F7EDBAB30C096A4 /* ThemePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95524DFA311D1BE65A9F5FF3 /* ThemePickerView.swift */; };
+		ADC762F8876B7DD97B60178D /* TypographySettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C1C917A6BF4317D7FA6567 /* TypographySettings.swift */; };
+		B1E22740A69E3E6638073644 /* ReadingStatsServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCA7B3D060EF65547DF53DA /* ReadingStatsServiceProtocol.swift */; };
+		B2DB5878D850B25C262822B2 /* SearchResultsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B78F73FE1AEC101DA26CD3A /* SearchResultsViewModel.swift */; };
+		B4F870CCD03C5E482146DF88 /* CrossLibrarySearchResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3045936B5A27DC51DD1E64 /* CrossLibrarySearchResponse.swift */; };
+		B5B4BA6705E98259BC0D2E68 /* FontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D99051FE5305ABE13531F76 /* FontPickerView.swift */; };
+		B69FB320CECF1E0EB2AF98DE /* ReaderTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F994F35E532ACAA0F6C45035 /* ReaderTheme.swift */; };
+		B7C539A67E10A0EBB7D897F3 /* BadgeServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7140DF0127F1C8BA633644 /* BadgeServiceProtocol.swift */; };
+		B98EFC297882B9BF1072A76F /* CarModeServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD405AED47651832F0F573AE /* CarModeServiceTests.swift */; };
+		BB800AA2A27632EBDEF6758B /* TypographyPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A78DE6D235AA54DC8F02DA /* TypographyPreset.swift */; };
+		BF0FD554A5AA86C241E2CA9F /* StatsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BCA63D51A4176FB08ED1941 /* StatsTab.swift */; };
+		BF2B5B79D36596C9F06C43A5 /* ReadingStatsServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCA7B3D060EF65547DF53DA /* ReadingStatsServiceProtocol.swift */; };
+		C163475CB46F00070D2A3DDB /* CarModeEntryButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5818F11E1C4F6A10799AC0AE /* CarModeEntryButton.swift */; };
+		C68C9469871DE1074439C449 /* TypographyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59857C4239FBD7A4ABA37871 /* TypographyService.swift */; };
+		C6C2BB5EDA39F3116659A4A6 /* FontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D99051FE5305ABE13531F76 /* FontPickerView.swift */; };
+		C89594A0D21089924B82E71D /* TypographyServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1B8AF7EB40C9DE22ED5ED0 /* TypographyServiceProtocol.swift */; };
+		C998049BB2CFF2AE01EA1C36 /* TypographySettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D440766BDBF7EFBBA87B19A /* TypographySettingsViewModelTests.swift */; };
+		CC91CE08FB8250A533A74406 /* CarModeServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325313C8EC16FF0239801855 /* CarModeServiceProtocol.swift */; };
+		CCCDB216C7E807F461826B81 /* StatsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74D09C16D15567198A0A9194 /* StatsViewModelTests.swift */; };
+		D1662F093947D3C2F76B25D1 /* ReaderTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F994F35E532ACAA0F6C45035 /* ReaderTheme.swift */; };
+		D420918FF18C6BBAB91CF955 /* ClaudeDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9F5CA71B9FB620537CC599 /* ClaudeDiscoveryService.swift */; };
+		D53B36A8221413AF7C0355AE /* CarModeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6151708139FDC618513C334 /* CarModeState.swift */; };
+		D8BF12417544D2E77655500E /* DiscoveryPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0230FAAD08067F389DA9172B /* DiscoveryPrompt.swift */; };
+		DDDFAEEFB4D1A3C370C0CC95 /* RecommendationCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F5CEBB42D6049F0680F42C /* RecommendationCard.swift */; };
+		E00E62A02C10263E7DF15B11 /* CarModeViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B8BA0D1E31B3C9BAA84501 /* CarModeViewModelTests.swift */; };
+		E11A203872A5AA73CC27F408 /* CarModeChapterList.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1C1CACD11BEE983444DF0E /* CarModeChapterList.swift */; };
+		E58A6E33B84B1CACFD91F346 /* FontFamily.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA20DE46939562EEA2DF764 /* FontFamily.swift */; };
+		E6AB0C8A385DB8FB534AD474 /* SearchResultsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B78F73FE1AEC101DA26CD3A /* SearchResultsViewModel.swift */; };
+		E9B49D80399D570727A7DC1A /* CarModeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5577D704F5F0C223E8CED97 /* CarModeViewModel.swift */; };
+		ED121CB96E52B81CED187442 /* ReadingStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA4D17463BADFD0DEBC53FA /* ReadingStats.swift */; };
+		F042F1649763CFEADC848065 /* TypographyServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD321623DBDDEC02C16FE9A9 /* TypographyServiceTests.swift */; };
+		F07B88C83608E0749DA9B454 /* BadgeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59814D0AE9FAF49E9A52426A /* BadgeService.swift */; };
+		F13A3578C7B25C2B8B739B69 /* ReadingRulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 422FFD436DFCCB056CCF6302 /* ReadingRulerView.swift */; };
+		F4EA5E42C27D5081DC16D0B3 /* BluetoothCarModeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C80EC81CE79039F1835CCD /* BluetoothCarModeDetector.swift */; };
+		F50AA3B20D4D9C93BB7FBE43 /* DiscoveryServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36B716E0256BACD2606B80ED /* DiscoveryServiceProtocol.swift */; };
+		F60F86661D937A10DC714825 /* TypographySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05A876C0044C35648AE92BD7 /* TypographySettingsView.swift */; };
+		FB46AF138CFC75BE9AA9EA73 /* BadgeDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6837ACC21376FE419332599B /* BadgeDetailView.swift */; };
+		FBD6C78029C5F836DA8B1EB1 /* BadgeDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2808F34E9EFB0F133F99262B /* BadgeDefinition.swift */; };
+		FC1B7D899D35F336F1469191 /* FontFamily.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA20DE46939562EEA2DF764 /* FontFamily.swift */; };
+		FCC8FDF250C47895BBD4F7DB /* CarModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E367781DF09FAE70BFB4A94 /* CarModeView.swift */; };
+		FD944841337FCB9D26209ED4 /* ReadingStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA4D17463BADFD0DEBC53FA /* ReadingStats.swift */; };
+		FE48F9C21D03088224767755 /* TypographyPresetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABACD6237FD75664BEADFF58 /* TypographyPresetTests.swift */; };
+		FEBCDDB32AF691793539E77A /* CarModeSpeedPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BC5288EB50B22BAA3FEC1FA /* CarModeSpeedPicker.swift */; };
+		FF6829BDA60EAB8518CE8326 /* ReadingChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6EF9481386FFCE35AA787B5 /* ReadingChartView.swift */; };
 		0345BFE81DBF027200398B6F /* APIKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0345BFD61DBF002E00398B6F /* APIKeys.swift */; };
 		03690E291EB2B44300F75D5F /* TPPReadiumBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E281EB2B44300F75D5F /* TPPReadiumBookmark.swift */; };
 		036CA5499321FC544139010D /* BookmarkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68EFBB61877EFCAB44897E93 /* BookmarkManager.swift */; };
@@ -1343,6 +1481,82 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		02060A0117F26B0E56F3F606 /* BadgesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgesView.swift; sourceTree = "<group>"; };
+		0230FAAD08067F389DA9172B /* DiscoveryPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryPrompt.swift; sourceTree = "<group>"; };
+		04F40EC5CD2A41572C74C76C /* CrossLibraryAvailabilityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossLibraryAvailabilityView.swift; sourceTree = "<group>"; };
+		0592B4A4D666ED6705BF8093 /* ReadingSessionTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingSessionTracker.swift; sourceTree = "<group>"; };
+		05A876C0044C35648AE92BD7 /* TypographySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographySettingsView.swift; sourceTree = "<group>"; };
+		0D99051FE5305ABE13531F76 /* FontPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontPickerView.swift; sourceTree = "<group>"; };
+		16B28BFC973E94C02E7E117D /* ReadingSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingSession.swift; sourceTree = "<group>"; };
+		17628BE0EB1E554ECF46071E /* StatsCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsCardView.swift; sourceTree = "<group>"; };
+		1AA20DE46939562EEA2DF764 /* FontFamily.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontFamily.swift; sourceTree = "<group>"; };
+		1E44E59A8C2886A5A04E6F2A /* DiscoveryConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryConfiguration.swift; sourceTree = "<group>"; };
+		20B293519F9B55B6F4F17CC7 /* PresetCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetCard.swift; sourceTree = "<group>"; };
+		237A0D61157570C5981A11FA /* CarModeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarModeService.swift; sourceTree = "<group>"; };
+		2808F34E9EFB0F133F99262B /* BadgeDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeDefinition.swift; sourceTree = "<group>"; };
+		2A7140DF0127F1C8BA633644 /* BadgeServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeServiceProtocol.swift; sourceTree = "<group>"; };
+		2B78F73FE1AEC101DA26CD3A /* SearchResultsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchResultsViewModel.swift; sourceTree = "<group>"; };
+		2D723CD73897800A0AAB5FB2 /* DiscoveryTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryTab.swift; sourceTree = "<group>"; };
+		2E367781DF09FAE70BFB4A94 /* CarModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarModeView.swift; sourceTree = "<group>"; };
+		325313C8EC16FF0239801855 /* CarModeServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarModeServiceProtocol.swift; sourceTree = "<group>"; };
+		3260782E24602A4B3FF7E20B /* FontManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontManagerTests.swift; sourceTree = "<group>"; };
+		34EEEDCA3A2A6760AA2DC43F /* SearchResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchResultsView.swift; sourceTree = "<group>"; };
+		36B716E0256BACD2606B80ED /* DiscoveryServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryServiceProtocol.swift; sourceTree = "<group>"; };
+		3B38648384F5A57B12842F24 /* SleepTimerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimerTests.swift; sourceTree = "<group>"; };
+		3B60ACDE3E15FC832885E932 /* Badge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Badge.swift; sourceTree = "<group>"; };
+		3BC5288EB50B22BAA3FEC1FA /* CarModeSpeedPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarModeSpeedPicker.swift; sourceTree = "<group>"; };
+		3D3045936B5A27DC51DD1E64 /* CrossLibrarySearchResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossLibrarySearchResponse.swift; sourceTree = "<group>"; };
+		422FFD436DFCCB056CCF6302 /* ReadingRulerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingRulerView.swift; sourceTree = "<group>"; };
+		5431B832D502714505B6EAF5 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
+		55ABB7E13EF5B68C8635A58F /* BadgesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgesViewModel.swift; sourceTree = "<group>"; };
+		5818F11E1C4F6A10799AC0AE /* CarModeEntryButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarModeEntryButton.swift; sourceTree = "<group>"; };
+		59814D0AE9FAF49E9A52426A /* BadgeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeService.swift; sourceTree = "<group>"; };
+		59857C4239FBD7A4ABA37871 /* TypographyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyService.swift; sourceTree = "<group>"; };
+		5D440766BDBF7EFBBA87B19A /* TypographySettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographySettingsViewModelTests.swift; sourceTree = "<group>"; };
+		5DCA7B3D060EF65547DF53DA /* ReadingStatsServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStatsServiceProtocol.swift; sourceTree = "<group>"; };
+		6837ACC21376FE419332599B /* BadgeDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeDetailView.swift; sourceTree = "<group>"; };
+		6A6CA6654994D77041AE0F79 /* ReadingStreak.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStreak.swift; sourceTree = "<group>"; };
+		6B426971F2D8FBDAFFDE119E /* DiscoveryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryViewModelTests.swift; sourceTree = "<group>"; };
+		6E23B721AF3657594B87E2D0 /* CrossLibrarySearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossLibrarySearchService.swift; sourceTree = "<group>"; };
+		6E45E306F7C79073049F3ECE /* CarModeSleepTimerPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarModeSleepTimerPicker.swift; sourceTree = "<group>"; };
+		73605CB7B7F89F99584D0882 /* DiscoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryView.swift; sourceTree = "<group>"; };
+		74D09C16D15567198A0A9194 /* StatsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsViewModelTests.swift; sourceTree = "<group>"; };
+		7B9F5CA71B9FB620537CC599 /* ClaudeDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDiscoveryService.swift; sourceTree = "<group>"; };
+		7BA4D17463BADFD0DEBC53FA /* ReadingStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStats.swift; sourceTree = "<group>"; };
+		874C260EDA4348FC05E8FE2A /* LocalDiscoveryFallback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDiscoveryFallback.swift; sourceTree = "<group>"; };
+		88F5CEBB42D6049F0680F42C /* RecommendationCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecommendationCard.swift; sourceTree = "<group>"; };
+		8E19CD465746A747F6B49FBA /* CrossLibrarySearchServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossLibrarySearchServiceTests.swift; sourceTree = "<group>"; };
+		8E6A87C52856D2D19793E520 /* ClaudeDiscoveryServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeDiscoveryServiceTests.swift; sourceTree = "<group>"; };
+		90F16E79F7C14C0F72FC36B3 /* ReadingStatsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStatsStoreTests.swift; sourceTree = "<group>"; };
+		95524DFA311D1BE65A9F5FF3 /* ThemePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePickerView.swift; sourceTree = "<group>"; };
+		97C1C917A6BF4317D7FA6567 /* TypographySettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographySettings.swift; sourceTree = "<group>"; };
+		9BCA63D51A4176FB08ED1941 /* StatsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsTab.swift; sourceTree = "<group>"; };
+		A0C80EC81CE79039F1835CCD /* BluetoothCarModeDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothCarModeDetector.swift; sourceTree = "<group>"; };
+		A6151708139FDC618513C334 /* CarModeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarModeState.swift; sourceTree = "<group>"; };
+		AAEF18ABE4491BC8B2277E65 /* PlaybackSpeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackSpeed.swift; sourceTree = "<group>"; };
+		AB416026EE34EBDB68AD788B /* ReadingStatsServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStatsServiceTests.swift; sourceTree = "<group>"; };
+		ABACD6237FD75664BEADFF58 /* TypographyPresetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyPresetTests.swift; sourceTree = "<group>"; };
+		AC1B8AF7EB40C9DE22ED5ED0 /* TypographyServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyServiceProtocol.swift; sourceTree = "<group>"; };
+		AD405AED47651832F0F573AE /* CarModeServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarModeServiceTests.swift; sourceTree = "<group>"; };
+		B365956298AA1A7256D63D8E /* StatsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsViewModel.swift; sourceTree = "<group>"; };
+		BA121652A5D3675E6CEE9849 /* TypographySettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographySettingsViewModel.swift; sourceTree = "<group>"; };
+		BB660AAD998ACFC41771539E /* ReadingStatsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStatsStore.swift; sourceTree = "<group>"; };
+		BF81DF90FD790010A1050888 /* SleepTimerOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimerOption.swift; sourceTree = "<group>"; };
+		C1A78DE6D235AA54DC8F02DA /* TypographyPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyPreset.swift; sourceTree = "<group>"; };
+		C41E92244AABB4F1FE944CF8 /* ReaderTypographyButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderTypographyButton.swift; sourceTree = "<group>"; };
+		C8F8EBC8684EF42942C688A7 /* ReadingStatsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStatsService.swift; sourceTree = "<group>"; };
+		C927D5FB4DCC629EEF09DE4C /* BadgeServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeServiceTests.swift; sourceTree = "<group>"; };
+		CD321623DBDDEC02C16FE9A9 /* TypographyServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyServiceTests.swift; sourceTree = "<group>"; };
+		CD71BC0E5F2F1CD7DADCF1D9 /* DiscoveryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryViewModel.swift; sourceTree = "<group>"; };
+		D6EF9481386FFCE35AA787B5 /* ReadingChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingChartView.swift; sourceTree = "<group>"; };
+		DB1D8E96BB21CEA1AB690046 /* StreakView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreakView.swift; sourceTree = "<group>"; };
+		E5577D704F5F0C223E8CED97 /* CarModeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarModeViewModel.swift; sourceTree = "<group>"; };
+		EC1C1CACD11BEE983444DF0E /* CarModeChapterList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarModeChapterList.swift; sourceTree = "<group>"; };
+		F1B8BA0D1E31B3C9BAA84501 /* CarModeViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarModeViewModelTests.swift; sourceTree = "<group>"; };
+		F8F6DC988BD1299FD795A864 /* LibrarySearchResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearchResult.swift; sourceTree = "<group>"; };
+		F994F35E532ACAA0F6C45035 /* ReaderTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderTheme.swift; sourceTree = "<group>"; };
+		FEDEE3557966080C751D943E /* DiscoveryRecommendation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryRecommendation.swift; sourceTree = "<group>"; };
+		FFA10178BD2885EBF24673F3 /* FontManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontManager.swift; sourceTree = "<group>"; };
 		0345BFD61DBF002E00398B6F /* APIKeys.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = APIKeys.swift; sourceTree = "<group>"; };
 		03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReaderBookmarkCell.swift; sourceTree = "<group>"; };
 		03690E281EB2B44300F75D5F /* TPPReadiumBookmark.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReadiumBookmark.swift; sourceTree = "<group>"; };
@@ -2512,6 +2726,7 @@
 		21E7E07424FEA7C100189224 /* Audiobooks */ = {
 			isa = PBXGroup;
 			children = (
+				D1086607A3EC89E861F37B82 /* CarMode */,
 				E795A7622A74072500314EC8 /* Tracker */,
 				218D0CF925715EF700E81705 /* LCP */,
 				21E7E07924FEA7D700189224 /* DPLA */,
@@ -2602,6 +2817,7 @@
 		4850933FCAED50067CAF87EB /* Reader2 */ = {
 			isa = PBXGroup;
 			children = (
+				CEA6C48C0DE6EFA7DA35EE74 /* Typography */,
 				239DE8E32B9D206786CE8E13 /* BookmarkBusinessLogicTests.swift */,
 				E1A2B3C4D5E6F7A8B9C0D1E2 /* EPUBSearchViewModelTests.swift */,
 				6C7A26344806FE3471C298DF /* PositionSyncTests.swift */,
@@ -2994,6 +3210,7 @@
 		73A22980240F26C6006B9EAD /* Reader2 */ = {
 			isa = PBXGroup;
 			children = (
+				1198CECED6031F4677058EFF /* Typography */,
 				E75F4A2729C3AAF0006DFBD8 /* TTS */,
 				217595D027B67FA300BA0FDD /* ReaderSettings */,
 				73DE8984260BF61B003D9135 /* Bookmarks */,
@@ -3588,6 +3805,8 @@
 		A823D816192BABA400B55DE2 /* Palace */ = {
 			isa = PBXGroup;
 			children = (
+				8E2E8D29859F6872CFB1792A /* Discovery */,
+				C2C1A4564EE2DAE41C449950 /* Stats */,
 				E759B2052A1BF7AA0041B075 /* PalaceDebug.entitlements */,
 				E59892DD28A9AA7400C44A85 /* Samples */,
 				73DE53292525A2AD003E2C56 /* Accounts */,
@@ -3655,6 +3874,9 @@
 		A823D82F192BABA400B55DE2 /* PalaceTests */ = {
 			isa = PBXGroup;
 			children = (
+				78D761BECF1895ABCF338A3A /* Audiobooks */,
+				AB8405417D83EA32553756F8 /* Discovery */,
+				83FDAE786C460F0C949A083F /* Stats */,
 				E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */,
 				E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */,
 				EE20C7E18DE551AD81B9D2C6 /* NoNetworkURLProtocol.swift */,
@@ -4508,6 +4730,210 @@
 			path = Settings;
 			sourceTree = "<group>";
 		};
+		D1086607A3EC89E861F37B82 /* CarMode */ = {
+			isa = PBXGroup;
+			children = (
+				A0C80EC81CE79039F1835CCD /* BluetoothCarModeDetector.swift */,
+				EC1C1CACD11BEE983444DF0E /* CarModeChapterList.swift */,
+				5818F11E1C4F6A10799AC0AE /* CarModeEntryButton.swift */,
+				237A0D61157570C5981A11FA /* CarModeService.swift */,
+				325313C8EC16FF0239801855 /* CarModeServiceProtocol.swift */,
+				6E45E306F7C79073049F3ECE /* CarModeSleepTimerPicker.swift */,
+				3BC5288EB50B22BAA3FEC1FA /* CarModeSpeedPicker.swift */,
+				A6151708139FDC618513C334 /* CarModeState.swift */,
+				2E367781DF09FAE70BFB4A94 /* CarModeView.swift */,
+				E5577D704F5F0C223E8CED97 /* CarModeViewModel.swift */,
+				AAEF18ABE4491BC8B2277E65 /* PlaybackSpeed.swift */,
+				BF81DF90FD790010A1050888 /* SleepTimerOption.swift */,
+			);
+			path = CarMode;
+			sourceTree = "<group>";
+		};
+		8E2E8D29859F6872CFB1792A /* Discovery */ = {
+			isa = PBXGroup;
+			children = (
+				FA1AA0E46EE136E23231701E /* Models */,
+				1B10BDFD3A6103E0238BA62C /* Services */,
+				B01964FB7C6EAD8F1336C990 /* ViewModels */,
+				6C15590243CD3576461A6357 /* Views */,
+				2D723CD73897800A0AAB5FB2 /* DiscoveryTab.swift */,
+			);
+			path = Discovery;
+			sourceTree = "<group>";
+		};
+		FA1AA0E46EE136E23231701E /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				3D3045936B5A27DC51DD1E64 /* CrossLibrarySearchResponse.swift */,
+				0230FAAD08067F389DA9172B /* DiscoveryPrompt.swift */,
+				FEDEE3557966080C751D943E /* DiscoveryRecommendation.swift */,
+				F8F6DC988BD1299FD795A864 /* LibrarySearchResult.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		1B10BDFD3A6103E0238BA62C /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				7B9F5CA71B9FB620537CC599 /* ClaudeDiscoveryService.swift */,
+				6E23B721AF3657594B87E2D0 /* CrossLibrarySearchService.swift */,
+				1E44E59A8C2886A5A04E6F2A /* DiscoveryConfiguration.swift */,
+				36B716E0256BACD2606B80ED /* DiscoveryServiceProtocol.swift */,
+				874C260EDA4348FC05E8FE2A /* LocalDiscoveryFallback.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		B01964FB7C6EAD8F1336C990 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				CD71BC0E5F2F1CD7DADCF1D9 /* DiscoveryViewModel.swift */,
+				2B78F73FE1AEC101DA26CD3A /* SearchResultsViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		6C15590243CD3576461A6357 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				04F40EC5CD2A41572C74C76C /* CrossLibraryAvailabilityView.swift */,
+				73605CB7B7F89F99584D0882 /* DiscoveryView.swift */,
+				88F5CEBB42D6049F0680F42C /* RecommendationCard.swift */,
+				34EEEDCA3A2A6760AA2DC43F /* SearchResultsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		1198CECED6031F4677058EFF /* Typography */ = {
+			isa = PBXGroup;
+			children = (
+				1AA20DE46939562EEA2DF764 /* FontFamily.swift */,
+				FFA10178BD2885EBF24673F3 /* FontManager.swift */,
+				0D99051FE5305ABE13531F76 /* FontPickerView.swift */,
+				20B293519F9B55B6F4F17CC7 /* PresetCard.swift */,
+				F994F35E532ACAA0F6C45035 /* ReaderTheme.swift */,
+				C41E92244AABB4F1FE944CF8 /* ReaderTypographyButton.swift */,
+				422FFD436DFCCB056CCF6302 /* ReadingRulerView.swift */,
+				95524DFA311D1BE65A9F5FF3 /* ThemePickerView.swift */,
+				C1A78DE6D235AA54DC8F02DA /* TypographyPreset.swift */,
+				59857C4239FBD7A4ABA37871 /* TypographyService.swift */,
+				AC1B8AF7EB40C9DE22ED5ED0 /* TypographyServiceProtocol.swift */,
+				97C1C917A6BF4317D7FA6567 /* TypographySettings.swift */,
+				05A876C0044C35648AE92BD7 /* TypographySettingsView.swift */,
+				BA121652A5D3675E6CEE9849 /* TypographySettingsViewModel.swift */,
+			);
+			path = Typography;
+			sourceTree = "<group>";
+		};
+		C2C1A4564EE2DAE41C449950 /* Stats */ = {
+			isa = PBXGroup;
+			children = (
+				DAC6E0FC5E3CFA49485C5980 /* Models */,
+				B9F43977D9638ABDA4D2D637 /* Services */,
+				9341E5B2C42B244857F92388 /* ViewModels */,
+				CE669450263E1799207AA2ED /* Views */,
+			);
+			path = Stats;
+			sourceTree = "<group>";
+		};
+		DAC6E0FC5E3CFA49485C5980 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				3B60ACDE3E15FC832885E932 /* Badge.swift */,
+				2808F34E9EFB0F133F99262B /* BadgeDefinition.swift */,
+				16B28BFC973E94C02E7E117D /* ReadingSession.swift */,
+				7BA4D17463BADFD0DEBC53FA /* ReadingStats.swift */,
+				6A6CA6654994D77041AE0F79 /* ReadingStreak.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		B9F43977D9638ABDA4D2D637 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				59814D0AE9FAF49E9A52426A /* BadgeService.swift */,
+				2A7140DF0127F1C8BA633644 /* BadgeServiceProtocol.swift */,
+				0592B4A4D666ED6705BF8093 /* ReadingSessionTracker.swift */,
+				C8F8EBC8684EF42942C688A7 /* ReadingStatsService.swift */,
+				5DCA7B3D060EF65547DF53DA /* ReadingStatsServiceProtocol.swift */,
+				BB660AAD998ACFC41771539E /* ReadingStatsStore.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		9341E5B2C42B244857F92388 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				55ABB7E13EF5B68C8635A58F /* BadgesViewModel.swift */,
+				B365956298AA1A7256D63D8E /* StatsViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		CE669450263E1799207AA2ED /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				6837ACC21376FE419332599B /* BadgeDetailView.swift */,
+				02060A0117F26B0E56F3F606 /* BadgesView.swift */,
+				D6EF9481386FFCE35AA787B5 /* ReadingChartView.swift */,
+				17628BE0EB1E554ECF46071E /* StatsCardView.swift */,
+				9BCA63D51A4176FB08ED1941 /* StatsTab.swift */,
+				5431B832D502714505B6EAF5 /* StatsView.swift */,
+				DB1D8E96BB21CEA1AB690046 /* StreakView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		78D761BECF1895ABCF338A3A /* Audiobooks */ = {
+			isa = PBXGroup;
+			children = (
+				00A47EFA42C356655C47CFAF /* CarMode */,
+			);
+			path = Audiobooks;
+			sourceTree = "<group>";
+		};
+		00A47EFA42C356655C47CFAF /* CarMode */ = {
+			isa = PBXGroup;
+			children = (
+				AD405AED47651832F0F573AE /* CarModeServiceTests.swift */,
+				F1B8BA0D1E31B3C9BAA84501 /* CarModeViewModelTests.swift */,
+				3B38648384F5A57B12842F24 /* SleepTimerTests.swift */,
+			);
+			path = CarMode;
+			sourceTree = "<group>";
+		};
+		AB8405417D83EA32553756F8 /* Discovery */ = {
+			isa = PBXGroup;
+			children = (
+				8E6A87C52856D2D19793E520 /* ClaudeDiscoveryServiceTests.swift */,
+				8E19CD465746A747F6B49FBA /* CrossLibrarySearchServiceTests.swift */,
+				6B426971F2D8FBDAFFDE119E /* DiscoveryViewModelTests.swift */,
+			);
+			path = Discovery;
+			sourceTree = "<group>";
+		};
+		CEA6C48C0DE6EFA7DA35EE74 /* Typography */ = {
+			isa = PBXGroup;
+			children = (
+				3260782E24602A4B3FF7E20B /* FontManagerTests.swift */,
+				ABACD6237FD75664BEADFF58 /* TypographyPresetTests.swift */,
+				CD321623DBDDEC02C16FE9A9 /* TypographyServiceTests.swift */,
+				5D440766BDBF7EFBBA87B19A /* TypographySettingsViewModelTests.swift */,
+			);
+			path = Typography;
+			sourceTree = "<group>";
+		};
+		83FDAE786C460F0C949A083F /* Stats */ = {
+			isa = PBXGroup;
+			children = (
+				C927D5FB4DCC629EEF09DE4C /* BadgeServiceTests.swift */,
+				AB416026EE34EBDB68AD788B /* ReadingStatsServiceTests.swift */,
+				90F16E79F7C14C0F72FC36B3 /* ReadingStatsStoreTests.swift */,
+				74D09C16D15567198A0A9194 /* StatsViewModelTests.swift */,
+			);
+			path = Stats;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -4938,6 +5364,20 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B98EFC297882B9BF1072A76F /* CarModeServiceTests.swift in Sources */,
+				E00E62A02C10263E7DF15B11 /* CarModeViewModelTests.swift in Sources */,
+				651351CF68126FDB818F83F7 /* SleepTimerTests.swift in Sources */,
+				A4463189D19C49AF222A0064 /* ClaudeDiscoveryServiceTests.swift in Sources */,
+				19B65D675FAB06628ABAADA0 /* CrossLibrarySearchServiceTests.swift in Sources */,
+				646C15C74B237F4C366E6CE3 /* DiscoveryViewModelTests.swift in Sources */,
+				05BD558BEDC45D091DFEA283 /* FontManagerTests.swift in Sources */,
+				FE48F9C21D03088224767755 /* TypographyPresetTests.swift in Sources */,
+				F042F1649763CFEADC848065 /* TypographyServiceTests.swift in Sources */,
+				C998049BB2CFF2AE01EA1C36 /* TypographySettingsViewModelTests.swift in Sources */,
+				4714FCCE477E3480FCAB241C /* BadgeServiceTests.swift in Sources */,
+				8BBAC69C617313D695562036 /* ReadingStatsServiceTests.swift in Sources */,
+				9D5DE68418C31F9D88044C89 /* ReadingStatsStoreTests.swift in Sources */,
+				CCCDB216C7E807F461826B81 /* StatsViewModelTests.swift in Sources */,
 				CARPLAYTESTS00002SOURCES /* CarPlayTests.swift in Sources */,
 				NAVCOORDTESTS0001SOURCES /* NavigationCoordinatorTests.swift in Sources */,
 				PLAYBOOTTEST0001SOURCES /* PlaybackBootstrapperTests.swift in Sources */,
@@ -5175,6 +5615,68 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A38F1ABCA7AFC6AB4D15F9F1 /* BluetoothCarModeDetector.swift in Sources */,
+				E11A203872A5AA73CC27F408 /* CarModeChapterList.swift in Sources */,
+				C163475CB46F00070D2A3DDB /* CarModeEntryButton.swift in Sources */,
+				381880BDA4C02E9618FBB6F9 /* CarModeService.swift in Sources */,
+				CC91CE08FB8250A533A74406 /* CarModeServiceProtocol.swift in Sources */,
+				97C1FD54D06ACFF0803398FE /* CarModeSleepTimerPicker.swift in Sources */,
+				56D58013DA98465F98A7899B /* CarModeSpeedPicker.swift in Sources */,
+				D53B36A8221413AF7C0355AE /* CarModeState.swift in Sources */,
+				FCC8FDF250C47895BBD4F7DB /* CarModeView.swift in Sources */,
+				6274888D2E5C0E90D333F4AC /* CarModeViewModel.swift in Sources */,
+				8467D5E1177DAEE24E74FD57 /* PlaybackSpeed.swift in Sources */,
+				64053617209B94200D66A8C0 /* SleepTimerOption.swift in Sources */,
+				43E5AFBBAAD127B6B28DCCFD /* DiscoveryTab.swift in Sources */,
+				78BEAD5830F2B6B4C31790CF /* CrossLibrarySearchResponse.swift in Sources */,
+				8B268B08B5B33F8ED19833CC /* DiscoveryPrompt.swift in Sources */,
+				0E8C4BE6813548BF5E7A62C3 /* DiscoveryRecommendation.swift in Sources */,
+				4115CAE641E2DE3779F69465 /* LibrarySearchResult.swift in Sources */,
+				0D9CA412C5C8B2BBDE47B81D /* ClaudeDiscoveryService.swift in Sources */,
+				963D8C24B1E422010D706961 /* CrossLibrarySearchService.swift in Sources */,
+				9DD1EB38C990FC718AC10906 /* DiscoveryConfiguration.swift in Sources */,
+				F50AA3B20D4D9C93BB7FBE43 /* DiscoveryServiceProtocol.swift in Sources */,
+				A332AFC14B741366D8B5939A /* LocalDiscoveryFallback.swift in Sources */,
+				261AFC72225221096DDB2AD2 /* DiscoveryViewModel.swift in Sources */,
+				E6AB0C8A385DB8FB534AD474 /* SearchResultsViewModel.swift in Sources */,
+				0DEF60707090701AA8343B1B /* CrossLibraryAvailabilityView.swift in Sources */,
+				8C796FFAF6FF4B4140206184 /* DiscoveryView.swift in Sources */,
+				DDDFAEEFB4D1A3C370C0CC95 /* RecommendationCard.swift in Sources */,
+				6599D677207BD16CD68D9669 /* SearchResultsView.swift in Sources */,
+				FC1B7D899D35F336F1469191 /* FontFamily.swift in Sources */,
+				A961D381DEBCF6341C9C7AA2 /* FontManager.swift in Sources */,
+				C6C2BB5EDA39F3116659A4A6 /* FontPickerView.swift in Sources */,
+				5BCEAC8C8D29E0CE661E127D /* PresetCard.swift in Sources */,
+				D1662F093947D3C2F76B25D1 /* ReaderTheme.swift in Sources */,
+				08E5DBD9DF8A02E6C155BA2C /* ReaderTypographyButton.swift in Sources */,
+				F13A3578C7B25C2B8B739B69 /* ReadingRulerView.swift in Sources */,
+				AC7976569F7EDBAB30C096A4 /* ThemePickerView.swift in Sources */,
+				BB800AA2A27632EBDEF6758B /* TypographyPreset.swift in Sources */,
+				C68C9469871DE1074439C449 /* TypographyService.swift in Sources */,
+				C89594A0D21089924B82E71D /* TypographyServiceProtocol.swift in Sources */,
+				A7D3A61E77E6B8C0FD9AEA5D /* TypographySettings.swift in Sources */,
+				F60F86661D937A10DC714825 /* TypographySettingsView.swift in Sources */,
+				6F1E28BFDD2B51A198F52989 /* TypographySettingsViewModel.swift in Sources */,
+				79D7234B5BFAE38BC05CBBEA /* Badge.swift in Sources */,
+				FBD6C78029C5F836DA8B1EB1 /* BadgeDefinition.swift in Sources */,
+				8753EC265A5DF6362FFF71B9 /* ReadingSession.swift in Sources */,
+				FD944841337FCB9D26209ED4 /* ReadingStats.swift in Sources */,
+				1BD28F76C1C3B5B76ABC3C80 /* ReadingStreak.swift in Sources */,
+				F07B88C83608E0749DA9B454 /* BadgeService.swift in Sources */,
+				4CDD905D1ADE26FEC63558EB /* BadgeServiceProtocol.swift in Sources */,
+				30B392104E9FCA6F9CBEEF01 /* ReadingSessionTracker.swift in Sources */,
+				9242ED62B26248A2F20DF7D6 /* ReadingStatsService.swift in Sources */,
+				BF2B5B79D36596C9F06C43A5 /* ReadingStatsServiceProtocol.swift in Sources */,
+				766C1BDB436AA9586293ABF7 /* ReadingStatsStore.swift in Sources */,
+				A0EF4D630835291C699A377A /* BadgesViewModel.swift in Sources */,
+				269B4BB49D943C41E65D3F93 /* StatsViewModel.swift in Sources */,
+				FB46AF138CFC75BE9AA9EA73 /* BadgeDetailView.swift in Sources */,
+				82081EC71E1591C3E61B4BF4 /* BadgesView.swift in Sources */,
+				1F59F8B778BF885C5C1FFA67 /* ReadingChartView.swift in Sources */,
+				18EAAA05A58EBDD4FCD5B5E8 /* StatsCardView.swift in Sources */,
+				BF0FD554A5AA86C241E2CA9F /* StatsTab.swift in Sources */,
+				487989630A782630C96BAF54 /* StatsView.swift in Sources */,
+				582431D4978FAFF6C12F1599 /* StreakView.swift in Sources */,
 				SCENEDEL0001PALACE00001 /* SceneDelegate.swift in Sources */,
 				ABEVENTS0001PALACE0001 /* AudiobookEvents.swift in Sources */,
 				CARPLAY1001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,
@@ -5593,6 +6095,68 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F4EA5E42C27D5081DC16D0B3 /* BluetoothCarModeDetector.swift in Sources */,
+				7242702EEBD1651E65B60EDC /* CarModeChapterList.swift in Sources */,
+				2A114B30795FFA695A05EEA9 /* CarModeEntryButton.swift in Sources */,
+				5FD1C501554BA4383C12B3D3 /* CarModeService.swift in Sources */,
+				42DEEAF8B792F5D3B40A9C6D /* CarModeServiceProtocol.swift in Sources */,
+				ABAB459916B5DE60C559727D /* CarModeSleepTimerPicker.swift in Sources */,
+				FEBCDDB32AF691793539E77A /* CarModeSpeedPicker.swift in Sources */,
+				80F0182F3A2261A3F61F5986 /* CarModeState.swift in Sources */,
+				74AD3F15226273AA5C039E7A /* CarModeView.swift in Sources */,
+				E9B49D80399D570727A7DC1A /* CarModeViewModel.swift in Sources */,
+				02B5BE224BAD4418ADA8A4AF /* PlaybackSpeed.swift in Sources */,
+				978348C79CFD19FFB184C580 /* SleepTimerOption.swift in Sources */,
+				98ACA14779D89B7DA21055FD /* DiscoveryTab.swift in Sources */,
+				B4F870CCD03C5E482146DF88 /* CrossLibrarySearchResponse.swift in Sources */,
+				D8BF12417544D2E77655500E /* DiscoveryPrompt.swift in Sources */,
+				4B35024540E24CCB2D848D38 /* DiscoveryRecommendation.swift in Sources */,
+				9B24B24A9667723BD659D0E8 /* LibrarySearchResult.swift in Sources */,
+				D420918FF18C6BBAB91CF955 /* ClaudeDiscoveryService.swift in Sources */,
+				8A5A65781D53DAB6D2CF7449 /* CrossLibrarySearchService.swift in Sources */,
+				5C9AD28F46EEAF224CAF68EF /* DiscoveryConfiguration.swift in Sources */,
+				448D6BE9AE0BCCC6F742F940 /* DiscoveryServiceProtocol.swift in Sources */,
+				66FBE3C6EBC48184946CB231 /* LocalDiscoveryFallback.swift in Sources */,
+				792DA4665FFCEBFDEA2A8CD6 /* DiscoveryViewModel.swift in Sources */,
+				B2DB5878D850B25C262822B2 /* SearchResultsViewModel.swift in Sources */,
+				555039B35569633425B3435C /* CrossLibraryAvailabilityView.swift in Sources */,
+				5CC8895190D082858DAA719F /* DiscoveryView.swift in Sources */,
+				6061EF52B442A05D529AD468 /* RecommendationCard.swift in Sources */,
+				574CEFAB888D9D49F6DA3DDA /* SearchResultsView.swift in Sources */,
+				E58A6E33B84B1CACFD91F346 /* FontFamily.swift in Sources */,
+				8F0F91D96D8F6EA8F3588475 /* FontManager.swift in Sources */,
+				B5B4BA6705E98259BC0D2E68 /* FontPickerView.swift in Sources */,
+				38E52EB89550AF93D37D2E59 /* PresetCard.swift in Sources */,
+				B69FB320CECF1E0EB2AF98DE /* ReaderTheme.swift in Sources */,
+				2DB7FEF66BE7D0AF90930C47 /* ReaderTypographyButton.swift in Sources */,
+				A9701CD50E8850215EA9FD69 /* ReadingRulerView.swift in Sources */,
+				910440BEAFA83A16181BBA27 /* ThemePickerView.swift in Sources */,
+				A6B46B564D17521FD9892D70 /* TypographyPreset.swift in Sources */,
+				62DC318F5CB4BE231F67FE14 /* TypographyService.swift in Sources */,
+				A8275030D06977B9FD11A533 /* TypographyServiceProtocol.swift in Sources */,
+				ADC762F8876B7DD97B60178D /* TypographySettings.swift in Sources */,
+				5BC5CECCF20A561F61CB8CEE /* TypographySettingsView.swift in Sources */,
+				AAC98E03ABBDB9DA0D80BE08 /* TypographySettingsViewModel.swift in Sources */,
+				6DEB021C53F567192EC579C5 /* Badge.swift in Sources */,
+				37FF2E4F346CFD20EDC64D3F /* BadgeDefinition.swift in Sources */,
+				43600F4D687C6122CFA1AAE2 /* ReadingSession.swift in Sources */,
+				ED121CB96E52B81CED187442 /* ReadingStats.swift in Sources */,
+				66AE9D42FA4F53E26C31747C /* ReadingStreak.swift in Sources */,
+				0469ADBAE6CAC0F21823D1E7 /* BadgeService.swift in Sources */,
+				B7C539A67E10A0EBB7D897F3 /* BadgeServiceProtocol.swift in Sources */,
+				89952B99496C6D204701B8A0 /* ReadingSessionTracker.swift in Sources */,
+				76A3FDFF52B8F948C2C13A65 /* ReadingStatsService.swift in Sources */,
+				B1E22740A69E3E6638073644 /* ReadingStatsServiceProtocol.swift in Sources */,
+				3A98AD201DEDB483FECEF28F /* ReadingStatsStore.swift in Sources */,
+				3CC7207CA0819A75DDE8D1F2 /* BadgesViewModel.swift in Sources */,
+				9AADE85EC7784278CCF12FA8 /* StatsViewModel.swift in Sources */,
+				953B933A06DA6AF6ABAFB7EC /* BadgeDetailView.swift in Sources */,
+				68F27DEBDED5D751249088B3 /* BadgesView.swift in Sources */,
+				FF6829BDA60EAB8518CE8326 /* ReadingChartView.swift in Sources */,
+				2476CF4E6F4779F55BC68933 /* StatsCardView.swift in Sources */,
+				510C6DAC28570835F7208CFC /* StatsTab.swift in Sources */,
+				9309887A8360976E65C6AE04 /* StatsView.swift in Sources */,
+				10BDB9803CA69D9968DD25B0 /* StreakView.swift in Sources */,
 				SCENEDEL0002SIMPLYE0001 /* SceneDelegate.swift in Sources */,
 				ABEVENTS0002SIMPLYE001 /* AudiobookEvents.swift in Sources */,
 				CARPLAY0001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,

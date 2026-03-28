@@ -55,8 +55,7 @@ struct MyBooksView: View {
             account?.loadLogo()
             currentAccountUUID = account?.uuid ?? ""
         }
-        .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
-            let account = AccountsManager.shared.currentAccount
+        .onReceive(AccountsManager.shared.currentAccountDidChange) { account in
             account?.logoDelegate = logoObserver
             account?.loadLogo()
             currentAccountUUID = account?.uuid ?? ""

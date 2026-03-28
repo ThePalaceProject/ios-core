@@ -74,7 +74,10 @@ struct AppTabHostView: View {
         .onAppear {
             updateHoldsBadge()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)) { _ in
+        .onReceive(TPPBookRegistry.shared.bookStatePublisher.map { _ in () }
+            .merge(with: TPPBookRegistry.shared.syncStatePublisher.map { _ in () })
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+        ) { _ in
             updateHoldsBadge()
         }
     }

@@ -32,7 +32,7 @@ final class TPPXMLSwift: NSObject {
     super.init()
   }
 
-  private init(
+  fileprivate init(
     attributes: [String: String],
     name: String,
     namespaceURI: String?,

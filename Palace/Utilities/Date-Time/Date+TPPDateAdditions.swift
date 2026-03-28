@@ -63,33 +63,7 @@ extension Date {
   }
 }
 
-// MARK: - NSDate ObjC compatibility
-
-extension NSDate {
-
-  /// Parses an RFC 3339 date string. Handles optional fractional seconds.
-  @objc(dateWithRFC3339String:)
-  static func _dateWithRFC3339String(_ string: String?) -> NSDate? {
-    return Date.dateWithRFC3339String(string) as NSDate?
-  }
-
-  /// Parses an ISO 8601 full-date string (e.g. "2020-01-22").
-  @objc(dateWithISO8601DateString:)
-  static func _dateWithISO8601DateString(_ string: String?) -> NSDate? {
-    return Date.dateWithISO8601DateString(string) as NSDate?
-  }
-
-  /// Returns an RFC 3339 formatted string representation.
-  /// ObjC selector: `RFC3339String` to match original API.
-  @objc(RFC3339String)
-  func rfc3339String() -> String {
-    return (self as Date).rfc3339String()
-  }
-
-  /// Returns the date's components in UTC.
-  /// ObjC selector: `UTCComponents` to match original API.
-  @objc(UTCComponents)
-  func utcDateComponents() -> DateComponents {
-    return (self as Date).utcComponents()
-  }
-}
+// NOTE: NSDate ObjC compatibility methods (dateWithRFC3339String:, RFC3339String,
+// dateWithISO8601DateString:, UTCComponents) are provided by the ObjC
+// NSDate+NYPLDateAdditions category. This Swift extension adds Date-native
+// equivalents only.

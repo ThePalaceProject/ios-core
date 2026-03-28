@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
@@ -43,6 +44,28 @@ struct CatalogCacheMetadata: Codable {
 
     static let shared = AccountsManager()
     static func sharedInstance() -> AccountsManager { shared }
+
+    // MARK: - Combine Publishers
+
+    /// Publishes when the current account changes (replaces `.TPPCurrentAccountDidChange` notification)
+    private let currentAccountSubject = PassthroughSubject<Account?, Never>()
+
+    /// Publisher for current account changes. Use instead of observing `.TPPCurrentAccountDidChange`.
+    var currentAccountDidChange: AnyPublisher<Account?, Never> {
+        currentAccountSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
+
+    /// Publishes when catalog data finishes loading (replaces `.TPPCatalogDidLoad` notification)
+    private let catalogDidLoadSubject = PassthroughSubject<Void, Never>()
+
+    /// Publisher for catalog load events. Use instead of observing `.TPPCatalogDidLoad`.
+    var catalogDidLoad: AnyPublisher<Void, Never> {
+        catalogDidLoadSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
 
     // MARK: – Config / state
 
@@ -101,9 +124,6 @@ struct CatalogCacheMetadata: Codable {
     }
 
     // MARK: - Account Retrieval
-    /// Indicates an account switch is in progress; prevents registry loads during transition
-    private(set) var isAccountSwitching = false
-
     var currentAccount: Account? {
         get {
             guard let uuid = currentAccountId else { return nil }
@@ -117,35 +137,21 @@ struct CatalogCacheMetadata: Codable {
             Log.debug(#file, "Previous account: \(previousAccountId ?? "nil") → New account: \(newAccountId ?? "nil")")
 
             if previousAccountId != newAccountId, previousAccountId != nil {
-                Log.info(#file, "Account switch detected - cleaning up active content")
-                isAccountSwitching = true
-                cleanupActiveContentBeforeAccountSwitch(from: previousAccountId, to: newAccountId) { [weak self] in
-                    guard let self = self else { return }
-                    self.completeAccountSwitch(newValue: newValue)
-                }
-            } else {
-                completeAccountSwitch(newValue: newValue)
+                Log.info(#file, "🔄 Account switch detected - cleaning up active content")
+                cleanupActiveContentBeforeAccountSwitch(from: previousAccountId, to: newAccountId)
             }
-        }
-    }
 
-    /// Finishes the account switch after cleanup completes (or immediately if no cleanup needed).
-    private func completeAccountSwitch(newValue: Account?) {
-        self.currentAccount?.hasUpdatedToken = false
-        currentAccountId = newValue?.uuid
-        TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
-        isAccountSwitching = false
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+            self.currentAccount?.hasUpdatedToken = false
+            currentAccountId = newValue?.uuid
+            TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
+            currentAccountSubject.send(newValue)
+            NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+        }
     }
 
     /// Cleans up active audiobook playback, in-flight network requests, and other
     /// content before switching accounts to prevent cross-account credential leaks.
-    /// Calls `completion` on the main thread when cleanup is done.
-    private func cleanupActiveContentBeforeAccountSwitch(
-        from previousId: String?,
-        to newId: String?,
-        completion: @escaping () -> Void
-    ) {
+    private func cleanupActiveContentBeforeAccountSwitch(from previousId: String?, to newId: String?) {
         TPPNetworkExecutor.shared.cancelNonEssentialTasks()
 
         Task { @MainActor in
@@ -154,13 +160,12 @@ struct CatalogCacheMetadata: Codable {
                 Log.debug(#file, "  Navigation path has \(pathCount) items")
 
                 if pathCount > 0 {
-                    Log.info(#file, "  Popping to root to clean up active content before account switch")
+                    Log.info(#file, "  🔄 Popping to root to clean up active content before account switch")
                     coordinator.popToRoot()
 
                     try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
                 }
             }
-            completion()
         }
     }
 
@@ -264,6 +269,7 @@ struct CatalogCacheMetadata: Codable {
             if addLoadingHandler(for: hash, completion) { return }
 
             loadAccountSetsAndAuthDoc(fromCatalogData: cachedData, key: hash) { [weak self] success in
+                self?.catalogDidLoadSubject.send()
                 NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                 self?.callAndClearLoadingHandlers(for: hash, success)
             }
@@ -290,7 +296,8 @@ struct CatalogCacheMetadata: Codable {
             case .success(let data, _):
                 self.cacheAccountsCatalogData(data, hash: hash)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
-                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                    self.catalogDidLoadSubject.send()
+                NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     self.callAndClearLoadingHandlers(for: hash, success)
                 }
 
@@ -300,7 +307,8 @@ struct CatalogCacheMetadata: Codable {
                 if let data = self.readCachedAccountsCatalogData(hash: hash) {
                     Log.info(#file, "Using cached catalog data as fallback after network failure")
                     self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
-                        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                        self.catalogDidLoadSubject.send()
+                NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                         self.callAndClearLoadingHandlers(for: hash, success)
                     }
                 } else {
@@ -325,7 +333,8 @@ struct CatalogCacheMetadata: Codable {
                     self.cacheAccountsCatalogData(data, hash: hash)
                     self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { _ in
                         // Notify UI that fresh data is available
-                        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                        self.catalogDidLoadSubject.send()
+                NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     }
 
                 case .failure(let error, _):
@@ -456,6 +465,7 @@ struct CatalogCacheMetadata: Codable {
                 }
                 TPPSettings.shared.accountMainFeedURL = mainFeed
                 UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
+                self.currentAccountSubject.send(self.currentAccount)
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
                 completion(true)
             }

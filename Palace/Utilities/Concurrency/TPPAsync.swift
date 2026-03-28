@@ -5,6 +5,6 @@
 import Foundation
 
 /// Dispatches a block asynchronously on the default-priority global queue.
-@objc func TPPAsyncDispatch(_ block: @escaping () -> Void) {
+func TPPAsyncDispatchSwift(_ block: @escaping () -> Void) {
   DispatchQueue.global(qos: .default).async(execute: block)
 }

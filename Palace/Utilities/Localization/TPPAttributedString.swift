@@ -5,7 +5,7 @@
 import Foundation
 
 /// Returns an attributed string styled for displaying author names.
-@objc func TPPAttributedStringForAuthorsFromString(_ string: String?) -> NSAttributedString? {
+func TPPAttributedStringForAuthorsFromStringSwift(_ string: String?) -> NSAttributedString? {
   guard let string = string else { return nil }
 
   let paragraphStyle = NSMutableParagraphStyle()
@@ -23,7 +23,7 @@ import Foundation
 
 /// Returns an attributed string styled for displaying titles,
 /// with HTML entities decoded.
-@objc func TPPAttributedStringForTitleFromString(_ string: String?) -> NSAttributedString? {
+func TPPAttributedStringForTitleFromStringSwift(_ string: String?) -> NSAttributedString? {
   guard let string = string else { return nil }
 
   // Decode twice to handle double-encoded entities like `&amp;#39;`

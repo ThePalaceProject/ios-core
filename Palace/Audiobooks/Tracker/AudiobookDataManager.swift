@@ -118,9 +118,9 @@ class AudiobookDataManager {
             .sink(receiveValue: syncValues)
             .store(in: &subscriptions) as? any Cancellable
 
-        NotificationCenter.default.publisher(for: .TPPReachabilityChanged)
-            .receive(on: RunLoop.main)
-            .sink(receiveValue: reachabilityStatusChanged)
+        Reachability.shared.connectivityPublisher
+            .filter { $0 } // Only sync when connected
+            .sink { [weak self] _ in self?.syncValues() }
             .store(in: &subscriptions)
 
         loadStore()

@@ -65,29 +65,30 @@ extension URLRequest {
   }
 }
 
-// MARK: - ObjC compatibility on NSURLRequest
-
-extension NSURLRequest {
-
-  @objc static func postRequest(
-    withProblemDocument problemDocument: NSDictionary,
-    url: URL
-  ) -> NSURLRequest {
-    URLRequest.postRequest(
-      withProblemDocument: problemDocument as! [String: Any],
-      url: url
-    ) as NSURLRequest
-  }
-
-  @objc static func postRequest(
-    withParams params: NSDictionary,
-    imageOrNil image: UIImage?,
-    url: URL
-  ) -> NSURLRequest {
-    URLRequest.postRequest(
-      withParams: params as! [String: Any],
-      image: image,
-      url: url
-    ) as NSURLRequest
-  }
-}
+// COEXISTENCE: ObjC originals provide these. Uncomment when ObjC files are removed.
+//// MARK: - ObjC compatibility on NSURLRequest
+//
+//extension NSURLRequest {
+//
+//  @objc static func postRequest(
+//    withProblemDocument problemDocument: NSDictionary,
+//    url: URL
+//  ) -> NSURLRequest {
+//    URLRequest.postRequest(
+//      withProblemDocument: problemDocument as! [String: Any],
+//      url: url
+//    ) as NSURLRequest
+//  }
+//
+//  @objc static func postRequest(
+//    withParams params: NSDictionary,
+//    imageOrNil image: UIImage?,
+//    url: URL
+//  ) -> NSURLRequest {
+//    URLRequest.postRequest(
+//      withParams: params as! [String: Any],
+//      image: image,
+//      url: url
+//    ) as NSURLRequest
+//  }
+//}

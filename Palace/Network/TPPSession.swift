@@ -60,7 +60,7 @@ final class TPPSessionSwift: NSObject {
           error as NSError,
           code: .apiCall,
           summary: String(describing: TPPSessionSwift.self),
-          request: resultRequest as NSURLRequest?,
+          request: resultRequest.map { $0 as URLRequest },
           response: response,
           metadata: [
             "receivedData": dataString,
@@ -75,9 +75,15 @@ final class TPPSessionSwift: NSObject {
 
     let task: URLSessionDataTask
     if url.lastPathComponent == "borrow" {
-      task = TPPNetworkExecutor.shared.PUT(url, useTokenIfAvailable: false, completion: completionWrapper)
+      guard let t = TPPNetworkExecutor.shared.PUT(url, useTokenIfAvailable: false, completion: completionWrapper) else {
+        return URLRequest(url: url)
+      }
+      task = t
     } else {
-      task = TPPNetworkExecutor.shared.GET(url, cachePolicy: .useProtocolCachePolicy, useTokenIfAvailable: false, completion: completionWrapper)
+      guard let t = TPPNetworkExecutor.shared.GET(url, cachePolicy: .useProtocolCachePolicy, useTokenIfAvailable: false, completion: completionWrapper) else {
+        return URLRequest(url: url)
+      }
+      task = t
     }
 
     resultRequest = task.originalRequest
