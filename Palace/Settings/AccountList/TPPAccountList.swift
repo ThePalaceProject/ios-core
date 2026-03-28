@@ -56,6 +56,15 @@ import Foundation
         }
     }
 
+    @objc private func catalogDidLoad() {
+        guard isViewLoaded else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.datasource.loadData()
+            self.tableView.reloadData()
+        }
+    }
+
     private func setupUI() {
         let stackView = UIStackView()
         stackView.axis = .vertical
