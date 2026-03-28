@@ -42,4 +42,20 @@ final class TPPBookAuthorTests: XCTestCase {
 
         XCTAssertTrue(author is NSObject)
     }
+
+    // MARK: - Equality / Property Matching Tests
+
+    func test_sameNameAndURL_haveMatchingProperties() {
+        let url = URL(string: "https://example.com/a")!
+        let a = TPPBookAuthor(authorName: "Author", relatedBooksURL: url)
+        let b = TPPBookAuthor(authorName: "Author", relatedBooksURL: url)
+        XCTAssertEqual(a.name, b.name)
+        XCTAssertEqual(a.relatedBooksURL, b.relatedBooksURL)
+    }
+
+    func test_differentName_haveDifferentProperties() {
+        let a = TPPBookAuthor(authorName: "Alice", relatedBooksURL: nil)
+        let b = TPPBookAuthor(authorName: "Bob", relatedBooksURL: nil)
+        XCTAssertNotEqual(a.name, b.name)
+    }
 }

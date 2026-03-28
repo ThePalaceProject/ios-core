@@ -52,6 +52,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     private let downloadCenter: MyBooksDownloadCenter
     var forceEditability = false
 
+    /// Closure that returns a credential snapshot for a given library UUID.
+    /// Defaults to `TPPUserAccount.credentialSnapshot(for:)` in production;
+    /// tests can inject a mock implementation via the test initializer.
+    private let credentialSnapshotProvider: (String?) -> TPPUserAccount.CredentialSnapshot
+
     // MARK: - Computed Properties
 
     var selectedAccount: Account? {
@@ -98,6 +103,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         self.libraryAccountID = libraryAccountID
         self.accounts = accounts
         self.downloadCenter = downloadCenter
+        self.credentialSnapshotProvider = { TPPUserAccount.credentialSnapshot(for: $0) }
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accounts,
@@ -149,6 +155,34 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
         setupObservers()
         loadInitialData()
+    }
+
+    /// Test-only initializer that accepts pre-built dependencies.
+    /// Skips network setup, DRM, and async loading so tests run deterministically.
+    init(libraryAccountID: String,
+         businessLogic: TPPSignInBusinessLogic,
+         credentialSnapshotProvider: @escaping (String?) -> TPPUserAccount.CredentialSnapshot) {
+        self.libraryAccountID = libraryAccountID
+        self.accounts = AppContainer.shared.accounts
+        self.downloadCenter = AppContainer.shared.downloadCenter
+        self.credentialSnapshotProvider = credentialSnapshotProvider
+        self.businessLogic = businessLogic
+
+        let snapshot = credentialSnapshotProvider(libraryAccountID)
+        self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+
+        super.init()
+
+        if let account = selectedAccount {
+            frontEndValidator = TPPUserAccountFrontEndValidation(
+                account: account,
+                businessLogic: businessLogic,
+                inputProvider: self
+            )
+        }
+
+        // Skips setupObservers() and loadInitialData() for test determinism.
+        // Tests call refreshSignInState() explicitly when needed.
     }
 
     // MARK: - Setup
@@ -487,7 +521,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func accountDidChange() {
-        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
+        let snapshot = credentialSnapshotProvider(libraryAccountID)
 
         let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
@@ -518,7 +552,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func refreshSignInState() {
         let wasSignedIn = isSignedIn
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
+        let snapshot = credentialSnapshotProvider(libraryAccountID)
         isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         if wasSignedIn != isSignedIn {
