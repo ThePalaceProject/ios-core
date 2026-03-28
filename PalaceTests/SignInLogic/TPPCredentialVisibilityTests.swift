@@ -604,6 +604,60 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
         super.tearDown()
     }
 
+    /// PP-3784: When the user profile doc has no DRM section at all, sign-in
+    /// must still succeed with barcode visible.
+    func testSignIn_noDRMInProfileDoc_credentialsPreserved() {
+        let noDRMProfileUrl = URL(string: "https://circulation.librarysimplified.org/NYNYPL/patrons/me/")!
+        let noDRMJson = """
+        {
+            "simplified:authorization_identifier": "12345",
+            "links": [],
+            "settings": {}
+        }
+        """
+        networkExecutor.responseBodies[noDRMProfileUrl] = noDRMJson
+
+        uiDelegate.username = "12345barcode"
+        uiDelegate.pin = "4567"
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+
+        let expectation = self.expectation(description: "Sign-in completes")
+        uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
+
+        businessLogic.validateCredentials()
+        waitForExpectations(timeout: 5.0)
+
+        let user = businessLogic.userAccount
+        XCTAssertEqual(user.barcode, "12345barcode",
+                       "PP-3784: Barcode must persist when profile doc has no DRM")
+        XCTAssertEqual(user.PIN, "4567",
+                       "PP-3784: PIN must persist when profile doc has no DRM")
+        XCTAssertTrue(user.hasCredentials())
+    }
+
+    /// PP-3784: When the profile doc is completely unparseable, sign-in
+    /// must still succeed (the server already accepted the credentials).
+    func testSignIn_invalidProfileDoc_credentialsPreserved() {
+        let profileUrl = URL(string: "https://circulation.librarysimplified.org/NYNYPL/patrons/me/")!
+        networkExecutor.responseBodies[profileUrl] = "NOT VALID JSON AT ALL"
+
+        uiDelegate.username = "myBarcode"
+        uiDelegate.pin = "myPin"
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+
+        let expectation = self.expectation(description: "Sign-in completes")
+        uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
+
+        businessLogic.validateCredentials()
+        waitForExpectations(timeout: 5.0)
+
+        let user = businessLogic.userAccount
+        XCTAssertEqual(user.barcode, "myBarcode",
+                       "PP-3784: Barcode must persist even with invalid profile doc")
+        XCTAssertEqual(user.PIN, "myPin",
+                       "PP-3784: PIN must persist even with invalid profile doc")
+    }
+
     /// Standard sign-in with valid DRM info should save both credentials and DRM data.
     func testSignIn_validDRMProfileDoc_savesCredentialsAndDRM() {
         uiDelegate.username = "drmBarcode"
@@ -645,13 +699,13 @@ final class TPPCredentialConcurrencyTests: XCTestCase {
         user._credentials = .barcodeAndPin(barcode: "concurrentBarcode", pin: "concurrentPin")
         user.setAuthState(.loggedIn)
 
-        let group = DispatchGroup()
         let iterations = 100
+        let expectation = expectation(description: "All concurrent snapshots complete")
+        expectation.expectedFulfillmentCount = iterations
         var failures = 0
         let failureLock = NSLock()
 
         for _ in 0..<iterations {
-            group.enter()
             DispatchQueue.global().async {
                 let snapshot = TPPUserAccountMock.credentialSnapshot(for: nil)
                 if snapshot.barcode != "concurrentBarcode" ||
@@ -662,11 +716,11 @@ final class TPPCredentialConcurrencyTests: XCTestCase {
                     failures += 1
                     failureLock.unlock()
                 }
-                group.leave()
+                expectation.fulfill()
             }
         }
 
-        group.wait()
+        waitForExpectations(timeout: 10.0)
         XCTAssertEqual(failures, 0,
                        "All concurrent snapshots should return consistent credential data")
     }
@@ -696,18 +750,18 @@ final class TPPCredentialConcurrencyTests: XCTestCase {
         let user = TPPUserAccountMock.sharedAccount(libraryUUID: nil) as! TPPUserAccountMock
         user._credentials = .barcodeAndPin(barcode: "test", pin: "test")
 
-        let group = DispatchGroup()
         let iterations = 50
+        let expectation = expectation(description: "All concurrent credential refreshes complete")
+        expectation.expectedFulfillmentCount = iterations
 
         for _ in 0..<iterations {
-            group.enter()
             DispatchQueue.global().async {
                 _ = user.refreshCredentialsFromKeychain()
-                group.leave()
+                expectation.fulfill()
             }
         }
 
-        group.wait()
+        waitForExpectations(timeout: 10.0)
         XCTAssertTrue(user.hasCredentials(),
                       "Credentials should remain intact after concurrent refreshes")
     }

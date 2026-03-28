@@ -326,7 +326,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     // MARK: - Actions
 
     func signIn() {
-        guard !isSignedIn else {
+        let needsReauth = selectedUserAccount.authState == .credentialsStale
+        // Only treat as a sign-in intent when not signed in, or when explicitly
+        // re-authenticating stale credentials from the sign-in prompt / forceReauthMode.
+        // The logInSignOut cell routes sign-out via signOut() directly, so the
+        // "isSignedIn && !needsReauth → show sign-out alert" branch is a safety net only.
+        guard !isSignedIn || needsReauth else {
             isSigningOut = true
             presentSignOutAlert()
             return

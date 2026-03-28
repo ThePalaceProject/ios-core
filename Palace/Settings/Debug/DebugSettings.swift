@@ -24,6 +24,8 @@ final class DebugSettings {
         static let borrowErrorType = "debug.borrowErrorType"
         static let badgeLoggingEnabled = "debug.badgeLoggingEnabled"
         static let testHoldsConfiguration = "debug.testHoldsConfiguration"
+        static let syncFailureType = "debug.syncFailureType"
+        static let incrementalSpeedSliderEnabled = "debug.incrementalSpeedSliderEnabled"
     }
 
     // MARK: - Simulated Error Types
@@ -302,6 +304,15 @@ final class DebugSettings {
         )
     }
 
+    // MARK: - Incremental Speed Slider
+
+    /// Enables the stepped speed-slider sheet instead of the legacy action-sheet speed picker.
+    /// Off by default; toggle in Developer Settings to preview before production release.
+    var isIncrementalSpeedSliderEnabled: Bool {
+        get { defaults.bool(forKey: Keys.incrementalSpeedSliderEnabled) }
+        set { defaults.set(newValue, forKey: Keys.incrementalSpeedSliderEnabled) }
+    }
+
     // MARK: - Reset
 
     /// Resets all debug settings to defaults
@@ -309,6 +320,7 @@ final class DebugSettings {
         simulatedBorrowError = .none
         isBadgeLoggingEnabled = false
         testHoldsConfiguration = .none
+        isIncrementalSpeedSliderEnabled = false
     }
 
     private init() {}

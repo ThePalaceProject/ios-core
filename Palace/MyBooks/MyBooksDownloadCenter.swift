@@ -897,7 +897,9 @@ extension MyBooksDownloadCenter {
                     }
                 } else {
                     if let errorType = error?["type"] as? String {
-                        if errorType == TPPProblemDocument.TypeNoActiveLoan {
+                        let isLoanGone = errorType == TPPProblemDocument.TypeNoActiveLoan
+                            || (error?["detail"] as? String)?.contains(TPPProblemDocument.DetailLoanTermLimitReached) == true
+                        if isLoanGone {
                             if downloaded {
                                 self.deleteLocalContent(for: identifier)
                                 self.purgeAllAudiobookCaches(force: true)

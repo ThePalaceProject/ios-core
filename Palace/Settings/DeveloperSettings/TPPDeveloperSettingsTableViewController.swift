@@ -11,6 +11,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case libraryRegistryDebugging
         case dataManagement
         case developerTools
+        case featurePreviews
         case badgeTesting
         case errorSimulation
     }
@@ -21,6 +22,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let emailLogsCellIdentifier = "emailLogsCell"
     private let sendErrorLogsCellIdentifier = "sendErrorLogsCell"
     private let errorSimulationCellIdentifier = "errorSimulationCell"
+    private let incrementalSpeedSliderCellIdentifier = "incrementalSpeedSliderCell"
     private let badgeLoggingCellIdentifier = "badgeLoggingCell"
     private let testHoldsCellIdentifier = "testHoldsCell"
 
@@ -60,6 +62,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: emailLogsCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: sendErrorLogsCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: errorSimulationCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: incrementalSpeedSliderCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: badgeLoggingCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: testHoldsCellIdentifier)
     }
@@ -70,6 +73,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         switch Section(rawValue: section)! {
         case .librarySettings: return 2
         case .developerTools: return 2
+        case .featurePreviews: return 1
         case .badgeTesting:
             #if DEBUG
             return 2
@@ -104,6 +108,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             case 0: return cellForSendErrorLogs()
             default: return cellForEmailAudiobookLogs()
             }
+        case .featurePreviews:
+            return cellForIncrementalSpeedSlider()
         case .badgeTesting:
             #if DEBUG
             switch indexPath.row {
@@ -136,6 +142,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             return "Data Management"
         case .developerTools:
             return "Developer Tools"
+        case .featurePreviews:
+            return "Feature Previews"
         case .badgeTesting:
             #if DEBUG
             return "Badge Testing"
@@ -214,6 +222,22 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     #if DEBUG
+    @objc func incrementalSpeedSliderSwitchDidChange(sender: UISwitch) {
+        DebugSettings.shared.isIncrementalSpeedSliderEnabled = sender.isOn
+    }
+
+    private func cellForIncrementalSpeedSlider() -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier)!
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "Incremental Speed Slider"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.accessoryView = createSwitch(
+            isOn: DebugSettings.shared.isIncrementalSpeedSliderEnabled,
+            action: #selector(incrementalSpeedSliderSwitchDidChange)
+        )
+        return cell
+    }
+
     @objc func badgeLoggingSwitchDidChange(sender: UISwitch) {
         DebugSettings.shared.isBadgeLoggingEnabled = sender.isOn
     }

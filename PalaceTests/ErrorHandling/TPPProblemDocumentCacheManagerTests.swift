@@ -117,6 +117,71 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
         XCTAssertEqual(retrieved?.title, "First")
     }
 
+    func testClearThenReCache_works() {
+        let key = "recache-test"
+        let doc1 = TPPProblemDocument.fromDictionary(["title": "Before Clear"])
+        cacheManager.cacheProblemDocument(doc1, key: key)
+        cacheManager.clearCachedDoc(key)
+        XCTAssertNil(cacheManager.getLastCachedDoc(key))
+
+        let doc2 = TPPProblemDocument.fromDictionary(["title": "After Clear"])
+        cacheManager.cacheProblemDocument(doc2, key: key)
+        XCTAssertEqual(cacheManager.getLastCachedDoc(key)?.title, "After Clear")
+    }
+
+    // MARK: - Thread Safety
+
+    // group.wait(timeout:) BLOCKS the calling thread. When XCTest runs this method
+    // on the main thread (standard with -parallel-testing-enabled NO), a blocked main
+    // thread can prevent any NotificationCenter observer from dispatching back to main,
+    // causing a 10-second hang until timeout. Use waitForExpectations(timeout:) instead
+    // -- it PUMPS the main run loop so notifications and any observers can fire freely.
+
+    func testConcurrentReadWrite_doesNotCrash() {
+        let iterations = 20
+        let expectation = expectation(description: "All concurrent read/write/clear operations complete")
+        expectation.expectedFulfillmentCount = iterations * 3
+
+        for i in 0..<iterations {
+            let key = "concurrent-\(i % 5)"
+            DispatchQueue.global(qos: .userInitiated).async {
+                let doc = TPPProblemDocument.fromDictionary(["title": "Doc \(i)"])
+                self.cacheManager.cacheProblemDocument(doc, key: key)
+                expectation.fulfill()
+            }
+            DispatchQueue.global(qos: .utility).async {
+                _ = self.cacheManager.getLastCachedDoc(key)
+                expectation.fulfill()
+            }
+            DispatchQueue.global(qos: .background).async {
+                self.cacheManager.clearCachedDoc(key)
+                expectation.fulfill()
+            }
+        }
+
+        waitForExpectations(timeout: 10.0)
+    }
+
+    func testConcurrentCacheAndClear_sameKey_doesNotCrash() {
+        let key = "race-key"
+        let expectation = expectation(description: "All concurrent cache/clear operations complete")
+        expectation.expectedFulfillmentCount = 40
+
+        for i in 0..<20 {
+            DispatchQueue.global().async {
+                let doc = TPPProblemDocument.fromDictionary(["title": "Write \(i)"])
+                self.cacheManager.cacheProblemDocument(doc, key: key)
+                expectation.fulfill()
+            }
+            DispatchQueue.global().async {
+                self.cacheManager.clearCachedDoc(key)
+                expectation.fulfill()
+            }
+        }
+
+        waitForExpectations(timeout: 10.0)
+    }
+
     // MARK: - Notification
 
     func testCacheProblemDocument_postsNotification() {

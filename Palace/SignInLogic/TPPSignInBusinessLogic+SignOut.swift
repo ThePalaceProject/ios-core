@@ -1,9 +1,9 @@
 //
-//  TPPSignInBusinessLogic+SignOut.swift
-//  The Palace Project
+// TPPSignInBusinessLogic+SignOut.swift
+// The Palace Project
 //
-//  Created by Ettore Pasquini on 11/3/20.
-//  Copyright © 2020 NYPL Labs. All rights reserved.
+// Created by Ettore Pasquini on 11/3/20.
+// Copyright © 2020 NYPL Labs. All rights reserved.
 //
 
 import Foundation
@@ -11,7 +11,7 @@ import WebKit
 
 extension TPPSignInBusinessLogic {
 
-    // MARK: - Sign-Out Race Condition Guard (PP-3819)
+    // MARK: - Sign-Out Race Condition Guard
     //
     // Race condition: sign-out request returns 401 (token expired after idle)
     // → DRM deauthorization starts asynchronously → user signs back in before
@@ -65,7 +65,7 @@ extension TPPSignInBusinessLogic {
                                     for: request,
                                     barcode: barcode)
             case .failure(let errorWithProblemDoc, let response):
-                // PP-3819: Do NOT call removeAll() here. Credential cleanup
+                // Do NOT call removeAll() here. Credential cleanup
                 // is handled by completeLogOutProcess() after device
                 // deauthorization. Calling it prematurely caused:
                 // 1. Licensor wiped before deauthorizeDevice() could use it
@@ -138,11 +138,11 @@ extension TPPSignInBusinessLogic {
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         if statusCode == 401 {
-            // PP-3819: A 401 on sign-out is expected when the session/token
+            // A 401 on sign-out is expected when the session/token
             // expired during idle. The user's intent is to sign out, so
             // proceed with local cleanup silently instead of showing the
             // confusing "Unexpected Credentials" error.
-            Log.info(#file, "Sign-out returned 401 (token expired) — proceeding with local cleanup (PP-3819)")
+            Log.info(#file, "Sign-out returned 401 (token expired) — proceeding with local cleanup")
         } else {
             TPPErrorLogger.logNetworkError(
                 errorWithProblemDoc,
@@ -167,11 +167,11 @@ extension TPPSignInBusinessLogic {
     #endif
 
     private func completeLogOutProcess() {
-        // PP-3819: Check if this sign-out operation is still valid. A stale
+        // Check if this sign-out operation is still valid. A stale
         // DRM deauthorization callback can fire after the user has already
         // re-authenticated — in that case we must not wipe their new credentials.
         guard userAccount.signInGeneration == signOutSnapshot else {
-            Log.warn(#file, "Stale sign-out for library \(libraryAccountID) — user re-authenticated. Skipping credential cleanup (PP-3819).")
+            Log.warn(#file, "Stale sign-out for library \(libraryAccountID) — user re-authenticated. Skipping credential cleanup")
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
@@ -191,13 +191,21 @@ extension TPPSignInBusinessLogic {
         userAccount.removeAll()
         selectedIDP = nil
 
-        // Clear WebView data to fully sign out of SAML/OAuth IdPs (e.g., Google)
-        // Without this, the IdP session remains cached and auto-signs in on next attempt
-        // CRITICAL: Wait for WebView data to be cleared BEFORE notifying UI that sign-out is complete
-        // This prevents SAML IdP auto-sign-in when user tries to borrow after signing out
-        clearWebViewData { [weak self] in
-            // UI delegate callback MUST be on main thread
-            // (This method can be called from Adobe DRM callback on background thread)
+        TPPNetworkExecutor.shared.clearCache()
+        URLCache.shared.removeAllCachedResponses()
+
+        // Clear the IdP session before notifying the UI that sign-out is complete.
+        //
+        // SAML/OAuth: patron authenticates via WKWebView, so clearing WKWebView
+        // data invalidates the IdP session on this device.
+        //
+        // OIDC: patron authenticates via ASWebAuthenticationSession which shares
+        // the system Safari cookie store, so we must open the CM's end_session
+        // endpoint in a Safari-backed ASWebAuthenticationSession to clear the
+        // IdP cookies there.
+        //
+        // CRITICAL: all async steps must finish BEFORE notifying the UI delegate.
+        performFinalSignOutCleanup { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
@@ -205,10 +213,24 @@ extension TPPSignInBusinessLogic {
         }
     }
 
+    /// Routes to the appropriate IdP session-clearing step based on auth type.
+    ///
+    /// OIDC hits the CM's end_session endpoint via `ASWebAuthenticationSession`
+    /// then clears WKWebView data. All other types clear WKWebView data directly.
+    private func performFinalSignOutCleanup(completion: @escaping () -> Void) {
+        if selectedAuthentication?.isOidc == true {
+            oidcLogOut { [weak self] in
+                self?.clearWebViewData(completion: completion)
+            }
+        } else {
+            clearWebViewData(completion: completion)
+        }
+    }
+
     /// Clears all WebView data including cookies, cache, local storage, and session data.
     /// This ensures SAML/OAuth identity providers are fully signed out.
     /// - Parameter completion: Called when all WebView data and cookies have been cleared.
-    ///   This is critical for SAML sign-out to prevent IdP auto-sign-in.
+    ///  This is critical for SAML sign-out to prevent IdP auto-sign-in.
     private func clearWebViewData(completion: @escaping () -> Void) {
         // Skip WebKit cleanup in test environments (no UI context)
         #if DEBUG

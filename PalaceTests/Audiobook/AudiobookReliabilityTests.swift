@@ -85,28 +85,28 @@ final class AudiobookSessionManagerTests: XCTestCase {
         XCTAssertEqual(Double(info?.progress ?? 0), 0.5, accuracy: 0.01)
     }
 
+    // callCompletionHandler dispatches handler() via DispatchQueue.main.async from
+    // inside a background barrier. The trick: call it from a background thread so the
+    // main thread stays free. waitForExpectations then spins the RunLoop, which drains
+    // the main queue and delivers the dispatch — regardless of which thread XCTest uses
+    // to run this test class (works on both main thread and parallel CI workers).
     func testBackgroundCompletionHandlerRegistration() {
         // Given
         let sessionId = "test-session-\(UUID().uuidString)"
-        let handlerExpectation = expectation(description: "Background completion handler should be called")
+        let expectation = expectation(description: "Background completion handler called")
 
         // When - register the handler
         AudiobookSessionManager.shared.registerBackgroundCompletionHandler({
-            handlerExpectation.fulfill()
+            expectation.fulfill()
         }, forSessionIdentifier: sessionId)
 
-        // Allow registration to complete on the concurrent queue
-        let registrationExpectation = expectation(description: "Registration completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            registrationExpectation.fulfill()
+        // Dispatch from background so the main thread remains free to drain the
+        // main queue while waitForExpectations spins the run loop below.
+        DispatchQueue.global().async {
+            AudiobookSessionManager.shared.callCompletionHandler(forSessionIdentifier: sessionId)
         }
-        wait(for: [registrationExpectation], timeout: 1.0)
 
-        // Then call it
-        AudiobookSessionManager.shared.callCompletionHandler(forSessionIdentifier: sessionId)
-
-        // Assert - wait for the handler to be called on the main thread
-        wait(for: [handlerExpectation], timeout: 3.0)
+        waitForExpectations(timeout: 3.0)
     }
 }
 

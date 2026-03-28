@@ -39,6 +39,10 @@ final class BookDetailViewModel: ObservableObject {
     /// on top of the half sheet instead of being swallowed by UIKit.
     @Published var downloadErrorAlert: AlertModel?
 
+    /// Confirmation alert shown before a destructive action (e.g. cancel hold)
+    /// that would otherwise execute immediately without a second confirmation step.
+    @Published var confirmationAlert: AlertModel?
+
     @Published var relatedBooksByLane: [String: BookLane] = [:]
     @Published var isLoadingRelatedBooks = false
 
