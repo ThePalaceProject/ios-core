@@ -1300,6 +1300,8 @@
 		RTRT00012F0300030000001B /* RetryClassificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300030000001A /* RetryClassificationTests.swift */; };
 		RTRT00012F0300040000001B /* DownloadErrorInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */; };
 		RTRT00012F0300050000001B /* AlertModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTRT00012F0300050000001A /* AlertModelTests.swift */; };
+		APPCON0001PALACE00001 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = APPCON0001FILEREF001 /* AppContainer.swift */; };
+		APPCON0002SIMPLYE0001 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = APPCON0001FILEREF001 /* AppContainer.swift */; };
 		SCENEDEL0001PALACE00001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCENEDEL0001FILEREF001 /* SceneDelegate.swift */; };
 		SCENEDEL0002SIMPLYE0001 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = SCENEDEL0001FILEREF001 /* SceneDelegate.swift */; };
 		SETPV002T260955EF008E1DC3 /* TPPSettingsProviding.swift in Sources */ = {isa = PBXBuildFile; fileRef = SETPV001T260955EF008E1DC3 /* TPPSettingsProviding.swift */; };
@@ -2423,6 +2425,7 @@
 		RTRT00012F0300030000001A /* RetryClassificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryClassificationTests.swift; sourceTree = "<group>"; };
 		RTRT00012F0300040000001A /* DownloadErrorInfoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadErrorInfoTests.swift; sourceTree = "<group>"; };
 		RTRT00012F0300050000001A /* AlertModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertModelTests.swift; sourceTree = "<group>"; };
+		APPCON0001FILEREF001 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		SCENEDEL0001FILEREF001 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		SETPV001T260955EF008E1DC3 /* TPPSettingsProviding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsProviding.swift; sourceTree = "<group>"; };
 		SETVM001T260955EF008E1DC3 /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
@@ -2944,6 +2947,7 @@
 				739ECB2325101CCE00691A70 /* NSNotification+TPP.swift */,
 				E7498A7A2A0E349A0037DD93 /* TPPAppDelegate.swift */,
 				E5FBMGR12E8901A000000000 /* FirebaseManager.swift */,
+				APPCON0001FILEREF001 /* AppContainer.swift */,
 				SCENEDEL0001FILEREF001 /* SceneDelegate.swift */,
 				E50546C02E62194F007CCFAB /* AppTabHostView.swift */,
 				AC000000000000000001 /* AppContainer.swift */,
@@ -5635,6 +5639,7 @@
 				8040475BC615EA4FBD5ED6DA /* UIFont+TPPSystemFontOverride.swift in Sources */,
 				F523AE4C70865C6B0D4A024E /* UILabel+NYPLAppearanceAdditions.swift in Sources */,
 				37DFC30F39C1017A49F12741 /* UIView+TPPViewAdditions.swift in Sources */,
+				APPCON0001PALACE00001 /* AppContainer.swift in Sources */,
 				SCENEDEL0001PALACE00001 /* SceneDelegate.swift in Sources */,
 				ABEVENTS0001PALACE0001 /* AudiobookEvents.swift in Sources */,
 				CARPLAY1001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,
@@ -6089,6 +6094,7 @@
 				922751C91132DF6CAFA080BA /* UIFont+TPPSystemFontOverride.swift in Sources */,
 				C0F5612F6BAE49B8303F0CAE /* UILabel+NYPLAppearanceAdditions.swift in Sources */,
 				47068087F9B7FA9ECFEF5D30 /* UIView+TPPViewAdditions.swift in Sources */,
+				APPCON0002SIMPLYE0001 /* AppContainer.swift in Sources */,
 				SCENEDEL0002SIMPLYE0001 /* SceneDelegate.swift in Sources */,
 				ABEVENTS0002SIMPLYE001 /* AudiobookEvents.swift in Sources */,
 				CARPLAY0001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */,

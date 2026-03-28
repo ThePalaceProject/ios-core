@@ -6,6 +6,13 @@ protocol TPPBookRegistryProvider {
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }
     var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { get }
     var heldBooks: [TPPBook] { get }
+    var myBooks: [TPPBook] { get }
+    var isSyncing: Bool { get }
+    var state: TPPBookRegistry.RegistryState { get }
+
+    func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?)
+    func sync()
+    func load()
 
     func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void)
     func setProcessing(_ processing: Bool, for bookIdentifier: String)

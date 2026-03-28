@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct AppTabHostView: View {
+    @Environment(\.appContainer) private var container
     @StateObject private var router = AppTabRouter()
     @State private var holdsBadgeCount: Int = 0
 
@@ -28,7 +29,11 @@ struct AppTabHostView: View {
                 .tag(AppTab.catalog)
                 .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
 
-            NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel()))
+            NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel(
+                bookRegistry: container.bookRegistry,
+                accountsManager: container.accountsManager,
+                settings: container.settings
+            )))
                 .tabItem {
                     VStack {
                         Image("MyBooks").renderingMode(.template)
@@ -38,7 +43,11 @@ struct AppTabHostView: View {
                 .tag(AppTab.myBooks)
                 .accessibilityIdentifier(AccessibilityID.TabBar.myBooksTab)
 
-            NavigationHostView(rootView: HoldsView())
+            NavigationHostView(rootView: HoldsView(viewModel: HoldsViewModel(
+                bookRegistry: container.bookRegistry,
+                accountsManager: container.accountsManager,
+                settings: container.settings
+            )))
                 .tabItem {
                     VStack {
                         Image("Holds").renderingMode(.template)
@@ -49,7 +58,10 @@ struct AppTabHostView: View {
                 .tag(AppTab.holds)
                 .accessibilityIdentifier(AccessibilityID.TabBar.holdsTab)
 
-            NavigationHostView(rootView: TPPSettingsView())
+            NavigationHostView(rootView: TPPSettingsView(viewModel: SettingsViewModel(
+                settings: container.settings,
+                accountsManager: container.accountsManager
+            )))
                 .tabItem { Label(Strings.Settings.settings, systemImage: "gearshape") }
                 .tag(AppTab.settings)
                 .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)

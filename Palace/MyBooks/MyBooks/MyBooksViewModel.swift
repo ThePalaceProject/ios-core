@@ -34,11 +34,31 @@ enum Group: Int {
     var activeFacetSort: Facet
     let facetViewModel: FacetViewModel
     private var observers = Set<AnyCancellable>()
-    private var bookRegistry: TPPBookRegistry { TPPBookRegistry.shared }
+    private let bookRegistry: TPPBookRegistryProvider
+    private let accountsManager: AccountsManager
+    private let settings: TPPSettingsProviding
     private var allBooks: [TPPBook] = []
 
     // MARK: - Initialization
-    override init() {
+
+    /// Convenience initializer using shared singletons (for backward compatibility).
+    override convenience init() {
+        self.init(
+            bookRegistry: TPPBookRegistry.shared,
+            accountsManager: AccountsManager.shared,
+            settings: TPPSettings.shared
+        )
+    }
+
+    /// Initializer with dependency injection for testing.
+    init(
+        bookRegistry: TPPBookRegistryProvider,
+        accountsManager: AccountsManager = .shared,
+        settings: TPPSettingsProviding = TPPSettings.shared
+    ) {
+        self.bookRegistry = bookRegistry
+        self.accountsManager = accountsManager
+        self.settings = settings
         self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
             groupName: DisplayStrings.sortBy,
@@ -92,7 +112,7 @@ enum Group: Int {
         if TPPUserAccount.sharedAccount().needsAuth, !TPPUserAccount.sharedAccount().hasCredentials() {
             SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
         } else {
-            bookRegistry.sync { [weak self] _, _ in
+            bookRegistry.sync { [weak self] (_, _) in
                 self?.loadData()
             }
         }
@@ -125,8 +145,9 @@ enum Group: Int {
         account.loadAuthenticationDocument { [weak self] success in
             guard let self = self, success else { return }
 
-            if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-                TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+            if let tppSettings = self.settings as? TPPSettings,
+               !tppSettings.settingsAccountIdsList.contains(account.uuid) {
+                tppSettings.settingsAccountIdsList.append(account.uuid)
             }
             self.loadAccount(account)
         }
@@ -158,16 +179,17 @@ enum Group: Int {
     }
 
     private func updateFeed(_ account: Account) {
-        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-            TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+        if let tppSettings = settings as? TPPSettings,
+           !tppSettings.settingsAccountIdsList.contains(account.uuid) {
+            tppSettings.settingsAccountIdsList.append(account.uuid)
         }
 
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
 
         // Setting currentAccount triggers both Combine publisher and NotificationCenter
-        AccountsManager.shared.currentAccount = account
+        accountsManager.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
     }

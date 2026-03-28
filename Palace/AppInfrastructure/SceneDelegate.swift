@@ -40,7 +40,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         newWindow.tintAdjustmentMode = .normal
 
         // Create root view controller directly to avoid any timing issues
+        // Pass the AppContainer from the AppDelegate through the SwiftUI environment
+        let appContainer = (UIApplication.shared.delegate as? TPPAppDelegate)?.appContainer ?? AppContainer()
         let rootView = AppTabHostView()
+            .environment(\.appContainer, appContainer)
         let hostingController = UIHostingController(rootView: rootView)
         newWindow.rootViewController = hostingController
         newWindow.makeKeyAndVisible()

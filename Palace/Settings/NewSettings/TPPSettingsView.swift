@@ -19,7 +19,10 @@ struct TPPSettingsView: View {
     @State private var librariesRefreshToken: UUID = UUID()
     @State private var currentAccounts: [Account] = []
 
-    init() {
+    private let settingsViewModel: SettingsViewModel?
+
+    init(viewModel: SettingsViewModel? = nil) {
+        self.settingsViewModel = viewModel
         _currentAccounts = State(initialValue: TPPSettings.shared.settingsAccountsList)
     }
 

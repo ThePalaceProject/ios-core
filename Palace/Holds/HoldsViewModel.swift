@@ -36,13 +36,25 @@ final class HoldsViewModel: ObservableObject {
     @Published var visibleBooks: [TPPBook] = []
     private var cancellables = Set<AnyCancellable>()
     private let bookRegistry: TPPBookRegistryProvider
+    private let accountsManager: AccountsManager
+    private let settings: TPPSettingsProviding
 
     convenience init() {
-        self.init(bookRegistry: TPPBookRegistry.shared)
+        self.init(
+            bookRegistry: TPPBookRegistry.shared,
+            accountsManager: AccountsManager.shared,
+            settings: TPPSettings.shared
+        )
     }
 
-    init(bookRegistry: TPPBookRegistryProvider) {
+    init(
+        bookRegistry: TPPBookRegistryProvider,
+        accountsManager: AccountsManager = .shared,
+        settings: TPPSettingsProviding = TPPSettings.shared
+    ) {
         self.bookRegistry = bookRegistry
+        self.accountsManager = accountsManager
+        self.settings = settings
 
         // Use Combine publishers from TPPBookRegistry directly
         if let registry = bookRegistry as? TPPBookRegistry {
@@ -127,14 +139,14 @@ final class HoldsViewModel: ObservableObject {
     func refresh() {
         if TPPUserAccount.sharedAccount().needsAuth {
             if TPPUserAccount.sharedAccount().hasCredentials() {
-                TPPBookRegistry.shared.sync()
+                bookRegistry.sync()
             } else {
                 SignInModalPresenter.presentSignInModalForCurrentAccount {
                     self.reloadData()
                 }
             }
         } else {
-            TPPBookRegistry.shared.load()
+            bookRegistry.load()
         }
     }
 
@@ -147,10 +159,10 @@ final class HoldsViewModel: ObservableObject {
 
     private func updateFeed(_ account: Account) {
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
         // Setting currentAccount triggers both Combine publisher and NotificationCenter
-        AccountsManager.shared.currentAccount = account
+        accountsManager.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
     }

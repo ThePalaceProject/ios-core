@@ -1,42 +1,66 @@
-///
-/// AppContainer.swift
-/// Palace
-///
-/// Centralized dependency container for the Palace app.
-/// Provides default singleton instances with the ability to inject
-/// test doubles via protocol-typed properties.
-///
+//
+//  AppContainer.swift
+//  Palace
+//
+//  Dependency injection container for the Palace app.
+//  Created during Phase 1 DI migration.
+//  Copyright © 2026 The Palace Project. All rights reserved.
+//
 
 import Foundation
+import SwiftUI
 
-/// A lightweight dependency container that holds references to the app's
-/// core services. Every property has a production default so existing
-/// call-sites continue to work unchanged. In tests, create an
-/// `AppContainer` with mock implementations instead.
-final class AppContainer: @unchecked Sendable {
+// MARK: - Container Protocol
 
-    // MARK: - Shared Instance
+/// Protocol defining the services available from the dependency injection container.
+/// This enables testing with mock containers.
+protocol AppContainerProtocol {
+    var bookRegistry: TPPBookRegistryProvider { get }
+    var networkExecutor: TPPNetworkExecutor { get }
+    var accountsManager: AccountsManager { get }
+    var settings: TPPSettingsProviding { get }
+}
 
-    static let shared = AppContainer()
+// MARK: - Production Container
 
-    // MARK: - Dependencies
+/// Production dependency injection container.
+/// Created at app launch and passed through the view hierarchy.
+/// All services are lazily initialized and shared within the container.
+final class AppContainer: AppContainerProtocol {
 
-    let settings: TPPSettingsProviding
-    let accounts: TPPLibraryAccountsProvider
+    // MARK: - Services
+
     let bookRegistry: TPPBookRegistryProvider
-    let downloadCenter: MyBooksDownloadCenter
+    let networkExecutor: TPPNetworkExecutor
+    let accountsManager: AccountsManager
+    let settings: TPPSettingsProviding
 
     // MARK: - Initialization
 
+    /// Creates the production container using the app's real singleton instances.
+    /// This is called once at app launch.
     init(
-        settings: TPPSettingsProviding = TPPSettings.shared,
-        accounts: TPPLibraryAccountsProvider = AccountsManager.shared,
         bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
-        downloadCenter: MyBooksDownloadCenter = MyBooksDownloadCenter.shared
+        networkExecutor: TPPNetworkExecutor = .shared,
+        accountsManager: AccountsManager = .shared,
+        settings: TPPSettingsProviding = TPPSettings.shared
     ) {
-        self.settings = settings
-        self.accounts = accounts
         self.bookRegistry = bookRegistry
-        self.downloadCenter = downloadCenter
+        self.networkExecutor = networkExecutor
+        self.accountsManager = accountsManager
+        self.settings = settings
+    }
+}
+
+// MARK: - SwiftUI Environment Key
+
+private struct AppContainerKey: EnvironmentKey {
+    static let defaultValue: AppContainer = AppContainer()
+}
+
+extension EnvironmentValues {
+    var appContainer: AppContainer {
+        get { self[AppContainerKey.self] }
+        set { self[AppContainerKey.self] = newValue }
     }
 }

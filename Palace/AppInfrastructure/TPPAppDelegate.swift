@@ -13,6 +13,10 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     let audiobookLifecycleManager = AudiobookLifecycleManager()
     var isSigningIn = false
 
+    /// The app's dependency injection container, created at launch.
+    /// Pass this through the view hierarchy rather than accessing singletons directly.
+    let appContainer = AppContainer()
+
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ application: UIApplication) {
@@ -326,6 +330,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     /// Creates and returns the app's root view controller
     func createRootViewController() -> UIViewController {
         let root = AppTabHostView()
+            .environment(\.appContainer, appContainer)
         return UIHostingController(rootView: root)
     }
 

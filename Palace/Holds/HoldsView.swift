@@ -5,7 +5,11 @@ struct HoldsView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator
     typealias DisplayStrings = Strings.HoldsView
 
-    @StateObject private var model = HoldsViewModel()
+    @StateObject private var model: HoldsViewModel
+
+    init(viewModel: HoldsViewModel = HoldsViewModel()) {
+        self._model = StateObject(wrappedValue: viewModel)
+    }
     @StateObject private var logoObserver = CatalogLogoObserver()
     @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
     private var allBooks: [TPPBook] {
