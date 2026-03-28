@@ -32,13 +32,20 @@ class FacetViewModel: ObservableObject {
     @Published var showAccountScreen = false
     @Published var logo: UIImage?
 
+    private let accounts: TPPLibraryAccountsProvider
+
     var currentAccountURL: URL? {
         URL(string: currentAccount?.homePageUrl ?? "")
     }
 
-    init(groupName: String, facets: [Facet]) {
+    init(
+        groupName: String,
+        facets: [Facet],
+        accounts: TPPLibraryAccountsProvider = AppContainer.shared.accounts
+    ) {
         self.facets = facets
         self.groupName = groupName
+        self.accounts = accounts
         activeSort = facets.first ?? .title
         registerForNotifications()
         updateAccount()
@@ -51,7 +58,7 @@ class FacetViewModel: ObservableObject {
     }
 
     @objc private func updateAccount() {
-        currentAccount = AccountsManager.shared.currentAccount
+        currentAccount = accounts.currentAccount
         currentAccount?.logoDelegate = self
         accountScreenURL = currentAccountURL
         logo = currentAccount?.logo

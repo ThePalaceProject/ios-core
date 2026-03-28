@@ -48,6 +48,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     var frontEndValidator: TPPUserAccountFrontEndValidation?
     private let libraryAccountID: String
     private var cancellables = Set<AnyCancellable>()
+    private let accounts: TPPLibraryAccountsProvider
+    private let downloadCenter: MyBooksDownloadCenter
     var forceEditability = false
 
     // MARK: - Computed Properties
@@ -88,14 +90,20 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
-    init(libraryAccountID: String) {
+    init(
+        libraryAccountID: String,
+        accounts: TPPLibraryAccountsProvider = AppContainer.shared.accounts,
+        downloadCenter: MyBooksDownloadCenter = AppContainer.shared.downloadCenter
+    ) {
         self.libraryAccountID = libraryAccountID
+        self.accounts = accounts
+        self.downloadCenter = downloadCenter
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
-            libraryAccountsProvider: AccountsManager.shared,
+            libraryAccountsProvider: accounts,
             urlSettingsProvider: TPPSettings.shared,
             bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
@@ -121,10 +129,10 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
-            libraryAccountsProvider: AccountsManager.shared,
+            libraryAccountsProvider: accounts,
             urlSettingsProvider: TPPSettings.shared,
             bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             networkExecutor: networkExecutor,
             uiDelegate: self,

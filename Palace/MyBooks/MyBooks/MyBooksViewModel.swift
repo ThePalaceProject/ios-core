@@ -35,10 +35,16 @@ enum Group: Int {
     let facetViewModel: FacetViewModel
     private var observers = Set<AnyCancellable>()
     private var bookRegistry: TPPBookRegistry { TPPBookRegistry.shared }
+    private let settings: TPPSettingsProviding
     private var allBooks: [TPPBook] = []
 
     // MARK: - Initialization
-    override init() {
+    override convenience init() {
+        self.init(settings: AppContainer.shared.settings)
+    }
+
+    init(settings: TPPSettingsProviding) {
+        self.settings = settings
         self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
             groupName: DisplayStrings.sortBy,
@@ -165,7 +171,7 @@ enum Group: Int {
         }
 
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
 
         AccountsManager.shared.currentAccount = account

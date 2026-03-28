@@ -23,17 +23,20 @@ class CatalogSearchViewModel: ObservableObject {
     private var debounceTask: Task<Void, Never>?
     private let debounceInterval: TimeInterval
     private let announcements: TPPAccessibilityAnnouncementCenter
+    private let bookRegistry: TPPBookRegistryProvider
 
     init(
         repository: CatalogRepositoryProtocol,
         baseURL: @escaping () -> URL?,
         debounceInterval: TimeInterval = 0.1,
-        announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter()
+        announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
+        bookRegistry: TPPBookRegistryProvider = AppContainer.shared.bookRegistry
     ) {
         self.repository = repository
         self.baseURL = baseURL
         self.debounceInterval = debounceInterval
         self.announcements = announcements
+        self.bookRegistry = bookRegistry
     }
 
     deinit {
@@ -204,7 +207,7 @@ class CatalogSearchViewModel: ObservableObject {
             let book = books[idx]
             if let changedIdentifier, book.identifier != changedIdentifier { continue }
 
-            if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+            if let registryBook = bookRegistry.book(forIdentifier: book.identifier) {
                 books[idx] = registryBook
                 anyChanged = true
             } else {
