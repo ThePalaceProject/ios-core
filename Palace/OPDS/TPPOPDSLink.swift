@@ -4,8 +4,8 @@ import Foundation
 
 /// Swift reimplementation of the ObjC TPPOPDSLink model.
 /// Initialized from a TPPXML element representing an OPDS `<link>`.
-@objc(TPPOPDSLinkSwift)
-public final class TPPOPDSLinkSwift: NSObject {
+@objc(TPPOPDSLink)
+public final class TPPOPDSLink: NSObject {
 
   @objc public let attributes: NSDictionary
   @objc public let href: URL

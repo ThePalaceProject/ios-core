@@ -4,8 +4,8 @@ import Foundation
 
 /// Swift reimplementation of the ObjC TPPOPDSCategory model.
 /// Must remain @objc-accessible since the entire app references this type.
-@objc(TPPOPDSCategorySwift)
-public final class TPPOPDSCategorySwift: NSObject {
+@objc(TPPOPDSCategory)
+public final class TPPOPDSCategory: NSObject {
 
   @objc public let term: String
   @objc public let label: String?
@@ -20,7 +20,7 @@ public final class TPPOPDSCategorySwift: NSObject {
   }
 
   /// Convenience factory matching the ObjC `+categoryWithTerm:label:scheme:` method.
-  @objc public static func category(withTerm term: String, label: String?, scheme: URL?) -> TPPOPDSCategorySwift {
-    return TPPOPDSCategorySwift(term: term, label: label, scheme: scheme)
+  @objc public static func category(withTerm term: String, label: String?, scheme: URL?) -> TPPOPDSCategory {
+    return TPPOPDSCategory(term: term, label: label, scheme: scheme)
   }
 }

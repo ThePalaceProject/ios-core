@@ -1,5 +1,2 @@
-BOOL TPPOPDSAttributeKeyStringIsActiveFacet(NSString *string);
-
-BOOL TPPOPDSAttributeKeyStringIsFacetGroup(NSString *string);
-
-BOOL TPPOPDSAttributeKeyStringIsFacetGroupType(NSString *string);
+// TPPOPDSAttribute.h — Implementation is in TPPOPDSAttribute.swift
+// This header is kept for backward compatibility with ObjC imports.

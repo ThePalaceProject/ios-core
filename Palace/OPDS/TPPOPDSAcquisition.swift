@@ -37,10 +37,20 @@ private let stringToRelationMap: [String: TPPOPDSAcquisitionRelation] = [
   subscribeRelation: .subscribe
 ]
 
-// MARK: - Free Functions (Swift ports)
+// MARK: - Constants
+
+/// A set containing all possible relations.
+public let NYPLOPDSAcquisitionRelationSetAll: TPPOPDSAcquisitionRelationSet =
+  TPPOPDSAcquisitionRelationSet(rawValue: (1 << 7) - 1)
+
+/// A set for `defaultAcquisition` — all relations except sample.
+public let TPPOPDSAcquisitionRelationSetDefaultAcquisition: TPPOPDSAcquisitionRelationSet =
+  TPPOPDSAcquisitionRelationSet(rawValue: NYPLOPDSAcquisitionRelationSetAll.rawValue & ~TPPOPDSAcquisitionRelationSet.sample.rawValue)
+
+// MARK: - Free Functions
 
 /// Converts a relation enum value to a relation set (single-element).
-public func NYPLOPDSAcquisitionRelationSetWithRelationSwift(
+public func NYPLOPDSAcquisitionRelationSetWithRelation(
   _ relation: TPPOPDSAcquisitionRelation
 ) -> TPPOPDSAcquisitionRelationSet {
   switch relation {
@@ -56,11 +66,11 @@ public func NYPLOPDSAcquisitionRelationSetWithRelationSwift(
 }
 
 /// Returns `true` if `relation` is contained in `relationSet`.
-public func NYPLOPDSAcquisitionRelationSetContainsRelationSwift(
+public func NYPLOPDSAcquisitionRelationSetContainsRelation(
   _ relationSet: TPPOPDSAcquisitionRelationSet,
   _ relation: TPPOPDSAcquisitionRelation
 ) -> Bool {
-  return relationSet.contains(NYPLOPDSAcquisitionRelationSetWithRelationSwift(relation))
+  return relationSet.contains(NYPLOPDSAcquisitionRelationSetWithRelation(relation))
 }
 
 /// Parses a relation string into a `TPPOPDSAcquisitionRelation`.
@@ -70,7 +80,7 @@ public func NYPLOPDSAcquisitionRelationFromString(_ string: String) -> TPPOPDSAc
 }
 
 /// Converts a `TPPOPDSAcquisitionRelation` to its canonical string representation.
-public func NYPLOPDSAcquisitionRelationToString(_ relation: TPPOPDSAcquisitionRelation) -> String {
+public func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRelation) -> String {
   switch relation {
   case .generic:    return genericRelation
   case .openAccess: return openAccessRelation
@@ -86,8 +96,8 @@ public func NYPLOPDSAcquisitionRelationToString(_ relation: TPPOPDSAcquisitionRe
 // MARK: - TPPOPDSAcquisition Swift Implementation
 
 /// Swift reimplementation of the ObjC TPPOPDSAcquisition model.
-@objc(TPPOPDSAcquisitionSwift)
-public final class TPPOPDSAcquisitionSwift: NSObject {
+@objc(TPPOPDSAcquisition)
+public final class TPPOPDSAcquisition: NSObject {
 
   /// The relation of the acquisition link.
   @objc public let relation: TPPOPDSAcquisitionRelation
@@ -127,8 +137,8 @@ public final class TPPOPDSAcquisitionSwift: NSObject {
     hrefURL: URL,
     indirectAcquisitions: [TPPOPDSIndirectAcquisition],
     availability: TPPOPDSAcquisitionAvailability
-  ) -> TPPOPDSAcquisitionSwift {
-    return TPPOPDSAcquisitionSwift(
+  ) -> TPPOPDSAcquisition {
+    return TPPOPDSAcquisition(
       relation: relation,
       type: type,
       hrefURL: hrefURL,
@@ -137,9 +147,27 @@ public final class TPPOPDSAcquisitionSwift: NSObject {
     )
   }
 
+  /// Convenience initializer from link XML.
+  @objc public convenience init?(linkXML: TPPXML) {
+    guard let result = TPPOPDSAcquisition.acquisition(withLinkXML: linkXML) else {
+      return nil
+    }
+    self.init(relation: result.relation, type: result.type, hrefURL: result.hrefURL,
+              indirectAcquisitions: result.indirectAcquisitions, availability: result.availability)
+  }
+
+  /// Convenience initializer from dictionary.
+  @objc public convenience init?(dictionary: NSDictionary) {
+    guard let result = TPPOPDSAcquisition.acquisition(withDictionary: dictionary) else {
+      return nil
+    }
+    self.init(relation: result.relation, type: result.type, hrefURL: result.hrefURL,
+              indirectAcquisitions: result.indirectAcquisitions, availability: result.availability)
+  }
+
   /// Factory method that parses from a link XML element.
   /// Returns `nil` if the XML element lacks required attributes.
-  @objc public static func acquisition(withLinkXML linkXML: TPPXML) -> TPPOPDSAcquisitionSwift? {
+  @objc public static func acquisition(withLinkXML linkXML: TPPXML) -> TPPOPDSAcquisition? {
     guard let relationString = linkXML.attributes[acqRelAttribute] as? String,
           let relation = NYPLOPDSAcquisitionRelationFromString(relationString) else {
       return nil
@@ -164,7 +192,7 @@ public final class TPPOPDSAcquisitionSwift: NSObject {
       }
     }
 
-    return TPPOPDSAcquisitionSwift(
+    return TPPOPDSAcquisition(
       relation: relation,
       type: type,
       hrefURL: hrefURL,
@@ -174,7 +202,7 @@ public final class TPPOPDSAcquisitionSwift: NSObject {
   }
 
   /// Factory method that deserializes from a dictionary.
-  @objc public static func acquisition(withDictionary dictionary: NSDictionary) -> TPPOPDSAcquisitionSwift? {
+  @objc public static func acquisition(withDictionary dictionary: NSDictionary) -> TPPOPDSAcquisition? {
     guard let relationString = dictionary[acqRelationKey] as? String,
           let relation = NYPLOPDSAcquisitionRelationFromString(relationString) else {
       return nil
@@ -195,18 +223,18 @@ public final class TPPOPDSAcquisitionSwift: NSObject {
 
     var mutableIndirect: [TPPOPDSIndirectAcquisition] = []
     for dict in indirectDicts {
-      guard let indirect = TPPOPDSIndirectAcquisition(dictionary: dict as! [AnyHashable: Any]) else {
+      guard let indirect = TPPOPDSIndirectAcquisition(dictionary: dict) else {
         return nil
       }
       mutableIndirect.append(indirect)
     }
 
     guard let availDict = dictionary[acqAvailabilityKey] as? NSDictionary,
-          let availability = NYPLOPDSAcquisitionAvailabilityWithDictionary(availDict as! [AnyHashable: Any]) else {
+          let availability = NYPLOPDSAcquisitionAvailabilityWithDictionary(availDict) else {
       return nil
     }
 
-    return TPPOPDSAcquisitionSwift(
+    return TPPOPDSAcquisition(
       relation: relation,
       type: type,
       hrefURL: hrefURL,

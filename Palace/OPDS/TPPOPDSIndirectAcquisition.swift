@@ -8,17 +8,17 @@ private let indirectAcquisitionIndirectAcquisitionsKey = "indirectAcquisitions"
 
 /// Swift reimplementation of the ObjC TPPOPDSIndirectAcquisition model.
 /// Represents a nested/indirect content type obtainable through an acquisition.
-@objc(TPPOPDSIndirectAcquisitionSwift)
-public final class TPPOPDSIndirectAcquisitionSwift: NSObject {
+@objc(TPPOPDSIndirectAcquisition)
+public final class TPPOPDSIndirectAcquisition: NSObject {
 
   /// The type of the content indirectly obtainable.
   @objc public let type: String
 
   /// Zero or more nested indirect acquisitions.
-  @objc public let indirectAcquisitions: [TPPOPDSIndirectAcquisitionSwift]
+  @objc public let indirectAcquisitions: [TPPOPDSIndirectAcquisition]
 
   /// Designated initializer.
-  @objc public init(type: String, indirectAcquisitions: [TPPOPDSIndirectAcquisitionSwift]) {
+  @objc public init(type: String, indirectAcquisitions: [TPPOPDSIndirectAcquisition]) {
     self.type = type
     self.indirectAcquisitions = indirectAcquisitions
     super.init()
@@ -27,34 +27,61 @@ public final class TPPOPDSIndirectAcquisitionSwift: NSObject {
   /// Factory method matching the ObjC `+indirectAcquisitionWithType:indirectAcquisitions:`.
   @objc public static func indirectAcquisition(
     withType type: String,
-    indirectAcquisitions: [TPPOPDSIndirectAcquisitionSwift]
-  ) -> TPPOPDSIndirectAcquisitionSwift {
-    return TPPOPDSIndirectAcquisitionSwift(type: type, indirectAcquisitions: indirectAcquisitions)
+    indirectAcquisitions: [TPPOPDSIndirectAcquisition]
+  ) -> TPPOPDSIndirectAcquisition {
+    return TPPOPDSIndirectAcquisition(type: type, indirectAcquisitions: indirectAcquisitions)
+  }
+
+  /// Convenience initializer from XML.
+  @objc public convenience init?(xml: TPPXML) {
+    guard let type = xml.attributes["type"] as? String else {
+      return nil
+    }
+    var nested: [TPPOPDSIndirectAcquisition] = []
+    for child in xml.children(withName: "indirectAcquisition") {
+      guard let childXML = child as? TPPXML else { continue }
+      if let n = TPPOPDSIndirectAcquisition(xml: childXML) {
+        nested.append(n)
+      }
+    }
+    self.init(type: type, indirectAcquisitions: nested)
+  }
+
+  /// Convenience initializer from dictionary.
+  @objc public convenience init?(dictionary: NSDictionary) {
+    guard let type = dictionary[indirectAcquisitionTypeKey] as? String else { return nil }
+    guard let dicts = dictionary[indirectAcquisitionIndirectAcquisitionsKey] as? [NSDictionary] else { return nil }
+    var nested: [TPPOPDSIndirectAcquisition] = []
+    for d in dicts {
+      guard let n = TPPOPDSIndirectAcquisition(dictionary: d) else { return nil }
+      nested.append(n)
+    }
+    self.init(type: type, indirectAcquisitions: nested)
   }
 
   /// Factory method that parses from XML.
   /// Returns `nil` if the XML element lacks a `type` attribute.
-  @objc public static func indirectAcquisition(withXML xml: TPPXML) -> TPPOPDSIndirectAcquisitionSwift? {
+  @objc public static func indirectAcquisition(withXML xml: TPPXML) -> TPPOPDSIndirectAcquisition? {
     guard let type = xml.attributes["type"] as? String else {
       return nil
     }
 
-    var nestedAcquisitions: [TPPOPDSIndirectAcquisitionSwift] = []
+    var nestedAcquisitions: [TPPOPDSIndirectAcquisition] = []
     for child in xml.children(withName: "indirectAcquisition") {
       guard let childXML = child as? TPPXML else { continue }
-      if let nested = TPPOPDSIndirectAcquisitionSwift.indirectAcquisition(withXML: childXML) {
+      if let nested = TPPOPDSIndirectAcquisition.indirectAcquisition(withXML: childXML) {
         nestedAcquisitions.append(nested)
       } else {
         Log.warn(#file, "Ignoring invalid indirect acquisition.")
       }
     }
 
-    return TPPOPDSIndirectAcquisitionSwift(type: type, indirectAcquisitions: nestedAcquisitions)
+    return TPPOPDSIndirectAcquisition(type: type, indirectAcquisitions: nestedAcquisitions)
   }
 
   /// Factory method that deserializes from a dictionary.
   /// Returns `nil` if the dictionary is not valid.
-  @objc public static func indirectAcquisition(withDictionary dictionary: NSDictionary) -> TPPOPDSIndirectAcquisitionSwift? {
+  @objc public static func indirectAcquisition(withDictionary dictionary: NSDictionary) -> TPPOPDSIndirectAcquisition? {
     guard let type = dictionary[indirectAcquisitionTypeKey] as? String else {
       return nil
     }
@@ -63,15 +90,15 @@ public final class TPPOPDSIndirectAcquisitionSwift: NSObject {
       return nil
     }
 
-    var nestedAcquisitions: [TPPOPDSIndirectAcquisitionSwift] = []
+    var nestedAcquisitions: [TPPOPDSIndirectAcquisition] = []
     for dict in indirectDicts {
-      guard let nested = TPPOPDSIndirectAcquisitionSwift.indirectAcquisition(withDictionary: dict) else {
+      guard let nested = TPPOPDSIndirectAcquisition.indirectAcquisition(withDictionary: dict) else {
         return nil
       }
       nestedAcquisitions.append(nested)
     }
 
-    return TPPOPDSIndirectAcquisitionSwift(type: type, indirectAcquisitions: nestedAcquisitions)
+    return TPPOPDSIndirectAcquisition(type: type, indirectAcquisitions: nestedAcquisitions)
   }
 
   /// Serializes to a dictionary representation.

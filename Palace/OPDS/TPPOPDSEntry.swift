@@ -4,8 +4,8 @@ import Foundation
 
 /// Swift reimplementation of the ObjC TPPOPDSEntry model.
 /// Parses an OPDS entry from XML.
-@objc(TPPOPDSEntrySwift)
-public final class TPPOPDSEntrySwift: NSObject {
+@objc(TPPOPDSEntry)
+public final class TPPOPDSEntry: NSObject {
 
   @objc public let acquisitions: [TPPOPDSAcquisition]
   @objc public let alternativeHeadline: String?
