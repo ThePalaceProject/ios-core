@@ -1,7 +1,7 @@
 // TPPOPDSAcquisitionAvailability.h — Protocol and typedef definitions only;
 // class and function implementations are in TPPOPDSAcquisitionAvailability.swift
 
-@import Foundation;
+#import <Foundation/Foundation.h>
 
 @class TPPXML;
 

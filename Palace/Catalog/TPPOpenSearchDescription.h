@@ -1,7 +1,7 @@
 // This class is used to represent OpenSearch description documents. It is restricted to documents
 // that contain URLs to OPDS feeds: Calling |initWithXML:| with anything else will return nil.
 
-@import Foundation;
+#import <Foundation/Foundation.h>
 
 @class TPPXML;
 

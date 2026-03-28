@@ -1,7 +1,7 @@
 // This class does NOT provide configuration for the following files:
 // credits.css
 
-@import UIKit;
+#import <UIKit/UIKit.h>
 
 @interface TPPConfiguration : NSObject
 

@@ -1,7 +1,7 @@
 // TPPOPDSAcquisition.h — Enum and options definitions only;
 // class and function implementations are in TPPOPDSAcquisition.swift
 
-@import Foundation;
+#import <Foundation/Foundation.h>
 
 /// One of the six acquisition relations given in the OPDS specification.
 typedef NS_ENUM(NSInteger, TPPOPDSAcquisitionRelation) {
