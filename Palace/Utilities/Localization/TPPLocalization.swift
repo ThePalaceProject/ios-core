@@ -1,11 +1,6 @@
-// Swift replacement for TPPLocalization.m
-//
-// Marks strings that do not need localization, suppressing analyzer warnings.
-
 import Foundation
 
-/// Labels a string that does not need to be localized,
-/// so as to not set off Analyzer localization warnings.
-func TPPLocalizationNotNeededSwift(_ s: String) -> String {
+/// Marks a string as not needing localization, suppressing analyzer warnings.
+func TPPLocalizationNotNeeded(_ s: String) -> String {
   return s
 }

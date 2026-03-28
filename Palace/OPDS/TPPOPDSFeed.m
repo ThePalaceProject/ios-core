@@ -1,5 +1,3 @@
-#import "NSDate+NYPLDateAdditions.h"
-#import "TPPAsync.h"
 #import "TPPOPDSEntry.h"
 #import "TPPOPDSLink.h"
 #import "TPPOPDSRelation.h"
@@ -79,7 +77,7 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
                              metadata:@{
                                @"shouldResetCache": @(shouldResetCache)
                              }];
-    TPPAsyncDispatch(^{handler(nil, nil);});
+    [TPPAsyncHelper dispatch:^{handler(nil, nil);}];
     return;
   }
 
@@ -90,7 +88,7 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
 
     if (error != nil) {
       // Note: NYPLNetworkExecutor already logged this error
-      TPPAsyncDispatch(^{handler(nil, error.problemDocument.dictionaryValue);});
+      [TPPAsyncHelper dispatch:^{handler(nil, error.problemDocument.dictionaryValue);}];
       return;
     }
 
@@ -101,7 +99,7 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
                                  @"Request": [request loggableString] ?: @"N/A",
                                  @"Response": response ?: @"N/A",
                                }];
-      TPPAsyncDispatch(^{handler(nil, nil);});
+      [TPPAsyncHelper dispatch:^{handler(nil, nil);}];
       return;
     }
 
@@ -133,7 +131,7 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
                                   @"context": msg ?: @"N/A"
                                 }];
 
-        TPPAsyncDispatch(^{handler(nil, problemDocDict);});
+        [TPPAsyncHelper dispatch:^{handler(nil, problemDocDict);}];
         return;
       }
     }
@@ -149,7 +147,7 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
                                }];
       // this error may be nil
       NSDictionary *error = [NSJSONSerialization JSONObjectWithData:data options:(NSJSONReadingOptions)0 error:nil];
-      TPPAsyncDispatch(^{handler(nil, error);});
+      [TPPAsyncHelper dispatch:^{handler(nil, error);}];
       return;
     }
     
@@ -162,11 +160,11 @@ completionHandler:(void (^)(TPPOPDSFeed *feed, NSDictionary *error))handler
                                  @"request": request.loggableString ?: @"N/A",
                                  @"response": response ?: @"N/A",
                                }];
-      TPPAsyncDispatch(^{handler(nil, nil);});
+      [TPPAsyncHelper dispatch:^{handler(nil, nil);}];
       return;
     }
     
-    TPPAsyncDispatch(^{handler(feed, nil);});
+    [TPPAsyncHelper dispatch:^{handler(feed, nil);}];
   }] originalRequest];
 }
 

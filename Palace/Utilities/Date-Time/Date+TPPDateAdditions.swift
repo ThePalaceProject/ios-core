@@ -1,31 +1,34 @@
-// Swift replacement for NSDate+NYPLDateAdditions.m
-//
-// Date parsing and formatting extensions for RFC 3339 and ISO 8601.
-
 import Foundation
 
-extension Date {
+extension NSDate {
 
-  /// Parses an RFC 3339 date string. Handles optional fractional seconds.
-  static func dateWithRFC3339String(_ string: String?) -> Date? {
+  /// Parses an RFC 3339 date string. Handles fractional seconds but ignores them.
+  @objc(dateWithRFC3339String:)
+  convenience init?(rfc3339String string: String?) {
     guard let string = string else { return nil }
 
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    let dateFormatter = DateFormatter()
+    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+    dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
 
-    formatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ssX5"
-    if let date = formatter.date(from: string) {
-      return date
+    dateFormatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ssXXXXX"
+    if let date = dateFormatter.date(from: string) {
+      self.init(timeIntervalSinceReferenceDate: date.timeIntervalSinceReferenceDate)
+      return
     }
 
-    formatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss.SSSSSSX5"
-    return formatter.date(from: string)
+    dateFormatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss.SSSSSSXXXXX"
+    if let date = dateFormatter.date(from: string) {
+      self.init(timeIntervalSinceReferenceDate: date.timeIntervalSinceReferenceDate)
+      return
+    }
+
+    return nil
   }
 
-  /// Parses an ISO 8601 full-date string (e.g. "2020-01-22").
-  /// Falls back to year-only format (e.g. "2020").
-  static func dateWithISO8601DateString(_ string: String?) -> Date? {
+  /// Parses an ISO 8601 full date string (e.g. "2020-01-22").
+  @objc(dateWithISO8601DateString:)
+  convenience init?(iso8601DateString string: String?) {
     guard let string = string else { return nil }
 
     let isoFormatter = ISO8601DateFormatter()
@@ -33,37 +36,41 @@ extension Date {
     isoFormatter.timeZone = TimeZone(secondsFromGMT: 0)
 
     if let date = isoFormatter.date(from: string) {
-      return date
+      self.init(timeIntervalSinceReferenceDate: date.timeIntervalSinceReferenceDate)
+      return
     }
 
-    let yearFormatter = DateFormatter()
-    yearFormatter.dateFormat = "yyyy"
-    return yearFormatter.date(from: string)
+    // Fallback: try year-only format
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyy"
+    if let date = dateFormatter.date(from: string) {
+      self.init(timeIntervalSinceReferenceDate: date.timeIntervalSinceReferenceDate)
+      return
+    }
+
+    return nil
   }
 
-  /// Returns an RFC 3339 formatted string representation.
+  /// Returns the date formatted as an RFC 3339 string.
+  @objc(RFC3339String)
   func rfc3339String() -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'Z'"
-    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-    return formatter.string(from: self)
+    let dateFormatter = DateFormatter()
+    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+    dateFormatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'Z'"
+    dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+    return dateFormatter.string(from: self as Date)
   }
 
-  /// Returns the date's components in UTC.
+  /// Returns the UTC date components for the receiver.
+  @objc(UTCComponents)
   func utcComponents() -> DateComponents {
     var calendar = Calendar(identifier: .iso8601)
     calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-    let allComponents: Set<Calendar.Component> = [
-      .era, .year, .month, .day, .hour, .minute, .second, .nanosecond,
-      .weekday, .weekdayOrdinal, .quarter, .weekOfMonth, .weekOfYear,
-      .yearForWeekOfYear, .calendar, .timeZone
-    ]
-    return calendar.dateComponents(allComponents, from: self)
+    return calendar.dateComponents(
+      [.era, .year, .month, .day, .hour, .minute, .second, .nanosecond,
+       .weekday, .weekdayOrdinal, .quarter, .weekOfMonth, .weekOfYear,
+       .yearForWeekOfYear, .calendar, .timeZone],
+      from: self as Date
+    )
   }
 }
-
-// NOTE: NSDate ObjC compatibility methods (dateWithRFC3339String:, RFC3339String,
-// dateWithISO8601DateString:, UTCComponents) are provided by the ObjC
-// NSDate+NYPLDateAdditions category. This Swift extension adds Date-native
-// equivalents only.

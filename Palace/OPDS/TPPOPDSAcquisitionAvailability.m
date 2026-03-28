@@ -1,6 +1,5 @@
-#import "NSDate+NYPLDateAdditions.h"
-#import "TPPNull.h"
 #import "TPPXML.h"
+#import "Palace-Swift.h"
 
 #import "TPPOPDSAcquisitionAvailability.h"
 
@@ -151,10 +150,10 @@ NYPLOPDSAcquisitionAvailabilityWithDictionary(NSDictionary *_Nonnull dictionary)
     return nil;
   }
 
-  NSString *const sinceString = TPPNullToNil(dictionary[sinceKey]);
+  NSString *const sinceString = [TPPNullHelper toNil:dictionary[sinceKey]];
   NSDate *const since = sinceString ? [NSDate dateWithRFC3339String:sinceString] : nil;
 
-  NSString *const untilString = TPPNullToNil(dictionary[untilKey]);
+  NSString *const untilString = [TPPNullHelper toNil:dictionary[untilKey]];
   NSDate *const until = untilString ? [NSDate dateWithRFC3339String:untilString] : nil;
 
   if ([caseString isEqual:unavailableCase]) {
@@ -229,8 +228,8 @@ NYPLOPDSAcquisitionAvailabilityDictionaryRepresentation(id<TPPOPDSAcquisitionAva
        caseKey: limitedCase,
        copiesAvailableKey: @(limited.copiesAvailable),
        copiesTotalKey: @(limited.copiesTotal),
-       sinceKey: TPPNullFromNil([limited.since RFC3339String]),
-       untilKey: TPPNullFromNil([limited.until RFC3339String])
+       sinceKey: [TPPNullHelper fromNil:[limited.since RFC3339String]],
+       untilKey: [TPPNullHelper fromNil:[limited.until RFC3339String]]
      };
    } unlimited:^(__unused TPPOPDSAcquisitionAvailabilityUnlimited *const _Nonnull unlimited) {
      result = @{
@@ -241,8 +240,8 @@ NYPLOPDSAcquisitionAvailabilityDictionaryRepresentation(id<TPPOPDSAcquisitionAva
        caseKey: reservedCase,
        holdsPositionKey: @(reserved.holdPosition),
        copiesTotalKey: @(reserved.copiesTotal),
-       sinceKey: TPPNullFromNil([reserved.since RFC3339String]),
-       untilKey: TPPNullFromNil([reserved.until RFC3339String])
+       sinceKey: [TPPNullHelper fromNil:[reserved.since RFC3339String]],
+       untilKey: [TPPNullHelper fromNil:[reserved.until RFC3339String]]
      };
    } ready:^(__unused TPPOPDSAcquisitionAvailabilityReady * _Nonnull ready) {
      result = @{

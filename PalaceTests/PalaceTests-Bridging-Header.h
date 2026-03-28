@@ -4,7 +4,6 @@
 
 #import "Palace-Bridging-Header.h"
 #import "TPPOpenSearchDescription.h"
-#import "NSString+TPPStringAdditions.h"
 #import "ObjCExceptionCatcher.h"
 
 #import "ADEPT/NYPLADEPTErrors.h"

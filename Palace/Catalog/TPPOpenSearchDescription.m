@@ -1,7 +1,5 @@
-#import "TPPAsync.h"
 #import "TPPSession.h"
 #import "TPPXML.h"
-#import "NSString+TPPStringAdditions.h"
 #import "Palace-Swift.h"
 
 #import "TPPOpenSearchDescription.h"
@@ -30,7 +28,7 @@ completionHandler:(void (^)(TPPOpenSearchDescription *))handler
    completionHandler:^(NSData *const data, __unused NSURLResponse *response, __unused NSError *error) {
      if(!data) {
        TPPLOG(@"Failed to retrieve data.");
-       TPPAsyncDispatch(^{handler(nil);});
+       [TPPAsyncHelper dispatch:^{handler(nil);}];
        return;
      }
      
@@ -39,7 +37,7 @@ completionHandler:(void (^)(TPPOpenSearchDescription *))handler
 //     NSDictionary *errData = @{@"data": [NSString stringWithFormat:@"%@...", datcat]};
      if(!XML) {
        TPPLOG(@"Failed to parse data as XML.");
-       TPPAsyncDispatch(^{handler(nil);});
+       [TPPAsyncHelper dispatch:^{handler(nil);}];
        return;
      }
      
@@ -48,11 +46,11 @@ completionHandler:(void (^)(TPPOpenSearchDescription *))handler
      
      if(!description) {
        TPPLOG(@"Failed to interpret XML as OpenSearch description document.");
-       TPPAsyncDispatch(^{handler(nil);});
+       [TPPAsyncHelper dispatch:^{handler(nil);}];
        return;
      }
      
-     TPPAsyncDispatch(^{handler(description);});
+     [TPPAsyncHelper dispatch:^{handler(description);}];
    }];
 }
 

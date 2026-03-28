@@ -1,11 +1,7 @@
-// Swift replacement for TPPAttributedString.m
-//
-// Creates styled NSAttributedStrings for author and title display.
+import UIKit
 
-import Foundation
-
-/// Returns an attributed string styled for displaying author names.
-func TPPAttributedStringForAuthorsFromStringSwift(_ string: String?) -> NSAttributedString? {
+/// Creates an attributed string with author-style paragraph formatting.
+func TPPAttributedStringForAuthorsFromString(_ string: String?) -> NSAttributedString? {
   guard let string = string else { return nil }
 
   let paragraphStyle = NSMutableParagraphStyle()
@@ -21,12 +17,11 @@ func TPPAttributedStringForAuthorsFromStringSwift(_ string: String?) -> NSAttrib
   )
 }
 
-/// Returns an attributed string styled for displaying titles,
-/// with HTML entities decoded.
-func TPPAttributedStringForTitleFromStringSwift(_ string: String?) -> NSAttributedString? {
+/// Creates an attributed string with title-style paragraph formatting.
+/// Decodes HTML entities twice to handle double-encoded entities like `&amp;#39;`.
+func TPPAttributedStringForTitleFromString(_ string: String?) -> NSAttributedString? {
   guard let string = string else { return nil }
 
-  // Decode twice to handle double-encoded entities like `&amp;#39;`
   let decodedString = string.stringByDecodingHTMLEntities.stringByDecodingHTMLEntities
 
   let paragraphStyle = NSMutableParagraphStyle()
