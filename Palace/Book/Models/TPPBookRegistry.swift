@@ -104,10 +104,22 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     private var accountDidChange = NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
         .receive(on: RunLoop.main)
         .sink { _ in
-            TPPBookRegistry.shared.load()
+            let registry = TPPBookRegistry.shared
+            // Reset loadingAccount so the new account isn't blocked by the old re-entrancy guard
+            registry.loadingAccount = nil
+
+            // Guard: do not load if an account switch is still in progress
+            guard !AccountsManager.shared.isAccountSwitching else {
+                Log.debug(#function, "Skipping registry load — account switch still in progress")
+                return
+            }
+
+            registry.load()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                TPPBookRegistry.shared.sync()
+                // Re-check that no new switch started during the delay
+                guard !AccountsManager.shared.isAccountSwitching else { return }
+                registry.sync()
             }
         }
 
@@ -194,10 +206,17 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             .appendingPathComponent(registryFileName)
     }
 
-    /// Tracks the account currently being loaded to prevent re-entrant loads
-    private var loadingAccount: String?
+    /// Tracks the account currently being loaded to prevent re-entrant loads.
+    /// Internal so the account-change listener can reset it when switching accounts.
+    var loadingAccount: String?
 
     func load(account: String? = nil) {
+        // Do not start a load while an account switch is in flight
+        if account == nil && AccountsManager.shared.isAccountSwitching {
+            Log.debug(#file, "Skipping registry load — account switch in progress")
+            return
+        }
+
         guard let account = account ?? AccountsManager.shared.currentAccountId,
               let url     = registryUrl(for: account)
         else { return }
