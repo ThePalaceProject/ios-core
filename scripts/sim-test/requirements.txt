@@ -1,0 +1,3 @@
+anthropic>=0.42.0
+pyyaml>=6.0
+Pillow>=10.0
