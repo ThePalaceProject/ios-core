@@ -45,6 +45,8 @@ class SimDriver:
         self.verbose = verbose
         self._device_info: Optional[DeviceInfo] = None
         self._screenshot_dir = tempfile.mkdtemp(prefix="sim_test_")
+        self._display_width = 1024   # Updated after first screenshot
+        self._display_height = 2226  # Updated after first screenshot
 
     def _run(self, cmd: list[str], check: bool = True, timeout: int = 30) -> subprocess.CompletedProcess:
         """Run a shell command and return the result."""
@@ -167,6 +169,8 @@ class SimDriver:
         with open(resized_path, "rb") as f:
             b64 = base64.standard_b64encode(f.read()).decode("ascii")
 
+        self._display_width = img.width
+        self._display_height = img.height
         return b64, img.width, img.height
 
     def screenshot_raw(self) -> str:
@@ -178,168 +182,87 @@ class SimDriver:
         ])
         return screenshot_path
 
+    def _get_simulator_window(self):
+        """Find the Simulator window bounds using Quartz."""
+        from Quartz import CGWindowListCopyWindowInfo, kCGWindowListOptionOnScreenOnly, kCGNullWindowID
+        windows = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID)
+        for w in windows:
+            if 'Simulator' in w.get('kCGWindowOwnerName', ''):
+                b = w.get('kCGWindowBounds', {})
+                return float(b['X']), float(b['Y']), float(b['Width']), float(b['Height'])
+        raise SimulatorError("Simulator window not found on screen")
+
+    def _image_to_screen_coords(self, img_x: int, img_y: int,
+                                 image_width: int, image_height: int):
+        """Convert Claude's image coordinates to absolute screen coordinates."""
+        win_x, win_y, win_w, win_h = self._get_simulator_window()
+        # Title bar is ~28px on macOS
+        title_bar = 28
+        content_h = win_h - title_bar
+        scale_x = win_w / image_width
+        scale_y = content_h / image_height
+        screen_x = win_x + img_x * scale_x
+        screen_y = win_y + title_bar + img_y * scale_y
+        return screen_x, screen_y
+
     def tap(self, x: int, y: int) -> None:
         """
-        Tap at logical coordinates (x, y) using AppleScript.
-
-        The coordinates should be in the coordinate space of the screenshot
-        image that Claude sees (i.e., the resized image coordinates).
-        We convert them to Simulator.app window coordinates.
+        Tap at coordinates in Claude's image space using Quartz CGEvents.
+        No Accessibility permission needed.
         """
-        # Use AppleScript to click in the Simulator window.
-        # The Simulator app window contains the device screen plus chrome.
-        # We need to click relative to the window content area.
-        #
-        # Strategy: Activate Simulator, find the window position, then use
-        # System Events to click at the right offset.
-        script = f'''
-        tell application "Simulator" to activate
-        delay 0.3
-        tell application "System Events"
-            tell process "Simulator"
-                set frontWindow to front window
-                set winPos to position of frontWindow
-                set winSize to size of frontWindow
-                -- Click at offset within the window
-                -- The device screen starts after the title bar (~28px on macOS)
-                set clickX to (item 1 of winPos) + {x}
-                set clickY to (item 2 of winPos) + 28 + {y}
-            end tell
-            click at {{clickX, clickY}}
-        end tell
-        '''
-        self._run_osascript(script)
-        time.sleep(0.5)  # Wait for UI to respond
+        # Activate Simulator first
+        subprocess.run(["open", "-a", "Simulator"], check=False)
+        time.sleep(0.2)
+
+        from Quartz import CGEventCreateMouseEvent, CGEventPost, kCGEventLeftMouseDown, kCGEventLeftMouseUp, kCGHIDEventTap
+        screen_x, screen_y = self._image_to_screen_coords(
+            x, y, self._display_width, self._display_height)
+        point = (screen_x, screen_y)
+        down = CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, point, 0)
+        up = CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, point, 0)
+        CGEventPost(kCGHIDEventTap, down)
+        time.sleep(0.1)
+        CGEventPost(kCGHIDEventTap, up)
+        time.sleep(0.5)
 
     def tap_screen_coords(self, screen_x: int, screen_y: int,
                            image_width: int, image_height: int) -> None:
-        """
-        Tap at coordinates from Claude's image space.
-
-        Converts from the resized screenshot coordinate space to
-        Simulator.app window coordinates.
-        """
-        # Get the Simulator window's content size via AppleScript
-        script = '''
-        tell application "System Events"
-            tell process "Simulator"
-                set winSize to size of front window
-                return (item 1 of winSize) & "," & (item 2 of winSize)
-            end tell
-        end tell
-        '''
-        size_str = self._run_osascript(script)
-        if "," in size_str:
-            parts = size_str.split(",")
-            win_w = int(parts[0].strip())
-            win_h = int(parts[1].strip()) - 28  # Subtract title bar
-        else:
-            # Fallback: assume 1:1 mapping
-            win_w = image_width
-            win_h = image_height
-
-        # Scale from image coords to window coords
-        scale_x = win_w / image_width
-        scale_y = win_h / image_height
-        window_x = int(screen_x * scale_x)
-        window_y = int(screen_y * scale_y)
-
-        self.tap(window_x, window_y)
+        """Tap at coordinates from Claude's image space."""
+        self._display_width = image_width
+        self._display_height = image_height
+        self.tap(screen_x, screen_y)
 
     def swipe(self, x1: int, y1: int, x2: int, y2: int,
               image_width: int = 0, image_height: int = 0,
               duration: float = 0.5) -> None:
-        """
-        Swipe from (x1,y1) to (x2,y2) using AppleScript mouse drag.
-        Coordinates are in image space if image_width/height provided.
-        """
-        # Get window info for coordinate mapping
-        script = '''
-        tell application "System Events"
-            tell process "Simulator"
-                set winPos to position of front window
-                set winSize to size of front window
-                return (item 1 of winPos) & "," & (item 2 of winPos) & "," & (item 1 of winSize) & "," & (item 2 of winSize)
-            end tell
-        end tell
-        '''
-        info_str = self._run_osascript(script)
-        if "," in info_str:
-            parts = [int(p.strip()) for p in info_str.split(",")]
-            win_x, win_y, win_w, win_h_with_title = parts
-            win_h = win_h_with_title - 28
-        else:
-            win_x, win_y, win_w, win_h = 0, 0, image_width, image_height
+        """Swipe from (x1,y1) to (x2,y2) using Quartz CGEvents."""
+        subprocess.run(["open", "-a", "Simulator"], check=False)
+        time.sleep(0.2)
 
-        # Scale coordinates
-        if image_width > 0 and image_height > 0:
-            sx = win_w / image_width
-            sy = win_h / image_height
-        else:
-            sx = sy = 1.0
+        from Quartz import CGEventCreateMouseEvent, CGEventPost, kCGEventLeftMouseDown, kCGEventLeftMouseUp, kCGEventLeftMouseDragged, kCGHIDEventTap
 
-        abs_x1 = win_x + int(x1 * sx)
-        abs_y1 = win_y + 28 + int(y1 * sy)
-        abs_x2 = win_x + int(x2 * sx)
-        abs_y2 = win_y + 28 + int(y2 * sy)
+        iw = image_width or self._display_width
+        ih = image_height or self._display_height
+        sx1, sy1 = self._image_to_screen_coords(x1, y1, iw, ih)
+        sx2, sy2 = self._image_to_screen_coords(x2, y2, iw, ih)
 
-        # AppleScript mouse drag via cliclick or System Events
-        # Using Python's Quartz framework for precise mouse control
-        try:
-            self._mouse_drag(abs_x1, abs_y1, abs_x2, abs_y2, duration)
-        except Exception:
-            # Fallback: use two clicks (start and end) -- imprecise but better than nothing
-            if self.verbose:
-                print("  [swipe] Quartz unavailable, falling back to AppleScript")
-            self._run_osascript(f'''
-            tell application "Simulator" to activate
-            delay 0.2
-            tell application "System Events"
-                click at {{{abs_x1}, {abs_y1}}}
-                delay 0.1
-                click at {{{abs_x2}, {abs_y2}}}
-            end tell
-            ''')
-
-    def _mouse_drag(self, x1: int, y1: int, x2: int, y2: int, duration: float) -> None:
-        """Perform a mouse drag using Quartz (CoreGraphics) events."""
-        import Quartz
-
-        # Move to start
-        event = Quartz.CGEventCreateMouseEvent(
-            None, Quartz.kCGEventMouseMoved,
-            (x1, y1), Quartz.kCGMouseButtonLeft
-        )
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
-        time.sleep(0.05)
-
-        # Mouse down
-        event = Quartz.CGEventCreateMouseEvent(
-            None, Quartz.kCGEventLeftMouseDown,
-            (x1, y1), Quartz.kCGMouseButtonLeft
-        )
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
-        time.sleep(0.05)
+        # Mouse down at start
+        down = CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, (sx1, sy1), 0)
+        CGEventPost(kCGHIDEventTap, down)
 
         # Drag in steps
-        steps = max(10, int(duration * 60))
+        steps = 20
         for i in range(1, steps + 1):
             t = i / steps
-            cx = x1 + (x2 - x1) * t
-            cy = y1 + (y2 - y1) * t
-            event = Quartz.CGEventCreateMouseEvent(
-                None, Quartz.kCGEventLeftMouseDragged,
-                (cx, cy), Quartz.kCGMouseButtonLeft
-            )
-            Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
+            cx = sx1 + (sx2 - sx1) * t
+            cy = sy1 + (sy2 - sy1) * t
+            drag = CGEventCreateMouseEvent(None, kCGEventLeftMouseDragged, (cx, cy), 0)
+            CGEventPost(kCGHIDEventTap, drag)
             time.sleep(duration / steps)
 
-        # Mouse up
-        event = Quartz.CGEventCreateMouseEvent(
-            None, Quartz.kCGEventLeftMouseUp,
-            (x2, y2), Quartz.kCGMouseButtonLeft
-        )
-        Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
+        # Mouse up at end
+        up = CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, (sx2, sy2), 0)
+        CGEventPost(kCGHIDEventTap, up)
         time.sleep(0.3)
 
     def type_text(self, text: str) -> None:
@@ -435,65 +358,19 @@ class SimDriver:
 
     def long_press(self, x: int, y: int, duration: float = 3.0,
                    image_width: int = 0, image_height: int = 0) -> None:
-        """
-        Long press at coordinates. Uses Quartz mouse events for precise timing.
-        """
-        # Get window position
-        script = '''
-        tell application "System Events"
-            tell process "Simulator"
-                set winPos to position of front window
-                set winSize to size of front window
-                return (item 1 of winPos) & "," & (item 2 of winPos) & "," & (item 1 of winSize) & "," & (item 2 of winSize)
-            end tell
-        end tell
-        '''
-        info_str = self._run_osascript(script)
-        if "," in info_str:
-            parts = [int(p.strip()) for p in info_str.split(",")]
-            win_x, win_y, win_w, win_h_with_title = parts
-            win_h = win_h_with_title - 28
-        else:
-            win_x, win_y = 0, 0
-            win_w = image_width if image_width else x * 2
-            win_h = image_height if image_height else y * 2
+        """Long press at coordinates using Quartz CGEvents."""
+        subprocess.run(["open", "-a", "Simulator"], check=False)
+        time.sleep(0.2)
 
-        if image_width > 0 and image_height > 0:
-            sx = win_w / image_width
-            sy = win_h / image_height
-        else:
-            sx = sy = 1.0
+        from Quartz import CGEventCreateMouseEvent, CGEventPost, kCGEventLeftMouseDown, kCGEventLeftMouseUp, kCGHIDEventTap
 
-        abs_x = win_x + int(x * sx)
-        abs_y = win_y + 28 + int(y * sy)
+        iw = image_width or self._display_width
+        ih = image_height or self._display_height
+        screen_x, screen_y = self._image_to_screen_coords(x, y, iw, ih)
 
-        # Activate Simulator first
-        self._run_osascript('tell application "Simulator" to activate')
-        time.sleep(0.3)
-
-        try:
-            import Quartz
-            # Mouse down
-            event = Quartz.CGEventCreateMouseEvent(
-                None, Quartz.kCGEventLeftMouseDown,
-                (abs_x, abs_y), Quartz.kCGMouseButtonLeft
-            )
-            Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
-            # Hold for duration
-            time.sleep(duration)
-            # Mouse up
-            event = Quartz.CGEventCreateMouseEvent(
-                None, Quartz.kCGEventLeftMouseUp,
-                (abs_x, abs_y), Quartz.kCGMouseButtonLeft
-            )
-            Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
-        except ImportError:
-            if self.verbose:
-                print("  [long_press] Quartz unavailable, using AppleScript delay")
-            self._run_osascript(f'''
-            tell application "System Events"
-                click at {{{abs_x}, {abs_y}}}
-                delay {duration}
-            end tell
-            ''')
+        down = CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, (screen_x, screen_y), 0)
+        CGEventPost(kCGHIDEventTap, down)
+        time.sleep(duration)
+        up = CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, (screen_x, screen_y), 0)
+        CGEventPost(kCGHIDEventTap, up)
         time.sleep(0.5)
