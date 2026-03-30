@@ -219,10 +219,39 @@ Better yet: **add a calibration step** that takes a screenshot, notes where a kn
 
 ## Recommendations
 
+### ARCHITECTURE ISSUE: Quartz CGEvents Share the User's Mouse
+
+**Severity: BLOCKER for developer-machine use**
+
+Quartz `CGEventCreateMouseEvent` posts events through the **real mouse cursor**. This means:
+- User mouse movements override test taps
+- User CANNOT use their computer while tests run
+- Tests fail intermittently if the user touches the mouse/keyboard
+- Worked perfectly when hands-off, failed completely when user was active
+
+**This was confirmed during dogfood:** 40 iterations succeeded with hands off, then all clicks stopped registering when the tester resumed normal computer use.
+
+**CI/CD is fine** (no user interaction), but developer machines need a different approach.
+
+**Recommended alternatives (in order of reliability):**
+1. **XCUITest bridge** — spawn a lightweight XCUITest runner that accepts tap commands via IPC (localhost socket or named pipe). Taps go through the accessibility/UI testing framework INSIDE the simulator, completely independent of the host mouse. This is how Appium and Detox work.
+2. **`accessibility` API via `xcrun simctl`** — if Apple exposes touch injection in future Xcode versions
+3. **Run on a headless/secondary display** — `xcrun simctl` screenshot works even when the window isn't visible, but CGEvents need a visible window
+
+The XCUITest bridge is the right long-term answer. Architecture:
+```
+SpecterQA CLI  →  localhost:9999  →  XCUITest Runner (in simulator)
+                                     ├── tap(x, y)
+                                     ├── swipe(x1,y1,x2,y2)
+                                     ├── type("text")
+                                     └── screenshot() -> PNG
+```
+
 ### Must Fix Before Beta
-1. **Fix coordinate mapping** — this single fix will unlock ~70% of currently failing steps
-2. **Fix scroll/swipe** — this unlocks catalog browsing and list interaction
-3. **Add coordinate debug logging** — essential for diagnosing interaction issues
+1. **Replace Quartz CGEvents with XCUITest bridge** — users must be able to use their computer during tests
+2. **Fix coordinate mapping** — this single fix will unlock ~70% of currently failing steps
+3. **Fix scroll/swipe** — this unlocks catalog browsing and list interaction
+4. **Add coordinate debug logging** — essential for diagnosing interaction issues
 
 ### Should Fix Before Beta
 4. **Cascade prevention** — skip dependent steps when prerequisite fails
