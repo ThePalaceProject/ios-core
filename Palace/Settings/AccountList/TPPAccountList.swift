@@ -162,6 +162,12 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
         cell.customTextlabel.text = account.name
         cell.customDetailLabel.text = account.subtitle
 
+        if let subtitle = account.subtitle, !subtitle.isEmpty {
+            cell.accessibilityLabel = "\(account.name). \(subtitle)"
+        } else {
+            cell.accessibilityLabel = account.name
+        }
+
         return cell
     }
 
