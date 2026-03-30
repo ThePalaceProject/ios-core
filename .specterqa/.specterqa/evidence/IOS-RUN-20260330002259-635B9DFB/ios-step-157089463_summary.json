@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157089463",
-  "goal": "Navigate to the 'My Books' tab at the bottom of the screen. Verify the borrowed book appears in the list.",
-  "goal_achieved": false,
-  "action_count": 6,
-  "duration_seconds": 27.383,
-  "error": null,
-  "findings": []
-}

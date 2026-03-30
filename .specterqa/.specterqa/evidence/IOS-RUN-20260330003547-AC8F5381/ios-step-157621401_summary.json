@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157621401",
-  "goal": "Go to Settings, find a library account, and try to sign in with username 'wronguser12345' and password 'wrongpass'. Verify the app shows a clear error message, not a crash.",
-  "goal_achieved": false,
-  "action_count": 7,
-  "duration_seconds": 36.733,
-  "error": null,
-  "findings": []
-}

@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157540773",
-  "goal": "Navigate into a book detail page. Then tap the Catalog tab at the bottom. Verify it returns to the root catalog view (not the detail page).",
-  "goal_achieved": false,
-  "action_count": 4,
-  "duration_seconds": 19.256,
-  "error": null,
-  "findings": []
-}

@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157496272",
-  "goal": "Navigate into a book detail again by tapping a book. Then swipe from the left edge of the screen to the right (iOS back gesture) to go back. Verify the gesture works.",
-  "goal_achieved": false,
-  "action_count": 8,
-  "duration_seconds": 44.5,
-  "error": null,
-  "findings": []
-}

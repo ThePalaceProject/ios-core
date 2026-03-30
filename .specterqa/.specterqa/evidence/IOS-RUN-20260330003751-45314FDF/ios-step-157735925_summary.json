@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157735925",
-  "goal": "Go to Settings. Check for: all text readable, no overlapping elements, proper spacing, icons rendering correctly. Check both light and dark areas of the UI.",
-  "goal_achieved": false,
-  "action_count": 8,
-  "duration_seconds": 43.107,
-  "error": null,
-  "findings": []
-}

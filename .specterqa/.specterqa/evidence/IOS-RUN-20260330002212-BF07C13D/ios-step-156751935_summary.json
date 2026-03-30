@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-156751935",
-  "goal": "Confirm the app has launched and the main home screen is visible with no crash dialogs",
-  "goal_achieved": true,
-  "action_count": 0,
-  "duration_seconds": 5.418,
-  "error": null,
-  "findings": []
-}

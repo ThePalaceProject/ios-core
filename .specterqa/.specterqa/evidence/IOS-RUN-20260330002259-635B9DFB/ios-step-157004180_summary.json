@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157004180",
-  "goal": "Tap on any book cover image to open its detail page. Choose a book that appears to be available (not already borrowed).",
-  "goal_achieved": true,
-  "action_count": 7,
-  "duration_seconds": 61.947,
-  "error": null,
-  "findings": []
-}

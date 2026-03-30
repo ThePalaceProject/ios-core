@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-156410493",
-  "goal": "Tap the main navigation tabs and verify each section loads without errors",
-  "goal_achieved": false,
-  "action_count": 8,
-  "duration_seconds": 55.058,
-  "error": null,
-  "findings": []
-}

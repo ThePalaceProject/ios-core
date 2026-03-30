@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157690596",
-  "goal": "Look carefully at the Catalog screen. Report any: truncated text, overlapping elements, missing images (gray placeholders that never load), buttons without labels, or text that's too small to read.",
-  "goal_achieved": false,
-  "action_count": 5,
-  "duration_seconds": 21.337,
-  "error": null,
-  "findings": []
-}

@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157601101",
-  "goal": "Dismiss the search results and return to the main catalog. Tap Cancel, the X button, or navigate away.",
-  "goal_achieved": false,
-  "action_count": 4,
-  "duration_seconds": 20.299,
-  "error": null,
-  "findings": []
-}

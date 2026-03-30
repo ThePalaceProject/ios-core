@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157566532",
-  "goal": "If there's a search icon/button in the catalog, tap it and search for 'zzzzxxxxxqqqq999'. Verify the app shows a 'no results' message gracefully, not a crash or error dialog.",
-  "goal_achieved": false,
-  "action_count": 6,
-  "duration_seconds": 34.568,
-  "error": null,
-  "findings": []
-}

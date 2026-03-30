@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157390772",
-  "goal": "Quickly switch between tabs: Catalog -> My Books -> Reservations -> Settings -> Catalog -> My Books. Do this rapidly. After switching, verify the final screen (My Books) is displaying correctly with no artifacts, blank screens, or error dialogs.",
-  "goal_achieved": false,
-  "action_count": 5,
-  "duration_seconds": 29.233,
-  "error": null,
-  "findings": []
-}

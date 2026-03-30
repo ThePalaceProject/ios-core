@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157711933",
-  "goal": "Open any book's detail page. Check for: complete title and author display, readable description text, properly sized cover image, accessible action buttons. Report any layout issues.",
-  "goal_achieved": true,
-  "action_count": 2,
-  "duration_seconds": 23.99,
-  "error": null,
-  "findings": []
-}

@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-157245181",
-  "goal": "Tap the 'Catalog' tab at the bottom left. Verify catalog content loads. Take a screenshot.",
-  "goal_achieved": false,
-  "action_count": 4,
-  "duration_seconds": 19.554,
-  "error": null,
-  "findings": []
-}

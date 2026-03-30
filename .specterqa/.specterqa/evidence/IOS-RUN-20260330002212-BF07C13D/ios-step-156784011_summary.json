@@ -1,9 +1,0 @@
-{
-  "step_id": "ios-step-156784011",
-  "goal": "Confirm the app is in a healthy state \u2014 no error alerts, no crash dialogs, no blank screens",
-  "goal_achieved": true,
-  "action_count": 0,
-  "duration_seconds": 8.245,
-  "error": null,
-  "findings": []
-}
