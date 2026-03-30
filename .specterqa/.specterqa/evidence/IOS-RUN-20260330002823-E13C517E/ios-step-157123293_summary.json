@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-157123293",
+  "goal": "Tap the 'Settings' tab at the bottom right of the screen (gear icon). Verify the Settings screen loads.",
+  "goal_achieved": false,
+  "action_count": 4,
+  "duration_seconds": 17.975,
+  "error": null,
+  "findings": []
+}

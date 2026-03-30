@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-157480234",
+  "goal": "Tap the '< Back' button or back arrow in the top-left corner of the screen to go back one screen. Verify you return to the previous screen.",
+  "goal_achieved": false,
+  "action_count": 4,
+  "duration_seconds": 16.038,
+  "error": null,
+  "findings": []
+}

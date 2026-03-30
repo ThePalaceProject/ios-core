@@ -1,0 +1,45 @@
+{
+  "run_id": "IOS-RUN-20260330003547-AC8F5381",
+  "product": "palace-ios",
+  "journey": "error-handling",
+  "device_id": "DF4A2A27-9888-429D-A749-2E157A049A37",
+  "bundle_id": "org.thepalaceproject.palace",
+  "passed": false,
+  "step_count": 4,
+  "step_reports": [
+    {
+      "step_id": "search_nonsense",
+      "description": "Search for nonsensical content",
+      "passed": false,
+      "duration_seconds": 34.569,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "dismiss_search",
+      "description": "Dismiss search and return to catalog",
+      "passed": false,
+      "duration_seconds": 20.3,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "sign_in_wrong_creds",
+      "description": "Attempt sign-in with wrong credentials",
+      "passed": false,
+      "duration_seconds": 36.734,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "recover_from_error",
+      "description": "Recover from error state",
+      "passed": false,
+      "duration_seconds": 26.05,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    }
+  ],
+  "findings": [],
+  "duration_seconds": 117.652
+}

@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-156798655",
+  "goal": "Confirm the Catalog tab is showing book lanes with cover images. If on the Add Library screen, select 'A1QA Test Library' or 'Palace Bookshelf' first.",
+  "goal_achieved": true,
+  "action_count": 0,
+  "duration_seconds": 5.862,
+  "error": null,
+  "findings": []
+}

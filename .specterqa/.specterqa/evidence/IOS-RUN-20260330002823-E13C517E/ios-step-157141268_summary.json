@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-157141268",
+  "goal": "Scroll through the Settings screen and report all visible options/sections. Note any account information, library name, version number.",
+  "goal_achieved": false,
+  "action_count": 7,
+  "duration_seconds": 35.937,
+  "error": null,
+  "findings": []
+}

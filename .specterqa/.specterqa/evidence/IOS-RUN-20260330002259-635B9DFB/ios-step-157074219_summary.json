@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-157074219",
+  "goal": "Tap the 'Get', 'Borrow', or 'Download' button. If asked to sign in, report that sign-in is required. If the book downloads, wait for it to complete.",
+  "goal_achieved": false,
+  "action_count": 4,
+  "duration_seconds": 15.244,
+  "error": null,
+  "findings": []
+}

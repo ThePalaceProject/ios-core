@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-157779033",
+  "goal": "Go to My Books (if no books borrowed) and Reservations (if no holds). Verify empty states show a helpful message, not a blank screen or error.",
+  "goal_achieved": false,
+  "action_count": 4,
+  "duration_seconds": 23.74,
+  "error": null,
+  "findings": []
+}

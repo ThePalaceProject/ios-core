@@ -1,0 +1,45 @@
+{
+  "run_id": "IOS-RUN-20260330003751-45314FDF",
+  "product": "palace-ios",
+  "journey": "accessibility-check",
+  "device_id": "DF4A2A27-9888-429D-A749-2E157A049A37",
+  "bundle_id": "org.thepalaceproject.palace",
+  "passed": false,
+  "step_count": 4,
+  "step_reports": [
+    {
+      "step_id": "check_catalog_ui",
+      "description": "Inspect catalog UI quality",
+      "passed": false,
+      "duration_seconds": 21.337,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "check_detail_ui",
+      "description": "Inspect book detail UI quality",
+      "passed": true,
+      "duration_seconds": 23.992,
+      "error": null,
+      "findings": []
+    },
+    {
+      "step_id": "check_settings_ui",
+      "description": "Inspect Settings UI quality",
+      "passed": false,
+      "duration_seconds": 43.108,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "check_empty_states",
+      "description": "Check empty state screens",
+      "passed": false,
+      "duration_seconds": 23.74,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    }
+  ],
+  "findings": [],
+  "duration_seconds": 112.177
+}

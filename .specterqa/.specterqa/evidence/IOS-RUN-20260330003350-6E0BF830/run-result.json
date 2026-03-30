@@ -1,0 +1,45 @@
+{
+  "run_id": "IOS-RUN-20260330003350-6E0BF830",
+  "product": "palace-ios",
+  "journey": "back-navigation",
+  "device_id": "DF4A2A27-9888-429D-A749-2E157A049A37",
+  "bundle_id": "org.thepalaceproject.palace",
+  "passed": false,
+  "step_count": 4,
+  "step_reports": [
+    {
+      "step_id": "navigate_deep",
+      "description": "Navigate deep into content",
+      "passed": false,
+      "duration_seconds": 29.955,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "back_button",
+      "description": "Test back button",
+      "passed": false,
+      "duration_seconds": 16.038,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "swipe_back",
+      "description": "Test swipe-back gesture",
+      "passed": false,
+      "duration_seconds": 44.501,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "tab_resets",
+      "description": "Test tab bar resets navigation",
+      "passed": false,
+      "duration_seconds": 19.256,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    }
+  ],
+  "findings": [],
+  "duration_seconds": 109.75
+}

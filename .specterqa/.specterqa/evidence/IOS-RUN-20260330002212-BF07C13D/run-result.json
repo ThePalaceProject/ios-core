@@ -1,0 +1,37 @@
+{
+  "run_id": "IOS-RUN-20260330002212-BF07C13D",
+  "product": "palace-ios",
+  "journey": "smoke-test",
+  "device_id": "DF4A2A27-9888-429D-A749-2E157A049A37",
+  "bundle_id": "org.thepalaceproject.palace",
+  "passed": false,
+  "step_count": 3,
+  "step_reports": [
+    {
+      "step_id": "launch_and_verify_home",
+      "description": "Launch app and verify home screen loads",
+      "passed": true,
+      "duration_seconds": 5.418,
+      "error": null,
+      "findings": []
+    },
+    {
+      "step_id": "core_navigation",
+      "description": "Navigate through primary tabs or menu items",
+      "passed": false,
+      "duration_seconds": 26.657,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "check_no_errors",
+      "description": "Verify no error states or crash dialogs are present",
+      "passed": true,
+      "duration_seconds": 8.246,
+      "error": null,
+      "findings": []
+    }
+  ],
+  "findings": [],
+  "duration_seconds": 40.322
+}

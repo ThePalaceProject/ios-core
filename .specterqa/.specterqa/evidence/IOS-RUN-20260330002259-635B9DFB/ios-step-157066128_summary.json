@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-157066128",
+  "goal": "Confirm the book detail page shows: title, author, cover image, and at least one action button (Get, Borrow, Download, or Reserve). Report what you see.",
+  "goal_achieved": true,
+  "action_count": 0,
+  "duration_seconds": 8.09,
+  "error": null,
+  "findings": []
+}

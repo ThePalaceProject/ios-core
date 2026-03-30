@@ -1,0 +1,61 @@
+{
+  "run_id": "IOS-RUN-20260330002259-635B9DFB",
+  "product": "palace-ios",
+  "journey": "happy-browse-borrow",
+  "device_id": "DF4A2A27-9888-429D-A749-2E157A049A37",
+  "bundle_id": "org.thepalaceproject.palace",
+  "passed": false,
+  "step_count": 6,
+  "step_reports": [
+    {
+      "step_id": "verify_catalog",
+      "description": "Verify catalog is loaded with books",
+      "passed": true,
+      "duration_seconds": 5.863,
+      "error": null,
+      "findings": []
+    },
+    {
+      "step_id": "scroll_catalog",
+      "description": "Scroll through the catalog",
+      "passed": false,
+      "duration_seconds": 199.662,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "tap_book",
+      "description": "Tap on a book to view details",
+      "passed": true,
+      "duration_seconds": 61.948,
+      "error": null,
+      "findings": []
+    },
+    {
+      "step_id": "verify_detail",
+      "description": "Verify book detail page content",
+      "passed": true,
+      "duration_seconds": 8.091,
+      "error": null,
+      "findings": []
+    },
+    {
+      "step_id": "borrow_book",
+      "description": "Borrow or get the book",
+      "passed": false,
+      "duration_seconds": 15.244,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "check_my_books",
+      "description": "Check My Books for the borrowed book",
+      "passed": false,
+      "duration_seconds": 27.383,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    }
+  ],
+  "findings": [],
+  "duration_seconds": 318.191
+}

@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-156804517",
+  "goal": "Scroll down through the catalog to see multiple book sections/lanes. Note the section names and book titles visible.",
+  "goal_achieved": false,
+  "action_count": 20,
+  "duration_seconds": 199.661,
+  "error": null,
+  "findings": []
+}

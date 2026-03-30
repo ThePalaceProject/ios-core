@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-157658134",
+  "goal": "After the failed sign-in, navigate back to the Catalog tab. Verify the app is still functional and responsive. No lingering error dialogs or broken state.",
+  "goal_achieved": false,
+  "action_count": 4,
+  "duration_seconds": 26.05,
+  "error": null,
+  "findings": []
+}

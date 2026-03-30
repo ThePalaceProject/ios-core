@@ -1,0 +1,45 @@
+{
+  "run_id": "IOS-RUN-20260330002823-E13C517E",
+  "product": "palace-ios",
+  "journey": "settings-exploration",
+  "device_id": "DF4A2A27-9888-429D-A749-2E157A049A37",
+  "bundle_id": "org.thepalaceproject.palace",
+  "passed": false,
+  "step_count": 4,
+  "step_reports": [
+    {
+      "step_id": "open_settings",
+      "description": "Navigate to Settings tab",
+      "passed": false,
+      "duration_seconds": 17.975,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "explore_settings",
+      "description": "Explore settings options",
+      "passed": false,
+      "duration_seconds": 35.937,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "enable_debug",
+      "description": "Enable debug/testing mode",
+      "passed": false,
+      "duration_seconds": 18.104,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    },
+    {
+      "step_id": "verify_debug_options",
+      "description": "Verify debug options are visible",
+      "passed": false,
+      "duration_seconds": 43.366,
+      "error": "Max iterations (20) reached without achieving goal",
+      "findings": []
+    }
+  ],
+  "findings": [],
+  "duration_seconds": 115.382
+}

@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-157177205",
+  "goal": "Find the version number at the very bottom of the Settings screen. Long-press (press and hold for 5 seconds) on the version number text. A testing/debug section should appear.",
+  "goal_achieved": false,
+  "action_count": 4,
+  "duration_seconds": 18.104,
+  "error": null,
+  "findings": []
+}

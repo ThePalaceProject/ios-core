@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-157300265",
+  "goal": "Tap the 'Reservations' tab. Verify the screen shows reservations/holds content (or an empty state). No crash.",
+  "goal_achieved": false,
+  "action_count": 11,
+  "duration_seconds": 64.687,
+  "error": null,
+  "findings": []
+}

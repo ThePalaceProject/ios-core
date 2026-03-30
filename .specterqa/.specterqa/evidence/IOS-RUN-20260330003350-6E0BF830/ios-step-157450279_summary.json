@@ -1,0 +1,9 @@
+{
+  "step_id": "ios-step-157450279",
+  "goal": "From the Catalog, tap on a 'More...' link for any section to see the full list. Then tap on a book in that list to view its detail page. You should now be 2-3 screens deep.",
+  "goal_achieved": false,
+  "action_count": 5,
+  "duration_seconds": 29.955,
+  "error": null,
+  "findings": []
+}

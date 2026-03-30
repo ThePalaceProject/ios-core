@@ -1,0 +1,30 @@
+scenario:
+  id: error-handling
+  name: "Adversarial: Error State Handling"
+  description: "Trigger error states and verify graceful handling."
+  tags: [adversarial, ios, error_handling]
+
+  steps:
+    - id: search_nonsense
+      description: "Search for nonsensical content"
+      goal: "If there's a search icon/button in the catalog, tap it and search for 'zzzzxxxxxqqqq999'. Verify the app shows a 'no results' message gracefully, not a crash or error dialog."
+      checkpoint: no_results_graceful
+      max_iterations: 15
+
+    - id: dismiss_search
+      description: "Dismiss search and return to catalog"
+      goal: "Dismiss the search results and return to the main catalog. Tap Cancel, the X button, or navigate away."
+      checkpoint: search_dismissed
+      max_iterations: 10
+
+    - id: sign_in_wrong_creds
+      description: "Attempt sign-in with wrong credentials"
+      goal: "Go to Settings, find a library account, and try to sign in with username 'wronguser12345' and password 'wrongpass'. Verify the app shows a clear error message, not a crash."
+      checkpoint: bad_creds_handled
+      max_iterations: 20
+
+    - id: recover_from_error
+      description: "Recover from error state"
+      goal: "After the failed sign-in, navigate back to the Catalog tab. Verify the app is still functional and responsive. No lingering error dialogs or broken state."
+      checkpoint: recovered
+      max_iterations: 10

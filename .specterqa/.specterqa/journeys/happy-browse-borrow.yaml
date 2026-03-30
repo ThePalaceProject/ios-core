@@ -1,0 +1,42 @@
+scenario:
+  id: happy-browse-borrow
+  name: "Happy Path: Browse and Borrow"
+  description: "Browse the catalog, find a book, view details, and borrow it."
+  tags: [happy_path, ios, critical_path]
+
+  steps:
+    - id: verify_catalog
+      description: "Verify catalog is loaded with books"
+      goal: "Confirm the Catalog tab is showing book lanes with cover images. If on the Add Library screen, select 'A1QA Test Library' or 'Palace Bookshelf' first."
+      checkpoint: catalog_visible
+      max_iterations: 15
+
+    - id: scroll_catalog
+      description: "Scroll through the catalog"
+      goal: "Scroll down through the catalog to see multiple book sections/lanes. Note the section names and book titles visible."
+      checkpoint: scrolled_catalog
+      max_iterations: 10
+
+    - id: tap_book
+      description: "Tap on a book to view details"
+      goal: "Tap on any book cover image to open its detail page. Choose a book that appears to be available (not already borrowed)."
+      checkpoint: detail_page_visible
+      max_iterations: 10
+
+    - id: verify_detail
+      description: "Verify book detail page content"
+      goal: "Confirm the book detail page shows: title, author, cover image, and at least one action button (Get, Borrow, Download, or Reserve). Report what you see."
+      checkpoint: detail_verified
+      max_iterations: 10
+
+    - id: borrow_book
+      description: "Borrow or get the book"
+      goal: "Tap the 'Get', 'Borrow', or 'Download' button. If asked to sign in, report that sign-in is required. If the book downloads, wait for it to complete."
+      checkpoint: borrow_attempted
+      max_iterations: 15
+
+    - id: check_my_books
+      description: "Check My Books for the borrowed book"
+      goal: "Navigate to the 'My Books' tab at the bottom of the screen. Verify the borrowed book appears in the list."
+      checkpoint: my_books_verified
+      max_iterations: 15

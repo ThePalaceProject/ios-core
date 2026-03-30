@@ -1,0 +1,30 @@
+scenario:
+  id: a1qa-signin
+  name: "A1QA Barcode Sign-In"
+  description: "Sign in to A1QA Test Library using barcode and PIN."
+  tags: [auth, ios, critical_path]
+
+  steps:
+    - id: go_to_settings
+      description: "Navigate to Settings"
+      goal: "Tap the Settings tab (gear icon at bottom right). If already on Settings, proceed."
+      checkpoint: settings_visible
+      max_iterations: 10
+
+    - id: find_a1qa
+      description: "Find A1QA library account"
+      goal: "Look for 'A1QA Test Library' in the Settings/Accounts list. If it's listed, tap on it. If not, look for a way to add a library or switch accounts."
+      checkpoint: a1qa_found
+      max_iterations: 15
+
+    - id: sign_in
+      description: "Sign in with barcode and PIN"
+      goal: "On the A1QA account screen, find the barcode/username field and enter '01230000000237'. Find the PIN/password field and enter 'Lyrtest123'. Then tap the Sign In button."
+      checkpoint: sign_in_attempted
+      max_iterations: 20
+
+    - id: verify_signed_in
+      description: "Verify sign-in succeeded"
+      goal: "Confirm sign-in was successful. Look for: a 'Sign Out' button (means signed in), your account info displayed, or the catalog loading with personalized content. Report any error messages."
+      checkpoint: signed_in
+      max_iterations: 15
