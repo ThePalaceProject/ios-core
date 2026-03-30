@@ -33,6 +33,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         (.readingStatsEnabled, "Reading Stats & Badges"),
         (.advancedTypographyEnabled, "Advanced Typography"),
         (.carModeEnabled, "Car Mode"),
+        (.socialCollectionsEnabled, "Collections & Social"),
     ]
 
     private var pushNotificationsStatus = false

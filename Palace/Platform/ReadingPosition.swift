@@ -9,13 +9,6 @@
 
 import Foundation
 
-/// The format of content being read.
-enum ReadingFormat: String, Codable, Sendable {
-    case epub
-    case audiobook
-    case pdf
-}
-
 /// A unified reading position that can represent a location in any supported format.
 struct ReadingPosition: Codable, Equatable, Sendable {
 

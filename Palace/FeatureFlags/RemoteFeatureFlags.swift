@@ -34,6 +34,7 @@ final class RemoteFeatureFlags {
         case readingStatsEnabled = "reading_stats_enabled"
         case advancedTypographyEnabled = "advanced_typography_enabled"
         case carModeEnabled = "car_mode_enabled"
+        case socialCollectionsEnabled = "social_collections_enabled"
 
         var defaultValue: Bool {
             switch self {
@@ -44,7 +45,8 @@ final class RemoteFeatureFlags {
                 // Set to false in production and control via Firebase Remote Config
                 return true
             case .aiDiscoveryEnabled, .readingStatsEnabled,
-                 .advancedTypographyEnabled, .carModeEnabled:
+                 .advancedTypographyEnabled, .carModeEnabled,
+                 .socialCollectionsEnabled:
                 // New product features — disabled by default, enable via Firebase or debug settings
                 return false
             default:

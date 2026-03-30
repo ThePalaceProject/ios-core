@@ -1549,67 +1549,6 @@
 		SETVM004T260955EF008E1DC3 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SETVM003T260955EF008E1DC3 /* SettingsViewModel.swift */; };
 		UAAS00010001SIMPLYE001 /* UserAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = UAAS00010000FILEREF01 /* UserAccountAuthState.swift */; };
 		UAAS00010002PALACE0001 /* UserAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = UAAS00010000FILEREF01 /* UserAccountAuthState.swift */; };
-		FD03742255882103570A9831 /* BluetoothCarModeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C80EC81CE79039F1835CCD /* BluetoothCarModeDetector.swift */; };
-		7D9E1B197DAF57F250CE3594 /* BluetoothCarModeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C80EC81CE79039F1835CCD /* BluetoothCarModeDetector.swift */; };
-		5DF6A24918D56F6E4E2939EC /* CarModeChapterList.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1C1CACD11BEE983444DF0E /* CarModeChapterList.swift */; };
-		155CD723174B254A525A3519 /* CarModeChapterList.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1C1CACD11BEE983444DF0E /* CarModeChapterList.swift */; };
-		658D99F08C570359736520AB /* CarModeEntryButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5818F11E1C4F6A10799AC0AE /* CarModeEntryButton.swift */; };
-		23702B0770D42398BA50FAFE /* CarModeEntryButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5818F11E1C4F6A10799AC0AE /* CarModeEntryButton.swift */; };
-		81A2E251DCA62B7DF73BB9DF /* CarModeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237A0D61157570C5981A11FA /* CarModeService.swift */; };
-		8012EB71B90519A7D73D28E6 /* CarModeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 237A0D61157570C5981A11FA /* CarModeService.swift */; };
-		B3B7B4FC8881DEF176D90017 /* CarModeServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325313C8EC16FF0239801855 /* CarModeServiceProtocol.swift */; };
-		8E3D57BBC17ABC31D293A9E6 /* CarModeServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325313C8EC16FF0239801855 /* CarModeServiceProtocol.swift */; };
-		38250DE58D79FE147E44FB92 /* CarModeServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD405AED47651832F0F573AE /* CarModeServiceTests.swift */; };
-		C26A170207B855BFF2A36903 /* CarModeSleepTimerPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E45E306F7C79073049F3ECE /* CarModeSleepTimerPicker.swift */; };
-		0784401F9143CB35A1A8995D /* CarModeSleepTimerPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E45E306F7C79073049F3ECE /* CarModeSleepTimerPicker.swift */; };
-		8E0B4DDB4EC7F07538DB6282 /* CarModeSpeedPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BC5288EB50B22BAA3FEC1FA /* CarModeSpeedPicker.swift */; };
-		14EF491D68F35657F3227976 /* CarModeSpeedPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BC5288EB50B22BAA3FEC1FA /* CarModeSpeedPicker.swift */; };
-		6306F0662059B83DDD9DB4C5 /* CarModeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6151708139FDC618513C334 /* CarModeState.swift */; };
-		817296B647949D6531B264A4 /* CarModeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6151708139FDC618513C334 /* CarModeState.swift */; };
-		390B23325252DC3FDE1AB641 /* CarModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E367781DF09FAE70BFB4A94 /* CarModeView.swift */; };
-		AA2CBEA3197C10E1052650DA /* CarModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E367781DF09FAE70BFB4A94 /* CarModeView.swift */; };
-		C77B103A02872DFF370EFB1B /* CarModeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5577D704F5F0C223E8CED97 /* CarModeViewModel.swift */; };
-		E657A37CD91115D63327339B /* CarModeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5577D704F5F0C223E8CED97 /* CarModeViewModel.swift */; };
-		0F9F7FADC21403B6303F7B7C /* CarModeViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B8BA0D1E31B3C9BAA84501 /* CarModeViewModelTests.swift */; };
-		49A8F229AB66085A2DB768B4 /* ClaudeDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9F5CA71B9FB620537CC599 /* ClaudeDiscoveryService.swift */; };
-		08E617A526FBA2BB3084FF5F /* ClaudeDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9F5CA71B9FB620537CC599 /* ClaudeDiscoveryService.swift */; };
-		DE9BCC6A6E93D7F4D33F693D /* ClaudeDiscoveryServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6A87C52856D2D19793E520 /* ClaudeDiscoveryServiceTests.swift */; };
-		CDE992D7CD15DD20E68628E0 /* CrossLibraryAvailabilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F40EC5CD2A41572C74C76C /* CrossLibraryAvailabilityView.swift */; };
-		74CB78FA950F48B63DDD6BA5 /* CrossLibraryAvailabilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F40EC5CD2A41572C74C76C /* CrossLibraryAvailabilityView.swift */; };
-		18CDAC8BF949DC58C163964F /* CrossLibrarySearchResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3045936B5A27DC51DD1E64 /* CrossLibrarySearchResponse.swift */; };
-		11CB34096D4537BCCE000173 /* CrossLibrarySearchResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3045936B5A27DC51DD1E64 /* CrossLibrarySearchResponse.swift */; };
-		27D466A286A0360961C2016B /* CrossLibrarySearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E23B721AF3657594B87E2D0 /* CrossLibrarySearchService.swift */; };
-		FAF3BD84924539338ECAD96B /* CrossLibrarySearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E23B721AF3657594B87E2D0 /* CrossLibrarySearchService.swift */; };
-		76627FE957FE970976615C6C /* CrossLibrarySearchServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E19CD465746A747F6B49FBA /* CrossLibrarySearchServiceTests.swift */; };
-		2E64FFEFA0400FA6738A9997 /* DiscoveryConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E44E59A8C2886A5A04E6F2A /* DiscoveryConfiguration.swift */; };
-		F541078BF08D5D54F573819C /* DiscoveryConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E44E59A8C2886A5A04E6F2A /* DiscoveryConfiguration.swift */; };
-		C82F350B8F76263EE064E1E6 /* DiscoveryPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0230FAAD08067F389DA9172B /* DiscoveryPrompt.swift */; };
-		31DF3C1FA56EBFBD6A182FA1 /* DiscoveryPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0230FAAD08067F389DA9172B /* DiscoveryPrompt.swift */; };
-		676DF518A1EC16C5B2E7EF4C /* DiscoveryRecommendation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDEE3557966080C751D943E /* DiscoveryRecommendation.swift */; };
-		0F0B1D3A5B37186245218F8D /* DiscoveryRecommendation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDEE3557966080C751D943E /* DiscoveryRecommendation.swift */; };
-		9D8FFF6296F23C60CF3099E1 /* DiscoveryServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36B716E0256BACD2606B80ED /* DiscoveryServiceProtocol.swift */; };
-		B76FA824CDE58CB83C75B87B /* DiscoveryServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36B716E0256BACD2606B80ED /* DiscoveryServiceProtocol.swift */; };
-		868D9359DE5DCA1984CB0980 /* DiscoveryTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D723CD73897800A0AAB5FB2 /* DiscoveryTab.swift */; };
-		B3BFBA2FE036C0EEC36644E1 /* DiscoveryTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D723CD73897800A0AAB5FB2 /* DiscoveryTab.swift */; };
-		DC356B9BF4D8130BEEEC2615 /* DiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73605CB7B7F89F99584D0882 /* DiscoveryView.swift */; };
-		55F7B6ED4E41B0B5978A053C /* DiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73605CB7B7F89F99584D0882 /* DiscoveryView.swift */; };
-		BA553ACDB0838F59083E096A /* DiscoveryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71BC0E5F2F1CD7DADCF1D9 /* DiscoveryViewModel.swift */; };
-		83AD7643B4EDAAF847019991 /* DiscoveryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD71BC0E5F2F1CD7DADCF1D9 /* DiscoveryViewModel.swift */; };
-		7BB85C4B5EBCFE32AE4981B3 /* DiscoveryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B426971F2D8FBDAFFDE119E /* DiscoveryViewModelTests.swift */; };
-		A223A75961BE31A4CB64D8B4 /* LibrarySearchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8F6DC988BD1299FD795A864 /* LibrarySearchResult.swift */; };
-		32ADCE70EEB095254A82176E /* LibrarySearchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8F6DC988BD1299FD795A864 /* LibrarySearchResult.swift */; };
-		9D21B10F2B7FF55D0FC2AC8E /* LocalDiscoveryFallback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 874C260EDA4348FC05E8FE2A /* LocalDiscoveryFallback.swift */; };
-		D4AEE72EA825B4124149A3E6 /* LocalDiscoveryFallback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 874C260EDA4348FC05E8FE2A /* LocalDiscoveryFallback.swift */; };
-		57C7A47AD551D68BA2292DF1 /* PlaybackSpeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAEF18ABE4491BC8B2277E65 /* PlaybackSpeed.swift */; };
-		1A0A2D906239B3C718860AC0 /* PlaybackSpeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAEF18ABE4491BC8B2277E65 /* PlaybackSpeed.swift */; };
-		738B9CB2D55559DFE6E334F4 /* RecommendationCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F5CEBB42D6049F0680F42C /* RecommendationCard.swift */; };
-		6BC7BF375B18250B84982867 /* RecommendationCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88F5CEBB42D6049F0680F42C /* RecommendationCard.swift */; };
-		18148EB2CE40081BCDD8976C /* SearchResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EEEDCA3A2A6760AA2DC43F /* SearchResultsView.swift */; };
-		9730AD99E9251BF52AEA64B8 /* SearchResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34EEEDCA3A2A6760AA2DC43F /* SearchResultsView.swift */; };
-		5C582965CF3FAEA5C40F9488 /* SearchResultsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B78F73FE1AEC101DA26CD3A /* SearchResultsViewModel.swift */; };
-		15B9336C8209B987B1AD85BC /* SearchResultsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B78F73FE1AEC101DA26CD3A /* SearchResultsViewModel.swift */; };
-		D93CC49DAA5A13A18B9902E4 /* SleepTimerOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF81DF90FD790010A1050888 /* SleepTimerOption.swift */; };
-		45702C244A55B04C11F65D46 /* SleepTimerOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF81DF90FD790010A1050888 /* SleepTimerOption.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -6203,11 +6142,6 @@
 				BKTST00012F27000000BF03 /* TPPBookAuthorTests.swift in Sources */,
 				BKTST00012F27000000BF04 /* TPPBookSerializationTests.swift in Sources */,
 				BKTST00012F27000000BF05 /* TPPBookExtensionsTests.swift in Sources */,
-				38250DE58D79FE147E44FB92 /* CarModeServiceTests.swift in Sources */,
-				0F9F7FADC21403B6303F7B7C /* CarModeViewModelTests.swift in Sources */,
-				DE9BCC6A6E93D7F4D33F693D /* ClaudeDiscoveryServiceTests.swift in Sources */,
-				76627FE957FE970976615C6C /* CrossLibrarySearchServiceTests.swift in Sources */,
-				7BB85C4B5EBCFE32AE4981B3 /* DiscoveryViewModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -6751,34 +6685,6 @@
 				C8003744609B42F3B4CF0F71 /* TPPOPDSLink.swift in Sources */,
 				0A3C13CE15AD4A9DBAC7932D /* TPPOPDSRelation.swift in Sources */,
 				5A4F01FA8A2F472D9CDE060C /* TPPOPDSType.swift in Sources */,
-				7D9E1B197DAF57F250CE3594 /* BluetoothCarModeDetector.swift in Sources */,
-				155CD723174B254A525A3519 /* CarModeChapterList.swift in Sources */,
-				23702B0770D42398BA50FAFE /* CarModeEntryButton.swift in Sources */,
-				8012EB71B90519A7D73D28E6 /* CarModeService.swift in Sources */,
-				8E3D57BBC17ABC31D293A9E6 /* CarModeServiceProtocol.swift in Sources */,
-				0784401F9143CB35A1A8995D /* CarModeSleepTimerPicker.swift in Sources */,
-				14EF491D68F35657F3227976 /* CarModeSpeedPicker.swift in Sources */,
-				817296B647949D6531B264A4 /* CarModeState.swift in Sources */,
-				AA2CBEA3197C10E1052650DA /* CarModeView.swift in Sources */,
-				E657A37CD91115D63327339B /* CarModeViewModel.swift in Sources */,
-				08E617A526FBA2BB3084FF5F /* ClaudeDiscoveryService.swift in Sources */,
-				74CB78FA950F48B63DDD6BA5 /* CrossLibraryAvailabilityView.swift in Sources */,
-				11CB34096D4537BCCE000173 /* CrossLibrarySearchResponse.swift in Sources */,
-				FAF3BD84924539338ECAD96B /* CrossLibrarySearchService.swift in Sources */,
-				F541078BF08D5D54F573819C /* DiscoveryConfiguration.swift in Sources */,
-				31DF3C1FA56EBFBD6A182FA1 /* DiscoveryPrompt.swift in Sources */,
-				0F0B1D3A5B37186245218F8D /* DiscoveryRecommendation.swift in Sources */,
-				B76FA824CDE58CB83C75B87B /* DiscoveryServiceProtocol.swift in Sources */,
-				B3BFBA2FE036C0EEC36644E1 /* DiscoveryTab.swift in Sources */,
-				55F7B6ED4E41B0B5978A053C /* DiscoveryView.swift in Sources */,
-				83AD7643B4EDAAF847019991 /* DiscoveryViewModel.swift in Sources */,
-				32ADCE70EEB095254A82176E /* LibrarySearchResult.swift in Sources */,
-				D4AEE72EA825B4124149A3E6 /* LocalDiscoveryFallback.swift in Sources */,
-				1A0A2D906239B3C718860AC0 /* PlaybackSpeed.swift in Sources */,
-				6BC7BF375B18250B84982867 /* RecommendationCard.swift in Sources */,
-				9730AD99E9251BF52AEA64B8 /* SearchResultsView.swift in Sources */,
-				15B9336C8209B987B1AD85BC /* SearchResultsViewModel.swift in Sources */,
-				45702C244A55B04C11F65D46 /* SleepTimerOption.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -7337,34 +7243,6 @@
 				612B1B9A1EBE4EBC9FD0ECE2 /* TPPOPDSLink.swift in Sources */,
 				5CE6AD88EB034AF9A96327D2 /* TPPOPDSRelation.swift in Sources */,
 				E4A3C294D6B44C9DB9F65F70 /* TPPOPDSType.swift in Sources */,
-				FD03742255882103570A9831 /* BluetoothCarModeDetector.swift in Sources */,
-				5DF6A24918D56F6E4E2939EC /* CarModeChapterList.swift in Sources */,
-				658D99F08C570359736520AB /* CarModeEntryButton.swift in Sources */,
-				81A2E251DCA62B7DF73BB9DF /* CarModeService.swift in Sources */,
-				B3B7B4FC8881DEF176D90017 /* CarModeServiceProtocol.swift in Sources */,
-				C26A170207B855BFF2A36903 /* CarModeSleepTimerPicker.swift in Sources */,
-				8E0B4DDB4EC7F07538DB6282 /* CarModeSpeedPicker.swift in Sources */,
-				6306F0662059B83DDD9DB4C5 /* CarModeState.swift in Sources */,
-				390B23325252DC3FDE1AB641 /* CarModeView.swift in Sources */,
-				C77B103A02872DFF370EFB1B /* CarModeViewModel.swift in Sources */,
-				49A8F229AB66085A2DB768B4 /* ClaudeDiscoveryService.swift in Sources */,
-				CDE992D7CD15DD20E68628E0 /* CrossLibraryAvailabilityView.swift in Sources */,
-				18CDAC8BF949DC58C163964F /* CrossLibrarySearchResponse.swift in Sources */,
-				27D466A286A0360961C2016B /* CrossLibrarySearchService.swift in Sources */,
-				2E64FFEFA0400FA6738A9997 /* DiscoveryConfiguration.swift in Sources */,
-				C82F350B8F76263EE064E1E6 /* DiscoveryPrompt.swift in Sources */,
-				676DF518A1EC16C5B2E7EF4C /* DiscoveryRecommendation.swift in Sources */,
-				9D8FFF6296F23C60CF3099E1 /* DiscoveryServiceProtocol.swift in Sources */,
-				868D9359DE5DCA1984CB0980 /* DiscoveryTab.swift in Sources */,
-				DC356B9BF4D8130BEEEC2615 /* DiscoveryView.swift in Sources */,
-				BA553ACDB0838F59083E096A /* DiscoveryViewModel.swift in Sources */,
-				A223A75961BE31A4CB64D8B4 /* LibrarySearchResult.swift in Sources */,
-				9D21B10F2B7FF55D0FC2AC8E /* LocalDiscoveryFallback.swift in Sources */,
-				57C7A47AD551D68BA2292DF1 /* PlaybackSpeed.swift in Sources */,
-				738B9CB2D55559DFE6E334F4 /* RecommendationCard.swift in Sources */,
-				18148EB2CE40081BCDD8976C /* SearchResultsView.swift in Sources */,
-				5C582965CF3FAEA5C40F9488 /* SearchResultsViewModel.swift in Sources */,
-				D93CC49DAA5A13A18B9902E4 /* SleepTimerOption.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
