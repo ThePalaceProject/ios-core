@@ -281,14 +281,32 @@ class CatalogSearchViewModel: ObservableObject {
                 guard !Task.isCancelled else { return }
 
                 if let feed = feed {
-                    let feedObjc = feed.opdsFeed
                     var searchResults: [TPPBook] = []
-                    if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-                        searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0) }
+                    if let opds2 = feed.opds2Feed {
+                        // OPDS 2 path
+                        let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
+                        searchResults = pubs.compactMap { $0.toBook() }
+                        self.nextPageURL = opds2.nextPageURL
+                        // Extract post-search facets from OPDS2
+                        if let facets = opds2.facets {
+                            for group in facets {
+                                for link in group.links {
+                                    if let url = link.hrefURL {
+                                        self.postSearchFacets[link.title.lowercased()] = url
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // OPDS 1 path
+                        let feedObjc = feed.opdsFeed
+                        if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
+                            searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0) }
+                        }
+                        self.extractNextPageURL(from: feedObjc)
+                        self.extractPostSearchFacets(from: feedObjc)
                     }
                     self.filteredBooks = searchResults
-                    self.extractNextPageURL(from: feedObjc)
-                    self.extractPostSearchFacets(from: feedObjc)
                     self.announcements.announceSearchResults(query: query, count: searchResults.count)
                 } else {
                     self.filteredBooks = []
@@ -333,15 +351,20 @@ class CatalogSearchViewModel: ObservableObject {
                 return
             }
 
-            let feedObjc = feed.opdsFeed
-            extractNextPageURL(from: feedObjc)
-
-            if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-                let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
-                filteredBooks.append(contentsOf: newBooks)
-
-                announcements.announceAdditionalResultsLoaded(count: newBooks.count)
+            var newBooks: [TPPBook] = []
+            if let opds2 = feed.opds2Feed {
+                let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
+                newBooks = pubs.compactMap { $0.toBook() }
+                nextPageURL = opds2.nextPageURL
+            } else {
+                let feedObjc = feed.opdsFeed
+                extractNextPageURL(from: feedObjc)
+                if let entries = feedObjc.entries as? [TPPOPDSEntry] {
+                    newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+                }
             }
+            filteredBooks.append(contentsOf: newBooks)
+            announcements.announceAdditionalResultsLoaded(count: newBooks.count)
         } catch {
             Log.error(#file, "Failed to load next page of search results: \(error.localizedDescription)")
         }

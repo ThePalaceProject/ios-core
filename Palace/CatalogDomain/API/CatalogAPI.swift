@@ -19,8 +19,17 @@ public final class DefaultCatalogAPI: CatalogAPI {
     }
 
     public func fetchFeed(at url: URL) async throws -> CatalogFeed? {
-        let req = NetworkRequest(method: .GET, url: url)
+        let acceptHeader = RemoteFeatureFlags.shared.isOPDS2Enabled
+            ? "application/opds+json, application/atom+xml;q=0.9, */*;q=0.1"
+            : "application/atom+xml, */*;q=0.1"
+        let req = NetworkRequest(
+            method: .GET,
+            url: url,
+            headers: ["Accept": acceptHeader]
+        )
         let res = try await client.send(req)
+        Log.info(#file, "[OPDS2-DIAG] Fetched \(url.lastPathComponent): \(res.data.count) bytes, " +
+            "first byte=\(String(data: res.data.prefix(1), encoding: .utf8) ?? "?")")
         return try parser.parseFeed(from: res.data)
     }
 
@@ -29,6 +38,29 @@ public final class DefaultCatalogAPI: CatalogAPI {
             throw NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not load catalog feed"])
         }
 
+        // OPDS 2: use the search URL template directly
+        if let opds2SearchURL = catalogFeed.opds2Feed?.searchURL {
+            let searchURLString = opds2SearchURL.absoluteString
+                .replacingOccurrences(of: "{?query}", with: "?q=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query)")
+                .replacingOccurrences(of: "{query}", with: query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query)
+
+            // If it was a templated URL, use the expanded version; otherwise append ?q=
+            if let url = URL(string: searchURLString), searchURLString != opds2SearchURL.absoluteString {
+                Log.info(#file, "[OPDS2-DIAG] OPDS2 search: \(url.absoluteString)")
+                return try await fetchFeed(at: url)
+            } else {
+                var comps = URLComponents(url: opds2SearchURL, resolvingAgainstBaseURL: false)
+                var items = comps?.queryItems ?? []
+                items.append(URLQueryItem(name: "q", value: query))
+                comps?.queryItems = items
+                if let url = comps?.url {
+                    Log.info(#file, "[OPDS2-DIAG] OPDS2 search (appended q): \(url.absoluteString)")
+                    return try await fetchFeed(at: url)
+                }
+            }
+        }
+
+        // OPDS 1: use OpenSearch descriptor
         let links = catalogFeed.opdsFeed.links as? [TPPOPDSLink] ?? []
         if let searchURL = links.first(where: { $0.rel == "search" && $0.href != nil })?.href {
             return try await search(query: query, searchDescriptorURL: searchURL)
@@ -76,6 +108,12 @@ public final class DefaultCatalogAPI: CatalogAPI {
 
     /// Extract entry-point format facets and their search descriptor URLs from a groups feed.
     static func extractSearchEntryPoints(from feed: CatalogFeed) -> [SearchFormatEntry] {
+        // OPDS 2 path
+        if let opds2 = feed.opds2Feed {
+            return extractOPDS2SearchEntryPoints(from: opds2)
+        }
+
+        // OPDS 1 path
         let opdsFeed = feed.opdsFeed
 
         // The groups feed's rel="search" link is the search descriptor for the active format.
@@ -115,6 +153,35 @@ public final class DefaultCatalogAPI: CatalogAPI {
                 searchDescriptorURL: isActive ? activeSearchDescriptorURL : nil,
                 isActive: isActive
             ))
+        }
+        return entries
+    }
+
+    /// Extract entry points from OPDS 2 feed facets.
+    private static func extractOPDS2SearchEntryPoints(from feed: OPDS2Feed) -> [SearchFormatEntry] {
+        let entryPointGroupNames: Set<String> = ["formats", "entrypoint", "entry point", "entry points"]
+
+        // Search URL from the feed links
+        let searchURL = feed.searchURL
+
+        guard let facets = feed.facets else { return [] }
+
+        var entries: [SearchFormatEntry] = []
+        for facetGroup in facets {
+            guard entryPointGroupNames.contains(facetGroup.title.lowercased()) else { continue }
+
+            for link in facetGroup.links {
+                guard let href = link.hrefURL else { continue }
+
+                let isActive = link.isActive
+                entries.append(SearchFormatEntry(
+                    id: link.href,
+                    title: link.title,
+                    groupsFeedURL: href,
+                    searchDescriptorURL: isActive ? searchURL : nil,
+                    isActive: isActive
+                ))
+            }
         }
         return entries
     }

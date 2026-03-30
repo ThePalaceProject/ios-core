@@ -3,6 +3,7 @@
 #import "Palace-Swift.h"
 
 NSString * const _Nonnull ContentTypeOPDSCatalog = @"application/atom+xml;type=entry;profile=opds-catalog";
+NSString * const _Nonnull ContentTypeOPDS2Publication = @"application/opds-publication+json";
 NSString * const _Nonnull ContentTypeAdobeAdept = @"application/vnd.adobe.adept+xml";
 NSString * const _Nonnull ContentTypeBearerToken = @"application/vnd.librarysimplified.bearer-token+json";
 NSString * const _Nonnull ContentTypeEpubZip = @"application/epub+zip";
@@ -50,6 +51,7 @@ NSString * const _Nonnull ContentTypeBiblioboard = @"application/json";
   if (!types) {
     types = [NSSet setWithArray:@[
       ContentTypeOPDSCatalog,
+      ContentTypeOPDS2Publication,
       ContentTypeBearerToken,
       ContentTypeEpubZip,
 #if FEATURE_DRM_CONNECTOR
@@ -96,6 +98,19 @@ NSString * const _Nonnull ContentTypeBiblioboard = @"application/json";
   if (!subtypesForTypes) {
     subtypesForTypes = @{
       ContentTypeOPDSCatalog: [NSSet setWithArray:@[
+        ContentTypeAdobeAdept,
+        ContentTypeBearerToken,
+        ContentTypeFindaway,
+        ContentTypeEpubZip,
+        ContentTypeOpenAccessPDF,
+        ContentTypeOpenAccessAudiobook,
+        ContentTypeFeedbooksAudiobook,
+        ContentTypeOverdriveAudiobook,
+        ContentTypeOctetStream,
+        ContentTypeReadiumLCP,
+        ContentTypeAudiobookZip
+      ]],
+      ContentTypeOPDS2Publication: [NSSet setWithArray:@[
         ContentTypeAdobeAdept,
         ContentTypeBearerToken,
         ContentTypeFindaway,

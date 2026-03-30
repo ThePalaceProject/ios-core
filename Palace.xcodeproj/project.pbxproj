@@ -542,6 +542,7 @@
 		AMGR002T260955EF008E1DC3 /* AccountsManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AMGR001T260955EF008E1DC3 /* AccountsManagerTests.swift */; };
 		ANNOT002T260955EF008E1DC3 /* TPPAnnotationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ANNOT001T260955EF008E1DC3 /* TPPAnnotationsTests.swift */; };
 		AUDITSYNC00001SOURCES001 /* AudiobookDataManagerSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUDITSYNC00001FILEREF001 /* AudiobookDataManagerSyncTests.swift */; };
+		B09FFC77395CDFD5A43DA48D /* NoNetworkURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE20C7E18DE551AD81B9D2C6 /* NoNetworkURLProtocol.swift */; };
 		B51C1DFA2285FDF9003B49A5 /* OPDS2CatalogsFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51C1DF92285FDF9003B49A5 /* OPDS2CatalogsFeed.swift */; };
 		B51C1DFC22860513003B49A5 /* OPDS2CatalogsFeed.json in Resources */ = {isa = PBXBuildFile; fileRef = B51C1DFB22860513003B49A5 /* OPDS2CatalogsFeed.json */; };
 		B51C1DFE22860563003B49A5 /* OPDS2CatalogsFeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51C1DFD22860563003B49A5 /* OPDS2CatalogsFeedTests.swift */; };
@@ -586,6 +587,10 @@
 		CF5E7A7A440833526AD827AB /* MyBooksDownloadCenterExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3572DBB51B1244AE18879435 /* MyBooksDownloadCenterExtendedTests.swift */; };
 		CG791BF000000000000001 /* CredentialGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CG791FR000000000000001 /* CredentialGuardTests.swift */; };
 		D19CE930C954410A845200318 /* RDServicesStubs.m in Sources */ = {isa = PBXBuildFile; fileRef = 75305888F6A941DDA9EEE592 /* RDServicesStubs.m */; };
+		D1OPDS2BB002000000000001 /* OPDS2BookBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1OPDS2BB001000000000001 /* OPDS2BookBridgeTests.swift */; };
+		D1OPDS2CW002000000000001 /* OPDS2CatalogWiringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1OPDS2CW001000000000001 /* OPDS2CatalogWiringTests.swift */; };
+		D1OPDS2FX002000000000001 /* OPDS2CatalogFeed.json in Resources */ = {isa = PBXBuildFile; fileRef = D1OPDS2FX001000000000001 /* OPDS2CatalogFeed.json */; };
+		D1OPDS2IT002000000000001 /* OPDS2IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1OPDS2IT001000000000001 /* OPDS2IntegrationTests.swift */; };
 		D6E301B17A5D47A7887F5A7F /* EULAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CAA704224204121A301A289 /* EULAView.swift */; };
 		D6E301B27A5D47A7887F5A80 /* EULAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CAA704224204121A301A289 /* EULAView.swift */; };
 		D8E3E2F8DB67110026272CFB /* MockVisualNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75B6896C9742C07208D935E /* MockVisualNavigator.swift */; };
@@ -631,7 +636,6 @@
 		E50544882E60F6FE007CCFAB /* CatalogLaneRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50544862E60F6FE007CCFAB /* CatalogLaneRowView.swift */; };
 		E50546752E6201D4007CCFAB /* OPDSFeedParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */; };
 		E50546772E6201E6007CCFAB /* HTTPStubURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */; };
-		B09FFC77395CDFD5A43DA48D /* NoNetworkURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE20C7E18DE551AD81B9D2C6 /* NoNetworkURLProtocol.swift */; };
 		E50546792E62020D007CCFAB /* URLSession+Stubbing.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */; };
 		E50546C12E62194F007CCFAB /* AppTabHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C02E62194F007CCFAB /* AppTabHostView.swift */; };
 		E50546C22E62194F007CCFAB /* AppTabHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546C02E62194F007CCFAB /* AppTabHostView.swift */; };
@@ -1774,6 +1778,10 @@
 		CBA39820CBA75D6BA9B763E2 /* CatalogRepositoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogRepositoryTests.swift; sourceTree = "<group>"; };
 		CD71C8FF18A443133C015DA8 /* KeyboardVoiceOverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KeyboardVoiceOverTests.swift; sourceTree = "<group>"; };
 		CG791FR000000000000001 /* CredentialGuardTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CredentialGuardTests.swift; sourceTree = "<group>"; };
+		D1OPDS2BB001000000000001 /* OPDS2BookBridgeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OPDS2BookBridgeTests.swift; path = OPDS2/OPDS2BookBridgeTests.swift; sourceTree = "<group>"; };
+		D1OPDS2CW001000000000001 /* OPDS2CatalogWiringTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OPDS2CatalogWiringTests.swift; path = OPDS2/OPDS2CatalogWiringTests.swift; sourceTree = "<group>"; };
+		D1OPDS2FX001000000000001 /* OPDS2CatalogFeed.json */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.json; name = OPDS2CatalogFeed.json; path = OPDS2/Fixtures/OPDS2CatalogFeed.json; sourceTree = "<group>"; };
+		D1OPDS2IT001000000000001 /* OPDS2IntegrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OPDS2IntegrationTests.swift; path = OPDS2/OPDS2IntegrationTests.swift; sourceTree = "<group>"; };
 		D2ADD2980F56FC974B6DEBAC /* TPPReaderSettingsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPReaderSettingsTests.swift; sourceTree = "<group>"; };
 		D56E264DEDFBBEDF6D4E79E3 /* AccessibleAnimation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AccessibleAnimation.swift; path = ../../../Palace/Utilities/SwiftUI/AccessibleAnimation.swift; sourceTree = "<group>"; };
 		D72DFEC346C543E50A57BE49 /* ReaderAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReaderAccessibilityTests.swift; sourceTree = "<group>"; };
@@ -1804,7 +1812,6 @@
 		E50544862E60F6FE007CCFAB /* CatalogLaneRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogLaneRowView.swift; sourceTree = "<group>"; };
 		E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPDSFeedParsingTests.swift; sourceTree = "<group>"; };
 		E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPStubURLProtocol.swift; sourceTree = "<group>"; };
-		EE20C7E18DE551AD81B9D2C6 /* NoNetworkURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoNetworkURLProtocol.swift; sourceTree = "<group>"; };
 		E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLSession+Stubbing.swift"; sourceTree = "<group>"; };
 		E50546C02E62194F007CCFAB /* AppTabHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTabHostView.swift; sourceTree = "<group>"; };
 		E50546C32E621981007CCFAB /* NavigationHostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationHostView.swift; sourceTree = "<group>"; };
@@ -2074,6 +2081,7 @@
 		E8ABB1CAD268BD0BB9B2F679 /* TPPObjCExceptionCatcher.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TPPObjCExceptionCatcher.m; sourceTree = "<group>"; };
 		EA12FB34567890ABCDEF0001 /* EPUBToolbarToggleTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EPUBToolbarToggleTests.swift; sourceTree = "<group>"; };
 		EB9B49899F1C10F43D4FAAD8 /* NowPlayingCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NowPlayingCoordinator.swift; sourceTree = "<group>"; };
+		EE20C7E18DE551AD81B9D2C6 /* NoNetworkURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoNetworkURLProtocol.swift; sourceTree = "<group>"; };
 		F0AB00222E8E600100000003 /* TPPAccessibilityAnnouncementCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccessibilityAnnouncementCenter.swift; sourceTree = "<group>"; };
 		F5CBFE0B23AFFE343E256AE1 /* AccountDetailViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountDetailViewModelTests.swift; sourceTree = "<group>"; };
 		F6BA53D1C399ABE2186FD429 /* OPDS2AuthenticationDocumentTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OPDS2AuthenticationDocumentTests.swift; sourceTree = "<group>"; };
@@ -2266,7 +2274,11 @@
 			isa = PBXGroup;
 			children = (
 				A0140FB30133B2AFB6A1207D /* OPDS2FeedTests.swift */,
+				D1OPDS2BB001000000000001 /* OPDS2BookBridgeTests.swift */,
+				D1OPDS2CW001000000000001 /* OPDS2CatalogWiringTests.swift */,
+				D1OPDS2IT001000000000001 /* OPDS2IntegrationTests.swift */,
 				8A97CD1F92B404EA664C6968 /* OPDSFeedCacheTests.swift */,
+				D1OPDS2FG001000000000001 /* Fixtures */,
 			);
 			name = OPDS2;
 			sourceTree = "<group>";
@@ -3768,6 +3780,14 @@
 			path = PDF;
 			sourceTree = "<group>";
 		};
+		D1OPDS2FG001000000000001 /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				D1OPDS2FX001000000000001 /* OPDS2CatalogFeed.json */,
+			);
+			name = Fixtures;
+			sourceTree = "<group>";
+		};
 		E53573D42965306A008BDCA4 /* MyBooks */ = {
 			isa = PBXGroup;
 			children = (
@@ -4614,6 +4634,7 @@
 				E75ED6DC29772E6D006BBD5F /* valid.xml in Resources */,
 				E75ED6DD29772EBE006BBD5F /* invalid.xml in Resources */,
 				B51C1DFC22860513003B49A5 /* OPDS2CatalogsFeed.json in Resources */,
+				D1OPDS2FX002000000000001 /* OPDS2CatalogFeed.json in Resources */,
 				2D2B47841D08F8E2007F7764 /* UpdateCheckUpToDate.json in Resources */,
 				E541812F2C004923005ED059 /* snowcrash_manifest.json in Resources */,
 				17BE24EF25FB114900AE707F /* simplye_authentication_document.json in Resources */,
@@ -4905,6 +4926,9 @@
 				E5A09A4E2F0D6F0200CC23EA /* CatalogSortServiceTests.swift in Sources */,
 				76F89204E85A440BD9E6C5AD /* AccountDetailViewModelTests.swift in Sources */,
 				B8E4151C0CD1AA0299C4913B /* OPDS2FeedTests.swift in Sources */,
+				D1OPDS2BB002000000000001 /* OPDS2BookBridgeTests.swift in Sources */,
+				D1OPDS2CW002000000000001 /* OPDS2CatalogWiringTests.swift in Sources */,
+				D1OPDS2IT002000000000001 /* OPDS2IntegrationTests.swift in Sources */,
 				06A3D1FBD9EAD882D6F86181 /* OPDSFeedCacheTests.swift in Sources */,
 				ACCT00012F17000000000001 /* AccountsManagerCacheTests.swift in Sources */,
 				AMGR002T260955EF008E1DC3 /* AccountsManagerTests.swift in Sources */,
@@ -6246,9 +6270,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 453;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
