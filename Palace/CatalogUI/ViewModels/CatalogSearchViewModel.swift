@@ -19,18 +19,18 @@ class CatalogSearchViewModel: ObservableObject {
     private var allBooks: [TPPBook] = []
     private let repository: CatalogRepositoryProtocol
     private let baseURL: () -> URL?
+    private let bookRegistry: TPPBookRegistry
     private var searchTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
     private let debounceInterval: TimeInterval
     private let announcements: TPPAccessibilityAnnouncementCenter
-    private let bookRegistry: TPPBookRegistryProvider
 
     init(
         repository: CatalogRepositoryProtocol,
         baseURL: @escaping () -> URL?,
         debounceInterval: TimeInterval = 0.1,
         announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
-        bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
+        bookRegistry: TPPBookRegistry = .shared
     ) {
         self.repository = repository
         self.baseURL = baseURL

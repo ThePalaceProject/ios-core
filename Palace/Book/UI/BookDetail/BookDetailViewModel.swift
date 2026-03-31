@@ -74,6 +74,7 @@ final class BookDetailViewModel: ObservableObject {
 
     let registry: TPPBookRegistryProvider
     let downloadCenter = MyBooksDownloadCenter.shared
+    private let accountsManager: AccountsManager
     private var cancellables = Set<AnyCancellable>()
 
     // Note: audiobook management moved to BookService
@@ -101,9 +102,12 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     /// Initializer with dependency injection for testing
-    init(book: TPPBook, registry: TPPBookRegistryProvider) {
+    init(book: TPPBook,
+         registry: TPPBookRegistryProvider,
+         accountsManager: AccountsManager = .shared) {
         self.book = book
         self.registry = registry
+        self.accountsManager = accountsManager
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
@@ -470,10 +474,10 @@ final class BookDetailViewModel: ObservableObject {
     /// Ensures authentication document is loaded and handles sign-in if needed.
     private func ensureAuthAndExecute(_ action: @escaping () -> Void) {
         let businessLogic = TPPSignInBusinessLogic(
-            libraryAccountID: AccountsManager.shared.currentAccount?.uuid ?? "",
-            libraryAccountsProvider: AccountsManager.shared,
+            libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
+            libraryAccountsProvider: accountsManager,
             urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared,
+            bookRegistry: registry as? TPPBookRegistry ?? TPPBookRegistry.shared,
             bookDownloadsCenter: MyBooksDownloadCenter.shared,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
@@ -738,7 +742,7 @@ final class BookDetailViewModel: ObservableObject {
         guard let url = url else { return }
         let webController = BundledHTMLViewController(
             fileURL: url,
-            title: AccountsManager.shared.currentAccount?.name ?? ""
+            title: accountsManager.currentAccount?.name ?? ""
         )
 
         if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {

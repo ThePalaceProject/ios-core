@@ -6,6 +6,7 @@ import Foundation
 @objc final class TPPAccountList: UIViewController {
 
     private let completion: (Account) -> Void
+    private let accountsManager: AccountsManager
     private var loadingView: UIActivityIndicatorView?
 
     var datasource = TPPAccountListDataSource()
@@ -20,8 +21,13 @@ import Foundation
 
     private var accountsLoadingLogos = Set<String>()
 
-    @objc required init(completion: @escaping (Account) -> Void) {
+    @objc convenience init(completion: @escaping (Account) -> Void) {
+        self.init(completion: completion, accountsManager: .shared)
+    }
+
+    init(completion: @escaping (Account) -> Void, accountsManager: AccountsManager = .shared) {
         self.completion = completion
+        self.accountsManager = accountsManager
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -41,11 +47,11 @@ import Foundation
 
         setupUI()
 
-        if AccountsManager.shared.accountsHaveLoaded {
+        if accountsManager.accountsHaveLoaded {
             finishConfiguration()
         } else {
             showLoading()
-            AccountsManager.shared.loadCatalogs { success in
+            accountsManager.loadCatalogs { success in
                 DispatchQueue.main.async {
                     self.hideLoading()
                     success ? self.finishConfiguration() : self.showLoadingFailureAlert()

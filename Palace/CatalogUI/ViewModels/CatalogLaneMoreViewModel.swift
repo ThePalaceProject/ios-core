@@ -34,8 +34,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
   let url: URL
   private let filterService = CatalogFilterService.self
   private let api: DefaultCatalogAPI
-  private let bookRegistry: TPPBookRegistryProvider
-
+  private let bookRegistry: TPPBookRegistry
+  
   private var cancellables = Set<AnyCancellable>()
   
   /// Original catalog books (before registry updates) - used to restore state after returns
@@ -60,8 +60,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   // MARK: - Initialization
   
-  init(title: String, url: URL, api: DefaultCatalogAPI? = nil,
-       bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+  init(title: String, url: URL, api: DefaultCatalogAPI? = nil, bookRegistry: TPPBookRegistry = .shared) {
     self.title = title
     self.url = url
     self.bookRegistry = bookRegistry
@@ -69,7 +68,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
       client: URLSessionNetworkClient(),
       parser: OPDSParser()
     )
-
+    
     setupObservers()
   }
   

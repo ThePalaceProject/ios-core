@@ -14,6 +14,7 @@ struct AudiobookSampleToolbar: View {
     @ObservedObject var player: AudiobookSamplePlayer
 
     private var book: TPPBook
+    private let bookRegistry: TPPBookRegistry
     private let imageLoader: AsyncImage
     private let toolbarHeight: CGFloat = 70
     private let toolbarPadding: CGFloat = 5
@@ -21,8 +22,9 @@ struct AudiobookSampleToolbar: View {
     private let playbackButtonLength: CGFloat = 35
     private let buttonViewSpacing: CGFloat = 10
 
-    init?(book: TPPBook) {
+    init?(book: TPPBook, bookRegistry: TPPBookRegistry = .shared) {
         self.book = book
+        self.bookRegistry = bookRegistry
         guard let sample = book.sample as? AudiobookSample else { return nil }
         player = AudiobookSamplePlayer(sample: sample)
 
@@ -67,7 +69,7 @@ struct AudiobookSampleToolbar: View {
     }
 
     @ViewBuilder private var imageView: some View {
-        Image(uiImage: TPPBookRegistry.shared.cachedThumbnailImage(for: book) ?? imageLoader.image)
+        Image(uiImage: bookRegistry.cachedThumbnailImage(for: book) ?? imageLoader.image)
             .resizable()
             .aspectRatio(contentMode: .fit)
             .frame(width: imageViewHeight)

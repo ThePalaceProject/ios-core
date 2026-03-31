@@ -32,30 +32,29 @@ class FacetViewModel: ObservableObject {
     @Published var showAccountScreen = false
     @Published var logo: UIImage?
 
-    private var cancellables = Set<AnyCancellable>()
+    private let accountsManager: AccountsManager
 
     var currentAccountURL: URL? {
         URL(string: currentAccount?.homePageUrl ?? "")
     }
 
-    init(groupName: String, facets: [Facet]) {
+    init(groupName: String, facets: [Facet], accountsManager: AccountsManager = .shared) {
         self.facets = facets
         self.groupName = groupName
+        self.accountsManager = accountsManager
         activeSort = facets.first ?? .title
-        setupAccountObserver()
+        registerForNotifications()
         updateAccount()
     }
 
-    private func setupAccountObserver() {
-        AccountsManager.shared.currentAccountDidChange
-            .sink { [weak self] _ in
-                self?.updateAccount()
-            }
-            .store(in: &cancellables)
+    private func registerForNotifications() {
+        NotificationCenter.default.addObserver(self, selector: #selector(updateAccount),
+                                               name: .TPPCurrentAccountDidChange,
+                                               object: nil)
     }
 
-    private func updateAccount() {
-        currentAccount = AccountsManager.shared.currentAccount
+    @objc private func updateAccount() {
+        currentAccount = accountsManager.currentAccount
         currentAccount?.logoDelegate = self
         accountScreenURL = currentAccountURL
         logo = currentAccount?.logo

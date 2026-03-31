@@ -74,7 +74,9 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
          publication: Publication,
          book: TPPBook,
          forSample: Bool = false,
-         initialLocation: Locator? = nil) {
+         initialLocation: Locator? = nil,
+         bookRegistry: TPPBookRegistry = .shared,
+         accountsManager: AccountsManager = .shared) {
 
         self.navigator = navigator
         self.publication = publication
@@ -84,14 +86,14 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         lastReadPositionPoster = TPPLastReadPositionPoster(
             book: book,
             publication: publication,
-            bookRegistryProvider: TPPBookRegistry.shared)
+            bookRegistryProvider: bookRegistry)
 
         bookmarksBusinessLogic = TPPReaderBookmarksBusinessLogic(
             book: book,
             r2Publication: publication,
             drmDeviceID: TPPUserAccount.sharedAccount().deviceID,
-            bookRegistryProvider: TPPBookRegistry.shared,
-            currentLibraryAccountProvider: AccountsManager.shared)
+            bookRegistryProvider: bookRegistry,
+            currentLibraryAccountProvider: accountsManager)
 
         bookmarksBusinessLogic.syncBookmarks { (_, _) in }
 

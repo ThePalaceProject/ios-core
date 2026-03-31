@@ -17,7 +17,7 @@ final class CatalogViewModel: ObservableObject {
 
   private let repository: CatalogRepositoryProtocol
   private let topLevelURLProvider: () -> URL?
-  private let bookRegistry: TPPBookRegistryProvider
+  private let bookRegistry: TPPBookRegistry
   
   private var previousLanes: [CatalogLaneModel] = []
   private var previousUngroupedBooks: [TPPBook] = []
@@ -32,7 +32,7 @@ final class CatalogViewModel: ObservableObject {
 
   init(repository: CatalogRepositoryProtocol,
        topLevelURLProvider: @escaping () -> URL?,
-       bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+       bookRegistry: TPPBookRegistry = .shared) {
     self.repository = repository
     self.topLevelURLProvider = topLevelURLProvider
     self.bookRegistry = bookRegistry
@@ -462,10 +462,10 @@ extension CatalogViewModel {
     bookRegistry.thumbnailImages(forBooks: set) { _ in }
   }
 
-  static func makeBook(from entry: TPPOPDSEntry, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) -> TPPBook? {
+  static func makeBook(from entry: TPPOPDSEntry) -> TPPBook? {
     guard var book = TPPBook(entry: entry) else { return nil }
 
-    if let updated = bookRegistry.updatedBookMetadata(book) {
+    if let updated = TPPBookRegistry.shared.updatedBookMetadata(book) {
       book = updated
     }
 

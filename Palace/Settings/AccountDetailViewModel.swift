@@ -48,8 +48,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     var frontEndValidator: TPPUserAccountFrontEndValidation?
     private let libraryAccountID: String
     private let accountsManager: AccountsManager
-    private let settings: TPPSettingsProviding
-    private let bookRegistry: TPPBookRegistryProvider
+    private let bookRegistry: TPPBookRegistry
+    private let settings: TPPSettings
     private var cancellables = Set<AnyCancellable>()
     var forceEditability = false
 
@@ -91,39 +91,19 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
-    convenience init(libraryAccountID: String) {
-        self.init(
-            libraryAccountID: libraryAccountID,
-            accountsManager: AccountsManager.shared,
-            settings: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared
-        )
-    }
-
-    /// Initializer with dependency injection for testing.
-    init(
-        libraryAccountID: String,
-        accountsManager: AccountsManager,
-        settings: TPPSettingsProviding,
-        bookRegistry: TPPBookRegistryProvider
-    ) {
+    init(libraryAccountID: String,
+         accountsManager: AccountsManager = .shared,
+         bookRegistry: TPPBookRegistry = .shared,
+         settings: TPPSettings = .shared) {
         self.libraryAccountID = libraryAccountID
         self.accountsManager = accountsManager
-        self.settings = settings
         self.bookRegistry = bookRegistry
-
-        // TPPSignInBusinessLogic requires concrete ObjC-protocol types.
-        // The AccountDetailViewModel stores abstract protocol types for its own usage,
-        // but passes the concrete singletons to SignInBusinessLogic until that class
-        // is also migrated to protocol-based DI.
-        let concreteSettings = (settings as? TPPSettings) ?? TPPSettings.shared
-        let concreteRegistry = (bookRegistry as? TPPBookRegistry) ?? TPPBookRegistry.shared
-
+        self.settings = settings
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accountsManager,
-            urlSettingsProvider: concreteSettings,
-            bookRegistry: concreteRegistry,
+            urlSettingsProvider: settings,
+            bookRegistry: bookRegistry,
             bookDownloadsCenter: MyBooksDownloadCenter.shared,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
@@ -151,8 +131,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accountsManager,
-            urlSettingsProvider: concreteSettings,
-            bookRegistry: concreteRegistry,
+            urlSettingsProvider: settings,
+            bookRegistry: bookRegistry,
             bookDownloadsCenter: MyBooksDownloadCenter.shared,
             userAccountProvider: TPPUserAccount.self,
             networkExecutor: networkExecutor,
@@ -184,7 +164,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             .store(in: &cancellables)
 
         // Listen for account switches to refresh sign-in state
-        AccountsManager.shared.currentAccountDidChange
+        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
             .sink { [weak self] _ in
                 Task { @MainActor in
                     self?.accountDidChange()
@@ -451,7 +431,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
                 account.details?.userAboveAgeLimit = aboveAgeLimit
                 if !aboveAgeLimit {
                     MyBooksDownloadCenter.shared.reset(account.uuid)
-                    TPPBookRegistry.shared.reset(account.uuid)
+                    bookRegistry.reset(account.uuid)
                 }
                 self?.setupTableData()
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)

@@ -37,8 +37,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     ]
 
     private var pushNotificationsStatus = false
+    private let settings: TPPSettings
+    private let accountsManager: AccountsManager
 
-    required init() {
+    required init(settings: TPPSettings = .shared, accountsManager: AccountsManager = .shared) {
+        self.settings = settings
+        self.accountsManager = accountsManager
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -48,11 +52,11 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     func librarySwitchDidChange(sender: UISwitch!) {
-        TPPSettings.shared.useBetaLibraries = sender.isOn
+        settings.useBetaLibraries = sender.isOn
     }
 
     func enterLCPPassphraseSwitchDidChange(sender: UISwitch) {
-        TPPSettings.shared.enterLCPPassphraseManually = sender.isOn
+        settings.enterLCPPassphraseManually = sender.isOn
     }
 
     // MARK: - UIViewController
@@ -183,7 +187,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         let cell = tableView.dequeueReusableCell(withIdentifier: betaLibraryCellIdentifier)!
         cell.selectionStyle = .none
         cell.textLabel?.text = "Enable Hidden Libraries"
-        cell.accessoryView = createSwitch(isOn: TPPSettings.shared.useBetaLibraries, action: #selector(librarySwitchDidChange))
+        cell.accessoryView = createSwitch(isOn: settings.useBetaLibraries, action: #selector(librarySwitchDidChange))
         return cell
     }
 
@@ -193,7 +197,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         cell.textLabel?.text = "Enter LCP Passphrase Manually"
         cell.textLabel?.adjustsFontSizeToFitWidth = true
         cell.textLabel?.minimumScaleFactor = 0.5
-        cell.accessoryView = createSwitch(isOn: TPPSettings.shared.enterLCPPassphraseManually, action: #selector(enterLCPPassphraseSwitchDidChange))
+        cell.accessoryView = createSwitch(isOn: settings.enterLCPPassphraseManually, action: #selector(enterLCPPassphraseSwitchDidChange))
         return cell
     }
 
@@ -397,7 +401,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
         switch Section(rawValue: indexPath.section) {
         case .dataManagement:
-            AccountsManager.shared.clearCache()
+            accountsManager.clearCache()
             ImageCache.shared.clear()
             let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
             self.present(alert, animated: true, completion: nil)
