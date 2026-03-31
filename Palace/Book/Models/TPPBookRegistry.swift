@@ -416,7 +416,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                         if let record = self.registry[book.identifier] {
                             var nextState = record.state
                             if record.state == .unregistered {
-                                book.defaultAcquisition?.availability.matchUnavailable(
+                                book.defaultAcquisition?.availability.match(unavailable: 
                                     nil, limited: nil, unlimited: nil,
                                     reserved: { _ in nextState = .holding },
                                     ready: { _ in nextState = .holding }
@@ -474,7 +474,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
                             if wasDownloaded {
                                 Log.info(#file, "📚 Removing expired/returned book '\(record.book.title)' (not in server feed)")
-                                downloadCenter.deleteLocalContent(for: identifier)
+                                self.downloadCenter.deleteLocalContent(for: identifier)
                             }
 
                             self.registry[identifier]?.state = .unregistered
@@ -671,7 +671,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             let previousState = record.state
             var nextState = record.state
             if record.state == .unregistered {
-                book.defaultAcquisition?.availability.matchUnavailable(
+                book.defaultAcquisition?.availability.match(unavailable: 
                     nil,
                     limited: nil,
                     unlimited: nil,

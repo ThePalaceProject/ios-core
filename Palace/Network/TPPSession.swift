@@ -64,7 +64,7 @@ import Foundation
           error,
           code: .apiCall,
           summary: String(describing: type(of: self)),
-          request: req as NSURLRequest?,
+          request: req as URLRequest?,
           response: response,
           metadata: [
             "receivedData": dataString ?? "N/A",
@@ -83,9 +83,9 @@ import Foundation
 
     let lastPathComponent = url.lastPathComponent
     if lastPathComponent == "borrow" {
-      req = TPPNetworkExecutor.shared.put(url, useTokenIfAvailable: false, completion: completionWrapper)?.originalRequest
+      req = TPPNetworkExecutor.shared.PUT(url, useTokenIfAvailable: false, completion: completionWrapper)?.originalRequest
     } else {
-      req = TPPNetworkExecutor.shared.get(url, cachePolicy: .useProtocolCachePolicy, useTokenIfAvailable: false, completion: completionWrapper)?.originalRequest
+      req = TPPNetworkExecutor.shared.GET(url, cachePolicy: .useProtocolCachePolicy, useTokenIfAvailable: false, completion: completionWrapper)?.originalRequest
     }
 
     return req

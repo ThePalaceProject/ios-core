@@ -106,7 +106,7 @@ extension MyBooksDownloadCenter {
 
             // Determine correct registry state based on availability
             var newState: TPPBookState = .downloadNeeded
-            borrowedBook.defaultAcquisition?.availability.matchUnavailable(
+            borrowedBook.defaultAcquisition?.availability.match(unavailable: 
                 { _ in newState = .holding },
                 limited: { _ in newState = .downloadNeeded },
                 unlimited: { _ in newState = .downloadNeeded },

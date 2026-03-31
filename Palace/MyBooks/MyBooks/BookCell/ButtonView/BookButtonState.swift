@@ -102,17 +102,17 @@ extension BookButtonState {
         guard let availability = book.defaultAcquisition?.availability else { return false }
 
         var isReady = false
-        availability.matchUnavailable { _ in
+        availability.match(unavailable: { _ in
             isReady = false
-        } limited: { _ in
+        }, limited: { _ in
             isReady = false
-        } unlimited: { _ in
+        }, unlimited: { _ in
             isReady = false
-        } reserved: { _ in
+        }, reserved: { _ in
             isReady = false  // Still waiting in queue
-        } ready: { _ in
+        }, ready: { _ in
             isReady = true   // Hold is ready to borrow!
-        }
+        })
 
         return isReady
     }
@@ -164,22 +164,22 @@ extension BookButtonState {
         }
 
         var state: BookButtonState = .unsupported
-        availability.matchUnavailable { _ in
+        availability.match(unavailable: { _ in
             state = .canHold
-        } limited: { limited in
+        }, limited: { limited in
             // Check if copies are actually available to borrow
             if limited.copiesAvailable == TPPOPDSAcquisitionAvailabilityCopiesUnknown || limited.copiesAvailable > 0 {
                 state = .canBorrow
             } else {
                 state = .canHold
             }
-        } unlimited: { _ in
+        }, unlimited: { _ in
             state = .canBorrow
-        } reserved: { _ in
+        }, reserved: { _ in
             state = .holdingFrontOfQueue
-        } ready: { _ in
+        }, ready: { _ in
             state = .canBorrow  // Hold is ready, user can borrow
-        }
+        })
 
         return state
     }

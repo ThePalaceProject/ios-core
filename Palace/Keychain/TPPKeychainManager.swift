@@ -99,14 +99,14 @@ import PalaceAudiobookToolkit
         ]
 
         for key in knownKeys {
-            TPPKeychain.shared().removeObject(forKey: key)
+            TPPKeychain.shared.removeObject(forKey: key)
         }
 
         // Also clean up any library-specific keys
         for libraryUUID in AccountsManager.TPPAccountUUIDs {
             for key in knownKeys {
                 let libraryKey = "\(key)_\(libraryUUID)"
-                TPPKeychain.shared().removeObject(forKey: libraryKey)
+                TPPKeychain.shared.removeObject(forKey: libraryKey)
             }
         }
 
@@ -146,8 +146,8 @@ import PalaceAudiobookToolkit
         }
 
         for (key, value) in values {
-            TPPKeychain.shared().removeObject(forKey: key)
-            TPPKeychain.shared().setObject(value, forKey: key)
+            TPPKeychain.shared.removeObject(forKey: key)
+            TPPKeychain.shared.setObject(value, forKey: key)
             Log.debug(#file, "Keychain item \"\(key)\" updated with new accessible security level...")
         }
     }

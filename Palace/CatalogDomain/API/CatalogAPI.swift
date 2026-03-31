@@ -84,7 +84,7 @@ public final class DefaultCatalogAPI: CatalogAPI {
                     return
                 }
 
-                guard let searchResultURL = description.opdsurl(forSearching: query) else {
+                guard let searchResultURL = description.opdsURL(forSearchingString: query) else {
                     continuation.resume(throwing: NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not create search URL"]))
                     return
                 }
@@ -128,9 +128,9 @@ public final class DefaultCatalogAPI: CatalogAPI {
         var entries: [SearchFormatEntry] = []
         for case let link as TPPOPDSLink in opdsFeed.links {
             guard link.rel == TPPOPDSRelationFacet,
-                  let href = link.href,
                   let title = link.title,
                   !title.isEmpty else { continue }
+            let href = link.href
 
             var isEntryPoint = false
             for (key, _) in link.attributes {

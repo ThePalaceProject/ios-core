@@ -200,7 +200,7 @@ import SwiftUI
                 self?.authenticateAccount(account) {
                     self?.updateList(withAccount: account)
                 }
-                self?.libraryAccounts = manager.accounts()
+                self?.libraryAccounts = self?.manager.accounts() ?? []
             }
         }
         navigationController?.pushViewController(listVC, animated: true)

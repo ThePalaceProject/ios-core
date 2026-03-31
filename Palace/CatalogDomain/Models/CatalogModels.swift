@@ -3,7 +3,7 @@ import Foundation
 public struct CatalogFeed {
     public let title: String
     public let entries: [CatalogEntry]
-    public let opdsFeed: TPPOPDSFeed
+    let opdsFeed: TPPOPDSFeed
 
     /// OPDS 2 feed data (nil when feed was parsed as OPDS 1)
     let opds2Feed: OPDS2Feed?
@@ -39,12 +39,13 @@ public struct CatalogFeed {
           <updated>2000-01-01T00:00:00Z</updated>
         </feed>
         """
-        if let xml = TPPXML(data: shellXML.data(using: .utf8)) {
-            self.opdsFeed = TPPOPDSFeed(xml: xml)
+        if let xml = TPPXML.xml(withData: shellXML.data(using: .utf8)),
+           let feed = TPPOPDSFeed(xml: xml) {
+            self.opdsFeed = feed
         } else {
             // Fallback: parse with an absolute minimal feed
             let fallback = "<feed xmlns=\"http://www.w3.org/2005/Atom\"><id>x</id><title>Catalog</title><updated>2000-01-01T00:00:00Z</updated></feed>"
-            self.opdsFeed = TPPOPDSFeed(xml: TPPXML(data: fallback.data(using: .utf8))!)
+            self.opdsFeed = TPPOPDSFeed(xml: TPPXML.xml(withData: fallback.data(using: .utf8)))!
         }
 
         let allPubs = opds2Feed.groups?.flatMap { $0.publications ?? [] }
@@ -70,4 +71,14 @@ public struct CatalogEntry: Identifiable {
         self.title = pub.metadata.title
         self.authors = []
     }
+}
+
+/// Represents a format entry point (e.g. "All", "eBooks", "Audiobooks")
+/// with optional search descriptor URL for searching within that format.
+public struct SearchFormatEntry: Identifiable, Equatable {
+    public let id: String
+    public let title: String
+    public let groupsFeedURL: URL
+    public let searchDescriptorURL: URL?
+    public let isActive: Bool
 }

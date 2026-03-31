@@ -84,17 +84,17 @@ class TPPBookRegistryRecord: NSObject {
 
         var derivedState: TPPBookState = .downloadNeeded
 
-        defaultAcquisition.availability.matchUnavailable { _ in
+        defaultAcquisition.availability.match(unavailable: { _ in
             derivedState = .downloadNeeded
-        } limited: { _ in
+        }, limited: { _ in
             derivedState = .downloadNeeded
-        } unlimited: { _ in
+        }, unlimited: { _ in
             derivedState = .downloadNeeded
-        } reserved: { _ in
+        }, reserved: { _ in
             derivedState = .holding
-        } ready: { _ in
+        }, ready: { _ in
             derivedState = .holding
-        }
+        })
 
         return derivedState
     }

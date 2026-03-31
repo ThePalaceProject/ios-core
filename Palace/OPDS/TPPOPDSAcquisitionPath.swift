@@ -1,23 +1,23 @@
 import Foundation
 
 // MARK: - Content type constants
-@objc let ContentTypeOPDSCatalog = "application/atom+xml;type=entry;profile=opds-catalog"
-@objc let ContentTypeAdobeAdept = "application/vnd.adobe.adept+xml"
-@objc let ContentTypeBearerToken = "application/vnd.librarysimplified.bearer-token+json"
-@objc let ContentTypeEpubZip = "application/epub+zip"
-@objc let ContentTypeFindaway = "application/vnd.librarysimplified.findaway.license+json"
-@objc let ContentTypeOpenAccessAudiobook = "application/audiobook+json"
-@objc let ContentTypeOpenAccessPDF = "application/pdf"
-@objc let ContentTypeFeedbooksAudiobook = "application/audiobook+json;profile=\"http://www.feedbooks.com/audiobooks/access-restriction\""
-@objc let ContentTypeOctetStream = "application/octet-stream"
-@objc let ContentTypeOverdriveAudiobook = "application/vnd.overdrive.circulation.api+json;profile=audiobook"
-@objc let ContentTypeOverdriveAudiobookActual = "application/json"
-@objc let ContentTypeReadiumLCP = "application/vnd.readium.lcp.license.v1.0+json"
-@objc let ContentTypeReadiumLCPPDF = "application/pdf"
-@objc let ContentTypePDFLCP = "application/pdf+lcp"
-@objc let ContentTypeAudiobookLCP = "application/audiobook+lcp"
-@objc let ContentTypeAudiobookZip = "application/audiobook+zip"
-@objc let ContentTypeBiblioboard = "application/json"
+let ContentTypeOPDSCatalog = "application/atom+xml;type=entry;profile=opds-catalog"
+let ContentTypeAdobeAdept = "application/vnd.adobe.adept+xml"
+let ContentTypeBearerToken = "application/vnd.librarysimplified.bearer-token+json"
+let ContentTypeEpubZip = "application/epub+zip"
+let ContentTypeFindaway = "application/vnd.librarysimplified.findaway.license+json"
+let ContentTypeOpenAccessAudiobook = "application/audiobook+json"
+let ContentTypeOpenAccessPDF = "application/pdf"
+let ContentTypeFeedbooksAudiobook = "application/audiobook+json;profile=\"http://www.feedbooks.com/audiobooks/access-restriction\""
+let ContentTypeOctetStream = "application/octet-stream"
+let ContentTypeOverdriveAudiobook = "application/vnd.overdrive.circulation.api+json;profile=audiobook"
+let ContentTypeOverdriveAudiobookActual = "application/json"
+let ContentTypeReadiumLCP = "application/vnd.readium.lcp.license.v1.0+json"
+let ContentTypeReadiumLCPPDF = "application/pdf"
+let ContentTypePDFLCP = "application/pdf+lcp"
+let ContentTypeAudiobookLCP = "application/audiobook+lcp"
+let ContentTypeAudiobookZip = "application/audiobook+zip"
+let ContentTypeBiblioboard = "application/json"
 
 // MARK: - TPPOPDSAcquisitionPath
 
@@ -60,7 +60,7 @@ import Foundation
     #endif
 
     #if FEATURE_DRM_CONNECTOR
-    if AdobeCertificate.defaultCertificate.hasExpired {
+    if AdobeCertificate.defaultCertificate?.hasExpired == true {
       types.remove(ContentTypeAdobeAdept)
     }
     #endif
@@ -157,7 +157,7 @@ import Foundation
         guard supportedSubs.contains(indirectAcquisition.type) else { continue }
 
         for mutableTypePath in mutableTypePaths(indirectAcquisition, types) {
-          var typePath = [acquisition.type] + mutableTypePath
+          let typePath = [acquisition.type] + mutableTypePath
           let path = TPPOPDSAcquisitionPath(
             relation: acquisition.relation,
             types: typePath,

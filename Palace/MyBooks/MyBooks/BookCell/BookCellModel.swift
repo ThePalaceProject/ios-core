@@ -57,7 +57,7 @@ class BookCellModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     let imageCache: ImageCacheType
     let bookRegistry: TPPBookRegistryProvider
-    private let downloadCenter: MyBooksDownloadCenter
+    let downloadCenter: MyBooksDownloadCenter
     private let accountsManager: AccountsManager
     private var isFetchingImage = false
     #if LCP
@@ -499,7 +499,7 @@ extension BookCellModel {
                 NotificationService.requestAuthorization()
                 Task {
                     do {
-                        _ = try await downloadCenter.borrowAsync(self.book, attemptDownload: false)
+                        _ = try await self.downloadCenter.borrowAsync(self.book, attemptDownload: false)
                     } catch {
                         Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
                     }

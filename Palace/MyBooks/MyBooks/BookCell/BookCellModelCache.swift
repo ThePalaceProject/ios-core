@@ -102,7 +102,7 @@ final class BookCellModelCache: ObservableObject {
     }
 
     private func setupAccountChangeObserver() {
-        AccountsManager.shared.currentAccountDidChange
+        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
             .sink { [weak self] _ in
                 self?.handleAccountChange()
             }

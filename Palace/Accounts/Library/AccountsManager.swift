@@ -301,7 +301,7 @@ struct CatalogCacheMetadata: Codable {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             Log.debug(#file, "Starting background refresh for catalog hash \(hash)")
 
-            networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+            self?.networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
                 guard let self = self else { return }
 
                 switch result {

@@ -66,7 +66,7 @@ import Foundation
 
     var request: URLRequest?
 
-    let task = TPPNetworkExecutor.shared.get(
+    let task = TPPNetworkExecutor.shared.GET(
       url,
       cachePolicy: cachePolicy,
       useTokenIfAvailable: useTokenIfAvailable
@@ -95,7 +95,7 @@ import Foundation
         let dataString = String(data: data, encoding: .utf8)
 
         var problemDocDict: NSDictionary?
-        if response?.isProblemDocument == true {
+        if response?.isProblemDocument() == true {
           problemDocDict = try? JSONSerialization.jsonObject(with: data, options: []) as? NSDictionary
         }
 
@@ -103,7 +103,7 @@ import Foundation
           error,
           code: .apiCall,
           summary: "NYPLOPDSFeed: HTTP response error",
-          request: request as NSURLRequest?,
+          request: request,
           response: response,
           metadata: [
             "receivedData": dataString ?? "N/A",

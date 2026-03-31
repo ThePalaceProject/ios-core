@@ -338,12 +338,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         UINavigationBar.appearance().tintColor = TPPConfiguration.iconColor()
 
-        if let defaultAppearance = TPPConfiguration.defaultAppearance() {
-            UINavigationBar.appearance().standardAppearance = defaultAppearance
-            UINavigationBar.appearance().compactAppearance = defaultAppearance
-            UINavigationBar.appearance().scrollEdgeAppearance = defaultAppearance
-            UINavigationBar.appearance().compactScrollEdgeAppearance = defaultAppearance
-        }
+        let defaultAppearance = TPPConfiguration.defaultAppearance()
+        UINavigationBar.appearance().standardAppearance = defaultAppearance
+        UINavigationBar.appearance().compactAppearance = defaultAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = defaultAppearance
+        UINavigationBar.appearance().compactScrollEdgeAppearance = defaultAppearance
     }
 }
 

@@ -9,7 +9,7 @@ final class HoldsBookViewModel: ObservableObject, Identifiable {
 
     var isReserved: Bool {
         var reservedFlag = false
-        book.defaultAcquisition?.availability.matchUnavailable(
+        book.defaultAcquisition?.availability.match(unavailable: 
             nil,
             limited: nil,
             unlimited: nil,

@@ -38,7 +38,7 @@ class TPPKeychainVariable<VariableType>: Keyable {
             guard !alreadyInited else { return }
 
             // Otherwise, obtain the latest value from keychain
-            cachedValue = TPPKeychain.shared()?.object(forKey: key) as? VariableType
+            cachedValue = TPPKeychain.shared.object(forKey: key) as? VariableType
 
             // set a flag indicating that current cache is good to use
             alreadyInited = true
@@ -55,9 +55,9 @@ class TPPKeychainVariable<VariableType>: Keyable {
 
             // Write to keychain synchronously to ensure persistence
             if let newValue = newValue {
-                TPPKeychain.shared()?.setObject(newValue, forKey: key)
+                TPPKeychain.shared.setObject(newValue, forKey: key)
             } else {
-                TPPKeychain.shared()?.removeObject(forKey: key)
+                TPPKeychain.shared.removeObject(forKey: key)
             }
         }
     }
@@ -80,7 +80,7 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
             }
 
             // Fallback: try reading via old NSKeyedArchiver method for backward compatibility
-            if let legacyData = TPPKeychain.shared()?.object(forKey: key) as? Data {
+            if let legacyData = TPPKeychain.shared.object(forKey: key) as? Data {
                 do {
                     cachedValue = try JSONDecoder().decode(VariableType.self, from: legacyData)
                     alreadyInited = true
@@ -210,7 +210,7 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
         SecItemDelete(newQuery as CFDictionary)
 
         // Remove legacy formats
-        TPPKeychain.shared()?.removeObject(forKey: key)
+        TPPKeychain.shared.removeObject(forKey: key)
 
         // Remove legacy NSKeyedArchiver format
         let legacyKeyData = NSKeyedArchiver.archivedData(withRootObject: key)

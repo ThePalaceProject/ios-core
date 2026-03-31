@@ -65,7 +65,7 @@ static id acsdrm_lock = nil;
     NSString *rightsPath = [NSString stringWithFormat:@"%@%@", path, RIGHTS_XML_SUFFIX];
     NSData *rightsData = [NSData dataWithContentsOfFile:rightsPath];
     // Keep permissions node
-    TPPXML *xml = [TPPXML XMLWithData:rightsData];
+    TPPXML *xml = [TPPXML xmlWithData:rightsData];
     permissionsNode = [[xml firstChildWithName:@"licenseToken"] firstChildWithName:@"permissions"];
     // Pass rights data to Adobe DRM
     size_t rightsLen = rightsData.length;

@@ -74,7 +74,7 @@ final class BookAvailabilityFormatter {
     static func presentEndOfBookAlert(for book: TPPBook) {
         let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
             forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-            allowedRelations: [.borrow, .generic],
+            allowedRelations: TPPOPDSAcquisitionRelationSetBorrow | TPPOPDSAcquisitionRelationSetGeneric,
             acquisitions: book.acquisitions
         )
 

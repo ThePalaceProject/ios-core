@@ -104,7 +104,7 @@ private extension AppTabHostView {
             var readyCount = 0
 
             for book in held {
-                book.defaultAcquisition?.availability.matchUnavailable(nil,
+                book.defaultAcquisition?.availability.match(unavailable: nil,
                                                                        limited: nil,
                                                                        unlimited: nil,
                                                                        reserved: nil,
@@ -115,13 +115,13 @@ private extension AppTabHostView {
             if DebugSettings.shared.isBadgeLoggingEnabled {
                 var reservedCount = 0
                 for book in held {
-                    book.defaultAcquisition?.availability.matchUnavailable(nil, limited: nil, unlimited: nil,
+                    book.defaultAcquisition?.availability.match(unavailable: nil, limited: nil, unlimited: nil,
                                                                            reserved: { _ in reservedCount += 1 }, ready: nil)
                 }
                 Log.info(#file, "[DEBUG-BADGE] updateHoldsBadge: source=\(usingTestBooks ? "TEST BOOKS" : "registry"), totalHeld=\(held.count), reserved=\(reservedCount), ready=\(readyCount)")
                 for (index, book) in held.enumerated() {
                     var status = "unknown"
-                    book.defaultAcquisition?.availability.matchUnavailable(
+                    book.defaultAcquisition?.availability.match(unavailable: 
                         { _ in status = "unavailable" },
                         limited: { _ in status = "limited" },
                         unlimited: { _ in status = "unlimited" },

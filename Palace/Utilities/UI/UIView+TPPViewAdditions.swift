@@ -3,11 +3,11 @@ import UIKit
 extension UIView {
 
   @objc var preferredHeight: CGFloat {
-    return sizeThatFits(CGSize(width: .greatestFiniteMagnitude, height: .greatestFiniteMagnitude)).height
+    return sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)).height
   }
 
   @objc var preferredWidth: CGFloat {
-    return sizeThatFits(CGSize(width: .greatestFiniteMagnitude, height: .greatestFiniteMagnitude)).width
+    return sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)).width
   }
 
   @objc func centerInSuperview() {

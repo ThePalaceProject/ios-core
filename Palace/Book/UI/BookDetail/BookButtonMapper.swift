@@ -64,25 +64,25 @@ struct BookButtonMapper {
         }
 
         var state: BookButtonState = .unsupported
-        availability.matchUnavailable { _ in
+        availability.match(unavailable: { _ in
             // “unavailable” means no copies right now, but user can place a hold
             state = .canHold
-        } limited: { limited in
+        }, limited: { limited in
             if limited.copiesAvailable == TPPOPDSAcquisitionAvailabilityCopiesUnknown || limited.copiesAvailable > 0 {
                 state = .canBorrow
             } else {
                 state = .canHold
             }
-        } unlimited: { _ in
+        }, unlimited: { _ in
             // “unlimited” means infinite/always‐available → canBorrow
             state = .canBorrow
-        } reserved: { _ in
+        }, reserved: { _ in
             // “reserved” means user is on hold but not yet ready → front of queue
             state = .holdingFrontOfQueue
-        } ready: { _ in
+        }, ready: { _ in
             // “ready” means the hold is ready to check out → canBorrow
             state = .canBorrow
-        }
+        })
 
         return state
     }

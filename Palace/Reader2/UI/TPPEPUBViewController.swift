@@ -416,11 +416,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     }
 
     private func resetNavigationAppearance() {
-        if let appearance = TPPConfiguration.defaultAppearance() {
-            navigationController?.navigationBar.isTranslucent = false
-            navigationController?.navigationBar.setAppearance(appearance)
-            navigationController?.navigationBar.forceUpdateAppearance(style: systemUserInterfaceStyle)
-        }
+        let appearance = TPPConfiguration.defaultAppearance()
+        navigationController?.navigationBar.isTranslucent = false
+        navigationController?.navigationBar.setAppearance(appearance)
+        navigationController?.navigationBar.forceUpdateAppearance(style: systemUserInterfaceStyle)
         navigationController?.navigationBar.tintColor = TPPConfiguration.iconColor()
         tabBarController?.tabBar.tintColor = TPPConfiguration.iconColor()
     }

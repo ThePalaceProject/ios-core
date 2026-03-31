@@ -260,7 +260,7 @@ final class CrossLibrarySearchService: @unchecked Sendable {
     private func determineAvailability(from entry: TPPOPDSEntry) -> AvailabilityStatus {
         for acquisition in entry.acquisitions {
             var status: AvailabilityStatus = .unavailable
-            acquisition.availability.matchUnavailable({ _ in
+            acquisition.availability.match(unavailable: { _ in
                 status = .unavailable
             }, limited: { limited in
                 let copies = Int(limited.copiesAvailable)
@@ -287,7 +287,7 @@ final class CrossLibrarySearchService: @unchecked Sendable {
     private func extractCopiesInfo(from entry: TPPOPDSEntry) -> CopiesInfo {
         var info = CopiesInfo()
         for acquisition in entry.acquisitions {
-            acquisition.availability.matchUnavailable({ _ in },
+            acquisition.availability.match(unavailable: { _ in },
             limited: { limited in
                 info.available = Int(limited.copiesAvailable)
                 info.total = Int(limited.copiesTotal)

@@ -3,7 +3,9 @@ import Foundation
 public protocol CatalogRepositoryProtocol {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?
     func search(query: String, baseURL: URL) async throws -> CatalogFeed?
+    func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed?
     func fetchFeed(at url: URL) async throws -> CatalogFeed?
+    func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry]
     func invalidateCache(for url: URL)
 }
 
@@ -187,6 +189,14 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
     public func fetchFeed(at url: URL) async throws -> CatalogFeed? {
         try await api.fetchFeed(at: url)
+    }
+
+    public func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
+        try await api.fetchSearchEntryPoints(from: url)
+    }
+
+    public func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
+        try await api.search(query: query, searchDescriptorURL: searchDescriptorURL)
     }
 
     public func invalidateCache(for url: URL) {

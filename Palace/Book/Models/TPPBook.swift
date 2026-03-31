@@ -220,7 +220,7 @@ public class TPPBook: NSObject, ObservableObject {
         }
 
         let acquisitions: [TPPOPDSAcquisition] = (dictionary[AcquisitionsKey] as? [[String: Any]] ?? []).compactMap {
-            TPPOPDSAcquisition(dictionary: $0 as NSDictionary)
+            TPPOPDSAcquisition.acquisition(withDictionary: $0 as NSDictionary)
         }
 
         let authorStrings: [String] = {
@@ -253,7 +253,7 @@ public class TPPBook: NSObject, ObservableObject {
         let revokeURL = URL(string: dictionary[RevokeURLKey] as? String ?? "")
         let reportURL = URL(string: dictionary[ReportURLKey] as? String ?? "")
 
-        guard let updated = NSDate(iso8601DateString: dictionary[UpdatedKey] as? String ?? "") as? Date else { return nil }
+        guard let updated = NSDate.date(withISO8601DateString: dictionary[UpdatedKey] as? String ?? "") as Date? else { return nil }
 
         self.init(
             acquisitions: acquisitions,
@@ -273,7 +273,7 @@ public class TPPBook: NSObject, ObservableObject {
             analyticsURL: URL(string: dictionary[AnalyticsURLKey] as? String ?? ""),
             alternateURL: URL(string: dictionary[AlternateURLKey] as? String ?? ""),
             relatedWorksURL: URL(string: dictionary[RelatedURLKey] as? String ?? ""),
-            previewLink: (dictionary[PreviewURLKey] as? NSDictionary).flatMap { TPPOPDSAcquisition(dictionary: $0) },
+            previewLink: (dictionary[PreviewURLKey] as? NSDictionary).flatMap { TPPOPDSAcquisition.acquisition(withDictionary: $0) },
             seriesURL: URL(string: dictionary[SeriesLinkKey] as? String ?? ""),
             revokeURL: revokeURL,
             reportURL: reportURL,
@@ -379,7 +379,7 @@ public class TPPBook: NSObject, ObservableObject {
         return acquisitions.first(where: {
             !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
                 forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-                allowedRelations: sampleAndPreview,
+                allowedRelations: sampleAndPreview.rawValue,
                 acquisitions: [$0]
             ).isEmpty
         }) ?? previewLink
@@ -393,7 +393,7 @@ public class TPPBook: NSObject, ObservableObject {
     @objc func getExpirationDate() -> Date? {
         var date: Date?
 
-        defaultAcquisition?.availability.matchUnavailable(
+        defaultAcquisition?.availability.match(unavailable: 
             nil,
             limited: { limited in
                 if let until = limited.until, until.timeIntervalSinceNow > 0 { date = until }
@@ -412,7 +412,7 @@ public class TPPBook: NSObject, ObservableObject {
         var untilDate: Date?
         let reservationDetails = ReservationDetails()
 
-        defaultAcquisition?.availability.matchUnavailable(
+        defaultAcquisition?.availability.match(unavailable: 
             nil,
             limited: nil,
             unlimited: nil,
@@ -454,7 +454,7 @@ public class TPPBook: NSObject, ObservableObject {
 
     func getAvailabilityDetails() -> AvailabilityDetails {
         var details = AvailabilityDetails()
-        defaultAcquisition?.availability.matchUnavailable(nil, limited: { limited in
+        defaultAcquisition?.availability.match(unavailable: nil, limited: { limited in
             if let sinceDate = limited.since {
                 let (value, unit) = sinceDate.timeUntil()
                 details.availableSince = "\(value) \(unit)"
@@ -474,7 +474,7 @@ public class TPPBook: NSObject, ObservableObject {
                 let (value, unit) = untilDate.timeUntil()
                 details.availableUntil = "\(value) \(unit)"
             }
-        }, reserved: nil)
+        }, reserved: nil, ready: nil)
 
         return details
     }

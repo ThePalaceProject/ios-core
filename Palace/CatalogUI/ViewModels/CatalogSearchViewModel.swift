@@ -380,8 +380,8 @@ class CatalogSearchViewModel: ObservableObject {
         guard let links = feed.links as? [TPPOPDSLink] else { return }
         for link in links {
             guard link.rel == TPPOPDSRelationFacet,
-                  let href = link.href,
                   let title = link.title else { continue }
+            let href = link.href
             var isEntryPoint = false
             for (key, _) in link.attributes {
                 if let keyStr = key as? String, TPPOPDSAttributeKeyStringIsFacetGroupType(keyStr) {

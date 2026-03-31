@@ -262,7 +262,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         // Navigate to Holds tab for hold-related notifications
         if isHoldNotification {
             Task { @MainActor in
-                guard let currentAccount = self?.accountsManager.currentAccount,
+                guard let currentAccount = self.accountsManager.currentAccount,
                       currentAccount.details?.supportsReservations == true else {
                     Log.warn(#file, "[Notification] Cannot navigate to Holds - account doesn't support reservations")
                     completionHandler()
@@ -356,7 +356,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             var status = "unknown"
             var position: UInt = 0
 
-            book.defaultAcquisition?.availability.matchUnavailable(
+            book.defaultAcquisition?.availability.match(unavailable: 
                 { _ in status = "unavailable" },
                 limited: { _ in status = "limited" },
                 unlimited: { _ in status = "unlimited" },
@@ -400,7 +400,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         var holdPosition: UInt = 0
 
         let oldAvail = cachedRecord.book.defaultAcquisition?.availability
-        oldAvail?.matchUnavailable(
+        oldAvail?.match(unavailable: 
             { _ in oldStatus = "unavailable" },
             limited: { _ in oldStatus = "limited" },
             unlimited: { _ in oldStatus = "unlimited" },
@@ -413,7 +413,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         )
 
         let newAvail = newBook.defaultAcquisition?.availability
-        newAvail?.matchUnavailable(
+        newAvail?.match(unavailable: 
             { _ in newStatus = "unavailable" },
             limited: { _ in newStatus = "limited" },
             unlimited: { _ in newStatus = "unlimited" },
@@ -442,7 +442,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     class func updateAppIconBadge(heldBooks: [TPPBook]) {
         var readyCount = 0
         for book in heldBooks {
-            book.defaultAcquisition?.availability.matchUnavailable(
+            book.defaultAcquisition?.availability.match(unavailable: 
                 nil,
                 limited: nil,
                 unlimited: nil,
@@ -460,7 +460,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     ///
     /// - Returns: `true` if the user has held books and should fetch updates
     class func backgroundFetchIsNeeded() -> Bool {
-        let count = bookRegistry.heldBooks.count
+        let count = TPPBookRegistry.shared.heldBooks.count
         Log.info(#file, "[Background Fetch] Held books: \(count)")
         return count > 0
     }

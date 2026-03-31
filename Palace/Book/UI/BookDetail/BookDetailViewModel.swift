@@ -461,7 +461,7 @@ final class BookDetailViewModel: ObservableObject {
         }
     }
 
-    private func removeProcessingButton(_ button: BookButtonType) {
+    func removeProcessingButton(_ button: BookButtonType) {
         self.processingButtons.remove(button)
     }
 
@@ -477,7 +477,7 @@ final class BookDetailViewModel: ObservableObject {
             libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
             libraryAccountsProvider: accountsManager,
             urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: registry,
+            bookRegistry: registry as? TPPBookRegistrySyncing ?? TPPBookRegistry.shared,
             bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
@@ -898,7 +898,7 @@ extension BookDetailViewModel {
     static func presentEndOfBookAlert(for book: TPPBook, downloadCenter: MyBooksDownloadCenter = .shared) {
         let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
             forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-            allowedRelations: [.borrow, .generic],
+            allowedRelations: TPPOPDSAcquisitionRelationSetBorrow | TPPOPDSAcquisitionRelationSetGeneric,
             acquisitions: book.acquisitions
         )
 

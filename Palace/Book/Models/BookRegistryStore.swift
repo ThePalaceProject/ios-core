@@ -164,7 +164,7 @@ class BookRegistryStore {
       let previousState = record.state
       var nextState = record.state
       if record.state == .unregistered {
-        book.defaultAcquisition?.availability.matchUnavailable(
+        book.defaultAcquisition?.availability.match(unavailable: 
           nil, limited: nil, unlimited: nil,
           reserved: { _ in nextState = .holding },
           ready: { _ in nextState = .holding }

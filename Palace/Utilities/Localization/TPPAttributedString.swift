@@ -1,6 +1,6 @@
 import UIKit
 
-@objc func TPPAttributedStringForAuthorsFromString(_ string: String?) -> NSAttributedString? {
+func TPPAttributedStringForAuthorsFromString(_ string: String?) -> NSAttributedString? {
   guard let string = string else { return nil }
 
   let paragraphStyle = NSMutableParagraphStyle()
@@ -16,7 +16,7 @@ import UIKit
   )
 }
 
-@objc func TPPAttributedStringForTitleFromString(_ string: String?) -> NSAttributedString? {
+func TPPAttributedStringForTitleFromString(_ string: String?) -> NSAttributedString? {
   guard let string = string else { return nil }
 
   // Decoding twice to mimic the behaviour of NSAttributedString that decodes entities like `&amp;#39;` correctly.

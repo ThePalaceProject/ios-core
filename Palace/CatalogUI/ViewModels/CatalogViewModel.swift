@@ -30,7 +30,7 @@ final class CatalogViewModel: ObservableObject {
   private var lastLoadedURL: URL?
   private var currentLoadTask: Task<Void, Never>? = nil
 
-  init(repository: CatalogRepositoryProtocol, topLevelURLProvider: @escaping () -> URL?, bookRegistry: TPPBookRegistryProvider = bookRegistry) {
+  init(repository: CatalogRepositoryProtocol, topLevelURLProvider: @escaping () -> URL?, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
     self.repository = repository
     self.topLevelURLProvider = topLevelURLProvider
     self.bookRegistry = bookRegistry

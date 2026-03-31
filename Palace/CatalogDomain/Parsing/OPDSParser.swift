@@ -29,7 +29,7 @@ public final class OPDSParser {
     // MARK: - OPDS 1 (XML)
 
     private func parseOPDS1Feed(from data: Data) throws -> CatalogFeed {
-        guard let xml = TPPXML(data: data) else { throw ParserError.invalidXML }
+        guard let xml = TPPXML.xml(withData: data) else { throw ParserError.invalidXML }
         let feed = TPPOPDSFeed(xml: xml)
         guard let catalogFeed = CatalogFeed(feed: feed) else { throw ParserError.invalidFeed }
         return catalogFeed
