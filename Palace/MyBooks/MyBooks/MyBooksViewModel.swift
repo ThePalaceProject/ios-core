@@ -34,16 +34,30 @@ enum Group: Int {
     var activeFacetSort: Facet
     let facetViewModel: FacetViewModel
     private var observers = Set<AnyCancellable>()
-    private var bookRegistry: TPPBookRegistry { TPPBookRegistry.shared }
+    private let bookRegistry: TPPBookRegistryProvider
+    private let accountsManager: AccountsManager
     private let settings: TPPSettingsProviding
     private var allBooks: [TPPBook] = []
 
     // MARK: - Initialization
+
+    /// Convenience initializer using shared singletons (for backward compatibility).
     override convenience init() {
-        self.init(settings: AppContainer.shared.settings)
+        self.init(
+            bookRegistry: TPPBookRegistry.shared,
+            accountsManager: AccountsManager.shared,
+            settings: TPPSettings.shared
+        )
     }
 
-    init(settings: TPPSettingsProviding) {
+    /// Initializer with dependency injection for testing.
+    init(
+        bookRegistry: TPPBookRegistryProvider,
+        accountsManager: AccountsManager = .shared,
+        settings: TPPSettingsProviding = TPPSettings.shared
+    ) {
+        self.bookRegistry = bookRegistry
+        self.accountsManager = accountsManager
         self.settings = settings
         self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
@@ -58,9 +72,7 @@ enum Group: Int {
         loadData()
     }
 
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
+    deinit { }
 
     // MARK: - Public Methods
     func loadData() {
@@ -100,7 +112,7 @@ enum Group: Int {
         if TPPUserAccount.sharedAccount().needsAuth, !TPPUserAccount.sharedAccount().hasCredentials() {
             SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
         } else {
-            bookRegistry.sync { [weak self] _, _ in
+            bookRegistry.sync { [weak self] (_, _) in
                 self?.loadData()
             }
         }
@@ -133,8 +145,9 @@ enum Group: Int {
         account.loadAuthenticationDocument { [weak self] success in
             guard let self = self, success else { return }
 
-            if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-                TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+            if let tppSettings = self.settings as? TPPSettings,
+               !tppSettings.settingsAccountIdsList.contains(account.uuid) {
+                tppSettings.settingsAccountIdsList.append(account.uuid)
             }
             self.loadAccount(account)
         }
@@ -166,29 +179,30 @@ enum Group: Int {
     }
 
     private func updateFeed(_ account: Account) {
-        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-            TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+        if let tppSettings = settings as? TPPSettings,
+           !tppSettings.settingsAccountIdsList.contains(account.uuid) {
+            tppSettings.settingsAccountIdsList.append(account.uuid)
         }
 
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
             settings.accountMainFeedURL = url
         }
 
-        AccountsManager.shared.currentAccount = account
+        // Setting currentAccount triggers both Combine publisher and NotificationCenter
+        accountsManager.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
-
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
 
-    // MARK: - Notification Handling
+    // MARK: - Registry Observation
     private func registerNotifications() {
-        let stateChange = NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)
-        let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
-        let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
+        // Use Combine publishers from TPPBookRegistry directly
+        let registryChange = bookRegistry.registryPublisher.map { _ in () }
+        let stateChange = bookRegistry.bookStatePublisher.map { _ in () }
+        let syncEnd = bookRegistry.syncStatePublisher.filter { !$0 }.map { _ in () }
 
-        stateChange
-            .merge(with: registryChange)
+        registryChange
+            .merge(with: stateChange)
             .merge(with: syncEnd)
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in

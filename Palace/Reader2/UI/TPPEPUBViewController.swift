@@ -435,6 +435,18 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         buttons.insert(userSettingsButton, at: 1)
         popoverUserconfigurationAnchor = userSettingsButton
         buttons.append(searchButton)
+
+        // Advanced Typography (feature-flagged)
+        if ReaderTypographyButton.isEnabled {
+            let typoButton = ReaderTypographyButtonUIKit()
+            typoButton.onTap = { [weak self] in
+                guard let self = self else { return }
+                let sheet = ReaderTypographyButtonUIKit.makeTypographySheet()
+                self.present(sheet, animated: true)
+            }
+            buttons.append(UIBarButtonItem(customView: typoButton))
+        }
+
         return buttons
     }
 

@@ -47,15 +47,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     var businessLogic: TPPSignInBusinessLogic
     var frontEndValidator: TPPUserAccountFrontEndValidation?
     private let libraryAccountID: String
+    private let accountsManager: AccountsManager
+    private let settings: TPPSettingsProviding
+    private let bookRegistry: TPPBookRegistryProvider
     private var cancellables = Set<AnyCancellable>()
-    private let accounts: TPPLibraryAccountsProvider
-    private let downloadCenter: MyBooksDownloadCenter
     var forceEditability = false
-
-    /// Closure that returns a credential snapshot for a given library UUID.
-    /// Defaults to `TPPUserAccount.credentialSnapshot(for:)` in production;
-    /// tests can inject a mock implementation via the test initializer.
-    private let credentialSnapshotProvider: (String?) -> TPPUserAccount.CredentialSnapshot
 
     // MARK: - Computed Properties
 
@@ -95,21 +91,40 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
+    convenience init(libraryAccountID: String) {
+        self.init(
+            libraryAccountID: libraryAccountID,
+            accountsManager: AccountsManager.shared,
+            settings: TPPSettings.shared,
+            bookRegistry: TPPBookRegistry.shared
+        )
+    }
+
+    /// Initializer with dependency injection for testing.
     init(
         libraryAccountID: String,
-        accounts: TPPLibraryAccountsProvider = AppContainer.shared.accounts,
-        downloadCenter: MyBooksDownloadCenter = AppContainer.shared.downloadCenter
+        accountsManager: AccountsManager,
+        settings: TPPSettingsProviding,
+        bookRegistry: TPPBookRegistryProvider
     ) {
         self.libraryAccountID = libraryAccountID
-        self.accounts = accounts
-        self.downloadCenter = downloadCenter
-        self.credentialSnapshotProvider = { TPPUserAccount.credentialSnapshot(for: $0) }
+        self.accountsManager = accountsManager
+        self.settings = settings
+        self.bookRegistry = bookRegistry
+
+        // TPPSignInBusinessLogic requires concrete ObjC-protocol types.
+        // The AccountDetailViewModel stores abstract protocol types for its own usage,
+        // but passes the concrete singletons to SignInBusinessLogic until that class
+        // is also migrated to protocol-based DI.
+        let concreteSettings = (settings as? TPPSettings) ?? TPPSettings.shared
+        let concreteRegistry = (bookRegistry as? TPPBookRegistry) ?? TPPBookRegistry.shared
+
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
-            libraryAccountsProvider: accounts,
-            urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: downloadCenter,
+            libraryAccountsProvider: accountsManager,
+            urlSettingsProvider: concreteSettings,
+            bookRegistry: concreteRegistry,
+            bookDownloadsCenter: MyBooksDownloadCenter.shared,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
@@ -135,10 +150,10 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
-            libraryAccountsProvider: accounts,
-            urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: downloadCenter,
+            libraryAccountsProvider: accountsManager,
+            urlSettingsProvider: concreteSettings,
+            bookRegistry: concreteRegistry,
+            bookDownloadsCenter: MyBooksDownloadCenter.shared,
             userAccountProvider: TPPUserAccount.self,
             networkExecutor: networkExecutor,
             uiDelegate: self,
@@ -157,34 +172,6 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         loadInitialData()
     }
 
-    /// Test-only initializer that accepts pre-built dependencies.
-    /// Skips network setup, DRM, and async loading so tests run deterministically.
-    init(libraryAccountID: String,
-         businessLogic: TPPSignInBusinessLogic,
-         credentialSnapshotProvider: @escaping (String?) -> TPPUserAccount.CredentialSnapshot) {
-        self.libraryAccountID = libraryAccountID
-        self.accounts = AppContainer.shared.accounts
-        self.downloadCenter = AppContainer.shared.downloadCenter
-        self.credentialSnapshotProvider = credentialSnapshotProvider
-        self.businessLogic = businessLogic
-
-        let snapshot = credentialSnapshotProvider(libraryAccountID)
-        self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
-
-        super.init()
-
-        if let account = selectedAccount {
-            frontEndValidator = TPPUserAccountFrontEndValidation(
-                account: account,
-                businessLogic: businessLogic,
-                inputProvider: self
-            )
-        }
-
-        // Skips setupObservers() and loadInitialData() for test determinism.
-        // Tests call refreshSignInState() explicitly when needed.
-    }
-
     // MARK: - Setup
 
     private func setupObservers() {
@@ -197,7 +184,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             .store(in: &cancellables)
 
         // Listen for account switches to refresh sign-in state
-        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+        AccountsManager.shared.currentAccountDidChange
             .sink { [weak self] _ in
                 Task { @MainActor in
                     self?.accountDidChange()
@@ -360,12 +347,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     // MARK: - Actions
 
     func signIn() {
-        let needsReauth = selectedUserAccount.authState == .credentialsStale
-        // Only treat as a sign-in intent when not signed in, or when explicitly
-        // re-authenticating stale credentials from the sign-in prompt / forceReauthMode.
-        // The logInSignOut cell routes sign-out via signOut() directly, so the
-        // "isSignedIn && !needsReauth → show sign-out alert" branch is a safety net only.
-        guard !isSignedIn || needsReauth else {
+        guard !isSignedIn else {
             isSigningOut = true
             presentSignOutAlert()
             return
@@ -461,7 +443,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func performAgeCheck() {
         guard let account = selectedAccount else { return }
 
-        AccountsManager.shared.ageCheck.verifyCurrentAccountAgeRequirement(
+        accountsManager.ageCheck.verifyCurrentAccountAgeRequirement(
             userAccountProvider: selectedUserAccount,
             currentLibraryAccountProvider: businessLogic
         ) { [weak self] aboveAgeLimit in
@@ -521,7 +503,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func accountDidChange() {
-        let snapshot = credentialSnapshotProvider(libraryAccountID)
+        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
 
         let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
@@ -552,7 +534,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func refreshSignInState() {
         let wasSignedIn = isSignedIn
 
-        let snapshot = credentialSnapshotProvider(libraryAccountID)
+        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
         isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         if wasSignedIn != isSignedIn {

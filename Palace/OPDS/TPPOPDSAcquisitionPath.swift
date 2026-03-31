@@ -2,11 +2,7 @@ import Foundation
 
 // MARK: - Content Type Constants (Swift port of TPPOPDSAcquisitionPath.m)
 
-/// Swift versions of the content type constants.
-/// The ObjC versions are still defined in TPPOPDSAcquisitionPath.m; these
-/// are suffixed with `Swift` to avoid duplicate symbol errors while both
-/// compilation units coexist.
-
+/// Content type constants for OPDS acquisitions.
 @objc public final class OPDSContentType: NSObject {
   @objc public static let opdsCatalog = "application/atom+xml;type=entry;profile=opds-catalog"
   @objc public static let adobeAdept = "application/vnd.adobe.adept+xml"
@@ -29,12 +25,32 @@ import Foundation
   private override init() { super.init() }
 }
 
+// MARK: - Legacy C-style constant aliases (used by existing Swift callers)
+
+public let ContentTypeOPDSCatalog = OPDSContentType.opdsCatalog
+public let ContentTypeAdobeAdept = OPDSContentType.adobeAdept
+public let ContentTypeBearerToken = OPDSContentType.bearerToken
+public let ContentTypeEpubZip = OPDSContentType.epubZip
+public let ContentTypeFindaway = OPDSContentType.findaway
+public let ContentTypeOpenAccessAudiobook = OPDSContentType.openAccessAudiobook
+public let ContentTypeOpenAccessPDF = OPDSContentType.openAccessPDF
+public let ContentTypeFeedbooksAudiobook = OPDSContentType.feedbooksAudiobook
+public let ContentTypeOctetStream = OPDSContentType.octetStream
+public let ContentTypeOverdriveAudiobook = OPDSContentType.overdriveAudiobook
+public let ContentTypeOverdriveAudiobookActual = OPDSContentType.overdriveAudiobookActual
+public let ContentTypeReadiumLCP = OPDSContentType.readiumLCP
+public let ContentTypeReadiumLCPPDF = OPDSContentType.readiumLCPPDF
+public let ContentTypePDFLCP = OPDSContentType.pdfLCP
+public let ContentTypeAudiobookLCP = OPDSContentType.audiobookLCP
+public let ContentTypeAudiobookZip = OPDSContentType.audiobookZip
+public let ContentTypeBiblioboard = OPDSContentType.biblioboard
+
 // MARK: - TPPOPDSAcquisitionPath Swift Implementation
 
 /// Swift reimplementation of the ObjC TPPOPDSAcquisitionPath model.
 /// Represents a single path through an acquisition process.
-@objc(TPPOPDSAcquisitionPathSwift)
-public final class TPPOPDSAcquisitionPathSwift: NSObject {
+@objc(TPPOPDSAcquisitionPath)
+public final class TPPOPDSAcquisitionPath: NSObject {
 
   /// The relation of the initial acquisition step.
   @objc public let relation: TPPOPDSAcquisitionRelation
@@ -56,7 +72,7 @@ public final class TPPOPDSAcquisitionPathSwift: NSObject {
   // MARK: - Equality & Hash
 
   public override func isEqual(_ object: Any?) -> Bool {
-    guard let other = object as? TPPOPDSAcquisitionPathSwift else { return false }
+    guard let other = object as? TPPOPDSAcquisitionPath else { return false }
     return relation == other.relation && types == other.types
   }
 
@@ -72,13 +88,46 @@ public final class TPPOPDSAcquisitionPathSwift: NSObject {
 
   /// All types of acquisitions supported by the application.
   @objc public static func supportedTypes() -> Set<String> {
-    // Delegates to the ObjC implementation which handles #if FEATURE_DRM_CONNECTOR / LCP.
-    return TPPOPDSAcquisitionPath.supportedTypes()
+    var types: Set<String> = [
+      OPDSContentType.opdsCatalog,
+      OPDSContentType.bearerToken,
+      OPDSContentType.epubZip,
+      OPDSContentType.findaway,
+      OPDSContentType.openAccessAudiobook,
+      OPDSContentType.openAccessPDF,
+      OPDSContentType.feedbooksAudiobook,
+      OPDSContentType.overdriveAudiobook,
+      OPDSContentType.octetStream,
+      OPDSContentType.biblioboard,
+      OPDSContentType.audiobookZip
+    ]
+
+    #if FEATURE_DRM_CONNECTOR
+    types.insert(OPDSContentType.adobeAdept)
+    if AdobeCertificate.defaultCertificate?.hasExpired ?? false {
+      types.remove(OPDSContentType.adobeAdept)
+    }
+    #endif
+
+    #if LCP
+    types.insert(OPDSContentType.readiumLCP)
+    types.insert(OPDSContentType.audiobookLCP)
+    types.insert(OPDSContentType.readiumLCPPDF)
+    #endif
+
+    return types
   }
 
   /// Audiobook content types.
   @objc public static func audiobookTypes() -> Set<String> {
-    return TPPOPDSAcquisitionPath.audiobookTypes()
+    return [
+      OPDSContentType.findaway,
+      OPDSContentType.openAccessAudiobook,
+      OPDSContentType.feedbooksAudiobook,
+      OPDSContentType.overdriveAudiobook,
+      OPDSContentType.audiobookZip,
+      OPDSContentType.audiobookLCP
+    ]
   }
 
   /// Returns supported subtypes for a given type.
@@ -149,9 +198,9 @@ public final class TPPOPDSAcquisitionPathSwift: NSObject {
     forAllowedTypes types: Set<String>,
     allowedRelations relations: TPPOPDSAcquisitionRelationSet,
     acquisitions: [TPPOPDSAcquisition]
-  ) -> [TPPOPDSAcquisitionPathSwift] {
+  ) -> [TPPOPDSAcquisitionPath] {
     var pathSet = Set<Int>()  // hash-based deduplication
-    var paths: [TPPOPDSAcquisitionPathSwift] = []
+    var paths: [TPPOPDSAcquisitionPath] = []
 
     for acquisition in acquisitions {
       let containsType = types.contains(acquisition.type)
@@ -160,7 +209,7 @@ public final class TPPOPDSAcquisitionPathSwift: NSObject {
       guard containsType && containsRelation else { continue }
 
       if acquisition.indirectAcquisitions.isEmpty {
-        let path = TPPOPDSAcquisitionPathSwift(
+        let path = TPPOPDSAcquisitionPath(
           relation: acquisition.relation,
           types: [acquisition.type],
           url: acquisition.hrefURL
@@ -177,7 +226,7 @@ public final class TPPOPDSAcquisitionPathSwift: NSObject {
         for var typePath in mutableTypePaths(indirect, allowedTypes: types) {
           typePath.insert(acquisition.type, at: 0)
 
-          let path = TPPOPDSAcquisitionPathSwift(
+          let path = TPPOPDSAcquisitionPath(
             relation: acquisition.relation,
             types: typePath,
             url: acquisition.hrefURL

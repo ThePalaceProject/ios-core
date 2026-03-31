@@ -1,7 +1,5 @@
 #import "TPPConfiguration.h"
 
-#import "UILabel+NYPLAppearanceAdditions.h"
-#import "UIButton+NYPLAppearanceAdditions.h"
 #import "Palace-Swift.h"
 
 #if defined(FEATURE_DRM_CONNECTOR)

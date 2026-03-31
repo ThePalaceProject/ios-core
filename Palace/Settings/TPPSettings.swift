@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 @objc protocol NYPLUniversalLinksSettings: NSObjectProtocol {
     /// The URL that will be used to redirect an external authentication flow
@@ -17,6 +18,28 @@ import Foundation
 
     class func sharedSettings() -> TPPSettings {
         return TPPSettings.shared
+    }
+
+    // MARK: - Combine Publishers
+
+    /// Publishes when any setting changes (replaces `.TPPSettingsDidChange` notification)
+    private let settingsChangedSubject = PassthroughSubject<Void, Never>()
+
+    /// Publisher for settings changes. Use instead of observing `.TPPSettingsDidChange`.
+    var settingsDidChange: AnyPublisher<Void, Never> {
+        settingsChangedSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
+
+    /// Publishes when the beta libraries toggle changes (replaces `.TPPUseBetaDidChange` notification)
+    private let useBetaChangedSubject = PassthroughSubject<Bool, Never>()
+
+    /// Publisher for beta libraries toggle. Use instead of observing `.TPPUseBetaDidChange`.
+    var useBetaDidChange: AnyPublisher<Bool, Never> {
+        useBetaChangedSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
     }
 
     static let TPPAboutPalaceURLString = "http://thepalaceproject.org/"
@@ -46,6 +69,7 @@ import Foundation
                 return
             }
             UserDefaults.standard.set(customUrl, forKey: TPPSettings.customMainFeedURLKey)
+            settingsChangedSubject.send()
             NotificationCenter.default.post(name: Notification.Name.TPPSettingsDidChange, object: self)
         }
     }
@@ -59,6 +83,7 @@ import Foundation
                 return
             }
             UserDefaults.standard.set(mainFeedUrl, forKey: TPPSettings.accountMainFeedURLKey)
+            settingsChangedSubject.send()
             NotificationCenter.default.post(name: Notification.Name.TPPSettingsDidChange, object: self)
         }
     }
@@ -87,6 +112,7 @@ import Foundation
         }
         set {
             UserDefaults.standard.set(newValue, forKey: TPPSettings.useBetaLibrariesKey)
+            useBetaChangedSubject.send(newValue)
             NotificationCenter.default.post(name: NSNotification.Name.TPPUseBetaDidChange,
                                             object: self)
         }

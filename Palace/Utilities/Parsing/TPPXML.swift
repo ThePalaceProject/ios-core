@@ -1,19 +1,20 @@
 import Foundation
 
-/// Swift port of TPPXML. A simple wrapper around XMLParser.
+/// A simple wrapper around XMLParser.
 ///
 /// This class does not intelligently support mixed-content elements: All children are always
 /// TPPXML objects representing elements, and all text nodes within the parent are concatenated
 /// into a single value. This is simple and convenient for parsing most data formats (e.g. OPDS),
 /// but it is not suitable for handling markup (e.g. XHTML).
+@objc(TPPXML)
 @objcMembers
-final class TPPXMLSwift: NSObject {
+final class TPPXML: NSObject {
 
   let attributes: [String: String]
-  private(set) var children: [TPPXMLSwift]
+  private(set) var children: [TPPXML]
   let name: String
   let namespaceURI: String?
-  weak private(set) var parent: TPPXMLSwift?
+  weak private(set) var parent: TPPXML?
   let qualifiedName: String?
   private(set) var value: String
 
@@ -21,7 +22,7 @@ final class TPPXMLSwift: NSObject {
   private var mutableChildren: NSMutableArray?
 
   // Internal initializer used during parsing
-  private override init() {
+  override init() {
     self.attributes = [:]
     self.children = []
     self.name = ""
@@ -32,12 +33,12 @@ final class TPPXMLSwift: NSObject {
     super.init()
   }
 
-  private init(
+  init(
     attributes: [String: String],
     name: String,
     namespaceURI: String?,
     qualifiedName: String?,
-    parent: TPPXMLSwift?
+    parent: TPPXML?
   ) {
     self.attributes = attributes
     self.children = []
@@ -50,10 +51,11 @@ final class TPPXMLSwift: NSObject {
   }
 
   /// Parse XML data and return the root element, or nil on failure.
-  static func xml(with data: Data?) -> TPPXMLSwift? {
+  @objc(XMLWithData:)
+  static func xml(with data: Data?) -> TPPXML? {
     guard let data = data else { return nil }
 
-    let document = TPPXMLSwift()
+    let document = TPPXML()
     let parserDelegate = TPPXMLParserDelegate(root: document)
 
     // Mutable copy works around an NSXMLParser bug in 64-bit simulators
@@ -75,23 +77,23 @@ final class TPPXMLSwift: NSObject {
   }
 
   /// Returns all direct children with the given local name.
-  func children(withName name: String?) -> [TPPXMLSwift] {
+  func children(withName name: String?) -> [TPPXML] {
     guard let name = name else { return [] }
     return children.filter { $0.name == name }
   }
 
   /// Returns the first direct child with the given local name, or nil.
-  func firstChild(withName name: String?) -> TPPXMLSwift? {
+  func firstChild(withName name: String?) -> TPPXML? {
     children(withName: name).first
   }
 
   // MARK: - Internal mutation (used by parser delegate)
 
-  fileprivate func appendChild(_ child: TPPXMLSwift) {
+  func appendChild(_ child: TPPXML) {
     children.append(child)
   }
 
-  fileprivate func appendValue(_ string: String) {
+  func appendValue(_ string: String) {
     value += string
   }
 }
@@ -102,9 +104,9 @@ final class TPPXMLSwift: NSObject {
 private final class TPPXMLParserDelegate: NSObject, XMLParserDelegate {
 
   /// Stack of elements being parsed. The last element is the current context.
-  private var stack: [TPPXMLSwift]
+  private var stack: [TPPXML]
 
-  init(root: TPPXMLSwift) {
+  init(root: TPPXML) {
     self.stack = [root]
     super.init()
   }
@@ -117,7 +119,7 @@ private final class TPPXMLParserDelegate: NSObject, XMLParserDelegate {
     attributes attributeDict: [String: String]
   ) {
     let parent = stack.last!
-    let child = TPPXMLSwift(
+    let child = TPPXML(
       attributes: attributeDict,
       name: elementName,
       namespaceURI: namespaceURI,

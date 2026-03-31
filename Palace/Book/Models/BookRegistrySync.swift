@@ -140,7 +140,7 @@ class BookRegistrySync {
         guard let self else { return }
         if self.syncUrl != loansUrl { return }
 
-        if let errorDocument {
+        if let errorDocument = errorDocument as? [AnyHashable: Any] {
           setState(.loaded)
           self.syncUrl = nil
           completion?(errorDocument, false)

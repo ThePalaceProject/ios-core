@@ -10,7 +10,7 @@
 @import PureLayout;
 
 #import "TPPProblemReportViewController.h"
-#import "UIFont+TPPSystemFontOverride.h"
+#import "Palace-Swift.h"
 
 static NSArray *s_problems = nil;
 static NSInteger EstimatedRowHeight = 44;

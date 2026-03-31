@@ -13,14 +13,80 @@ enum NYPLResult<SuccessInfo> {
     case failure(TPPUserFriendlyError, URLResponse?)
 }
 
+/// Actor that serializes access to the token refresh state and retry queue.
+private actor TokenRefreshCoordinator {
+    var isRefreshing = false
+    var retryQueue: [URLSessionTask] = []
+
+    func setRefreshing(_ value: Bool) {
+        isRefreshing = value
+    }
+
+    func appendToRetryQueue(_ task: URLSessionTask) {
+        retryQueue.append(task)
+    }
+
+    func drainRetryQueue() -> [URLSessionTask] {
+        let tasks = retryQueue
+        retryQueue.removeAll()
+        return tasks
+    }
+}
+
+/// Actor that serializes access to the active tasks list.
+private actor ActiveTasksCoordinator {
+    var tasks: [URLSessionTask] = []
+
+    func add(_ task: URLSessionTask) {
+        tasks.append(task)
+    }
+
+    func remove(_ task: URLSessionTask) {
+        if let index = tasks.firstIndex(of: task) {
+            tasks.remove(at: index)
+        }
+    }
+
+    func pauseNonAudioTasks() {
+        for task in tasks {
+            if let url = task.originalRequest?.url,
+               Self.isAudiobookRelated(url: url) {
+                Log.info(#function, "Preserving audiobook network task: \(url.absoluteString)")
+                continue
+            }
+            task.suspend()
+        }
+    }
+
+    func resumeAll() {
+        tasks.forEach { $0.resume() }
+    }
+
+    func cancelNonEssential() -> Int {
+        let toCancel = tasks.filter { task in
+            guard let url = task.originalRequest?.url else { return true }
+            return !Self.isAudiobookRelated(url: url)
+        }
+        toCancel.forEach { $0.cancel() }
+        tasks.removeAll { toCancel.contains($0) }
+        return toCancel.count
+    }
+
+    private static func isAudiobookRelated(url: URL) -> Bool {
+        let s = url.absoluteString
+        return s.contains("audiobook") ||
+            s.contains(".mp3") ||
+            s.contains(".m4a") ||
+            s.contains("audio") ||
+            s.contains("readium") ||
+            s.contains("lcp")
+    }
+}
+
 @objc class TPPNetworkExecutor: NSObject {
     private let urlSession: URLSession
-    private let refreshQueue = DispatchQueue(label: "com.palace.token-refresh-queue", qos: .userInitiated)
-    private var isRefreshing = false
-    private var retryQueue: [URLSessionTask] = []
-    private let retryQueueLock = NSLock()
-    private var activeTasks: [URLSessionTask] = []
-    private let activeTasksLock = NSLock()
+    private let tokenCoordinator = TokenRefreshCoordinator()
+    private let activeTasksCoordinator = ActiveTasksCoordinator()
 
     private let responder: TPPNetworkResponder
     private let accountsManager: TPPLibraryAccountsProvider
@@ -85,67 +151,26 @@ enum NYPLResult<SuccessInfo> {
         let task = executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
 
         if let task = task {
-            addTaskToActiveTasks(task)
+            Task { await activeTasksCoordinator.add(task) }
         }
-    }
-
-    private func addTaskToActiveTasks(_ task: URLSessionTask) {
-        activeTasksLock.lock()
-        activeTasks.append(task)
-        activeTasksLock.unlock()
-    }
-
-    private func removeTaskFromActiveTasks(_ task: URLSessionTask) {
-        activeTasksLock.lock()
-        if let index = activeTasks.firstIndex(of: task) {
-            activeTasks.remove(at: index)
-        }
-        activeTasksLock.unlock()
     }
 
     @objc func pauseAllTasks() {
-        activeTasksLock.lock()
-        activeTasks.forEach { task in
-            if let url = task.originalRequest?.url,
-               url.absoluteString.contains("audiobook") ||
-                url.absoluteString.contains(".mp3") ||
-                url.absoluteString.contains(".m4a") ||
-                url.absoluteString.contains("audio") ||
-                url.absoluteString.contains("readium") ||
-                url.absoluteString.contains("lcp") {
-                Log.info(#file, "Preserving audiobook network task: \(url.absoluteString)")
-                return
-            }
-            task.suspend()
-        }
-        activeTasksLock.unlock()
+        Task { await activeTasksCoordinator.pauseNonAudioTasks() }
     }
 
     @objc func resumeAllTasks() {
-        activeTasksLock.lock()
-        activeTasks.forEach { $0.resume() }
-        activeTasksLock.unlock()
+        Task { await activeTasksCoordinator.resumeAll() }
     }
 
     /// Cancels all active tasks that are not related to audiobook streaming.
     /// Called during account switches to prevent requests from completing with
     /// the wrong account's credentials.
     @objc func cancelNonEssentialTasks() {
-        activeTasksLock.lock()
-        let tasksToCancel = activeTasks.filter { task in
-            guard let url = task.originalRequest?.url?.absoluteString else { return true }
-            let isAudiobook = url.contains("audiobook") ||
-                url.contains(".mp3") ||
-                url.contains(".m4a") ||
-                url.contains("audio") ||
-                url.contains("readium") ||
-                url.contains("lcp")
-            return !isAudiobook
+        Task {
+            let count = await activeTasksCoordinator.cancelNonEssential()
+            Log.info(#file, "Cancelled \(count) non-essential tasks during account switch")
         }
-        tasksToCancel.forEach { $0.cancel() }
-        activeTasks.removeAll { tasksToCancel.contains($0) }
-        activeTasksLock.unlock()
-        Log.info(#file, "Cancelled \(tasksToCancel.count) non-essential tasks during account switch")
     }
 }
 
@@ -357,22 +382,22 @@ extension TPPNetworkExecutor {
 
     func refreshTokenAndResume(task: URLSessionTask?, accountId: String? = nil, completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
         let capturedAccountId = accountId ?? accountsManager.currentAccountId
-        refreshQueue.async { [weak self] in
+        Task { [weak self] in
             guard let self = self else {
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Network executor deallocated"])
                 completion?(NYPLResult.failure(error, nil))
                 return
             }
 
-            if self.isRefreshing {
+            let alreadyRefreshing = await self.tokenCoordinator.isRefreshing
+
+            if alreadyRefreshing {
                 Log.debug(#file, "Token refresh already in progress, queueing task for retry")
                 if let task {
-                    self.retryQueueLock.lock()
-                    self.retryQueue.append(task)
+                    await self.tokenCoordinator.appendToRetryQueue(task)
                     if let completion {
                         self.responder.addCompletion(completion, taskID: task.taskIdentifier)
                     }
-                    self.retryQueueLock.unlock()
                 } else {
                     let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"])
                     completion?(NYPLResult.failure(error, nil))
@@ -380,14 +405,14 @@ extension TPPNetworkExecutor {
                 return
             }
 
-            self.isRefreshing = true
+            await self.tokenCoordinator.setRefreshing(true)
 
             let account = TPPUserAccount.sharedAccount(libraryUUID: capturedAccountId)
             guard let username = account.username,
                   let password = account.pin,
                   let tokenURL = account.authDefinition?.tokenURL else {
                 Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
-                self.isRefreshing = false
+                await self.tokenCoordinator.setRefreshing(false)
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
                 completion?(NYPLResult.failure(error, nil))
                 return
@@ -397,96 +422,71 @@ extension TPPNetworkExecutor {
             Log.info(#file, "Refreshing token for auth type: \(authType), account: \(capturedAccountId ?? "current")")
 
             if let task {
-                self.retryQueueLock.lock()
-                self.retryQueue.append(task)
+                await self.tokenCoordinator.appendToRetryQueue(task)
                 if let completion {
                     self.responder.addCompletion(completion, taskID: task.taskIdentifier)
                 }
-                self.retryQueueLock.unlock()
             }
 
-            self.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: capturedAccountId) { result in
-                defer { self.isRefreshing = false }
+            self.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: capturedAccountId) { [weak self] result in
+                guard let self else { return }
+                Task {
+                    switch result {
+                    case .success(let tokenResponse):
+                        Log.info(#file, "Token refresh successful for account \(capturedAccountId ?? "current"), expires in \(tokenResponse.expiresIn)s")
 
-                switch result {
-                case .success(let tokenResponse):
-                    Log.info(#file, "Token refresh successful for account \(capturedAccountId ?? "current"), expires in \(tokenResponse.expiresIn)s")
+                        let queuedTasks = await self.tokenCoordinator.drainRetryQueue()
+                        let retryCount = queuedTasks.count
+                        var newTasks = [URLSessionTask]()
 
-                    var newTasks = [URLSessionTask]()
+                        for oldTask in queuedTasks {
+                            guard let originalRequest = oldTask.originalRequest,
+                                  let originalURL = originalRequest.url else {
+                                continue
+                            }
 
-                    self.retryQueueLock.lock()
-                    let retryCount = self.retryQueue.count
-                    self.retryQueue.forEach { oldTask in
-                        guard let originalRequest = oldTask.originalRequest,
-                              let originalURL = originalRequest.url else {
-                            return
+                            let mutableRequest = self.request(for: originalURL)
+                            let newTask = self.urlSession.dataTask(with: mutableRequest)
+                            self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
+                            newTasks.append(newTask)
+                            oldTask.cancel()
                         }
 
-                        let mutableRequest = self.request(for: originalURL)
-                        // Note: Retry tracking is now handled by URL-based tracking in TPPNetworkResponder
-                        let newTask = self.urlSession.dataTask(with: mutableRequest)
-                        self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
-                        newTasks.append(newTask)
+                        Log.info(#file, "Retrying \(retryCount) failed request(s) with new token")
+                        newTasks.forEach { $0.resume() }
 
-                        oldTask.cancel()
-                    }
+                        await self.tokenCoordinator.setRefreshing(false)
 
-                    self.retryQueue.removeAll()
-                    self.retryQueueLock.unlock()
+                        if task == nil {
+                            completion?(NYPLResult.success(Data(), nil))
+                        }
 
-                    Log.info(#file, "Retrying \(retryCount) failed request(s) with new token")
-                    newTasks.forEach { $0.resume() }
+                    case .failure(let error):
+                        Log.error(#file, "Failed to refresh token with error: \(error.localizedDescription)")
 
-                    // For proactive refresh (task was nil), call completion to let caller proceed
-                    // The completion handler will trigger the original request with the new token
-                    if task == nil {
-                        completion?(NYPLResult.success(Data(), nil))
-                    }
+                        let failedTasks = await self.tokenCoordinator.drainRetryQueue()
+                        failedTasks.forEach { $0.cancel() }
 
-                case .failure(let error):
-                    Log.error(#file, "Failed to refresh token with error: \(error.localizedDescription)")
+                        await self.tokenCoordinator.setRefreshing(false)
 
-                    self.retryQueueLock.lock()
-                    let failedTasks = self.retryQueue
-                    self.retryQueue.removeAll()
-                    self.retryQueueLock.unlock()
-
-                    failedTasks.forEach { $0.cancel() }
-
-                    if let nsError = error as? NSError, nsError.code == 401 {
-                        Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? "current")")
-                        DispatchQueue.main.async {
-                            TPPUserAccount.sharedAccount(libraryUUID: capturedAccountId).markCredentialsStale()
-                            if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
-                                SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
+                        if let nsError = error as? NSError, nsError.code == 401 {
+                            Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? \"current\")")
+                            await MainActor.run {
+                                TPPUserAccount.sharedAccount(libraryUUID: capturedAccountId).markCredentialsStale()
+                                if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
+                                    SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
+                                }
                             }
                         }
-                    }
 
-                    let nsError = NSError(domain: TPPErrorLogger.clientDomain,
-                                          code: TPPErrorCode.invalidCredentials.rawValue,
-                                          userInfo: [NSLocalizedDescriptionKey: "Token refresh failed: \(error.localizedDescription)"])
-                    completion?(NYPLResult.failure(nsError, nil))
+                        let nsError = NSError(domain: TPPErrorLogger.clientDomain,
+                                              code: TPPErrorCode.invalidCredentials.rawValue,
+                                              userInfo: [NSLocalizedDescriptionKey: "Token refresh failed: \(error.localizedDescription)"])
+                        completion?(NYPLResult.failure(nsError, nil))
+                    }
                 }
             }
         }
-    }
-
-    private func retryFailedRequests() {
-        retryQueueLock.lock()
-        while !retryQueue.isEmpty {
-            let task = retryQueue.removeFirst()
-            retryQueueLock.unlock()
-            guard let request = task.originalRequest else {
-                retryQueueLock.lock()
-                continue
-            }
-            self.executeRequest(request, enableTokenRefresh: true) { _ in
-                Log.info(#file, "Task Successfully resumed after token refresh")
-            }
-            retryQueueLock.lock()
-        }
-        retryQueueLock.unlock()
     }
 
     func executeTokenRefresh(username: String, password: String, tokenURL: URL, accountId: String? = nil, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
@@ -514,17 +514,15 @@ extension TPPNetworkExecutor {
     }
 }
 
+// MARK: - Async/Await API
+
 extension TPPNetworkExecutor {
+
+    /// Async version of GET that bridges to the completion-handler API.
+    /// Timeout is handled by the URLSession configuration, not by a manual timer.
     func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
         return try await withCheckedThrowingContinuation { continuation in
-            var didResume = false
-
             GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
-                guard !didResume else {
-                    return
-                }
-                didResume = true
-
                 switch result {
                 case let .success(data, response):
                     continuation.resume(returning: (data, response))
@@ -532,12 +530,57 @@ extension TPPNetworkExecutor {
                     continuation.resume(throwing: error)
                 }
             }
+        }
+    }
 
-            DispatchQueue.global().asyncAfter(deadline: .now() + 10.0) {
-                guard !didResume else { return }
-                didResume = true
-                let timeoutError = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: nil)
-                continuation.resume(throwing: timeoutError)
+    /// Async version of GET with full request control.
+    func GET(request: URLRequest, cachePolicy: NSURLRequest.CachePolicy = .useProtocolCachePolicy, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
+        return try await withCheckedThrowingContinuation { continuation in
+            GET(request: request, cachePolicy: cachePolicy, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: (data ?? Data(), response))
+                }
+            }
+        }
+    }
+
+    /// Async version of PUT.
+    func PUT(_ reqURL: URL, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
+        return try await withCheckedThrowingContinuation { continuation in
+            PUT(reqURL, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: (data ?? Data(), response))
+                }
+            }
+        }
+    }
+
+    /// Async version of POST.
+    func POST(_ request: URLRequest, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
+        return try await withCheckedThrowingContinuation { continuation in
+            POST(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: (data ?? Data(), response))
+                }
+            }
+        }
+    }
+
+    /// Async version of DELETE.
+    func DELETE(_ request: URLRequest, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
+        return try await withCheckedThrowingContinuation { continuation in
+            DELETE(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: (data ?? Data(), response))
+                }
             }
         }
     }

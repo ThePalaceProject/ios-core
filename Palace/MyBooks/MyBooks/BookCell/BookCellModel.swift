@@ -141,9 +141,7 @@ class BookCellModel: ObservableObject {
         #endif
     }
 
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
+    deinit { }
 
     // MARK: - Image Loading
 
@@ -205,8 +203,11 @@ class BookCellModel: ObservableObject {
     // MARK: - Notification Handling
 
     private func registerForNotifications() {
-        NotificationCenter.default.addObserver(self, selector: #selector(updateButtons),
-                                               name: .TPPReachabilityChanged, object: nil)
+        Reachability.shared.connectivityPublisher
+            .sink { [weak self] _ in
+                self?.updateButtons()
+            }
+            .store(in: &cancellables)
     }
 
     private func bindRegistryState() {

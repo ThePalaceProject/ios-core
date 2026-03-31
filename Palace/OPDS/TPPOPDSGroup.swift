@@ -4,8 +4,8 @@ import Foundation
 
 /// Swift reimplementation of the ObjC TPPOPDSGroup model.
 /// Contains a list of OPDS entries grouped under a title with an href.
-@objc(TPPOPDSGroupSwift)
-public final class TPPOPDSGroupSwift: NSObject {
+@objc(TPPOPDSGroup)
+public final class TPPOPDSGroup: NSObject {
 
   @objc public let entries: [TPPOPDSEntry]
   @objc public let href: URL

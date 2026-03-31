@@ -1,11 +1,20 @@
 import SwiftUI
 import UIKit
 
+@MainActor
 struct HoldsView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator
     typealias DisplayStrings = Strings.HoldsView
 
-    @StateObject private var model = HoldsViewModel()
+    @StateObject private var model: HoldsViewModel
+
+    init() {
+        self._model = StateObject(wrappedValue: HoldsViewModel())
+    }
+
+    init(viewModel: HoldsViewModel) {
+        self._model = StateObject(wrappedValue: viewModel)
+    }
     @StateObject private var logoObserver = CatalogLogoObserver()
     @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
     private var allBooks: [TPPBook] {
@@ -49,8 +58,7 @@ struct HoldsView: View {
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
                 }
-                .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
-                    let account = AccountsManager.shared.currentAccount
+                .onReceive(AccountsManager.shared.currentAccountDidChange) { account in
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""

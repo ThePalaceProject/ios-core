@@ -4,8 +4,8 @@ import Foundation
 
 /// Swift reimplementation of the ObjC TPPOPDSLink model.
 /// Initialized from a TPPXML element representing an OPDS `<link>`.
-@objc(TPPOPDSLinkSwift)
-public final class TPPOPDSLinkSwift: NSObject {
+@objc(TPPOPDSLink)
+public final class TPPOPDSLink: NSObject {
 
   @objc public let attributes: NSDictionary
   @objc public let href: URL
@@ -16,7 +16,7 @@ public final class TPPOPDSLinkSwift: NSObject {
 
   /// Designated initializer.
   /// Returns `nil` if the XML element lacks a valid `href` attribute.
-  @objc public init?(xml linkXML: TPPXML) {
+  @objc init?(xml linkXML: TPPXML) {
     guard let hrefString = linkXML.attributes["href"] as? String,
           let hrefURL = URL(string: hrefString) else {
       Log.warn(#file, "Missing or invalid required 'href' attribute.")

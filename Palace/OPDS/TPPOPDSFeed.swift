@@ -30,8 +30,8 @@ private func typeImplied(by entry: TPPOPDSEntry) -> TPPOPDSFeedType {
 }
 
 /// Swift reimplementation of the ObjC TPPOPDSFeed model.
-@objc(TPPOPDSFeedSwift)
-public final class TPPOPDSFeedSwift: NSObject {
+@objc(TPPOPDSFeed)
+public final class TPPOPDSFeed: NSObject {
 
   @objc public let entries: [TPPOPDSEntry]
   @objc public let identifier: String?
@@ -71,7 +71,7 @@ public final class TPPOPDSFeedSwift: NSObject {
   }
 
   /// Designated initializer. Returns `nil` if the XML is missing required fields.
-  @objc public init?(xml feedXML: TPPXML?) {
+  @objc init?(xml feedXML: TPPXML?) {
     guard let feedXML = feedXML else {
       return nil
     }
@@ -150,11 +150,10 @@ public final class TPPOPDSFeedSwift: NSObject {
 
     // licensor
     if let licensorXML = feedXML.firstChild(withName: "licensor"),
-       let attrs = licensorXML.attributes as? [String: String],
-       !attrs.isEmpty,
-       let vendor = attrs["drm:vendor"],
-       let tokenXML = licensorXML.firstChild(withName: "clientToken"),
-       let clientToken = tokenXML.value {
+       !licensorXML.attributes.isEmpty,
+       let vendor = licensorXML.attributes["drm:vendor"],
+       let tokenXML = licensorXML.firstChild(withName: "clientToken") {
+      let clientToken = tokenXML.value
       self.licensor = ["vendor": vendor, "clientToken": clientToken] as NSDictionary
     } else {
       self.licensor = nil
@@ -165,20 +164,109 @@ public final class TPPOPDSFeedSwift: NSObject {
 
   // MARK: - Network Fetch
 
-  /// Executes a GET request (or PUT for `borrow`) for the given URL.
+  /// Executes a GET request for the given URL.
   @objc public static func withURL(
     _ url: URL?,
     shouldResetCache: Bool,
     useTokenIfAvailable: Bool,
     completionHandler handler: @escaping (TPPOPDSFeed?, NSDictionary?) -> Void
   ) {
-    // Delegate to the existing ObjC implementation since it uses
-    // TPPNetworkExecutor, TPPSession, and error logging infrastructure.
-    TPPOPDSFeed.withURL(
+    guard let url = url else {
+      TPPErrorLogger.logError(
+        withCode: .noURL,
+        summary: "NYPLOPDSFeed: nil URL",
+        metadata: ["shouldResetCache": shouldResetCache]
+      )
+      DispatchQueue.global().async { handler(nil, nil) }
+      return
+    }
+
+    let cachePolicy: NSURLRequest.CachePolicy = shouldResetCache
+      ? .reloadIgnoringLocalCacheData
+      : .useProtocolCachePolicy
+
+    let task = TPPNetworkExecutor.shared.GET(
       url,
-      shouldResetCache: shouldResetCache,
-      useTokenIfAvailable: useTokenIfAvailable,
-      completionHandler: handler
-    )
+      cachePolicy: cachePolicy,
+      useTokenIfAvailable: useTokenIfAvailable
+    ) { data, response, error in
+
+      if let error = error {
+        let problemDict = (error as NSError).problemDocument?.dictionaryValue
+        DispatchQueue.global().async { handler(nil, problemDict as NSDictionary?) }
+        return
+      }
+
+      guard let data = data else {
+        TPPErrorLogger.logError(
+          withCode: .opdsFeedNoData,
+          summary: "NYPLOPDSFeed: no data from server",
+          metadata: [
+            "Response": response ?? "N/A"
+          ]
+        )
+        DispatchQueue.global().async { handler(nil, nil) }
+        return
+      }
+
+      if let httpResp = response as? HTTPURLResponse,
+         httpResp.statusCode < 200 || httpResp.statusCode > 299 {
+        let msg = "Got \(httpResp.statusCode) HTTP status with no error object."
+        let dataString = String(data: data, encoding: .utf8)
+
+        var problemDocDict: NSDictionary? = nil
+        if let resp = response, resp.isProblemDocument() {
+          problemDocDict = try? JSONSerialization.jsonObject(with: data) as? NSDictionary
+        }
+
+        TPPErrorLogger.logNetworkError(
+          error,
+          code: .apiCall,
+          summary: "NYPLOPDSFeed: HTTP response error",
+          request: nil,
+          response: response,
+          metadata: [
+            "receivedData": dataString ?? "N/A",
+            "receivedDataLength (bytes)": data.count,
+            "problemDoc": problemDocDict ?? "N/A",
+            "context": msg
+          ]
+        )
+
+        DispatchQueue.global().async { handler(nil, problemDocDict) }
+        return
+      }
+
+      guard let feedXML = TPPXML.xml(with: data) else {
+        Log.info(#file, "Failed to parse data as XML.")
+        TPPErrorLogger.logError(
+          withCode: .feedParseFail,
+          summary: "NYPLOPDSFeed: Failed to parse data as XML",
+          metadata: [
+            "response": response ?? "N/A"
+          ]
+        )
+        let errorDict = try? JSONSerialization.jsonObject(with: data) as? NSDictionary
+        DispatchQueue.global().async { handler(nil, errorDict) }
+        return
+      }
+
+      guard let feed = TPPOPDSFeed(xml: feedXML) else {
+        Log.info(#file, "Could not interpret XML as OPDS.")
+        TPPErrorLogger.logError(
+          withCode: .opdsFeedParseFail,
+          summary: "NYPLOPDSFeed: Failed to parse XML as OPDS",
+          metadata: [
+            "response": response ?? "N/A"
+          ]
+        )
+        DispatchQueue.global().async { handler(nil, nil) }
+        return
+      }
+
+      DispatchQueue.global().async { handler(feed, nil) }
+    }
+    // ObjC version captured originalRequest for logging; not needed here
+    _ = task
   }
 }

@@ -3,8 +3,8 @@ import Foundation
 // MARK: - TPPOPDSEntryGroupAttributes (Swift port of TPPOPDSEntryGroupAttributes.m)
 
 /// Swift reimplementation of the ObjC TPPOPDSEntryGroupAttributes model.
-@objc(TPPOPDSEntryGroupAttributesSwift)
-public final class TPPOPDSEntryGroupAttributesSwift: NSObject {
+@objc(TPPOPDSEntryGroupAttributes)
+public final class TPPOPDSEntryGroupAttributes: NSObject {
 
   /// May be nil if the group has no href.
   @objc public let href: URL?

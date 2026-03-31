@@ -1,10 +1,12 @@
 import Foundation
 
-/// Swift port of TPPSession. Manages a URLSession with authentication challenge handling.
+/// Manages a URLSession with authentication challenge handling.
+@objc(TPPSession)
 @objcMembers
-final class TPPSessionSwift: NSObject {
+final class TPPSession: NSObject {
 
-  static let shared = TPPSessionSwift()
+  @objc(sharedSession)
+  static let shared = TPPSession()
 
   private static let diskCacheInMegabytes = 15
   private static let memoryCacheInMegabytes = 1
@@ -16,8 +18,8 @@ final class TPPSessionSwift: NSObject {
 
     let configuration = URLSessionConfiguration.default
     if let cache = configuration.urlCache {
-      cache.diskCapacity = 1024 * 1024 * TPPSessionSwift.diskCacheInMegabytes
-      cache.memoryCapacity = 1024 * 1024 * TPPSessionSwift.memoryCacheInMegabytes
+      cache.diskCapacity = 1024 * 1024 * TPPSession.diskCacheInMegabytes
+      cache.memoryCapacity = 1024 * 1024 * TPPSession.memoryCacheInMegabytes
     }
 
     urlSession = URLSession(
@@ -59,8 +61,8 @@ final class TPPSessionSwift: NSObject {
         TPPErrorLogger.logNetworkError(
           error as NSError,
           code: .apiCall,
-          summary: String(describing: TPPSessionSwift.self),
-          request: resultRequest as NSURLRequest?,
+          summary: String(describing: TPPSession.self),
+          request: resultRequest,
           response: response,
           metadata: [
             "receivedData": dataString,
@@ -73,21 +75,21 @@ final class TPPSessionSwift: NSObject {
       handler(data, response, nil)
     }
 
-    let task: URLSessionDataTask
+    let task: URLSessionDataTask?
     if url.lastPathComponent == "borrow" {
       task = TPPNetworkExecutor.shared.PUT(url, useTokenIfAvailable: false, completion: completionWrapper)
     } else {
       task = TPPNetworkExecutor.shared.GET(url, cachePolicy: .useProtocolCachePolicy, useTokenIfAvailable: false, completion: completionWrapper)
     }
 
-    resultRequest = task.originalRequest
-    return task.originalRequest ?? URLRequest(url: url)
+    resultRequest = task?.originalRequest
+    return task?.originalRequest ?? URLRequest(url: url)
   }
 }
 
 // MARK: - URLSessionTaskDelegate
 
-extension TPPSessionSwift: URLSessionTaskDelegate {
+extension TPPSession: URLSessionTaskDelegate {
   func urlSession(
     _ session: URLSession,
     task: URLSessionTask,

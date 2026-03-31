@@ -68,14 +68,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                         DispatchQueue.main.async {
                             viewModel.handleAction(for: type)
                         }
-                    case .return:
-                        if viewModel.isReturning {
-                            didChangeState = true
-                            viewModel.handleAction(for: .return)
-                        } else {
-                            viewModel.bookState = .returning
-                        }
-                    case .remove:
+                    case .return, .remove:
                         didChangeState = true
                         viewModel.handleAction(for: type)
                     default:
@@ -95,14 +88,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                         DispatchQueue.main.async {
                             viewModel.handleAction(for: type)
                         }
-                    case .return:
-                        if viewModel.isReturning {
-                            didChangeState = true
-                            viewModel.handleAction(for: .return)
-                        } else {
-                            viewModel.bookState = .returning
-                        }
-                    case .remove:
+                    case .return, .remove:
                         didChangeState = true
                         viewModel.handleAction(for: type)
                     default:
@@ -157,14 +143,8 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                 cellModel.isManagingHold = false
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
-            guard
-                let info = note.userInfo as? [String: Any],
-                let identifier = info["bookIdentifier"] as? String,
-                identifier == viewModel.book.identifier,
-                let raw = info["state"] as? Int,
-                let newState = TPPBookState(rawValue: raw)
-            else { return }
+        .onReceive(TPPBookRegistry.shared.bookStatePublisher.receive(on: RunLoop.main)) { (identifier, newState) in
+            guard identifier == viewModel.book.identifier else { return }
 
             // Dismiss only when a return/remove fully completed to unregistered
             if viewModel.isReturning && newState == .unregistered {

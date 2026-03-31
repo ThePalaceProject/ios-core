@@ -29,7 +29,7 @@ struct CatalogView: View {
             }
             .sheet(isPresented: $showAddLibrarySheet) { addLibrarySheet }
             .task { await viewModel.load() }
-            .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+            .onReceive(AccountsManager.shared.currentAccountDidChange) { _ in
                 handleAccountChange()
             }
             .onReceive(NotificationCenter.default.publisher(for: .AppTabSelectionDidChange)) { _ in
@@ -240,10 +240,10 @@ private extension CatalogView {
             TPPSettings.shared.accountMainFeedURL = url
         }
 
+        // Setting currentAccount triggers both Combine publisher and NotificationCenter
         AccountsManager.shared.currentAccount = account
         account.loadAuthenticationDocument { _ in }
 
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         Task { await viewModel.refresh() }
     }
 

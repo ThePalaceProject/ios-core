@@ -4,7 +4,7 @@ import Foundation
 
 /// The sentinel value indicating an unknown number of copies.
 /// Matches the ObjC constant `TPPOPDSAcquisitionAvailabilityCopiesUnknown`.
-public let TPPOPDSAcquisitionAvailabilityCopiesUnknownSwift: UInt = UInt.max
+public let TPPOPDSAcquisitionAvailabilityCopiesUnknown: UInt = UInt.max
 
 // MARK: - Dictionary Keys (must match ObjC keys exactly)
 private let avCaseKey = "case"
@@ -55,8 +55,8 @@ private func nullToNil(_ object: Any?) -> Any? {
 
 // MARK: - Unavailable
 
-@objc(TPPOPDSAcquisitionAvailabilityUnavailableSwift)
-public final class TPPOPDSAcquisitionAvailabilityUnavailableSwift: NSObject, TPPOPDSAcquisitionAvailability {
+@objc(TPPOPDSAcquisitionAvailabilityUnavailable)
+public final class TPPOPDSAcquisitionAvailabilityUnavailable: NSObject, TPPOPDSAcquisitionAvailability {
 
   @objc public let copiesHeld: UInt
   @objc public let copiesTotal: UInt
@@ -77,15 +77,14 @@ public final class TPPOPDSAcquisitionAvailabilityUnavailableSwift: NSObject, TPP
     reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
     ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
   ) {
-    // When fully replacing ObjC, this would call unavailable?(self).
-    // Currently a placeholder since ObjC classes are still compiled.
+    unavailable?(self)
   }
 }
 
 // MARK: - Limited
 
-@objc(TPPOPDSAcquisitionAvailabilityLimitedSwift)
-public final class TPPOPDSAcquisitionAvailabilityLimitedSwift: NSObject, TPPOPDSAcquisitionAvailability {
+@objc(TPPOPDSAcquisitionAvailabilityLimited)
+public final class TPPOPDSAcquisitionAvailabilityLimited: NSObject, TPPOPDSAcquisitionAvailability {
 
   @objc public let copiesAvailable: UInt
   @objc public let copiesTotal: UInt
@@ -107,14 +106,14 @@ public final class TPPOPDSAcquisitionAvailabilityLimitedSwift: NSObject, TPPOPDS
     reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
     ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
   ) {
-    // Placeholder for when this replaces the ObjC version.
+    limited?(self)
   }
 }
 
 // MARK: - Unlimited
 
-@objc(TPPOPDSAcquisitionAvailabilityUnlimitedSwift)
-public final class TPPOPDSAcquisitionAvailabilityUnlimitedSwift: NSObject, TPPOPDSAcquisitionAvailability {
+@objc(TPPOPDSAcquisitionAvailabilityUnlimited)
+public final class TPPOPDSAcquisitionAvailabilityUnlimited: NSObject, TPPOPDSAcquisitionAvailability {
 
   @objc public var since: Date? { return nil }
   @objc public var until: Date? { return nil }
@@ -130,14 +129,14 @@ public final class TPPOPDSAcquisitionAvailabilityUnlimitedSwift: NSObject, TPPOP
     reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
     ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
   ) {
-    // Placeholder for when this replaces the ObjC version.
+    unlimited?(self)
   }
 }
 
 // MARK: - Reserved
 
-@objc(TPPOPDSAcquisitionAvailabilityReservedSwift)
-public final class TPPOPDSAcquisitionAvailabilityReservedSwift: NSObject, TPPOPDSAcquisitionAvailability {
+@objc(TPPOPDSAcquisitionAvailabilityReserved)
+public final class TPPOPDSAcquisitionAvailabilityReserved: NSObject, TPPOPDSAcquisitionAvailability {
 
   /// If equal to 1, the user is next in line. This value is never 0.
   @objc public let holdPosition: UInt
@@ -160,14 +159,14 @@ public final class TPPOPDSAcquisitionAvailabilityReservedSwift: NSObject, TPPOPD
     reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
     ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
   ) {
-    // Placeholder for when this replaces the ObjC version.
+    reserved?(self)
   }
 }
 
 // MARK: - Ready
 
-@objc(TPPOPDSAcquisitionAvailabilityReadySwift)
-public final class TPPOPDSAcquisitionAvailabilityReadySwift: NSObject, TPPOPDSAcquisitionAvailability {
+@objc(TPPOPDSAcquisitionAvailabilityReady)
+public final class TPPOPDSAcquisitionAvailabilityReady: NSObject, TPPOPDSAcquisitionAvailability {
 
   @objc public let since: Date?
   @objc public let until: Date?
@@ -185,7 +184,7 @@ public final class TPPOPDSAcquisitionAvailabilityReadySwift: NSObject, TPPOPDSAc
     reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
     ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
   ) {
-    // Placeholder for when this replaces the ObjC version.
+    ready?(self)
   }
 }
 
@@ -193,7 +192,7 @@ public final class TPPOPDSAcquisitionAvailabilityReadySwift: NSObject, TPPOPDSAc
 
 /// Parses availability from an OPDS link XML element.
 /// Returns `TPPOPDSAcquisitionAvailabilityUnlimited` as the default.
-public func NYPLOPDSAcquisitionAvailabilityWithLinkXMLSwift(_ linkXML: TPPXML) -> TPPOPDSAcquisitionAvailability {
+func NYPLOPDSAcquisitionAvailabilityWithLinkXML(_ linkXML: TPPXML) -> TPPOPDSAcquisitionAvailability {
   let copiesUnknown = TPPOPDSAcquisitionAvailabilityCopiesUnknown
 
   var copiesHeld: UInt = copiesUnknown
@@ -266,7 +265,7 @@ public func NYPLOPDSAcquisitionAvailabilityWithLinkXMLSwift(_ linkXML: TPPXML) -
 
 /// Deserializes availability from a dictionary.
 /// Returns `nil` if the dictionary is invalid.
-public func NYPLOPDSAcquisitionAvailabilityWithDictionarySwift(_ dictionary: NSDictionary) -> TPPOPDSAcquisitionAvailability? {
+public func NYPLOPDSAcquisitionAvailabilityWithDictionary(_ dictionary: NSDictionary) -> TPPOPDSAcquisitionAvailability? {
   guard let caseString = dictionary[avCaseKey] as? String else {
     return nil
   }
@@ -328,7 +327,7 @@ public func NYPLOPDSAcquisitionAvailabilityWithDictionarySwift(_ dictionary: NSD
 }
 
 /// Serializes availability to a dictionary representation.
-public func NYPLOPDSAcquisitionAvailabilityDictionaryRepresentationSwift(
+public func NYPLOPDSAcquisitionAvailabilityDictionaryRepresentation(
   _ availability: TPPOPDSAcquisitionAvailability
 ) -> NSDictionary {
   var result: NSDictionary = [:]

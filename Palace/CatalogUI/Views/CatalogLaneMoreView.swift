@@ -64,9 +64,8 @@ struct CatalogLaneMoreView: View {
             Log.debug(#file, "🔴 CatalogLaneMoreView.onDisappear() - Being dismissed")
             SamplePreviewManager.shared.close()
         }
-        .onReceive(registryChangePublisher) { note in
-            let changedId = (note.userInfo as? [String: Any])?["bookIdentifier"] as? String
-            viewModel.applyRegistryUpdates(changedIdentifier: changedId)
+        .onReceive(registryChangePublisher) { (bookID, _) in
+            viewModel.applyRegistryUpdates(changedIdentifier: bookID)
         }
         .onReceive(downloadProgressPublisher) { changedId in
             viewModel.applyRegistryUpdates(changedIdentifier: changedId)
@@ -85,9 +84,8 @@ struct CatalogLaneMoreView: View {
 
     // MARK: - Publishers
 
-    private var accountChangePublisher: AnyPublisher<Notification, Never> {
-        NotificationCenter.default
-            .publisher(for: .TPPCurrentAccountDidChange)
+    private var accountChangePublisher: AnyPublisher<Account?, Never> {
+        AccountsManager.shared.currentAccountDidChange
             .eraseToAnyPublisher()
     }
 
@@ -98,9 +96,8 @@ struct CatalogLaneMoreView: View {
             .eraseToAnyPublisher()
     }
 
-    private var registryChangePublisher: AnyPublisher<Notification, Never> {
-        NotificationCenter.default
-            .publisher(for: .TPPBookRegistryStateDidChange)
+    private var registryChangePublisher: AnyPublisher<(String, TPPBookState), Never> {
+        TPPBookRegistry.shared.bookStatePublisher
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .eraseToAnyPublisher()
     }

@@ -19,7 +19,10 @@ struct TPPSettingsView: View {
     @State private var librariesRefreshToken: UUID = UUID()
     @State private var currentAccounts: [Account] = []
 
-    init() {
+    private let settingsViewModel: SettingsViewModel?
+
+    init(viewModel: SettingsViewModel? = nil) {
+        self.settingsViewModel = viewModel
         _currentAccounts = State(initialValue: TPPSettings.shared.settingsAccountsList)
     }
 
@@ -69,11 +72,11 @@ struct TPPSettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
             self.orientation = UIDevice.current.orientation
         }
-        .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+        .onReceive(AccountsManager.shared.currentAccountDidChange) { _ in
             updateAccountsList()
             librariesRefreshToken = UUID()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)) { _ in
+        .onReceive(TPPBookRegistry.shared.registryPublisher.map { _ in () }) { _ in
             updateAccountsList()
             librariesRefreshToken = UUID()
         }
