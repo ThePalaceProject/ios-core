@@ -470,7 +470,7 @@ extension TPPNetworkExecutor {
                         await self.tokenCoordinator.setRefreshing(false)
 
                         if let nsError = error as? NSError, nsError.code == 401 {
-                            Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? \"current\")")
+                            Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? "current")")
                             await MainActor.run {
                                 TPPUserAccount.sharedAccount(libraryUUID: capturedAccountId).markCredentialsStale()
                                 if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
