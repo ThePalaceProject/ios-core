@@ -13,20 +13,23 @@ import Foundation
 class TPPMigrationManager: NSObject {
     private static let lastLaunchBuildKey = "TPPMigrationManager.lastLaunchBuild"
 
-    @objc static func migrate() {
+    @objc static func migrate(settings: TPPSettings = .shared,
+                              networkExecutor: TPPNetworkExecutor = .shared,
+                              bookRegistry: TPPBookRegistry = .shared) {
         // Fetch target version
         let targetVersion = Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String
 
-        runMigrations()
-        performPostUpdateTasksIfNeeded()
+        runMigrations(settings: settings)
+        performPostUpdateTasksIfNeeded(networkExecutor: networkExecutor, bookRegistry: bookRegistry)
 
         // Update app version
-        TPPSettings.shared.appVersion = targetVersion
+        settings.appVersion = targetVersion
     }
 
     /// Detects when the app binary has been updated (different build number from last launch)
     /// and performs recovery tasks to prevent "credentials invalid" / "can't open book" errors.
-    private static func performPostUpdateTasksIfNeeded() {
+    private static func performPostUpdateTasksIfNeeded(networkExecutor: TPPNetworkExecutor = .shared,
+                                                        bookRegistry: TPPBookRegistry = .shared) {
         let currentBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
         let lastBuild = UserDefaults.standard.string(forKey: lastLaunchBuildKey)
 
@@ -45,12 +48,12 @@ class TPPMigrationManager: NSObject {
         let userAccount = TPPUserAccount.sharedAccount()
         if userAccount.hasCredentials(), userAccount.authTokenNearExpiry || userAccount.authTokenHasExpired {
             Log.info(#file, "Post-update: auth token expired/near-expiry — triggering refresh")
-            TPPNetworkExecutor.shared.refreshTokenAndResume(task: nil)
+            networkExecutor.refreshTokenAndResume(task: nil)
         }
 
         // Validate downloaded content is still accessible
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3.0) {
-            TPPBookRegistry.shared.validateDownloadedContent()
+            bookRegistry.validateDownloadedContent()
         }
     }
 

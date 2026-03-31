@@ -662,16 +662,17 @@ private let nullString = "null"
      account info to our crash reports.
      - parameter metadata: report metadata dictionary
      */
-    private class func addAccountInfoToMetadata(_ metadata: inout [String: Any]) {
-        let currentLibrary = AccountsManager.shared.currentAccount
+    private class func addAccountInfoToMetadata(_ metadata: inout [String: Any],
+                                                  accountsManager: AccountsManager = .shared) {
+        let currentLibrary = accountsManager.currentAccount
         metadata["currentAccountName"] = currentLibrary?.name ?? nullString
         metadata["currentAccountUUID"] = currentLibrary?.uuid ?? nullString
-        metadata["currentAccountId (from UserDefaults)"] = AccountsManager.shared.currentAccountId ?? nullString
+        metadata["currentAccountId (from UserDefaults)"] = accountsManager.currentAccountId ?? nullString
         metadata["currentAccountCatalogURL"] = currentLibrary?.catalogUrl ?? nullString
         metadata["currentAccountAuthDocURL"] = currentLibrary?.authenticationDocumentUrl ?? nullString
         metadata["currentAccountLoansURL"] = currentLibrary?.loansUrl ?? nullString
         metadata["currentAccountDetails"] = currentLibrary?.details?.debugDescription ?? nullString
-        metadata["numAccounts"] = AccountsManager.shared.accounts().count
+        metadata["numAccounts"] = accountsManager.accounts().count
     }
 
     /// Creates a dictionary with information to be logged in relation to an event.

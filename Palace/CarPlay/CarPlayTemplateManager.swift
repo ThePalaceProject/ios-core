@@ -55,6 +55,8 @@ final class CarPlayTemplateManager: NSObject {
         self.bookRegistry = bookRegistry
         self.imageProvider = CarPlayImageProvider()
         self.playerBridge = CarPlayAudiobookBridge()
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
 
         super.init()
 

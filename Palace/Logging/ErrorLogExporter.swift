@@ -22,8 +22,14 @@ actor ErrorLogExporter {
 
     private let maxLogSizeBytes: Int = 5_000_000
     private let defaultLogDays: Int = 7
+    private let accountsManager: AccountsManager
+    private let bookRegistry: TPPBookRegistry
 
-    private init() {}
+    init(accountsManager: AccountsManager = .shared,
+         bookRegistry: TPPBookRegistry = .shared) {
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
+    }
 
     // MARK: - Public API
 
@@ -231,7 +237,7 @@ actor ErrorLogExporter {
     private func collectRegistryState() async -> String {
         var logs = ""
 
-        let registry = TPPBookRegistry.shared
+        let registry = bookRegistry
         let allBooks = registry.allBooks
         let downloadedBooks = allBooks.filter { registry.state(for: $0.identifier) == .downloadSuccessful }
 
@@ -273,7 +279,7 @@ actor ErrorLogExporter {
 
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
-        let libraryName = AccountsManager.shared.currentAccount?.name ?? "No library selected"
+        let libraryName = accountsManager.currentAccount?.name ?? "No library selected"
         let patronIdentifier = await MainActor.run {
             TPPUserAccount.sharedAccount().authorizationIdentifier
         }
