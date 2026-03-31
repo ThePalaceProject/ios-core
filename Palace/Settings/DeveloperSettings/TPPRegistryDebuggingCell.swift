@@ -103,6 +103,8 @@ class TPPRegistryDebuggingCell: UITableViewCell {
     }
 
     required init?(coder: NSCoder) {
+        self.settings = TPPSettings.shared
+        self.accountsManager = AccountsManager.shared
         super.init(coder: coder)
     }
 

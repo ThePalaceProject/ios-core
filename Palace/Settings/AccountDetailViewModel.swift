@@ -431,7 +431,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
                 account.details?.userAboveAgeLimit = aboveAgeLimit
                 if !aboveAgeLimit {
                     MyBooksDownloadCenter.shared.reset(account.uuid)
-                    bookRegistry.reset(account.uuid)
+                    self?.bookRegistry.reset(account.uuid)
                 }
                 self?.setupTableData()
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
