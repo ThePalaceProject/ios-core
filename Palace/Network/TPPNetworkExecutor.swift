@@ -89,7 +89,10 @@ private actor ActiveTasksCoordinator {
     private let activeTasksCoordinator = ActiveTasksCoordinator()
 
     private let responder: TPPNetworkResponder
-    private let accountsManager: TPPLibraryAccountsProvider
+    private var _accountsManager: TPPLibraryAccountsProvider?
+    private var accountsManager: TPPLibraryAccountsProvider {
+        _accountsManager ?? AccountsManager.shared
+    }
 
     @objc init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
                cachingStrategy: NYPLCachingStrategy,
@@ -103,7 +106,8 @@ private actor ActiveTasksCoordinator {
         self.urlSession = URLSession(configuration: config,
                                      delegate: self.responder,
                                      delegateQueue: delegateQueue)
-        self.accountsManager = AccountsManager.shared
+        // accountsManager is lazy — accessed on first use, not during init
+        // This avoids circular singleton deadlock: TPPNetworkExecutor ↔ AccountsManager
         super.init()
     }
 
@@ -117,7 +121,7 @@ private actor ActiveTasksCoordinator {
         self.urlSession = URLSession(configuration: sessionConfiguration,
                                      delegate: self.responder,
                                      delegateQueue: delegateQueue)
-        self.accountsManager = AccountsManager.shared
+        // accountsManager is lazy — avoids circular init deadlock
         super.init()
     }
 
@@ -134,7 +138,7 @@ private actor ActiveTasksCoordinator {
         self.urlSession = URLSession(configuration: config,
                                      delegate: self.responder,
                                      delegateQueue: delegateQueue)
-        self.accountsManager = accountsManager
+        self._accountsManager = accountsManager
         super.init()
     }
 
