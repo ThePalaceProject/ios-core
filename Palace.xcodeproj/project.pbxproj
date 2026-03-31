@@ -16,6 +16,12 @@
 		028DCB81712F3A51CE5EC66C /* CollectionDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82D42D5590F305FC6D6A084C /* CollectionDetailViewModel.swift */; };
 		02D14CD22195F76331A1FC59 /* NSURLRequest+NYPLURLRequestAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 045A2DEE28BCDE0DC4D27A2C /* NSURLRequest+NYPLURLRequestAdditions.swift */; };
 		0331DEBBEA03EF55291935C5 /* TPPNull.swift in Sources */ = {isa = PBXBuildFile; fileRef = 505AE9FF65D8DB7E0300B1F9 /* TPPNull.swift */; };
+		NEWTST002CONFIGTEST0001 /* TPPConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST001CONFIGTEST0001 /* TPPConfigurationTests.swift */; };
+		NEWTST004KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST003KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift */; };
+		NEWTST006OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST005OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift */; };
+		NEWTST008PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST007PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift */; };
+		NEWTST010XMLSWFTEST0001 /* TPPXMLSwiftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST009XMLSWFTEST0001 /* TPPXMLSwiftTests.swift */; };
+		NEWTST012OPDSACQTEST001 /* OPDSAcquisitionPathExpandedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST011OPDSACQTEST001 /* OPDSAcquisitionPathExpandedTests.swift */; };
 		0345BFE81DBF027200398B6F /* APIKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0345BFD61DBF002E00398B6F /* APIKeys.swift */; };
 		0352BBDC11FC4E038741E817 /* TPPCrossLibrarySignOutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4A88D788BA48D5B4CCCD59 /* TPPCrossLibrarySignOutTests.swift */; };
 		03690E291EB2B44300F75D5F /* TPPReadiumBookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03690E281EB2B44300F75D5F /* TPPReadiumBookmark.swift */; };
@@ -920,6 +926,15 @@
 		C998049BB2CFF2AE01EA1C36 /* TypographySettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D440766BDBF7EFBBA87B19A /* TypographySettingsViewModelTests.swift */; };
 		C9A9B85299EEDD6939D79149 /* (null) in Sources */ = {isa = PBXBuildFile; };
 		CA570D1811073780FB65E844 /* TPPSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE764680226ABB8896690555 /* TPPSession.swift */; };
+		CARPLAY0001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F8D8A0D1A094920B67DC0E2 /* CarPlaySceneDelegate.swift */; };
+		CARPLAY0002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B6CFD936164F32A7FD6A84 /* CarPlayTemplateManager.swift */; };
+		CARPLAY0003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B2D269BFF440A381A893E3 /* CarPlayAudiobookBridge.swift */; };
+		CARPLAY0004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 639A868F3BDA4A7F97660BEA /* CarPlayImageProvider.swift */; };
+		CARPLAY1001SCENEDELEGATE /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F8D8A0D1A094920B67DC0E2 /* CarPlaySceneDelegate.swift */; };
+		CARPLAY1002TEMPLATEMGR01 /* CarPlayTemplateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B6CFD936164F32A7FD6A84 /* CarPlayTemplateManager.swift */; };
+		CARPLAY1003AUDIOBKBRIDGE /* CarPlayAudiobookBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06B2D269BFF440A381A893E3 /* CarPlayAudiobookBridge.swift */; };
+		CARPLAY1004IMAGEPROVIDER /* CarPlayImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 639A868F3BDA4A7F97660BEA /* CarPlayImageProvider.swift */; };
+		CARPLAYTESTS00002SOURCES /* CarPlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CARPLAYTESTS00001SWIFT01 /* CarPlayTests.swift */; };
 		CB0E52E82642EB6B2E1C7BA9 /* NowPlayingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB9B49899F1C10F43D4FAAD8 /* NowPlayingCoordinator.swift */; };
 		CB593061F0478066BAD53008 /* ReadingPosition.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5995312FDBEDCFD6A689A68 /* ReadingPosition.swift */; };
 		CC24969C17E24D89872DE10E /* MyBooksSimplifiedBearerTokenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12BEBBCCBA734E42BB9C6C03 /* MyBooksSimplifiedBearerTokenTests.swift */; };
@@ -1720,6 +1735,12 @@
 		0225A61645EB97E6C30F27FB /* TPPProblemReportViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPProblemReportViewController.swift; sourceTree = "<group>"; };
 		0230FAAD08067F389DA9172B /* DiscoveryPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryPrompt.swift; sourceTree = "<group>"; };
 		02B8F946D19048E4AE73B6C7 /* TPPSettingsMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsMock.swift; sourceTree = "<group>"; };
+		NEWTST001CONFIGTEST0001 /* TPPConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPConfigurationTests.swift; sourceTree = "<group>"; };
+		NEWTST003KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPKeychainSwiftTests.swift; sourceTree = "<group>"; };
+		NEWTST005OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPOpenSearchDescriptionExpandedTests.swift; sourceTree = "<group>"; };
+		NEWTST007PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFDataProviderTests.swift; sourceTree = "<group>"; };
+		NEWTST009XMLSWFTEST0001 /* TPPXMLSwiftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPXMLSwiftTests.swift; sourceTree = "<group>"; };
+		NEWTST011OPDSACQTEST001 /* OPDSAcquisitionPathExpandedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPDSAcquisitionPathExpandedTests.swift; sourceTree = "<group>"; };
 		0345BFD61DBF002E00398B6F /* APIKeys.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = APIKeys.swift; sourceTree = "<group>"; };
 		035B83D674A05FDCC61F3A8D /* NSURLRequest+NYPLURLRequestAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSURLRequest+NYPLURLRequestAdditions.swift"; sourceTree = "<group>"; };
 		03690E221EB2B35000F75D5F /* TPPReaderBookmarkCell.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPReaderBookmarkCell.swift; sourceTree = "<group>"; };
@@ -3001,6 +3022,7 @@
 			isa = PBXGroup;
 			children = (
 				2FDA12704CE45280D151E7AC /* OPDSParsingTests.swift */,
+				NEWTST011OPDSACQTEST001 /* OPDSAcquisitionPathExpandedTests.swift */,
 			);
 			name = OPDS;
 			sourceTree = "<group>";
@@ -4518,6 +4540,9 @@
 				F84A9BADA3014DCF9808C7DC /* NSErrorAdditionsTests.swift */,
 				7384C7FF242BB43300D5F960 /* TPPCachingTests.swift */,
 				73A794C925492C9800C59CC1 /* TPPFake.swift */,
+				11C5DD171977335E005A9945 /* TPPKeychainTests.m */,
+				NEWTST001CONFIGTEST0001 /* TPPConfigurationTests.swift */,
+				NEWTST005OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift */,
 				E5A0CEA22AA9853200C304EC /* MyBooksDownloadCenterTests */,
 				7307A5EC23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift */,
 				7357719F2537635600067CEA /* TPPSignInBusinessLogicTests.swift */,
@@ -4791,6 +4816,11 @@
 				2B222C03630C4B2984C38A28 /* EmailAddressTests.swift */,
 				118EDF27766F4A129C46852F /* TPPBookContentMetadataFilesHelperTests.swift */,
 				B5D6A3DE24CC45D98F02DC98 /* StringExtensionsTests.swift */,
+				NEWTST009XMLSWFTEST0001 /* TPPXMLSwiftTests.swift */,
+				QATEST07FR00000000000001 /* GeneralCacheTests.swift */,
+				QATEST08FR00000000000001 /* SafeDictionaryTests.swift */,
+				QATEST10FR00000000000001 /* EmailAddressTests.swift */,
+				QATEST20FR00000000000001 /* TPPBookContentMetadataFilesHelperTests.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -4857,6 +4887,7 @@
 				QAPDF001T260955EF00000001 /* TPPPDFDocumentMetadataTests.swift */,
 				80EA8E55783D47B7A773164F /* PDFExtensionsTests.swift */,
 				A9BFD0F3410046E6AD2F25B0 /* TPPPDFLocationTests.swift */,
+				NEWTST007PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift */,
 			);
 			path = PDF;
 			sourceTree = "<group>";
@@ -5489,6 +5520,8 @@
 			isa = PBXGroup;
 			children = (
 				B4B50C3748C44CC18D709C5F /* TPPKeychainStoredVariableTests.swift */,
+				QATEST16FR00000000000001 /* TPPKeychainStoredVariableTests.swift */,
+				NEWTST003KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift */,
 			);
 			path = Keychain;
 			sourceTree = "<group>";
@@ -6273,6 +6306,12 @@
 				BKTST00012F27000000BF03 /* TPPBookAuthorTests.swift in Sources */,
 				BKTST00012F27000000BF04 /* TPPBookSerializationTests.swift in Sources */,
 				BKTST00012F27000000BF05 /* TPPBookExtensionsTests.swift in Sources */,
+				NEWTST002CONFIGTEST0001 /* TPPConfigurationTests.swift in Sources */,
+				NEWTST004KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift in Sources */,
+				NEWTST006OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift in Sources */,
+				NEWTST008PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift in Sources */,
+				NEWTST010XMLSWFTEST0001 /* TPPXMLSwiftTests.swift in Sources */,
+				NEWTST012OPDSACQTEST001 /* OPDSAcquisitionPathExpandedTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
