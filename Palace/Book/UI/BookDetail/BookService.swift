@@ -6,8 +6,13 @@ import PalaceAudiobookToolkit
 enum BookService {
     private static var openingBooks = Set<String>()
 
-    static func open(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
-
+    static func open(
+        _ book: TPPBook,
+        registry: TPPBookRegistryProvider = TPPBookRegistry.shared,
+        downloadCenter: MyBooksDownloadCenter = .shared,
+        accountsManager: AccountsManager = .shared,
+        onFinish: (() -> Void)? = nil
+    ) {
         // Prevent multiple simultaneous opens of the same book
         guard !openingBooks.contains(book.identifier) else {
             Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
@@ -16,12 +21,12 @@ enum BookService {
         }
 
         openingBooks.insert(book.identifier)
-        let resolvedBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) ?? book
+        let resolvedBook = registry.book(forIdentifier: book.identifier) ?? book
 
-        openAfterTokenRefresh(resolvedBook, onFinish: onFinish)
+        openAfterTokenRefresh(resolvedBook, registry: registry, downloadCenter: downloadCenter, accountsManager: accountsManager, onFinish: onFinish)
     }
 
-    private static func openAfterTokenRefresh(_ book: TPPBook, onFinish: (() -> Void)?) {
+    private static func openAfterTokenRefresh(_ book: TPPBook, registry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared, accountsManager: AccountsManager = .shared, onFinish: (() -> Void)?) {
         let userAccount = TPPUserAccount.sharedAccount()
 
         if book.defaultBookContentType == .audiobook && userAccount.authTokenHasExpired {
@@ -37,7 +42,7 @@ enum BookService {
                 return
             }
 
-            TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
+            TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: accountsManager.currentAccount?.uuid) { result in
                 switch result {
                 case .success:
                     Log.info(#file, "✅ Token refresh successful - re-fetching manifest with fresh token")
@@ -52,7 +57,7 @@ enum BookService {
                         }
 
                         Log.info(#file, "✅ Manifest re-fetched with fresh bearer token - opening audiobook")
-                        presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+                        presentAudiobookFrom(book: book, json: json, decryptor: nil, accountsManager: accountsManager, onFinish: onFinish)
                     }
 
                 case .failure(let error):
@@ -75,13 +80,13 @@ enum BookService {
             }
         case .pdf:
             Task { @MainActor in
-                presentPDF(book) {
+                presentPDF(book, downloadCenter: downloadCenter) {
                     openingBooks.remove(book.identifier)
                     onFinish?()
                 }
             }
         case .audiobook:
-            presentAudiobook(book) {
+            presentAudiobook(book, registry: registry, downloadCenter: downloadCenter, accountsManager: accountsManager) {
                 openingBooks.remove(book.identifier)
                 onFinish?()
             }
@@ -91,8 +96,8 @@ enum BookService {
         }
     }
 
-    @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
-        guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { completion?(); return }
+    @MainActor private static func presentPDF(_ book: TPPBook, downloadCenter: MyBooksDownloadCenter = .shared, completion: (() -> Void)? = nil) {
+        guard let url = downloadCenter.fileUrl(for: book.identifier) else { completion?(); return }
         let data = try? Data(contentsOf: url)
         let metadata = TPPPDFDocumentMetadata(with: book)
         let document = TPPPDFDocument(data: data ?? Data())
@@ -103,7 +108,7 @@ enum BookService {
         completion?()
     }
 
-    private static func presentAudiobook(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
+    private static func presentAudiobook(_ book: TPPBook, registry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared, accountsManager: AccountsManager = .shared, onFinish: (() -> Void)? = nil) {
         Log.debug(#file, "🎵 [AUDIOBOOK] Attempting to present audiobook: \(book.title) (ID: \(book.identifier))")
         Log.debug(#file, "  Distributor: \(book.distributor ?? "nil")")
 
@@ -112,17 +117,17 @@ enum BookService {
         if LCPAudiobooks.canOpenBook(book) {
             Log.debug(#file, "  ✅ LCP audiobook detected")
 
-            if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+            if let localURL = downloadCenter.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
                 Log.debug(#file, "  → Using LOCAL LCP file: \(localURL.path)")
-                buildAndPresentAudiobook(book: book, lcpSourceURL: localURL, onFinish: onFinish)
+                buildAndPresentAudiobook(book: book, lcpSourceURL: localURL, downloadCenter: downloadCenter, accountsManager: accountsManager, onFinish: onFinish)
                 return
             } else {
                 Log.debug(#file, "  No local LCP file found")
             }
 
-            if let license = licenseURL(forBookIdentifier: book.identifier) {
+            if let license = licenseURL(forBookIdentifier: book.identifier, downloadCenter: downloadCenter) {
                 Log.debug(#file, "  → Using LCP LICENSE file: \(license.path)")
-                buildAndPresentAudiobook(book: book, lcpSourceURL: license, onFinish: onFinish)
+                buildAndPresentAudiobook(book: book, lcpSourceURL: license, downloadCenter: downloadCenter, accountsManager: accountsManager, onFinish: onFinish)
                 return
             } else {
                 Log.debug(#file, "  No LCP license file found")
@@ -135,7 +140,7 @@ enum BookService {
         #endif
 
         Log.debug(#file, "  Checking for local audiobook manifest...")
-        if let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+        if let url = downloadCenter.fileUrl(for: book.identifier),
            FileManager.default.fileExists(atPath: url.path) {
             Log.debug(#file, "  Local file exists at: \(url.path)")
 
@@ -156,7 +161,7 @@ enum BookService {
             }
 
             Log.debug(#file, "  ✅ Successfully parsed local manifest JSON")
-            presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+            presentAudiobookFrom(book: book, json: json, decryptor: nil, accountsManager: accountsManager, onFinish: onFinish)
             return
         } else {
             Log.debug(#file, "  No local audiobook file found")
@@ -172,12 +177,12 @@ enum BookService {
                 return
             }
             Log.debug(#file, "  ✅ Successfully fetched and parsed open access manifest")
-            presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
+            presentAudiobookFrom(book: book, json: json, decryptor: nil, accountsManager: accountsManager, onFinish: onFinish)
         }
     }
 
     #if LCP
-    private static func buildAndPresentAudiobook(book: TPPBook, lcpSourceURL: URL, onFinish: (() -> Void)?) {
+    private static func buildAndPresentAudiobook(book: TPPBook, lcpSourceURL: URL, downloadCenter: MyBooksDownloadCenter = .shared, accountsManager: AccountsManager = .shared, onFinish: (() -> Void)?) {
         Log.debug(#file, "🔐 [LCP AUDIOBOOK] Building LCP-protected audiobook")
         Log.debug(#file, "  LCP source: \(lcpSourceURL.path)")
 
@@ -194,7 +199,7 @@ enum BookService {
 
         if let cached = lcpAudiobooks.cachedContentDictionary() as? [String: Any] {
             Log.debug(#file, "  → Using CACHED content dictionary from LCP")
-            presentAudiobookFrom(book: book, json: cached, decryptor: lcpAudiobooks, onFinish: onFinish)
+            presentAudiobookFrom(book: book, json: cached, decryptor: lcpAudiobooks, accountsManager: accountsManager, onFinish: onFinish)
             return
         }
 
@@ -219,7 +224,7 @@ enum BookService {
 
                 Log.debug(#file, "  ✅ Successfully retrieved LCP content dictionary")
                 Log.debug(#file, "    Dictionary keys: \(json.keys.joined(separator: ", "))")
-                presentAudiobookFrom(book: book, json: json, decryptor: lcpAudiobooks, onFinish: onFinish)
+                presentAudiobookFrom(book: book, json: json, decryptor: lcpAudiobooks, accountsManager: accountsManager, onFinish: onFinish)
             }
         }
     }
@@ -229,6 +234,7 @@ enum BookService {
         book: TPPBook,
         json: [String: Any],
         decryptor: DRMDecryptor?,
+        accountsManager: AccountsManager = .shared,
         onFinish: (() -> Void)? = nil
     ) {
         Log.debug(#file, "🏗️ [AUDIOBOOK FACTORY] Building audiobook from manifest")
@@ -320,7 +326,7 @@ enum BookService {
                 let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
                 var timeTracker: AudiobookTimeTracker?
                 if
-                    let libraryId = AccountsManager.shared.currentAccount?.uuid,
+                    let libraryId = accountsManager.currentAccount?.uuid,
                     let url = book.timeTrackingURL {
                     timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: url)
                 }
@@ -534,9 +540,9 @@ enum BookService {
         task.resume()
     }
 
-    private static func licenseURL(forBookIdentifier identifier: String) -> URL? {
+    private static func licenseURL(forBookIdentifier identifier: String, downloadCenter: MyBooksDownloadCenter = .shared) -> URL? {
         #if LCP
-        guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else { return nil }
+        guard let contentURL = downloadCenter.fileUrl(for: identifier) else { return nil }
         let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         return FileManager.default.fileExists(atPath: license.path) ? license : nil
         #else
@@ -545,9 +551,9 @@ enum BookService {
     }
 
     /// Determines if bookmark position should be restored for this book
-    private static func shouldRestoreBookmarkPosition(for book: TPPBook) -> Bool {
-        let bookState = TPPBookRegistry.shared.state(for: book.identifier)
-        let hasLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier) != nil
+    private static func shouldRestoreBookmarkPosition(for book: TPPBook, registry: TPPBookRegistryProvider = TPPBookRegistry.shared) -> Bool {
+        let bookState = registry.state(for: book.identifier)
+        let hasLocation = registry.location(forIdentifier: book.identifier) != nil
 
         Log.debug(#file, "Position check for \(book.title): state=\(bookState), hasLocation=\(hasLocation)")
 
@@ -570,8 +576,8 @@ enum BookService {
     }
 
     /// Gets valid local position if available
-    private static func getValidLocalPosition(book: TPPBook, audiobook: Audiobook) -> TrackPosition? {
-        guard let dict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary(),
+    private static func getValidLocalPosition(book: TPPBook, audiobook: Audiobook, registry: TPPBookRegistryProvider = TPPBookRegistry.shared) -> TrackPosition? {
+        guard let dict = registry.location(forIdentifier: book.identifier)?.locationStringDictionary(),
               let localBookmark = AudioBookmark.create(locatorData: dict),
               let localPosition = TrackPosition(
                 audioBookmark: localBookmark,

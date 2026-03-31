@@ -57,6 +57,7 @@ class BookCellModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     let imageCache: ImageCacheType
     let bookRegistry: TPPBookRegistryProvider
+    let downloadCenter: MyBooksDownloadCenter
     private var isFetchingImage = false
     #if LCP
     private var didPrefetchLCPStreaming = false
@@ -109,9 +110,10 @@ class BookCellModel: ObservableObject {
     ///   - book: The book to display
     ///   - imageCache: Cache for book cover images
     ///   - bookRegistry: Registry for book state (defaults to shared instance)
-    init(book: TPPBook, imageCache: ImageCacheType, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    init(book: TPPBook, imageCache: ImageCacheType, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared) {
         self.book = book
         self.bookRegistry = bookRegistry
+        self.downloadCenter = downloadCenter
         self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
         self.currentBookIdentifier = book.identifier
         self.imageCache = imageCache
@@ -239,7 +241,7 @@ class BookCellModel: ObservableObject {
             .store(in: &cancellables)
 
         // Subscribe to download errors so the half sheet can present them via SwiftUI .alert
-        MyBooksDownloadCenter.shared.downloadErrorPublisher
+        downloadCenter.downloadErrorPublisher
             .filter { [weak self] in $0.bookId == self?.book.identifier }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] errorInfo in
@@ -426,7 +428,7 @@ extension BookCellModel {
             ReaderService.shared.openEPUB(book)
             self.isLoading = false
         case .pdf:
-            guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { self.isLoading = false; return }
+            guard let url = downloadCenter.fileUrl(for: book.identifier) else { self.isLoading = false; return }
             let data = try? Data(contentsOf: url)
             let metadata = TPPPDFDocumentMetadata(with: book)
             let document = TPPPDFDocument(data: data ?? Data())
@@ -455,7 +457,7 @@ extension BookCellModel {
 
     private func licenseURL(forBookIdentifier identifier: String) -> URL? {
         #if LCP
-        guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else { return nil }
+        guard let contentURL = downloadCenter.fileUrl(for: identifier) else { return nil }
         let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         return FileManager.default.fileExists(atPath: license.path) ? license : nil
         #else
@@ -466,7 +468,7 @@ extension BookCellModel {
     #if LCP
     private func prefetchLCPStreamingIfPossible() {
         guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book) else { return }
-        if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+        if let localURL = downloadCenter.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
             return
         }
         guard let license = licenseURL(forBookIdentifier: book.identifier), let lcpAudiobooks = LCPAudiobooks(for: license) else { return }
@@ -478,7 +480,7 @@ extension BookCellModel {
     func didSelectReturn() {
         self.isLoading = true
         let identifier = self.book.identifier
-        MyBooksDownloadCenter.shared.returnBook(withIdentifier: identifier) { [weak self] in
+        downloadCenter.returnBook(withIdentifier: identifier) { [weak self] in
             self?.isLoading = false
             self?.isManagingHold = false
             self?.showHalfSheet = false
@@ -506,7 +508,7 @@ extension BookCellModel {
         if case .canHold = state.buttonState {
             NotificationService.requestAuthorization()
         }
-        MyBooksDownloadCenter.shared.startDownload(for: book)
+        downloadCenter.startDownload(for: book)
     }
 
     func didSelectReserve() {
@@ -524,7 +526,7 @@ extension BookCellModel {
                 NotificationService.requestAuthorization()
                 Task {
                     do {
-                        _ = try await MyBooksDownloadCenter.shared.borrowAsync(self.book, attemptDownload: false)
+                        _ = try await downloadCenter.borrowAsync(self.book, attemptDownload: false)
                     } catch {
                         Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
                     }
@@ -536,7 +538,7 @@ extension BookCellModel {
         NotificationService.requestAuthorization()
         Task {
             do {
-                _ = try await MyBooksDownloadCenter.shared.borrowAsync(book, attemptDownload: false)
+                _ = try await downloadCenter.borrowAsync(book, attemptDownload: false)
             } catch {
                 Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
             }
@@ -597,7 +599,7 @@ extension BookCellModel {
     }
 
     func didSelectCancel() {
-        MyBooksDownloadCenter.shared.cancelDownload(for: book.identifier)
+        downloadCenter.cancelDownload(for: book.identifier)
     }
 }
 
@@ -641,6 +643,6 @@ extension BookCellModel: HalfSheetProvider {
     }
 
     var downloadProgress: Double {
-        MyBooksDownloadCenter.shared.downloadProgress(for: book.identifier)
+        downloadCenter.downloadProgress(for: book.identifier)
     }
 }

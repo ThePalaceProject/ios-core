@@ -7,7 +7,6 @@
 //
 
 import UserNotifications
-import Combine
 import FirebaseCore
 import FirebaseMessaging
 
@@ -53,20 +52,23 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     }
 
     private let notificationCenter = UNUserNotificationCenter.current()
-    private var cancellables = Set<AnyCancellable>()
+    private let accountsManager: AccountsManager
+    private let bookRegistry: TPPBookRegistry
 
     static let shared = NotificationService()
 
-    override init() {
+    init(
+        accountsManager: AccountsManager = .shared,
+        bookRegistry: TPPBookRegistry = .shared
+    ) {
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
         super.init()
 
         // Update library token when the user changes library account.
-        AccountsManager.shared.currentAccountDidChange
-            .sink { [weak self] _ in
-                self?.updateToken()
-            }
-            .store(in: &cancellables)
-
+        NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPCurrentAccountDidChange, object: nil, queue: .main) { [weak self] _ in
+            self?.updateToken()
+        }
         // Update library token when the user signs in (but has already added the library)
         NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPIsSigningIn, object: nil, queue: .main) { [weak self] notification in
             if let isSigningIn = notification.object as? Bool, !isSigningIn {
@@ -157,12 +159,12 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     ///
     /// Update token when user account changes
     func updateToken() {
-        guard !(AccountsManager.shared.currentAccount?.hasUpdatedToken ?? false) else {
+        guard !(accountsManager.currentAccount?.hasUpdatedToken ?? false) else {
             return
         }
 
-        AccountsManager.shared.currentAccount?.hasUpdatedToken = true
-        AccountsManager.shared.currentAccount?.getProfileDocument { profileDocument in
+        accountsManager.currentAccount?.hasUpdatedToken = true
+        accountsManager.currentAccount?.getProfileDocument { profileDocument in
             guard let endpointHref = profileDocument?.linksWith(.deviceRegistration).first?.href,
                   let endpointUrl = URL(string: endpointHref)
             else {
@@ -261,7 +263,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         // Navigate to Holds tab for hold-related notifications
         if isHoldNotification {
             Task { @MainActor in
-                guard let currentAccount = AccountsManager.shared.currentAccount,
+                guard let currentAccount = accountsManager.currentAccount,
                       currentAccount.details?.supportsReservations == true else {
                     Log.warn(#file, "[Notification] Cannot navigate to Holds - account doesn't support reservations")
                     completionHandler()
@@ -307,7 +309,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         UserDefaults.standard.set(now, forKey: Self.lastSyncTimestampKey)
 
         Log.info(#file, "[Notification Sync] Starting sync")
-        TPPBookRegistry.shared.sync(completion: completion)
+        bookRegistry.sync(completion: completion)
     }
 
     // MARK: - Notification Classification
@@ -348,7 +350,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
     /// Logs current held books state for debugging availability sync issues
     private func logHeldBooksState() {
-        let heldBooks = TPPBookRegistry.shared.heldBooks
+        let heldBooks = bookRegistry.heldBooks
         Log.info(#file, "[Notification] Held books count: \(heldBooks.count)")
 
         for book in heldBooks {

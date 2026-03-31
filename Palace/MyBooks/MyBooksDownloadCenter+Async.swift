@@ -75,13 +75,13 @@ extension MyBooksDownloadCenter {
 
         // Set processing state - this shows a spinner in the UI
         await MainActor.run {
-            TPPBookRegistry.shared.setProcessing(true, for: bookIdentifier)
+            self.bookRegistry.setProcessing(true, for: bookIdentifier)
         }
 
         // Helper to clear processing state on all exit paths
         // Using @MainActor func instead of detached Task to ensure immediate execution
         @MainActor func clearProcessingState() {
-            TPPBookRegistry.shared.setProcessing(false, for: bookIdentifier)
+            self.bookRegistry.setProcessing(false, for: bookIdentifier)
         }
 
         do {
@@ -102,7 +102,7 @@ extension MyBooksDownloadCenter {
             await clearProcessingState()
 
             // Preserve existing location
-            let location = TPPBookRegistry.shared.location(forIdentifier: borrowedBook.identifier)
+            let location = self.bookRegistry.location(forIdentifier: borrowedBook.identifier)
 
             // Determine correct registry state based on availability
             var newState: TPPBookState = .downloadNeeded
@@ -115,7 +115,7 @@ extension MyBooksDownloadCenter {
             )
 
             // Add to registry
-            TPPBookRegistry.shared.addBook(
+            self.bookRegistry.addBook(
                 borrowedBook,
                 location: location,
                 state: newState,
@@ -125,7 +125,7 @@ extension MyBooksDownloadCenter {
             )
 
             // Emit explicit state update so SwiftUI lists refresh immediately
-            TPPBookRegistry.shared.setState(newState, for: borrowedBook.identifier)
+            self.bookRegistry.setState(newState, for: borrowedBook.identifier)
 
             Task { await ErrorActivityTracker.shared.log("Borrow succeeded for '\(borrowedBook.title)', state: \(newState)", category: .borrow) }
 

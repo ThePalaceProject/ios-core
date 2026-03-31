@@ -73,8 +73,8 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Dependencies
 
     let registry: TPPBookRegistryProvider
-    let downloadCenter = MyBooksDownloadCenter.shared
-    private let accountsManager: AccountsManager
+    let downloadCenter: MyBooksDownloadCenter
+    let accountsManager: AccountsManager
     private var cancellables = Set<AnyCancellable>()
 
     // Note: audiobook management moved to BookService
@@ -102,11 +102,15 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     /// Initializer with dependency injection for testing
-    init(book: TPPBook,
-         registry: TPPBookRegistryProvider,
-         accountsManager: AccountsManager = .shared) {
+    init(
+        book: TPPBook,
+        registry: TPPBookRegistryProvider,
+        downloadCenter: MyBooksDownloadCenter = .shared,
+        accountsManager: AccountsManager = .shared
+    ) {
         self.book = book
         self.registry = registry
+        self.downloadCenter = downloadCenter
         self.accountsManager = accountsManager
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
@@ -130,10 +134,11 @@ final class BookDetailViewModel: ObservableObject {
     deinit {
         timer?.cancel()
         timer = nil
+        NotificationCenter.default.removeObserver(self)
         #if LCP
         if let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) {
             var lcpAudiobooks: LCPAudiobooks?
-            if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: bookIdentifier),
+            if let localURL = downloadCenter.fileUrl(for: bookIdentifier),
                FileManager.default.fileExists(atPath: localURL.path) {
                 lcpAudiobooks = LCPAudiobooks(for: localURL)
             } else {
@@ -215,12 +220,12 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     private func setupObservers() {
-        registry.registryPublisher
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.handleBookRegistryChange()
-            }
-            .store(in: &cancellables)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleBookRegistryChange(_:)),
+            name: .TPPBookRegistryDidChange,
+            object: nil
+        )
 
         // Avoid general download center change notifications; we already subscribe to fine-grained progress and registry state publishers
 
@@ -278,7 +283,7 @@ final class BookDetailViewModel: ObservableObject {
             .assign(to: &self.$stableButtonState)
     }
 
-    func handleBookRegistryChange() {
+    @objc func handleBookRegistryChange(_ notification: Notification) {
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
         // Always update book from registry - it has authoritative data including loan duration
         // after borrowing completes
@@ -461,7 +466,7 @@ final class BookDetailViewModel: ObservableObject {
         }
     }
 
-    func removeProcessingButton(_ button: BookButtonType) {
+    private func removeProcessingButton(_ button: BookButtonType) {
         self.processingButtons.remove(button)
     }
 
@@ -477,8 +482,8 @@ final class BookDetailViewModel: ObservableObject {
             libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
             libraryAccountsProvider: accountsManager,
             urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: registry as? TPPBookRegistry ?? TPPBookRegistry.shared,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookRegistry: TPPBookRegistry.shared,
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
