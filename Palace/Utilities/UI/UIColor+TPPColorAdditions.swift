@@ -2,7 +2,7 @@ import UIKit
 
 extension UIColor {
 
-  /// Returns a string of the form "#XXXXXX". Alpha is ignored.
+  /// Returns strings of the form "#XXXXXX". Alpha is ignored.
   @objc var javascriptHexString: String {
     var red: CGFloat = 0
     var green: CGFloat = 0

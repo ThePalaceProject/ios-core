@@ -1,71 +1,73 @@
 import Foundation
 
-/// Manages a URLSession with authentication challenge handling.
-@objc(TPPSession)
-@objcMembers
-final class TPPSession: NSObject {
+@objc class TPPSession: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
 
-  @objc(sharedSession)
-  static let shared = TPPSession()
+  private static let diskCacheInMegabytes: Int = 15
+  private static let memoryCacheInMegabytes: Int = 1
 
-  private static let diskCacheInMegabytes = 15
-  private static let memoryCacheInMegabytes = 1
+  @objc static let sharedSession: TPPSession = {
+    let session = TPPSession()
+    return session
+  }()
 
-  private var urlSession: URLSession!
+  private var session: URLSession!
 
   private override init() {
     super.init()
 
     let configuration = URLSessionConfiguration.default
-    if let cache = configuration.urlCache {
-      cache.diskCapacity = 1024 * 1024 * TPPSession.diskCacheInMegabytes
-      cache.memoryCapacity = 1024 * 1024 * TPPSession.memoryCacheInMegabytes
-    }
+    assert(configuration.urlCache != nil)
+    configuration.urlCache?.diskCapacity = 1024 * 1024 * TPPSession.diskCacheInMegabytes
+    configuration.urlCache?.memoryCapacity = 1024 * 1024 * TPPSession.memoryCacheInMegabytes
 
-    urlSession = URLSession(
+    session = URLSession(
       configuration: configuration,
       delegate: self,
       delegateQueue: .main
     )
   }
 
-  // MARK: - Public API
+  // MARK: - URLSessionTaskDelegate
 
-  func upload(
-    with request: URLRequest,
-    completionHandler handler: ((Data?, URLResponse?, Error?) -> Void)?
+  func urlSession(
+    _ session: URLSession,
+    task: URLSessionTask,
+    didReceive challenge: URLAuthenticationChallenge,
+    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
   ) {
-    guard let body = request.httpBody else { return }
-    urlSession.uploadTask(with: request, from: body) { data, response, error in
-      handler?(data, response, error)
-    }.resume()
+    Log.log("\(task.currentRequest?.url?.absoluteString ?? ""): Challenge Received: \(challenge.protectionSpace.authenticationMethod)")
+
+    let challenger = TPPBasicAuth(credentialsProvider: TPPUserAccount.sharedAccount())
+    challenger.handleChallenge(challenge, completion: completionHandler)
   }
 
-  @discardableResult
-  func withURL(
+  // MARK: - Public methods
+
+  @objc func upload(with request: URLRequest, completionHandler handler: ((Data?, URLResponse?, Error?) -> Void)?) {
+    session.uploadTask(with: request, from: request.httpBody, completionHandler: { data, response, error in
+      handler?(data, response, error)
+    }).resume()
+  }
+
+  @objc func withURL(
     _ url: URL,
     shouldResetCache: Bool,
     completionHandler handler: @escaping (Data?, URLResponse?, Error?) -> Void
-  ) -> URLRequest {
-
-    if shouldResetCache {
-      TPPNetworkExecutor.shared.clearCache()
-    }
-
-    var resultRequest: URLRequest?
+  ) -> URLRequest? {
+    var req: URLRequest?
 
     let completionWrapper: (Data?, URLResponse?, Error?) -> Void = { data, response, error in
       if let error = error {
         let dataString = data.flatMap { String(data: $0, encoding: .utf8) }
-          ?? (data.map { "datalength=\($0.count)" } ?? "N/A")
+          ?? data.map { "datalength=\($0.count)" }
         TPPErrorLogger.logNetworkError(
-          error as NSError,
+          error,
           code: .apiCall,
-          summary: String(describing: TPPSession.self),
-          request: resultRequest,
+          summary: String(describing: type(of: self)),
+          request: req as NSURLRequest?,
           response: response,
           metadata: [
-            "receivedData": dataString,
+            "receivedData": dataString ?? "N/A",
             "networking context": "NYPLSession error"
           ]
         )
@@ -75,30 +77,17 @@ final class TPPSession: NSObject {
       handler(data, response, nil)
     }
 
-    let task: URLSessionDataTask?
-    if url.lastPathComponent == "borrow" {
-      task = TPPNetworkExecutor.shared.PUT(url, useTokenIfAvailable: false, completion: completionWrapper)
-    } else {
-      task = TPPNetworkExecutor.shared.GET(url, cachePolicy: .useProtocolCachePolicy, useTokenIfAvailable: false, completion: completionWrapper)
+    if shouldResetCache {
+      TPPNetworkExecutor.shared.clearCache()
     }
 
-    resultRequest = task?.originalRequest
-    return task?.originalRequest ?? URLRequest(url: url)
-  }
-}
+    let lastPathComponent = url.lastPathComponent
+    if lastPathComponent == "borrow" {
+      req = TPPNetworkExecutor.shared.put(url, useTokenIfAvailable: false, completion: completionWrapper)?.originalRequest
+    } else {
+      req = TPPNetworkExecutor.shared.get(url, cachePolicy: .useProtocolCachePolicy, useTokenIfAvailable: false, completion: completionWrapper)?.originalRequest
+    }
 
-// MARK: - URLSessionTaskDelegate
-
-extension TPPSession: URLSessionTaskDelegate {
-  func urlSession(
-    _ session: URLSession,
-    task: URLSessionTask,
-    didReceive challenge: URLAuthenticationChallenge,
-    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-  ) {
-    Log.info(#file, "NSURLSessionTask: \(task.currentRequest?.url?.absoluteString ?? "nil"). Challenge: \(challenge.protectionSpace.authenticationMethod)")
-
-    let challenger = TPPBasicAuth(credentialsProvider: TPPUserAccount.sharedAccount())
-    challenger.handleChallenge(challenge, completion: completionHandler)
+    return req
   }
 }

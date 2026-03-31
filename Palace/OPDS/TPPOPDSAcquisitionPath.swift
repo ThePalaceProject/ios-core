@@ -1,206 +1,138 @@
 import Foundation
 
-// MARK: - Content Type Constants (Swift port of TPPOPDSAcquisitionPath.m)
+// MARK: - Content type constants
+@objc let ContentTypeOPDSCatalog = "application/atom+xml;type=entry;profile=opds-catalog"
+@objc let ContentTypeAdobeAdept = "application/vnd.adobe.adept+xml"
+@objc let ContentTypeBearerToken = "application/vnd.librarysimplified.bearer-token+json"
+@objc let ContentTypeEpubZip = "application/epub+zip"
+@objc let ContentTypeFindaway = "application/vnd.librarysimplified.findaway.license+json"
+@objc let ContentTypeOpenAccessAudiobook = "application/audiobook+json"
+@objc let ContentTypeOpenAccessPDF = "application/pdf"
+@objc let ContentTypeFeedbooksAudiobook = "application/audiobook+json;profile=\"http://www.feedbooks.com/audiobooks/access-restriction\""
+@objc let ContentTypeOctetStream = "application/octet-stream"
+@objc let ContentTypeOverdriveAudiobook = "application/vnd.overdrive.circulation.api+json;profile=audiobook"
+@objc let ContentTypeOverdriveAudiobookActual = "application/json"
+@objc let ContentTypeReadiumLCP = "application/vnd.readium.lcp.license.v1.0+json"
+@objc let ContentTypeReadiumLCPPDF = "application/pdf"
+@objc let ContentTypePDFLCP = "application/pdf+lcp"
+@objc let ContentTypeAudiobookLCP = "application/audiobook+lcp"
+@objc let ContentTypeAudiobookZip = "application/audiobook+zip"
+@objc let ContentTypeBiblioboard = "application/json"
 
-/// Content type constants for OPDS acquisitions.
-@objc public final class OPDSContentType: NSObject {
-  @objc public static let opdsCatalog = "application/atom+xml;type=entry;profile=opds-catalog"
-  @objc public static let adobeAdept = "application/vnd.adobe.adept+xml"
-  @objc public static let bearerToken = "application/vnd.librarysimplified.bearer-token+json"
-  @objc public static let epubZip = "application/epub+zip"
-  @objc public static let findaway = "application/vnd.librarysimplified.findaway.license+json"
-  @objc public static let openAccessAudiobook = "application/audiobook+json"
-  @objc public static let openAccessPDF = "application/pdf"
-  @objc public static let feedbooksAudiobook = "application/audiobook+json;profile=\"http://www.feedbooks.com/audiobooks/access-restriction\""
-  @objc public static let octetStream = "application/octet-stream"
-  @objc public static let overdriveAudiobook = "application/vnd.overdrive.circulation.api+json;profile=audiobook"
-  @objc public static let overdriveAudiobookActual = "application/json"
-  @objc public static let readiumLCP = "application/vnd.readium.lcp.license.v1.0+json"
-  @objc public static let readiumLCPPDF = "application/pdf"
-  @objc public static let pdfLCP = "application/pdf+lcp"
-  @objc public static let audiobookLCP = "application/audiobook+lcp"
-  @objc public static let audiobookZip = "application/audiobook+zip"
-  @objc public static let biblioboard = "application/json"
+// MARK: - TPPOPDSAcquisitionPath
 
-  private override init() { super.init() }
-}
+@objc class TPPOPDSAcquisitionPath: NSObject {
 
-// MARK: - Legacy C-style constant aliases (used by existing Swift callers)
+  @objc private(set) var relation: TPPOPDSAcquisitionRelation
+  @objc private(set) var types: [String]
+  @objc private(set) var url: URL
 
-public let ContentTypeOPDSCatalog = OPDSContentType.opdsCatalog
-public let ContentTypeAdobeAdept = OPDSContentType.adobeAdept
-public let ContentTypeBearerToken = OPDSContentType.bearerToken
-public let ContentTypeEpubZip = OPDSContentType.epubZip
-public let ContentTypeFindaway = OPDSContentType.findaway
-public let ContentTypeOpenAccessAudiobook = OPDSContentType.openAccessAudiobook
-public let ContentTypeOpenAccessPDF = OPDSContentType.openAccessPDF
-public let ContentTypeFeedbooksAudiobook = OPDSContentType.feedbooksAudiobook
-public let ContentTypeOctetStream = OPDSContentType.octetStream
-public let ContentTypeOverdriveAudiobook = OPDSContentType.overdriveAudiobook
-public let ContentTypeOverdriveAudiobookActual = OPDSContentType.overdriveAudiobookActual
-public let ContentTypeReadiumLCP = OPDSContentType.readiumLCP
-public let ContentTypeReadiumLCPPDF = OPDSContentType.readiumLCPPDF
-public let ContentTypePDFLCP = OPDSContentType.pdfLCP
-public let ContentTypeAudiobookLCP = OPDSContentType.audiobookLCP
-public let ContentTypeAudiobookZip = OPDSContentType.audiobookZip
-public let ContentTypeBiblioboard = OPDSContentType.biblioboard
-
-// MARK: - TPPOPDSAcquisitionPath Swift Implementation
-
-/// Swift reimplementation of the ObjC TPPOPDSAcquisitionPath model.
-/// Represents a single path through an acquisition process.
-@objc(TPPOPDSAcquisitionPath)
-public final class TPPOPDSAcquisitionPath: NSObject {
-
-  /// The relation of the initial acquisition step.
-  @objc public let relation: TPPOPDSAcquisitionRelation
-
-  /// The types of the path in acquisition order. Guaranteed count >= 1.
-  @objc public let types: [String]
-
-  /// The URL to fetch to begin processing the acquisition path.
-  @objc public let url: URL
-
-  /// Designated initializer.
-  @objc public init(relation: TPPOPDSAcquisitionRelation, types: [String], url: URL) {
+  @objc init(relation: TPPOPDSAcquisitionRelation, types: [String], url: URL) {
     self.relation = relation
     self.types = types
     self.url = url
     super.init()
   }
 
-  // MARK: - Equality & Hash
-
-  public override func isEqual(_ object: Any?) -> Bool {
-    guard let other = object as? TPPOPDSAcquisitionPath else { return false }
-    return relation == other.relation && types == other.types
-  }
-
-  public override var hash: Int {
-    var result = 1
-    let prime = 31
-    result = prime &* result &+ relation.rawValue
-    result = prime &* result &+ (types as NSArray).hash
-    return result
-  }
-
-  // MARK: - Supported Types
-
-  /// All types of acquisitions supported by the application.
-  @objc public static func supportedTypes() -> Set<String> {
+  @objc static func supportedTypes() -> Set<String> {
     var types: Set<String> = [
-      OPDSContentType.opdsCatalog,
-      OPDSContentType.bearerToken,
-      OPDSContentType.epubZip,
-      OPDSContentType.findaway,
-      OPDSContentType.openAccessAudiobook,
-      OPDSContentType.openAccessPDF,
-      OPDSContentType.feedbooksAudiobook,
-      OPDSContentType.overdriveAudiobook,
-      OPDSContentType.octetStream,
-      OPDSContentType.biblioboard,
-      OPDSContentType.audiobookZip
+      ContentTypeOPDSCatalog,
+      ContentTypeBearerToken,
+      ContentTypeEpubZip,
+      ContentTypeFindaway,
+      ContentTypeOpenAccessAudiobook,
+      ContentTypeOpenAccessPDF,
+      ContentTypeFeedbooksAudiobook,
+      ContentTypeOverdriveAudiobook,
+      ContentTypeOctetStream,
+      ContentTypeBiblioboard,
+      ContentTypeAudiobookZip
     ]
 
     #if FEATURE_DRM_CONNECTOR
-    types.insert(OPDSContentType.adobeAdept)
-    if AdobeCertificate.defaultCertificate?.hasExpired ?? false {
-      types.remove(OPDSContentType.adobeAdept)
-    }
+    types.insert(ContentTypeAdobeAdept)
     #endif
 
     #if LCP
-    types.insert(OPDSContentType.readiumLCP)
-    types.insert(OPDSContentType.audiobookLCP)
-    types.insert(OPDSContentType.readiumLCPPDF)
+    types.insert(ContentTypeReadiumLCP)
+    types.insert(ContentTypeAudiobookLCP)
+    types.insert(ContentTypeReadiumLCPPDF)
+    #endif
+
+    #if FEATURE_DRM_CONNECTOR
+    if AdobeCertificate.defaultCertificate.hasExpired {
+      types.remove(ContentTypeAdobeAdept)
+    }
     #endif
 
     return types
   }
 
-  /// Audiobook content types.
-  @objc public static func audiobookTypes() -> Set<String> {
-    return [
-      OPDSContentType.findaway,
-      OPDSContentType.openAccessAudiobook,
-      OPDSContentType.feedbooksAudiobook,
-      OPDSContentType.overdriveAudiobook,
-      OPDSContentType.audiobookZip,
-      OPDSContentType.audiobookLCP
-    ]
-  }
-
-  /// Returns supported subtypes for a given type.
-  private static func supportedSubtypes(forType type: String) -> Set<String> {
-    let subtypesMap: [String: Set<String>] = [
-      OPDSContentType.opdsCatalog: [
-        OPDSContentType.adobeAdept,
-        OPDSContentType.bearerToken,
-        OPDSContentType.findaway,
-        OPDSContentType.epubZip,
-        OPDSContentType.openAccessPDF,
-        OPDSContentType.openAccessAudiobook,
-        OPDSContentType.feedbooksAudiobook,
-        OPDSContentType.overdriveAudiobook,
-        OPDSContentType.octetStream,
-        OPDSContentType.readiumLCP,
-        OPDSContentType.audiobookZip
+  @objc static func supportedSubtypes(forType type: String) -> Set<String> {
+    let subtypesForTypes: [String: Set<String>] = [
+      ContentTypeOPDSCatalog: [
+        ContentTypeAdobeAdept,
+        ContentTypeBearerToken,
+        ContentTypeFindaway,
+        ContentTypeEpubZip,
+        ContentTypeOpenAccessPDF,
+        ContentTypeOpenAccessAudiobook,
+        ContentTypeFeedbooksAudiobook,
+        ContentTypeOverdriveAudiobook,
+        ContentTypeOctetStream,
+        ContentTypeReadiumLCP,
+        ContentTypeAudiobookZip
       ],
-      OPDSContentType.readiumLCP: [
-        OPDSContentType.epubZip,
-        OPDSContentType.audiobookZip,
-        OPDSContentType.audiobookLCP,
-        OPDSContentType.readiumLCPPDF,
-        OPDSContentType.readiumLCP,
-        OPDSContentType.openAccessAudiobook
+      ContentTypeReadiumLCP: [
+        ContentTypeEpubZip,
+        ContentTypeAudiobookZip,
+        ContentTypeAudiobookLCP,
+        ContentTypeReadiumLCPPDF,
+        ContentTypeReadiumLCP,
+        ContentTypeOpenAccessAudiobook
       ],
-      OPDSContentType.adobeAdept: [OPDSContentType.epubZip],
-      OPDSContentType.bearerToken: [
-        OPDSContentType.epubZip,
-        OPDSContentType.openAccessPDF,
-        OPDSContentType.openAccessAudiobook
+      ContentTypeAdobeAdept: [ContentTypeEpubZip],
+      ContentTypeBearerToken: [
+        ContentTypeEpubZip,
+        ContentTypeOpenAccessPDF,
+        ContentTypeOpenAccessAudiobook
       ]
     ]
-    return subtypesMap[type] ?? []
+
+    return subtypesForTypes[type] ?? []
   }
 
-  // MARK: - Path Resolution
-
-  /// Recursively builds type paths from an indirect acquisition.
-  private static func mutableTypePaths(
-    _ indirectAcquisition: TPPOPDSIndirectAcquisition,
-    allowedTypes: Set<String>
-  ) -> [[String]] {
-    guard allowedTypes.contains(indirectAcquisition.type) else {
-      return []
-    }
-
-    if indirectAcquisition.indirectAcquisitions.isEmpty {
-      return [[indirectAcquisition.type]]
-    }
-
-    let supportedSubs = supportedSubtypes(forType: indirectAcquisition.type).intersection(allowedTypes)
-    var results: [[String]] = []
-
-    for nested in indirectAcquisition.indirectAcquisitions {
-      guard supportedSubs.contains(nested.type) else { continue }
-      for var typePath in mutableTypePaths(nested, allowedTypes: allowedTypes) {
-        typePath.insert(indirectAcquisition.type, at: 0)
-        results.append(typePath)
-      }
-    }
-
-    return results
+  @objc static func audiobookTypes() -> Set<String> {
+    return [
+      ContentTypeFindaway,
+      ContentTypeOpenAccessAudiobook,
+      ContentTypeFeedbooksAudiobook,
+      ContentTypeOverdriveAudiobook,
+      ContentTypeAudiobookZip,
+      ContentTypeAudiobookLCP
+    ]
   }
 
-  /// Finds supported acquisition paths given allowed types, relations, and acquisitions.
-  @objc public static func supportedAcquisitionPaths(
+  override func isEqual(_ object: Any?) -> Bool {
+    guard let other = object as? TPPOPDSAcquisitionPath else { return false }
+    return relation == other.relation && types == other.types
+  }
+
+  override var hash: Int {
+    let prime = 31
+    var result = 1
+    result = prime * result + relation.rawValue
+    result = prime * result + types.hashValue
+    return result
+  }
+
+  @objc static func supportedAcquisitionPaths(
     forAllowedTypes types: Set<String>,
-    allowedRelations relations: TPPOPDSAcquisitionRelationSet,
+    allowedRelations relations: UInt,
     acquisitions: [TPPOPDSAcquisition]
   ) -> [TPPOPDSAcquisitionPath] {
-    var pathSet = Set<Int>()  // hash-based deduplication
-    var paths: [TPPOPDSAcquisitionPath] = []
+    var acquisitionPathSet = Set<TPPOPDSAcquisitionPath>()
+    var acquisitionPaths = [TPPOPDSAcquisitionPath]()
 
     for acquisition in acquisitions {
       let containsType = types.contains(acquisition.type)
@@ -214,33 +146,58 @@ public final class TPPOPDSAcquisitionPath: NSObject {
           types: [acquisition.type],
           url: acquisition.hrefURL
         )
-        paths.append(path)
+        acquisitionPaths.append(path)
         continue
       }
 
-      let supportedSubs = supportedSubtypes(forType: acquisition.type).intersection(types)
+      var supportedSubs = supportedSubtypes(forType: acquisition.type)
+      supportedSubs = supportedSubs.intersection(types)
 
-      for indirect in acquisition.indirectAcquisitions {
-        guard supportedSubs.contains(indirect.type) else { continue }
+      for indirectAcquisition in acquisition.indirectAcquisitions {
+        guard supportedSubs.contains(indirectAcquisition.type) else { continue }
 
-        for var typePath in mutableTypePaths(indirect, allowedTypes: types) {
-          typePath.insert(acquisition.type, at: 0)
-
+        for mutableTypePath in mutableTypePaths(indirectAcquisition, types) {
+          var typePath = [acquisition.type] + mutableTypePath
           let path = TPPOPDSAcquisitionPath(
             relation: acquisition.relation,
             types: typePath,
             url: acquisition.hrefURL
           )
 
-          let pathHash = path.hash
-          if !pathSet.contains(pathHash) {
-            paths.append(path)
-            pathSet.insert(pathHash)
+          if !acquisitionPathSet.contains(path) {
+            acquisitionPaths.append(path)
+            acquisitionPathSet.insert(path)
           }
         }
       }
     }
 
-    return paths
+    return acquisitionPaths
   }
+}
+
+private func mutableTypePaths(
+  _ indirectAcquisition: TPPOPDSIndirectAcquisition,
+  _ allowedTypes: Set<String>
+) -> [[String]] {
+  guard allowedTypes.contains(indirectAcquisition.type) else {
+    return []
+  }
+
+  if indirectAcquisition.indirectAcquisitions.isEmpty {
+    return [[indirectAcquisition.type]]
+  }
+
+  var supportedSubs = TPPOPDSAcquisitionPath.supportedSubtypes(forType: indirectAcquisition.type)
+  supportedSubs = supportedSubs.intersection(allowedTypes)
+
+  var results = [[String]]()
+  for nested in indirectAcquisition.indirectAcquisitions {
+    guard supportedSubs.contains(nested.type) else { continue }
+    for typePath in mutableTypePaths(nested, allowedTypes) {
+      results.append([indirectAcquisition.type] + typePath)
+    }
+  }
+
+  return results
 }

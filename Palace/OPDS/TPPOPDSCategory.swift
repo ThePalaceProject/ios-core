@@ -1,26 +1,19 @@
 import Foundation
 
-// MARK: - TPPOPDSCategory (Swift port of TPPOPDSCategory.m)
+@objc class TPPOPDSCategory: NSObject {
 
-/// Swift reimplementation of the ObjC TPPOPDSCategory model.
-/// Must remain @objc-accessible since the entire app references this type.
-@objc(TPPOPDSCategory)
-public final class TPPOPDSCategory: NSObject {
+  @objc private(set) var term: String
+  @objc private(set) var label: String?
+  @objc private(set) var scheme: URL?
 
-  @objc public let term: String
-  @objc public let label: String?
-  @objc public let scheme: URL?
-
-  @objc public init(term: String, label: String?, scheme: URL?) {
-    precondition(!term.isEmpty, "TPPOPDSCategory requires a non-empty term")
+  @objc init(term: String, label: String?, scheme: URL?) {
     self.term = term
     self.label = label
     self.scheme = scheme
     super.init()
   }
 
-  /// Convenience factory matching the ObjC `+categoryWithTerm:label:scheme:` method.
-  @objc public static func category(withTerm term: String, label: String?, scheme: URL?) -> TPPOPDSCategory {
+  @objc static func category(withTerm term: String, label: String?, scheme: URL?) -> TPPOPDSCategory {
     return TPPOPDSCategory(term: term, label: label, scheme: scheme)
   }
 }

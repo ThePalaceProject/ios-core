@@ -2,11 +2,11 @@ import UIKit
 
 extension UIFont {
 
-  @objc class func customFont(forTextStyle style: UIFont.TextStyle) -> UIFont {
-    customFont(forTextStyle: style, multiplier: 1.0)
+  @objc static func customFont(forTextStyle style: UIFont.TextStyle) -> UIFont {
+    return customFont(forTextStyle: style, multiplier: 1.0)
   }
 
-  @objc class func customFont(forTextStyle style: UIFont.TextStyle, multiplier: CGFloat) -> UIFont {
+  @objc static func customFont(forTextStyle style: UIFont.TextStyle, multiplier: CGFloat) -> UIFont {
     let preferredFont = UIFont.preferredFont(forTextStyle: style)
     let traits = preferredFont.fontDescriptor.object(forKey: .traits) as? [UIFontDescriptor.TraitKey: Any]
     let weight = traits?[.weight] as? NSNumber ?? NSNumber(value: 0)
@@ -22,7 +22,7 @@ extension UIFont {
     return UIFont(descriptor: newDescriptor, size: preferredFont.pointSize * multiplier)
   }
 
-  @objc class func customBoldFont(forTextStyle style: UIFont.TextStyle) -> UIFont {
+  @objc static func customBoldFont(forTextStyle style: UIFont.TextStyle) -> UIFont {
     let preferredFont = UIFont.preferredFont(forTextStyle: style)
     let attributes: [UIFontDescriptor.AttributeName: Any] = [
       .traits: [UIFontDescriptor.TraitKey.weight: UIFont.Weight.bold.rawValue]

@@ -1,85 +1,81 @@
 import Foundation
 import Security
 
-/// Swift port of TPPKeychain. Works with values serializable by NSKeyedArchiver.
-@objcMembers
-final class TPPKeychainSwift: NSObject {
+/// This class is capable of working with values serializable by NSKeyedArchiver.
+@objc class TPPKeychain: NSObject {
 
-  static let shared = TPPKeychainSwift()
+  @objc static let sharedKeychain: TPPKeychain = {
+    let keychain = TPPKeychain()
+    return keychain
+  }()
 
   private override init() {
     super.init()
   }
 
-  // MARK: - Private
-
-  private func defaultQuery() -> [CFString: Any] {
-    [kSecClass: kSecClassGenericPassword]
+  private func defaultDictionary() -> NSMutableDictionary {
+    let dictionary = NSMutableDictionary()
+    dictionary[kSecClass] = kSecClassGenericPassword
+    return dictionary
   }
 
-  // MARK: - Public API
+  @objc func object(forKey key: String) -> Any? {
+    guard let keyData = try? NSKeyedArchiver.archivedData(withRootObject: key, requiringSecureCoding: false) else {
+      return nil
+    }
 
-  func object(forKey key: String) -> Any? {
-    guard let keyData = try? NSKeyedArchiver.archivedData(
-      withRootObject: key, requiringSecureCoding: false
-    ) else { return nil }
+    let dictionary = defaultDictionary()
+    dictionary[kSecAttrAccount] = keyData
+    dictionary[kSecMatchLimit] = kSecMatchLimitOne
+    dictionary[kSecReturnData] = kCFBooleanTrue
 
-    var query = defaultQuery()
-    query[kSecAttrAccount] = keyData
-    query[kSecMatchLimit] = kSecMatchLimitOne
-    query[kSecReturnData] = kCFBooleanTrue
+    var resultRef: CFTypeRef?
+    SecItemCopyMatching(dictionary, &resultRef)
 
-    var result: CFTypeRef?
-    SecItemCopyMatching(query as CFDictionary, &result)
+    guard let resultData = resultRef as? Data else { return nil }
 
-    guard let data = result as? Data else { return nil }
-    return try? NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data)
+    return try? NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(resultData)
   }
 
-  func setObject(_ value: Any, forKey key: String) {
-    guard let keyData = try? NSKeyedArchiver.archivedData(
-      withRootObject: key, requiringSecureCoding: false
-    ),
-    let valueData = try? NSKeyedArchiver.archivedData(
-      withRootObject: value, requiringSecureCoding: false
-    ) else { return }
+  @objc func setObject(_ value: Any, forKey key: String) {
+    guard let keyData = try? NSKeyedArchiver.archivedData(withRootObject: key, requiringSecureCoding: false),
+          let valueData = try? NSKeyedArchiver.archivedData(withRootObject: value, requiringSecureCoding: false) else {
+      return
+    }
 
-    var query = defaultQuery()
-    query[kSecAttrAccount] = keyData
+    let queryDictionary = defaultDictionary()
+    queryDictionary[kSecAttrAccount] = keyData
 
     if object(forKey: key) != nil {
-      // Update existing item
-      let updateDict: [CFString: Any] = [
-        kSecValueData: valueData,
-        kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock
-      ]
-      let status = SecItemUpdate(query as CFDictionary, updateDict as CFDictionary)
+      let updateDictionary = NSMutableDictionary()
+      updateDictionary[kSecValueData] = valueData
+      updateDictionary[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlock
+      let status = SecItemUpdate(queryDictionary, updateDictionary)
       if status != noErr {
-        Log.warn(#file, "Failed to UPDATE secure values to keychain. Error: \(status)")
+        Log.log("Failed to UPDATE secure values to keychain. This is a known issue when running from the debugger. Error: \(status)")
       }
     } else {
-      // Add new item
-      var newItem = query
-      newItem[kSecValueData] = valueData
-      newItem[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlock
-      let status = SecItemAdd(newItem as CFDictionary, nil)
+      let newItemDictionary = queryDictionary.mutableCopy() as! NSMutableDictionary
+      newItemDictionary[kSecValueData] = valueData
+      newItemDictionary[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlock
+      let status = SecItemAdd(newItemDictionary, nil)
       if status != noErr {
-        Log.warn(#file, "Failed to ADD secure values to keychain. Error: \(status)")
+        Log.log("Failed to ADD secure values to keychain. This is a known issue when running from the debugger. Error: \(status)")
       }
     }
   }
 
-  func removeObject(forKey key: String) {
-    guard let keyData = try? NSKeyedArchiver.archivedData(
-      withRootObject: key, requiringSecureCoding: false
-    ) else { return }
+  @objc func removeObject(forKey key: String) {
+    guard let keyData = try? NSKeyedArchiver.archivedData(withRootObject: key, requiringSecureCoding: false) else {
+      return
+    }
 
-    var query = defaultQuery()
-    query[kSecAttrAccount] = keyData
+    let dictionary = defaultDictionary()
+    dictionary[kSecAttrAccount] = keyData
 
-    let status = SecItemDelete(query as CFDictionary)
+    let status = SecItemDelete(dictionary)
     if status != noErr && status != errSecItemNotFound {
-      Log.warn(#file, "Failed to REMOVE object from keychain. Error: \(status)")
+      Log.log("Failed to REMOVE object from keychain. error: \(status)")
     }
   }
 }

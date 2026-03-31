@@ -2,15 +2,16 @@ import UIKit
 
 extension UILabel {
 
-  /// Font name for the label. Usable as a `UI_APPEARANCE_SELECTOR`.
   @objc var fontName: String? {
     get {
-      font.fontName
+      return font.fontName
     }
     set {
-      guard let newValue = newValue,
-            let newFont = UIFont(name: newValue, size: font.pointSize) else { return }
-      font = newFont
+      guard let newFontName = newValue else { return }
+      let fontSize = font.pointSize
+      if let newFont = UIFont(name: newFontName, size: fontSize) {
+        font = newFont
+      }
     }
   }
 }

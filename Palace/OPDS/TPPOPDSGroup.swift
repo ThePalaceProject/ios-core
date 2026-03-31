@@ -1,23 +1,12 @@
 import Foundation
 
-// MARK: - TPPOPDSGroup (Swift port of TPPOPDSGroup.m)
+@objc class TPPOPDSGroup: NSObject {
 
-/// Swift reimplementation of the ObjC TPPOPDSGroup model.
-/// Contains a list of OPDS entries grouped under a title with an href.
-@objc(TPPOPDSGroup)
-public final class TPPOPDSGroup: NSObject {
+  @objc private(set) var entries: [Any]
+  @objc private(set) var href: URL
+  @objc private(set) var title: String
 
-  @objc public let entries: [TPPOPDSEntry]
-  @objc public let href: URL
-  @objc public let title: String
-
-  /// Designated initializer.
-  /// - Parameters:
-  ///   - entries: Array of `TPPOPDSEntry` objects. Must not be empty-checked at this level
-  ///             but all elements must be `TPPOPDSEntry` instances.
-  ///   - href: The URL for the group.
-  ///   - title: The title for the group.
-  @objc public init(entries: [TPPOPDSEntry], href: URL, title: String) {
+  @objc init(entries: [Any], href: URL, title: String) {
     self.entries = entries
     self.href = href
     self.title = title

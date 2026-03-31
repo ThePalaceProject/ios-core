@@ -1,232 +1,50 @@
 import Foundation
 
-// MARK: - TPPOPDSAcquisitionAvailability (Swift port of TPPOPDSAcquisitionAvailability.m)
+typealias TPPOPDSAcquisitionAvailabilityCopies = UInt
 
-/// The sentinel value indicating an unknown number of copies.
-/// Matches the ObjC constant `TPPOPDSAcquisitionAvailabilityCopiesUnknown`.
-public let TPPOPDSAcquisitionAvailabilityCopiesUnknown: UInt = UInt.max
+let TPPOPDSAcquisitionAvailabilityCopiesUnknown: TPPOPDSAcquisitionAvailabilityCopies = UInt.max
 
-// MARK: - Dictionary Keys (must match ObjC keys exactly)
-private let avCaseKey = "case"
-private let avCopiesAvailableKey = "copiesAvailable"
-private let avCopiesHeldKey = "copiesHeld"
-private let avCopiesTotalKey = "copiesTotal"
-private let avHoldsPositionKey = "holdsPosition"
-private let avSinceKey = "since"
-private let avUntilKey = "until"
+@objc protocol TPPOPDSAcquisitionAvailability: NSObjectProtocol {
+  var since: Date? { get }
+  var until: Date? { get }
 
-private let avLimitedCase = "limited"
-private let avReadyCase = "ready"
-private let avReservedCase = "reserved"
-private let avUnavailableCase = "unavailable"
-private let avUnlimitedCase = "unlimited"
-
-// MARK: - XML element/attribute names
-private let avAvailabilityName = "availability"
-private let avCopiesName = "copies"
-private let avHoldsName = "holds"
-
-private let avAvailableAttribute = "available"
-private let avPositionAttribute = "position"
-private let avSinceAttribute = "since"
-private let avStatusAttribute = "status"
-private let avTotalAttribute = "total"
-private let avUntilAttribute = "until"
-
-// MARK: - Helper: nil <-> NSNull conversion (replaces TPPNullFromNil/TPPNullToNil)
-
-/// Converts nil to NSNull for NSDictionary storage.
-private func nullFromNil(_ object: Any?) -> Any {
-  return object ?? NSNull()
-}
-
-/// Converts NSNull back to nil.
-private func nullToNil(_ object: Any?) -> Any? {
-  if object is NSNull { return nil }
-  return object
-}
-
-// MARK: - Protocol
-
-/// The ObjC protocol `TPPOPDSAcquisitionAvailability` is already defined in
-/// TPPOPDSAcquisitionAvailability.h and imported via bridging header.
-/// This Swift file provides the 5 concrete Swift class implementations
-/// and free-function ports.
-
-// MARK: - Unavailable
-
-@objc(TPPOPDSAcquisitionAvailabilityUnavailable)
-public final class TPPOPDSAcquisitionAvailabilityUnavailable: NSObject, TPPOPDSAcquisitionAvailability {
-
-  @objc public let copiesHeld: UInt
-  @objc public let copiesTotal: UInt
-
-  @objc public var since: Date? { return nil }
-  @objc public var until: Date? { return nil }
-
-  @objc public init(copiesHeld: UInt, copiesTotal: UInt) {
-    self.copiesHeld = copiesHeld
-    self.copiesTotal = copiesTotal
-    super.init()
-  }
-
-  @objc public func matchUnavailable(
-    _ unavailable: ((TPPOPDSAcquisitionAvailabilityUnavailable) -> Void)?,
+  func match(
+    unavailable: ((TPPOPDSAcquisitionAvailabilityUnavailable) -> Void)?,
     limited: ((TPPOPDSAcquisitionAvailabilityLimited) -> Void)?,
     unlimited: ((TPPOPDSAcquisitionAvailabilityUnlimited) -> Void)?,
     reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
     ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
-  ) {
-    unavailable?(self)
-  }
+  )
 }
 
-// MARK: - Limited
+// MARK: - Free functions
 
-@objc(TPPOPDSAcquisitionAvailabilityLimited)
-public final class TPPOPDSAcquisitionAvailabilityLimited: NSObject, TPPOPDSAcquisitionAvailability {
-
-  @objc public let copiesAvailable: UInt
-  @objc public let copiesTotal: UInt
-  @objc public let since: Date?
-  @objc public let until: Date?
-
-  @objc public init(copiesAvailable: UInt, copiesTotal: UInt, since: Date?, until: Date?) {
-    self.copiesAvailable = copiesAvailable
-    self.copiesTotal = copiesTotal
-    self.since = since
-    self.until = until
-    super.init()
-  }
-
-  @objc public func matchUnavailable(
-    _ unavailable: ((TPPOPDSAcquisitionAvailabilityUnavailable) -> Void)?,
-    limited: ((TPPOPDSAcquisitionAvailabilityLimited) -> Void)?,
-    unlimited: ((TPPOPDSAcquisitionAvailabilityUnlimited) -> Void)?,
-    reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
-    ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
-  ) {
-    limited?(self)
-  }
-}
-
-// MARK: - Unlimited
-
-@objc(TPPOPDSAcquisitionAvailabilityUnlimited)
-public final class TPPOPDSAcquisitionAvailabilityUnlimited: NSObject, TPPOPDSAcquisitionAvailability {
-
-  @objc public var since: Date? { return nil }
-  @objc public var until: Date? { return nil }
-
-  @objc public override init() {
-    super.init()
-  }
-
-  @objc public func matchUnavailable(
-    _ unavailable: ((TPPOPDSAcquisitionAvailabilityUnavailable) -> Void)?,
-    limited: ((TPPOPDSAcquisitionAvailabilityLimited) -> Void)?,
-    unlimited: ((TPPOPDSAcquisitionAvailabilityUnlimited) -> Void)?,
-    reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
-    ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
-  ) {
-    unlimited?(self)
-  }
-}
-
-// MARK: - Reserved
-
-@objc(TPPOPDSAcquisitionAvailabilityReserved)
-public final class TPPOPDSAcquisitionAvailabilityReserved: NSObject, TPPOPDSAcquisitionAvailability {
-
-  /// If equal to 1, the user is next in line. This value is never 0.
-  @objc public let holdPosition: UInt
-  @objc public let copiesTotal: UInt
-  @objc public let since: Date?
-  @objc public let until: Date?
-
-  @objc public init(holdPosition: UInt, copiesTotal: UInt, since: Date?, until: Date?) {
-    self.holdPosition = holdPosition
-    self.copiesTotal = copiesTotal
-    self.since = since
-    self.until = until
-    super.init()
-  }
-
-  @objc public func matchUnavailable(
-    _ unavailable: ((TPPOPDSAcquisitionAvailabilityUnavailable) -> Void)?,
-    limited: ((TPPOPDSAcquisitionAvailabilityLimited) -> Void)?,
-    unlimited: ((TPPOPDSAcquisitionAvailabilityUnlimited) -> Void)?,
-    reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
-    ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
-  ) {
-    reserved?(self)
-  }
-}
-
-// MARK: - Ready
-
-@objc(TPPOPDSAcquisitionAvailabilityReady)
-public final class TPPOPDSAcquisitionAvailabilityReady: NSObject, TPPOPDSAcquisitionAvailability {
-
-  @objc public let since: Date?
-  @objc public let until: Date?
-
-  @objc public init(since: Date?, until: Date?) {
-    self.since = since
-    self.until = until
-    super.init()
-  }
-
-  @objc public func matchUnavailable(
-    _ unavailable: ((TPPOPDSAcquisitionAvailabilityUnavailable) -> Void)?,
-    limited: ((TPPOPDSAcquisitionAvailabilityLimited) -> Void)?,
-    unlimited: ((TPPOPDSAcquisitionAvailabilityUnlimited) -> Void)?,
-    reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
-    ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
-  ) {
-    ready?(self)
-  }
-}
-
-// MARK: - Free Functions (Swift ports)
-
-/// Parses availability from an OPDS link XML element.
-/// Returns `TPPOPDSAcquisitionAvailabilityUnlimited` as the default.
 func NYPLOPDSAcquisitionAvailabilityWithLinkXML(_ linkXML: TPPXML) -> TPPOPDSAcquisitionAvailability {
-  let copiesUnknown = TPPOPDSAcquisitionAvailabilityCopiesUnknown
-
-  var copiesHeld: UInt = copiesUnknown
-  var copiesAvailable: UInt = copiesUnknown
-  var copiesTotal: UInt = copiesUnknown
+  var copiesHeld = TPPOPDSAcquisitionAvailabilityCopiesUnknown
+  var copiesAvailable = TPPOPDSAcquisitionAvailabilityCopiesUnknown
+  var copiesTotal = TPPOPDSAcquisitionAvailabilityCopiesUnknown
   var holdPosition: UInt = 0
 
-  let statusString = linkXML.firstChild(withName: avAvailabilityName)?.attributes[avStatusAttribute] as? String
+  let statusString = (linkXML.firstChild(withName: "availability")?.attributes as? [String: String])?["status"]
 
-  if let posStr = linkXML.firstChild(withName: avHoldsName)?.attributes[avPositionAttribute] as? String,
-     let posVal = Int(posStr) {
-    holdPosition = UInt(max(0, posVal))
+  if let posStr = (linkXML.firstChild(withName: "holds")?.attributes as? [String: String])?["position"] {
+    holdPosition = UInt(max(0, Int(posStr) ?? 0))
+  }
+  if let totalStr = (linkXML.firstChild(withName: "holds")?.attributes as? [String: String])?["total"] {
+    copiesHeld = UInt(max(0, Int(totalStr) ?? 0))
+  }
+  if let availStr = (linkXML.firstChild(withName: "copies")?.attributes as? [String: String])?["available"] {
+    copiesAvailable = UInt(max(0, Int(availStr) ?? 0))
+  }
+  if let totalStr = (linkXML.firstChild(withName: "copies")?.attributes as? [String: String])?["total"] {
+    copiesTotal = UInt(max(0, Int(totalStr) ?? 0))
   }
 
-  if let heldStr = linkXML.firstChild(withName: avHoldsName)?.attributes[avTotalAttribute] as? String,
-     let heldVal = Int(heldStr) {
-    copiesHeld = UInt(max(0, heldVal))
-  }
+  let sinceString = (linkXML.firstChild(withName: "availability")?.attributes as? [String: String])?["since"]
+  let since = sinceString.flatMap { NSDate.date(withRFC3339String: $0) as Date? }
 
-  if let availStr = linkXML.firstChild(withName: avCopiesName)?.attributes[avAvailableAttribute] as? String,
-     let availVal = Int(availStr) {
-    copiesAvailable = UInt(max(0, availVal))
-  }
-
-  if let totalStr = linkXML.firstChild(withName: avCopiesName)?.attributes[avTotalAttribute] as? String,
-     let totalVal = Int(totalStr) {
-    copiesTotal = UInt(max(0, totalVal))
-  }
-
-  let sinceString = linkXML.firstChild(withName: avAvailabilityName)?.attributes[avSinceAttribute] as? String
-  let since: Date? = sinceString.flatMap { NSDate(rfc3339String: $0) as Date? }
-
-  let untilString = linkXML.firstChild(withName: avAvailabilityName)?.attributes[avUntilAttribute] as? String
-  let until: Date? = untilString.flatMap { NSDate(rfc3339String: $0) as Date? }
+  let untilString = (linkXML.firstChild(withName: "availability")?.attributes as? [String: String])?["until"]
+  let until = untilString.flatMap { NSDate.date(withRFC3339String: $0) as Date? }
 
   if statusString == "unavailable" {
     return TPPOPDSAcquisitionAvailabilityUnavailable(
@@ -236,7 +54,8 @@ func NYPLOPDSAcquisitionAvailabilityWithLinkXML(_ linkXML: TPPXML) -> TPPOPDSAcq
   }
 
   if statusString == "available" {
-    if copiesAvailable == copiesUnknown && copiesTotal == copiesUnknown {
+    if copiesAvailable == TPPOPDSAcquisitionAvailabilityCopiesUnknown
+        && copiesTotal == TPPOPDSAcquisitionAvailabilityCopiesUnknown {
       return TPPOPDSAcquisitionAvailabilityUnlimited()
     }
     return TPPOPDSAcquisitionAvailabilityLimited(
@@ -263,54 +82,44 @@ func NYPLOPDSAcquisitionAvailabilityWithLinkXML(_ linkXML: TPPXML) -> TPPOPDSAcq
   return TPPOPDSAcquisitionAvailabilityUnlimited()
 }
 
-/// Deserializes availability from a dictionary.
-/// Returns `nil` if the dictionary is invalid.
-public func NYPLOPDSAcquisitionAvailabilityWithDictionary(_ dictionary: NSDictionary) -> TPPOPDSAcquisitionAvailability? {
-  guard let caseString = dictionary[avCaseKey] as? String else {
-    return nil
-  }
+func NYPLOPDSAcquisitionAvailabilityWithDictionary(_ dictionary: NSDictionary) -> TPPOPDSAcquisitionAvailability? {
+  guard let caseString = dictionary["case"] as? String else { return nil }
 
-  let sinceString = nullToNil(dictionary[avSinceKey]) as? String
-  let since: Date? = sinceString.flatMap { NSDate(rfc3339String: $0) as Date? }
+  let sinceString = TPPNullToNil(dictionary["since"]) as? String
+  let since = sinceString.flatMap { NSDate.date(withRFC3339String: $0) as Date? }
 
-  let untilString = nullToNil(dictionary[avUntilKey]) as? String
-  let until: Date? = untilString.flatMap { NSDate(rfc3339String: $0) as Date? }
+  let untilString = TPPNullToNil(dictionary["until"]) as? String
+  let until = untilString.flatMap { NSDate.date(withRFC3339String: $0) as Date? }
 
   switch caseString {
-  case avUnavailableCase:
-    guard let copiesHeldNum = dictionary[avCopiesHeldKey] as? NSNumber,
-          let copiesTotalNum = dictionary[avCopiesTotalKey] as? NSNumber else {
-      return nil
-    }
-    let held = copiesHeldNum.intValue
-    let total = copiesTotalNum.intValue
+  case "unavailable":
+    guard let copiesHeldNum = dictionary["copiesHeld"] as? NSNumber,
+          let copiesTotalNum = dictionary["copiesTotal"] as? NSNumber else { return nil }
+    let ch = copiesHeldNum.intValue
+    let ct = copiesTotalNum.intValue
     return TPPOPDSAcquisitionAvailabilityUnavailable(
-      copiesHeld: UInt(max(0, min(held, total))),
-      copiesTotal: UInt(max(0, max(held, total)))
+      copiesHeld: UInt(max(0, min(ch, ct))),
+      copiesTotal: UInt(max(0, max(ch, ct)))
     )
 
-  case avLimitedCase:
-    guard let copiesAvailNum = dictionary[avCopiesAvailableKey] as? NSNumber,
-          let copiesTotalNum = dictionary[avCopiesTotalKey] as? NSNumber else {
-      return nil
-    }
-    let avail = copiesAvailNum.intValue
-    let total = copiesTotalNum.intValue
+  case "limited":
+    guard let copiesAvailNum = dictionary["copiesAvailable"] as? NSNumber,
+          let copiesTotalNum = dictionary["copiesTotal"] as? NSNumber else { return nil }
+    let ca = copiesAvailNum.intValue
+    let ct = copiesTotalNum.intValue
     return TPPOPDSAcquisitionAvailabilityLimited(
-      copiesAvailable: UInt(max(0, min(avail, total))),
-      copiesTotal: UInt(max(0, max(avail, total))),
+      copiesAvailable: UInt(max(0, min(ca, ct))),
+      copiesTotal: UInt(max(0, max(ca, ct))),
       since: since,
       until: until
     )
 
-  case avUnlimitedCase:
+  case "unlimited":
     return TPPOPDSAcquisitionAvailabilityUnlimited()
 
-  case avReservedCase:
-    guard let holdPosNum = dictionary[avHoldsPositionKey] as? NSNumber,
-          let copiesTotalNum = dictionary[avCopiesTotalKey] as? NSNumber else {
-      return nil
-    }
+  case "reserved":
+    guard let holdPosNum = dictionary["holdsPosition"] as? NSNumber,
+          let copiesTotalNum = dictionary["copiesTotal"] as? NSNumber else { return nil }
     return TPPOPDSAcquisitionAvailabilityReserved(
       holdPosition: UInt(max(0, holdPosNum.intValue)),
       copiesTotal: UInt(max(0, copiesTotalNum.intValue)),
@@ -318,7 +127,7 @@ public func NYPLOPDSAcquisitionAvailabilityWithDictionary(_ dictionary: NSDictio
       until: until
     )
 
-  case avReadyCase:
+  case "ready":
     return TPPOPDSAcquisitionAvailabilityReady(since: since, until: until)
 
   default:
@@ -326,47 +135,153 @@ public func NYPLOPDSAcquisitionAvailabilityWithDictionary(_ dictionary: NSDictio
   }
 }
 
-/// Serializes availability to a dictionary representation.
-public func NYPLOPDSAcquisitionAvailabilityDictionaryRepresentation(
-  _ availability: TPPOPDSAcquisitionAvailability
-) -> NSDictionary {
+func NYPLOPDSAcquisitionAvailabilityDictionaryRepresentation(_ availability: TPPOPDSAcquisitionAvailability) -> NSDictionary {
   var result: NSDictionary = [:]
 
-  availability.matchUnavailable({ unavailable in
-    result = [
-      avCaseKey: avUnavailableCase,
-      avCopiesHeldKey: NSNumber(value: unavailable.copiesHeld),
-      avCopiesTotalKey: NSNumber(value: unavailable.copiesTotal)
-    ] as NSDictionary
-  }, limited: { limited in
-    let sinceStr: Any = limited.since.map { (($0 as NSDate).rfc3339String()) as Any } ?? NSNull()
-    let untilStr: Any = limited.until.map { (($0 as NSDate).rfc3339String()) as Any } ?? NSNull()
-    result = [
-      avCaseKey: avLimitedCase,
-      avCopiesAvailableKey: NSNumber(value: limited.copiesAvailable),
-      avCopiesTotalKey: NSNumber(value: limited.copiesTotal),
-      avSinceKey: sinceStr,
-      avUntilKey: untilStr
-    ] as NSDictionary
-  }, unlimited: { _ in
-    result = [
-      avCaseKey: avUnlimitedCase
-    ] as NSDictionary
-  }, reserved: { reserved in
-    let sinceStr: Any = reserved.since.map { (($0 as NSDate).rfc3339String()) as Any } ?? NSNull()
-    let untilStr: Any = reserved.until.map { (($0 as NSDate).rfc3339String()) as Any } ?? NSNull()
-    result = [
-      avCaseKey: avReservedCase,
-      avHoldsPositionKey: NSNumber(value: reserved.holdPosition),
-      avCopiesTotalKey: NSNumber(value: reserved.copiesTotal),
-      avSinceKey: sinceStr,
-      avUntilKey: untilStr
-    ] as NSDictionary
-  }, ready: { _ in
-    result = [
-      avCaseKey: avReadyCase
-    ] as NSDictionary
-  })
+  availability.match(
+    unavailable: { unavailable in
+      result = [
+        "case": "unavailable",
+        "copiesHeld": NSNumber(value: unavailable.copiesHeld),
+        "copiesTotal": NSNumber(value: unavailable.copiesTotal)
+      ]
+    },
+    limited: { limited in
+      result = [
+        "case": "limited",
+        "copiesAvailable": NSNumber(value: limited.copiesAvailable),
+        "copiesTotal": NSNumber(value: limited.copiesTotal),
+        "since": TPPNullFromNil((limited.since as NSDate?)?.rfc3339String()),
+        "until": TPPNullFromNil((limited.until as NSDate?)?.rfc3339String())
+      ]
+    },
+    unlimited: { _ in
+      result = ["case": "unlimited"]
+    },
+    reserved: { reserved in
+      result = [
+        "case": "reserved",
+        "holdsPosition": NSNumber(value: reserved.holdPosition),
+        "copiesTotal": NSNumber(value: reserved.copiesTotal),
+        "since": TPPNullFromNil((reserved.since as NSDate?)?.rfc3339String()),
+        "until": TPPNullFromNil((reserved.until as NSDate?)?.rfc3339String())
+      ]
+    },
+    ready: { _ in
+      result = ["case": "ready"]
+    }
+  )
 
   return result
+}
+
+// MARK: - Concrete availability classes
+
+@objc class TPPOPDSAcquisitionAvailabilityUnavailable: NSObject, TPPOPDSAcquisitionAvailability {
+  @objc let copiesHeld: TPPOPDSAcquisitionAvailabilityCopies
+  @objc let copiesTotal: TPPOPDSAcquisitionAvailabilityCopies
+  @objc let since: Date? = nil
+  @objc let until: Date? = nil
+
+  @objc init(copiesHeld: TPPOPDSAcquisitionAvailabilityCopies, copiesTotal: TPPOPDSAcquisitionAvailabilityCopies) {
+    self.copiesHeld = copiesHeld
+    self.copiesTotal = copiesTotal
+    super.init()
+  }
+
+  @objc func match(
+    unavailable: ((TPPOPDSAcquisitionAvailabilityUnavailable) -> Void)?,
+    limited: ((TPPOPDSAcquisitionAvailabilityLimited) -> Void)?,
+    unlimited: ((TPPOPDSAcquisitionAvailabilityUnlimited) -> Void)?,
+    reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
+    ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
+  ) {
+    unavailable?(self)
+  }
+}
+
+@objc class TPPOPDSAcquisitionAvailabilityLimited: NSObject, TPPOPDSAcquisitionAvailability {
+  @objc let copiesAvailable: TPPOPDSAcquisitionAvailabilityCopies
+  @objc let copiesTotal: TPPOPDSAcquisitionAvailabilityCopies
+  @objc let since: Date?
+  @objc let until: Date?
+
+  @objc init(copiesAvailable: TPPOPDSAcquisitionAvailabilityCopies, copiesTotal: TPPOPDSAcquisitionAvailabilityCopies, since: Date?, until: Date?) {
+    self.copiesAvailable = copiesAvailable
+    self.copiesTotal = copiesTotal
+    self.since = since
+    self.until = until
+    super.init()
+  }
+
+  @objc func match(
+    unavailable: ((TPPOPDSAcquisitionAvailabilityUnavailable) -> Void)?,
+    limited: ((TPPOPDSAcquisitionAvailabilityLimited) -> Void)?,
+    unlimited: ((TPPOPDSAcquisitionAvailabilityUnlimited) -> Void)?,
+    reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
+    ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
+  ) {
+    limited?(self)
+  }
+}
+
+@objc class TPPOPDSAcquisitionAvailabilityUnlimited: NSObject, TPPOPDSAcquisitionAvailability {
+  @objc let since: Date? = nil
+  @objc let until: Date? = nil
+
+  @objc func match(
+    unavailable: ((TPPOPDSAcquisitionAvailabilityUnavailable) -> Void)?,
+    limited: ((TPPOPDSAcquisitionAvailabilityLimited) -> Void)?,
+    unlimited: ((TPPOPDSAcquisitionAvailabilityUnlimited) -> Void)?,
+    reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
+    ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
+  ) {
+    unlimited?(self)
+  }
+}
+
+@objc class TPPOPDSAcquisitionAvailabilityReserved: NSObject, TPPOPDSAcquisitionAvailability {
+  @objc let holdPosition: UInt
+  @objc let copiesTotal: TPPOPDSAcquisitionAvailabilityCopies
+  @objc let since: Date?
+  @objc let until: Date?
+
+  @objc init(holdPosition: UInt, copiesTotal: TPPOPDSAcquisitionAvailabilityCopies, since: Date?, until: Date?) {
+    self.holdPosition = holdPosition
+    self.copiesTotal = copiesTotal
+    self.since = since
+    self.until = until
+    super.init()
+  }
+
+  @objc func match(
+    unavailable: ((TPPOPDSAcquisitionAvailabilityUnavailable) -> Void)?,
+    limited: ((TPPOPDSAcquisitionAvailabilityLimited) -> Void)?,
+    unlimited: ((TPPOPDSAcquisitionAvailabilityUnlimited) -> Void)?,
+    reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
+    ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
+  ) {
+    reserved?(self)
+  }
+}
+
+@objc class TPPOPDSAcquisitionAvailabilityReady: NSObject, TPPOPDSAcquisitionAvailability {
+  @objc let since: Date?
+  @objc let until: Date?
+
+  @objc init(since: Date?, until: Date?) {
+    self.since = since
+    self.until = until
+    super.init()
+  }
+
+  @objc func match(
+    unavailable: ((TPPOPDSAcquisitionAvailabilityUnavailable) -> Void)?,
+    limited: ((TPPOPDSAcquisitionAvailabilityLimited) -> Void)?,
+    unlimited: ((TPPOPDSAcquisitionAvailabilityUnlimited) -> Void)?,
+    reserved: ((TPPOPDSAcquisitionAvailabilityReserved) -> Void)?,
+    ready: ((TPPOPDSAcquisitionAvailabilityReady) -> Void)?
+  ) {
+    ready?(self)
+  }
 }

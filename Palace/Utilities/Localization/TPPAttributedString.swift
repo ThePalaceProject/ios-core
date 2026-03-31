@@ -1,7 +1,6 @@
 import UIKit
 
-/// Creates an attributed string with author-style paragraph formatting.
-func TPPAttributedStringForAuthorsFromString(_ string: String?) -> NSAttributedString? {
+@objc func TPPAttributedStringForAuthorsFromString(_ string: String?) -> NSAttributedString? {
   guard let string = string else { return nil }
 
   let paragraphStyle = NSMutableParagraphStyle()
@@ -17,11 +16,10 @@ func TPPAttributedStringForAuthorsFromString(_ string: String?) -> NSAttributedS
   )
 }
 
-/// Creates an attributed string with title-style paragraph formatting.
-/// Decodes HTML entities twice to handle double-encoded entities like `&amp;#39;`.
-func TPPAttributedStringForTitleFromString(_ string: String?) -> NSAttributedString? {
+@objc func TPPAttributedStringForTitleFromString(_ string: String?) -> NSAttributedString? {
   guard let string = string else { return nil }
 
+  // Decoding twice to mimic the behaviour of NSAttributedString that decodes entities like `&amp;#39;` correctly.
   let decodedString = string.stringByDecodingHTMLEntities.stringByDecodingHTMLEntities
 
   let paragraphStyle = NSMutableParagraphStyle()

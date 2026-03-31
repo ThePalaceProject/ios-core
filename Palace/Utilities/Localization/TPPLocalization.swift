@@ -1,6 +1,7 @@
 import Foundation
 
-/// Marks a string as not needing localization, suppressing analyzer warnings.
-func TPPLocalizationNotNeeded(_ s: String) -> String {
+/// Global function to label strings that do not need to be localized
+/// so as to not set off Analyzer localization warnings.
+@objc func TPPLocalizationNotNeeded(_ s: String) -> String {
   return s
 }

@@ -1,93 +1,63 @@
-import Foundation
 import UIKit
 
-extension URLRequest {
+extension NSURLRequest {
 
-  /// Creates a POST request with a JSON problem document body.
-  static func postRequest(withProblemDocument problemDocument: [String: Any], url: URL) -> URLRequest {
-    var request = URLRequest(url: url)
+  @objc static func postRequest(withProblemDocument problemDocument: NSDictionary, url: URL) -> NSURLRequest {
+    let request = NSMutableURLRequest()
     request.cachePolicy = .reloadIgnoringLocalCacheData
     request.httpShouldHandleCookies = false
     request.timeoutInterval = 30
     request.httpMethod = "POST"
 
-    request.setValue("application/problem+json", forHTTPHeaderField: "Content-Type")
+    let contentType = "application/problem+json"
+    request.setValue(contentType, forHTTPHeaderField: "Content-Type")
 
-    if let data = try? JSONSerialization.data(withJSONObject: problemDocument, options: []) {
-      request.httpBody = data
+    let data = try? JSONSerialization.data(withJSONObject: problemDocument, options: [])
+    request.httpBody = data
+
+    if let data = data {
       request.setValue("\(data.count)", forHTTPHeaderField: "Content-Length")
     }
 
+    request.url = url
     return request
   }
 
-  /// Creates a multipart POST request with form parameters and an optional image.
-  static func postRequest(
-    withParams params: [String: Any],
-    image: UIImage?,
-    url: URL
-  ) -> URLRequest {
-    let boundary = "----------V2ymHFg03ehbqgZCaKO6jy"
-    let fileParamName = "file"
+  @objc static func postRequest(withParams params: NSDictionary, imageOrNil image: UIImage?, url: URL) -> NSURLRequest {
+    let boundaryConstant = "----------V2ymHFg03ehbqgZCaKO6jy"
+    let fileParamConstant = "file"
 
-    var request = URLRequest(url: url)
+    let request = NSMutableURLRequest()
     request.cachePolicy = .reloadIgnoringLocalCacheData
     request.httpShouldHandleCookies = false
     request.timeoutInterval = 30
     request.httpMethod = "POST"
 
-    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+    let contentType = "multipart/form-data; boundary=\(boundaryConstant)"
+    request.setValue(contentType, forHTTPHeaderField: "Content-Type")
 
-    var body = Data()
+    let body = NSMutableData()
 
-    // Add params (all values converted to strings)
-    for (key, value) in params {
-      body.append("--\(boundary)\r\n".data(using: .utf8)!)
-      body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
-      body.append("\(value)\r\n".data(using: .utf8)!)
+    for case let param as String in params.allKeys {
+      body.append("--\(boundaryConstant)\r\n".data(using: .utf8)!)
+      body.append("Content-Disposition: form-data; name=\"\(param)\"\r\n\r\n".data(using: .utf8)!)
+      body.append("\(params[param] ?? "")\r\n".data(using: .utf8)!)
     }
 
-    // Add image data
     if let image = image, let imageData = image.jpegData(compressionQuality: 0.7) {
-      body.append("--\(boundary)\r\n".data(using: .utf8)!)
-      body.append("Content-Disposition: form-data; name=\"\(fileParamName)\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
+      body.append("--\(boundaryConstant)\r\n".data(using: .utf8)!)
+      body.append("Content-Disposition: form-data; name=\"\(fileParamConstant)\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
       body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
       body.append(imageData)
       body.append("\r\n".data(using: .utf8)!)
     }
 
-    body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+    body.append("--\(boundaryConstant)--\r\n".data(using: .utf8)!)
 
-    request.httpBody = body
-    request.setValue("\(body.count)", forHTTPHeaderField: "Content-Length")
+    request.httpBody = body as Data
+    request.setValue("\(body.length)", forHTTPHeaderField: "Content-Length")
+    request.url = url
 
     return request
-  }
-}
-
-// MARK: - ObjC compatibility on NSURLRequest
-
-extension NSURLRequest {
-
-  @objc static func postRequest(
-    withProblemDocument problemDocument: NSDictionary,
-    url: URL
-  ) -> NSURLRequest {
-    URLRequest.postRequest(
-      withProblemDocument: problemDocument as! [String: Any],
-      url: url
-    ) as NSURLRequest
-  }
-
-  @objc static func postRequest(
-    withParams params: NSDictionary,
-    imageOrNil image: UIImage?,
-    url: URL
-  ) -> NSURLRequest {
-    URLRequest.postRequest(
-      withParams: params as! [String: Any],
-      image: image,
-      url: url
-    ) as NSURLRequest
   }
 }

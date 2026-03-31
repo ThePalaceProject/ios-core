@@ -1,45 +1,30 @@
 import Foundation
 
-// MARK: - TPPOPDSLink (Swift port of TPPOPDSLink.m)
+@objc class TPPOPDSLink: NSObject {
 
-/// Swift reimplementation of the ObjC TPPOPDSLink model.
-/// Initialized from a TPPXML element representing an OPDS `<link>`.
-@objc(TPPOPDSLink)
-public final class TPPOPDSLink: NSObject {
+  @objc private(set) var attributes: NSDictionary = [:]
+  @objc private(set) var href: URL
+  @objc private(set) var rel: String?
+  @objc private(set) var type: String?
+  @objc private(set) var hreflang: String?
+  @objc private(set) var title: String?
 
-  @objc public let attributes: NSDictionary
-  @objc public let href: URL
-  @objc public let rel: String?
-  @objc public let type: String?
-  @objc public let hreflang: String?
-  @objc public let title: String?
+  @objc init?(xml linkXML: TPPXML?) {
+    guard let linkXML = linkXML else { return nil }
+    let attrs = linkXML.attributes as? [String: String] ?? [:]
 
-  /// Designated initializer.
-  /// Returns `nil` if the XML element lacks a valid `href` attribute.
-  @objc init?(xml linkXML: TPPXML) {
-    guard let hrefString = linkXML.attributes["href"] as? String,
-          let hrefURL = URL(string: hrefString) else {
-      Log.warn(#file, "Missing or invalid required 'href' attribute.")
+    guard let hrefString = attrs["href"],
+          let href = URL(string: hrefString) else {
+      Log.log("Missing required 'href' attribute or 'href' does not contain a valid URI.")
       return nil
     }
 
-    self.attributes = linkXML.attributes as NSDictionary
-    self.href = hrefURL
-    self.rel = linkXML.attributes["rel"] as? String
-    self.type = linkXML.attributes["type"] as? String
-    self.hreflang = linkXML.attributes["hreflang"] as? String
-    self.title = linkXML.attributes["title"] as? String
-    super.init()
-  }
-
-  /// Memberwise initializer for programmatic construction.
-  @objc public init(href: URL, rel: String?, type: String?, hreflang: String?, title: String?, attributes: NSDictionary) {
     self.href = href
-    self.rel = rel
-    self.type = type
-    self.hreflang = hreflang
-    self.title = title
-    self.attributes = attributes
+    self.attributes = linkXML.attributes
+    self.rel = attrs["rel"]
+    self.type = attrs["type"]
+    self.hreflang = attrs["hreflang"]
+    self.title = attrs["title"]
     super.init()
   }
 }

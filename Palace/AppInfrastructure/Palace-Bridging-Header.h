@@ -10,11 +10,4 @@
 #import "OverdriveProcessor/OverdriveProcessor.h"
 #endif
 
-#import "TPPOPDSAcquisition.h"
-#import "TPPConfiguration.h"
-#import "TPPKeychain.h"
-#import "TPPOPDS.h"
-#import "TPPEncryptedPDFDataProvider.h"
 #import "NYPLTenPrintCoverView.h"
-#import "TPPOpenSearchDescription.h"
-#import "TPPOPDSFeed.h"
