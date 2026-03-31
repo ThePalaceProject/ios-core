@@ -60,9 +60,10 @@ struct AppTabHostView: View {
 
             // MARK: - Feature-flagged tabs
 
-            if DiscoveryTab.isEnabled { discoverTab }
-            if StatsTab.isEnabled { statsTab }
-            if CollectionsTab.isEnabled { collectionsTab }
+            // Prototype tabs — not compiled
+            // if DiscoveryTab.isEnabled { discoverTab }
+            // if StatsTab.isEnabled { statsTab }
+            // if CollectionsTab.isEnabled { collectionsTab }
 
             NavigationHostView(rootView: TPPSettingsView(viewModel: SettingsViewModel(
                 settings: container.settings,
@@ -105,27 +106,10 @@ private extension AppTabHostView {
 
     // MARK: - Feature-flagged tab views
 
-    var discoverTab: some View {
-        let client = URLSessionNetworkClient()
-        let parser = OPDSParser()
-        let api = DefaultCatalogAPI(client: client, parser: parser)
-        let vm = DiscoveryTab.makeViewModel(catalogAPI: api)
-        return NavigationHostView(rootView: DiscoveryView(viewModel: vm))
-            .tabItem { Label("Discover", systemImage: "sparkle.magnifyingglass") }
-            .tag(AppTab.discover)
-    }
-
-    var statsTab: some View {
-        NavigationHostView(rootView: StatsTab())
-            .tabItem { Label("Stats", systemImage: "chart.bar.fill") }
-            .tag(AppTab.stats)
-    }
-
-    var collectionsTab: some View {
-        NavigationHostView(rootView: CollectionsView(viewModel: CollectionsViewModel(collectionService: BookCollectionService())))
-            .tabItem { Label("Collections", systemImage: "folder.fill") }
-            .tag(AppTab.collections)
-    }
+    // Prototype tab views — uncomment when compiled
+    // var discoverTab: some View { ... }
+    // var statsTab: some View { ... }
+    // var collectionsTab: some View { ... }
 
     // MARK: - Badge
 

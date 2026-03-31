@@ -70,21 +70,9 @@ struct NavigationHostView<Content: View>: View {
                                 useIncrementalSpeedSlider: DebugSettings.shared.isIncrementalSpeedSliderEnabled
                             )
                             .toolbar(.hidden, for: .tabBar)
-                            .overlay(alignment: .topTrailing) {
-                                if CarModeEntryButton.isEnabled {
-                                    CarModeEntryButton {
-                                        coordinator.presentCarMode = true
-                                    }
-                                    .padding(.trailing, 16)
-                                    .padding(.top, 8)
-                                }
-                            }
-                            .fullScreenCover(isPresented: Binding(
-                                get: { coordinator.presentCarMode },
-                                set: { coordinator.presentCarMode = $0 }
-                            )) {
-                                CarModeView(viewModel: CarModeViewModel(service: CarModeService()))
-                            }
+                            // CarMode prototype — not compiled
+                            // .overlay { CarModeEntryButton ... }
+                            // .fullScreenCover { CarModeView ... }
                         } else {
                             EmptyView()
                         }
