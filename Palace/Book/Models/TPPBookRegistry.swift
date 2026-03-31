@@ -5,7 +5,15 @@ import UIKit
 protocol TPPBookRegistryProvider {
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }
     var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { get }
+    var syncStatePublisher: AnyPublisher<Bool, Never> { get }
     var heldBooks: [TPPBook] { get }
+    var myBooks: [TPPBook] { get }
+    var isSyncing: Bool { get }
+    var state: TPPBookRegistry.RegistryState { get }
+
+    func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?)
+    func sync()
+    func load()
 
     func coverImage(for book: TPPBook, handler: @escaping (_ image: UIImage?) -> Void)
     func setProcessing(_ processing: Bool, for bookIdentifier: String)
@@ -34,7 +42,7 @@ protocol TPPBookRegistryProvider {
     // Image loading methods
     func cachedThumbnailImage(for book: TPPBook) -> UIImage?
     func thumbnailImage(for book: TPPBook?, handler: @escaping (_ image: UIImage?) -> Void)
-    func thumbnailImages(forBooks books: Set<TPPBook>, handler: @escaping (_ books: Set<TPPBook>) -> Void)
+    func thumbnailImages(forBooks books: Set<TPPBook>, handler: @escaping (_ bookImages: [String: UIImage]) -> Void)
 
     // Book metadata
     func updatedBookMetadata(_ book: TPPBook) -> TPPBook?
@@ -133,6 +141,11 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
     private let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
     private let bookStateSubject = PassthroughSubject<(String, TPPBookState), Never>()
+    private let syncStateSubject = CurrentValueSubject<Bool, Never>(false)
+
+    var syncStatePublisher: AnyPublisher<Bool, Never> {
+        syncStateSubject.eraseToAnyPublisher()
+    }
 
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
         registrySubject

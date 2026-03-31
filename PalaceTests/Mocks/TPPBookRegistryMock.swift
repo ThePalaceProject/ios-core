@@ -9,6 +9,8 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     private let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
     private let bookStateSubject = CurrentValueSubject<(String, TPPBookState), Never>(("", .unregistered))
     var isSyncing: Bool = false
+    var myBooks: [TPPBook] = []
+    var state: TPPBookRegistry.RegistryState = .loaded
 
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
         registrySubject.eraseToAnyPublisher()
@@ -17,6 +19,17 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> {
         bookStateSubject.eraseToAnyPublisher()
     }
+
+    private let syncStateSubject = CurrentValueSubject<Bool, Never>(false)
+    var syncStatePublisher: AnyPublisher<Bool, Never> {
+        syncStateSubject.eraseToAnyPublisher()
+    }
+
+    func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {
+        completion?(nil, false)
+    }
+
+    func load() {}
 
     // MARK: - Mock Data Storage
     var registry = [String: TPPBookRegistryRecord]()

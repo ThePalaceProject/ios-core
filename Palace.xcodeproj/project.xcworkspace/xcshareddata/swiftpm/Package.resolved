@@ -1,5 +1,5 @@
 {
-  "originHash" : "0d40555e356dd7b48edafcc85e9f1059beb7c3b25e37f270727d044d2671577d",
+  "originHash" : "5eac0806778d5201ca31feadfd4e06923ad5a1e62cbc57661105014758b8563b",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -26,6 +26,15 @@
       "state" : {
         "revision" : "e45a26384239e028ec87fbcc788f513b67e10d8f",
         "version" : "1.9.0"
+      }
+    },
+    {
+      "identity" : "cucumberish",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Ahmed-Ali/Cucumberish.git",
+      "state" : {
+        "branch" : "master",
+        "revision" : "e7b371812f6906a8cdaecdf5fb32327f9bb446ac"
       }
     },
     {
@@ -164,21 +173,21 @@
       }
     },
     {
-      "identity" : "std-uritemplate-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/std-uritemplate/std-uritemplate-swift",
-      "state" : {
-        "revision" : "087394616732e6958833c2caa5dde34c73e63eb0",
-        "version" : "2.0.8"
-      }
-    },
-    {
       "identity" : "sqlite.swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/stephencelis/SQLite.swift.git",
       "state" : {
         "revision" : "0c08856385fe24f7b76d8c51842d78a196e8e817",
         "version" : "0.15.5"
+      }
+    },
+    {
+      "identity" : "std-uritemplate-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/std-uritemplate/std-uritemplate-swift",
+      "state" : {
+        "revision" : "087394616732e6958833c2caa5dde34c73e63eb0",
+        "version" : "2.0.8"
       }
     },
     {
