@@ -13,7 +13,7 @@ import Foundation
 class TPPMigrationManager: NSObject {
     private static let lastLaunchBuildKey = "TPPMigrationManager.lastLaunchBuild"
 
-    @objc static func migrate(settings: TPPSettings = TPPSettings.shared) {
+    @objc static func migrate(settings: TPPSettings = .shared) {
         // Fetch target version
         let targetVersion = Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String
 
@@ -26,7 +26,7 @@ class TPPMigrationManager: NSObject {
 
     /// Detects when the app binary has been updated (different build number from last launch)
     /// and performs recovery tasks to prevent "credentials invalid" / "can't open book" errors.
-    private static func performPostUpdateTasksIfNeeded(networkExecutor: TPPNetworkExecutor = .shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    private static func performPostUpdateTasksIfNeeded() {
         let currentBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
         let lastBuild = UserDefaults.standard.string(forKey: lastLaunchBuildKey)
 
@@ -45,12 +45,12 @@ class TPPMigrationManager: NSObject {
         let userAccount = TPPUserAccount.sharedAccount()
         if userAccount.hasCredentials(), userAccount.authTokenNearExpiry || userAccount.authTokenHasExpired {
             Log.info(#file, "Post-update: auth token expired/near-expiry — triggering refresh")
-            networkExecutor.refreshTokenAndResume(task: nil)
+            TPPNetworkExecutor.shared.refreshTokenAndResume(task: nil)
         }
 
         // Validate downloaded content is still accessible
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3.0) {
-            (bookRegistry as? TPPBookRegistry)?.validateDownloadedContent()
+            TPPBookRegistry.shared.validateDownloadedContent()
         }
     }
 

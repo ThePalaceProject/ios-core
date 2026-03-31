@@ -11,7 +11,7 @@ import PalaceAudiobookToolkit
         kSecClassIdentity as String
     ]
 
-    static func validateKeychain(settings: TPPSettings = TPPSettings.shared) {
+    static func validateKeychain(settings: TPPSettings = .shared) {
         if settings.appVersion == nil {
             Log.info(#file, "Fresh install detected. Cleaning up all keychain items...")
             cleanupAllKeychainItems()

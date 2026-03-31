@@ -116,6 +116,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     )
     private var processingIdentifiers = Set<String>()
 
+    private let accountsManager: AccountsManager
+    private lazy var downloadCenter: MyBooksDownloadCenter = .shared
+
     static let shared = TPPBookRegistry()
 
     private(set) var isSyncing: Bool {
@@ -164,11 +167,13 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     private var syncUrl: URL?
 
     private override init() {
+        self.accountsManager = .shared
         super.init()
         syncQueue.setSpecific(key: syncQueueKey, value: ())
     }
 
-    fileprivate init(account: String) {
+    fileprivate init(account: String, accountsManager: AccountsManager = .shared) {
+        self.accountsManager = accountsManager
         super.init()
         load(account: account)
     }
@@ -187,7 +192,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     private var loadingAccount: String?
 
     func load(account: String? = nil) {
-        guard let account = account ?? AccountsManager.shared.currentAccountId,
+        guard let account = account ?? accountsManager.currentAccountId,
               let url     = registryUrl(for: account)
         else { return }
 
@@ -300,7 +305,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     /// - Returns: true if the book's file exists on disk
     private func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {
         // Get the file URL for this book and account
-        guard let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: book, account: account) else {
+        guard let bookURL = downloadCenter.fileUrl(for: book, account: account) else {
             return false
         }
 
@@ -329,7 +334,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     /// Re-validates file existence for all downloaded books.
     /// Call after app updates or migrations to ensure states are consistent.
     func validateDownloadedContent() {
-        guard let account = AccountsManager.shared.currentAccount?.uuid else { return }
+        guard let account = accountsManager.currentAccount?.uuid else { return }
 
         var didChange = false
         syncQueue.sync {
@@ -367,7 +372,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
-        guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else { return }
+        guard let loansUrl = accountsManager.currentAccount?.loansUrl else { return }
 
         if state == .syncing {
             return
@@ -469,7 +474,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
                             if wasDownloaded {
                                 Log.info(#file, "📚 Removing expired/returned book '\(record.book.title)' (not in server feed)")
-                                MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
+                                downloadCenter.deleteLocalContent(for: identifier)
                             }
 
                             self.registry[identifier]?.state = .unregistered
@@ -488,7 +493,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     private func save() {
-        guard let account = AccountsManager.shared.currentAccount?.uuid,
+        guard let account = accountsManager.currentAccount?.uuid,
               let registryUrl = registryUrl(for: account)
         else { return }
 
@@ -515,7 +520,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     func saveSync() {
-        guard let account = AccountsManager.shared.currentAccount?.uuid,
+        guard let account = accountsManager.currentAccount?.uuid,
               let registryUrl = registryUrl(for: account)
         else { return }
 

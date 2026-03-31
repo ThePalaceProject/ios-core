@@ -17,7 +17,7 @@ final class CatalogViewModel: ObservableObject {
 
   private let repository: CatalogRepositoryProtocol
   private let topLevelURLProvider: () -> URL?
-  private let bookRegistry: TPPBookRegistry
+  private let bookRegistry: TPPBookRegistryProvider
   
   private var previousLanes: [CatalogLaneModel] = []
   private var previousUngroupedBooks: [TPPBook] = []
@@ -30,9 +30,7 @@ final class CatalogViewModel: ObservableObject {
   private var lastLoadedURL: URL?
   private var currentLoadTask: Task<Void, Never>? = nil
 
-  init(repository: CatalogRepositoryProtocol,
-       topLevelURLProvider: @escaping () -> URL?,
-       bookRegistry: TPPBookRegistry = .shared) {
+  init(repository: CatalogRepositoryProtocol, topLevelURLProvider: @escaping () -> URL?, bookRegistry: TPPBookRegistryProvider = bookRegistry) {
     self.repository = repository
     self.topLevelURLProvider = topLevelURLProvider
     self.bookRegistry = bookRegistry
@@ -155,14 +153,54 @@ final class CatalogViewModel: ObservableObject {
     
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
-        let mapped = Self.mapFeed(feed)
-        self.lanes = mapped.lanes
-        self.ungroupedBooks = mapped.ungroupedBooks
-        self.facetGroups = mapped.facetGroups
-        self.entryPoints = mapped.entryPoints
+        let feedObjc = feed.opdsFeed
+        switch feedObjc.type {
+        case .acquisitionUngrouped:
+          if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
+            let newUngrouped = opdsEntries.compactMap { Self.makeBook(from: $0) }
+            self.lanes = []
+            self.ungroupedBooks = newUngrouped
+          }
+          let (groups, entries) = Self.extractFacets(from: feedObjc)
+          self.facetGroups = groups
+          self.entryPoints = entries
+        case .acquisitionGrouped:
+          var groupTitleToBooks: [String: [TPPBook]] = [:]
+          var groupTitleToMoreURL: [String: URL?] = [:]
+          var orderedTitles: [String] = []
+          if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
+            for entry in opdsEntries {
+              guard let group = entry.groupAttributes else { continue }
+              let groupTitle = group.title ?? ""
+              if let book = Self.makeBook(from: entry) {
+                if groupTitleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
+                groupTitleToBooks[groupTitle, default: []].append(book)
+                if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+              }
+            }
+          }
+          self.ungroupedBooks = []
+          let (groups, entries) = Self.extractFacets(from: feedObjc)
+          self.facetGroups = groups
+          self.entryPoints = entries
+          self.lanes = orderedTitles.map { title in
+            let books = groupTitleToBooks[title] ?? []
+            let isLoading = books.count < 3
+            return CatalogLaneModel(
+              title: title, 
+              books: books, 
+              moreURL: groupTitleToMoreURL[title] ?? nil, 
+              isLoading: isLoading
+            )
+          }
+        case .navigation, .invalid:
+          break
+        @unknown default:
+          break
+        }
       }
       isOptimisticLoading = false
-
+      
       triggerScrollToTop()
     } catch {
       restorePreviousState()
@@ -175,29 +213,67 @@ final class CatalogViewModel: ObservableObject {
   @MainActor
   func applyEntryPoint(_ facet: CatalogFilter) async {
     guard let href = facet.href else { return }
-
+    
     storePreviousState()
-
+    
     isContentReloading = true
     isOptimisticLoading = true
     errorMessage = nil
-
+    
     updateEntryPointsOptimistically(selectedEntryPoint: facet)
-
+    
     lanes.removeAll()
     ungroupedBooks.removeAll()
     currentLoadTask?.cancel()
-
+    
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
-        let mapped = Self.mapFeed(feed)
-        self.lanes = mapped.lanes
-        self.ungroupedBooks = mapped.ungroupedBooks
-        self.facetGroups = mapped.facetGroups
-        self.entryPoints = mapped.entryPoints
+        let feedObjc = feed.opdsFeed
+        switch feedObjc.type {
+        case .acquisitionUngrouped:
+          if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
+            self.ungroupedBooks = opdsEntries.compactMap { Self.makeBook(from: $0) }
+          }
+          let (groups, entries) = Self.extractFacets(from: feedObjc)
+          self.facetGroups = groups
+          self.entryPoints = entries
+        case .acquisitionGrouped:
+          var groupTitleToBooks: [String: [TPPBook]] = [:]
+          var groupTitleToMoreURL: [String: URL?] = [:]
+          var orderedTitles: [String] = []
+          if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
+            for entry in opdsEntries {
+              guard let group = entry.groupAttributes else { continue }
+              let groupTitle = group.title ?? ""
+              if let book = Self.makeBook(from: entry) {
+                if groupTitleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
+                groupTitleToBooks[groupTitle, default: []].append(book)
+                if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+              }
+            }
+          }
+          self.ungroupedBooks = []
+          let (groups, entries) = Self.extractFacets(from: feedObjc)
+          self.facetGroups = groups
+          self.entryPoints = entries
+          self.lanes = orderedTitles.map { title in
+            let books = groupTitleToBooks[title] ?? []
+            let isLoading = books.count < 3
+            return CatalogLaneModel(
+              title: title, 
+              books: books, 
+              moreURL: groupTitleToMoreURL[title] ?? nil, 
+              isLoading: isLoading
+            )
+          }
+        case .navigation, .invalid:
+          break
+        @unknown default:
+          break
+        }
       }
       isOptimisticLoading = false
-
+      
       triggerScrollToTop()
     } catch {
       restorePreviousState()
@@ -255,12 +331,6 @@ extension CatalogViewModel {
 
   /// Produce a MappedCatalog from a CatalogFeed
   static func mapFeed(_ feed: CatalogFeed) -> MappedCatalog {
-    // OPDS 2 path
-    if let opds2 = feed.opds2Feed {
-      return mapOPDS2Feed(opds2, title: feed.title, entries: feed.entries)
-    }
-
-    // OPDS 1 path (existing)
     let title = feed.title
     let entries = feed.entries
     let feedObjc = feed.opdsFeed
@@ -307,127 +377,6 @@ extension CatalogViewModel {
         entryPoints: []
       )
     }
-  }
-
-  // MARK: - OPDS 2 Mapping
-
-  /// Map an OPDS 2 feed to a MappedCatalog
-  private static func mapOPDS2Feed(_ feed: OPDS2Feed, title: String, entries: [CatalogEntry]) -> MappedCatalog {
-    Log.info(#file, "[OPDS2-DIAG] Mapping OPDS2 feed: \"\(feed.title)\", " +
-      "grouped=\(feed.isGroupedFeed), " +
-      "publications=\(feed.isPublicationFeed), " +
-      "navigation=\(feed.isNavigationFeed)")
-
-    if feed.isGroupedFeed {
-      let lanes = buildOPDS2GroupedContent(from: feed)
-      let (facetGroups, entryPoints) = extractOPDS2Facets(from: feed)
-      return MappedCatalog(
-        title: title,
-        entries: entries,
-        lanes: lanes,
-        ungroupedBooks: [],
-        facetGroups: facetGroups,
-        entryPoints: entryPoints
-      )
-    } else if feed.isPublicationFeed {
-      let books = feed.publications?.compactMap { $0.toBook() } ?? []
-      Log.info(#file, "[OPDS2-DIAG] Mapped \(books.count) books from publication feed")
-      let (facetGroups, entryPoints) = extractOPDS2Facets(from: feed)
-      return MappedCatalog(
-        title: title,
-        entries: entries,
-        lanes: [],
-        ungroupedBooks: books,
-        facetGroups: facetGroups,
-        entryPoints: entryPoints
-      )
-    } else {
-      return MappedCatalog(
-        title: title,
-        entries: entries,
-        lanes: [],
-        ungroupedBooks: [],
-        facetGroups: [],
-        entryPoints: []
-      )
-    }
-  }
-
-  /// Build lane models from OPDS 2 grouped feed
-  private static func buildOPDS2GroupedContent(from feed: OPDS2Feed) -> [CatalogLaneModel] {
-    guard let groups = feed.groups else { return [] }
-
-    var lanes: [CatalogLaneModel] = []
-    for group in groups {
-      let books = (group.publications ?? []).compactMap { $0.toBook() }
-      guard !books.isEmpty else { continue }
-
-      let lane = CatalogLaneModel(
-        title: group.title,
-        books: books,
-        moreURL: group.moreURL,
-        isLoading: books.count < 3
-      )
-      lanes.append(lane)
-    }
-
-    Log.info(#file, "[OPDS2-DIAG] Built \(lanes.count) lanes from OPDS2 groups, " +
-      "total books=\(lanes.reduce(0) { $0 + $1.books.count })")
-
-    return lanes
-  }
-
-  /// Extract facets from OPDS 2 feed
-  static func extractOPDS2Facets(from feed: OPDS2Feed) -> ([CatalogFilterGroup], [CatalogFilter]) {
-    // Entry points come as top-level links with "entrypoint" in the href
-    var entryPoints: [CatalogFilter] = []
-    if let links = feed.links {
-      for link in links {
-        if let href = link.hrefURL,
-           (link.href.contains("entrypoint=") || link.rel == "http://opds-spec.org/facet"),
-           let title = link.title, !title.isEmpty {
-          let isActive = link.properties?.numberOfItems != nil
-          entryPoints.append(CatalogFilter(
-            id: link.href,
-            title: title,
-            href: href,
-            active: isActive
-          ))
-        }
-      }
-    }
-
-    guard let feedFacets = feed.facets else { return ([], entryPoints) }
-
-    // Entry point facet group names used by the Palace CM
-    let entryPointGroupNames: Set<String> = ["formats", "entrypoint", "entry point", "entry points"]
-
-    var groups: [CatalogFilterGroup] = []
-    for facetGroup in feedFacets {
-      let filters = facetGroup.links.compactMap { link -> CatalogFilter? in
-        guard let url = link.hrefURL else { return nil }
-        return CatalogFilter(
-          id: link.href,
-          title: link.title,
-          href: url,
-          active: link.isActive
-        )
-      }
-      guard !filters.isEmpty else { continue }
-
-      // Check if this facet group represents entry points (format selector)
-      if entryPointGroupNames.contains(facetGroup.title.lowercased()) {
-        entryPoints = filters
-      } else {
-        groups.append(CatalogFilterGroup(
-          id: facetGroup.title,
-          name: facetGroup.title,
-          filters: filters
-        ))
-      }
-    }
-
-    return (groups, entryPoints)
   }
 
   private static func buildGroupedContent(from feed: TPPOPDSFeed) -> ([CatalogLaneModel], [TPPBook]) {
@@ -506,7 +455,7 @@ extension CatalogViewModel {
     return (groups, entryPoints)
   }
 
-  private func prefetchThumbnails(for books: [TPPBook], bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+  private func prefetchThumbnails(for books: [TPPBook]) {
     let set = Set(books)
     (bookRegistry as? TPPBookRegistry)?.thumbnailImages(forBooks: set) { _ in }
   }
@@ -514,7 +463,7 @@ extension CatalogViewModel {
   static func makeBook(from entry: TPPOPDSEntry, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) -> TPPBook? {
     guard var book = TPPBook(entry: entry) else { return nil }
 
-    if let updated = bookRegistry.updatedBookMetadata(book) {
+    if let updated = (bookRegistry as? TPPBookRegistry)?.updatedBookMetadata(book) {
       book = updated
     }
 

@@ -1,5 +1,4 @@
 import Foundation
-import Combine
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
@@ -39,97 +38,11 @@ struct CatalogCacheMetadata: Codable {
     func account(_ uuid: String) -> Account?
 }
 
-/// Actor that protects AccountsManager's shared mutable state.
-/// Replaces the concurrent DispatchQueue + barrier reader/writer pattern.
-private actor AccountsState {
-    var accountSet: String
-    var accountSets = [String: [Account]]()
-    var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
-
-    init(accountSet: String) {
-        self.accountSet = accountSet
-    }
-
-    // MARK: - Account Sets
-
-    func getAccountSet() -> String { accountSet }
-    func setAccountSet(_ value: String) { accountSet = value }
-
-    func getAccounts(_ key: String?) -> [Account] {
-        let k = key ?? accountSet
-        return accountSets[k] ?? []
-    }
-
-    func setAccounts(_ accounts: [Account], for key: String) {
-        accountSets[key] = accounts
-    }
-
-    func accountsHaveLoaded() -> Bool {
-        !(accountSets[accountSet]?.isEmpty ?? true)
-    }
-
-    func accountsEmpty(for key: String) -> Bool {
-        accountSets[key]?.isEmpty ?? true
-    }
-
-    func findAccount(_ uuid: String) -> Account? {
-        accountSets.values
-            .first { $0.contains(where: { $0.uuid == uuid }) }?
-            .first(where: { $0.uuid == uuid })
-    }
-
-    // MARK: - Loading Handlers
-
-    /// Returns true if a load is already in progress for this hash.
-    func addLoadingHandler(for hash: String, _ handler: ((Bool) -> Void)?) -> Bool {
-        let alreadyLoading = loadingCompletionHandlers[hash] != nil
-
-        if alreadyLoading {
-            if let h = handler {
-                loadingCompletionHandlers[hash]?.append(h)
-            }
-            return true
-        }
-
-        // First request for this hash
-        loadingCompletionHandlers[hash] = handler.map { [$0] } ?? []
-        return false
-    }
-
-    func drainLoadingHandlers(for hash: String) -> [(Bool) -> Void] {
-        let handlers = loadingCompletionHandlers[hash] ?? []
-        loadingCompletionHandlers[hash] = nil
-        return handlers
-    }
-}
-
 /// Manages library accounts asynchronously with authentication & image loading
 @objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider {
 
     static let shared = AccountsManager()
     static func sharedInstance() -> AccountsManager { shared }
-
-    // MARK: - Combine Publishers
-
-    /// Publishes when the current account changes (replaces `.TPPCurrentAccountDidChange` notification)
-    private let currentAccountSubject = PassthroughSubject<Account?, Never>()
-
-    /// Publisher for current account changes. Use instead of observing `.TPPCurrentAccountDidChange`.
-    var currentAccountDidChange: AnyPublisher<Account?, Never> {
-        currentAccountSubject
-            .receive(on: DispatchQueue.main)
-            .eraseToAnyPublisher()
-    }
-
-    /// Publishes when catalog data finishes loading (replaces `.TPPCatalogDidLoad` notification)
-    private let catalogDidLoadSubject = PassthroughSubject<Void, Never>()
-
-    /// Publisher for catalog load events. Use instead of observing `.TPPCatalogDidLoad`.
-    var catalogDidLoad: AnyPublisher<Void, Never> {
-        catalogDidLoadSubject
-            .receive(on: DispatchQueue.main)
-            .eraseToAnyPublisher()
-    }
 
     // MARK: – Config / state
 
@@ -146,15 +59,24 @@ private actor AccountsState {
     let tppAccountUUID = AccountsManager.TPPAccountUUIDs[0]
 
     let ageCheck: TPPAgeCheckVerifying
-    private let state: AccountsState
+    private let settings: TPPSettings
+    private let networkExecutor: TPPNetworkExecutor
+    private var accountSet: String
+    private var accountSets = [String: [Account]]()
+    private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
+
+    // Per‐catalog in‐flight tracking:
+    private var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
+    private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
 
     private override init() {
-        let initialAccountSet = TPPConfiguration.customUrlHash()
-            ?? (TPPSettings.shared.useBetaLibraries
+        self.settings = .shared
+        self.networkExecutor = .shared
+        self.accountSet = TPPConfiguration.customUrlHash()
+            ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrlHash
                     : TPPConfiguration.prodUrlHash)
-        self.state = AccountsState(accountSet: initialAccountSet)
-        self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: TPPSettings.shared)
+        self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: settings)
         super.init()
         NotificationCenter.default.addObserver(
             self,
@@ -163,33 +85,22 @@ private actor AccountsState {
             object: nil
         )
 
-        Task { [weak self] in
+        DispatchQueue.global(qos: .background).async { [weak self] in
             self?.loadCatalogs(completion: nil)
         }
     }
 
-    // MARK: – Thread‐safe accountSets access (actor-backed)
+    // MARK: – Thread‐safe accountSets access
 
-    /// Synchronous read for backward compatibility. Uses semaphore to block
-    /// the calling thread while the actor processes the request.
-    /// Prefer the async variants for new code.
-    private func performRead<T>(_ block: @escaping (AccountsState) async -> T) -> T {
-        // Fast path: if we're already in a Task context, this will work.
-        // For synchronous callers, we use a semaphore to bridge.
-        let semaphore = DispatchSemaphore(value: 0)
-        var result: T!
-        Task {
-            result = await block(self.state)
-            semaphore.signal()
+    private func performRead<T>(_ block: () -> T) -> T {
+        return accountSetsLock.sync {
+            block()
         }
-        semaphore.wait()
-        return result
     }
 
-    /// Fire-and-forget write for backward compatibility.
-    private func performWrite(_ block: @escaping (AccountsState) async -> Void) {
-        Task {
-            await block(self.state)
+    private func performWrite(_ block: @escaping () -> Void) {
+        accountSetsLock.async(flags: .barrier) {
+            block()
         }
     }
 
@@ -214,7 +125,6 @@ private actor AccountsState {
             self.currentAccount?.hasUpdatedToken = false
             currentAccountId = newValue?.uuid
             TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
-            currentAccountSubject.send(newValue)
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         }
     }
@@ -222,7 +132,7 @@ private actor AccountsState {
     /// Cleans up active audiobook playback, in-flight network requests, and other
     /// content before switching accounts to prevent cross-account credential leaks.
     private func cleanupActiveContentBeforeAccountSwitch(from previousId: String?, to newId: String?) {
-        TPPNetworkExecutor.shared.cancelNonEssentialTasks()
+        networkExecutor.cancelNonEssentialTasks()
 
         Task { @MainActor in
             if let coordinator = NavigationCoordinatorHub.shared.coordinator {
@@ -248,20 +158,23 @@ private actor AccountsState {
     }
 
     func account(_ uuid: String) -> Account? {
-        return performRead { state in
-            await state.findAccount(uuid)
+        return performRead {
+            accountSets.values
+                .first { $0.contains(where: { $0.uuid == uuid }) }?
+                .first(where: { $0.uuid == uuid })
         }
     }
 
     func accounts(_ key: String? = nil) -> [Account] {
-        return performRead { state in
-            await state.getAccounts(key)
+        return performRead {
+            let k = key ?? self.accountSet
+            return self.accountSets[k] ?? []
         }
     }
 
     var accountsHaveLoaded: Bool {
-        return performRead { state in
-            await state.accountsHaveLoaded()
+        return performRead {
+            !(self.accountSets[self.accountSet]?.isEmpty ?? true)
         }
     }
 
@@ -270,17 +183,37 @@ private actor AccountsState {
     /// Adds a completion handler for the given catalog hash,
     /// returns true if a load is already underway.
     private func addLoadingHandler(for hash: String, _ handler: ((Bool) -> Void)?) -> Bool {
-        return performRead { state in
-            await state.addLoadingHandler(for: hash, handler)
+        var alreadyLoading = false
+        loadingHandlersQueue.sync {
+            alreadyLoading = loadingCompletionHandlers[hash] != nil
         }
+
+        guard !alreadyLoading else {
+            if let h = handler {
+                loadingHandlersQueue.async(flags: .barrier) { [weak self] in
+                    self?.loadingCompletionHandlers[hash]?.append(h)
+                }
+            }
+            return true
+        }
+
+        // first request for this hash
+        loadingHandlersQueue.async(flags: .barrier) {
+            self.loadingCompletionHandlers[hash] = handler.map { [$0] } ?? []
+        }
+        return false
     }
 
     /// Calls & clears all handlers for the given hash
     private func callAndClearLoadingHandlers(for hash: String, _ success: Bool) {
-        Task {
-            let handlers = await self.state.drainLoadingHandlers(for: hash)
-            handlers.forEach { $0(success) }
+        var handlers: [(Bool) -> Void] = []
+        loadingHandlersQueue.sync {
+            handlers = loadingCompletionHandlers[hash] ?? []
         }
+        loadingHandlersQueue.async(flags: .barrier) {
+            self.loadingCompletionHandlers[hash] = nil
+        }
+        handlers.forEach { $0(success) }
     }
 
     /// Public entrypoint - implements stale-while-revalidate pattern
@@ -289,7 +222,7 @@ private actor AccountsState {
     /// 3. If no cache or expired, fetch from network
     func loadCatalogs(completion: ((Bool) -> Void)?) {
         let targetUrl = TPPConfiguration.customUrl()
-            ?? (TPPSettings.shared.useBetaLibraries
+            ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrl
                     : TPPConfiguration.prodUrl)
         let hash = targetUrl.absoluteString
@@ -298,7 +231,7 @@ private actor AccountsState {
             .trimmingCharacters(in: ["="])
 
         // 1. If already loaded in memory, return immediately
-        if performRead({ state in await !state.accountsEmpty(for: hash) }) {
+        if performRead({ self.accountSets[hash]?.isEmpty == false }) {
             completion?(true)
             // Still refresh in background if stale
             if isCacheStale(hash: hash) {
@@ -316,7 +249,6 @@ private actor AccountsState {
             if addLoadingHandler(for: hash, completion) { return }
 
             loadAccountSetsAndAuthDoc(fromCatalogData: cachedData, key: hash) { [weak self] success in
-                self?.catalogDidLoadSubject.send()
                 NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                 self?.callAndClearLoadingHandlers(for: hash, success)
             }
@@ -337,13 +269,12 @@ private actor AccountsState {
 
     /// Fetches catalog data from network (used for initial load when no cache)
     private func fetchFromNetwork(targetUrl: URL, hash: String) {
-        TPPNetworkExecutor.shared.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+        networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
             guard let self = self else { return }
             switch result {
             case .success(let data, _):
                 self.cacheAccountsCatalogData(data, hash: hash)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
-                    self.catalogDidLoadSubject.send()
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     self.callAndClearLoadingHandlers(for: hash, success)
                 }
@@ -354,7 +285,6 @@ private actor AccountsState {
                 if let data = self.readCachedAccountsCatalogData(hash: hash) {
                     Log.info(#file, "Using cached catalog data as fallback after network failure")
                     self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
-                        self.catalogDidLoadSubject.send()
                         NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                         self.callAndClearLoadingHandlers(for: hash, success)
                     }
@@ -368,10 +298,10 @@ private actor AccountsState {
 
     /// Refreshes catalog data in background without blocking the UI
     private func refreshInBackground(targetUrl: URL, hash: String) {
-        Task.detached(priority: .utility) { [weak self] in
+        DispatchQueue.global(qos: .utility).async { [weak self] in
             Log.debug(#file, "Starting background refresh for catalog hash \(hash)")
 
-            TPPNetworkExecutor.shared.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+            networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
                 guard let self = self else { return }
 
                 switch result {
@@ -380,7 +310,6 @@ private actor AccountsState {
                     self.cacheAccountsCatalogData(data, hash: hash)
                     self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { _ in
                         // Notify UI that fresh data is available
-                        self.catalogDidLoadSubject.send()
                         NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     }
 
@@ -481,8 +410,8 @@ private actor AccountsState {
                 }
             }
 
-            self.performWrite { state in
-                await state.setAccounts(newAccounts, for: hash)
+            self.performWrite {
+                self.accountSets[hash] = newAccounts
             }
 
             let group = DispatchGroup()
@@ -510,9 +439,8 @@ private actor AccountsState {
                 if let cur = self.currentAccount, cur.details?.needsAgeCheck ?? false {
                     mainFeed = cur.details?.defaultAuth?.coppaURL(isOfAge: true)
                 }
-                TPPSettings.shared.accountMainFeedURL = mainFeed
+                self.settings.accountMainFeedURL = mainFeed
                 UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
-                self.currentAccountSubject.send(self.currentAccount)
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
                 completion(true)
             }
@@ -529,12 +457,12 @@ private actor AccountsState {
 
     func updateAccountSet(completion: ((Bool) -> Void)?) {
         let newHash = TPPConfiguration.customUrlHash()
-            ?? (TPPSettings.shared.useBetaLibraries
+            ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrlHash
                     : TPPConfiguration.prodUrlHash)
 
-        performWrite { state in await state.setAccountSet(newHash) }
-        if performRead({ state in await state.accountsEmpty(for: newHash) }) || TPPConfiguration.customUrlHash() != nil {
+        performWrite { self.accountSet = newHash }
+        if performRead({ self.accountSets[newHash]?.isEmpty ?? true }) || TPPConfiguration.customUrlHash() != nil {
             loadCatalogs(completion: completion)
         } else {
             completion?(true)
@@ -544,7 +472,7 @@ private actor AccountsState {
     /// Clears all local catalog and authentication caches
     func clearCache() {
         // network cache
-        TPPNetworkExecutor.shared.clearCache()
+        networkExecutor.clearCache()
         // file caches
         let keys = ["library_list_", "accounts_catalog_", "authentication_document_"]
         let fm = FileManager.default

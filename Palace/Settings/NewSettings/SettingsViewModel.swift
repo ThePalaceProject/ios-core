@@ -166,7 +166,7 @@ final class SettingsViewModel: ObservableObject {
 
     /// Refreshes the accounts list from the accounts manager.
     func refreshAccountsList() {
-        settingsAccountsList = TPPSettings.shared.settingsAccountsList
+        settingsAccountsList = (settings as? TPPSettings)?.settingsAccountsList ?? []
     }
 
     /// Clears the custom feed URL, reverting to the default feed.

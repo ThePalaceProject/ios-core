@@ -18,11 +18,9 @@ struct TPPSettingsView: View {
     @State private var showAddLibrarySheet: Bool = false
     @State private var librariesRefreshToken: UUID = UUID()
     @State private var currentAccounts: [Account] = []
-    private let settings: TPPSettings
 
-    init(settings: TPPSettings = TPPSettings.shared) {
-        self.settings = settings
-        _currentAccounts = State(initialValue: settings.settingsAccountsList)
+    init() {
+        _currentAccounts = State(initialValue: [])
     }
 
     // accesslint:disable A11Y.UIKIT.ORIENTATION - Adapts layout for iPad landscape; does not restrict orientation
@@ -176,7 +174,7 @@ struct TPPSettingsView: View {
     }
 
     @ViewBuilder private var developerSettingsSection: some View {
-        if settings.customMainFeedURL == nil && showDeveloperSettings {
+        if TPPSettings.shared.customMainFeedURL == nil && showDeveloperSettings {
             Section(footer: versionInfo) {
                 let viewController = TPPDeveloperSettingsTableViewController()
 
@@ -218,6 +216,6 @@ struct TPPSettingsView: View {
     }
 
     private func updateAccountsList() {
-        currentAccounts = settings.settingsAccountsList
+        currentAccounts = TPPSettings.shared.settingsAccountsList
     }
 }

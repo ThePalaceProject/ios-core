@@ -75,13 +75,13 @@ extension MyBooksDownloadCenter {
 
         // Set processing state - this shows a spinner in the UI
         await MainActor.run {
-            bookRegistry.setProcessing(true, for: bookIdentifier)
+            self.bookRegistry.setProcessing(true, for: bookIdentifier)
         }
 
         // Helper to clear processing state on all exit paths
         // Using @MainActor func instead of detached Task to ensure immediate execution
         @MainActor func clearProcessingState() {
-            bookRegistry.setProcessing(false, for: bookIdentifier)
+            self.bookRegistry.setProcessing(false, for: bookIdentifier)
         }
 
         do {
@@ -102,7 +102,7 @@ extension MyBooksDownloadCenter {
             await clearProcessingState()
 
             // Preserve existing location
-            let location = bookRegistry.location(forIdentifier: borrowedBook.identifier)
+            let location = self.bookRegistry.location(forIdentifier: borrowedBook.identifier)
 
             // Determine correct registry state based on availability
             var newState: TPPBookState = .downloadNeeded
@@ -115,7 +115,7 @@ extension MyBooksDownloadCenter {
             )
 
             // Add to registry
-            bookRegistry.addBook(
+            self.bookRegistry.addBook(
                 borrowedBook,
                 location: location,
                 state: newState,
@@ -125,7 +125,7 @@ extension MyBooksDownloadCenter {
             )
 
             // Emit explicit state update so SwiftUI lists refresh immediately
-            bookRegistry.setState(newState, for: borrowedBook.identifier)
+            self.bookRegistry.setState(newState, for: borrowedBook.identifier)
 
             Task { await ErrorActivityTracker.shared.log("Borrow succeeded for '\(borrowedBook.title)', state: \(newState)", category: .borrow) }
 
@@ -145,7 +145,7 @@ extension MyBooksDownloadCenter {
             if newState == .holding {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    bookRegistry.sync()
+                    (self.bookRegistry as? TPPBookRegistry)?.sync()
                 }
             }
 
@@ -202,7 +202,7 @@ extension MyBooksDownloadCenter {
         attemptDownload: Bool,
         problemDocument: TPPProblemDocument? = nil
     ) async -> Bool {
-        let userAccount = TPPUserAccount.sharedAccount()
+        let userAccount = self.userAccount
         let authDef = userAccount.authDefinition
         let hasCredentials = userAccount.hasCredentials()
 

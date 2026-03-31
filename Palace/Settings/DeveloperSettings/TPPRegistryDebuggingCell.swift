@@ -6,8 +6,8 @@ class TPPRegistryDebuggingCell: UITableViewCell {
 
     private var inputField = UITextField()
     weak var delegate: TPPLoadingViewController?
-    private let settings: TPPSettings
-    private let accountsManager: AccountsManager
+    private let settings: TPPSettings = .shared
+    private let accountsManager: AccountsManager = .shared
 
     private var reloadInProgress: Bool = false {
         didSet {
@@ -95,16 +95,12 @@ class TPPRegistryDebuggingCell: UITableViewCell {
         return stackView
     }()
 
-    init(settings: TPPSettings = TPPSettings.shared, accountsManager: AccountsManager = AccountsManager.shared) {
-        self.settings = settings
-        self.accountsManager = accountsManager
+    init() {
         super.init(style: .default, reuseIdentifier: "CustomRegistryCell")
         configure()
     }
 
     required init?(coder: NSCoder) {
-        self.settings = TPPSettings.shared
-        self.accountsManager = AccountsManager.shared
         super.init(coder: coder)
     }
 

@@ -201,7 +201,6 @@ protocol AnnotationsManager {
                               withParameters parameters: [String: Any],
                               timeout: TimeInterval = TPPDefaultRequestTimeout,
                               queueOffline: Bool,
-                              networkExecutor: TPPNetworkExecutor = .shared,
                               _ completionHandler: @escaping (_ success: Bool, _ annotationID: String?, _ timeStamp: String?) -> Void) {
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted]) else {
@@ -210,13 +209,13 @@ protocol AnnotationsManager {
             return
         }
 
-        var request = networkExecutor.request(for: url)
+        var request = TPPNetworkExecutor.shared.request(for: url)
         request.httpMethod = "POST"
         request.httpBody = jsonData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = timeout
 
-        let task = networkExecutor.POST(request, useTokenIfAvailable: true) { (data, response, error) in
+        let task = TPPNetworkExecutor.shared.POST(request, useTokenIfAvailable: true) { (data, response, error) in
             if let error = error as NSError? {
                 let willQueueOffline = (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true)
 
@@ -415,7 +414,6 @@ protocol AnnotationsManager {
     }
 
     static func deleteBookmark(annotationId: String,
-                              networkExecutor: TPPNetworkExecutor = .shared,
                               completionHandler: @escaping (_ success: Bool) -> Void) {
 
         if !syncIsPossibleAndPermitted() {
@@ -429,10 +427,10 @@ protocol AnnotationsManager {
             return
         }
 
-        var request = networkExecutor.request(for: url)
+        var request = TPPNetworkExecutor.shared.request(for: url)
         request.timeoutInterval = TPPDefaultRequestTimeout
 
-        let task = networkExecutor.DELETE(request, useTokenIfAvailable: true) { (_, response, error) in
+        let task = TPPNetworkExecutor.shared.DELETE(request, useTokenIfAvailable: true) { (_, response, error) in
             let response = response as? HTTPURLResponse
             if response?.statusCode == 200 {
                 Log.info(#file, "200: DELETE bookmark success")
@@ -494,12 +492,12 @@ protocol AnnotationsManager {
 
     /// Annotation-syncing is possible only if the given `account` is signed-in
     /// and if the currently selected library supports it.
-    static func syncIsPossible(_ account: TPPUserAccount, accountsManager: AccountsManager = AccountsManager.shared) -> Bool {
+    static func syncIsPossible(_ account: TPPUserAccount, accountsManager: AccountsManager = .shared) -> Bool {
         let library = accountsManager.currentAccount
         return account.hasCredentials() && library?.details?.supportsSimplyESync == true
     }
 
-    static func syncIsPossibleAndPermitted(accountsManager: AccountsManager = AccountsManager.shared) -> Bool {
+    static func syncIsPossibleAndPermitted(accountsManager: AccountsManager = .shared) -> Bool {
         let account = TPPUserAccount.sharedAccount()
         let acct = accountsManager.currentAccount
         let hasCreds = account.hasCredentials()
@@ -518,7 +516,7 @@ protocol AnnotationsManager {
         return TPPConfiguration.mainFeedURL()?.appendingPathComponent("annotations/")
     }
 
-    private static func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any], accountsManager: AccountsManager = AccountsManager.shared, networkExecutor: TPPNetworkExecutor = .shared) {
+    private static func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any], accountsManager: AccountsManager = .shared, networkExecutor: TPPNetworkExecutor = .shared) {
         let libraryID = accountsManager.currentAccount?.uuid ?? ""
         let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
         let headers = networkExecutor.request(for: url).allHTTPHeaderFields

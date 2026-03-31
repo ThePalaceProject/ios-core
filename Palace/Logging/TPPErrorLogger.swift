@@ -662,7 +662,7 @@ private let nullString = "null"
      account info to our crash reports.
      - parameter metadata: report metadata dictionary
      */
-    private class func addAccountInfoToMetadata(_ metadata: inout [String: Any], accountsManager: AccountsManager = AccountsManager.shared) {
+    private class func addAccountInfoToMetadata(_ metadata: inout [String: Any], accountsManager: AccountsManager = .shared) {
         let currentLibrary = accountsManager.currentAccount
         metadata["currentAccountName"] = currentLibrary?.name ?? nullString
         metadata["currentAccountUUID"] = currentLibrary?.uuid ?? nullString

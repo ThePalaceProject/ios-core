@@ -5,6 +5,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
     weak var tableView: UITableView!
     var loadingView: UIView?
+    private let settings: TPPSettings = .shared
+    private let accountsManager: AccountsManager = .shared
 
     enum Section: Int, CaseIterable {
         case librarySettings = 0

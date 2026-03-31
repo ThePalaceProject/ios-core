@@ -34,17 +34,17 @@ enum Group: Int {
     var activeFacetSort: Facet
     let facetViewModel: FacetViewModel
     private var observers = Set<AnyCancellable>()
-    private let bookRegistry: TPPBookRegistryProvider
-    private let settings: TPPSettings
+    private let bookRegistry: TPPBookRegistry
     private let accountsManager: AccountsManager
+    private let settings: TPPSettings
     private var allBooks: [TPPBook] = []
 
     // MARK: - Initialization
-    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, settings: TPPSettings = .shared, accountsManager: AccountsManager = .shared) {
-        self.activeFacetSort = .author
+    init(bookRegistry: TPPBookRegistry = .shared, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
         self.bookRegistry = bookRegistry
-        self.settings = settings
         self.accountsManager = accountsManager
+        self.settings = settings
+        self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
             groupName: DisplayStrings.sortBy,
             facets: [.title, .author]

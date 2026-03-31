@@ -52,16 +52,16 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     }
 
     private let notificationCenter = UNUserNotificationCenter.current()
-    private let networkExecutor: TPPNetworkExecutor
     private let accountsManager: AccountsManager
-    private let bookRegistry: TPPBookRegistryProvider
+    private let networkExecutor: TPPNetworkExecutor
+    private let bookRegistry: TPPBookRegistry
 
     static let shared = NotificationService()
 
-    init(networkExecutor: TPPNetworkExecutor = .shared, accountsManager: AccountsManager = AccountsManager.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
-        self.networkExecutor = networkExecutor
-        self.accountsManager = accountsManager
-        self.bookRegistry = bookRegistry
+    override init() {
+        self.accountsManager = .shared
+        self.networkExecutor = .shared
+        self.bookRegistry = TPPBookRegistry.shared
         super.init()
 
         // Update library token when the user changes library account.
@@ -262,7 +262,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         // Navigate to Holds tab for hold-related notifications
         if isHoldNotification {
             Task { @MainActor in
-                guard let currentAccount = accountsManager.currentAccount,
+                guard let currentAccount = self?.accountsManager.currentAccount,
                       currentAccount.details?.supportsReservations == true else {
                     Log.warn(#file, "[Notification] Cannot navigate to Holds - account doesn't support reservations")
                     completionHandler()
@@ -460,7 +460,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     ///
     /// - Returns: `true` if the user has held books and should fetch updates
     class func backgroundFetchIsNeeded() -> Bool {
-        let count = NotificationService.shared.bookRegistry.heldBooks.count
+        let count = bookRegistry.heldBooks.count
         Log.info(#file, "[Background Fetch] Held books: \(count)")
         return count > 0
     }

@@ -16,8 +16,119 @@ import OverdriveProcessor
 #endif
 
 /// Modern Swift actor for coordinating downloads - NO LOCKS!
-// DownloadCoordinator is defined in MyBooksDownloadQueue.swift
-// DownloadErrorInfo is defined in MyBooksDownloadErrorInfo.swift
+actor DownloadCoordinator {
+    private var activeDownloadIdentifiers: Set<String> = []
+    private var startTimes: [String: Date] = [:]
+    private let minimumStartDelay: TimeInterval = 0.3
+    private var pendingQueue: [TPPBook] = []
+    private var downloadInfoCache: [String: MyBooksDownloadInfo] = [:]
+    private var redirectAttempts: [Int: Int] = [:]
+
+    var activeCount: Int {
+        activeDownloadIdentifiers.count
+    }
+
+    var queueCount: Int {
+        pendingQueue.count
+    }
+
+    func canStartDownload(maxConcurrent: Int) -> Bool {
+        activeDownloadIdentifiers.count < maxConcurrent
+    }
+
+    func shouldThrottleStart() async -> TimeInterval {
+        guard let lastStartTime = startTimes.values.max() else {
+            return 0
+        }
+
+        let timeSinceLastStart = Date().timeIntervalSince(lastStartTime)
+        if timeSinceLastStart < minimumStartDelay {
+            return minimumStartDelay - timeSinceLastStart
+        }
+        return 0
+    }
+
+    func registerStart(identifier: String) {
+        activeDownloadIdentifiers.insert(identifier)
+        startTimes[identifier] = Date()
+    }
+
+    func registerCompletion(identifier: String) {
+        activeDownloadIdentifiers.remove(identifier)
+        startTimes.removeValue(forKey: identifier)
+    }
+
+    func enqueuePending(_ book: TPPBook) {
+        if !pendingQueue.contains(where: { $0.identifier == book.identifier }) {
+            pendingQueue.append(book)
+        }
+    }
+
+    func dequeuePending(capacity: Int) -> [TPPBook] {
+        guard capacity > 0, !pendingQueue.isEmpty else { return [] }
+
+        let toStart = Array(pendingQueue.prefix(capacity))
+        pendingQueue.removeFirst(min(capacity, pendingQueue.count))
+        return toStart
+    }
+
+    func cacheDownloadInfo(_ info: MyBooksDownloadInfo, for identifier: String) {
+        downloadInfoCache[identifier] = info
+    }
+
+    func getCachedDownloadInfo(for identifier: String) -> MyBooksDownloadInfo? {
+        downloadInfoCache[identifier]
+    }
+
+    func removeCachedDownloadInfo(for identifier: String) {
+        downloadInfoCache.removeValue(forKey: identifier)
+    }
+
+    func getRedirectAttempts(for taskID: Int) -> Int {
+        redirectAttempts[taskID] ?? 0
+    }
+
+    func incrementRedirectAttempts(for taskID: Int) {
+        redirectAttempts[taskID] = (redirectAttempts[taskID] ?? 0) + 1
+    }
+
+    func clearRedirectAttempts(for taskID: Int) {
+        redirectAttempts.removeValue(forKey: taskID)
+    }
+
+    func reset() {
+        activeDownloadIdentifiers.removeAll()
+        startTimes.removeAll()
+        pendingQueue.removeAll()
+        downloadInfoCache.removeAll()
+        redirectAttempts.removeAll()
+    }
+}
+
+/// Info published when a download or borrow error occurs.
+/// Includes retry support so SwiftUI views can offer a "Retry" button.
+struct DownloadErrorInfo {
+    let bookId: String
+    let title: String
+    let message: String
+    let retryAction: (() -> Void)?
+
+    /// Convenience for non-retryable errors.
+    init(bookId: String, title: String, message: String) {
+        self.bookId = bookId
+        self.title = title
+        self.message = message
+        self.retryAction = nil
+    }
+
+    /// Full initializer with optional retry action.
+    init(bookId: String, title: String, message: String, retryAction: (() -> Void)?) {
+        self.bookId = bookId
+        self.title = title
+        self.message = message
+        self.retryAction = retryAction
+    }
+}
 
 @objc class MyBooksDownloadCenter: NSObject, URLSessionDelegate {
     typealias DisplayStrings = Strings.MyDownloadCenter
@@ -26,8 +137,9 @@ import OverdriveProcessor
 
     public var userAccount: TPPUserAccount
     private var reauthenticator: Reauthenticator
-    var bookRegistry: TPPBookRegistryProvider
-    let accountsManager: AccountsManager
+    private var bookRegistry: TPPBookRegistryProvider
+    private let accountsManager: AccountsManager
+    private let networkExecutor: TPPNetworkExecutor
     private let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
 
     private var bookIdentifierOfBookToRemove: String?
@@ -60,12 +172,14 @@ import OverdriveProcessor
         reauthenticator: Reauthenticator = TPPReauthenticator(),
         bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
         accountsManager: AccountsManager = .shared,
+        networkExecutor: TPPNetworkExecutor = .shared,
         accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter()
     ) {
         self.userAccount = userAccount
         self.bookRegistry = bookRegistry
         self.reauthenticator = reauthenticator
         self.accountsManager = accountsManager
+        self.networkExecutor = networkExecutor
         self.accessibilityAnnouncements = accessibilityAnnouncements
 
         super.init()
@@ -954,7 +1068,7 @@ extension MyBooksDownloadCenter {
                 self.bookRegistry.setState(.unregistered, for: identifier)
                 self.bookRegistry.removeBook(forIdentifier: identifier)
                 Task {
-                    try? await TPPBookRegistry.shared.syncAsync()
+                    try? await (self.bookRegistry as? TPPBookRegistry)?.syncAsync()
                     runOnMainAsync {
                         self.announceReturnSucceeded(for: book)
                         completion?()
@@ -980,7 +1094,7 @@ extension MyBooksDownloadCenter {
                             self.bookRegistry.updateAndRemoveBook(returnedBook)
                             self.bookRegistry.setState(.unregistered, for: identifier)
                             Task {
-                                try? await TPPBookRegistry.shared.syncAsync()
+                                try? await (self.bookRegistry as? TPPBookRegistry)?.syncAsync()
                                 runOnMainAsync {
                                     self.announceReturnSucceeded(for: book)
                                     completion?()
@@ -990,7 +1104,7 @@ extension MyBooksDownloadCenter {
                     } else {
                         NSLog("Failed to create book from entry. Book not removed from registry.")
                         Task {
-                            try? await TPPBookRegistry.shared.syncAsync()
+                            try? await (self.bookRegistry as? TPPBookRegistry)?.syncAsync()
                             runOnMainAsync {
                                 self.announceReturnFailed(for: book)
                                 completion?()
@@ -1011,7 +1125,7 @@ extension MyBooksDownloadCenter {
                                 self.bookRegistry.setState(.unregistered, for: identifier)
                                 self.bookRegistry.removeBook(forIdentifier: identifier)
                                 Task {
-                                    try? await TPPBookRegistry.shared.syncAsync()
+                                    try? await (self.bookRegistry as? TPPBookRegistry)?.syncAsync()
                                     runOnMainAsync {
                                         self.announceReturnSucceeded(for: book)
                                         completion?()
@@ -1172,8 +1286,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         }
 
         // Try to parse as OPDS entry and extract acquisition link
-        guard let xml = TPPXML.xml(with: xmlData),
-              let entry = TPPOPDSEntry(xml: xml) else {
+        guard let entry = TPPOPDSEntry(xml: TPPXML(data: xmlData)) else {
             Log.warn(#file, "Failed to parse XML as OPDS entry for \(book.identifier)")
             return false
         }
@@ -1216,7 +1329,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
 
         // Add authorization if needed
-        if let token = TPPUserAccount.sharedAccount().authToken {
+        if let token = userAccount.authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
@@ -1257,9 +1370,9 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                 if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(detectedRights) {
                     await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
                 }
-            } else if TPPUserAccount.sharedAccount().isTokenRefreshRequired() {
+            } else if userAccount.isTokenRefreshRequired() {
                 NSLog("Authentication might be needed after all")
-                TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+                networkExecutor.refreshTokenAndResume(task: task)
                 return
             }
         }

@@ -44,9 +44,9 @@ final class HoldsViewModel: ObservableObject {
     }
 
     init(bookRegistry: TPPBookRegistryProvider, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
-        self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.settings = settings
+        self.bookRegistry = bookRegistry
 
         NotificationCenter.default.publisher(for: .TPPSyncBegan)
             .receive(on: DispatchQueue.main)
@@ -109,14 +109,14 @@ final class HoldsViewModel: ObservableObject {
     func refresh() {
         if TPPUserAccount.sharedAccount().needsAuth {
             if TPPUserAccount.sharedAccount().hasCredentials() {
-                bookRegistry.sync()
+                (bookRegistry as? TPPBookRegistry)?.sync()
             } else {
                 SignInModalPresenter.presentSignInModalForCurrentAccount {
                     self.reloadData()
                 }
             }
         } else {
-            bookRegistry.load()
+            (bookRegistry as? TPPBookRegistry)?.load()
         }
     }
 

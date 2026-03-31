@@ -59,11 +59,7 @@ import Combine
     ///
     /// This function gets data from `TPPBookRegistry`,
     /// `bookIdentifier` must be present in the registry, otherwise the app crashes..
-    @objc convenience init(with book: TPPBook) {
-        self.init(with: book, bookRegistry: TPPBookRegistry.shared)
-    }
-
-    init(with book: TPPBook, bookRegistry: TPPBookRegistryProvider) {
+    @objc init(with book: TPPBook, bookRegistry: TPPBookRegistryProvider = bookRegistry) {
         self.book = book
         self.bookRegistry = bookRegistry
         currentPage = bookRegistry.location(forIdentifier: book.identifier)?.pageNumber ?? 0

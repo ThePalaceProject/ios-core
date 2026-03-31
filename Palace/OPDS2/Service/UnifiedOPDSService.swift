@@ -91,6 +91,7 @@ actor UnifiedOPDSService {
     private let opds2Cache: OPDS2FeedCache
     private let opds1Cache: OPDS1FeedCache
     private let urlSession: URLSession
+    private let accountsManager: AccountsManager
 
     // MARK: - State
 
@@ -105,11 +106,13 @@ actor UnifiedOPDSService {
     public init(
         opds2Cache: OPDS2FeedCache = .shared,
         opds1Cache: OPDS1FeedCache = .shared,
-        urlSession: URLSession = .shared
+        urlSession: URLSession = .shared,
+        accountsManager: AccountsManager = .shared
     ) {
         self.opds2Cache = opds2Cache
         self.opds1Cache = opds1Cache
         self.urlSession = urlSession
+        self.accountsManager = accountsManager
     }
 
     // MARK: - Primary API
@@ -130,26 +133,18 @@ actor UnifiedOPDSService {
 
         // Create new fetch task
         let task = Task<UnifiedOPDSFeed, Error> { [self] in
-            Log.info(#file, "[OPDS2-DIAG] Fetching feed from \(url.absoluteString), preferOPDS2=\(preferOPDS2), useToken=\(useToken)")
-
             // Try OPDS2 first if preferred
             if preferOPDS2 {
                 do {
                     let feed = try await fetchOPDS2Feed(from: url, useToken: useToken, forceRefresh: forceRefresh)
-                    Log.info(#file, "[OPDS2-DIAG] OPDS2 feed loaded: \"\(feed.title)\", " +
-                        "groups=\(feed.groups?.count ?? 0), " +
-                        "pubs=\(feed.publications?.count ?? 0), " +
-                        "nav=\(feed.navigation?.count ?? 0)")
                     return .opds2(feed)
                 } catch {
-                    Log.info(#file, "[OPDS2-DIAG] OPDS2 fetch failed, falling back to OPDS1: \(error.localizedDescription)")
+                    Log.info(#file, "OPDS2 fetch failed, falling back to OPDS1: \(error.localizedDescription)")
                 }
             }
 
             // Fallback to OPDS1
-            Log.info(#file, "[OPDS2-DIAG] Fetching OPDS1 feed from \(url.absoluteString)")
             let feed = try await fetchOPDS1Feed(from: url, useToken: useToken, forceRefresh: forceRefresh)
-            Log.info(#file, "[OPDS2-DIAG] OPDS1 feed loaded: \"\(feed.title ?? "nil")\"")
             return .opds1(feed)
         }
 
@@ -179,7 +174,6 @@ actor UnifiedOPDSService {
             if let httpResponse = response as? HTTPURLResponse {
                 let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")
                 let format = OPDSFormat.detect(from: contentType)
-                Log.info(#file, "[OPDS2-DIAG] Auto-detect: Content-Type=\(contentType ?? "nil"), detected=\(format.rawValue)")
 
                 switch format {
                 case .opds2:
@@ -260,13 +254,6 @@ actor UnifiedOPDSService {
 
         // Parse OPDS2 JSON
         let feed = try OPDS2Feed.from(data: data)
-        Log.info(#file, "[OPDS2-DIAG] Parsed OPDS2 feed: \"\(feed.title)\", " +
-            "groups=\(feed.groups?.count ?? 0), " +
-            "publications=\(feed.publications?.count ?? 0), " +
-            "navigation=\(feed.navigation?.count ?? 0), " +
-            "facets=\(feed.facets?.count ?? 0), " +
-            "hasSearch=\(feed.searchURL != nil), " +
-            "hasNext=\(feed.nextPageURL != nil)")
 
         // Extract caching headers
         let etag = httpResponse.value(forHTTPHeaderField: "ETag")
@@ -366,7 +353,7 @@ actor UnifiedOPDSService {
 extension UnifiedOPDSService {
 
     /// Fetches catalog root with caching
-    public func fetchCatalogRoot(accountsManager: AccountsManager = AccountsManager.shared) async throws -> UnifiedOPDSFeed {
+    public func fetchCatalogRoot() async throws -> UnifiedOPDSFeed {
         guard let catalogURLString = accountsManager.currentAccount?.catalogUrl,
               let catalogURL = URL(string: catalogURLString) else {
             throw PalaceError.authentication(.accountNotFound)
@@ -376,7 +363,7 @@ extension UnifiedOPDSService {
     }
 
     /// Fetches user's loans feed
-    public func fetchLoans(accountsManager: AccountsManager = AccountsManager.shared) async throws -> UnifiedOPDSFeed {
+    public func fetchLoans() async throws -> UnifiedOPDSFeed {
         guard let loansURL = accountsManager.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }

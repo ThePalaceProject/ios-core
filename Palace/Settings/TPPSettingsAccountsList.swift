@@ -28,9 +28,9 @@ import SwiftUI
     fileprivate let settings: TPPSettings
     fileprivate var accountsLoadingLogos: Set<String> = []
 
-    required init(accounts: [Account], accountsManager: AccountsManager = AccountsManager.shared, settings: TPPSettings = TPPSettings.shared) {
+    required init(accounts: [Account], manager: AccountsManager = .shared, settings: TPPSettings = .shared) {
         self.accounts = accounts
-        self.manager = accountsManager
+        self.manager = manager
         self.settings = settings
         self.libraryAccounts = manager.accounts()
 
@@ -200,7 +200,7 @@ import SwiftUI
                 self?.authenticateAccount(account) {
                     self?.updateList(withAccount: account)
                 }
-                self?.libraryAccounts = self?.manager.accounts() ?? []
+                self?.libraryAccounts = manager.accounts()
             }
         }
         navigationController?.pushViewController(listVC, animated: true)

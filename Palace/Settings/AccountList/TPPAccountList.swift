@@ -7,6 +7,7 @@ import Foundation
 
     private let completion: (Account) -> Void
     private var loadingView: UIActivityIndicatorView?
+    private let accountsManager: AccountsManager
 
     var datasource = TPPAccountListDataSource()
     var searchBar: UISearchBar!
@@ -19,11 +20,10 @@ import Foundation
     var requiresSelectionBeforeDismiss: Bool = false
 
     private var accountsLoadingLogos = Set<String>()
-    private let accountsManager: AccountsManager
 
-    @objc required init(completion: @escaping (Account) -> Void) {
+    @objc required init(completion: @escaping (Account) -> Void, accountsManager: AccountsManager = .shared) {
         self.completion = completion
-        self.accountsManager = AccountsManager.shared
+        self.accountsManager = accountsManager
         super.init(nibName: nil, bundle: nil)
     }
 

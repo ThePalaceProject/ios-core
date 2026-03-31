@@ -14,17 +14,10 @@ struct CatalogLaneMoreView: View {
     @StateObject private var logoObserver = CatalogLogoObserver()
     @State private var currentAccountUUID: String = ""
 
-    private let accountsManager: AccountsManager
-    private let bookRegistry: TPPBookRegistryProvider
-    private let downloadCenter: MyBooksDownloadCenter
-
     // MARK: - Initialization
 
-    init(title: String = "", url: URL, accountsManager: AccountsManager = AccountsManager.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared) {
+    init(title: String = "", url: URL) {
         _viewModel = StateObject(wrappedValue: CatalogLaneMoreViewModel(title: title, url: url))
-        self.accountsManager = accountsManager
-        self.bookRegistry = bookRegistry
-        self.downloadCenter = downloadCenter
     }
 
     // MARK: - Main View
@@ -113,7 +106,7 @@ struct CatalogLaneMoreView: View {
     }
 
     private var downloadProgressPublisher: AnyPublisher<String, Never> {
-        downloadCenter.downloadProgressPublisher
+        MyBooksDownloadCenter.shared.downloadProgressPublisher
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .map { $0.0 }
             .removeDuplicates()
@@ -129,7 +122,7 @@ struct CatalogLaneMoreView: View {
     }
 
     private func setupAccount() {
-        let account = accountsManager.currentAccount
+        let account = AccountsManager.shared.currentAccount
         account?.logoDelegate = logoObserver
         account?.loadLogo()
         currentAccountUUID = account?.uuid ?? ""
@@ -156,7 +149,7 @@ struct CatalogLaneMoreView: View {
             return
         }
 
-        if let book = bookRegistry.book(forIdentifier: identifier) ?? viewModel.allBooks.first(where: { $0.identifier == identifier }) {
+        if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? viewModel.allBooks.first(where: { $0.identifier == identifier }) {
             SamplePreviewManager.shared.toggle(for: book)
         }
     }
@@ -175,7 +168,7 @@ struct CatalogLaneMoreView: View {
     }
 
     private func openLibraryHome() {
-        if let urlString = accountsManager.currentAccount?.homePageUrl,
+        if let urlString = AccountsManager.shared.currentAccount?.homePageUrl,
            let url = URL(string: urlString) {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
