@@ -1,22 +1,14 @@
 import SwiftUI
 import UIKit
 
-@MainActor
 struct HoldsView: View {
+    @Environment(\.appContainer) private var container
     @EnvironmentObject private var coordinator: NavigationCoordinator
     typealias DisplayStrings = Strings.HoldsView
 
-    @StateObject private var model: HoldsViewModel
-
-    init() {
-        self._model = StateObject(wrappedValue: HoldsViewModel())
-    }
-
-    init(viewModel: HoldsViewModel) {
-        self._model = StateObject(wrappedValue: viewModel)
-    }
+    @StateObject private var model = HoldsViewModel()
     @StateObject private var logoObserver = CatalogLogoObserver()
-    @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+    @State private var currentAccountUUID: String = ""
     private var allBooks: [TPPBook] {
         model.reservedBookVMs.map { $0.book } + model.heldBookVMs.map { $0.book }
     }
@@ -28,7 +20,7 @@ struct HoldsView: View {
                 .toolbar {
                     ToolbarItem(placement: .principal) {
                         LibraryNavTitleView(onTap: {
-                            if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+                            if let urlString = container.accountsManager.currentAccount?.homePageUrl, let url = URL(string: urlString) {
                                 UIApplication.shared.open(url, options: [:], completionHandler: nil)
                             }
                         })
@@ -53,12 +45,13 @@ struct HoldsView: View {
                 .onAppear {
                     model.showSearchSheet = false
                     model.showLibraryAccountView = false
-                    let account = AccountsManager.shared.currentAccount
+                    let account = container.accountsManager.currentAccount
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
                 }
-                .onReceive(AccountsManager.shared.currentAccountDidChange) { account in
+                .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+                    let account = container.accountsManager.currentAccount
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
@@ -150,7 +143,7 @@ struct HoldsView: View {
         .accessibilityIdentifier(AccessibilityID.Holds.libraryButton)
         .accessibilityLabel(Strings.Generic.switchLibrary)
         .actionSheet(isPresented: $model.selectNewLibrary) {
-            var buttons: [ActionSheet.Button] = TPPSettings.shared.settingsAccountsList.map { account in
+            var buttons: [ActionSheet.Button] = container.settings.settingsAccountsList.map { account in
                 .default(Text(account.name)) {
                     model.loadAccount(account)
                 }

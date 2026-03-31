@@ -3,12 +3,13 @@ import Combine
 import PalaceUIKit
 
 struct MyBooksView: View {
+    @Environment(\.appContainer) private var container
     @EnvironmentObject private var coordinator: NavigationCoordinator
     typealias DisplayStrings = Strings.MyBooksView
     @ObservedObject var model: MyBooksViewModel
     @State private var showSortSheet: Bool = false
     @StateObject private var logoObserver = CatalogLogoObserver()
-    @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+    @State private var currentAccountUUID: String = ""
     @FocusState private var isSearchFocused: Bool
     // Centralized sample preview manager overlay
 
@@ -26,7 +27,7 @@ struct MyBooksView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 LibraryNavTitleView(onTap: {
-                    if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+                    if let urlString = container.accountsManager.currentAccount?.homePageUrl, let url = URL(string: urlString) {
                         UIApplication.shared.open(url, options: [:], completionHandler: nil)
                     }
                 })
@@ -50,12 +51,13 @@ struct MyBooksView: View {
         }
         .onAppear {
             model.showSearchSheet = false
-            let account = AccountsManager.shared.currentAccount
+            let account = container.accountsManager.currentAccount
             account?.logoDelegate = logoObserver
             account?.loadLogo()
             currentAccountUUID = account?.uuid ?? ""
         }
-        .onReceive(AccountsManager.shared.currentAccountDidChange) { account in
+        .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+            let account = container.accountsManager.currentAccount
             account?.logoDelegate = logoObserver
             account?.loadLogo()
             currentAccountUUID = account?.uuid ?? ""
@@ -77,7 +79,7 @@ struct MyBooksView: View {
                 SamplePreviewManager.shared.close()
                 return
             }
-            if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? model.books.first(where: { $0.identifier == identifier }) {
+            if let book = container.bookRegistry.book(forIdentifier: identifier) ?? model.books.first(where: { $0.identifier == identifier }) {
                 SamplePreviewManager.shared.toggle(for: book)
             }
         }
@@ -208,7 +210,7 @@ struct MyBooksView: View {
     }
 
     private func existingLibraryButtons() -> [ActionSheet.Button] {
-        TPPSettings.shared.settingsAccountsList.map { account in
+        container.settings.settingsAccountsList.map { account in
             .default(Text(account.name)) {
                 model.loadAccount(account)
                 model.showLibraryAccountView = false

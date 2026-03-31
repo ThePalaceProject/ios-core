@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 
 struct LibraryNavTitleView: View {
+    @Environment(\.appContainer) private var container
     var onTap: (() -> Void)?
 
     @ViewBuilder
@@ -17,7 +18,7 @@ struct LibraryNavTitleView: View {
 
     private var content: some View {
         HStack(spacing: 10) {
-            if let logo = AccountsManager.shared.currentAccount?.logo {
+            if let logo = container.accountsManager.currentAccount?.logo {
                 Image(uiImage: logo)
                     .resizable()
                     .scaledToFit()
@@ -25,7 +26,7 @@ struct LibraryNavTitleView: View {
                     .clipShape(Circle())
                     .accessibilityHidden(true) // Decorative, title label provides context
             }
-            Text(AccountsManager.shared.currentAccount?.name ?? NSLocalizedString("Catalog", comment: ""))
+            Text(container.accountsManager.currentAccount?.name ?? NSLocalizedString("Catalog", comment: ""))
                 .font(.headline)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)

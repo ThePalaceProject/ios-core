@@ -3,6 +3,7 @@ import UIKit
 
 struct CatalogView: View {
     // MARK: - Properties
+    @Environment(\.appContainer) private var container
     @EnvironmentObject private var coordinator: NavigationCoordinator
     @StateObject private var viewModel: CatalogViewModel
     @StateObject private var logoObserver = CatalogLogoObserver()
@@ -29,7 +30,7 @@ struct CatalogView: View {
             }
             .sheet(isPresented: $showAddLibrarySheet) { addLibrarySheet }
             .task { await viewModel.load() }
-            .onReceive(AccountsManager.shared.currentAccountDidChange) { _ in
+            .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
                 handleAccountChange()
             }
             .onReceive(NotificationCenter.default.publisher(for: .AppTabSelectionDidChange)) { _ in
@@ -73,7 +74,7 @@ private extension CatalogView {
     }
 
     private var libraryPicker: ActionSheet {
-        var buttons: [ActionSheet.Button] = TPPSettings.shared.settingsAccountsList.map { account in
+        var buttons: [ActionSheet.Button] = container.settings.settingsAccountsList.map { account in
             .default(Text(account.name)) {
                 switchToAccount(account)
             }
@@ -191,7 +192,7 @@ private extension CatalogView {
     }
 
     func openLibraryHome() {
-        if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+        if let urlString = container.accountsManager.currentAccount?.homePageUrl, let url = URL(string: urlString) {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
     }
@@ -214,7 +215,7 @@ private extension CatalogView {
 
     // MARK: - Account Management
     func setupCurrentAccount() {
-        let account = AccountsManager.shared.currentAccount
+        let account = container.accountsManager.currentAccount
         account?.logoDelegate = logoObserver
         account?.loadLogo()
         currentAccountUUID = account?.uuid ?? ""
@@ -225,7 +226,7 @@ private extension CatalogView {
             dismissSearch()
         }
 
-        let account = AccountsManager.shared.currentAccount
+        let account = container.accountsManager.currentAccount
         account?.logoDelegate = logoObserver
         account?.loadLogo()
         currentAccountUUID = account?.uuid ?? ""
@@ -237,19 +238,19 @@ private extension CatalogView {
 
     func switchToAccount(_ account: Account) {
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            container.settings.accountMainFeedURL = url
         }
 
-        // Setting currentAccount triggers both Combine publisher and NotificationCenter
-        AccountsManager.shared.currentAccount = account
+        container.accountsManager.currentAccount = account
         account.loadAuthenticationDocument { _ in }
 
+        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         Task { await viewModel.refresh() }
     }
 
     func addAndSwitchToAccount(_ account: Account) {
-        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-            TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+        if !container.settings.settingsAccountIdsList.contains(account.uuid) {
+            container.settings.settingsAccountIdsList.append(account.uuid)
         }
         switchToAccount(account)
     }

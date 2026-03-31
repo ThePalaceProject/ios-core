@@ -12,6 +12,7 @@ import PalaceUIKit
 struct TPPSettingsView: View {
     typealias DisplayStrings = Strings.Settings
 
+    @Environment(\.appContainer) private var container
     @AppStorage(TPPSettings.showDeveloperSettingsKey) private var showDeveloperSettings: Bool = false
     @State private var selectedView: Int? = 0
     @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
@@ -19,10 +20,9 @@ struct TPPSettingsView: View {
     @State private var librariesRefreshToken: UUID = UUID()
     @State private var currentAccounts: [Account] = []
 
-    private let settingsViewModel: SettingsViewModel?
-
-    init(viewModel: SettingsViewModel? = nil) {
-        self.settingsViewModel = viewModel
+    init() {
+        // Note: container is not yet available at init time; use .shared for initial value.
+        // The accounts list is immediately refreshed in onAppear via updateAccountsList().
         _currentAccounts = State(initialValue: TPPSettings.shared.settingsAccountsList)
     }
 
@@ -72,11 +72,11 @@ struct TPPSettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
             self.orientation = UIDevice.current.orientation
         }
-        .onReceive(AccountsManager.shared.currentAccountDidChange) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
             updateAccountsList()
             librariesRefreshToken = UUID()
         }
-        .onReceive(TPPBookRegistry.shared.registryPublisher.map { _ in () }) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)) { _ in
             updateAccountsList()
             librariesRefreshToken = UUID()
         }
@@ -177,7 +177,7 @@ struct TPPSettingsView: View {
     }
 
     @ViewBuilder private var developerSettingsSection: some View {
-        if TPPSettings.shared.customMainFeedURL == nil && showDeveloperSettings {
+        if container.settings.customMainFeedURL == nil && showDeveloperSettings {
             Section(footer: versionInfo) {
                 let viewController = TPPDeveloperSettingsTableViewController()
 
@@ -219,6 +219,6 @@ struct TPPSettingsView: View {
     }
 
     private func updateAccountsList() {
-        currentAccounts = TPPSettings.shared.settingsAccountsList
+        currentAccounts = container.settings.settingsAccountsList
     }
 }

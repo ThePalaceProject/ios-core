@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct BookDetailView: View {
+    @Environment(\.appContainer) private var container
     @Environment(\.presentationMode) var presentationMode
     @Environment(\.colorScheme) private var colorScheme
 
@@ -186,7 +187,7 @@ struct BookDetailView: View {
                 SamplePreviewManager.shared.close()
                 return
             }
-            if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? (viewModel.relatedBooksByLane.values.flatMap { $0.books }).first(where: { $0.identifier == identifier }) {
+            if let book = container.bookRegistry.book(forIdentifier: identifier) ?? (viewModel.relatedBooksByLane.values.flatMap { $0.books }).first(where: { $0.identifier == identifier }) {
                 SamplePreviewManager.shared.toggle(for: book)
             } else if viewModel.book.identifier == identifier {
                 SamplePreviewManager.shared.toggle(for: viewModel.book)

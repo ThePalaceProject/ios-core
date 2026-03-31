@@ -114,7 +114,8 @@ private extension AppTabHostView {
     // MARK: - Badge
 
     func updateHoldsBadge() {
-        guard TPPBookRegistry.shared.state == .loaded || TPPBookRegistry.shared.state == .synced else {
+        let registry = container.bookRegistry
+        guard registry.registryState == .loaded || registry.registryState == .synced else {
             return
         }
 
@@ -122,10 +123,10 @@ private extension AppTabHostView {
         DispatchQueue.global(qos: .userInitiated).async {
             // Use test books if debug configuration is enabled, otherwise use real registry data
             #if DEBUG
-            let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? TPPBookRegistry.shared.heldBooks
+            let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? registry.heldBooks
             let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
             #else
-            let held = TPPBookRegistry.shared.heldBooks
+            let held = registry.heldBooks
             #endif
 
             var readyCount = 0

@@ -31,6 +31,7 @@ extension HalfSheetProvider {
 
 struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     typealias DisplayStrings = Strings.BookDetailView
+    @Environment(\.appContainer) private var container
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.dismiss) private var dismiss
 
@@ -45,7 +46,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
 
             headerView
 
-            Text(AccountsManager.shared.currentAccount?.name ?? "")
+            Text(container.accountsManager.currentAccount?.name ?? "")
                 .font(.headline)
 
             bookInfoView
@@ -134,11 +135,11 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
             }
         }
         .onAppear {
-            originalState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+            originalState = container.bookRegistry.state(for: viewModel.book.identifier)
         }
         .onDisappear {
             // Always sync to latest registry state to avoid reverting the UI after a successful download
-            viewModel.bookState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+            viewModel.bookState = container.bookRegistry.state(for: viewModel.book.identifier)
             if let cellModel = viewModel as? BookCellModel {
                 cellModel.isManagingHold = false
             }

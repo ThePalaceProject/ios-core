@@ -2,6 +2,7 @@ import SwiftUI
 
 // MARK: - CatalogContentView
 struct CatalogContentView: View {
+    @Environment(\.appContainer) private var container
     @ObservedObject var viewModel: CatalogViewModel
     let onBookSelected: (TPPBook) -> Void
     let onLaneMoreTapped: (String, URL) -> Void
@@ -63,7 +64,7 @@ private extension CatalogContentView {
                 ForEach(viewModel.lanes) { lane in
                     CatalogLaneRowView(
                         title: lane.title,
-                        books: lane.books.map { TPPBookRegistry.shared.updatedBookMetadata($0) ?? $0 },
+                        books: lane.books.map { container.bookRegistry.updatedBookMetadata($0) ?? $0 },
                         moreURL: lane.moreURL,
                         onSelect: onBookSelected,
                         onMoreTapped: onLaneMoreTapped,

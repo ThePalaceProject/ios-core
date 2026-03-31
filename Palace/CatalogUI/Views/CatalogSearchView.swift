@@ -3,6 +3,7 @@ import Combine
 
 // MARK: - SearchView
 struct CatalogSearchView: View {
+    @Environment(\.appContainer) private var container
     @StateObject private var viewModel: CatalogSearchViewModel
     @FocusState private var isSearchFieldFocused: Bool
     let books: [TPPBook]
@@ -85,7 +86,7 @@ struct CatalogSearchView: View {
     }
 
     private var downloadProgressPublisher: AnyPublisher<String, Never> {
-        MyBooksDownloadCenter.shared.downloadProgressPublisher
+        container.downloadCenter.downloadProgressPublisher
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .map { $0.0 }
             .removeDuplicates()

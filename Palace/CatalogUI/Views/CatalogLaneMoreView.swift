@@ -6,13 +6,14 @@ struct CatalogLaneMoreView: View {
 
     // MARK: - Properties
 
+    @Environment(\.appContainer) private var container
     @StateObject private var viewModel: CatalogLaneMoreViewModel
     @EnvironmentObject private var coordinator: NavigationCoordinator
 
     // MARK: - Account & Logo State
 
     @StateObject private var logoObserver = CatalogLogoObserver()
-    @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+    @State private var currentAccountUUID: String = ""
 
     // MARK: - Initialization
 
@@ -103,7 +104,7 @@ struct CatalogLaneMoreView: View {
     }
 
     private var downloadProgressPublisher: AnyPublisher<String, Never> {
-        MyBooksDownloadCenter.shared.downloadProgressPublisher
+        container.downloadCenter.downloadProgressPublisher
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .map { $0.0 }
             .removeDuplicates()
@@ -119,7 +120,7 @@ struct CatalogLaneMoreView: View {
     }
 
     private func setupAccount() {
-        let account = AccountsManager.shared.currentAccount
+        let account = container.accountsManager.currentAccount
         account?.logoDelegate = logoObserver
         account?.loadLogo()
         currentAccountUUID = account?.uuid ?? ""
@@ -146,7 +147,7 @@ struct CatalogLaneMoreView: View {
             return
         }
 
-        if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? viewModel.allBooks.first(where: { $0.identifier == identifier }) {
+        if let book = container.bookRegistry.book(forIdentifier: identifier) ?? viewModel.allBooks.first(where: { $0.identifier == identifier }) {
             SamplePreviewManager.shared.toggle(for: book)
         }
     }
@@ -165,7 +166,7 @@ struct CatalogLaneMoreView: View {
     }
 
     private func openLibraryHome() {
-        if let urlString = AccountsManager.shared.currentAccount?.homePageUrl,
+        if let urlString = container.accountsManager.currentAccount?.homePageUrl,
            let url = URL(string: urlString) {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
