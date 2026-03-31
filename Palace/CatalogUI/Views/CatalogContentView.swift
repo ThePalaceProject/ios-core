@@ -5,14 +5,7 @@ struct CatalogContentView: View {
     @ObservedObject var viewModel: CatalogViewModel
     let onBookSelected: (TPPBook) -> Void
     let onLaneMoreTapped: (String, URL) -> Void
-    let bookRegistry: TPPBookRegistryProvider
-
-    init(viewModel: CatalogViewModel, onBookSelected: @escaping (TPPBook) -> Void, onLaneMoreTapped: @escaping (String, URL) -> Void, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
-        self.viewModel = viewModel
-        self.onBookSelected = onBookSelected
-        self.onLaneMoreTapped = onLaneMoreTapped
-        self.bookRegistry = bookRegistry
-    }
+    var bookRegistry: TPPBookRegistry = .shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

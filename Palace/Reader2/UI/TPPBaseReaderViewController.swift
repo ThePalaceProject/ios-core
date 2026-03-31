@@ -76,7 +76,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
          forSample: Bool = false,
          initialLocation: Locator? = nil,
          bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
-         accountsManager: AccountsManager = AccountsManager.shared) {
+         accountsManager: AccountsManager = .shared) {
 
         self.navigator = navigator
         self.publication = publication

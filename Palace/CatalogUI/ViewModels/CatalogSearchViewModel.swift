@@ -31,6 +31,8 @@ class CatalogSearchViewModel: ObservableObject {
     private var entryPointLoadTask: Task<Void, Never>?
     private let debounceInterval: TimeInterval
     private let announcements: TPPAccessibilityAnnouncementCenter
+    private let bookRegistry: TPPBookRegistry
+    private let bookCellModelCache: BookCellModelCache
 
     /// Cache mapping groupsFeedURL.absoluteString → OpenSearch descriptor URL.
     /// Avoids re-fetching the groups feed on repeated searches with the same format.
@@ -49,12 +51,16 @@ class CatalogSearchViewModel: ObservableObject {
         repository: CatalogRepositoryProtocol,
         baseURL: @escaping () -> URL?,
         debounceInterval: TimeInterval = 0.1,
-        announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter()
+        announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
+        bookRegistry: TPPBookRegistry = .shared,
+        bookCellModelCache: BookCellModelCache = .shared
     ) {
         self.repository = repository
         self.baseURL = baseURL
         self.debounceInterval = debounceInterval
         self.announcements = announcements
+        self.bookRegistry = bookRegistry
+        self.bookCellModelCache = bookCellModelCache
     }
 
     deinit {
@@ -411,14 +417,14 @@ class CatalogSearchViewModel: ObservableObject {
             let book = books[idx]
             if let changedIdentifier, book.identifier != changedIdentifier { continue }
 
-            if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+            if let registryBook = bookRegistry.book(forIdentifier: book.identifier) {
                 books[idx] = registryBook
                 anyChanged = true
             } else {
                 if let originalBook = allBooks.first(where: { $0.identifier == book.identifier }) {
                     books[idx] = originalBook
                 }
-                BookCellModelCache.shared.invalidate(for: book.identifier)
+                bookCellModelCache.invalidate(for: book.identifier)
                 anyChanged = true
             }
         }

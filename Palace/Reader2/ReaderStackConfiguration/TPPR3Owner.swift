@@ -23,7 +23,7 @@ import ReadiumStreamer
     var libraryService: LibraryService! = nil
     var readerModule: ReaderModuleAPI! = nil
 
-    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    init(bookRegistry: TPPBookRegistry = .shared) {
         super.init()
         libraryService = LibraryService()
         readerModule = ReaderModule(delegate: self,

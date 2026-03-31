@@ -91,7 +91,7 @@ actor UnifiedOPDSService {
     private let opds2Cache: OPDS2FeedCache
     private let opds1Cache: OPDS1FeedCache
     private let urlSession: URLSession
-    private let accountsManager: AccountsManager
+    private let opds1FeedService: OPDSFeedService
 
     // MARK: - State
 
@@ -107,12 +107,12 @@ actor UnifiedOPDSService {
         opds2Cache: OPDS2FeedCache = .shared,
         opds1Cache: OPDS1FeedCache = .shared,
         urlSession: URLSession = .shared,
-        accountsManager: AccountsManager = .shared
+        opds1FeedService: OPDSFeedService = .shared
     ) {
         self.opds2Cache = opds2Cache
         self.opds1Cache = opds1Cache
         self.urlSession = urlSession
-        self.accountsManager = accountsManager
+        self.opds1FeedService = opds1FeedService
     }
 
     // MARK: - Primary API
@@ -298,7 +298,7 @@ actor UnifiedOPDSService {
         useToken: Bool
     ) async throws -> TPPOPDSFeed {
         // Use existing OPDSFeedService for OPDS1 compatibility
-        return try await OPDSFeedService.shared.fetchFeed(
+        return try await opds1FeedService.fetchFeed(
             from: url,
             resetCache: true,
             useToken: useToken
@@ -354,7 +354,7 @@ extension UnifiedOPDSService {
 
     /// Fetches catalog root with caching
     public func fetchCatalogRoot() async throws -> UnifiedOPDSFeed {
-        guard let catalogURLString = accountsManager.currentAccount?.catalogUrl,
+        guard let catalogURLString = AccountsManager.shared.currentAccount?.catalogUrl,
               let catalogURL = URL(string: catalogURLString) else {
             throw PalaceError.authentication(.accountNotFound)
         }
@@ -364,7 +364,7 @@ extension UnifiedOPDSService {
 
     /// Fetches user's loans feed
     public func fetchLoans() async throws -> UnifiedOPDSFeed {
-        guard let loansURL = accountsManager.currentAccount?.loansUrl else {
+        guard let loansURL = AccountsManager.shared.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
 

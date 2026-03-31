@@ -9,6 +9,8 @@ import Security
     return keychain
   }()
 
+  @objc static var shared: TPPKeychain { sharedKeychain }
+
   private override init() {
     super.init()
   }

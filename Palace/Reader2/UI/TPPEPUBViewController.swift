@@ -15,6 +15,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     private let systemUserInterfaceStyle: UIUserInterfaceStyle
     private let searchButton: UIBarButtonItem
     private var preferences: EPUBPreferences
+    private let navigationHub: NavigationCoordinatorHub
     private var highlights: [Decoration] = []
     private var highlightGroup = "highlights"
     private var keyboardInput: GCKeyboardInput?
@@ -28,10 +29,12 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
          initialLocation: Locator?,
          resourcesServer: HTTPServer,
          preferences: EPUBPreferences = TPPReaderPreferencesLoad(),
-         forSample: Bool = false) throws {
+         forSample: Bool = false,
+         navigationHub: NavigationCoordinatorHub = .shared) throws {
 
         self.systemUserInterfaceStyle = UITraitCollection.current.userInterfaceStyle
         self.preferences = preferences
+        self.navigationHub = navigationHub
 
         self.searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: nil, action: #selector(presentEPUBSearch))
         self.searchButton.accessibilityLabel = Strings.Generic.searchInBook
@@ -403,7 +406,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             tabBarController.tabBar.isTranslucent = true
         }
 
-        NavigationCoordinatorHub.shared.coordinator?.pop()
+        navigationHub.coordinator?.pop()
     }
 
     override func viewSafeAreaInsetsDidChange() {

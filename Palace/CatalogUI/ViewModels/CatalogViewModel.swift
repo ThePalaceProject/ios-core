@@ -17,7 +17,7 @@ final class CatalogViewModel: ObservableObject {
 
   private let repository: CatalogRepositoryProtocol
   private let topLevelURLProvider: () -> URL?
-  private let bookRegistry: TPPBookRegistryProvider
+  private let bookRegistry: TPPBookRegistry
   
   private var previousLanes: [CatalogLaneModel] = []
   private var previousUngroupedBooks: [TPPBook] = []
@@ -30,7 +30,11 @@ final class CatalogViewModel: ObservableObject {
   private var lastLoadedURL: URL?
   private var currentLoadTask: Task<Void, Never>? = nil
 
-  init(repository: CatalogRepositoryProtocol, topLevelURLProvider: @escaping () -> URL?, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+  init(
+    repository: CatalogRepositoryProtocol,
+    topLevelURLProvider: @escaping () -> URL?,
+    bookRegistry: TPPBookRegistry = .shared
+  ) {
     self.repository = repository
     self.topLevelURLProvider = topLevelURLProvider
     self.bookRegistry = bookRegistry
@@ -457,13 +461,13 @@ extension CatalogViewModel {
 
   private func prefetchThumbnails(for books: [TPPBook]) {
     let set = Set(books)
-    (bookRegistry as? TPPBookRegistry)?.thumbnailImages(forBooks: set) { _ in }
+    bookRegistry.thumbnailImages(forBooks: set) { _ in }
   }
 
-  static func makeBook(from entry: TPPOPDSEntry, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) -> TPPBook? {
+  static func makeBook(from entry: TPPOPDSEntry, bookRegistry: TPPBookRegistry = .shared) -> TPPBook? {
     guard var book = TPPBook(entry: entry) else { return nil }
 
-    if let updated = (bookRegistry as? TPPBookRegistry)?.updatedBookMetadata(book) {
+    if let updated = bookRegistry.updatedBookMetadata(book) {
       book = updated
     }
 

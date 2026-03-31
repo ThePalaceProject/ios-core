@@ -8,15 +8,20 @@ import ReadiumLCP
  */
 class LCPPassphraseAuthenticationService: LCPAuthenticating {
 
-    private let bookRegistry: TPPBookRegistryProvider
-    private let networkExecutor: TPPNetworkExecutor
+    private let bookRegistry: TPPBookRegistry
     private let accountsManager: AccountsManager
+    private let networkExecutor: TPPNetworkExecutor
     private let settings: TPPSettings
 
-    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, networkExecutor: TPPNetworkExecutor = .shared, accountsManager: AccountsManager = AccountsManager.shared, settings: TPPSettings = TPPSettings.shared) {
+    init(
+        bookRegistry: TPPBookRegistry = .shared,
+        accountsManager: AccountsManager = .shared,
+        networkExecutor: TPPNetworkExecutor = .shared,
+        settings: TPPSettings = .shared
+    ) {
         self.bookRegistry = bookRegistry
-        self.networkExecutor = networkExecutor
         self.accountsManager = accountsManager
+        self.networkExecutor = networkExecutor
         self.settings = settings
     }
 
@@ -36,12 +41,8 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
         do {
             let (data, _) = try await networkExecutor.GET(loansUrl, useTokenIfAvailable: true)
 
-            guard let xml = TPPXML.xml(withData: data) else {
-                logError("LCP passphrase retrieval error: loans XML parsing failed", "responseBody", String(data: data, encoding: .utf8) ?? "N/A")
-                return nil
-            }
-            let entries = xml.childrenWithName("entry")
-            guard !entries.isEmpty else {
+            guard let xml = TPPXML(data: data),
+                  let entries = xml.children(withName: "entry") as? [TPPXML] else {
                 logError("LCP passphrase retrieval error: loans XML parsing failed", "responseBody", String(data: data, encoding: .utf8) ?? "N/A")
                 return nil
             }
@@ -50,7 +51,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
                 if let entryId = entry.firstChild(withName: "id")?.value, entryId == book.identifier {
 
                     // Iterate through all 'link' elements in the entry
-                    let links = entry.childrenWithName("link")
+                    let links = entry.children(withName: "link") as? [TPPXML] ?? []
                     if links.isEmpty {
                         continue
                     }
@@ -61,8 +62,8 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
                         if let children = link.children as? [TPPXML], !children.isEmpty {
                             for child in children {
 
-                                if child.name == "hashed_passphrase" {
-                                    return child.value
+                                if child.name == "hashed_passphrase", let passphrase = child.value {
+                                    return passphrase
                                 }
                             }
                         }

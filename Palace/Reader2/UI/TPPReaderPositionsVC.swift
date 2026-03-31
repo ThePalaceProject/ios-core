@@ -41,6 +41,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
 
     var tocBusinessLogic: TPPReaderTOCBusinessLogic?
     var bookmarksBusinessLogic: TPPReaderBookmarksBusinessLogic?
+    var retryTracker: UserRetryTracker = .shared
 
     private enum Tab: Int, CaseIterable {
         case toc = 0
@@ -294,7 +295,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
                 if !success {
                     // PP-3707: Offer retry for bookmark sync failures (likely transient network issue)
                     let operationId = "bookmark-sync"
-                    let canRetry = UserRetryTracker.shared.canRetry(operationId: operationId)
+                    let canRetry = self?.retryTracker.canRetry(operationId: operationId) ?? false
 
                     if canRetry {
                         let alert = UIAlertController(
@@ -303,7 +304,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
                             preferredStyle: .alert
                         )
                         alert.addAction(UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { [weak self] _ in
-                            UserRetryTracker.shared.recordRetry(operationId: operationId)
+                            self?.retryTracker.recordRetry(operationId: operationId)
                             if let rc = self?.bookmarksRefreshControl {
                                 self?.userDidRefreshBookmarks(with: rc)
                             }

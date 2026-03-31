@@ -34,8 +34,9 @@ class CatalogLaneMoreViewModel: ObservableObject {
   let url: URL
   private let filterService = CatalogFilterService.self
   private let api: DefaultCatalogAPI
-  private let bookRegistry: TPPBookRegistryProvider
-  
+  private let bookRegistry: TPPBookRegistry
+  private let bookCellModelCache: BookCellModelCache
+
   private var cancellables = Set<AnyCancellable>()
   
   /// Original catalog books (before registry updates) - used to restore state after returns
@@ -60,10 +61,17 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   // MARK: - Initialization
   
-  init(title: String, url: URL, api: DefaultCatalogAPI? = nil, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+  init(
+    title: String,
+    url: URL,
+    api: DefaultCatalogAPI? = nil,
+    bookRegistry: TPPBookRegistry = .shared,
+    bookCellModelCache: BookCellModelCache = .shared
+  ) {
     self.title = title
     self.url = url
     self.bookRegistry = bookRegistry
+    self.bookCellModelCache = bookCellModelCache
     self.api = api ?? DefaultCatalogAPI(
       client: URLSessionNetworkClient(),
       parser: OPDSParser()
@@ -264,7 +272,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
               books[bIdx] = originalBook
             }
             // Invalidate cached model so it gets recreated with fresh state
-            BookCellModelCache.shared.invalidate(for: book.identifier)
+            bookCellModelCache.invalidate(for: book.identifier)
             changed = true
           }
         }
@@ -297,7 +305,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
             books[idx] = originalBook
           }
           // Invalidate cached model so it gets recreated with fresh state
-          BookCellModelCache.shared.invalidate(for: book.identifier)
+          bookCellModelCache.invalidate(for: book.identifier)
           anyChanged = true
         }
       }

@@ -64,9 +64,11 @@ struct ErrorDetail {
         error: Error? = nil,
         problemDocument: TPPProblemDocument? = nil,
         bookIdentifier: String? = nil,
-        bookTitle: String? = nil
+        bookTitle: String? = nil,
+        activityTracker: ErrorActivityTracker = .shared,
+        accountsManager: AccountsManager = .shared
     ) async -> ErrorDetail {
-        let trail = await ErrorActivityTracker.shared.recentActivities(seconds: 300)
+        let trail = await activityTracker.recentActivities(seconds: 300)
 
         let bookInfo: BookInfo? = bookIdentifier.map {
             BookInfo(identifier: $0, title: bookTitle)
@@ -80,12 +82,12 @@ struct ErrorDetail {
             activityTrail: trail,
             timestamp: Date(),
             bookInfo: bookInfo,
-            deviceContext: captureDeviceContext()
+            deviceContext: captureDeviceContext(accountsManager: accountsManager)
         )
     }
 
     /// Captures current device/app context synchronously.
-    private static func captureDeviceContext(accountsManager: AccountsManager = AccountsManager.shared) -> DeviceContext {
+    private static func captureDeviceContext(accountsManager: AccountsManager = .shared) -> DeviceContext {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
         let iosVersion = UIDevice.current.systemVersion
