@@ -24,18 +24,21 @@ final class TypographySettingsViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let typographyService: TypographyServiceProtocol
+    private let fontManager: FontManager
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Init
 
     init(typographyService: TypographyServiceProtocol? = nil,
+         fontManager: FontManager = .shared,
          previewText: String = "In a hole in the ground there lived a hobbit. Not a nasty, dirty, wet hole, filled with the ends of worms and an oozy smell, nor yet a dry, bare, sandy hole with nothing in it to sit down on or to eat: it was a hobbit-hole, and that means comfort.") {
 
         let service = typographyService ?? TypographyService.shared
         self.typographyService = service
+        self.fontManager = fontManager
         self.currentSettings = service.currentSettings
         self.previewText = previewText
-        self.availableFonts = FontManager.shared.availableFamilies()
+        self.availableFonts = fontManager.availableFamilies()
 
         // Resolve preset from current settings
         if let presetId = service.currentSettings.presetIdentifier {

@@ -38,11 +38,14 @@ final class TokenRefreshInterceptor {
     @MainActor private var isRequestingCredentials = false
 
     var reauthenticator: Reauthenticator
+    private let userRetryTracker: UserRetryTracker
 
     // MARK: - Init
 
-    init(reauthenticator: Reauthenticator = TPPReauthenticator()) {
+    init(reauthenticator: Reauthenticator = TPPReauthenticator(),
+         userRetryTracker: UserRetryTracker = .shared) {
         self.reauthenticator = reauthenticator
+        self.userRetryTracker = userRetryTracker
     }
 
     // MARK: - Download Failure with Auth Check
@@ -369,9 +372,9 @@ final class TokenRefreshInterceptor {
 
         let retryAction: (() -> Void)? = {
             let operationId = "borrow-\(book.identifier)"
-            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+            guard userRetryTracker.canRetry(operationId: operationId) else { return nil }
             return { [weak delegate] in
-                UserRetryTracker.shared.recordRetry(operationId: operationId)
+                self.userRetryTracker.recordRetry(operationId: operationId)
                 delegate?.startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
             }
         }()

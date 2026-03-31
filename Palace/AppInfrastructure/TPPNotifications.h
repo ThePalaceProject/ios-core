@@ -1,2 +1,0 @@
-extern NSNotificationName const TPPBookReturned;
-extern NSNotificationName const TPPHoldsDidUpdate; 
