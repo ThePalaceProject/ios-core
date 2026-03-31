@@ -463,7 +463,7 @@ final class BookDetailViewModel: ObservableObject {
         }
     }
 
-    private func removeProcessingButton(_ button: BookButtonType) {
+    func removeProcessingButton(_ button: BookButtonType) {
         self.processingButtons.remove(button)
     }
 
@@ -479,7 +479,7 @@ final class BookDetailViewModel: ObservableObject {
             libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
             libraryAccountsProvider: accountsManager,
             urlSettingsProvider: settings,
-            bookRegistry: self.registry,
+            bookRegistry: (self.registry as? TPPBookRegistry) ?? TPPBookRegistry.shared,
             bookDownloadsCenter: self.downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,

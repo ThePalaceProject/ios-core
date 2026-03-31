@@ -147,7 +147,7 @@ public final class PlaybackBootstrapper {
     /// Safe to call multiple times:
     /// - First call: Full initialization
     /// - Subsequent calls: Re-activates audio session and re-applies command config
-    public func ensureInitializedForCarPlay(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    func ensureInitializedForCarPlay(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
         Log.debug(#file, "🚀 PlaybackBootstrapper preparing for CarPlay")
 
         // CRITICAL: Load book registry from disk for CarPlay cold starts

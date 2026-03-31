@@ -499,7 +499,7 @@ extension BookCellModel {
                 NotificationService.requestAuthorization()
                 Task {
                     do {
-                        _ = try await downloadCenter.borrowAsync(self.book, attemptDownload: false)
+                        _ = try await self.downloadCenter.borrowAsync(self.book, attemptDownload: false)
                     } catch {
                         Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
                     }

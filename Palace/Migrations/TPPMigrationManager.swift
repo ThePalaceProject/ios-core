@@ -50,7 +50,7 @@ class TPPMigrationManager: NSObject {
 
         // Validate downloaded content is still accessible
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3.0) {
-            bookRegistry.validateDownloadedContent()
+            (bookRegistry as? TPPBookRegistry)?.validateDownloadedContent()
         }
     }
 

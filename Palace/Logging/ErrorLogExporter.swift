@@ -237,7 +237,7 @@ actor ErrorLogExporter {
         var logs = ""
 
         let registry = bookRegistry
-        let allBooks = registry.allBooks
+        let allBooks = (registry as? TPPBookRegistry)?.allBooks ?? []
         let downloadedBooks = allBooks.filter { registry.state(for: $0.identifier) == .downloadSuccessful }
 
         logs += "Total Books: \(allBooks.count)\n"

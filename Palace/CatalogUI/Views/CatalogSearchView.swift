@@ -34,6 +34,7 @@ struct CatalogSearchView: View {
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: dummyRepository, baseURL: { nil }))
         self.books = books
         self.onBookSelected = onBookSelected
+        self.downloadCenter = .shared
     }
 
     var body: some View {

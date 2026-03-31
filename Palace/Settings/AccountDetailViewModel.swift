@@ -102,7 +102,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accountsManager,
             urlSettingsProvider: settings,
-            bookRegistry: bookRegistry,
+            bookRegistry: (bookRegistry as? TPPBookRegistry) ?? TPPBookRegistry.shared,
             bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
@@ -131,7 +131,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accountsManager,
             urlSettingsProvider: settings,
-            bookRegistry: bookRegistry,
+            bookRegistry: (bookRegistry as? TPPBookRegistry) ?? TPPBookRegistry.shared,
             bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             networkExecutor: networkExecutor,
@@ -430,7 +430,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
                 account.details?.userAboveAgeLimit = aboveAgeLimit
                 if !aboveAgeLimit {
                     self?.downloadCenter.reset(account.uuid)
-                    self?.bookRegistry.reset(account.uuid)
+                    ((self?.bookRegistry as? TPPBookRegistry) ?? TPPBookRegistry.shared).reset(account.uuid)
                 }
                 self?.setupTableData()
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
