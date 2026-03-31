@@ -41,8 +41,8 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
         do {
             let (data, _) = try await networkExecutor.GET(loansUrl, useTokenIfAvailable: true)
 
-            guard let xml = TPPXML(data: data),
-                  let entries = xml.children(withName: "entry") as? [TPPXML] else {
+            guard let xml = TPPXML.xml(withData: data),
+                  case let entries = xml.childrenWithName("entry"), !entries.isEmpty else {
                 logError("LCP passphrase retrieval error: loans XML parsing failed", "responseBody", String(data: data, encoding: .utf8) ?? "N/A")
                 return nil
             }
@@ -51,7 +51,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
                 if let entryId = entry.firstChild(withName: "id")?.value, entryId == book.identifier {
 
                     // Iterate through all 'link' elements in the entry
-                    let links = entry.children(withName: "link") as? [TPPXML] ?? []
+                    let links = entry.childrenWithName("link")
                     if links.isEmpty {
                         continue
                     }
@@ -62,8 +62,8 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
                         if let children = link.children as? [TPPXML], !children.isEmpty {
                             for child in children {
 
-                                if child.name == "hashed_passphrase", let passphrase = child.value {
-                                    return passphrase
+                                if child.name == "hashed_passphrase", !child.value.isEmpty {
+                                    return child.value
                                 }
                             }
                         }
