@@ -184,6 +184,14 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
         }
     }
 
+    func thumbnailImages(forBooks books: Set<TPPBook>, handler: @escaping (Set<TPPBook>) -> Void) {
+        handler(books)
+    }
+
+    func updatedBookMetadata(_ book: TPPBook) -> TPPBook? {
+        return registry[book.identifier]?.book
+    }
+
     /// Helper to set a mock image for testing
     func setMockImage(_ image: UIImage, for bookIdentifier: String) {
         mockImages[bookIdentifier] = image

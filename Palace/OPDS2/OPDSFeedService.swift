@@ -14,8 +14,11 @@ actor OPDSFeedService {
     static let shared = OPDSFeedService()
 
     private var inflightRequests: [URL: Task<TPPOPDSFeed, Error>] = [:]
+    private let accountsManager: TPPLibraryAccountsProvider
 
-    private init() {}
+    init(accountsManager: TPPLibraryAccountsProvider = AccountsManager.shared) {
+        self.accountsManager = accountsManager
+    }
 
     // MARK: - Feed Fetching
 
@@ -270,7 +273,7 @@ actor OPDSFeedService {
 extension OPDSFeedService {
     /// Fetches the user's loans feed
     func fetchLoans() async throws -> TPPOPDSFeed {
-        guard let loansURL = AccountsManager.shared.currentAccount?.loansUrl else {
+        guard let loansURL = accountsManager.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
 
@@ -279,7 +282,7 @@ extension OPDSFeedService {
 
     /// Fetches the catalog root
     func fetchCatalogRoot() async throws -> TPPOPDSFeed {
-        guard let catalogURLString = AccountsManager.shared.currentAccount?.catalogUrl,
+        guard let catalogURLString = accountsManager.currentAccount?.catalogUrl,
               let catalogURL = URL(string: catalogURLString) else {
             throw PalaceError.authentication(.accountNotFound)
         }

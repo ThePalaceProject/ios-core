@@ -119,8 +119,8 @@ extension BookButtonState {
 }
 
 extension BookButtonState {
-    init?(_ book: TPPBook) {
-        let bookState = TPPBookRegistry.shared.state(for: book.identifier)
+    init?(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        let bookState = bookRegistry.state(for: book.identifier)
         switch bookState {
         case .unregistered, .holding:
             guard let buttonState = Self.stateForAvailability(book.defaultAcquisition?.availability) else {
@@ -186,13 +186,13 @@ extension BookButtonState {
 }
 
 extension TPPBook {
-    func supportsDeletion(for state: BookButtonState) -> Bool {
+    func supportsDeletion(for state: BookButtonState, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) -> Bool {
         var fullfillmentRequired = false
         #if FEATURE_DRM_CONNECTOR
         fullfillmentRequired = state == .holding && self.revokeURL != nil
         #endif
 
-        let hasFullfillmentId = TPPBookRegistry.shared.fulfillmentId(forIdentifier: self.identifier) != nil
+        let hasFullfillmentId = bookRegistry.fulfillmentId(forIdentifier: self.identifier) != nil
         let isFullfiliable = !(hasFullfillmentId && fullfillmentRequired) && self.revokeURL != nil
         let needsAuthentication = self.defaultAcquisitionIfOpenAccess == nil && TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? false
 

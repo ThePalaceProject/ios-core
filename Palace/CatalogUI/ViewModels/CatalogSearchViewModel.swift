@@ -30,7 +30,7 @@ class CatalogSearchViewModel: ObservableObject {
         baseURL: @escaping () -> URL?,
         debounceInterval: TimeInterval = 0.1,
         announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
-        bookRegistry: TPPBookRegistryProvider = AppContainer.shared.bookRegistry
+        bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
     ) {
         self.repository = repository
         self.baseURL = baseURL

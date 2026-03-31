@@ -23,6 +23,7 @@ enum NYPLResult<SuccessInfo> {
     private let activeTasksLock = NSLock()
 
     private let responder: TPPNetworkResponder
+    private let accountsManager: TPPLibraryAccountsProvider
 
     @objc init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
                cachingStrategy: NYPLCachingStrategy,
@@ -36,6 +37,7 @@ enum NYPLResult<SuccessInfo> {
         self.urlSession = URLSession(configuration: config,
                                      delegate: self.responder,
                                      delegateQueue: delegateQueue)
+        self.accountsManager = AccountsManager.shared
         super.init()
     }
 
@@ -49,6 +51,24 @@ enum NYPLResult<SuccessInfo> {
         self.urlSession = URLSession(configuration: sessionConfiguration,
                                      delegate: self.responder,
                                      delegateQueue: delegateQueue)
+        self.accountsManager = AccountsManager.shared
+        super.init()
+    }
+
+    /// DI-friendly initializer for testing
+    init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
+         cachingStrategy: NYPLCachingStrategy,
+         accountsManager: TPPLibraryAccountsProvider = AccountsManager.shared,
+         delegateQueue: OperationQueue? = nil) {
+        self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
+                                             useFallbackCaching: cachingStrategy == .fallback)
+        let config = TPPCaching.makeURLSessionConfiguration(
+            caching: cachingStrategy,
+            requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
+        self.urlSession = URLSession(configuration: config,
+                                     delegate: self.responder,
+                                     delegateQueue: delegateQueue)
+        self.accountsManager = accountsManager
         super.init()
     }
 
@@ -132,7 +152,7 @@ enum NYPLResult<SuccessInfo> {
 extension TPPNetworkExecutor: TPPRequestExecuting {
     @discardableResult
     func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
-        let accountId = AccountsManager.shared.currentAccountId
+        let accountId = accountsManager.currentAccountId
         let userAccount = TPPUserAccount.sharedAccount(libraryUUID: accountId)
 
         // SAML auth uses cookies, not tokens - proceed directly
@@ -184,7 +204,7 @@ extension TPPNetworkExecutor {
         var urlRequest = URLRequest(url: url,
                                     cachePolicy: urlSession.configuration.requestCachePolicy)
         urlRequest.applyCustomUserAgent()
-        let account = TPPUserAccount.sharedAccount(libraryUUID: accountId ?? AccountsManager.shared.currentAccountId)
+        let account = TPPUserAccount.sharedAccount(libraryUUID: accountId ?? accountsManager.currentAccountId)
         if let authToken = account.authToken, useTokenIfAvailable {
             urlRequest.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
@@ -336,7 +356,7 @@ extension TPPNetworkExecutor {
     }
 
     func refreshTokenAndResume(task: URLSessionTask?, accountId: String? = nil, completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
-        let capturedAccountId = accountId ?? AccountsManager.shared.currentAccountId
+        let capturedAccountId = accountId ?? accountsManager.currentAccountId
         refreshQueue.async { [weak self] in
             guard let self = self else {
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Network executor deallocated"])
@@ -437,7 +457,7 @@ extension TPPNetworkExecutor {
                         Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? "current")")
                         DispatchQueue.main.async {
                             TPPUserAccount.sharedAccount(libraryUUID: capturedAccountId).markCredentialsStale()
-                            if capturedAccountId == nil || capturedAccountId == AccountsManager.shared.currentAccountId {
+                            if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
                                 SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
                             }
                         }

@@ -60,19 +60,15 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   // MARK: - Initialization
   
-  init(
-    title: String,
-    url: URL,
-    api: DefaultCatalogAPI? = nil,
-    bookRegistry: TPPBookRegistryProvider = AppContainer.shared.bookRegistry
-  ) {
+  init(title: String, url: URL, api: DefaultCatalogAPI? = nil,
+       bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
     self.title = title
     self.url = url
+    self.bookRegistry = bookRegistry
     self.api = api ?? DefaultCatalogAPI(
       client: URLSessionNetworkClient(),
       parser: OPDSParser()
     )
-    self.bookRegistry = bookRegistry
 
     setupObservers()
   }

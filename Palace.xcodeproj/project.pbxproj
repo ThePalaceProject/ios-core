@@ -1061,8 +1061,6 @@
 		E77D02202931337000544180 /* ReadiumLCP in Frameworks */ = {isa = PBXBuildFile; productRef = E77D021F2931337000544180 /* ReadiumLCP */; };
 		E77D02252931357400544180 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = E77D02242931357400544180 /* SwiftSoup */; };
 		E77D022D2931361700544180 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = E77D022C2931361700544180 /* SwiftSoup */; };
-		E78494992A8E99CF0059B4B0 /* PalaceAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7F9BABE2A8E6811001697DE /* PalaceAudiobookToolkit.framework */; };
-		E784949A2A8E99CF0059B4B0 /* PalaceAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7F9BABE2A8E6811001697DE /* PalaceAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E785BA282B1519E600A12EFA /* OpenSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF526BD919D00C2A50B /* OpenSans-Bold.ttf */; };
 		E785BA292B1519E600A12EFA /* OpenSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEEFF826BD919E00C2A50B /* OpenSans-Regular.ttf */; };
 		E785BA2A2B1519E600A12EFA /* OpenSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5BEF01C26BDA9EA00C2A50B /* OpenSans-SemiBold.ttf */; };
@@ -1230,6 +1228,16 @@
 		UAAS00010002PALACE0001 /* UserAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = UAAS00010000FILEREF01 /* UserAccountAuthState.swift */; };
 		VMCP002T270326AF008E1DC3 /* ViewModelComputedPropertyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = VMCP001T270326AF008E1DC3 /* ViewModelComputedPropertyTests.swift */; };
 		XLIB001BF2E6FA0007CCFA04 /* TPPCrossLibrarySignOutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = XLIB001FR2E6FA0007CCFA03 /* TPPCrossLibrarySignOutTests.swift */; };
+		8F3ED8ED211F606A0DA169BB /* AccessibleAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D56E264DEDFBBEDF6D4E79E3 /* AccessibleAnimation.swift */; };
+		BCF5320B7BF980AE4D11FED9 /* BookCellModelCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72DCAEB765B50E04217F0CB7 /* BookCellModelCache.swift */; };
+		D02AC09660E8789AD504199E /* DebugSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEF1F7C70AC93BF8E2F22148 /* DebugSettings.swift */; };
+		8C0878AA963157EEEE082251 /* KeyboardNavigationHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144BB5C0F2D1B2C0C398BD98 /* KeyboardNavigationHandler.swift */; };
+		893086188DEEC964C396622F /* OPDS2Feed.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB6B83327C29366849662E76 /* OPDS2Feed.swift */; };
+		D334E57F366D2B71AF9D38F5 /* OPDS2PublicationExtended.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3023DFFACC986541965F1560 /* OPDS2PublicationExtended.swift */; };
+		0B461FFD655EC35ED6C3990A /* OPDSFeedCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE8017D2ECF7E0FEBFAAB1A /* OPDSFeedCache.swift */; };
+		C52F95F93025E9B752D1FA31 /* TPPAccessibilityAnnouncementCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0AB00212E8E600100000003 /* TPPAccessibilityAnnouncementCenter.swift */; };
+		3BCBCED78A4A103BC2FB6A1C /* TPPBookmarkDeletionLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0452B249AF7C21DDAACD5C58 /* TPPBookmarkDeletionLog.swift */; };
+		6C4729162EE9C5CD63518FC2 /* UnifiedOPDSService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37FB0D2943B1B29532C05120 /* UnifiedOPDSService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1334,7 +1342,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				E784949A2A8E99CF0059B4B0 /* PalaceAudiobookToolkit.framework in Embed Frameworks */,
 				E7E96BBC2B0E82550036B23A /* PalaceUIKit.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
@@ -2302,7 +2309,6 @@
 				E5E9B0002CC035AC00366A2E /* ReadiumStreamer in Frameworks */,
 				73EB0B3F25821DF4006BC997 /* CoreLocation.framework in Frameworks */,
 				73EB0B4025821DF4006BC997 /* UIKit.framework in Frameworks */,
-				E78494992A8E99CF0059B4B0 /* PalaceAudiobookToolkit.framework in Frameworks */,
 				73EB0B4125821DF4006BC997 /* Foundation.framework in Frameworks */,
 				73EB0B4225821DF4006BC997 /* libTenPrintCover.a in Frameworks */,
 				73EB0B4525821DF4006BC997 /* libz.dylib in Frameworks */,
@@ -5586,6 +5592,16 @@
 				430EFE2DB7E7CCC653F9E7AE /* AudiobookSessionManaging.swift in Sources */,
 				2852B3BF49CF7C61548AD428 /* ErrorLogging.swift in Sources */,
 				8E487777D9FBC42EE44B84B6 /* AppContainer.swift in Sources */,
+				8F3ED8ED211F606A0DA169BB /* AccessibleAnimation.swift in Sources */,
+				BCF5320B7BF980AE4D11FED9 /* BookCellModelCache.swift in Sources */,
+				D02AC09660E8789AD504199E /* DebugSettings.swift in Sources */,
+				8C0878AA963157EEEE082251 /* KeyboardNavigationHandler.swift in Sources */,
+				893086188DEEC964C396622F /* OPDS2Feed.swift in Sources */,
+				D334E57F366D2B71AF9D38F5 /* OPDS2PublicationExtended.swift in Sources */,
+				0B461FFD655EC35ED6C3990A /* OPDSFeedCache.swift in Sources */,
+				C52F95F93025E9B752D1FA31 /* TPPAccessibilityAnnouncementCenter.swift in Sources */,
+				3BCBCED78A4A103BC2FB6A1C /* TPPBookmarkDeletionLog.swift in Sources */,
+				6C4729162EE9C5CD63518FC2 /* UnifiedOPDSService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
