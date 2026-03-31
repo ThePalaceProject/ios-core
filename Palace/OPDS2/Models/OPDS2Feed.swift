@@ -17,7 +17,7 @@ struct OPDS2Feed: Codable, Equatable, Sendable {
     // MARK: - Core Properties
 
     let metadata: OPDS2FeedMetadata
-    let links: [OPDS2Link]
+    let links: [OPDS2Link]?
     let publications: [OPDS2Publication]?
     let navigation: [OPDS2NavigationLink]?
     let groups: [OPDS2Group]?
@@ -30,27 +30,27 @@ struct OPDS2Feed: Codable, Equatable, Sendable {
 
     /// URL for the next page of results
     var nextPageURL: URL? {
-        links.first { $0.rel == "next" }?.hrefURL
+        links?.first { $0.rel == "next" }?.hrefURL
     }
 
     /// URL for the previous page
     var previousPageURL: URL? {
-        links.first { $0.rel == "previous" }?.hrefURL
+        links?.first { $0.rel == "previous" }?.hrefURL
     }
 
     /// URL for search
     var searchURL: URL? {
-        links.first { $0.rel == "search" }?.hrefURL
+        links?.first { $0.rel == "search" }?.hrefURL
     }
 
     /// Self URL
     var selfURL: URL? {
-        links.first { $0.rel == "self" }?.hrefURL
+        links?.first { $0.rel == "self" }?.hrefURL
     }
 
     /// Start URL (root of catalog)
     var startURL: URL? {
-        links.first { $0.rel == "start" }?.hrefURL
+        links?.first { $0.rel == "start" }?.hrefURL
     }
 
     // MARK: - Feed Type Detection
@@ -71,7 +71,7 @@ struct OPDS2Feed: Codable, Equatable, Sendable {
 
     init(
         metadata: OPDS2FeedMetadata,
-        links: [OPDS2Link],
+        links: [OPDS2Link]? = nil,
         publications: [OPDS2Publication]? = nil,
         navigation: [OPDS2NavigationLink]? = nil,
         groups: [OPDS2Group]? = nil,

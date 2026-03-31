@@ -30,25 +30,16 @@ final class RemoteFeatureFlags {
         case downloadRetryEnabled = "download_retry_enabled"
         case circuitBreakerEnabled = "circuit_breaker_enabled"
         case carPlayEnabled = "carplay_enabled"
-        case aiDiscoveryEnabled = "ai_discovery_enabled"
-        case readingStatsEnabled = "reading_stats_enabled"
-        case advancedTypographyEnabled = "advanced_typography_enabled"
-        case carModeEnabled = "car_mode_enabled"
-        case socialCollectionsEnabled = "social_collections_enabled"
+        case opds2Enabled = "opds2_enabled"
 
         var defaultValue: Bool {
             switch self {
             case .downloadRetryEnabled, .circuitBreakerEnabled:
                 return true
             case .carPlayEnabled:
-                // CarPlay defaults to enabled for development/testing
-                // Set to false in production and control via Firebase Remote Config
                 return true
-            case .aiDiscoveryEnabled, .readingStatsEnabled,
-                 .advancedTypographyEnabled, .carModeEnabled,
-                 .socialCollectionsEnabled:
-                // New product features — disabled by default, enable via Firebase or debug settings
-                return false
+            case .opds2Enabled:
+                return true
             default:
                 return false
             }
@@ -65,6 +56,8 @@ final class RemoteFeatureFlags {
                 return .circuitBreakerEnabled
             case .carPlayEnabled:
                 return .carPlayEnabled
+            case .opds2Enabled:
+                return .opds2Enabled
             default:
                 return nil
             }
@@ -110,43 +103,10 @@ final class RemoteFeatureFlags {
         return Date().timeIntervalSince(lastFetch) > fetchInterval
     }
 
-    // MARK: - Local Developer Overrides
-
-    private static let overrideKeyPrefix = "FeatureFlag.override."
-
-    /// Sets a local developer override for a feature flag.
-    /// Pass `nil` to clear the override and use remote/default value.
-    func setLocalOverride(_ value: Bool?, for feature: FeatureFlag) {
-        let key = Self.overrideKeyPrefix + feature.rawValue
-        if let value = value {
-            UserDefaults.standard.set(value, forKey: key)
-        } else {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
-    }
-
-    /// Returns the local override for a feature flag, or nil if no override is set.
-    func localOverride(for feature: FeatureFlag) -> Bool? {
-        let key = Self.overrideKeyPrefix + feature.rawValue
-        guard UserDefaults.standard.object(forKey: key) != nil else { return nil }
-        return UserDefaults.standard.bool(forKey: key)
-    }
-
-    /// Whether a local override exists for a feature flag.
-    func hasLocalOverride(for feature: FeatureFlag) -> Bool {
-        let key = Self.overrideKeyPrefix + feature.rawValue
-        return UserDefaults.standard.object(forKey: key) != nil
-    }
-
     // MARK: - Feature Flag Access
 
-    /// Check if feature is enabled. Priority: local override → Firebase → default.
+    /// Check if feature is enabled (with device-specific override).
     func isFeatureEnabled(_ feature: FeatureFlag) -> Bool {
-        // Local developer override takes highest priority
-        if let override = localOverride(for: feature) {
-            return override
-        }
-
         // Delegate to FirebaseManager for thread-safe access
         if let managerKey = feature.managerKey {
             return FirebaseManager.shared.getBoolValue(
@@ -196,6 +156,13 @@ final class RemoteFeatureFlags {
         // No cached value - return default
         Log.debug(#file, "🚗 CarPlay feature flag (no cache, using default): \(FeatureFlag.carPlayEnabled.defaultValue)")
         return FeatureFlag.carPlayEnabled.defaultValue
+    }
+
+    /// Whether OPDS 2 feed support is enabled.
+    /// When disabled, the app falls back to OPDS 1 (XML) for all catalog requests.
+    /// Default: true. Set to false in Firebase Remote Config to disable.
+    var isOPDS2Enabled: Bool {
+        isFeatureEnabled(.opds2Enabled)
     }
 
     // MARK: - Device Info for Targeting

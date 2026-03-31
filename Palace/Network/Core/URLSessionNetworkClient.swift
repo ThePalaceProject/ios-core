@@ -50,7 +50,7 @@ final class URLSessionNetworkClient: NetworkClient {
 
             switch request.method {
             case .GET, .HEAD:
-                _ = self.executor.GET(urlRequest.url!, useTokenIfAvailable: true) { data, response, error in
+                _ = self.executor.GET(request: urlRequest, useTokenIfAvailable: true) { data, response, error in
                     if let error { continuation.resume(throwing: error); return }
                     guard let data = data, let response = response as? HTTPURLResponse else { continuation.resume(throwing: NetworkError.invalidResponse); return }
                     continuation.resume(returning: (data, response))
