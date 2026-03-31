@@ -7,6 +7,8 @@ import Combine
 /// All properties default to the production singletons so existing call sites
 /// that create views without an explicit container continue to work.
 struct AppContainer {
+    static let shared = AppContainer()
+
     let bookRegistry: TPPBookRegistryProvider
     let networkExecutor: TPPNetworkExecutor
     let accountsManager: AccountsManager

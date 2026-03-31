@@ -43,11 +43,7 @@ struct AppTabHostView: View {
                 .tag(AppTab.myBooks)
                 .accessibilityIdentifier(AccessibilityID.TabBar.myBooksTab)
 
-            NavigationHostView(rootView: HoldsView(viewModel: HoldsViewModel(
-                bookRegistry: container.bookRegistry,
-                accountsManager: container.accountsManager,
-                settings: container.settings
-            )))
+            NavigationHostView(rootView: HoldsView())
                 .tabItem {
                     VStack {
                         Image("Holds").renderingMode(.template)
@@ -65,10 +61,7 @@ struct AppTabHostView: View {
             // if StatsTab.isEnabled { statsTab }
             // if CollectionsTab.isEnabled { collectionsTab }
 
-            NavigationHostView(rootView: TPPSettingsView(viewModel: SettingsViewModel(
-                settings: container.settings,
-                accountsManager: container.accountsManager
-            )))
+            NavigationHostView(rootView: TPPSettingsView())
                 .tabItem { Label(Strings.Settings.settings, systemImage: "gearshape") }
                 .tag(AppTab.settings)
                 .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
@@ -93,8 +86,7 @@ struct AppTabHostView: View {
         .onAppear {
             updateHoldsBadge()
         }
-        .onReceive(TPPBookRegistry.shared.bookStatePublisher.map { _ in () }
-            .merge(with: TPPBookRegistry.shared.syncStatePublisher.map { _ in () })
+        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
         ) { _ in
             updateHoldsBadge()
