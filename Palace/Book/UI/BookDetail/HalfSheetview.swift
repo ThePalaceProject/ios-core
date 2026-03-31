@@ -31,7 +31,6 @@ extension HalfSheetProvider {
 
 struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     typealias DisplayStrings = Strings.BookDetailView
-    @Environment(\.appContainer) private var container
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.dismiss) private var dismiss
 
@@ -40,13 +39,23 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     @Binding var coverImage: UIImage?
     @State private var originalState: TPPBookState = .unregistered
     @State private var didChangeState: Bool = false
+    let accountsManager: AccountsManager
+    let bookRegistry: TPPBookRegistryProvider
+
+    init(viewModel: ViewModel, backgroundColor: Color, coverImage: Binding<UIImage?>, accountsManager: AccountsManager = AccountsManager.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        self.viewModel = viewModel
+        self.backgroundColor = backgroundColor
+        self._coverImage = coverImage
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
 
             headerView
 
-            Text(container.accountsManager.currentAccount?.name ?? "")
+            Text(accountsManager.currentAccount?.name ?? "")
                 .font(.headline)
 
             bookInfoView
@@ -135,17 +144,23 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
             }
         }
         .onAppear {
-            originalState = container.bookRegistry.state(for: viewModel.book.identifier)
+            originalState = bookRegistry.state(for: viewModel.book.identifier)
         }
         .onDisappear {
             // Always sync to latest registry state to avoid reverting the UI after a successful download
-            viewModel.bookState = container.bookRegistry.state(for: viewModel.book.identifier)
+            viewModel.bookState = bookRegistry.state(for: viewModel.book.identifier)
             if let cellModel = viewModel as? BookCellModel {
                 cellModel.isManagingHold = false
             }
         }
-        .onReceive(TPPBookRegistry.shared.bookStatePublisher.receive(on: RunLoop.main)) { (identifier, newState) in
-            guard identifier == viewModel.book.identifier else { return }
+        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
+            guard
+                let info = note.userInfo as? [String: Any],
+                let identifier = info["bookIdentifier"] as? String,
+                identifier == viewModel.book.identifier,
+                let raw = info["state"] as? Int,
+                let newState = TPPBookState(rawValue: raw)
+            else { return }
 
             // Dismiss only when a return/remove fully completed to unregistered
             if viewModel.isReturning && newState == .unregistered {

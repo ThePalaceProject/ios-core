@@ -3,21 +3,23 @@ import Combine
 
 // MARK: - SearchView
 struct CatalogSearchView: View {
-    @Environment(\.appContainer) private var container
     @StateObject private var viewModel: CatalogSearchViewModel
     @FocusState private var isSearchFieldFocused: Bool
     let books: [TPPBook]
     let onBookSelected: (TPPBook) -> Void
+    let downloadCenter: MyBooksDownloadCenter
 
     init(
         repository: CatalogRepositoryProtocol,
         baseURL: @escaping () -> URL?,
         books: [TPPBook],
-        onBookSelected: @escaping (TPPBook) -> Void
+        onBookSelected: @escaping (TPPBook) -> Void,
+        downloadCenter: MyBooksDownloadCenter = .shared
     ) {
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: repository, baseURL: baseURL))
         self.books = books
         self.onBookSelected = onBookSelected
+        self.downloadCenter = downloadCenter
     }
 
     init(
@@ -69,8 +71,9 @@ struct CatalogSearchView: View {
         .onChange(of: books) { newBooks in
             viewModel.updateBooks(newBooks)
         }
-        .onReceive(registryChangePublisher) { (bookID, _) in
-            viewModel.applyRegistryUpdates(changedIdentifier: bookID)
+        .onReceive(registryChangePublisher) { note in
+            let changedId = (note.userInfo as? [String: Any])?["bookIdentifier"] as? String
+            viewModel.applyRegistryUpdates(changedIdentifier: changedId)
         }
         .onReceive(downloadProgressPublisher) { changedId in
             viewModel.applyRegistryUpdates(changedIdentifier: changedId)
@@ -79,14 +82,15 @@ struct CatalogSearchView: View {
 
     // MARK: - Publishers
 
-    private var registryChangePublisher: AnyPublisher<(String, TPPBookState), Never> {
-        TPPBookRegistry.shared.bookStatePublisher
+    private var registryChangePublisher: AnyPublisher<Notification, Never> {
+        NotificationCenter.default
+            .publisher(for: .TPPBookRegistryStateDidChange)
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .eraseToAnyPublisher()
     }
 
     private var downloadProgressPublisher: AnyPublisher<String, Never> {
-        container.downloadCenter.downloadProgressPublisher
+        downloadCenter.downloadProgressPublisher
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .map { $0.0 }
             .removeDuplicates()

@@ -3,8 +3,13 @@ import SwiftUI
 import UIKit
 
 struct LibraryNavTitleView: View {
-    @Environment(\.appContainer) private var container
     var onTap: (() -> Void)?
+    private let accountsManager: AccountsManager
+
+    init(onTap: (() -> Void)? = nil, accountsManager: AccountsManager = AccountsManager.shared) {
+        self.onTap = onTap
+        self.accountsManager = accountsManager
+    }
 
     @ViewBuilder
     var body: some View {
@@ -18,7 +23,7 @@ struct LibraryNavTitleView: View {
 
     private var content: some View {
         HStack(spacing: 10) {
-            if let logo = container.accountsManager.currentAccount?.logo {
+            if let logo = accountsManager.currentAccount?.logo {
                 Image(uiImage: logo)
                     .resizable()
                     .scaledToFit()
@@ -26,7 +31,7 @@ struct LibraryNavTitleView: View {
                     .clipShape(Circle())
                     .accessibilityHidden(true) // Decorative, title label provides context
             }
-            Text(container.accountsManager.currentAccount?.name ?? NSLocalizedString("Catalog", comment: ""))
+            Text(accountsManager.currentAccount?.name ?? NSLocalizedString("Catalog", comment: ""))
                 .font(.headline)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
@@ -36,13 +41,13 @@ struct LibraryNavTitleView: View {
 }
 
 @objc final class LibraryNavTitleFactory: NSObject {
-    @objc static func makeTitleView() -> UIView {
+    @objc static func makeTitleView(accountsManager: AccountsManager = AccountsManager.shared) -> UIView {
         let container = UIStackView()
         container.axis = .horizontal
         container.alignment = .center
         container.spacing = 8
 
-        if let logo = AccountsManager.shared.currentAccount?.logo {
+        if let logo = accountsManager.currentAccount?.logo {
             let imageView = UIImageView(image: logo)
             imageView.contentMode = .scaleAspectFit
             imageView.clipsToBounds = true
@@ -55,7 +60,7 @@ struct LibraryNavTitleView: View {
         }
 
         let titleLabel = UILabel()
-        titleLabel.text = AccountsManager.shared.currentAccount?.name ?? NSLocalizedString("Catalog", comment: "")
+        titleLabel.text = accountsManager.currentAccount?.name ?? NSLocalizedString("Catalog", comment: "")
         titleLabel.font = UIFont.preferredFont(forTextStyle: .headline)
         titleLabel.adjustsFontForContentSizeCategory = true
         container.addArrangedSubview(titleLabel)

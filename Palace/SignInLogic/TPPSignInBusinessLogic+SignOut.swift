@@ -181,7 +181,7 @@ extension TPPSignInBusinessLogic {
 
         // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
         // Also reset the flag so token re-registers on next sign-in
-        if let account = AccountsManager.shared.account(libraryAccountID) {
+        if let account = libraryAccountsProvider.account(libraryAccountID) {
             NotificationService.shared.deleteToken(for: account)
             account.hasUpdatedToken = false
         }

@@ -15,7 +15,7 @@ import Combine
 @objc class TPPPDFDocumentMetadata: NSObject, ObservableObject {
     private let rendererString = "TPPPDFReader"
     let book: TPPBook
-    private let bookRegistry: TPPBookRegistry
+    private let bookRegistry: TPPBookRegistryProvider
     var bookIdentifier: String { book.identifier }
 
     /// Page numbers for boomarks.
@@ -60,10 +60,10 @@ import Combine
     /// This function gets data from `TPPBookRegistry`,
     /// `bookIdentifier` must be present in the registry, otherwise the app crashes..
     @objc convenience init(with book: TPPBook) {
-        self.init(with: book, bookRegistry: .shared)
+        self.init(with: book, bookRegistry: TPPBookRegistry.shared)
     }
 
-    init(with book: TPPBook, bookRegistry: TPPBookRegistry = .shared) {
+    init(with book: TPPBook, bookRegistry: TPPBookRegistryProvider) {
         self.book = book
         self.bookRegistry = bookRegistry
         currentPage = bookRegistry.location(forIdentifier: book.identifier)?.pageNumber ?? 0

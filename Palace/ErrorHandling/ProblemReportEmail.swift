@@ -25,8 +25,9 @@ import UIKit
         to emailAddress: String,
         presentingViewController: UIViewController,
         book: TPPBook?,
-        libraryUUID: String?) {
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryUUID ?? AccountsManager.shared.currentAccountId)
+        libraryUUID: String?,
+        accountsManager: AccountsManager = AccountsManager.shared) {
+        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryUUID ?? accountsManager.currentAccountId)
         let patronID = account.authorizationIdentifier
         beginComposing(to: emailAddress, presentingViewController: presentingViewController, body: generateBody(book: book, patronIdentifier: patronID))
     }

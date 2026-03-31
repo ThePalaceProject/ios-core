@@ -1,6 +1,5 @@
 import UIKit
 import SwiftUI
-import Combine
 
 /// UITableView to display or add library accounts that the user
 /// can then log in and adjust settings after selecting Accounts.
@@ -26,18 +25,21 @@ import Combine
     fileprivate var libraryAccounts: [Account]
     fileprivate var userAddedSecondaryAccounts: [Account]!
     fileprivate let manager: AccountsManager
+    fileprivate let settings: TPPSettings
     fileprivate var accountsLoadingLogos: Set<String> = []
-    private var cancellables = Set<AnyCancellable>()
 
-    required init(accounts: [Account]) {
+    required init(accounts: [Account], accountsManager: AccountsManager = AccountsManager.shared, settings: TPPSettings = TPPSettings.shared) {
         self.accounts = accounts
-        self.manager = AccountsManager.shared
+        self.manager = accountsManager
+        self.settings = settings
         self.libraryAccounts = manager.accounts()
 
         super.init(nibName: nil, bundle: nil)
     }
 
-    deinit { }
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 
     @available(*, unavailable)
     required init(coder aDecoder: NSCoder) {
@@ -74,7 +76,7 @@ import Combine
         var accountsToRemove = [String]()
 
         for account in accounts {
-            if AccountsManager.shared.account(account.uuid) == nil {
+            if manager.account(account.uuid) == nil {
                 accountsToRemove.append(account.uuid)
             }
         }
@@ -83,15 +85,17 @@ import Combine
             accounts = accounts.filter { $0.uuid == remove }
         }
 
-        self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != AccountsManager.shared.currentAccount?.uuid }
+        self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != manager.currentAccount?.uuid }
 
         updateSettingsAccountList()
-        AccountsManager.shared.currentAccountDidChange
-            .sink { [weak self] _ in self?.reloadAfterAccountChange() }
-            .store(in: &cancellables)
-        AccountsManager.shared.catalogDidLoad
-            .sink { [weak self] _ in self?.catalogChangeHandler() }
-            .store(in: &cancellables)
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(reloadAfterAccountChange),
+                                               name: NSNotification.Name.TPPCurrentAccountDidChange,
+                                               object: nil)
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(catalogChangeHandler),
+                                               name: NSNotification.Name.TPPCatalogDidLoad,
+                                               object: nil)
 
         self.libraryAccounts = manager.accounts()
         updateNavBar()
@@ -142,7 +146,7 @@ import Combine
     }
 
     func reloadAfterAccountChange() {
-        accounts = TPPSettings.shared.settingsAccountsList
+        accounts = settings.settingsAccountsList
         self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != manager.currentAccount?.uuid }
         DispatchQueue.main.async {
             self.tableView.reloadData()
@@ -150,7 +154,7 @@ import Combine
     }
 
     func catalogChangeHandler() {
-        self.libraryAccounts = AccountsManager.shared.accounts()
+        self.libraryAccounts = manager.accounts()
         DispatchQueue.main.async {
             self.updateNavBar()
         }
@@ -159,7 +163,7 @@ import Combine
     private func updateNavBar() {
         var enable = self.userAddedSecondaryAccounts.count + 1 < self.libraryAccounts.count
 
-        if TPPSettings.shared.customLibraryRegistryServer != nil {
+        if settings.customLibraryRegistryServer != nil {
             enable = self.userAddedSecondaryAccounts.count < self.libraryAccounts.count
         }
 
@@ -175,15 +179,15 @@ import Combine
         navigationController?.popViewController(animated: false)
 
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
 
-        // Setting currentAccount triggers both Combine publisher and NotificationCenter
-        AccountsManager.shared.currentAccount = account
+        manager.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
 
         self.tableView.reloadData()
+        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         self.tabBarController?.selectedIndex = 0
         (navigationController?.parent as? UINavigationController)?.popToRootViewController(animated: false)
     }
@@ -196,7 +200,7 @@ import Combine
                 self?.authenticateAccount(account) {
                     self?.updateList(withAccount: account)
                 }
-                self?.libraryAccounts = AccountsManager.shared.accounts()
+                self?.libraryAccounts = manager.accounts()
             }
         }
         navigationController?.pushViewController(listVC, animated: true)
@@ -249,7 +253,7 @@ import Combine
         showLoadingUI(loadState: .success)
         var array = (userAddedSecondaryAccounts ?? []).map { $0.uuid }
         array.append(uuid)
-        TPPSettings.shared.settingsAccountIdsList = array
+        settings.settingsAccountIdsList = array
     }
 
     // MARK: UITableViewDataSource

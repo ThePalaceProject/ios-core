@@ -22,13 +22,12 @@ actor ErrorLogExporter {
 
     private let maxLogSizeBytes: Int = 5_000_000
     private let defaultLogDays: Int = 7
+    private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
-    private let bookRegistry: TPPBookRegistry
 
-    init(accountsManager: AccountsManager = .shared,
-         bookRegistry: TPPBookRegistry = .shared) {
-        self.accountsManager = accountsManager
+    private init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, accountsManager: AccountsManager = AccountsManager.shared) {
         self.bookRegistry = bookRegistry
+        self.accountsManager = accountsManager
     }
 
     // MARK: - Public API

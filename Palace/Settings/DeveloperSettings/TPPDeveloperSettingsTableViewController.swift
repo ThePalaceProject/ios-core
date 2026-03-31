@@ -11,7 +11,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case libraryRegistryDebugging
         case dataManagement
         case developerTools
-        case featurePreviews
         case badgeTesting
         case errorSimulation
     }
@@ -22,25 +21,14 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let emailLogsCellIdentifier = "emailLogsCell"
     private let sendErrorLogsCellIdentifier = "sendErrorLogsCell"
     private let errorSimulationCellIdentifier = "errorSimulationCell"
-    private let incrementalSpeedSliderCellIdentifier = "incrementalSpeedSliderCell"
     private let badgeLoggingCellIdentifier = "badgeLoggingCell"
     private let testHoldsCellIdentifier = "testHoldsCell"
-    private let featureFlagCellIdentifier = "featureFlagCell"
-
-    /// Product feature flags that can be toggled in developer settings.
-    private let productFeatureFlags: [(RemoteFeatureFlags.FeatureFlag, String)] = [
-        (.aiDiscoveryEnabled, "AI Discovery"),
-        (.readingStatsEnabled, "Reading Stats & Badges"),
-        (.advancedTypographyEnabled, "Advanced Typography"),
-        (.carModeEnabled, "Car Mode"),
-        (.socialCollectionsEnabled, "Collections & Social"),
-    ]
 
     private var pushNotificationsStatus = false
     private let settings: TPPSettings
     private let accountsManager: AccountsManager
 
-    required init(settings: TPPSettings = .shared, accountsManager: AccountsManager = .shared) {
+    required init(settings: TPPSettings = TPPSettings.shared, accountsManager: AccountsManager = AccountsManager.shared) {
         self.settings = settings
         self.accountsManager = accountsManager
         super.init(nibName: nil, bundle: nil)
@@ -76,10 +64,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: emailLogsCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: sendErrorLogsCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: errorSimulationCellIdentifier)
-        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: incrementalSpeedSliderCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: badgeLoggingCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: testHoldsCellIdentifier)
-        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: featureFlagCellIdentifier)
     }
 
     // MARK: - UITableViewDataSource
@@ -88,7 +74,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         switch Section(rawValue: section)! {
         case .librarySettings: return 2
         case .developerTools: return 2
-        case .featurePreviews: return 1 + productFeatureFlags.count
         case .badgeTesting:
             #if DEBUG
             return 2
@@ -123,14 +108,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             case 0: return cellForSendErrorLogs()
             default: return cellForEmailAudiobookLogs()
             }
-        case .featurePreviews:
-            if indexPath.row == 0 {
-                return cellForIncrementalSpeedSlider()
-            } else {
-                let flagIndex = indexPath.row - 1
-                let (flag, label) = productFeatureFlags[flagIndex]
-                return cellForProductFeatureFlag(flag: flag, label: label)
-            }
         case .badgeTesting:
             #if DEBUG
             switch indexPath.row {
@@ -163,8 +140,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             return "Data Management"
         case .developerTools:
             return "Developer Tools"
-        case .featurePreviews:
-            return "Feature Previews (toggles override remote config)"
         case .badgeTesting:
             #if DEBUG
             return "Badge Testing"
@@ -242,49 +217,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
 
-    @objc func productFeatureFlagSwitchDidChange(sender: UISwitch) {
-        let flagIndex = sender.tag
-        guard flagIndex < productFeatureFlags.count else { return }
-        let (flag, label) = productFeatureFlags[flagIndex]
-        RemoteFeatureFlags.shared.setLocalOverride(sender.isOn, for: flag)
-        Log.info(#file, "Feature flag '\(label)' override set to \(sender.isOn)")
-    }
-
-    private func cellForProductFeatureFlag(flag: RemoteFeatureFlags.FeatureFlag, label: String) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: featureFlagCellIdentifier)
-            ?? UITableViewCell(style: .value1, reuseIdentifier: featureFlagCellIdentifier)
-        cell.selectionStyle = .none
-        cell.textLabel?.text = label
-        cell.textLabel?.adjustsFontSizeToFitWidth = true
-
-        let isEnabled = RemoteFeatureFlags.shared.isFeatureEnabled(flag)
-        let hasOverride = RemoteFeatureFlags.shared.hasLocalOverride(for: flag)
-        cell.detailTextLabel?.text = hasOverride ? "Override" : "Default"
-        cell.detailTextLabel?.textColor = hasOverride ? .systemOrange : .secondaryLabel
-
-        let toggle = createSwitch(isOn: isEnabled, action: #selector(productFeatureFlagSwitchDidChange))
-        toggle.tag = productFeatureFlags.firstIndex(where: { $0.0 == flag }) ?? 0
-        cell.accessoryView = toggle
-        return cell
-    }
-
     #if DEBUG
-    @objc func incrementalSpeedSliderSwitchDidChange(sender: UISwitch) {
-        DebugSettings.shared.isIncrementalSpeedSliderEnabled = sender.isOn
-    }
-
-    private func cellForIncrementalSpeedSlider() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier)!
-        cell.selectionStyle = .none
-        cell.textLabel?.text = "Incremental Speed Slider"
-        cell.textLabel?.adjustsFontSizeToFitWidth = true
-        cell.accessoryView = createSwitch(
-            isOn: DebugSettings.shared.isIncrementalSpeedSliderEnabled,
-            action: #selector(incrementalSpeedSliderSwitchDidChange)
-        )
-        return cell
-    }
-
     @objc func badgeLoggingSwitchDidChange(sender: UISwitch) {
         DebugSettings.shared.isBadgeLoggingEnabled = sender.isOn
     }
@@ -313,10 +246,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
     #else
-    private func cellForIncrementalSpeedSlider() -> UITableViewCell {
-        return UITableViewCell()
-    }
-
     private func cellForBadgeLogging() -> UITableViewCell {
         return UITableViewCell()
     }

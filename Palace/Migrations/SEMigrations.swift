@@ -8,7 +8,7 @@
 import Foundation
 
 extension TPPMigrationManager {
-    static func runMigrations(settings: TPPSettings = .shared) {
+    static func runMigrations(settings: TPPSettings = TPPSettings.shared) {
         // Fetch and parse app version
         let appVersion = settings.appVersion ?? ""
         let appVersionTokens = appVersion.split(separator: ".").compactMap({ Int($0) })

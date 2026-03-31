@@ -2,10 +2,17 @@ import SwiftUI
 
 // MARK: - CatalogContentView
 struct CatalogContentView: View {
-    @Environment(\.appContainer) private var container
     @ObservedObject var viewModel: CatalogViewModel
     let onBookSelected: (TPPBook) -> Void
     let onLaneMoreTapped: (String, URL) -> Void
+    let bookRegistry: TPPBookRegistryProvider
+
+    init(viewModel: CatalogViewModel, onBookSelected: @escaping (TPPBook) -> Void, onLaneMoreTapped: @escaping (String, URL) -> Void, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        self.viewModel = viewModel
+        self.onBookSelected = onBookSelected
+        self.onLaneMoreTapped = onLaneMoreTapped
+        self.bookRegistry = bookRegistry
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -64,7 +71,7 @@ private extension CatalogContentView {
                 ForEach(viewModel.lanes) { lane in
                     CatalogLaneRowView(
                         title: lane.title,
-                        books: lane.books.map { container.bookRegistry.updatedBookMetadata($0) ?? $0 },
+                        books: lane.books.map { bookRegistry.updatedBookMetadata($0) ?? $0 },
                         moreURL: lane.moreURL,
                         onSelect: onBookSelected,
                         onMoreTapped: onLaneMoreTapped,

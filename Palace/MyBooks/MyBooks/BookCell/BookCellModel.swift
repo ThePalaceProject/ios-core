@@ -58,6 +58,7 @@ class BookCellModel: ObservableObject {
     let imageCache: ImageCacheType
     let bookRegistry: TPPBookRegistryProvider
     let downloadCenter: MyBooksDownloadCenter
+    let accountsManager: AccountsManager
     private var isFetchingImage = false
     #if LCP
     private var didPrefetchLCPStreaming = false
@@ -110,10 +111,11 @@ class BookCellModel: ObservableObject {
     ///   - book: The book to display
     ///   - imageCache: Cache for book cover images
     ///   - bookRegistry: Registry for book state (defaults to shared instance)
-    init(book: TPPBook, imageCache: ImageCacheType, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared) {
+    init(book: TPPBook, imageCache: ImageCacheType, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared, accountsManager: AccountsManager = .shared) {
         self.book = book
         self.bookRegistry = bookRegistry
         self.downloadCenter = downloadCenter
+        self.accountsManager = accountsManager
         self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
         self.currentBookIdentifier = book.identifier
         self.imageCache = imageCache
@@ -143,7 +145,9 @@ class BookCellModel: ObservableObject {
         #endif
     }
 
-    deinit { }
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 
     // MARK: - Image Loading
 
@@ -205,11 +209,8 @@ class BookCellModel: ObservableObject {
     // MARK: - Notification Handling
 
     private func registerForNotifications() {
-        Reachability.shared.connectivityPublisher
-            .sink { [weak self] _ in
-                self?.updateButtons()
-            }
-            .store(in: &cancellables)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateButtons),
+                                               name: .TPPReachabilityChanged, object: nil)
     }
 
     private func bindRegistryState() {
@@ -356,11 +357,9 @@ class BookCellModel: ObservableObject {
 
 extension BookCellModel {
     func callDelegate(for action: BookButtonType) {
-        // Set loading state for actions that need it.
-        // .return and .cancelHold are excluded here because they show a
-        // confirmation alert first; loading starts only after the patron confirms.
+        // Set loading state for actions that need it
         switch action {
-        case .download, .retry, .get, .reserve, .remove, .returning, .cancel:
+        case .download, .retry, .get, .reserve, .return, .remove, .returning, .cancelHold, .cancel:
             isLoading = true
         default:
             break
@@ -371,34 +370,8 @@ extension BookCellModel {
             didSelectDownload()
         case .reserve:
             didSelectReserve()
-        case .return:
-            showAlert = AlertModel(
-                title: DisplayStrings.return,
-                message: String(format: DisplayStrings.returnMessage, book.title),
-                buttonTitle: DisplayStrings.return,
-                primaryAction: { [weak self] in
-                    self?.isManagingHold = false
-                    self?.bookState = .returning
-                    self?.didSelectReturn()
-                },
-                secondaryButtonTitle: Strings.Generic.cancel,
-                secondaryAction: { [weak self] in self?.isLoading = false }
-            )
-        case .cancelHold:
-            showAlert = AlertModel(
-                title: DisplayStrings.removeHold,
-                message: String(format: DisplayStrings.removeHoldMessage, book.title),
-                buttonTitle: DisplayStrings.removeHold,
-                primaryAction: { [weak self] in
-                    self?.isManagingHold = false
-                    self?.bookState = .returning
-                    self?.didSelectReturn()
-                },
-                secondaryButtonTitle: Strings.Generic.cancel,
-                secondaryAction: { [weak self] in self?.isLoading = false }
-            )
-        case .remove, .returning:
-            // Local delete and in-progress indicator: no confirmation needed
+        case .return, .remove, .returning, .cancelHold:
+            // Set state for visual feedback and perform return
             isManagingHold = false
             bookState = .returning
             didSelectReturn()
@@ -526,7 +499,7 @@ extension BookCellModel {
                 NotificationService.requestAuthorization()
                 Task {
                     do {
-                        _ = try await self.downloadCenter.borrowAsync(self.book, attemptDownload: false)
+                        _ = try await downloadCenter.borrowAsync(self.book, attemptDownload: false)
                     } catch {
                         Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
                     }
@@ -554,7 +527,7 @@ extension BookCellModel {
                 if let url = book.sampleAcquisition?.hrefURL {
                     let webController = BundledHTMLViewController(
                         fileURL: url,
-                        title: AccountsManager.shared.currentAccount?.name ?? ""
+                        title: accountsManager.currentAccount?.name ?? ""
                     )
                     if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
                         top.present(webController, animated: true)

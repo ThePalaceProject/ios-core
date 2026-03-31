@@ -19,27 +19,24 @@ class CatalogSearchViewModel: ObservableObject {
     private var allBooks: [TPPBook] = []
     private let repository: CatalogRepositoryProtocol
     private let baseURL: () -> URL?
-    private let bookRegistry: TPPBookRegistry
     private var searchTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
     private let debounceInterval: TimeInterval
     private let announcements: TPPAccessibilityAnnouncementCenter
-    private let bookCellModelCache: BookCellModelCache
+    let bookRegistry: TPPBookRegistryProvider
 
     init(
         repository: CatalogRepositoryProtocol,
         baseURL: @escaping () -> URL?,
         debounceInterval: TimeInterval = 0.1,
         announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
-        bookRegistry: TPPBookRegistry = .shared,
-        bookCellModelCache: BookCellModelCache = .shared
+        bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
     ) {
         self.repository = repository
         self.baseURL = baseURL
         self.debounceInterval = debounceInterval
         self.announcements = announcements
         self.bookRegistry = bookRegistry
-        self.bookCellModelCache = bookCellModelCache
     }
 
     deinit {
@@ -217,7 +214,7 @@ class CatalogSearchViewModel: ObservableObject {
                 if let originalBook = allBooks.first(where: { $0.identifier == book.identifier }) {
                     books[idx] = originalBook
                 }
-                bookCellModelCache.invalidate(for: book.identifier)
+                BookCellModelCache.shared.invalidate(for: book.identifier)
                 anyChanged = true
             }
         }

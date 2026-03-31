@@ -189,7 +189,7 @@ class AudiobookDataManager {
                 )
 
                 if let requestUrl = self.store.urls[libraryBook], let requestBody = requestData.jsonRepresentation {
-                    var request = TPPNetworkExecutor.shared.request(for: requestUrl)
+                    var request = self.networkService.request(for: requestUrl)
                     request.httpMethod = "POST"
                     request.httpBody = requestBody
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")

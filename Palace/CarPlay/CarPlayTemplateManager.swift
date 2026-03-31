@@ -33,7 +33,7 @@ final class CarPlayTemplateManager: NSObject {
     private let imageProvider: CarPlayImageProvider
     private let playerBridge: CarPlayAudiobookBridge
     private let accountsManager: AccountsManager
-    private let bookRegistry: TPPBookRegistry
+    private let bookRegistry: TPPBookRegistryProvider
     private var cancellables = Set<AnyCancellable>()
 
     private var libraryTemplate: CPListTemplate?
@@ -47,14 +47,12 @@ final class CarPlayTemplateManager: NSObject {
 
     // MARK: - Initialization
 
-    init(interfaceController: CPInterfaceController,
-         accountsManager: AccountsManager = .shared,
-         bookRegistry: TPPBookRegistry = .shared) {
+    init(interfaceController: CPInterfaceController, accountsManager: AccountsManager = AccountsManager.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
         self.interfaceController = interfaceController
-        self.accountsManager = accountsManager
-        self.bookRegistry = bookRegistry
         self.imageProvider = CarPlayImageProvider()
         self.playerBridge = CarPlayAudiobookBridge()
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
 
         super.init()
 

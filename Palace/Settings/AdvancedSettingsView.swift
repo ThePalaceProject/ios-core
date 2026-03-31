@@ -14,7 +14,7 @@ struct AdvancedSettingsView: View {
     @State private var showDeleteAlert = false
     @Environment(\.dismiss) private var dismiss
 
-    init(accountID: String, accountsManager: AccountsManager = .shared) {
+    init(accountID: String, accountsManager: AccountsManager = AccountsManager.shared) {
         self.account = accountsManager.account(accountID)
         if account == nil {
             Log.error(#file, "Account not found for ID: \(accountID)")

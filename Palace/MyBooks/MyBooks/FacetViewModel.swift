@@ -32,13 +32,13 @@ class FacetViewModel: ObservableObject {
     @Published var showAccountScreen = false
     @Published var logo: UIImage?
 
-    private let accountsManager: AccountsManager
-
     var currentAccountURL: URL? {
         URL(string: currentAccount?.homePageUrl ?? "")
     }
 
-    init(groupName: String, facets: [Facet], accountsManager: AccountsManager = .shared) {
+    private let accountsManager: AccountsManager
+
+    init(groupName: String, facets: [Facet], accountsManager: AccountsManager = AccountsManager.shared) {
         self.facets = facets
         self.groupName = groupName
         self.accountsManager = accountsManager

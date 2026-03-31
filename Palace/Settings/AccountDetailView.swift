@@ -17,10 +17,12 @@ struct AccountDetailView: View {
     /// When true, forces showing sign-in form even if user has stale credentials.
     /// Used when presenting for re-authentication (e.g., from borrow flow after 401).
     private let forceReauthMode: Bool
+    private let settings: TPPSettings
 
-    init(libraryAccountID: String, forceReauthMode: Bool = false) {
+    init(libraryAccountID: String, forceReauthMode: Bool = false, settings: TPPSettings = TPPSettings.shared) {
         _viewModel = StateObject(wrappedValue: AccountDetailViewModel(libraryAccountID: libraryAccountID))
         self.forceReauthMode = forceReauthMode
+        self.settings = settings
     }
 
     var body: some View {
@@ -413,7 +415,7 @@ struct AccountDetailView: View {
 
             Spacer()
 
-            if TPPSettings.shared.userPresentedAgeCheck {
+            if settings.userPresentedAgeCheck {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(.green)
                     .accessibilityLabel(NSLocalizedString("Verified", comment: "Age check verified"))
@@ -421,7 +423,7 @@ struct AccountDetailView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if !TPPSettings.shared.userPresentedAgeCheck {
+            if !settings.userPresentedAgeCheck {
                 viewModel.performAgeCheck()
             }
         }

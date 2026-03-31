@@ -95,7 +95,7 @@ class TPPRegistryDebuggingCell: UITableViewCell {
         return stackView
     }()
 
-    init(settings: TPPSettings = .shared, accountsManager: AccountsManager = .shared) {
+    init(settings: TPPSettings = TPPSettings.shared, accountsManager: AccountsManager = AccountsManager.shared) {
         self.settings = settings
         self.accountsManager = accountsManager
         super.init(style: .default, reuseIdentifier: "CustomRegistryCell")

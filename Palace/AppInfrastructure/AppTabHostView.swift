@@ -2,9 +2,13 @@ import SwiftUI
 import UIKit
 
 struct AppTabHostView: View {
-    @Environment(\.appContainer) private var container
     @StateObject private var router = AppTabRouter()
     @State private var holdsBadgeCount: Int = 0
+    let bookRegistry: TPPBookRegistryProvider
+
+    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        self.bookRegistry = bookRegistry
+    }
 
     @StateObject private var catalogViewModel: CatalogViewModel = {
         let client = URLSessionNetworkClient()
@@ -29,11 +33,7 @@ struct AppTabHostView: View {
                 .tag(AppTab.catalog)
                 .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
 
-            NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel(
-                bookRegistry: container.bookRegistry,
-                accountsManager: container.accountsManager,
-                settings: container.settings
-            )))
+            NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel()))
                 .tabItem {
                     VStack {
                         Image("MyBooks").renderingMode(.template)
@@ -53,13 +53,6 @@ struct AppTabHostView: View {
                 .badge(holdsBadgeCount)
                 .tag(AppTab.holds)
                 .accessibilityIdentifier(AccessibilityID.TabBar.holdsTab)
-
-            // MARK: - Feature-flagged tabs
-
-            // Prototype tabs — not compiled
-            // if DiscoveryTab.isEnabled { discoverTab }
-            // if StatsTab.isEnabled { statsTab }
-            // if CollectionsTab.isEnabled { collectionsTab }
 
             NavigationHostView(rootView: TPPSettingsView())
                 .tabItem { Label(Strings.Settings.settings, systemImage: "gearshape") }
@@ -86,28 +79,15 @@ struct AppTabHostView: View {
         .onAppear {
             updateHoldsBadge()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
-            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
-        ) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)) { _ in
             updateHoldsBadge()
         }
     }
 }
 
 private extension AppTabHostView {
-
-    // MARK: - Feature-flagged tab views
-
-    // Prototype tab views — uncomment when compiled
-    // var discoverTab: some View { ... }
-    // var statsTab: some View { ... }
-    // var collectionsTab: some View { ... }
-
-    // MARK: - Badge
-
     func updateHoldsBadge() {
-        let registry = container.bookRegistry
-        guard registry.registryState == .loaded || registry.registryState == .synced else {
+        guard bookRegistry.state == .loaded || bookRegistry.state == .synced else {
             return
         }
 
@@ -115,10 +95,10 @@ private extension AppTabHostView {
         DispatchQueue.global(qos: .userInitiated).async {
             // Use test books if debug configuration is enabled, otherwise use real registry data
             #if DEBUG
-            let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? registry.heldBooks
+            let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? bookRegistry.heldBooks
             let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
             #else
-            let held = registry.heldBooks
+            let held = bookRegistry.heldBooks
             #endif
 
             var readyCount = 0

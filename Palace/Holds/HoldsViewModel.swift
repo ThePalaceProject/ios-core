@@ -37,65 +37,35 @@ final class HoldsViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
-    private let settings: TPPSettingsProviding
+    private let settings: TPPSettings
 
     convenience init() {
-        self.init(
-            bookRegistry: TPPBookRegistry.shared,
-            accountsManager: AccountsManager.shared,
-            settings: TPPSettings.shared
-        )
+        self.init(bookRegistry: TPPBookRegistry.shared)
     }
 
-    init(
-        bookRegistry: TPPBookRegistryProvider,
-        accountsManager: AccountsManager = .shared,
-        settings: TPPSettingsProviding = TPPSettings.shared
-    ) {
+    init(bookRegistry: TPPBookRegistryProvider, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.settings = settings
 
-        // Use Combine publishers from TPPBookRegistry directly
-        if let registry = bookRegistry as? TPPBookRegistry {
-            registry.syncStatePublisher
-                .sink { [weak self] isSyncing in
-                    if isSyncing {
-                        self?.isLoading = true
-                    }
-                }
-                .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .TPPSyncBegan)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.isLoading = true
+            }
+            .store(in: &cancellables)
 
-            let syncEnd = registry.syncStatePublisher.filter { !$0 }.map { _ in () }
-            let registryChange = registry.registryPublisher.map { _ in () }
+        let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
+        let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
 
-            syncEnd
-                .merge(with: registryChange)
-                .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    self?.isLoading = false
-                    self?.reloadData()
-                }
-                .store(in: &cancellables)
-        } else {
-            // Fallback for test mocks that don't support Combine publishers yet
-            NotificationCenter.default.publisher(for: .TPPSyncBegan)
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in self?.isLoading = true }
-                .store(in: &cancellables)
-
-            let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
-            let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
-
-            syncEnd
-                .merge(with: registryChange)
-                .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    self?.isLoading = false
-                    self?.reloadData()
-                }
-                .store(in: &cancellables)
-        }
+        syncEnd
+            .merge(with: registryChange)
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.isLoading = false
+                self?.reloadData()
+            }
+            .store(in: &cancellables)
 
         reloadData()
     }
@@ -161,10 +131,11 @@ final class HoldsViewModel: ObservableObject {
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
             settings.accountMainFeedURL = url
         }
-        // Setting currentAccount triggers both Combine publisher and NotificationCenter
         accountsManager.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
+
+        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
 
     var openSearchDescription: TPPOpenSearchDescription {

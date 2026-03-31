@@ -6,7 +6,6 @@ struct CatalogLaneMoreView: View {
 
     // MARK: - Properties
 
-    @Environment(\.appContainer) private var container
     @StateObject private var viewModel: CatalogLaneMoreViewModel
     @EnvironmentObject private var coordinator: NavigationCoordinator
 
@@ -15,10 +14,17 @@ struct CatalogLaneMoreView: View {
     @StateObject private var logoObserver = CatalogLogoObserver()
     @State private var currentAccountUUID: String = ""
 
+    private let accountsManager: AccountsManager
+    private let bookRegistry: TPPBookRegistryProvider
+    private let downloadCenter: MyBooksDownloadCenter
+
     // MARK: - Initialization
 
-    init(title: String = "", url: URL) {
+    init(title: String = "", url: URL, accountsManager: AccountsManager = AccountsManager.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared) {
         _viewModel = StateObject(wrappedValue: CatalogLaneMoreViewModel(title: title, url: url))
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
+        self.downloadCenter = downloadCenter
     }
 
     // MARK: - Main View
@@ -65,8 +71,9 @@ struct CatalogLaneMoreView: View {
             Log.debug(#file, "🔴 CatalogLaneMoreView.onDisappear() - Being dismissed")
             SamplePreviewManager.shared.close()
         }
-        .onReceive(registryChangePublisher) { (bookID, _) in
-            viewModel.applyRegistryUpdates(changedIdentifier: bookID)
+        .onReceive(registryChangePublisher) { note in
+            let changedId = (note.userInfo as? [String: Any])?["bookIdentifier"] as? String
+            viewModel.applyRegistryUpdates(changedIdentifier: changedId)
         }
         .onReceive(downloadProgressPublisher) { changedId in
             viewModel.applyRegistryUpdates(changedIdentifier: changedId)
@@ -85,8 +92,9 @@ struct CatalogLaneMoreView: View {
 
     // MARK: - Publishers
 
-    private var accountChangePublisher: AnyPublisher<Account?, Never> {
-        AccountsManager.shared.currentAccountDidChange
+    private var accountChangePublisher: AnyPublisher<Notification, Never> {
+        NotificationCenter.default
+            .publisher(for: .TPPCurrentAccountDidChange)
             .eraseToAnyPublisher()
     }
 
@@ -97,14 +105,15 @@ struct CatalogLaneMoreView: View {
             .eraseToAnyPublisher()
     }
 
-    private var registryChangePublisher: AnyPublisher<(String, TPPBookState), Never> {
-        TPPBookRegistry.shared.bookStatePublisher
+    private var registryChangePublisher: AnyPublisher<Notification, Never> {
+        NotificationCenter.default
+            .publisher(for: .TPPBookRegistryStateDidChange)
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .eraseToAnyPublisher()
     }
 
     private var downloadProgressPublisher: AnyPublisher<String, Never> {
-        container.downloadCenter.downloadProgressPublisher
+        downloadCenter.downloadProgressPublisher
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .map { $0.0 }
             .removeDuplicates()
@@ -120,7 +129,7 @@ struct CatalogLaneMoreView: View {
     }
 
     private func setupAccount() {
-        let account = container.accountsManager.currentAccount
+        let account = accountsManager.currentAccount
         account?.logoDelegate = logoObserver
         account?.loadLogo()
         currentAccountUUID = account?.uuid ?? ""
@@ -147,7 +156,7 @@ struct CatalogLaneMoreView: View {
             return
         }
 
-        if let book = container.bookRegistry.book(forIdentifier: identifier) ?? viewModel.allBooks.first(where: { $0.identifier == identifier }) {
+        if let book = bookRegistry.book(forIdentifier: identifier) ?? viewModel.allBooks.first(where: { $0.identifier == identifier }) {
             SamplePreviewManager.shared.toggle(for: book)
         }
     }
@@ -166,7 +175,7 @@ struct CatalogLaneMoreView: View {
     }
 
     private func openLibraryHome() {
-        if let urlString = container.accountsManager.currentAccount?.homePageUrl,
+        if let urlString = accountsManager.currentAccount?.homePageUrl,
            let url = URL(string: urlString) {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }

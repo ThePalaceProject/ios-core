@@ -34,7 +34,6 @@ class CatalogLaneMoreViewModel: ObservableObject {
   let url: URL
   private let filterService = CatalogFilterService.self
   private let api: DefaultCatalogAPI
-  private let bookRegistry: TPPBookRegistry
   
   private var cancellables = Set<AnyCancellable>()
   
@@ -60,7 +59,9 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   // MARK: - Initialization
   
-  init(title: String, url: URL, api: DefaultCatalogAPI? = nil, bookRegistry: TPPBookRegistry = .shared) {
+  let bookRegistry: TPPBookRegistryProvider
+
+  init(title: String, url: URL, api: DefaultCatalogAPI? = nil, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
     self.title = title
     self.url = url
     self.bookRegistry = bookRegistry

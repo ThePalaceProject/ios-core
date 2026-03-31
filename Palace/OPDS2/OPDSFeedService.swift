@@ -14,11 +14,8 @@ actor OPDSFeedService {
     static let shared = OPDSFeedService()
 
     private var inflightRequests: [URL: Task<TPPOPDSFeed, Error>] = [:]
-    private let accountsManager: TPPLibraryAccountsProvider
 
-    init(accountsManager: TPPLibraryAccountsProvider = AccountsManager.shared) {
-        self.accountsManager = accountsManager
-    }
+    private init() {}
 
     // MARK: - Feed Fetching
 
@@ -49,7 +46,7 @@ actor OPDSFeedService {
                 ) { feed, errorDict in
                     if let feed = feed {
                         continuation.resume(returning: feed)
-                    } else if let errorDict = errorDict as? [AnyHashable: Any] {
+                    } else if let errorDict = errorDict {
                         // Try to extract problem document for user-friendly error messages
                         let problemDoc = Self.problemDocumentFromDictionary(errorDict)
                         let error = self.parseError(from: errorDict, url: url)
@@ -272,7 +269,7 @@ actor OPDSFeedService {
 
 extension OPDSFeedService {
     /// Fetches the user's loans feed
-    func fetchLoans() async throws -> TPPOPDSFeed {
+    func fetchLoans(accountsManager: AccountsManager = AccountsManager.shared) async throws -> TPPOPDSFeed {
         guard let loansURL = accountsManager.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
@@ -281,7 +278,7 @@ extension OPDSFeedService {
     }
 
     /// Fetches the catalog root
-    func fetchCatalogRoot() async throws -> TPPOPDSFeed {
+    func fetchCatalogRoot(accountsManager: AccountsManager = AccountsManager.shared) async throws -> TPPOPDSFeed {
         guard let catalogURLString = accountsManager.currentAccount?.catalogUrl,
               let catalogURL = URL(string: catalogURLString) else {
             throw PalaceError.authentication(.accountNotFound)

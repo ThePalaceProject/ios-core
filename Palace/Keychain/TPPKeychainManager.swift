@@ -11,13 +11,13 @@ import PalaceAudiobookToolkit
         kSecClassIdentity as String
     ]
 
-    static func validateKeychain() {
-        if TPPSettings.shared.appVersion == nil {
+    static func validateKeychain(settings: TPPSettings = TPPSettings.shared) {
+        if settings.appVersion == nil {
             Log.info(#file, "Fresh install detected. Cleaning up all keychain items...")
             cleanupAllKeychainItems()
         }
 
-        if TPPSettings.shared.appVersion != nil {
+        if settings.appVersion != nil {
             updateKeychainForBackgroundFetch()
             manageFeedbooksData()
             manageFeedbookDrmPrivateKey()

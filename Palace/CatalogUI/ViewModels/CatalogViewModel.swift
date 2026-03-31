@@ -457,15 +457,15 @@ extension CatalogViewModel {
     return (groups, entryPoints)
   }
 
-  private func prefetchThumbnails(for books: [TPPBook]) {
+  private func prefetchThumbnails(for books: [TPPBook], bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
     let set = Set(books)
     bookRegistry.thumbnailImages(forBooks: set) { _ in }
   }
 
-  static func makeBook(from entry: TPPOPDSEntry) -> TPPBook? {
+  static func makeBook(from entry: TPPOPDSEntry, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) -> TPPBook? {
     guard var book = TPPBook(entry: entry) else { return nil }
 
-    if let updated = TPPBookRegistry.shared.updatedBookMetadata(book) {
+    if let updated = bookRegistry.updatedBookMetadata(book) {
       book = updated
     }
 

@@ -52,15 +52,14 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     }
 
     private let notificationCenter = UNUserNotificationCenter.current()
+    private let networkExecutor: TPPNetworkExecutor
     private let accountsManager: AccountsManager
-    private let bookRegistry: TPPBookRegistry
+    private let bookRegistry: TPPBookRegistryProvider
 
     static let shared = NotificationService()
 
-    init(
-        accountsManager: AccountsManager = .shared,
-        bookRegistry: TPPBookRegistry = .shared
-    ) {
+    init(networkExecutor: TPPNetworkExecutor = .shared, accountsManager: AccountsManager = AccountsManager.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        self.networkExecutor = networkExecutor
         self.accountsManager = accountsManager
         self.bookRegistry = bookRegistry
         super.init()
@@ -120,7 +119,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             return
         }
         let request = URLRequest(url: requestUrl, applyingCustomUserAgent: true)
-        _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { _, response, error in
+        _ = networkExecutor.addBearerAndExecute(request) { _, response, error in
             let status = (response as? HTTPURLResponse)?.statusCode
             // Token exists if status code is 200, doesn't exist if 404.
             switch status {
@@ -141,7 +140,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         request.httpMethod = "PUT"
         request.httpBody = requestBody
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { _, response, error in
+        _ = networkExecutor.addBearerAndExecute(request) { _, response, error in
             if let error = error {
                 TPPErrorLogger.logError(error,
                                         summary: "Couldn't upload token data",
@@ -190,7 +189,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         request.httpMethod = "DELETE"
         request.httpBody = requestBody
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { _, response, error in
+        _ = networkExecutor.addBearerAndExecute(request) { _, response, error in
             if let error = error {
                 TPPErrorLogger.logError(error,
                                         summary: "Couldn't delete token data",
@@ -461,7 +460,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     ///
     /// - Returns: `true` if the user has held books and should fetch updates
     class func backgroundFetchIsNeeded() -> Bool {
-        let count = TPPBookRegistry.shared.heldBooks.count
+        let count = NotificationService.shared.bookRegistry.heldBooks.count
         Log.info(#file, "[Background Fetch] Held books: \(count)")
         return count > 0
     }

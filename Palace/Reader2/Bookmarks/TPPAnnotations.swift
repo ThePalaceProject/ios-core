@@ -43,22 +43,6 @@ protocol AnnotationsManager {
 }
 
 @objcMembers final class TPPAnnotations: NSObject {
-
-    // MARK: - Dependencies
-
-    private let networkExecutor: TPPNetworkExecutor
-    private let accountsManager: AccountsManager
-
-    /// Shared instance for backward compatibility with static methods
-    static let shared = TPPAnnotations()
-
-    init(networkExecutor: TPPNetworkExecutor = .shared,
-         accountsManager: AccountsManager = .shared) {
-        self.networkExecutor = networkExecutor
-        self.accountsManager = accountsManager
-        super.init()
-    }
-
     // MARK: - Reading Position
 
     /// Asynchronously syncs the reading position of a book.
@@ -217,16 +201,8 @@ protocol AnnotationsManager {
                               withParameters parameters: [String: Any],
                               timeout: TimeInterval = TPPDefaultRequestTimeout,
                               queueOffline: Bool,
+                              networkExecutor: TPPNetworkExecutor = .shared,
                               _ completionHandler: @escaping (_ success: Bool, _ annotationID: String?, _ timeStamp: String?) -> Void) {
-        shared.postAnnotation(forBook: bookID, withAnnotationURL: url, withParameters: parameters, timeout: timeout, queueOffline: queueOffline, completionHandler)
-    }
-
-    func postAnnotation(forBook bookID: String,
-                        withAnnotationURL url: URL,
-                        withParameters parameters: [String: Any],
-                        timeout: TimeInterval = TPPDefaultRequestTimeout,
-                        queueOffline: Bool,
-                        _ completionHandler: @escaping (_ success: Bool, _ annotationID: String?, _ timeStamp: String?) -> Void) {
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted]) else {
             Log.error(#file, "Network request abandoned. Could not create JSON from given parameters.")
@@ -240,7 +216,7 @@ protocol AnnotationsManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = timeout
 
-        let task = networkExecutor.POST(request, useTokenIfAvailable: true) { [weak self] (data, response, error) in
+        let task = networkExecutor.POST(request, useTokenIfAvailable: true) { (data, response, error) in
             if let error = error as NSError? {
                 let willQueueOffline = (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true)
 
@@ -249,7 +225,7 @@ protocol AnnotationsManager {
 
                 if willQueueOffline {
                     Log.debug(#file, "Queued for offline retry")
-                    self?.addToOfflineQueue(bookID, url, parameters)
+                    self.addToOfflineQueue(bookID, url, parameters)
                 }
 
                 completionHandler(false, nil, nil)
@@ -263,8 +239,8 @@ protocol AnnotationsManager {
 
             if statusCode == 200 {
                 Log.debug(#file, "Annotation POST: Success 200.")
-                let serverAnnotationID = TPPAnnotations.annotationID(fromNetworkData: data)
-                let timeStamp = TPPAnnotations.timeStamp(fromNetworkData: data)
+                let serverAnnotationID = annotationID(fromNetworkData: data)
+                let timeStamp = timeStamp(fromNetworkData: data)
                 completionHandler(true, serverAnnotationID, timeStamp)
             } else {
                 Log.error(#file, "Annotation POST: Response Error. Status Code: \(statusCode)")
@@ -316,46 +292,39 @@ protocol AnnotationsManager {
                                   atURL annotationURL: URL?,
                                   motivation: TPPBookmarkSpec.Motivation = .bookmark,
                                   completion: @escaping (_ bookmarks: [Bookmark]?) -> Void) {
-        shared.getServerBookmarks(forBook: book, atURL: annotationURL, motivation: motivation, completion: completion)
-    }
-
-    func getServerBookmarks(forBook book: TPPBook?,
-                            atURL annotationURL: URL?,
-                            motivation: TPPBookmarkSpec.Motivation = .bookmark,
-                            completion: @escaping (_ bookmarks: [Bookmark]?) -> Void) {
 
         guard syncIsPossibleAndPermitted() else {
-            Log.debug(#file, "getServerBookmarks: Account does not support sync or sync is disabled.")
+            Log.debug(#file, "📡 getServerBookmarks: Account does not support sync or sync is disabled.")
             completion(nil)
             return
         }
 
         guard let book, let annotationURL else {
-            Log.error(#file, "getServerBookmarks: Required parameter was nil.")
+            Log.error(#file, "📡 getServerBookmarks: Required parameter was nil.")
             completion(nil)
             return
         }
 
-        Log.info(#file, "GET SERVER BOOKMARKS for book: \(book.identifier), URL: \(annotationURL.absoluteString), motivation: \(motivation.rawValue)")
+        Log.info(#file, "📡 GET SERVER BOOKMARKS for book: \(book.identifier), URL: \(annotationURL.absoluteString), motivation: \(motivation.rawValue)")
 
-        let dataTask = networkExecutor.GET(annotationURL, useTokenIfAvailable: true) { (data, response, error) in
+        let dataTask = TPPNetworkExecutor.shared.GET(annotationURL, useTokenIfAvailable: true) { (data, response, error) in
 
             if let error = error as NSError? {
-                Log.error(#file, "Request Error Code: \(error.code). Description: \(error.localizedDescription)")
+                Log.error(#file, "📡 Request Error Code: \(error.code). Description: \(error.localizedDescription)")
                 completion(nil)
                 return
             }
 
             if let httpResponse = response as? HTTPURLResponse {
-                Log.info(#file, "Server Response Status Code: \(httpResponse.statusCode)")
+                Log.info(#file, "📡 Server Response Status Code: \(httpResponse.statusCode)")
             }
 
             guard let data,
                   let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
                   let json = jsonObject as? [String: Any] else {
-                Log.error(#file, "Response from annotation server could not be serialized.")
+                Log.error(#file, "📡 Response from annotation server could not be serialized.")
                 if let data = data, let responseString = String(data: data, encoding: .utf8) {
-                    Log.error(#file, "Raw response: \(responseString.prefix(500))")
+                    Log.error(#file, "📡 Raw response: \(responseString.prefix(500))")
                 }
                 completion(nil)
                 return
@@ -363,13 +332,13 @@ protocol AnnotationsManager {
 
             guard let first = json["first"] as? [String: Any],
                   let items = first["items"] as? [[String: Any]] else {
-                Log.error(#file, "Missing required key from Annotations response, or no items exist.")
-                Log.info(#file, "JSON keys: \(json.keys)")
+                Log.error(#file, "📡 Missing required key from Annotations response, or no items exist.")
+                Log.info(#file, "📡 JSON keys: \(json.keys)")
                 completion(nil)
                 return
             }
 
-            Log.info(#file, "RAW SERVER ITEMS COUNT: \(items.count)")
+            Log.info(#file, "📡 RAW SERVER ITEMS COUNT: \(items.count)")
 
             for (index, item) in items.enumerated() {
                 if let annotationId = item[TPPBookmarkSpec.Id.key] as? String,
@@ -377,9 +346,9 @@ protocol AnnotationsManager {
                    let time = body[TPPBookmarkSpec.Body.Time.key] as? String,
                    let target = item[TPPBookmarkSpec.Target.key] as? [String: Any],
                    let source = target[TPPBookmarkSpec.Target.Source.key] as? String {
-                    Log.info(#file, "Raw Item #\(index): id=\(annotationId), timestamp=\(time), bookId=\(source)")
+                    Log.info(#file, "📡 Raw Item #\(index): id=\(annotationId), timestamp=\(time), bookId=\(source)")
                 } else {
-                    Log.warn(#file, "Raw Item #\(index): Could not extract basic info from annotation")
+                    Log.warn(#file, "📡 Raw Item #\(index): Could not extract basic info from annotation")
                 }
             }
 
@@ -389,10 +358,10 @@ protocol AnnotationsManager {
                                         book: book)
             }
 
-            Log.info(#file, "PARSED BOOKMARKS COUNT: \(bookmarks.count) (from \(items.count) raw items)")
+            Log.info(#file, "📡 PARSED BOOKMARKS COUNT: \(bookmarks.count) (from \(items.count) raw items)")
 
             if bookmarks.count < items.count {
-                Log.warn(#file, "Some items failed to parse: \(items.count - bookmarks.count) items were not converted to bookmarks")
+                Log.warn(#file, "📡 ⚠️ Some items failed to parse: \(items.count - bookmarks.count) items were not converted to bookmarks")
             }
 
             completion(bookmarks)
@@ -446,12 +415,8 @@ protocol AnnotationsManager {
     }
 
     static func deleteBookmark(annotationId: String,
+                              networkExecutor: TPPNetworkExecutor = .shared,
                               completionHandler: @escaping (_ success: Bool) -> Void) {
-        shared.deleteBookmark(annotationId: annotationId, completionHandler: completionHandler)
-    }
-
-    func deleteBookmark(annotationId: String,
-                        completionHandler: @escaping (_ success: Bool) -> Void) {
 
         if !syncIsPossibleAndPermitted() {
             completionHandler(true)
@@ -529,17 +494,12 @@ protocol AnnotationsManager {
 
     /// Annotation-syncing is possible only if the given `account` is signed-in
     /// and if the currently selected library supports it.
-    static func syncIsPossible(_ account: TPPUserAccount,
-                               accountsManager: AccountsManager = .shared) -> Bool {
+    static func syncIsPossible(_ account: TPPUserAccount, accountsManager: AccountsManager = AccountsManager.shared) -> Bool {
         let library = accountsManager.currentAccount
         return account.hasCredentials() && library?.details?.supportsSimplyESync == true
     }
 
-    static func syncIsPossibleAndPermitted() -> Bool {
-        shared.syncIsPossibleAndPermitted()
-    }
-
-    func syncIsPossibleAndPermitted() -> Bool {
+    static func syncIsPossibleAndPermitted(accountsManager: AccountsManager = AccountsManager.shared) -> Bool {
         let account = TPPUserAccount.sharedAccount()
         let acct = accountsManager.currentAccount
         let hasCreds = account.hasCredentials()
@@ -558,7 +518,7 @@ protocol AnnotationsManager {
         return TPPConfiguration.mainFeedURL()?.appendingPathComponent("annotations/")
     }
 
-    private func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any]) {
+    private static func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any], accountsManager: AccountsManager = AccountsManager.shared, networkExecutor: TPPNetworkExecutor = .shared) {
         let libraryID = accountsManager.currentAccount?.uuid ?? ""
         let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
         let headers = networkExecutor.request(for: url).allHTTPHeaderFields

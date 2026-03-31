@@ -75,6 +75,7 @@ final class BookDetailViewModel: ObservableObject {
     let registry: TPPBookRegistryProvider
     let downloadCenter: MyBooksDownloadCenter
     let accountsManager: AccountsManager
+    let settings: TPPSettings
     private var cancellables = Set<AnyCancellable>()
 
     // Note: audiobook management moved to BookService
@@ -102,16 +103,12 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     /// Initializer with dependency injection for testing
-    init(
-        book: TPPBook,
-        registry: TPPBookRegistryProvider,
-        downloadCenter: MyBooksDownloadCenter = .shared,
-        accountsManager: AccountsManager = .shared
-    ) {
+    init(book: TPPBook, registry: TPPBookRegistryProvider, downloadCenter: MyBooksDownloadCenter = .shared, accountsManager: AccountsManager = AccountsManager.shared, settings: TPPSettings = .shared) {
         self.book = book
         self.registry = registry
         self.downloadCenter = downloadCenter
         self.accountsManager = accountsManager
+        self.settings = settings
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
@@ -466,7 +463,7 @@ final class BookDetailViewModel: ObservableObject {
         }
     }
 
-    func removeProcessingButton(_ button: BookButtonType) {
+    private func removeProcessingButton(_ button: BookButtonType) {
         self.processingButtons.remove(button)
     }
 
@@ -481,9 +478,9 @@ final class BookDetailViewModel: ObservableObject {
         let businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
             libraryAccountsProvider: accountsManager,
-            urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: downloadCenter,
+            urlSettingsProvider: settings,
+            bookRegistry: self.registry,
+            bookDownloadsCenter: self.downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
@@ -672,8 +669,8 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     #if LCP
-    nonisolated static func lcpLicenseURL(forBookIdentifier identifier: String) -> URL? {
-        guard let bookFileURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else {
+    nonisolated static func lcpLicenseURL(forBookIdentifier identifier: String, downloadCenter: MyBooksDownloadCenter = .shared) -> URL? {
+        guard let bookFileURL = downloadCenter.fileUrl(for: identifier) else {
             return nil
         }
         let licenseURL = bookFileURL.deletingPathExtension().appendingPathExtension("lcpl")
@@ -900,7 +897,7 @@ extension BookDetailViewModel {
         }
     }
 
-    static func presentEndOfBookAlert(for book: TPPBook) {
+    static func presentEndOfBookAlert(for book: TPPBook, downloadCenter: MyBooksDownloadCenter = .shared) {
         let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
             forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
             allowedRelations: [.borrow, .generic],
@@ -911,7 +908,7 @@ extension BookDetailViewModel {
             let alert = TPPReturnPromptHelper.audiobookPrompt { returnWasChosen in
                 if returnWasChosen {
                     NavigationCoordinatorHub.shared.coordinator?.pop()
-                    MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+                    downloadCenter.returnBook(withIdentifier: book.identifier)
                 }
                 TPPAppStoreReviewPrompt.presentIfAvailable()
             }

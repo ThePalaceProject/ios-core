@@ -14,17 +14,17 @@ struct AudiobookSampleToolbar: View {
     @ObservedObject var player: AudiobookSamplePlayer
 
     private var book: TPPBook
-    private let bookRegistry: TPPBookRegistry
     private let imageLoader: AsyncImage
+    private let bookRegistry: TPPBookRegistryProvider
     private let toolbarHeight: CGFloat = 70
     private let toolbarPadding: CGFloat = 5
     private let imageViewHeight: CGFloat = 70
     private let playbackButtonLength: CGFloat = 35
     private let buttonViewSpacing: CGFloat = 10
 
-    init?(book: TPPBook, bookRegistry: TPPBookRegistry = .shared) {
-        self.book = book
+    init?(book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
         self.bookRegistry = bookRegistry
+        self.book = book
         guard let sample = book.sample as? AudiobookSample else { return nil }
         player = AudiobookSamplePlayer(sample: sample)
 

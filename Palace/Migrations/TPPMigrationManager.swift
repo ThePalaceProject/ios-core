@@ -13,14 +13,12 @@ import Foundation
 class TPPMigrationManager: NSObject {
     private static let lastLaunchBuildKey = "TPPMigrationManager.lastLaunchBuild"
 
-    @objc static func migrate(settings: TPPSettings = .shared,
-                              networkExecutor: TPPNetworkExecutor = .shared,
-                              bookRegistry: TPPBookRegistry = .shared) {
+    @objc static func migrate(settings: TPPSettings = TPPSettings.shared) {
         // Fetch target version
         let targetVersion = Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String
 
-        runMigrations(settings: settings)
-        performPostUpdateTasksIfNeeded(networkExecutor: networkExecutor, bookRegistry: bookRegistry)
+        runMigrations()
+        performPostUpdateTasksIfNeeded()
 
         // Update app version
         settings.appVersion = targetVersion
@@ -28,8 +26,7 @@ class TPPMigrationManager: NSObject {
 
     /// Detects when the app binary has been updated (different build number from last launch)
     /// and performs recovery tasks to prevent "credentials invalid" / "can't open book" errors.
-    private static func performPostUpdateTasksIfNeeded(networkExecutor: TPPNetworkExecutor = .shared,
-                                                        bookRegistry: TPPBookRegistry = .shared) {
+    private static func performPostUpdateTasksIfNeeded(networkExecutor: TPPNetworkExecutor = .shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
         let currentBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
         let lastBuild = UserDefaults.standard.string(forKey: lastLaunchBuildKey)
 

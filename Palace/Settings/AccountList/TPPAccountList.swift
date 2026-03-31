@@ -6,7 +6,6 @@ import Foundation
 @objc final class TPPAccountList: UIViewController {
 
     private let completion: (Account) -> Void
-    private let accountsManager: AccountsManager
     private var loadingView: UIActivityIndicatorView?
 
     var datasource = TPPAccountListDataSource()
@@ -20,14 +19,11 @@ import Foundation
     var requiresSelectionBeforeDismiss: Bool = false
 
     private var accountsLoadingLogos = Set<String>()
+    private let accountsManager: AccountsManager
 
-    @objc convenience init(completion: @escaping (Account) -> Void) {
-        self.init(completion: completion, accountsManager: .shared)
-    }
-
-    init(completion: @escaping (Account) -> Void, accountsManager: AccountsManager = .shared) {
+    @objc required init(completion: @escaping (Account) -> Void) {
         self.completion = completion
-        self.accountsManager = accountsManager
+        self.accountsManager = AccountsManager.shared
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -59,15 +55,6 @@ import Foundation
                     self.tableView.reloadData()
                 }
             }
-        }
-    }
-
-    @objc private func catalogDidLoad() {
-        guard isViewLoaded else { return }
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.datasource.loadData()
-            self.tableView.reloadData()
         }
     }
 
@@ -176,6 +163,12 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
 
         cell.customTextlabel.text = account.name
         cell.customDetailLabel.text = account.subtitle
+
+        if let subtitle = account.subtitle, !subtitle.isEmpty {
+            cell.accessibilityLabel = "\(account.name). \(subtitle)"
+        } else {
+            cell.accessibilityLabel = account.name
+        }
 
         return cell
     }

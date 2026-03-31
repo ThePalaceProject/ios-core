@@ -48,8 +48,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     var frontEndValidator: TPPUserAccountFrontEndValidation?
     private let libraryAccountID: String
     private let accountsManager: AccountsManager
-    private let bookRegistry: TPPBookRegistry
     private let settings: TPPSettings
+    private let bookRegistry: TPPBookRegistryProvider
+    private let downloadCenter: MyBooksDownloadCenter
     private var cancellables = Set<AnyCancellable>()
     var forceEditability = false
 
@@ -91,20 +92,18 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
-    init(libraryAccountID: String,
-         accountsManager: AccountsManager = .shared,
-         bookRegistry: TPPBookRegistry = .shared,
-         settings: TPPSettings = .shared) {
+    init(libraryAccountID: String, accountsManager: AccountsManager = AccountsManager.shared, settings: TPPSettings = .shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared) {
         self.libraryAccountID = libraryAccountID
         self.accountsManager = accountsManager
-        self.bookRegistry = bookRegistry
         self.settings = settings
+        self.bookRegistry = bookRegistry
+        self.downloadCenter = downloadCenter
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accountsManager,
             urlSettingsProvider: settings,
             bookRegistry: bookRegistry,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
@@ -133,7 +132,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             libraryAccountsProvider: accountsManager,
             urlSettingsProvider: settings,
             bookRegistry: bookRegistry,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             networkExecutor: networkExecutor,
             uiDelegate: self,
@@ -430,7 +429,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             Task { @MainActor in
                 account.details?.userAboveAgeLimit = aboveAgeLimit
                 if !aboveAgeLimit {
-                    MyBooksDownloadCenter.shared.reset(account.uuid)
+                    self?.downloadCenter.reset(account.uuid)
                     self?.bookRegistry.reset(account.uuid)
                 }
                 self?.setupTableData()

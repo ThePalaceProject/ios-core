@@ -8,10 +8,22 @@ import ReadiumLCP
  */
 class LCPPassphraseAuthenticationService: LCPAuthenticating {
 
+    private let bookRegistry: TPPBookRegistryProvider
+    private let networkExecutor: TPPNetworkExecutor
+    private let accountsManager: AccountsManager
+    private let settings: TPPSettings
+
+    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, networkExecutor: TPPNetworkExecutor = .shared, accountsManager: AccountsManager = AccountsManager.shared, settings: TPPSettings = TPPSettings.shared) {
+        self.bookRegistry = bookRegistry
+        self.networkExecutor = networkExecutor
+        self.accountsManager = accountsManager
+        self.settings = settings
+    }
+
     private func retrievePassphraseFromLoan(for license: LCPAuthenticatedLicense, reason: LCPAuthenticationReason, allowUserInteraction: Bool, sender: Any?) async -> String? {
         let licenseId = license.document.id
-        let registry = TPPBookRegistry.shared
-        guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else {
+        let registry = bookRegistry
+        guard let loansUrl = accountsManager.currentAccount?.loansUrl else {
             return nil
         }
 
@@ -22,7 +34,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
         }
 
         do {
-            let (data, _) = try await TPPNetworkExecutor.shared.GET(loansUrl, useTokenIfAvailable: true)
+            let (data, _) = try await networkExecutor.GET(loansUrl, useTokenIfAvailable: true)
 
             guard let xml = TPPXML.xml(with: data) else {
                 logError("LCP passphrase retrieval error: loans XML parsing failed", "responseBody", String(data: data, encoding: .utf8) ?? "N/A")
@@ -74,7 +86,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
 
         let logError = makeLogger(code: .lcpPassphraseAuthorizationFail, urlKey: "hintUrl", urlValue: hintURL)
         do {
-            let (data, _) = try await TPPNetworkExecutor.shared.GET(hintURL)
+            let (data, _) = try await networkExecutor.GET(hintURL)
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let passphrase = json["passphrase"] as? String {
                 return passphrase
@@ -90,7 +102,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
     /// Requests the passphrase from the user manually (async version)
     func retrievePassphrase(for license: ReadiumLCP.LCPAuthenticatedLicense, reason: ReadiumLCP.LCPAuthenticationReason, allowUserInteraction: Bool, sender: Any?) async -> String? {
 
-        if TPPSettings.shared.enterLCPPassphraseManually {
+        if settings.enterLCPPassphraseManually {
             return await withCheckedContinuation { continuation in
                 var passphraseField: UITextField?
                 let ac = UIAlertController(title: "Enter LCP Passphrase", message: license.hint, preferredStyle: .alert)

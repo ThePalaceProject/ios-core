@@ -20,6 +20,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     private var interfaceController: CPInterfaceController?
     private var templateManager: CarPlayTemplateManager?
     private var cancellables = Set<AnyCancellable>()
+    private let bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
 
     // MARK: - CPTemplateApplicationSceneDelegate
 

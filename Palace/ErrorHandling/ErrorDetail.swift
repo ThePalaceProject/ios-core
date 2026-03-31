@@ -85,12 +85,12 @@ struct ErrorDetail {
     }
 
     /// Captures current device/app context synchronously.
-    private static func captureDeviceContext() -> DeviceContext {
+    private static func captureDeviceContext(accountsManager: AccountsManager = AccountsManager.shared) -> DeviceContext {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
         let iosVersion = UIDevice.current.systemVersion
         let deviceModel = UIDevice.current.model
-        let libraryName = AccountsManager.shared.currentAccount?.name ?? "No library"
+        let libraryName = accountsManager.currentAccount?.name ?? "No library"
 
         // Available storage
         let storageString: String

@@ -2,7 +2,6 @@ import SwiftUI
 import UIKit
 
 struct BookDetailView: View {
-    @Environment(\.appContainer) private var container
     @Environment(\.presentationMode) var presentationMode
     @Environment(\.colorScheme) private var colorScheme
 
@@ -115,8 +114,14 @@ struct BookDetailView: View {
                     headerColor = Color(newColor)
                 }
             }
-            .onReceive(TPPBookRegistry.shared.bookStatePublisher.receive(on: RunLoop.main)) { (identifier, newState) in
-                guard identifier == viewModel.book.identifier else { return }
+            .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange).receive(on: RunLoop.main)) { note in
+                guard
+                    let info = note.userInfo as? [String: Any],
+                    let identifier = info["bookIdentifier"] as? String,
+                    identifier == viewModel.book.identifier,
+                    let raw = info["state"] as? Int,
+                    let newState = TPPBookState(rawValue: raw)
+                else { return }
 
                 // Only handle critical state changes that require navigation
                 if newState == .unregistered {
@@ -187,7 +192,7 @@ struct BookDetailView: View {
                 SamplePreviewManager.shared.close()
                 return
             }
-            if let book = container.bookRegistry.book(forIdentifier: identifier) ?? (viewModel.relatedBooksByLane.values.flatMap { $0.books }).first(where: { $0.identifier == identifier }) {
+            if let book = viewModel.registry.book(forIdentifier: identifier) ?? (viewModel.relatedBooksByLane.values.flatMap { $0.books }).first(where: { $0.identifier == identifier }) {
                 SamplePreviewManager.shared.toggle(for: book)
             } else if viewModel.book.identifier == identifier {
                 SamplePreviewManager.shared.toggle(for: viewModel.book)

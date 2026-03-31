@@ -147,13 +147,13 @@ public final class PlaybackBootstrapper {
     /// Safe to call multiple times:
     /// - First call: Full initialization
     /// - Subsequent calls: Re-activates audio session and re-applies command config
-    public func ensureInitializedForCarPlay() {
+    public func ensureInitializedForCarPlay(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
         Log.debug(#file, "🚀 PlaybackBootstrapper preparing for CarPlay")
 
         // CRITICAL: Load book registry from disk for CarPlay cold starts
-        // Just accessing TPPBookRegistry.shared creates the singleton but doesn't load data
+        // Just accessing the registry creates the singleton but doesn't load data
         // We must explicitly call load() to read books from disk
-        TPPBookRegistry.shared.load()
+        bookRegistry.load()
 
         // Full initialization if not done yet
         ensureInitialized()

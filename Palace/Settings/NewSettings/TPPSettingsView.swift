@@ -12,18 +12,17 @@ import PalaceUIKit
 struct TPPSettingsView: View {
     typealias DisplayStrings = Strings.Settings
 
-    @Environment(\.appContainer) private var container
     @AppStorage(TPPSettings.showDeveloperSettingsKey) private var showDeveloperSettings: Bool = false
     @State private var selectedView: Int? = 0
     @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
     @State private var showAddLibrarySheet: Bool = false
     @State private var librariesRefreshToken: UUID = UUID()
     @State private var currentAccounts: [Account] = []
+    private let settings: TPPSettings
 
-    init() {
-        // Note: container is not yet available at init time; use .shared for initial value.
-        // The accounts list is immediately refreshed in onAppear via updateAccountsList().
-        _currentAccounts = State(initialValue: TPPSettings.shared.settingsAccountsList)
+    init(settings: TPPSettings = TPPSettings.shared) {
+        self.settings = settings
+        _currentAccounts = State(initialValue: settings.settingsAccountsList)
     }
 
     // accesslint:disable A11Y.UIKIT.ORIENTATION - Adapts layout for iPad landscape; does not restrict orientation
@@ -177,7 +176,7 @@ struct TPPSettingsView: View {
     }
 
     @ViewBuilder private var developerSettingsSection: some View {
-        if container.settings.customMainFeedURL == nil && showDeveloperSettings {
+        if settings.customMainFeedURL == nil && showDeveloperSettings {
             Section(footer: versionInfo) {
                 let viewController = TPPDeveloperSettingsTableViewController()
 
@@ -219,6 +218,6 @@ struct TPPSettingsView: View {
     }
 
     private func updateAccountsList() {
-        currentAccounts = container.settings.settingsAccountsList
+        currentAccounts = settings.settingsAccountsList
     }
 }
