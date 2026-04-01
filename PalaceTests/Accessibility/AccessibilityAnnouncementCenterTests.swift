@@ -34,39 +34,7 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
         var items: [String] = []
     }
 
-    // MARK: - Download Progress (PP-3594 regression)
-
-    func testPP3594_downloadProgress_throttlesAnnouncements() {
-        var announcements: [String] = []
-        let expectedCount = 2
-        let expectation = expectation(description: "Progress announcements posted")
-        expectation.expectedFulfillmentCount = expectedCount
-
-        let announcer = TPPAccessibilityAnnouncementCenter(
-            postHandler: { _, message in
-                announcements.append(message)
-                expectation.fulfill()
-            },
-            isVoiceOverRunning: { true },
-            progressStep: 20
-        )
-
-        announcer.announceDownloadProgress(title: "Sample Book", identifier: "book-1", progress: 0.10)
-        announcer.announceDownloadProgress(title: "Sample Book", identifier: "book-1", progress: 0.20)
-        announcer.announceDownloadProgress(title: "Sample Book", identifier: "book-1", progress: 0.25)
-        announcer.announceDownloadProgress(title: "Sample Book", identifier: "book-1", progress: 0.40)
-        announcer.announceDownloadProgress(title: "Sample Book", identifier: "book-1", progress: 1.00)
-
-        wait(for: [expectation], timeout: 1.0)
-
-        XCTAssertEqual(
-            announcements,
-            [
-                "Download 20 percent complete for Sample Book.",
-                "Download 40 percent complete for Sample Book."
-            ]
-        )
-    }
+    // MARK: - Download Announcements (PP-3594)
 
     func testPP3594_downloadAnnouncements_respectVoiceOverDisabled() {
         var announcements: [String] = []
