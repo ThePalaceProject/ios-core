@@ -1,4 +1,5 @@
 import UIKit
+import Combine
 import ReadiumShared
 #if LCP
 import ReadiumLCP
@@ -9,6 +10,11 @@ final class ReaderService {
     private init() {}
 
     private lazy var r3Owner: TPPR3Owner = TPPR3Owner()
+
+    /// Stores Combine subscriptions that observe re-download completion for a specific book.
+    /// Keyed by book identifier so concurrent open attempts don't clobber each other.
+    private var redownloadObservers: [String: AnyCancellable] = [:]
+    private var redownloadTimeouts: [String: Task<Void, Never>] = [:]
 
     private func topPresenter() -> UIViewController {
         guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
@@ -21,6 +27,11 @@ final class ReaderService {
 
     @MainActor
     func openEPUB(_ book: TPPBook) {
+        openEPUBInternal(book, isRetry: false)
+    }
+
+    @MainActor
+    private func openEPUBInternal(_ book: TPPBook, isRetry: Bool) {
         r3Owner.libraryService.openBook(book, sender: topPresenter()) { result in
             switch result {
             case .success(let publication):
@@ -34,7 +45,7 @@ final class ReaderService {
                     TPPPresentationUtils.safelyPresent(nav, animated: true, completion: nil)
                 }
             case .failure(let error):
-                self.presentOpenFailureAlert(for: error, book: book)
+                self.presentOpenFailureAlert(for: error, book: book, isRetry: isRetry)
             }
         }
     }
@@ -62,16 +73,17 @@ final class ReaderService {
 
     /// Presents the appropriate alert for a failed book open.
     ///
-    /// If the underlying error is a DRM license status error (expired, returned, revoked, or
-    /// cancelled), we show a friendly "Your Loan Has Expired" message and clean up the local
-    /// copy via `returnBook`. For all other failures we fall back to the generic
-    /// "Content Protection Error" alert.
+    /// Priority order:
+    /// 1. Definitive DRM status error (expired/returned/revoked/cancelled) → "Your Loan Has Expired" alert.
+    /// 2. First open attempt → log to Crashlytics, transparently delete the local file and
+    ///    trigger a fresh download; retry opening once the download completes.
+    /// 3. Retry attempt or download failure → show "Content Protection Error" alert.
     @MainActor
-    private func presentOpenFailureAlert(for error: LibraryServiceError, book: TPPBook) {
-        // Unwrap the inner error from LibraryServiceError.openFailed
+    private func presentOpenFailureAlert(for error: LibraryServiceError, book: TPPBook, isRetry: Bool = false) {
         let inner: Error?
         if case .openFailed(let e) = error { inner = e } else { inner = nil }
 
+        // Expired/returned/revoked loans get a specific friendly message.
         if let message = Self.expiredLoanMessage(for: inner) {
             let alert = UIAlertController(
                 title: Strings.ExpiredLoan.title,
@@ -82,15 +94,90 @@ final class ReaderService {
                 MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
             })
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
-        } else {
-            let alert = TPPAlertUtils.alert(title: "Content Protection Error", message: error.localizedDescription)
-            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+            return
         }
+
+        // Log every "Content Protection Error" occurrence to Crashlytics so we have
+        // visibility into what specific LCP error type is triggering it.
+        TPPErrorLogger.logError(
+            withCode: .lcpPassphraseRetrievalFail,
+            summary: "Content Protection Error",
+            metadata: [
+                "bookTitle": book.title,
+                "bookIdentifier": book.identifier,
+                "lcpError": (inner ?? error).localizedDescription,
+                "isRetry": isRetry
+            ]
+        )
+
+        // On the first attempt, transparently clear the corrupted local file and
+        // re-download before surfacing the error to the user.
+        if !isRetry {
+            Log.info(#file, "Content Protection Error on first open — attempting transparent re-download for '\(book.title)'")
+            attemptRedownloadAndReopen(book: book, originalError: error)
+            return
+        }
+
+        showContentProtectionError(for: error)
+    }
+
+    /// Deletes the local file, resets the book state to `.downloadNeeded`, starts a fresh
+    /// download, and retries opening once the download completes. Falls back to showing the
+    /// error alert if the download fails or takes longer than 120 seconds.
+    @MainActor
+    private func attemptRedownloadAndReopen(book: TPPBook, originalError: LibraryServiceError) {
+        MyBooksDownloadCenter.shared.deleteLocalContent(for: book.identifier)
+        TPPBookRegistry.shared.setState(.downloadNeeded, for: book.identifier)
+
+        let showFallback = { [weak self] in
+            self?.cancelRedownload(for: book.identifier)
+            self?.showContentProtectionError(for: originalError)
+        }
+
+        // 120-second safety timeout — if the download stalls, surface the error.
+        redownloadTimeouts[book.identifier] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000_000)
+            guard !Task.isCancelled else { return }
+            Log.warn(#file, "Re-download timed out for '\(book.title)' — showing Content Protection Error")
+            await MainActor.run { showFallback() }
+        }
+
+        redownloadObservers[book.identifier] = TPPBookRegistry.shared.bookStatePublisher
+            .filter { identifier, _ in identifier == book.identifier }
+            .sink { [weak self] _, state in
+                guard let self else { return }
+                switch state {
+                case .downloadSuccessful:
+                    self.cancelRedownload(for: book.identifier)
+                    Log.info(#file, "Re-download succeeded — retrying open for '\(book.title)'")
+                    self.openEPUBInternal(book, isRetry: true)
+                case .downloadFailed:
+                    Log.error(#file, "Re-download failed for '\(book.title)' — showing Content Protection Error")
+                    showFallback()
+                default:
+                    break
+                }
+            }
+
+        MyBooksDownloadCenter.shared.startDownload(for: book)
+    }
+
+    @MainActor
+    private func cancelRedownload(for bookIdentifier: String) {
+        redownloadObservers.removeValue(forKey: bookIdentifier)
+        redownloadTimeouts[bookIdentifier]?.cancel()
+        redownloadTimeouts.removeValue(forKey: bookIdentifier)
+    }
+
+    @MainActor
+    private func showContentProtectionError(for error: LibraryServiceError) {
+        let alert = TPPAlertUtils.alert(title: "Content Protection Error", message: error.localizedDescription)
+        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
     }
 
     /// Returns a user-facing message if `error` represents an expired or revoked DRM license,
     /// `nil` for any other error type.
-    private static func expiredLoanMessage(for error: Error?) -> String? {
+    static func expiredLoanMessage(for error: Error?) -> String? {
         guard let error else { return nil }
 
         #if LCP

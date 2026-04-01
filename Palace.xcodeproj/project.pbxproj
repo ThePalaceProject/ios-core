@@ -1100,6 +1100,7 @@
 		LRPS002T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */; };
 		MF791BF000000000000001 /* ManifestFetchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF791FR000000000000001 /* ManifestFetchTests.swift */; };
 		NAVCOORDTESTS0001SOURCES /* NavigationCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NAVCOORDTESTS0001FILEREF /* NavigationCoordinatorTests.swift */; };
+		RDRSVC001SOURCES /* ReaderServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RDRSVC001FILEREF /* ReaderServiceTests.swift */; };
 		NSER002T260955EF008E1DC3 /* NSErrorAdditionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NSER001T260955EF008E1DC3 /* NSErrorAdditionsTests.swift */; };
 		NTCK002T260955EF008E1DC3 /* NetworkClientMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */; };
 		OBJC00012F2600020000001A /* ObjCExceptionCatcher.m in Sources */ = {isa = PBXBuildFile; fileRef = OBJC00012F2600020000001B /* ObjCExceptionCatcher.m */; };
@@ -2087,6 +2088,7 @@
 		LRPS001T260955EF008E1DC3 /* TPPLastReadPositionSynchronizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLastReadPositionSynchronizerTests.swift; sourceTree = "<group>"; };
 		MF791FR000000000000001 /* ManifestFetchTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ManifestFetchTests.swift; sourceTree = "<group>"; };
 		NAVCOORDTESTS0001FILEREF /* NavigationCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCoordinatorTests.swift; sourceTree = "<group>"; };
+		RDRSVC001FILEREF /* ReaderServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderServiceTests.swift; sourceTree = "<group>"; };
 		NSER001T260955EF008E1DC3 /* NSErrorAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NSErrorAdditionsTests.swift; path = ErrorHandling/NSErrorAdditionsTests.swift; sourceTree = "<group>"; };
 		NTCK001T260955EF008E1DC3 /* NetworkClientMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkClientMock.swift; sourceTree = "<group>"; };
 		OBJC00012F2600020000001B /* ObjCExceptionCatcher.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ObjCExceptionCatcher.m; sourceTree = "<group>"; };
@@ -3657,6 +3659,7 @@
 			children = (
 				NAVCOORDTESTS0001FILEREF /* NavigationCoordinatorTests.swift */,
 				QATEST13FR00000000000001 /* RemoteFeatureFlagsTests.swift */,
+				RDRSVC001FILEREF /* ReaderServiceTests.swift */,
 			);
 			path = AppInfrastructure;
 			sourceTree = "<group>";
@@ -4750,6 +4753,7 @@
 			files = (
 				CARPLAYTESTS00002SOURCES /* CarPlayTests.swift in Sources */,
 				NAVCOORDTESTS0001SOURCES /* NavigationCoordinatorTests.swift in Sources */,
+				RDRSVC001SOURCES /* ReaderServiceTests.swift in Sources */,
 				PLAYBOOTTEST0001SOURCES /* PlaybackBootstrapperTests.swift in Sources */,
 				SAMLPP3703TEST001 /* SAMLPlusBiblioBoardExpirationTests.swift in Sources */,
 				PP3583TRACKER00001TESTS /* AudiobookTrackerTests.swift in Sources */,
