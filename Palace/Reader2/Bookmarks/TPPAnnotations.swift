@@ -492,14 +492,14 @@ protocol AnnotationsManager {
 
     /// Annotation-syncing is possible only if the given `account` is signed-in
     /// and if the currently selected library supports it.
-    static func syncIsPossible(_ account: TPPUserAccount) -> Bool {
-        let library = AccountsManager.shared.currentAccount
+    static func syncIsPossible(_ account: TPPUserAccount, accountsManager: AccountsManager = .shared) -> Bool {
+        let library = accountsManager.currentAccount
         return account.hasCredentials() && library?.details?.supportsSimplyESync == true
     }
 
-    static func syncIsPossibleAndPermitted() -> Bool {
+    static func syncIsPossibleAndPermitted(accountsManager: AccountsManager = .shared) -> Bool {
         let account = TPPUserAccount.sharedAccount()
-        let acct = AccountsManager.shared.currentAccount
+        let acct = accountsManager.currentAccount
         let hasCreds = account.hasCredentials()
         let supportsSync = acct?.details?.supportsSimplyESync == true
         let permissionGranted = acct?.details?.syncPermissionGranted == true
@@ -516,10 +516,10 @@ protocol AnnotationsManager {
         return TPPConfiguration.mainFeedURL()?.appendingPathComponent("annotations/")
     }
 
-    private static func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any]) {
-        let libraryID = AccountsManager.shared.currentAccount?.uuid ?? ""
+    private static func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any], accountsManager: AccountsManager = .shared, networkExecutor: TPPNetworkExecutor = .shared) {
+        let libraryID = accountsManager.currentAccount?.uuid ?? ""
         let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
-        let headers = TPPNetworkExecutor.shared.request(for: url).allHTTPHeaderFields
+        let headers = networkExecutor.request(for: url).allHTTPHeaderFields
         NetworkQueue.shared().addRequest(libraryID, bookID, url, .POST, parameterData, headers)
     }
 }

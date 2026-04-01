@@ -13,13 +13,15 @@ extension Notification.Name {
 
         init(_ document: TPPProblemDocument) {
             doc = document
-            timestamp = Date()
+            timestamp = Date.init()
         }
     }
 
+    // Static values
     static let CACHE_SIZE = 5
     static let shared = TPPProblemDocumentCacheManager()
 
+    // For Objective-C classes
     class func sharedInstance() -> TPPProblemDocumentCacheManager {
         return TPPProblemDocumentCacheManager.shared
     }

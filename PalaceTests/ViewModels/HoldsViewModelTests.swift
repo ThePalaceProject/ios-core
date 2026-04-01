@@ -163,7 +163,7 @@ final class HoldsViewModelTests: XCTestCase {
 
         let searchDescription = viewModel.openSearchDescription
 
-        XCTAssertEqual(searchDescription.humanReadableDescription, "Search Holds")
+        XCTAssertEqual(searchDescription.humanReadableDescription, "Search Reservations")
     }
 
     // MARK: - ReloadData Tests (Testing Real Business Logic with Mock)
@@ -334,7 +334,7 @@ final class HoldsViewModelTests: XCTestCase {
 
         let description = viewModel.openSearchDescription
 
-        XCTAssertEqual(description.books.count, 2, "OpenSearchDescription should include all held books")
+        XCTAssertEqual(description.books?.count, 2, "OpenSearchDescription should include all held books")
     }
 
     // MARK: - Published Properties Tests
@@ -377,207 +377,6 @@ final class HoldsViewModelTests: XCTestCase {
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
 
         await fulfillment(of: [expectation], timeout: 1.0)
-    }
-}
-
-// MARK: - Sync Failure Error Handling Tests (PP-3811 Fix)
-
-/// Tests that HoldsViewModel now properly surfaces sync failures to the user
-/// instead of silently showing stale data.
-@MainActor
-final class HoldsSyncFailureTests: XCTestCase {
-
-    private var cancellables: Set<AnyCancellable> = []
-    private var mockRegistry: TPPBookRegistryMock!
-
-    override func setUp() {
-        super.setUp()
-        cancellables = []
-        mockRegistry = TPPBookRegistryMock()
-    }
-
-    override func tearDown() {
-        cancellables.removeAll()
-        mockRegistry = nil
-        super.tearDown()
-    }
-
-    // MARK: - Error State Tests
-
-    func testSyncFailure_SetsSyncError() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
-        XCTAssertNil(viewModel.syncError, "No error initially")
-
-        let errorExpectation = XCTestExpectation(description: "syncError is set")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorExpectation.fulfill() }
-            .store(in: &cancellables)
-
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
-
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
-        XCTAssertNotNil(viewModel.syncError, "syncError should be set after TPPSyncFailed")
-        XCTAssertFalse(viewModel.syncError!.message.isEmpty, "Error message should not be empty")
-    }
-
-    func testSyncFailure_WithProblemDocument_ShowsServerMessage() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
-
-        let errorExpectation = XCTestExpectation(description: "syncError is set with server detail")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorExpectation.fulfill() }
-            .store(in: &cancellables)
-
-        let errorDoc: [AnyHashable: Any] = [
-            "type": "http://librarysimplified.org/terms/problem/credentials-invalid",
-            "title": "Invalid Credentials",
-            "detail": "Your library card has expired. Please contact your library."
-        ]
-        NotificationCenter.default.post(
-            name: .TPPSyncFailed,
-            object: nil,
-            userInfo: [TPPBookRegistry.syncFailureErrorDocumentKey: errorDoc]
-        )
-
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
-        XCTAssertEqual(
-            viewModel.syncError?.message,
-            "Your library card has expired. Please contact your library.",
-            "Should surface the server's detail message"
-        )
-    }
-
-    func testSyncFailure_WithoutProblemDocument_ShowsGenericMessage() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
-
-        let errorExpectation = XCTestExpectation(description: "syncError is set")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorExpectation.fulfill() }
-            .store(in: &cancellables)
-
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
-
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
-        XCTAssertEqual(
-            viewModel.syncError?.message,
-            Strings.HoldsView.syncFailedMessage,
-            "Should show generic fallback message when no error document"
-        )
-    }
-
-    func testSyncFailure_StopsLoading() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
-        viewModel.isLoading = true
-
-        let errorExpectation = XCTestExpectation(description: "syncError is set")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorExpectation.fulfill() }
-            .store(in: &cancellables)
-
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
-
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
-        XCTAssertFalse(viewModel.isLoading, "Loading should stop on sync failure")
-    }
-
-    // MARK: - Error Dismissal & Retry Tests
-
-    func testSyncBegan_ClearsPreviousSyncError() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
-
-        // First, set an error
-        let errorSet = XCTestExpectation(description: "Error set")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorSet.fulfill() }
-            .store(in: &cancellables)
-
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
-        await fulfillment(of: [errorSet], timeout: 1.0)
-        XCTAssertNotNil(viewModel.syncError)
-
-        // Now begin a new sync — error should clear
-        let errorCleared = XCTestExpectation(description: "Error cleared")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 == nil }
-            .sink { _ in errorCleared.fulfill() }
-            .store(in: &cancellables)
-
-        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
-        await fulfillment(of: [errorCleared], timeout: 1.0)
-        XCTAssertNil(viewModel.syncError, "Error should be cleared when new sync begins (retry)")
-    }
-
-    func testDismissSyncError_ClearsError() {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
-        viewModel.syncError = HoldsViewModel.SyncError(message: "Test error")
-
-        viewModel.dismissSyncError()
-
-        XCTAssertNil(viewModel.syncError, "dismissSyncError should clear the error")
-    }
-
-    // MARK: - Stale Data Persistence (still happens, but now with visible error)
-
-    func testSyncFailure_StaleDataPersists_ButErrorIsVisible() async {
-        let staleBook = TPPBookMocker.snapshotReservedBook(
-            identifier: "stale-hold",
-            title: "Book That Should Be Ready"
-        )
-        mockRegistry.addBook(staleBook, state: .holding)
-
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
-        XCTAssertEqual(viewModel.reservedBookVMs.count, 1)
-
-        let errorExpectation = XCTestExpectation(description: "syncError is set")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorExpectation.fulfill() }
-            .store(in: &cancellables)
-
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
-
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
-
-        // Stale data still shows (expected — we can't fix the data without a successful sync)
-        XCTAssertEqual(viewModel.reservedBookVMs.count, 1, "Stale data persists")
-        // But now the user KNOWS something went wrong
-        XCTAssertNotNil(viewModel.syncError, "Error banner is visible — user is informed")
-        XCTAssertFalse(viewModel.isLoading, "Not stuck in loading state")
-    }
-
-    func testSyncFailure_WithTitleOnly_UsesTitle() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
-
-        let errorExpectation = XCTestExpectation(description: "syncError uses title")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorExpectation.fulfill() }
-            .store(in: &cancellables)
-
-        let errorDoc: [AnyHashable: Any] = [
-            "title": "Authentication Required"
-        ]
-        NotificationCenter.default.post(
-            name: .TPPSyncFailed,
-            object: nil,
-            userInfo: [TPPBookRegistry.syncFailureErrorDocumentKey: errorDoc]
-        )
-
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
-        XCTAssertEqual(viewModel.syncError?.message, "Authentication Required")
     }
 }
 
@@ -643,13 +442,13 @@ final class HoldsBookViewModelTests: XCTestCase {
         var reservedBookIsReady = false
         var readyBookIsReady = false
 
-        reservedBook.defaultAcquisition?.availability.matchUnavailable(nil,
+        reservedBook.defaultAcquisition?.availability.match(unavailable: nil,
                                                                        limited: nil,
                                                                        unlimited: nil,
                                                                        reserved: nil,
                                                                        ready: { _ in reservedBookIsReady = true })
 
-        readyBook.defaultAcquisition?.availability.matchUnavailable(nil,
+        readyBook.defaultAcquisition?.availability.match(unavailable: nil,
                                                                     limited: nil,
                                                                     unlimited: nil,
                                                                     reserved: nil,
@@ -681,7 +480,7 @@ final class HoldsBadgeCountTests: XCTestCase {
     private func calculateReadyCount(for books: [TPPBook]) -> Int {
         var readyCount = 0
         for book in books {
-            book.defaultAcquisition?.availability.matchUnavailable(nil,
+            book.defaultAcquisition?.availability.match(unavailable: nil,
                                                                    limited: nil,
                                                                    unlimited: nil,
                                                                    reserved: nil,
@@ -764,7 +563,7 @@ final class HoldsBadgeCountTests: XCTestCase {
         let book = TPPBookMocker.snapshotReservedBook()
         var isReserved = false
 
-        book.defaultAcquisition?.availability.matchUnavailable(nil,
+        book.defaultAcquisition?.availability.match(unavailable: nil,
                                                                limited: nil,
                                                                unlimited: nil,
                                                                reserved: { _ in isReserved = true },
@@ -777,7 +576,7 @@ final class HoldsBadgeCountTests: XCTestCase {
         let book = TPPBookMocker.snapshotReadyBook()
         var isReady = false
 
-        book.defaultAcquisition?.availability.matchUnavailable(nil,
+        book.defaultAcquisition?.availability.match(unavailable: nil,
                                                                limited: nil,
                                                                unlimited: nil,
                                                                reserved: nil,

@@ -59,6 +59,8 @@ struct CatalogCacheMetadata: Codable {
     let tppAccountUUID = AccountsManager.TPPAccountUUIDs[0]
 
     let ageCheck: TPPAgeCheckVerifying
+    private let settings: TPPSettings
+    private let networkExecutor: TPPNetworkExecutor
     private var accountSet: String
     private var accountSets = [String: [Account]]()
     private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
@@ -68,11 +70,13 @@ struct CatalogCacheMetadata: Codable {
     private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
 
     private override init() {
+        self.settings = .shared
+        self.networkExecutor = .shared
         self.accountSet = TPPConfiguration.customUrlHash()
-            ?? (TPPSettings.shared.useBetaLibraries
+            ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrlHash
                     : TPPConfiguration.prodUrlHash)
-        self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: TPPSettings.shared)
+        self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: settings)
         super.init()
         NotificationCenter.default.addObserver(
             self,
@@ -128,7 +132,7 @@ struct CatalogCacheMetadata: Codable {
     /// Cleans up active audiobook playback, in-flight network requests, and other
     /// content before switching accounts to prevent cross-account credential leaks.
     private func cleanupActiveContentBeforeAccountSwitch(from previousId: String?, to newId: String?) {
-        TPPNetworkExecutor.shared.cancelNonEssentialTasks()
+        networkExecutor.cancelNonEssentialTasks()
 
         Task { @MainActor in
             if let coordinator = NavigationCoordinatorHub.shared.coordinator {
@@ -218,7 +222,7 @@ struct CatalogCacheMetadata: Codable {
     /// 3. If no cache or expired, fetch from network
     func loadCatalogs(completion: ((Bool) -> Void)?) {
         let targetUrl = TPPConfiguration.customUrl()
-            ?? (TPPSettings.shared.useBetaLibraries
+            ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrl
                     : TPPConfiguration.prodUrl)
         let hash = targetUrl.absoluteString
@@ -265,7 +269,7 @@ struct CatalogCacheMetadata: Codable {
 
     /// Fetches catalog data from network (used for initial load when no cache)
     private func fetchFromNetwork(targetUrl: URL, hash: String) {
-        TPPNetworkExecutor.shared.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+        networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
             guard let self = self else { return }
             switch result {
             case .success(let data, _):
@@ -297,7 +301,7 @@ struct CatalogCacheMetadata: Codable {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             Log.debug(#file, "Starting background refresh for catalog hash \(hash)")
 
-            TPPNetworkExecutor.shared.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+            self?.networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
                 guard let self = self else { return }
 
                 switch result {
@@ -435,7 +439,7 @@ struct CatalogCacheMetadata: Codable {
                 if let cur = self.currentAccount, cur.details?.needsAgeCheck ?? false {
                     mainFeed = cur.details?.defaultAuth?.coppaURL(isOfAge: true)
                 }
-                TPPSettings.shared.accountMainFeedURL = mainFeed
+                self.settings.accountMainFeedURL = mainFeed
                 UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
                 completion(true)
@@ -453,7 +457,7 @@ struct CatalogCacheMetadata: Codable {
 
     func updateAccountSet(completion: ((Bool) -> Void)?) {
         let newHash = TPPConfiguration.customUrlHash()
-            ?? (TPPSettings.shared.useBetaLibraries
+            ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrlHash
                     : TPPConfiguration.prodUrlHash)
 
@@ -468,18 +472,14 @@ struct CatalogCacheMetadata: Codable {
     /// Clears all local catalog and authentication caches
     func clearCache() {
         // network cache
-        TPPNetworkExecutor.shared.clearCache()
-        // file caches — files are named with a hash suffix (e.g. accounts_catalog_<hash>.json)
-        // so we enumerate the directory and delete by prefix match rather than exact name
-        let prefixes = ["library_list_", "accounts_catalog_", "authentication_document_"]
+        networkExecutor.clearCache()
+        // file caches
+        let keys = ["library_list_", "accounts_catalog_", "authentication_document_"]
         let fm = FileManager.default
-        if let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false),
-           let contents = try? fm.contentsOfDirectory(at: appSupport, includingPropertiesForKeys: nil) {
-            for fileUrl in contents {
-                let name = fileUrl.lastPathComponent
-                if prefixes.contains(where: { name.hasPrefix($0) }) {
-                    try? fm.removeItem(at: fileUrl)
-                }
+        if let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false) {
+            for key in keys {
+                let url = appSupport.appendingPathComponent("\(key).json")
+                try? fm.removeItem(at: url)
             }
         }
     }

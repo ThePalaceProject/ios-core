@@ -31,7 +31,11 @@ import UIKit
         self.data = encryptedData
         self.decryptor = decryptor
         let pdfDataProvider = TPPEncryptedPDFDataProvider(data: encryptedData, decryptor: decryptor)
-        let dataProvider = pdfDataProvider.dataProvider().takeUnretainedValue()
+        guard let dataProvider = pdfDataProvider.dataProvider() else {
+            self.document = nil
+            super.init()
+            return
+        }
         self.document = CGPDFDocument(dataProvider)
         super.init()
 

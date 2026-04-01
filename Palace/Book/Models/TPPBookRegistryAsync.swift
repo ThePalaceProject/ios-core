@@ -9,17 +9,35 @@ import Foundation
 import Combine
 import UIKit
 
-/// Modern async/await extensions for TPPBookRegistry
+/// Modern async/await extensions for TPPBookRegistry.
+/// These provide actor-like async access to registry state, bridging
+/// from the existing DispatchQueue-based synchronization.
 extension TPPBookRegistry {
+
+    // MARK: - Async State Access
+
+    /// Async version of book(forIdentifier:)
+    func bookAsync(forIdentifier identifier: String?) async -> TPPBook? {
+        return await withCheckedContinuation { continuation in
+            continuation.resume(returning: self.book(forIdentifier: identifier))
+        }
+    }
+
+    /// Async version of state(for:)
+    func stateAsync(for identifier: String?) async -> TPPBookState {
+        return await withCheckedContinuation { continuation in
+            continuation.resume(returning: self.state(for: identifier))
+        }
+    }
 
     // MARK: - Async Sync
 
     /// Asynchronously syncs the registry with the server
     /// - Returns: Tuple of (errorDocument, hasNewBooks)
     /// - Throws: PalaceError if sync fails
-    func syncAsync() async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
+    func syncAsync(accountsManager: AccountsManager = AccountsManager.shared) async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
         // Use OPDSFeedService for modern async approach
-        guard let loansURL = AccountsManager.shared.currentAccount?.loansUrl else {
+        guard let loansURL = accountsManager.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
 
@@ -30,7 +48,7 @@ extension TPPBookRegistry {
                 useToken: true
             )
 
-            // Process the feed on a background task
+            // Process the feed on the main actor
             return await processLoansSync(feed: feed)
 
         } catch let error as PalaceError {
@@ -40,53 +58,59 @@ extension TPPBookRegistry {
     }
 
     /// Processes a loans feed for sync
+    @MainActor
     private func processLoansSync(feed: TPPOPDSFeed) async -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.main.async {
-                // State is managed internally by sync() method
+        var changesMade = false
 
-                var changesMade = false
+        // Process entries - use public API
+        var newBooks: [TPPBook] = []
+        for entry in feed.entries {
+            guard let opdsEntry = entry as? TPPOPDSEntry,
+                  let book = TPPBook(entry: opdsEntry) else {
+                continue
+            }
+            newBooks.append(book)
+        }
 
-                // Process entries - use public API
-                var newBooks: [TPPBook] = []
-                for entry in feed.entries {
-                    guard let opdsEntry = entry as? TPPOPDSEntry,
-                          let book = TPPBook(entry: opdsEntry) else {
-                        continue
-                    }
-                    newBooks.append(book)
-                }
+        // Check what changed - compare with current books
+        let currentBooks = self.allBooks
+        let currentIds = Set(currentBooks.map { $0.identifier })
+        let newIds = Set(newBooks.map { $0.identifier })
 
-                // Check what changed - compare with current books
-                let currentBooks = self.allBooks
-                let currentIds = Set(currentBooks.map { $0.identifier })
-                let newIds = Set(newBooks.map { $0.identifier })
+        // Books to add/update
+        for book in newBooks {
+            if currentIds.contains(book.identifier) {
+                // Update existing
+                _ = self.updatedBookMetadata(book)
+            } else {
+                // Add new - derive initial state from book availability
+                let initialState = TPPBookRegistryRecord.deriveInitialState(for: book)
+                self.addBook(book, state: initialState)
+            }
+            changesMade = true
+        }
 
-                // Books to add/update
-                for book in newBooks {
-                    if currentIds.contains(book.identifier) {
-                        // Update existing
-                        _ = self.updatedBookMetadata(book)
-                    } else {
-                        // Add new - derive initial state from book availability
-                        let initialState = TPPBookRegistryRecord.deriveInitialState(for: book)
-                        self.addBook(book, state: initialState)
-                    }
-                    changesMade = true
-                }
+        let removedIds = currentIds.subtracting(newIds)
+        for identifier in removedIds {
+            let state = self.state(for: identifier)
+            if state == .downloadSuccessful || state == .used {
+                MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
+            }
+            self.setState(.unregistered, for: identifier)
+            self.removeBook(forIdentifier: identifier)
+            changesMade = true
+        }
 
-                let removedIds = currentIds.subtracting(newIds)
-                for identifier in removedIds {
-                    let state = self.state(for: identifier)
-                    if state == .downloadSuccessful || state == .used {
-                        MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
-                    }
-                    self.setState(.unregistered, for: identifier)
-                    self.removeBook(forIdentifier: identifier)
-                    changesMade = true
-                }
+        return (nil, changesMade)
+    }
 
-                continuation.resume(returning: (nil, changesMade))
+    // MARK: - Async Convenience
+
+    /// Async wrapper for sync(). Bridges the completion-handler API to async/await.
+    func syncWithCompletion() async -> (errorDocument: [AnyHashable: Any]?, newBooks: Bool) {
+        await withCheckedContinuation { continuation in
+            sync { errorDoc, newBooks in
+                continuation.resume(returning: (errorDoc, newBooks))
             }
         }
     }

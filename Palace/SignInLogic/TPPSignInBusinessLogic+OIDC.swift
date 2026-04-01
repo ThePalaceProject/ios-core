@@ -7,6 +7,7 @@
 //
 
 import AuthenticationServices
+import stduritemplate
 
 extension TPPSignInBusinessLogic {
 
@@ -17,87 +18,112 @@ extension TPPSignInBusinessLogic {
     static let oidcCallbackScheme = "palace-oidc-callback"
     static let oidcCallbackHost  = "org.thepalaceproject.oidc"
 
-    /// Post-logout redirect URI sent to the CM's end_session endpoint.
-    /// Uses the `/logout` path to distinguish the redirect from a login callback.
-    static let oidcPostLogoutRedirectURI =
-        "\(oidcCallbackScheme)://\(oidcCallbackHost)/logout"
-
     /// Builds the callback URL the CM should redirect to after OIDC login.
     /// Format: `palace-oidc-callback://org.thepalaceproject.oidc/callback`
     private var oidcRedirectURI: String {
         "\(Self.oidcCallbackScheme)://\(Self.oidcCallbackHost)/callback"
     }
 
-    /// Terminates the OIDC browser session by opening the CM's end_session
-    /// endpoint in an `ASWebAuthenticationSession`.
+    /// Registered redirect URI supplied to the CM's logout endpoint.
+    /// The CM requires this parameter even for REST API calls to validate the request.
+    private var oidcPostLogoutRedirectURI: String {
+        "\(Self.oidcCallbackScheme)://\(Self.oidcCallbackHost)/logout"
+    }
+
+    /// Returns `true` when the error is an `NSURLErrorUnsupportedURL` (-1002) whose
+    /// failing URL starts with the OIDC callback scheme.
     ///
-    /// This mirrors the `clearWebViewData()` pattern used for SAML/OAuth: after
-    /// local credentials are wiped we must also invalidate the identity
-    /// provider's session that lives in the system Safari cookie store —
-    /// otherwise a subsequent OIDC login silently auto-authenticates the patron.
+    /// On a successful RP-initiated logout the CM responds with a redirect to
+    /// `palace-oidc-callback://…/logout?logout_status=success`. URLSession cannot
+    /// follow custom-scheme redirects and surfaces this as NSURLErrorUnsupportedURL.
+    /// Detecting this pattern lets us log success rather than a spurious warning.
+    private static func isOIDCLogoutCallbackRedirect(_ error: Error) -> Bool {
+        func hasCallbackSchemeURL(_ nsError: NSError) -> Bool {
+            let key = NSURLErrorFailingURLStringErrorKey
+            if let url = nsError.userInfo[key] as? String,
+               url.hasPrefix("\(oidcCallbackScheme)://") {
+                return true
+            }
+            if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+                return hasCallbackSchemeURL(underlying)
+            }
+            return false
+        }
+        return hasCallbackSchemeURL(error as NSError)
+    }
+
+    /// Calls the CM's OIDC logout endpoint as an authenticated REST request.
     ///
-    /// The end_session URL is advertised by the CM via the "sign-out" rel link
-    /// in the OIDC authentication document. When absent, `completion` is called
-    /// immediately so the sign-out pipeline is never blocked.
+    /// The CM's logout endpoint (`rel="logout"`) requires:
+    ///  - `Authorization: Bearer <token>` to identify the patron's session
+    ///  - `post_logout_redirect_uri` (when the link is a URI template)
     ///
-    /// Logout is best-effort: cancellation and errors call `completion` without
-    /// surfacing an error to the patron.
-    func oidcLogOut(completion: @escaping () -> Void) {
-        // ASWebAuthenticationSession has no valid presentation context in the
-        // test runner — skip the browser step and complete immediately.
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
-            completion()
-            return
-        }
-        #endif
-
-        guard let endSessionURL = selectedAuthentication?.oidcEndSessionUrl else {
-            completion()
-            return
-        }
-
-        guard var urlComponents = URLComponents(url: endSessionURL, resolvingAgainstBaseURL: true) else {
-            Log.warn(#file, "OIDC end-session URL is malformed — skipping browser logout")
+    /// Whether to expand the href as an RFC 6570 template is determined by the
+    /// `"templated": true` flag on the logout link in the auth document — this
+    /// avoids hard-coding assumptions that the endpoint will always be templated.
+    ///
+    /// Because the access token is cleared from the keychain by `userAccount.removeAll()`
+    /// before this method is called, the token must be captured beforehand and passed in
+    /// as `accessToken`.
+    ///
+    /// Logout is best-effort: any server error calls `completion` without
+    /// surfacing anything to the patron, since local credentials are already cleared.
+    func oidcLogOut(accessToken: String?, completion: @escaping () -> Void) {
+        guard let logoutHref = selectedAuthentication?.oidcLogoutHref else {
             completion()
             return
         }
 
-        let redirectParam = URLQueryItem(name: "post_logout_redirect_uri",
-                                         value: Self.oidcPostLogoutRedirectURI)
-        if urlComponents.queryItems != nil {
-            urlComponents.queryItems?.append(redirectParam)
-        } else {
-            urlComponents.queryItems = [redirectParam]
-        }
-
-        guard let finalURL = urlComponents.url else {
-            Log.warn(#file, "OIDC end-session URL could not be constructed — skipping browser logout")
+        guard let token = accessToken else {
+            Log.warn(#file, "OIDC logout: no access token available — skipping CM session invalidation")
             completion()
             return
         }
 
-        let session = ASWebAuthenticationSession(
-            url: finalURL,
-            callbackURLScheme: Self.oidcCallbackScheme
-        ) { _, _ in
-            completion()
-        }
-
-        TPPMainThreadRun.asyncIfNeeded { [weak self] in
-            guard let self = self else {
+        let expandedHref: String
+        if selectedAuthentication?.oidcLogoutHrefIsTemplated == true {
+            do {
+                expandedHref = try StdUriTemplate.expand(
+                    logoutHref,
+                    substitutions: ["post_logout_redirect_uri": oidcPostLogoutRedirectURI]
+                )
+            } catch {
+                Log.warn(#file, "OIDC logout URI template expansion failed: \(error) — skipping CM session invalidation")
                 completion()
                 return
             }
-            if let anchor = self.uiDelegate as? ASWebAuthenticationPresentationContextProviding {
-                session.presentationContextProvider = anchor
-            } else {
-                session.presentationContextProvider = self
+        } else {
+            expandedHref = logoutHref
+        }
+
+        guard let logoutURL = URL(string: expandedHref) else {
+            Log.warn(#file, "OIDC logout URL could not be constructed — skipping CM session invalidation")
+            completion()
+            return
+        }
+
+        var request = URLRequest(url: logoutURL, applyingCustomUserAgent: true)
+        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        Log.debug(#file, "OIDC logout: calling CM end-session endpoint: \(logoutURL)")
+
+        networker.executeRequest(request, enableTokenRefresh: false) { result in
+            switch result {
+            case .success:
+                Log.debug(#file, "OIDC logout: CM session invalidated successfully")
+            case .failure(let error, _):
+                // The CM redirects to our post_logout_redirect_uri on success, e.g.:
+                //   palace-oidc-callback://org.thepalaceproject.oidc/logout?logout_status=success
+                // URLSession cannot follow custom-scheme redirects and surfaces this
+                // as NSURLErrorUnsupportedURL (-1002). If the failing URL is our callback
+                // scheme, the logout succeeded — this is not a real failure.
+                if Self.isOIDCLogoutCallbackRedirect(error) {
+                    Log.debug(#file, "OIDC logout: CM redirected to callback scheme — session invalidated successfully")
+                } else {
+                    Log.warn(#file, "OIDC logout: CM session invalidation failed (best-effort): \(error.localizedDescription)")
+                }
             }
-            // Non-ephemeral so the session operates in the shared Safari context
-            // where the IdP (e.g. Google) session cookies actually live.
-            session.prefersEphemeralWebBrowserSession = false
-            session.start()
+            completion()
         }
     }
 

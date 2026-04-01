@@ -47,6 +47,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     var businessLogic: TPPSignInBusinessLogic
     var frontEndValidator: TPPUserAccountFrontEndValidation?
     private let libraryAccountID: String
+    private let accountsManager: AccountsManager
+    private let bookRegistry: TPPBookRegistryProvider
+    private let downloadCenter: MyBooksDownloadCenter
     private var cancellables = Set<AnyCancellable>()
     var forceEditability = false
 
@@ -64,8 +67,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     var canSignIn: Bool {
         if businessLogic.selectedAuthentication?.isOauth == true ||
-            businessLogic.selectedAuthentication?.isSaml == true ||
-            businessLogic.selectedAuthentication?.isOidc == true {
+            businessLogic.selectedAuthentication?.isSaml == true {
             return true
         }
 
@@ -89,14 +91,17 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
-    init(libraryAccountID: String) {
+    init(libraryAccountID: String, accountsManager: AccountsManager = .shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared) {
         self.libraryAccountID = libraryAccountID
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
+        self.downloadCenter = downloadCenter
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
-            libraryAccountsProvider: AccountsManager.shared,
+            libraryAccountsProvider: accountsManager,
             urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookRegistry: (bookRegistry as? TPPBookRegistrySyncing) ?? { preconditionFailure("bookRegistry must conform to TPPBookRegistrySyncing") }(),
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
@@ -122,10 +127,10 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
-            libraryAccountsProvider: AccountsManager.shared,
+            libraryAccountsProvider: accountsManager,
             urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookRegistry: (bookRegistry as? TPPBookRegistrySyncing) ?? { preconditionFailure("bookRegistry must conform to TPPBookRegistrySyncing") }(),
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             networkExecutor: networkExecutor,
             uiDelegate: self,
@@ -297,7 +302,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func cellsForAuthMethod(_ auth: AccountDetails.Authentication) -> [CellType] {
-        if auth.isOauth || auth.isOidc {
+        if auth.isOauth {
             return [.logInSignOut]
         }
 
@@ -319,12 +324,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     // MARK: - Actions
 
     func signIn() {
-        let needsReauth = selectedUserAccount.authState == .credentialsStale
-        // Only treat as a sign-in intent when not signed in, or when explicitly
-        // re-authenticating stale credentials from the sign-in prompt / forceReauthMode.
-        // The logInSignOut cell routes sign-out via signOut() directly, so the
-        // "isSignedIn && !needsReauth → show sign-out alert" branch is a safety net only.
-        guard !isSignedIn || needsReauth else {
+        guard !isSignedIn else {
             isSigningOut = true
             presentSignOutAlert()
             return
@@ -332,8 +332,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
         isSigningOut = false
 
-        if businessLogic.selectedAuthentication?.isOauth == true ||
-           businessLogic.selectedAuthentication?.isOidc == true {
+        if businessLogic.selectedAuthentication?.isOauth == true {
             businessLogic.logIn()
             return
         }
@@ -421,15 +420,15 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func performAgeCheck() {
         guard let account = selectedAccount else { return }
 
-        AccountsManager.shared.ageCheck.verifyCurrentAccountAgeRequirement(
+        accountsManager.ageCheck.verifyCurrentAccountAgeRequirement(
             userAccountProvider: selectedUserAccount,
             currentLibraryAccountProvider: businessLogic
         ) { [weak self] aboveAgeLimit in
             Task { @MainActor in
                 account.details?.userAboveAgeLimit = aboveAgeLimit
                 if !aboveAgeLimit {
-                    MyBooksDownloadCenter.shared.reset(account.uuid)
-                    TPPBookRegistry.shared.reset(account.uuid)
+                    self?.downloadCenter.reset(account.uuid)
+                    (self?.bookRegistry as? TPPBookRegistry)?.reset(account.uuid)
                 }
                 self?.setupTableData()
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
@@ -612,11 +611,10 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
         signInTimeoutTask?.cancel()
         signInTimeoutTask = nil
 
-        // For SAML/OAuth/OIDC, don't start a timeout here - the user will be in a WebView
+        // For SAML/OAuth, don't start a timeout here - the user will be in a WebView
         // The timeout will start when the WebView dismisses (in startDRMProcessingTimeout)
         let isSAMLOrOAuth = businessLogic.selectedAuthentication?.isSaml == true ||
-            businessLogic.selectedAuthentication?.isOauth == true ||
-            businessLogic.selectedAuthentication?.isOidc == true
+            businessLogic.selectedAuthentication?.isOauth == true
 
         if !isSAMLOrOAuth {
             startDRMProcessingTimeout()

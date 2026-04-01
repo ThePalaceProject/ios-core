@@ -15,10 +15,6 @@ class TPPUserAccountMock: TPPUserAccount {
         return shared
     }
 
-    static func resetShared() {
-        shared.removeAll()
-    }
-
     // MARK: - Variable redefinitions to avoid keychain
 
     var _authDefinition: AccountDetails.Authentication?
@@ -200,6 +196,10 @@ class TPPUserAccountMock: TPPUserAccount {
         atomicUpdateCallCount += 1
         atomicUpdateLibraryUUIDs.append(libraryUUID)
         block(self)
+    }
+
+    static func resetShared() {
+        shared = TPPUserAccountMock()
     }
 
     // MARK: - Clean everything up

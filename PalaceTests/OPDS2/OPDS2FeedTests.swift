@@ -33,7 +33,7 @@ final class OPDS2FeedTests: XCTestCase {
         let feed = try OPDS2Feed.from(data: data)
 
         XCTAssertEqual(feed.title, "Test Library")
-        XCTAssertEqual(feed.links.count, 1)
+        XCTAssertEqual(feed.links?.count, 1)
         XCTAssertEqual(feed.selfURL?.absoluteString, "https://example.com/feed")
     }
 

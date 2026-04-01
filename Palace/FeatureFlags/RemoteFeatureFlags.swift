@@ -30,14 +30,17 @@ final class RemoteFeatureFlags {
         case downloadRetryEnabled = "download_retry_enabled"
         case circuitBreakerEnabled = "circuit_breaker_enabled"
         case carPlayEnabled = "carplay_enabled"
+        case opds2Enabled = "opds2_enabled"
+        case readingStatsEnabled = "reading_stats_enabled"
+        case advancedTypographyEnabled = "advanced_typography_enabled"
 
         var defaultValue: Bool {
             switch self {
             case .downloadRetryEnabled, .circuitBreakerEnabled:
                 return true
             case .carPlayEnabled:
-                // CarPlay defaults to enabled for development/testing
-                // Set to false in production and control via Firebase Remote Config
+                return true
+            case .opds2Enabled:
                 return true
             default:
                 return false
@@ -55,6 +58,8 @@ final class RemoteFeatureFlags {
                 return .circuitBreakerEnabled
             case .carPlayEnabled:
                 return .carPlayEnabled
+            case .opds2Enabled:
+                return .opds2Enabled
             default:
                 return nil
             }
@@ -153,6 +158,13 @@ final class RemoteFeatureFlags {
         // No cached value - return default
         Log.debug(#file, "🚗 CarPlay feature flag (no cache, using default): \(FeatureFlag.carPlayEnabled.defaultValue)")
         return FeatureFlag.carPlayEnabled.defaultValue
+    }
+
+    /// Whether OPDS 2 feed support is enabled.
+    /// When disabled, the app falls back to OPDS 1 (XML) for all catalog requests.
+    /// Default: true. Set to false in Firebase Remote Config to disable.
+    var isOPDS2Enabled: Bool {
+        isFeatureEnabled(.opds2Enabled)
     }
 
     // MARK: - Device Info for Targeting

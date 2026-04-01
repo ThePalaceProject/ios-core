@@ -361,6 +361,32 @@ actor TPPBookCoverRegistry {
         }
     }
 
+    /// Renders a TenPrint cover at the given display height (or the default 120 pt if nil).
+    /// The view scale and aspect ratio are kept proportional to the original 80x120 design.
+    /// Must be called on the MainActor.
+    @MainActor
+    private func tenPrintImage(title: String, authors: String?, displayHeight: CGFloat?) -> UIImage? {
+        let baseHeight: CGFloat = 120
+        let height = displayHeight ?? baseHeight
+        let width = height * (80.0 / baseHeight)       // maintain 2:3 aspect ratio
+        let viewScale = 0.4 * (height / baseHeight)    // keep strokes/fonts proportional
+
+        let size = CGSize(width: width, height: height)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = UIScreen.main.scale
+        return UIGraphicsImageRenderer(size: size, format: format)
+            .image { ctx in
+                if let view = NYPLTenPrintCoverView(
+                    frame: CGRect(origin: .zero, size: size),
+                    withTitle: title,
+                    withAuthor: authors ?? "Unknown Author",
+                    withScale: Float(viewScale)
+                ) {
+                    view.layer.render(in: ctx.cgContext)
+                }
+            }
+    }
+
     private func cost(for image: UIImage) -> Int {
         Int(image.size.width * image.size.height * 4)
     }
@@ -442,32 +468,6 @@ actor TPPBookCoverRegistry {
             tenPrintImage(title: title, authors: authors, displayHeight: displayHeight)
         }
     }
-
-    /// Renders a TenPrint cover at the given display height (or the default 120 pt if nil).
-    /// The view scale and aspect ratio are kept proportional to the original 80×120 design.
-    /// Must be called on the MainActor.
-    @MainActor
-    private func tenPrintImage(title: String, authors: String?, displayHeight: CGFloat?) -> UIImage? {
-        let baseHeight: CGFloat = 120
-        let height = displayHeight ?? baseHeight
-        let width = height * (80.0 / baseHeight)       // maintain 2:3 aspect ratio
-        let viewScale = 0.4 * (height / baseHeight)    // keep strokes/fonts proportional
-
-        let size = CGSize(width: width, height: height)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = UIScreen.main.scale
-        return UIGraphicsImageRenderer(size: size, format: format)
-            .image { ctx in
-                if let view = NYPLTenPrintCoverView(
-                    frame: CGRect(origin: .zero, size: size),
-                    withTitle: title,
-                    withAuthor: authors ?? "Unknown Author",
-                    withScale: Float(viewScale)
-                ) {
-                    view.layer.render(in: ctx.cgContext)
-                }
-            }
-    }
 }
 
 // MARK: - Objective-C Bridge
@@ -486,7 +486,6 @@ public class TPPBookCoverRegistryBridge: NSObject {
     public func coverImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
         // Capture all needed data early to avoid accessing potentially deallocated book later
         let bookIdentifier = book.identifier
-        let coverKey = "\(bookIdentifier)_cover"
         let imageURL = book.imageURL
         let thumbnailURL = book.imageThumbnailURL
         let title = book.title
@@ -513,8 +512,10 @@ public class TPPBookCoverRegistryBridge: NSObject {
             // Use main actor for UI-related cache operations
             await MainActor.run {
                 if let img = img {
-                    sharedImageCache.set(img, for: coverKey)
-                    book?.imageCache.set(img, for: coverKey)
+                    // Use shared cache directly instead of book.imageCache to prevent EXC_BAD_ACCESS
+                    sharedImageCache.set(img, for: bookIdentifier)
+                    // Only update book's cache if book is still alive
+                    book?.imageCache.set(img, for: bookIdentifier)
                 }
                 completion(img)
             }
@@ -526,7 +527,6 @@ public class TPPBookCoverRegistryBridge: NSObject {
     public func thumbnailImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
         // Capture all needed data early to avoid accessing potentially deallocated book later
         let bookIdentifier = book.identifier
-        let thumbnailKey = "\(bookIdentifier)_thumbnail"
         let thumbnailURL = book.imageThumbnailURL
         let title = book.title
         let authors = book.authors
@@ -547,8 +547,10 @@ public class TPPBookCoverRegistryBridge: NSObject {
             // Use main actor for UI-related cache operations
             await MainActor.run {
                 if let img = img {
-                    sharedImageCache.set(img, for: thumbnailKey)
-                    book?.imageCache.set(img, for: thumbnailKey)
+                    // Use shared cache directly instead of book.imageCache to prevent EXC_BAD_ACCESS
+                    sharedImageCache.set(img, for: bookIdentifier)
+                    // Only update book's cache if book is still alive
+                    book?.imageCache.set(img, for: bookIdentifier)
                 }
                 completion(img)
             }

@@ -34,11 +34,16 @@ enum Group: Int {
     var activeFacetSort: Facet
     let facetViewModel: FacetViewModel
     private var observers = Set<AnyCancellable>()
-    private var bookRegistry: TPPBookRegistry { TPPBookRegistry.shared }
+    private let bookRegistry: TPPBookRegistry
+    private let accountsManager: AccountsManager
+    private let settings: TPPSettings
     private var allBooks: [TPPBook] = []
 
     // MARK: - Initialization
-    override init() {
+    init(bookRegistry: TPPBookRegistry = .shared, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
+        self.bookRegistry = bookRegistry
+        self.accountsManager = accountsManager
+        self.settings = settings
         self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
             groupName: DisplayStrings.sortBy,
@@ -127,8 +132,8 @@ enum Group: Int {
         account.loadAuthenticationDocument { [weak self] success in
             guard let self = self, success else { return }
 
-            if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-                TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+            if !settings.settingsAccountIdsList.contains(account.uuid) {
+                settings.settingsAccountIdsList.append(account.uuid)
             }
             self.loadAccount(account)
         }
@@ -160,15 +165,15 @@ enum Group: Int {
     }
 
     private func updateFeed(_ account: Account) {
-        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-            TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+        if !settings.settingsAccountIdsList.contains(account.uuid) {
+            settings.settingsAccountIdsList.append(account.uuid)
         }
 
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
 
-        AccountsManager.shared.currentAccount = account
+        accountsManager.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
 

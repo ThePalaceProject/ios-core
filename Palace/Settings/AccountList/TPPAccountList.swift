@@ -2,10 +2,12 @@ import Foundation
 
 /// List of available Libraries/Accounts to select as patron's primary
 /// when going through Welcome Screen flow.
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad from datasource.title
 @objc final class TPPAccountList: UIViewController {
 
     private let completion: (Account) -> Void
     private var loadingView: UIActivityIndicatorView?
+    private let accountsManager: AccountsManager
 
     var datasource = TPPAccountListDataSource()
     var searchBar: UISearchBar!
@@ -19,10 +21,10 @@ import Foundation
 
     private var accountsLoadingLogos = Set<String>()
 
-    @objc required init(completion: @escaping (Account) -> Void) {
+    @objc required init(completion: @escaping (Account) -> Void, accountsManager: AccountsManager = .shared) {
         self.completion = completion
+        self.accountsManager = accountsManager
         super.init(nibName: nil, bundle: nil)
-        title = datasource.title
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(catalogDidLoad),
@@ -43,6 +45,7 @@ import Foundation
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = TPPConfiguration.backgroundColor()
+        title = datasource.title
 
         if #available(iOS 13.0, *) {
             isModalInPresentation = requiresSelectionBeforeDismiss
@@ -50,7 +53,7 @@ import Foundation
 
         setupUI()
 
-        if AccountsManager.shared.accountsHaveLoaded {
+        if accountsManager.accountsHaveLoaded {
             finishConfiguration()
         } else {
             showLoading()
@@ -58,7 +61,7 @@ import Foundation
 
         // Always call loadCatalogs: if data is already in memory this returns immediately
         // and triggers a silent background refresh when the cache is stale (>5 min).
-        AccountsManager.shared.loadCatalogs { [weak self] success in
+        accountsManager.loadCatalogs { [weak self] success in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.hideLoading()
@@ -74,6 +77,22 @@ import Foundation
             guard let self else { return }
             self.datasource.loadData()
             self.tableView.reloadData()
+        }
+    }
+
+    @objc private func pullToRefresh() {
+        accountsManager.clearCache()
+        accountsManager.loadCatalogs { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.tableView.refreshControl?.endRefreshing()
+                if success {
+                    self.datasource.loadData()
+                    self.tableView.reloadData()
+                } else {
+                    self.showLoadingFailureAlert()
+                }
+            }
         }
     }
 
@@ -103,22 +122,6 @@ import Foundation
 
         stackView.autoPinEdge(toSuperviewMargin: .top)
         stackView.autoPinEdgesToSuperviewEdges(with: .zero, excludingEdge: .top)
-    }
-
-    @objc private func pullToRefresh() {
-        AccountsManager.shared.clearCache()
-        AccountsManager.shared.loadCatalogs { [weak self] success in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.tableView.refreshControl?.endRefreshing()
-                if success {
-                    self.datasource.loadData()
-                    self.tableView.reloadData()
-                } else {
-                    self.showLoadingFailureAlert()
-                }
-            }
-        }
     }
 
     private func finishConfiguration() {
@@ -202,6 +205,12 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
 
         cell.customTextlabel.text = account.name
         cell.customDetailLabel.text = account.subtitle
+
+        if let subtitle = account.subtitle, !subtitle.isEmpty {
+            cell.accessibilityLabel = "\(account.name). \(subtitle)"
+        } else {
+            cell.accessibilityLabel = account.name
+        }
 
         return cell
     }

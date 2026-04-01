@@ -264,11 +264,10 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             } else {
                 Log.info(#file, "Auth token expected, but none is available.")
                 TPPErrorLogger.logError(withCode: .validationWithoutAuthToken,
-                                        summary: "Error \(authTypeStr): No token available during OAuth/SAML/OIDC authentication validation",
+                                        summary: "Error \(authTypeStr): No token available during OAuth/SAML authentication validation",
                                         metadata: [
                                             "isSAML": selectedAuth.isSaml,
                                             "isOAuth": selectedAuth.isOauth,
-                                            "isOIDC": selectedAuth.isOidc,
                                             "context": context,
                                             "uiDelegate nil?": uiDelegate == nil ? "y" : "n"])
             }
@@ -331,8 +330,8 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         }
     }
 
-    func getBearerToken(username: String, password: String, tokenURL: URL, completion: (() -> Void)? = nil) {
-        TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: libraryAccountID) { [weak self] result in
+    func getBearerToken(username: String, password: String, tokenURL: URL, networkExecutor: TPPNetworkExecutor = .shared, completion: (() -> Void)? = nil) {
+        networkExecutor.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: libraryAccountID) { [weak self] result in
             defer {
                 completion?()
             }
@@ -407,8 +406,6 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                 samlHelper.logIn {
                     self.uiDelegate?.businessLogicDidCancelSignIn(self)
                 }
-            case .oidc:
-                oidcLogIn()
             case .token:
                 guard let username = self.uiDelegate?.username,
                       let password = self.uiDelegate?.pin,
@@ -463,7 +460,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                                    completion: (() -> Void)?) -> Bool {
         guard
             let authDef = userAccount.authDefinition,
-            authDef.isBasic || authDef.isOauth || authDef.isSaml || authDef.isOidc || (authDef.isToken && TPPUserAccount.sharedAccount().authTokenHasExpired)
+            authDef.isBasic || authDef.isOauth || authDef.isSaml || (authDef.isToken && userAccount.authTokenHasExpired)
         else {
             completion?()
             return false
@@ -472,7 +469,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         refreshAuthCompletion = completion
 
         // reset authentication if needed
-        if authDef.isSaml || authDef.isOauth || authDef.isOidc {
+        if authDef.isSaml || authDef.isOauth {
             if !usingExistingCredentials {
                 // if current authentication is SAML and we don't want to use current
                 // credentials, we need to force log in process. this is for the case

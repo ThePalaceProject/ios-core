@@ -181,13 +181,19 @@ extension TPPSignInBusinessLogic {
 
         // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
         // Also reset the flag so token re-registers on next sign-in
-        if let account = AccountsManager.shared.account(libraryAccountID) {
+        if let account = libraryAccountsProvider.account(libraryAccountID) {
             NotificationService.shared.deleteToken(for: account)
             account.hasUpdatedToken = false
         }
 
         bookDownloadsCenter.reset(libraryAccountID)
         bookRegistry.reset(libraryAccountID)
+
+        // Capture the OIDC access token before removeAll() wipes it.
+        // The CM logout endpoint requires Authorization: Bearer <token>,
+        // and we need this for the API call in performFinalSignOutCleanup.
+        let oidcAccessToken: String? = selectedAuthentication?.isOidc == true ? userAccount.authToken : nil
+
         userAccount.removeAll()
         selectedIDP = nil
 
@@ -199,13 +205,11 @@ extension TPPSignInBusinessLogic {
         // SAML/OAuth: patron authenticates via WKWebView, so clearing WKWebView
         // data invalidates the IdP session on this device.
         //
-        // OIDC: patron authenticates via ASWebAuthenticationSession which shares
-        // the system Safari cookie store, so we must open the CM's end_session
-        // endpoint in a Safari-backed ASWebAuthenticationSession to clear the
-        // IdP cookies there.
+        // OIDC: the CM's logout endpoint is an authenticated REST API — we call
+        // it directly with the captured access token, no browser involved.
         //
         // CRITICAL: all async steps must finish BEFORE notifying the UI delegate.
-        performFinalSignOutCleanup { [weak self] in
+        performFinalSignOutCleanup(oidcAccessToken: oidcAccessToken) { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
@@ -215,11 +219,13 @@ extension TPPSignInBusinessLogic {
 
     /// Routes to the appropriate IdP session-clearing step based on auth type.
     ///
-    /// OIDC hits the CM's end_session endpoint via `ASWebAuthenticationSession`
-    /// then clears WKWebView data. All other types clear WKWebView data directly.
-    private func performFinalSignOutCleanup(completion: @escaping () -> Void) {
+    /// OIDC makes an authenticated API call to the CM's logout endpoint using
+    /// the access token captured before credentials were cleared, then clears
+    /// WKWebView data. All other types clear WKWebView data directly.
+    private func performFinalSignOutCleanup(oidcAccessToken: String? = nil,
+                                            completion: @escaping () -> Void) {
         if selectedAuthentication?.isOidc == true {
-            oidcLogOut { [weak self] in
+            oidcLogOut(accessToken: oidcAccessToken) { [weak self] in
                 self?.clearWebViewData(completion: completion)
             }
         } else {

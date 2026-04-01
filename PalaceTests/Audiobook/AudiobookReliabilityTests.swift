@@ -31,7 +31,7 @@ final class AudiobookSessionManagerTests: XCTestCase {
         super.tearDown()
     }
 
-    func testRegisterActiveDownload() {
+    func testRegisterActiveDownload() async {
         // Given
         let sessionId = "test-session-\(UUID().uuidString)"
         let bookId = "test-book-123"
@@ -48,14 +48,17 @@ final class AudiobookSessionManagerTests: XCTestCase {
             localDestination: localURL
         )
 
-        // Then — activeDownloads(forBookID:) uses queue.sync which drains the prior barrier write
+        // Wait for async operation
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // Then
         let downloads = AudiobookSessionManager.shared.activeDownloads(forBookID: bookId)
         XCTAssertEqual(downloads.count, 1)
         XCTAssertEqual(downloads.first?.trackKey, trackKey)
         XCTAssertEqual(downloads.first?.state, .downloading)
     }
 
-    func testUpdateDownloadProgress() {
+    func testUpdateDownloadProgress() async {
         // Given
         let sessionId = "test-session-\(UUID().uuidString)"
         let bookId = "test-book-456"
@@ -68,10 +71,16 @@ final class AudiobookSessionManagerTests: XCTestCase {
             localDestination: URL(fileURLWithPath: "/tmp/test.mp3")
         )
 
+        // Wait for registration
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
         // When
         AudiobookSessionManager.shared.updateDownloadProgress(sessionIdentifier: sessionId, progress: 0.5)
 
-        // Then — downloadInfo uses queue.sync which drains all prior barrier writes
+        // Wait for update
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // Then
         let info = AudiobookSessionManager.shared.downloadInfo(forSessionIdentifier: sessionId)
         XCTAssertEqual(Double(info?.progress ?? 0), 0.5, accuracy: 0.01)
     }
@@ -82,9 +91,11 @@ final class AudiobookSessionManagerTests: XCTestCase {
     // the main queue and delivers the dispatch — regardless of which thread XCTest uses
     // to run this test class (works on both main thread and parallel CI workers).
     func testBackgroundCompletionHandlerRegistration() {
+        // Given
         let sessionId = "test-session-\(UUID().uuidString)"
         let expectation = expectation(description: "Background completion handler called")
 
+        // When - register the handler
         AudiobookSessionManager.shared.registerBackgroundCompletionHandler({
             expectation.fulfill()
         }, forSessionIdentifier: sessionId)
@@ -133,18 +144,24 @@ final class DownloadWatchdogTests: XCTestCase {
         XCTAssertEqual(config.checkInterval, 10.0)
     }
 
-    func testStartAndStop() {
+    func testStartAndStop() async {
         // Given
         let watchdog = DownloadWatchdog()
 
         // When
         watchdog.start()
 
-        // status uses queue.sync — drains the internal queue before reading
+        // Allow async task to initialize
+        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+
+        // Then
         XCTAssertTrue(watchdog.status.isEmpty) // No downloads monitored yet
 
         // Cleanup
         watchdog.stop()
+
+        // Allow cleanup to complete
+        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
     }
 }
 
@@ -166,7 +183,7 @@ final class DownloadPersistenceStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    func testRegisterDownload() {
+    func testRegisterDownload() async {
         // Given
         let bookID = "test-book-\(UUID().uuidString)"
         let trackKey = "track-1"
@@ -182,7 +199,10 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             totalBytes: 1000000
         )
 
-        // Then — getDownload uses queue.sync which drains all prior async barriers
+        // Wait for async operation
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // Then
         let download = store.getDownload(bookID: bookID, trackKey: trackKey)
         XCTAssertNotNil(download)
         XCTAssertEqual(download?.bookID, bookID)
@@ -191,7 +211,7 @@ final class DownloadPersistenceStoreTests: XCTestCase {
         XCTAssertEqual(download?.progress, 0)
     }
 
-    func testUpdateProgress() {
+    func testUpdateProgress() async {
         // Given
         let bookID = "test-book-\(UUID().uuidString)"
         let trackKey = "track-1"
@@ -203,6 +223,8 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             localFileURL: URL(fileURLWithPath: "/tmp/test.mp3"),
             totalBytes: 1000000
         )
+
+        try? await Task.sleep(nanoseconds: 100_000_000)
 
         // When
         store.updateProgress(
@@ -212,14 +234,16 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             state: .inProgress
         )
 
-        // Then — getDownload uses queue.sync which drains all prior async barriers
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // Then
         let download = store.getDownload(bookID: bookID, trackKey: trackKey)
         XCTAssertEqual(download?.downloadedBytes, 500000)
         XCTAssertEqual(download?.state, .inProgress)
         XCTAssertEqual(Double(download?.progress ?? 0), 0.5, accuracy: 0.01)
     }
 
-    func testMarkCompleted() {
+    func testMarkCompleted() async {
         // Given
         let bookID = "test-book-\(UUID().uuidString)"
         let trackKey = "track-1"
@@ -232,16 +256,20 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             totalBytes: 1000000
         )
 
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
         // When
         store.markCompleted(bookID: bookID, trackKey: trackKey)
 
-        // Then — getDownload uses queue.sync which drains all prior async barriers
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // Then
         let download = store.getDownload(bookID: bookID, trackKey: trackKey)
         XCTAssertEqual(download?.state, .completed)
         XCTAssertTrue(download?.isComplete ?? false)
     }
 
-    func testGetIncompleteDownloads() {
+    func testGetIncompleteDownloads() async {
         // Given
         let bookID = "test-book-\(UUID().uuidString)"
 
@@ -261,11 +289,14 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             totalBytes: 1000000
         )
 
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
         // Complete one download
         store.markCompleted(bookID: bookID, trackKey: "track-1")
 
-        // When — getIncompleteDownloads uses queue.sync which drains all prior async barriers
-        // (register track-1, register track-2, markCompleted track-1) before reading
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // When
         let incomplete = store.getIncompleteDownloads(bookID: bookID)
 
         // Then
@@ -273,7 +304,7 @@ final class DownloadPersistenceStoreTests: XCTestCase {
         XCTAssertEqual(incomplete.first?.trackKey, "track-2")
     }
 
-    func testBookDownloadsOverallProgress() {
+    func testBookDownloadsOverallProgress() async {
         // Given
         let bookID = "test-book-\(UUID().uuidString)"
 
@@ -293,11 +324,15 @@ final class DownloadPersistenceStoreTests: XCTestCase {
             totalBytes: 1000
         )
 
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
         // Update progress
         store.updateProgress(bookID: bookID, trackKey: "track-1", downloadedBytes: 500)
         store.updateProgress(bookID: bookID, trackKey: "track-2", downloadedBytes: 250)
 
-        // When — getBookDownloads uses queue.sync which drains all prior async barriers
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // When
         let bookDownloads = store.getBookDownloads(bookID: bookID)
 
         // Then

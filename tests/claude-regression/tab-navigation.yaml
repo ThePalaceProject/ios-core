@@ -1,0 +1,97 @@
+name: "Tab Navigation"
+description: "Verify all four tabs in the tab bar can be selected and each loads its respective screen correctly."
+srs_requirements: ["NAV-001", "NAV-002", "NAV-003", "NAV-004"]
+preconditions:
+  - "App is installed on simulator"
+  - "No user is signed in"
+steps:
+  - action: "launch_app"
+    target: "Palace app icon"
+    expect: "App launches on the Catalog tab"
+
+  - action: "wait_for_element"
+    target: "catalog.scrollView"
+    timeout: 10
+    expect: "Catalog content loads"
+
+  - action: "verify_element_visible"
+    target: "Tab bar with four tabs"
+    expect: "Tab bar shows Catalog, My Books, Reservations, and Settings tabs"
+
+  - action: "screenshot"
+    name: "tab-catalog"
+    description: "Catalog tab active showing catalog content"
+
+  # Navigate to My Books
+  - action: "tap_element"
+    target: "My Books tab in tab bar"
+    expect: "My Books screen is displayed"
+
+  - action: "wait_for_element"
+    target: "myBooks.navigationBar"
+    timeout: 5
+    expect: "My Books navigation bar is visible"
+
+  - action: "verify_element_visible"
+    target: "My Books content (empty state or book list)"
+    expect: "My Books screen shows appropriate content"
+
+  - action: "screenshot"
+    name: "tab-my-books"
+    description: "My Books tab active showing its content"
+
+  # Navigate to Reservations
+  - action: "tap_element"
+    target: "Reservations tab in tab bar"
+    expect: "Reservations/Holds screen is displayed"
+
+  - action: "wait_for_element"
+    target: "holds.navigationBar"
+    timeout: 5
+    expect: "Reservations navigation bar is visible"
+
+  - action: "verify_element_visible"
+    target: "Reservations content (empty state or holds list)"
+    expect: "Reservations screen shows appropriate content"
+
+  - action: "screenshot"
+    name: "tab-reservations"
+    description: "Reservations tab active showing its content"
+
+  # Navigate to Settings
+  - action: "tap_element"
+    target: "Settings tab in tab bar"
+    expect: "Settings screen is displayed"
+
+  - action: "wait_for_element"
+    target: "settings.navigationBar"
+    timeout: 5
+    expect: "Settings navigation bar is visible"
+
+  - action: "verify_element_visible"
+    target: "Settings content with account and library sections"
+    expect: "Settings screen shows account and configuration options"
+
+  - action: "screenshot"
+    name: "tab-settings"
+    description: "Settings tab active showing its content"
+
+  # Return to Catalog to confirm round-trip
+  - action: "tap_element"
+    target: "Catalog tab in tab bar"
+    expect: "Catalog screen is displayed again"
+
+  - action: "verify_element_visible"
+    target: "catalog.scrollView"
+    expect: "Catalog content is still loaded from before"
+
+  - action: "screenshot"
+    name: "tab-catalog-return"
+    description: "Catalog tab after cycling through all tabs"
+
+  - action: "verify_no_alerts"
+    expect: "No error alerts appeared during tab navigation"
+postconditions:
+  - "App is on the Catalog tab"
+  - "No error alerts displayed"
+  - "All tabs loaded successfully without crashes"

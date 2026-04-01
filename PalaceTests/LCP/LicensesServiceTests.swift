@@ -129,7 +129,7 @@ final class LicensesServiceTests: XCTestCase {
 #else
 
 // Stub test to register the test class even when LCP is not enabled
-final class LicensesServiceTests: XCTestCase {
+final class LicensesServiceStubTests: XCTestCase {
 
     func testLCPNotEnabled_SkipLicensesServiceTests() throws {
         throw XCTSkip("LCP is not enabled in this build configuration")

@@ -15,13 +15,15 @@ struct AudiobookSampleToolbar: View {
 
     private var book: TPPBook
     private let imageLoader: AsyncImage
+    private let bookRegistry: TPPBookRegistryProvider
     private let toolbarHeight: CGFloat = 70
     private let toolbarPadding: CGFloat = 5
     private let imageViewHeight: CGFloat = 70
     private let playbackButtonLength: CGFloat = 35
     private let buttonViewSpacing: CGFloat = 10
 
-    init?(book: TPPBook) {
+    init?(book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        self.bookRegistry = bookRegistry
         self.book = book
         guard let sample = book.sample as? AudiobookSample else { return nil }
         player = AudiobookSamplePlayer(sample: sample)
@@ -67,7 +69,7 @@ struct AudiobookSampleToolbar: View {
     }
 
     @ViewBuilder private var imageView: some View {
-        Image(uiImage: TPPBookRegistry.shared.cachedThumbnailImage(for: book) ?? imageLoader.image)
+        Image(uiImage: bookRegistry.cachedThumbnailImage(for: book) ?? imageLoader.image)
             .resizable()
             .aspectRatio(contentMode: .fit)
             .frame(width: imageViewHeight)
@@ -104,12 +106,16 @@ struct AudiobookSampleToolbar: View {
         switch player.state {
         case .paused:
             Images.play
+                .resizable()
                 .square(length: playbackButtonLength)
                 .padding(.trailing)
+                .accessibilityHidden(true)
         case .playing:
             Images.pause
+                .resizable()
                 .square(length: playbackButtonLength)
                 .padding(.trailing)
+                .accessibilityHidden(true)
         default:
             loadingView
                 .square(length: playbackButtonLength)
@@ -133,8 +139,10 @@ struct AudiobookSampleToolbar: View {
             player.goBack()
         } label: {
             Images.stepBack
+                .resizable()
                 .square(length: playbackButtonLength)
                 .padding(.trailing)
+                .accessibilityHidden(true)
         }
         .accessibilityLabel(Strings.Generic.skipBack30)
     }

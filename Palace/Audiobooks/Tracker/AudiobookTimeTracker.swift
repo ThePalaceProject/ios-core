@@ -32,13 +32,14 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
     private var playbackTimer: Cancellable?
     private var terminationObserver: NSObjectProtocol?
 
-    private let audiobookLogger = AudiobookFileLogger.shared
+    private let audiobookLogger: AudiobookFileLogger
 
-    init(libraryId: String, bookId: String, timeTrackingUrl: URL, dataManager: DataManager) {
+    init(libraryId: String, bookId: String, timeTrackingUrl: URL, dataManager: DataManager, audiobookLogger: AudiobookFileLogger = .shared) {
         self.libraryId = libraryId
         self.bookId = bookId
         self.timeTrackingUrl = timeTrackingUrl
         self.dataManager = dataManager
+        self.audiobookLogger = audiobookLogger
         self.minuteFormatter = DateFormatter()
         minuteFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm'Z'"
         minuteFormatter.timeZone = TimeZone(identifier: "UTC")

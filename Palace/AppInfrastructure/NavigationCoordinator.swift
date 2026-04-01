@@ -66,6 +66,9 @@ final class NavigationCoordinator: ObservableObject {
     /// EPUB samples presented as modal fullScreenCover
     @Published var presentedEPUBSample: EPUBPresentationData?
 
+    /// Car Mode fullscreen presentation (feature-flagged)
+    @Published var presentCarMode = false
+
     private var audioModelById: [String: AudiobookPlaybackModel] = [:]
     private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
     private var catalogFilterStatesByURL: [String: CatalogLaneFilterState] = [:]

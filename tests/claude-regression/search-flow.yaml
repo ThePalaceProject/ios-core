@@ -1,0 +1,62 @@
+name: "Search Flow"
+description: "Verify the search functionality: opening search, typing a query, viewing results, and clearing the search."
+srs_requirements: ["CAT-004", "SEARCH-001", "SEARCH-002"]
+preconditions:
+  - "App is installed on simulator"
+  - "No user is signed in"
+  - "App is launched and on the Catalog tab"
+steps:
+  - action: "launch_app"
+    target: "Palace app icon"
+    expect: "App launches and displays the Catalog screen"
+
+  - action: "wait_for_element"
+    target: "catalog.scrollView"
+    timeout: 10
+    expect: "Catalog content loads"
+
+  - action: "tap_element"
+    target: "catalog.searchButton"
+    expect: "Search interface opens with a text field and keyboard appears"
+
+  - action: "screenshot"
+    name: "search-opened"
+    description: "Search screen with empty search field and keyboard visible"
+
+  - action: "type_text"
+    target: "search.searchField"
+    value: "fiction"
+    expect: "Text 'fiction' appears in the search field"
+
+  - action: "wait_for_element"
+    target: "search.resultsScrollView"
+    timeout: 15
+    expect: "Search results load and display matching books"
+
+  - action: "verify_element_visible"
+    target: "Search result cells with book titles"
+    expect: "At least one search result is displayed with a book title and cover"
+
+  - action: "screenshot"
+    name: "search-results"
+    description: "Search results for query 'fiction' showing matching books"
+
+  - action: "tap_element"
+    target: "search.clearButton"
+    expect: "Search field is cleared and results are removed"
+
+  - action: "tap_element"
+    target: "search.cancelButton"
+    expect: "Search is dismissed and catalog view is restored"
+
+  - action: "verify_element_visible"
+    target: "catalog.scrollView"
+    expect: "Catalog screen is visible again with book lanes"
+
+  - action: "screenshot"
+    name: "search-dismissed"
+    description: "Catalog screen restored after dismissing search"
+postconditions:
+  - "App is on the Catalog tab in its normal state"
+  - "No error alerts displayed"
+  - "Search is fully dismissed"

@@ -1,0 +1,77 @@
+---
+description: Mandatory TDD workflow for all agents working on bug fixes and new features. Enforces test-first development, agent checklist, and flaky test policy.
+alwaysApply: true
+---
+
+# TDD Workflow (Mandatory for All Code Changes)
+
+All agents **MUST** follow TDD for bug fixes, new features, and refactoring. Full plan: `UNIT_TESTING_PLAN.md`. Standards: `TESTING.md`.
+
+## Bug Fix Protocol
+
+```
+1. Write a FAILING test that reproduces the bug
+2. Verify the test fails before touching production code
+3. Implement the fix
+4. Verify the test passes
+5. Commit test + fix together in the same PR
+```
+
+```swift
+/// Regression test: Download button shows after book is returned
+func testBookReturn_UpdatesButtonState() {
+  let mockRegistry = TPPBookRegistryMock()
+  let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+  mockRegistry.addBook(book, state: .downloadSuccessful)
+  let viewModel = MyBooksViewModel(registry: mockRegistry)
+
+  viewModel.returnBook(book)
+
+  XCTAssertFalse(viewModel.downloadedBooks.contains { $0.identifier == book.identifier })
+}
+```
+
+## New Feature Protocol
+
+```
+1. Write tests defining expected behavior (happy path + edge cases + errors)
+2. Implement feature to make tests pass
+3. Refactor while keeping tests green
+4. Commit tests + feature together
+```
+
+## Server Contract Check (Required Before Implementing Server-Defined Values)
+
+Before writing any code that parses a server-provided value — `rel` strings,
+URL formats, field names, template syntax — you MUST verify the actual server
+response first. Do not assume; read the contract.
+
+```
+- [ ] Check the Notion/spec page for the endpoint or document format
+- [ ] If available, fetch the real response from the target server (e.g. Icarus)
+      and inspect it in the debugger or console logs
+- [ ] Build the test fixture JSON from the real server response, not from assumptions
+- [ ] If the spec is missing or ambiguous, ask the team before implementing
+```
+
+**Why this matters:** Server-defined values are contracts, not guesses. A wrong
+`rel` string (e.g. `"sign-out"` instead of `"logout"`) silently passes all tests
+when the fixture is built from the same wrong assumption. The implementation
+appears to work locally because local credential clearing still succeeds — the
+missing server-side session invalidation is only visible to the user at next login.
+
+**How to inspect:** The Xcode console logs every auth entry's raw links at parse
+time (`Authentication[<type>] links: [...]`). Launch the app against the target
+library and check the console before writing any parsing code.
+
+## Agent Pre-Commit Checklist
+
+- [ ] New/modified code has corresponding tests
+- [ ] Tests use real production classes (mocks for DI only, never as the subject)
+- [ ] No network calls in unit tests
+- [ ] Tests are deterministic (no random data, no real dates)
+- [ ] Naming: `test[Unit]_[Scenario]_[ExpectedBehavior]`
+
+## Flaky Test Policy
+
+Immediately quarantine with `XCTSkip("Flaky")`, create a ticket, fix or delete within 1 sprint. Never ignore flaky tests.

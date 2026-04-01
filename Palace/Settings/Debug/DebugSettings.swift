@@ -83,46 +83,7 @@ final class DebugSettings {
         }
     }
 
-    // MARK: - Properties
-
-    /// The type of borrow error to simulate (or .none to disable)
-    var simulatedBorrowError: SimulatedBorrowError {
-        get {
-            let rawValue = defaults.integer(forKey: Keys.borrowErrorType)
-            return SimulatedBorrowError(rawValue: rawValue) ?? .none
-        }
-        set {
-            defaults.set(newValue.rawValue, forKey: Keys.borrowErrorType)
-        }
-    }
-
-    /// Whether borrow error simulation is enabled
-    var isBorrowErrorSimulationEnabled: Bool {
-        return simulatedBorrowError != .none
-    }
-
-    // MARK: - Error Generation
-
-    /// Creates a simulated NSError with problem document for testing
-    /// Returns nil if simulation is disabled
-    func createSimulatedBorrowError() -> (error: NSError, problemDocument: TPPProblemDocument)? {
-        guard let problemDoc = simulatedBorrowError.problemDocument else {
-            return nil
-        }
-
-        Log.warn(#file, "⚠️ DEBUG: Simulating borrow error: \(simulatedBorrowError.displayName)")
-
-        let error = NSError.makeFromProblemDocument(
-            problemDoc,
-            domain: "DebugSimulatedBorrowError",
-            code: problemDoc.status ?? 403,
-            userInfo: nil
-        )
-
-        return (error, problemDoc)
-    }
-
-    // MARK: - Simulated Sync Failure
+    // MARK: - Simulated Sync Failures
 
     enum SimulatedSyncFailure: Int, CaseIterable {
         case none = 0
@@ -172,6 +133,48 @@ final class DebugSettings {
         }
     }
 
+    // MARK: - Properties
+
+    /// The type of borrow error to simulate (or .none to disable)
+    var simulatedBorrowError: SimulatedBorrowError {
+        get {
+            let rawValue = defaults.integer(forKey: Keys.borrowErrorType)
+            return SimulatedBorrowError(rawValue: rawValue) ?? .none
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Keys.borrowErrorType)
+        }
+    }
+
+    /// Whether borrow error simulation is enabled
+    var isBorrowErrorSimulationEnabled: Bool {
+        return simulatedBorrowError != .none
+    }
+
+    // MARK: - Error Generation
+
+    /// Creates a simulated NSError with problem document for testing
+    /// Returns nil if simulation is disabled
+    func createSimulatedBorrowError() -> (error: NSError, problemDocument: TPPProblemDocument)? {
+        guard let problemDoc = simulatedBorrowError.problemDocument else {
+            return nil
+        }
+
+        Log.warn(#file, "⚠️ DEBUG: Simulating borrow error: \(simulatedBorrowError.displayName)")
+
+        let error = NSError.makeFromProblemDocument(
+            problemDoc,
+            domain: "DebugSimulatedBorrowError",
+            code: problemDoc.status ?? 403,
+            userInfo: nil
+        )
+
+        return (error, problemDoc)
+    }
+
+    // MARK: - Sync Failure Simulation
+
+    /// The type of sync failure to simulate (or .none to disable)
     var simulatedSyncFailure: SimulatedSyncFailure {
         get {
             let rawValue = defaults.integer(forKey: Keys.syncFailureType)
@@ -182,6 +185,7 @@ final class DebugSettings {
         }
     }
 
+    /// Whether sync failure simulation is enabled
     var isSyncFailureSimulationEnabled: Bool {
         return simulatedSyncFailure != .none
     }

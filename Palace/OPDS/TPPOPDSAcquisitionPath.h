@@ -6,6 +6,8 @@
 
 /// The constant value is fully lowercased.
 extern NSString * const _Nonnull ContentTypeOPDSCatalog;
+/// OPDS 2 publication entry type (JSON equivalent of ContentTypeOPDSCatalog).
+extern NSString * const _Nonnull ContentTypeOPDS2Publication;
 /// The constant value is fully lowercased.
 extern NSString * const _Nonnull ContentTypeAdobeAdept;
 /// The constant value is fully lowercased.

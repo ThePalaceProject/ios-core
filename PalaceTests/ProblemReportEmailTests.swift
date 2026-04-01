@@ -163,8 +163,7 @@ final class ProblemReportEmailTests: XCTestCase {
     func testPP3651_beginComposing_acceptsLibraryUUID() {
         // Verify the method signature exists and compiles with libraryUUID parameter
         // This is a compile-time check — the actual email composition requires MFMailComposeViewController
-        let selector = #selector(ProblemReportEmail.beginComposing(to:presentingViewController:book:libraryUUID:))
-        XCTAssertTrue(emailService.responds(to: selector),
-                      "ProblemReportEmail should have beginComposing(to:presentingViewController:book:libraryUUID:) method")
+        let _: (String, UIViewController, TPPBook?, String?, AccountsManager) -> Void = emailService.beginComposing(to:presentingViewController:book:libraryUUID:accountsManager:)
+        // If this compiles, the method signature is correct
     }
 }

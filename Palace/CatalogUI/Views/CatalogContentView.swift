@@ -5,6 +5,7 @@ struct CatalogContentView: View {
     @ObservedObject var viewModel: CatalogViewModel
     let onBookSelected: (TPPBook) -> Void
     let onLaneMoreTapped: (String, URL) -> Void
+    var bookRegistry: TPPBookRegistry = .shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -63,7 +64,7 @@ private extension CatalogContentView {
                 ForEach(viewModel.lanes) { lane in
                     CatalogLaneRowView(
                         title: lane.title,
-                        books: lane.books.map { TPPBookRegistry.shared.updatedBookMetadata($0) ?? $0 },
+                        books: lane.books.map { bookRegistry.updatedBookMetadata($0) ?? $0 },
                         moreURL: lane.moreURL,
                         onSelect: onBookSelected,
                         onMoreTapped: onLaneMoreTapped,

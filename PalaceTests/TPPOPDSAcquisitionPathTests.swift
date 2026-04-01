@@ -4,19 +4,26 @@ import XCTest
 
 class TPPOPDSAcquisitionPathTests: XCTestCase {
 
-    let acquisitions: [TPPOPDSAcquisition] = try!
-        TPPOPDSEntry(xml:
-                        TPPXML(data:
-                                Data.init(contentsOf:
-                                            Bundle.init(for: TPPOPDSAcquisitionPathTests.self)
-                                            .url(forResource: "NYPLOPDSAcquisitionPathEntry", withExtension: "xml")!)))
-        .acquisitions
+    var acquisitions: [TPPOPDSAcquisition]!
+
+    override func setUp() {
+        super.setUp()
+        let bundle = Bundle(for: TPPOPDSAcquisitionPathTests.self)
+        guard let url = bundle.url(forResource: "NYPLOPDSAcquisitionPathEntry", withExtension: "xml"),
+              let data = try? Data(contentsOf: url),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml) else {
+            XCTFail("Failed to parse test XML")
+            return
+        }
+        acquisitions = entry.acquisitions
+    }
 
     func testSimplifiedAdeptEpubAcquisition() {
         let acquisitionPaths: [TPPOPDSAcquisitionPath] =
             TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
                 forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-                allowedRelations: [.borrow, .openAccess],
+                allowedRelations: TPPOPDSAcquisitionRelationSet([.borrow, .openAccess]).rawValue,
                 acquisitions: acquisitions)
 
         XCTAssert(acquisitionPaths.count == 2)
@@ -38,13 +45,17 @@ class TPPOPDSAcquisitionPathTests: XCTestCase {
     func testSampleLinkInAcquisitions() {
         // TPPOPDSAcquisitionPathEntryWithSampleLink.xml contains a sample link
         let bundle = Bundle(for: TPPOPDSAcquisitionPathTests.self)
-        let acquisitionWithSampleData = try! Data(contentsOf: bundle.url(forResource: "TPPOPDSAcquisitionPathEntryWithSampleLink", withExtension: "xml")!)
-        let entryWithSample = TPPOPDSEntry(xml: TPPXML(data: acquisitionWithSampleData))!
+        guard let url = bundle.url(forResource: "TPPOPDSAcquisitionPathEntryWithSampleLink", withExtension: "xml"),
+              let data = try? Data(contentsOf: url),
+              let xml = TPPXML(data: data),
+              let entryWithSample = TPPOPDSEntry(xml: xml) else {
+            XCTFail("Failed to parse test XML with sample link")
+            return
+        }
         let bookWithSample = TPPBook(entry: entryWithSample)
         XCTAssertNotNil(bookWithSample)
         XCTAssert(bookWithSample?.defaultAcquisition?.relation != TPPOPDSAcquisitionRelation.sample)
         XCTAssertNotNil(bookWithSample?.sampleAcquisition)
         XCTAssert(bookWithSample?.sampleAcquisition?.relation == TPPOPDSAcquisitionRelation.sample)
-
     }
 }

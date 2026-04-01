@@ -13,6 +13,7 @@ struct EPUBReaderView: View {
     let book: TPPBook
     let publication: Publication
     let forSample: Bool
+    var readerService: ReaderService = .shared
 
     @EnvironmentObject private var coordinator: NavigationCoordinator
     @State private var readerViewController: UIViewController?
@@ -84,7 +85,7 @@ struct EPUBReaderView: View {
     @MainActor
     private func loadReader() async {
         do {
-            let readerVC = try await ReaderService.shared.makeEPUBViewController(
+            let readerVC = try await readerService.makeEPUBViewController(
                 for: publication,
                 book: book,
                 forSample: forSample

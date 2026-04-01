@@ -40,9 +40,15 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     @AccessibilityFocusState private var isBookTitleFocused: Bool
     @State private var originalState: TPPBookState = .unregistered
     @State private var didChangeState: Bool = false
+    let accountsManager: AccountsManager
+    let bookRegistry: TPPBookRegistryProvider
 
-    private var isShowingProgress: Bool {
-        viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful
+    init(viewModel: ViewModel, backgroundColor: Color, coverImage: Binding<UIImage?>, accountsManager: AccountsManager = AccountsManager.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        self.viewModel = viewModel
+        self.backgroundColor = backgroundColor
+        self._coverImage = coverImage
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
     }
 
     var body: some View {
@@ -50,19 +56,17 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
 
             headerView
 
-            Text(AccountsManager.shared.currentAccount?.name ?? "")
+            Text(accountsManager.currentAccount?.name ?? "")
                 .font(.headline)
 
             bookInfoView
             statusInfoView
 
+            // Reserve consistent space for progress bar to prevent layout shifts
             ProgressView(value: viewModel.downloadProgress, total: 1.0)
                 .progressViewStyle(LinearProgressViewStyle())
                 .frame(height: 6)
-                .opacity(isShowingProgress ? 1 : 0)
-                .accessibilityLabel(Strings.DownloadAnnouncements.downloadingTitle(viewModel.book.title))
-                .accessibilityIdentifier(AccessibilityID.BookDetail.downloadProgress)
-                .accessibilityHidden(!isShowingProgress)
+                .opacity(viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful ? 1 : 0)
 
             if viewModel.isFullSize {
                 BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
@@ -156,7 +160,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
         }
         .accessibilityIdentifier(AccessibilityID.BookDetail.halfSheet)
         .onAppear {
-            originalState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+            originalState = bookRegistry.state(for: viewModel.book.identifier)
             NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 isBookTitleFocused = true
@@ -164,7 +168,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
         }
         .onDisappear {
             // Always sync to latest registry state to avoid reverting the UI after a successful download
-            viewModel.bookState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+            viewModel.bookState = bookRegistry.state(for: viewModel.book.identifier)
             if let cellModel = viewModel as? BookCellModel {
                 cellModel.isManagingHold = false
             }

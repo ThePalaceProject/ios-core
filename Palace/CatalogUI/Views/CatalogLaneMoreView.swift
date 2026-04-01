@@ -12,7 +12,7 @@ struct CatalogLaneMoreView: View {
     // MARK: - Account & Logo State
 
     @StateObject private var logoObserver = CatalogLogoObserver()
-    @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+    @State private var currentAccountUUID: String = ""
 
     // MARK: - Initialization
 

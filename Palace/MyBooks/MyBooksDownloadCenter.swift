@@ -15,120 +15,7 @@ import Combine
 import OverdriveProcessor
 #endif
 
-/// Modern Swift actor for coordinating downloads - NO LOCKS!
-actor DownloadCoordinator {
-    private var activeDownloadIdentifiers: Set<String> = []
-    private var startTimes: [String: Date] = [:]
-    private let minimumStartDelay: TimeInterval = 0.3
-    private var pendingQueue: [TPPBook] = []
-    private var downloadInfoCache: [String: MyBooksDownloadInfo] = [:]
-    private var redirectAttempts: [Int: Int] = [:]
-
-    var activeCount: Int {
-        activeDownloadIdentifiers.count
-    }
-
-    var queueCount: Int {
-        pendingQueue.count
-    }
-
-    func canStartDownload(maxConcurrent: Int) -> Bool {
-        activeDownloadIdentifiers.count < maxConcurrent
-    }
-
-    func shouldThrottleStart() async -> TimeInterval {
-        guard let lastStartTime = startTimes.values.max() else {
-            return 0
-        }
-
-        let timeSinceLastStart = Date().timeIntervalSince(lastStartTime)
-        if timeSinceLastStart < minimumStartDelay {
-            return minimumStartDelay - timeSinceLastStart
-        }
-        return 0
-    }
-
-    func registerStart(identifier: String) {
-        activeDownloadIdentifiers.insert(identifier)
-        startTimes[identifier] = Date()
-    }
-
-    func registerCompletion(identifier: String) {
-        activeDownloadIdentifiers.remove(identifier)
-        startTimes.removeValue(forKey: identifier)
-    }
-
-    func enqueuePending(_ book: TPPBook) {
-        if !pendingQueue.contains(where: { $0.identifier == book.identifier }) {
-            pendingQueue.append(book)
-        }
-    }
-
-    func dequeuePending(capacity: Int) -> [TPPBook] {
-        guard capacity > 0, !pendingQueue.isEmpty else { return [] }
-
-        let toStart = Array(pendingQueue.prefix(capacity))
-        pendingQueue.removeFirst(min(capacity, pendingQueue.count))
-        return toStart
-    }
-
-    func cacheDownloadInfo(_ info: MyBooksDownloadInfo, for identifier: String) {
-        downloadInfoCache[identifier] = info
-    }
-
-    func getCachedDownloadInfo(for identifier: String) -> MyBooksDownloadInfo? {
-        downloadInfoCache[identifier]
-    }
-
-    func removeCachedDownloadInfo(for identifier: String) {
-        downloadInfoCache.removeValue(forKey: identifier)
-    }
-
-    func getRedirectAttempts(for taskID: Int) -> Int {
-        redirectAttempts[taskID] ?? 0
-    }
-
-    func incrementRedirectAttempts(for taskID: Int) {
-        redirectAttempts[taskID] = (redirectAttempts[taskID] ?? 0) + 1
-    }
-
-    func clearRedirectAttempts(for taskID: Int) {
-        redirectAttempts.removeValue(forKey: taskID)
-    }
-
-    func reset() {
-        activeDownloadIdentifiers.removeAll()
-        startTimes.removeAll()
-        pendingQueue.removeAll()
-        downloadInfoCache.removeAll()
-        redirectAttempts.removeAll()
-    }
-}
-
-/// Info published when a download or borrow error occurs.
-/// Includes retry support so SwiftUI views can offer a "Retry" button.
-struct DownloadErrorInfo {
-    let bookId: String
-    let title: String
-    let message: String
-    let retryAction: (() -> Void)?
-
-    /// Convenience for non-retryable errors.
-    init(bookId: String, title: String, message: String) {
-        self.bookId = bookId
-        self.title = title
-        self.message = message
-        self.retryAction = nil
-    }
-
-    /// Full initializer with optional retry action.
-    init(bookId: String, title: String, message: String, retryAction: (() -> Void)?) {
-        self.bookId = bookId
-        self.title = title
-        self.message = message
-        self.retryAction = retryAction
-    }
-}
+// DownloadCoordinator is defined in MyBooksDownloadQueue.swift
 
 @objc class MyBooksDownloadCenter: NSObject, URLSessionDelegate {
     typealias DisplayStrings = Strings.MyDownloadCenter
@@ -137,7 +24,9 @@ struct DownloadErrorInfo {
 
     public var userAccount: TPPUserAccount
     private var reauthenticator: Reauthenticator
-    private var bookRegistry: TPPBookRegistryProvider
+    var bookRegistry: TPPBookRegistryProvider
+    private let accountsManager: AccountsManager
+    private let networkExecutor: TPPNetworkExecutor
     private let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
 
     private var bookIdentifierOfBookToRemove: String?
@@ -169,11 +58,15 @@ struct DownloadErrorInfo {
         userAccount: TPPUserAccount = TPPUserAccount.sharedAccount(),
         reauthenticator: Reauthenticator = TPPReauthenticator(),
         bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
+        accountsManager: AccountsManager = .shared,
+        networkExecutor: TPPNetworkExecutor = .shared,
         accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter()
     ) {
         self.userAccount = userAccount
         self.bookRegistry = bookRegistry
         self.reauthenticator = reauthenticator
+        self.accountsManager = accountsManager
+        self.networkExecutor = networkExecutor
         self.accessibilityAnnouncements = accessibilityAnnouncements
 
         super.init()
@@ -300,7 +193,7 @@ struct DownloadErrorInfo {
             self?.startDownload(for: book)
         }
 
-        book.defaultAcquisition?.availability.matchUnavailable(
+        book.defaultAcquisition?.availability.match(unavailable: 
             nil,
             limited: { _ in downloadAction() },
             unlimited: { _ in downloadAction() },
@@ -977,7 +870,7 @@ struct DownloadErrorInfo {
 
 extension MyBooksDownloadCenter {
     func deleteLocalContent(for identifier: String, account: String? = nil) {
-        let current_account: String? = account ?? AccountsManager.shared.currentAccountId
+        let current_account: String? = account ?? accountsManager.currentAccountId
         guard let book = bookRegistry.book(forIdentifier: identifier),
               let bookURL = fileUrl(for: identifier, account: current_account) else {
             Log.warn(#file, "Could not find book to delete local content \(identifier)")
@@ -1298,7 +1191,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         }
 
         // Try to parse as OPDS entry and extract acquisition link
-        guard let entry = TPPOPDSEntry(xml: TPPXML(data: xmlData)) else {
+        guard let xml = TPPXML.xml(withData: xmlData), let entry = TPPOPDSEntry(xml: xml) else {
             Log.warn(#file, "Failed to parse XML as OPDS entry for \(book.identifier)")
             return false
         }
@@ -1341,7 +1234,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
 
         // Add authorization if needed
-        if let token = TPPUserAccount.sharedAccount().authToken {
+        if let token = userAccount.authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
@@ -1382,9 +1275,9 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                 if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(detectedRights) {
                     await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
                 }
-            } else if TPPUserAccount.sharedAccount().isTokenRefreshRequired() {
+            } else if userAccount.isTokenRefreshRequired() {
                 NSLog("Authentication might be needed after all")
-                TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+                networkExecutor.refreshTokenAndResume(task: task)
                 return
             }
         }
@@ -1773,6 +1666,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
             object: self
         )
     }
+
 }
 
 extension MyBooksDownloadCenter: URLSessionTaskDelegate {
@@ -1957,7 +1851,7 @@ extension MyBooksDownloadCenter {
     }
 
     private func contentDirectoryUsageBytes() -> Int64 {
-        guard let dir = contentDirectoryURL(AccountsManager.shared.currentAccountId) else { return 0 }
+        guard let dir = contentDirectoryURL(accountsManager.currentAccountId) else { return 0 }
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles]) else { return 0 }
         var total: Int64 = 0
@@ -1968,7 +1862,7 @@ extension MyBooksDownloadCenter {
     }
 
     private func listContentFilesSortedByLRU() -> [URL] {
-        guard let dir = contentDirectoryURL(AccountsManager.shared.currentAccountId) else { return [] }
+        guard let dir = contentDirectoryURL(accountsManager.currentAccountId) else { return [] }
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentAccessDateKey, .contentModificationDateKey], options: [.skipsHiddenFiles]) else { return [] }
         return contents.sorted { a, b in
@@ -2424,7 +2318,7 @@ extension MyBooksDownloadCenter {
     }
 
     @objc func fileUrl(for identifier: String) -> URL? {
-        return fileUrl(for: identifier, account: AccountsManager.shared.currentAccountId)
+        return fileUrl(for: identifier, account: accountsManager.currentAccountId)
     }
 
     func fileUrl(for identifier: String, account: String?) -> URL? {
@@ -2490,7 +2384,7 @@ extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
     }
 
     func reset(account: String) {
-        if AccountsManager.shared.currentAccountId == account {
+        if accountsManager.currentAccountId == account {
             reset()
         } else {
             deleteAudiobooks(forAccount: account)
@@ -2505,7 +2399,7 @@ extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
     }
 
     func reset() {
-        guard let currentAccountId = AccountsManager.shared.currentAccountId else {
+        guard let currentAccountId = accountsManager.currentAccountId else {
             return
         }
 
@@ -2571,7 +2465,7 @@ extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
     private func hasActiveAudiobooks() -> Bool {
         let matchingStates: [TPPBookState] = [ .downloadNeeded, .downloading, .downloadSuccessful, .used ]
         var hasActive = false
-        let accountId = AccountsManager.shared.currentAccountId ?? ""
+        let accountId = accountsManager.currentAccountId ?? ""
         bookRegistry.with(account: accountId) { registry in
             let audiobooks = registry.myBooks.filter { $0.defaultBookContentType == .audiobook }
             hasActive = audiobooks.contains { matchingStates.contains(registry.state(for: $0.identifier)) }

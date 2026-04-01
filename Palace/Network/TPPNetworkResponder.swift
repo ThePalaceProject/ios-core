@@ -367,14 +367,16 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     }
 }
 
-private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task: URLSessionTask) -> Bool {
+private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
+                                       with task: URLSessionTask,
+                                       userAccount: TPPUserAccount = TPPUserAccount.sharedAccount(),
+                                       networkExecutor: TPPNetworkExecutor = .shared) -> Bool {
     // Skip DELETE requests - intentionally don't refresh tokens for deletes
     // This prevents refresh loops when revoking/returning items
     if task.originalRequest?.httpMethod == "DELETE" {
         return false
     }
 
-    let userAccount = TPPUserAccount.sharedAccount()
     guard userAccount.hasCredentials() else {
         return false
     }
@@ -398,19 +400,14 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task
             return false
         }
 
-        if authDef?.isOidc == true {
-            Log.info(#file, "Server returned 401 for OIDC - CM refresh_token likely expired, credentials marked stale")
-            return false
-        }
-
         let canRefreshToken = (authDef?.isToken == true || authDef?.isOauth == true) &&
             authDef?.tokenURL != nil &&
-            userAccount.username?.isEmpty == false &&
-            userAccount.pin?.isEmpty == false
+            userAccount.username != nil &&
+            userAccount.pin != nil
 
         if canRefreshToken {
             Log.info(#file, "Server returned 401 - triggering token refresh (server authority)")
-            TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+            networkExecutor.refreshTokenAndResume(task: task)
             return true
         }
     }
@@ -516,10 +513,10 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
         authChallenger.handleChallenge(challenge, completion: completionHandler)
     }
 
-    func refreshToken() async throws {
-        guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL,
-              let username = TPPUserAccount.sharedAccount().username, !username.isEmpty,
-              let password = TPPUserAccount.sharedAccount().pin, !password.isEmpty
+    func refreshToken(userAccount: TPPUserAccount = TPPUserAccount.sharedAccount()) async throws {
+        guard let tokenURL = userAccount.authDefinition?.tokenURL,
+              let username = userAccount.username,
+              let password = userAccount.pin
         else { return }
 
         let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
@@ -527,7 +524,7 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
 
         switch result {
         case .success(let tokenResponse):
-            TPPUserAccount.sharedAccount().setAuthToken(tokenResponse.accessToken, barcode: username, pin: password, expirationDate: tokenResponse.expirationDate)
+            userAccount.setAuthToken(tokenResponse.accessToken, barcode: username, pin: password, expirationDate: tokenResponse.expirationDate)
         case .failure(let error):
             throw error
         }

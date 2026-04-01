@@ -89,7 +89,6 @@ struct BookDetailView: View {
                 lastBookIdentifier = viewModel.book.identifier
 
                 showCompactHeader = false
-                isExpanded = false
                 headerHeight = viewModel.isFullSize ? 300 : 225
                 imageScale = 1.0
                 imageOpacity = 1.0
@@ -226,7 +225,7 @@ struct BookDetailView: View {
                 SamplePreviewManager.shared.close()
                 return
             }
-            if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? (viewModel.relatedBooksByLane.values.flatMap { $0.books }).first(where: { $0.identifier == identifier }) {
+            if let book = viewModel.registry.book(forIdentifier: identifier) ?? (viewModel.relatedBooksByLane.values.flatMap { $0.books }).first(where: { $0.identifier == identifier }) {
                 SamplePreviewManager.shared.toggle(for: book)
             } else if viewModel.book.identifier == identifier {
                 SamplePreviewManager.shared.toggle(for: viewModel.book)
@@ -312,7 +311,7 @@ struct BookDetailView: View {
         BookImageView(book: viewModel.book, height: 280 * imageScale, treatImageAsDecorativeInLists: true)
             .accessibilityIdentifier(AccessibilityID.BookDetail.coverImage)
             .opacity(imageOpacity)
-            .adaptiveShadow(backgroundColor: headerColor)
+            .adaptiveShadow()
             .accessibleAnimation(scaleAnimation, value: imageScale)
             .accessibleAnimation(scaleAnimation, value: imageOpacity)
             .background(GeometryReader { _ in
@@ -530,10 +529,12 @@ struct BookDetailView: View {
 
     @ViewBuilder private var audiobookIndicator: some View {
         ImageProviders.MyBooksView.audiobookBadge
+            .resizable()
             .scaledToFit()
             .frame(width: 28, height: 28)
             .background(Circle().fill(Color.colorAudiobookBackground))
             .clipped()
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder private var informationView: some View {
@@ -570,9 +571,10 @@ struct BookDetailView: View {
     // MARK: - Helper Functions
 
     private func infoRow(label: String, value: String) -> some View {
-        HStack(alignment: .bottom, spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
             infoLabel(label: label)
-                .frame(width: 100, alignment: .leading)
+                .frame(minWidth: 100, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
             infoValue(value: value)
         }
     }
@@ -580,9 +582,7 @@ struct BookDetailView: View {
     @ViewBuilder private func infoLabel(label: String) -> some View {
         Text(label)
             .palaceFont(.caption, weight: .bold)
-            .lineLimit(nil)
-            .multilineTextAlignment(.leading)
-            .fixedSize(horizontal: false, vertical: true)
+            .lineLimit(1)
     }
 
     @ViewBuilder private func infoValue(value: String) -> some View {
@@ -771,13 +771,11 @@ struct BookDetailView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
                             .font(.body.weight(.semibold))
-                            .accessibilityHidden(true)
-                        Text(Strings.Generic.back)
+                        Text("Back")
                             .palaceFont(.body)
                     }
                     .foregroundColor(headerColor.isDark ? .white : .black)
                 })
-                .accessibilityLabel(Strings.Generic.goBack)
                 .padding(.leading, 8)
                 .padding(.top, UIDevice.current.isIpad ? 8 : 0)
 

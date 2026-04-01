@@ -66,14 +66,14 @@ final class TPPUserNotificationsTests: XCTestCase {
         var reservedIsReserved = false
         var readyIsReady = false
 
-        reservedBook.defaultAcquisition?.availability.matchUnavailable(
-            nil, limited: nil, unlimited: nil,
+        reservedBook.defaultAcquisition?.availability.match(
+            unavailable: nil, limited: nil, unlimited: nil,
             reserved: { _ in reservedIsReserved = true },
             ready: nil
         )
 
-        readyBook.defaultAcquisition?.availability.matchUnavailable(
-            nil, limited: nil, unlimited: nil,
+        readyBook.defaultAcquisition?.availability.match(
+            unavailable: nil, limited: nil, unlimited: nil,
             reserved: nil,
             ready: { _ in readyIsReady = true }
         )
@@ -119,8 +119,8 @@ final class TPPUserNotificationsTests: XCTestCase {
 
         // Verify the old book has "reserved" status
         var oldIsReserved = false
-        reservedBook.defaultAcquisition?.availability.matchUnavailable(
-            nil, limited: nil, unlimited: nil,
+        reservedBook.defaultAcquisition?.availability.match(
+            unavailable: nil, limited: nil, unlimited: nil,
             reserved: { _ in oldIsReserved = true },
             ready: nil
         )
@@ -128,8 +128,8 @@ final class TPPUserNotificationsTests: XCTestCase {
 
         // Verify the new book has "ready" status
         var newIsReady = false
-        readyBook.defaultAcquisition?.availability.matchUnavailable(
-            nil, limited: nil, unlimited: nil,
+        readyBook.defaultAcquisition?.availability.match(
+            unavailable: nil, limited: nil, unlimited: nil,
             reserved: nil,
             ready: { _ in newIsReady = true }
         )
@@ -170,13 +170,13 @@ final class TPPUserNotificationsTests: XCTestCase {
         var oldIsReserved = false
         var newIsReserved = false
 
-        oldReservedBook.defaultAcquisition?.availability.matchUnavailable(
-            nil, limited: nil, unlimited: nil,
+        oldReservedBook.defaultAcquisition?.availability.match(
+            unavailable: nil, limited: nil, unlimited: nil,
             reserved: { _ in oldIsReserved = true },
             ready: nil
         )
-        newReservedBook.defaultAcquisition?.availability.matchUnavailable(
-            nil, limited: nil, unlimited: nil,
+        newReservedBook.defaultAcquisition?.availability.match(
+            unavailable: nil, limited: nil, unlimited: nil,
             reserved: { _ in newIsReserved = true },
             ready: nil
         )

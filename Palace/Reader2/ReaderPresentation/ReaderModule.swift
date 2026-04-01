@@ -51,15 +51,18 @@ final class ReaderModule: ReaderModuleAPI {
     weak var delegate: ModuleDelegate?
     private let bookRegistry: TPPBookRegistryProvider
     private let progressSynchronizer: TPPLastReadPositionSynchronizer
+    private let userAccount: TPPUserAccount
 
     /// Sub-modules to handle different publication formats (eg. EPUB, CBZ)
     var formatModules: [ReaderFormatModule] = []
 
     init(delegate: ModuleDelegate?,
          resourcesServer: HTTPServer,
-         bookRegistry: TPPBookRegistryProvider) {
+         bookRegistry: TPPBookRegistryProvider,
+         userAccount: TPPUserAccount = .sharedAccount()) {
         self.delegate = delegate
         self.bookRegistry = bookRegistry
+        self.userAccount = userAccount
         self.progressSynchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
 
         formatModules = [
@@ -80,7 +83,7 @@ final class ReaderModule: ReaderModuleAPI {
             return
         }
 
-        let drmDeviceID = TPPUserAccount.sharedAccount().deviceID
+        let drmDeviceID = userAccount.deviceID
         progressSynchronizer.sync(for: publication,
                                   book: book,
                                   drmDeviceID: drmDeviceID) { [weak self] in

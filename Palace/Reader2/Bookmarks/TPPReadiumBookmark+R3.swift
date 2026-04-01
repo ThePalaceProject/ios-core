@@ -46,7 +46,7 @@ extension TPPReadiumBookmark {
             return nil
         }
 
-        let creationDate = NSDate(rfc3339String: self.time) as Date? ?? Date()
+        let creationDate = (NSDate.date(withRFC3339String: self.time) as Date?) ?? Date()
 
         return TPPBookmarkR3Location(resourceIndex: resourceIndex, locator: locator, creationDate: creationDate)
     }

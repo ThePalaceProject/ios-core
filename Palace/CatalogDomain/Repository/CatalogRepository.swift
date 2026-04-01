@@ -3,11 +3,9 @@ import Foundation
 public protocol CatalogRepositoryProtocol {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?
     func search(query: String, baseURL: URL) async throws -> CatalogFeed?
-    /// Search using a known OpenSearch descriptor URL, skipping the groups feed fetch.
     func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed?
-    /// Fetch a groups feed and return its entry-point format facets.
-    func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry]
     func fetchFeed(at url: URL) async throws -> CatalogFeed?
+    func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry]
     func invalidateCache(for url: URL)
 }
 
@@ -59,7 +57,8 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
         if daysSinceLastLaunch >= 1 {
             Log.info(#file, "App hasn't been used in \(daysSinceLastLaunch) days - clearing HTTP cache, keeping memory cache for stale-while-revalidate")
-            TPPNetworkExecutor.shared.clearCache()
+            // Clear URLCache to prevent stale/corrupted HTTP responses from causing parsing crashes
+            // in legacy OPDS code. Our memory cache is preserved for stale-while-revalidate.
             URLCache.shared.removeAllCachedResponses()
             needsBackgroundRefresh = true
         }
@@ -133,6 +132,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
                           userInfo: [NSLocalizedDescriptionKey: "Failed to fetch catalog feed"])
         }
 
+        // Cache the result
         await withCheckedContinuation { continuation in
             cacheQueue.async {
                 self.memoryCache[cacheKey] = CachedFeed(feed: feed, timestamp: Date())
@@ -208,8 +208,8 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         try await api.search(query: query, baseURL: baseURL)
     }
 
-    public func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
-        try await api.search(query: query, searchDescriptorURL: searchDescriptorURL)
+    public func fetchFeed(at url: URL) async throws -> CatalogFeed? {
+        try await api.fetchFeed(at: url)
     }
 
     public func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
@@ -236,8 +236,8 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         return entries
     }
 
-    public func fetchFeed(at url: URL) async throws -> CatalogFeed? {
-        try await api.fetchFeed(at: url)
+    public func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
+        try await api.search(query: query, searchDescriptorURL: searchDescriptorURL)
     }
 
     public func invalidateCache(for url: URL) {

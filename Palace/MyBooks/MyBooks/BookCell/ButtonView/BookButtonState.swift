@@ -102,25 +102,25 @@ extension BookButtonState {
         guard let availability = book.defaultAcquisition?.availability else { return false }
 
         var isReady = false
-        availability.matchUnavailable { _ in
+        availability.match(unavailable: { _ in
             isReady = false
-        } limited: { _ in
+        }, limited: { _ in
             isReady = false
-        } unlimited: { _ in
+        }, unlimited: { _ in
             isReady = false
-        } reserved: { _ in
+        }, reserved: { _ in
             isReady = false  // Still waiting in queue
-        } ready: { _ in
+        }, ready: { _ in
             isReady = true   // Hold is ready to borrow!
-        }
+        })
 
         return isReady
     }
 }
 
 extension BookButtonState {
-    init?(_ book: TPPBook) {
-        let bookState = TPPBookRegistry.shared.state(for: book.identifier)
+    init?(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        let bookState = bookRegistry.state(for: book.identifier)
         switch bookState {
         case .unregistered, .holding:
             guard let buttonState = Self.stateForAvailability(book.defaultAcquisition?.availability) else {
@@ -164,35 +164,35 @@ extension BookButtonState {
         }
 
         var state: BookButtonState = .unsupported
-        availability.matchUnavailable { _ in
+        availability.match(unavailable: { _ in
             state = .canHold
-        } limited: { limited in
+        }, limited: { limited in
             // Check if copies are actually available to borrow
             if limited.copiesAvailable == TPPOPDSAcquisitionAvailabilityCopiesUnknown || limited.copiesAvailable > 0 {
                 state = .canBorrow
             } else {
                 state = .canHold
             }
-        } unlimited: { _ in
+        }, unlimited: { _ in
             state = .canBorrow
-        } reserved: { _ in
+        }, reserved: { _ in
             state = .holdingFrontOfQueue
-        } ready: { _ in
+        }, ready: { _ in
             state = .canBorrow  // Hold is ready, user can borrow
-        }
+        })
 
         return state
     }
 }
 
 extension TPPBook {
-    func supportsDeletion(for state: BookButtonState) -> Bool {
+    func supportsDeletion(for state: BookButtonState, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) -> Bool {
         var fullfillmentRequired = false
         #if FEATURE_DRM_CONNECTOR
         fullfillmentRequired = state == .holding && self.revokeURL != nil
         #endif
 
-        let hasFullfillmentId = TPPBookRegistry.shared.fulfillmentId(forIdentifier: self.identifier) != nil
+        let hasFullfillmentId = bookRegistry.fulfillmentId(forIdentifier: self.identifier) != nil
         let isFullfiliable = !(hasFullfillmentId && fullfillmentRequired) && self.revokeURL != nil
         let needsAuthentication = self.defaultAcquisitionIfOpenAccess == nil && TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? false
 

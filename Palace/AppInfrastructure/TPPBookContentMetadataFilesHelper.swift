@@ -4,8 +4,8 @@ import Foundation
 /// The directory is not guaranteed to exist at the time this method is called.
 @objcMembers final class TPPBookContentMetadataFilesHelper: NSObject {
 
-    static func currentAccountDirectory() -> URL? {
-        guard let accountId = AccountsManager.shared.currentAccountId else {
+    static func currentAccountDirectory(accountsManager: AccountsManager = AccountsManager.shared) -> URL? {
+        guard let accountId = accountsManager.currentAccountId else {
             return nil
         }
         return directory(for: accountId)

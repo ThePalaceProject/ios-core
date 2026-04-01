@@ -105,9 +105,8 @@ actor DownloadErrorRecovery {
             }
         )
 
-        /// Policy for borrow operations — retries transient network issues and
-        /// "no active loan" (server may not have the loan ready when a hold
-        /// notification fires).
+        /// Retry policy for borrow operations — tolerant of slow servers (hold notifications
+        /// can fire before the loan is fully ready on the CM side).
         static let borrowOperation = RetryPolicy(
             maxAttempts: 3,
             baseDelay: 2.0,
@@ -119,7 +118,7 @@ actor DownloadErrorRecovery {
                     case .network(.timeout), .network(.noConnection):
                         return true
                     case .bookRegistry(.bookNotFound):
-                        return true
+                        return true  // Book may not be ready yet on slow servers
                     default:
                         return false
                     }

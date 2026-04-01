@@ -20,6 +20,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     private var interfaceController: CPInterfaceController?
     private var templateManager: CarPlayTemplateManager?
     private var cancellables = Set<AnyCancellable>()
+    private let bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
 
     // MARK: - CPTemplateApplicationSceneDelegate
 
@@ -157,19 +158,19 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         }
     }
 
-    private func subscribeToBookRegistryChanges() {
+    private func subscribeToBookRegistryChanges(bookRegistry: TPPBookRegistry = .shared) {
         // Subscribe to registry changes (fires when books are loaded from disk or synced)
-        TPPBookRegistry.shared.registryPublisher
+        bookRegistry.registryPublisher
             .dropFirst() // Skip initial empty state
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                Log.debug(#file, "🚗 Registry updated - refreshing CarPlay library")
+                Log.debug(#file, "Registry updated - refreshing CarPlay library")
                 self?.templateManager?.refreshLibrary()
             }
             .store(in: &cancellables)
 
         // Also subscribe to individual book state changes (download progress, etc.)
-        TPPBookRegistry.shared.bookStatePublisher
+        bookRegistry.bookStatePublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.templateManager?.refreshLibrary()
@@ -178,7 +179,6 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
         // Subscribe to account changes to update library name
         NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
-            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 Log.info(#file, "🚗 Account changed - updating CarPlay library name and refreshing")
                 self?.templateManager?.updateLibraryName()

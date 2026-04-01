@@ -11,13 +11,13 @@ import PalaceAudiobookToolkit
         kSecClassIdentity as String
     ]
 
-    static func validateKeychain() {
-        if TPPSettings.shared.appVersion == nil {
+    static func validateKeychain(settings: TPPSettings = .shared) {
+        if settings.appVersion == nil {
             Log.info(#file, "Fresh install detected. Cleaning up all keychain items...")
             cleanupAllKeychainItems()
         }
 
-        if TPPSettings.shared.appVersion != nil {
+        if settings.appVersion != nil {
             updateKeychainForBackgroundFetch()
             manageFeedbooksData()
             manageFeedbookDrmPrivateKey()
@@ -99,14 +99,14 @@ import PalaceAudiobookToolkit
         ]
 
         for key in knownKeys {
-            TPPKeychain.shared().removeObject(forKey: key)
+            TPPKeychain.shared.removeObject(forKey: key)
         }
 
         // Also clean up any library-specific keys
         for libraryUUID in AccountsManager.TPPAccountUUIDs {
             for key in knownKeys {
                 let libraryKey = "\(key)_\(libraryUUID)"
-                TPPKeychain.shared().removeObject(forKey: libraryKey)
+                TPPKeychain.shared.removeObject(forKey: libraryKey)
             }
         }
 
@@ -146,8 +146,8 @@ import PalaceAudiobookToolkit
         }
 
         for (key, value) in values {
-            TPPKeychain.shared().removeObject(forKey: key)
-            TPPKeychain.shared().setObject(value, forKey: key)
+            TPPKeychain.shared.removeObject(forKey: key)
+            TPPKeychain.shared.setObject(value, forKey: key)
             Log.debug(#file, "Keychain item \"\(key)\" updated with new accessible security level...")
         }
     }

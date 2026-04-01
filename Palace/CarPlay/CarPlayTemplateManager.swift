@@ -45,10 +45,15 @@ final class CarPlayTemplateManager: NSObject {
 
     // MARK: - Initialization
 
-    init(interfaceController: CPInterfaceController) {
+    private let accountsManager: AccountsManager
+    private let bookRegistry: TPPBookRegistry
+
+    init(interfaceController: CPInterfaceController, accountsManager: AccountsManager = .shared, bookRegistry: TPPBookRegistry = .shared) {
         self.interfaceController = interfaceController
         self.imageProvider = CarPlayImageProvider()
         self.playerBridge = CarPlayAudiobookBridge()
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
 
         super.init()
 
@@ -84,15 +89,6 @@ final class CarPlayTemplateManager: NSObject {
         interfaceController?.setRootTemplate(libraryTemplate, animated: true, completion: nil)
 
         Log.info(#file, "CarPlay root template configured")
-
-        // PP-3679: If an audiobook is already playing, jump straight to Now Playing
-        if playerBridge.isPlaying {
-            Log.info(#file, "CarPlay: Audiobook already playing at connect — navigating to Now Playing")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.configureNowPlayingTemplateIfNeeded()
-                self?.switchToNowPlayingIfNeeded()
-            }
-        }
     }
 
     func refreshLibrary() {
@@ -110,7 +106,7 @@ final class CarPlayTemplateManager: NSObject {
     func updateLibraryName() {
         guard let libraryTemplate = libraryTemplate else { return }
 
-        let libraryName = AccountsManager.shared.currentAccount?.name ?? Strings.CarPlay.library
+        let libraryName = accountsManager.currentAccount?.name ?? Strings.CarPlay.library
 
         // CPListTemplate.title is read-only after creation, so we need to
         // recreate the template or use a workaround. Unfortunately, CarPlay
@@ -136,7 +132,7 @@ final class CarPlayTemplateManager: NSObject {
         let section = CPListSection(items: items)
 
         // Use the library's actual name
-        let libraryName = AccountsManager.shared.currentAccount?.name ?? Strings.CarPlay.library
+        let libraryName = accountsManager.currentAccount?.name ?? Strings.CarPlay.library
 
         let template = CPListTemplate(title: libraryName, sections: [section])
         template.tabTitle = Strings.CarPlay.library
@@ -338,7 +334,7 @@ final class CarPlayTemplateManager: NSObject {
     private func isFullyDownloaded(_ book: TPPBook) -> Bool {
         // Check if all audio files are downloaded
         // For now, assume if state is downloadSuccessful/used, it's fully downloaded
-        let state = TPPBookRegistry.shared.state(for: book.identifier)
+        let state = bookRegistry.state(for: book.identifier)
         return state == .downloadSuccessful || state == .used
     }
 
@@ -586,14 +582,14 @@ final class CarPlayTemplateManager: NSObject {
     // MARK: - Data Access
 
     private func fetchDownloadedAudiobooks() -> [TPPBook] {
-        TPPBookRegistry.shared.myBooks
+        bookRegistry.myBooks
             .filter { $0.isAudiobook }
             .filter { isDownloaded($0) }
             .sorted { ($0.title) < ($1.title) }
     }
 
     private func isDownloaded(_ book: TPPBook) -> Bool {
-        let state = TPPBookRegistry.shared.state(for: book.identifier)
+        let state = bookRegistry.state(for: book.identifier)
         return state == .downloadSuccessful || state == .used
     }
 

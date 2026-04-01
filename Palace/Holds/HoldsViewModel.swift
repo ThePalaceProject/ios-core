@@ -9,7 +9,7 @@ final class HoldsBookViewModel: ObservableObject, Identifiable {
 
     var isReserved: Bool {
         var reservedFlag = false
-        book.defaultAcquisition?.availability.matchUnavailable(
+        book.defaultAcquisition?.availability.match(unavailable: 
             nil,
             limited: nil,
             unlimited: nil,
@@ -37,6 +37,8 @@ final class HoldsViewModel: ObservableObject {
     @Published var visibleBooks: [TPPBook] = []
     private var cancellables = Set<AnyCancellable>()
     private let bookRegistry: TPPBookRegistryProvider
+    private let accountsManager: AccountsManager
+    private let settings: TPPSettings
 
     struct SyncError: Identifiable {
         let id = UUID()
@@ -47,7 +49,9 @@ final class HoldsViewModel: ObservableObject {
         self.init(bookRegistry: TPPBookRegistry.shared)
     }
 
-    init(bookRegistry: TPPBookRegistryProvider) {
+    init(bookRegistry: TPPBookRegistryProvider, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
+        self.accountsManager = accountsManager
+        self.settings = settings
         self.bookRegistry = bookRegistry
 
         NotificationCenter.default.publisher(for: .TPPSyncBegan)
@@ -82,15 +86,12 @@ final class HoldsViewModel: ObservableObject {
 
     private func handleSyncFailure(_ notification: Notification) {
         isLoading = false
-
         if let errorDoc = notification.userInfo?[TPPBookRegistry.syncFailureErrorDocumentKey] as? [AnyHashable: Any],
            let detail = (errorDoc["detail"] as? String) ?? (errorDoc["title"] as? String),
            !detail.isEmpty {
             syncError = SyncError(message: detail)
         } else {
-            syncError = SyncError(
-                message: Strings.HoldsView.syncFailedMessage
-            )
+            syncError = SyncError(message: Strings.HoldsView.syncFailedMessage)
         }
     }
 
@@ -137,14 +138,14 @@ final class HoldsViewModel: ObservableObject {
     func refresh() {
         if TPPUserAccount.sharedAccount().needsAuth {
             if TPPUserAccount.sharedAccount().hasCredentials() {
-                TPPBookRegistry.shared.sync()
+                (bookRegistry as? TPPBookRegistry)?.sync()
             } else {
                 SignInModalPresenter.presentSignInModalForCurrentAccount {
                     self.reloadData()
                 }
             }
         } else {
-            TPPBookRegistry.shared.load()
+            (bookRegistry as? TPPBookRegistry)?.load()
         }
     }
 
@@ -157,9 +158,9 @@ final class HoldsViewModel: ObservableObject {
 
     private func updateFeed(_ account: Account) {
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
-        AccountsManager.shared.currentAccount = account
+        accountsManager.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
 
@@ -167,7 +168,7 @@ final class HoldsViewModel: ObservableObject {
     }
 
     var openSearchDescription: TPPOpenSearchDescription {
-        let title = NSLocalizedString("Search Holds", comment: "")
+        let title = NSLocalizedString("Search Reservations", comment: "")
         let books = allBooks
         return TPPOpenSearchDescription(title: title, books: books)
     }

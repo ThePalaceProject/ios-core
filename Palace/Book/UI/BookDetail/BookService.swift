@@ -6,7 +6,7 @@ import PalaceAudiobookToolkit
 enum BookService {
     private static var openingBooks = Set<String>()
 
-    static func open(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
+    static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, onFinish: (() -> Void)? = nil) {
 
         // Prevent multiple simultaneous opens of the same book
         guard !openingBooks.contains(book.identifier) else {
@@ -16,7 +16,7 @@ enum BookService {
         }
 
         openingBooks.insert(book.identifier)
-        let resolvedBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) ?? book
+        let resolvedBook = bookRegistry.book(forIdentifier: book.identifier) ?? book
 
         openAfterTokenRefresh(resolvedBook, onFinish: onFinish)
     }
@@ -46,7 +46,7 @@ enum BookService {
 
             guard let username = userAccount.username, !username.isEmpty,
                   let password = userAccount.PIN, !password.isEmpty,
-                  let tokenURL = userAccount.authDefinition?.tokenURL else {
+                  let _ = userAccount.authDefinition?.tokenURL else {
                 Log.error(#file, "Cannot refresh token: missing or empty credentials (usernameLen=\(userAccount.username?.count ?? -1), pinLen=\(userAccount.PIN?.count ?? -1), tokenURL=\(authDef?.tokenURL?.absoluteString ?? "nil"))")
                 openingBooks.remove(book.identifier)
                 showAudiobookTryAgainError(book: book, onFinish: onFinish)
@@ -468,7 +468,7 @@ enum BookService {
                     AudiobookSessionManager.shared.updateCoverImage(lowRes)
                 }
                 Task {
-                    guard let img = await TPPBookCoverRegistry.shared.playerCoverImage(for: book) else { return }
+                    guard let img = await TPPBookCoverRegistry.shared.coverImage(for: book) else { return }
                     await MainActor.run {
                         playbackModel.updateCoverImageAnimated(img)
                         AudiobookSessionManager.shared.updateCoverImage(img)

@@ -112,9 +112,14 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Emits errors for UI display
     public let errorPublisher = PassthroughSubject<AudiobookSessionError, Never>()
 
+    private let bookRegistry: TPPBookRegistryProvider
+    private let accountsManager: AccountsManager
+
     // MARK: - Initialization
 
-    private init() {
+    private init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, accountsManager: AccountsManager = AccountsManager.shared) {
+        self.bookRegistry = bookRegistry
+        self.accountsManager = accountsManager
         Log.info(#file, "AudiobookSessionManager initialized")
         nowPlayingCoordinator = NowPlayingCoordinator()
         // Note: Remote commands are handled by the toolkit's MediaControlPublisher
@@ -412,7 +417,7 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         // Check book state
-        let bookState = TPPBookRegistry.shared.state(for: book.identifier)
+        let bookState = bookRegistry.state(for: book.identifier)
         if bookState == .unregistered || bookState == .downloadNeeded {
             return .notDownloaded
         }
@@ -428,7 +433,7 @@ public final class AudiobookSessionManager: ObservableObject {
     }
 
     private func isUserAuthenticated() -> Bool {
-        guard let account = AccountsManager.shared.currentAccount else {
+        guard let account = accountsManager.currentAccount else {
             return false
         }
 

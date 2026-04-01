@@ -1,0 +1,270 @@
+name: UI Tests
+on:
+  workflow_dispatch:
+    inputs:
+      test_plan:
+        description: 'Test plan to run'
+        required: true
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - tier1
+          - full
+      device:
+        description: 'Simulator device name'
+        required: false
+        default: 'iPhone 16 Pro'
+        type: string
+
+concurrency:
+  group: ui-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-test:
+    runs-on: macos-26
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Set up Xcode 26
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26'
+
+      - name: Verify Xcode Version
+        run: xcodebuild -version
+
+      - name: Checkout main repo and submodules
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            SourcePackages
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Cache Xcode DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-deriveddata-uitest-${{ hashFiles('**/*.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            ${{ runner.os }}-deriveddata-uitest-
+            ${{ runner.os }}-deriveddata-
+
+      - name: Checkout Certificates
+        uses: actions/checkout@v3
+        with:
+          repository: ThePalaceProject/mobile-certificates
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          path: ./mobile-certificates
+
+      - name: Checkout Adobe RMSDK
+        uses: ./.github/actions/checkout-adobe
+        with:
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
+      - name: Setup repo with DRM
+        run: ./scripts/setup-repo-drm.sh
+        env:
+          BUILD_CONTEXT: ci
+
+      - name: Build non-Carthage 3rd party dependencies
+        run: ./scripts/build-3rd-party-dependencies.sh
+        env:
+          BUILD_CONTEXT: ci
+
+      - name: Find suitable simulator
+        id: simulator
+        run: |
+          DEVICE="${{ inputs.device }}"
+          echo "Looking for simulator: $DEVICE"
+
+          # List available simulators
+          xcrun simctl list devices available | grep iPhone | head -10
+
+          # Find the UDID for the requested device
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          target = '$DEVICE'
+          for runtime, devices in data.get('devices', {}).items():
+              if 'iOS' not in runtime:
+                  continue
+              for d in devices:
+                  if d['name'] == target and d['isAvailable']:
+                      print(d['udid'])
+                      sys.exit(0)
+          # Fallback: pick first available iPhone
+          for runtime, devices in data.get('devices', {}).items():
+              if 'iOS' not in runtime:
+                  continue
+              for d in devices:
+                  if 'iPhone' in d['name'] and d['isAvailable']:
+                      print(d['udid'])
+                      sys.exit(0)
+          sys.exit(1)
+          ")
+
+          echo "Found simulator UDID: $UDID"
+          echo "udid=$UDID" >> $GITHUB_OUTPUT
+
+      - name: Boot simulator
+        run: |
+          xcrun simctl boot "${{ steps.simulator.outputs.udid }}" 2>/dev/null || true
+          xcrun simctl bootstatus "${{ steps.simulator.outputs.udid }}" -b
+
+      - name: Resolve test plan targets
+        id: plan
+        run: |
+          PLAN="${{ inputs.test_plan }}"
+          case "$PLAN" in
+            smoke)
+              echo "skip_testing=" >> $GITHUB_OUTPUT
+              echo "only_testing=PalaceUITests/SmokeTests" >> $GITHUB_OUTPUT
+              ;;
+            tier1)
+              echo "skip_testing=" >> $GITHUB_OUTPUT
+              echo "only_testing=PalaceUITests/SmokeTests,PalaceUITests/NavigationTests,PalaceUITests/BookDetailTests" >> $GITHUB_OUTPUT
+              ;;
+            full)
+              echo "skip_testing=" >> $GITHUB_OUTPUT
+              echo "only_testing=" >> $GITHUB_OUTPUT
+              ;;
+          esac
+          echo "Running test plan: $PLAN"
+
+      - name: Build for testing
+        id: build
+        timeout-minutes: 25
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project Palace.xcodeproj \
+            -scheme Palace \
+            -destination "id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath DerivedData \
+            -quiet \
+            2>&1 | tee build-for-testing.log
+        env:
+          BUILD_CONTEXT: ci
+
+      - name: Run XCUITests
+        id: tests
+        timeout-minutes: 45
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          rm -rf UITestResults.xcresult
+
+          ONLY_TESTING="${{ steps.plan.outputs.only_testing }}"
+          TEST_ARGS=""
+          if [ -n "$ONLY_TESTING" ]; then
+            IFS=',' read -ra TARGETS <<< "$ONLY_TESTING"
+            for target in "${TARGETS[@]}"; do
+              TEST_ARGS="$TEST_ARGS -only-testing:$target"
+            done
+          fi
+
+          xcodebuild test-without-building \
+            -project Palace.xcodeproj \
+            -scheme Palace \
+            -destination "id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath DerivedData \
+            -resultBundlePath UITestResults.xcresult \
+            $TEST_ARGS \
+            2>&1 | tee ui-test-run.log
+
+      - name: Parse test results
+        if: always()
+        id: parse_results
+        run: |
+          echo "tests=0" >> $GITHUB_OUTPUT
+          echo "passed=0" >> $GITHUB_OUTPUT
+          echo "failed=0" >> $GITHUB_OUTPUT
+          echo "duration=unknown" >> $GITHUB_OUTPUT
+
+          if [ ! -d "UITestResults.xcresult" ]; then
+            echo "No xcresult bundle found"
+            exit 0
+          fi
+
+          echo "=== Test Results Summary ==="
+          xcrun xcresulttool get test-results summary \
+            --path UITestResults.xcresult 2>/dev/null | head -50 || echo "Could not get summary"
+
+          # Use parse script if available
+          if [ -f "scripts/parse-xcresult.py" ]; then
+            python3 scripts/parse-xcresult.py UITestResults.xcresult --json ui-test-data.json || true
+          fi
+
+      - name: Generate step summary
+        if: always()
+        run: |
+          PLAN="${{ inputs.test_plan }}"
+          DEVICE="${{ inputs.device }}"
+          OUTCOME="${{ steps.tests.outcome }}"
+
+          echo "## UI Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Plan | $PLAN |" >> $GITHUB_STEP_SUMMARY
+          echo "| Device | $DEVICE |" >> $GITHUB_STEP_SUMMARY
+          echo "| Outcome | $OUTCOME |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$OUTCOME" = "success" ]; then
+            echo "### All UI tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Some UI tests failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Check the **ui-test-results** artifact for details." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Capture screenshots on failure
+        if: always()
+        run: |
+          mkdir -p ui-test-screenshots
+          # Collect screenshots from simulator
+          find ~/Library/Developer/CoreSimulator -name "*.png" -path "*tmp*" -type f 2>/dev/null | head -50 | while read -r file; do
+            cp "$file" ui-test-screenshots/ 2>/dev/null || true
+          done
+          COUNT=$(ls -1 ui-test-screenshots/*.png 2>/dev/null | wc -l | tr -d ' ')
+          echo "Captured $COUNT screenshots"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results
+          path: |
+            UITestResults.xcresult
+            ui-test-data.json
+            ui-test-run.log
+            build-for-testing.log
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-screenshots
+          path: ui-test-screenshots/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Fail if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1

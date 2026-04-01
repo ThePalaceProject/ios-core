@@ -80,7 +80,14 @@ protocol AccountLogoDelegate: AnyObject {
 
         let samlIdps: [OPDS2SamlIDP]?
         let oidcAuthenticationUrl: URL?
-        let oidcEndSessionUrl: URL?
+        /// Raw href from the OIDC auth document's "logout" rel link.
+        /// May be a plain URL or an RFC 6570 URI template — check
+        /// `oidcLogoutHrefIsTemplated` before expanding.
+        let oidcLogoutHref: String?
+        /// True when the "logout" link has `"templated": true` in the
+        /// auth document, indicating `oidcLogoutHref` is an RFC 6570
+        /// URI template that must be expanded before use.
+        let oidcLogoutHrefIsTemplated: Bool?
 
         init(auth: OPDS2AuthenticationDocument.Authentication) {
             let authType = AuthType.from(auth.type)
@@ -102,7 +109,8 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
 
             case .oauthIntermediary:
                 oauthIntermediaryUrl = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
@@ -111,7 +119,8 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
 
             case .saml:
                 samlIdps = auth.links?.filter { $0.rel == "authenticate" }.compactMap { OPDS2SamlIDP(opdsLink: $0) }
@@ -120,11 +129,14 @@ protocol AccountLogoDelegate: AnyObject {
                 coppaOverUrl = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
 
             case .oidc:
                 oidcAuthenticationUrl = URL(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
-                oidcEndSessionUrl = URL(string: auth.links?.first(where: { $0.rel == "sign-out" })?.href ?? "")
+                let logoutLink = auth.links?.first(where: { $0.rel == "logout" })
+                oidcLogoutHref = logoutLink?.href
+                oidcLogoutHrefIsTemplated = logoutLink?.templated
                 oauthIntermediaryUrl = nil
                 coppaUnderUrl = nil
                 coppaOverUrl = nil
@@ -138,7 +150,8 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
             case .token:
                 tokenURL = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
                 oauthIntermediaryUrl = nil
@@ -146,9 +159,20 @@ protocol AccountLogoDelegate: AnyObject {
                 coppaOverUrl = nil
                 samlIdps = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
 
             }
+
+            // Log every link the server sends for this auth type so that rel
+            // values and href formats are visible in the console at parse time.
+            // This makes server contract mismatches (wrong rel, URI templates,
+            // unexpected fields) immediately observable during development.
+            let linkSummary = auth.links?
+                .map { "[\($0.rel ?? "no-rel"): \($0.href ?? "no-href")]" }
+                .joined(separator: ", ")
+                ?? "none"
+            Log.debug(#file, "Authentication[\(auth.type ?? "unknown")] links: \(linkSummary)")
         }
 
         var needsAuth: Bool {
@@ -214,7 +238,8 @@ protocol AccountLogoDelegate: AnyObject {
             samlIdps = authentication.samlIdps
             tokenURL = authentication.tokenURL
             oidcAuthenticationUrl = authentication.oidcAuthenticationUrl
-            oidcEndSessionUrl = authentication.oidcEndSessionUrl
+            oidcLogoutHref = authentication.oidcLogoutHref
+            oidcLogoutHrefIsTemplated = authentication.oidcLogoutHrefIsTemplated
         }
     }
 

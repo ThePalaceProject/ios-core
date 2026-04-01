@@ -13,7 +13,7 @@ class UIColor_NYPLAdditionsTests: XCTestCase {
     func testExample() throws {
         let color = UIColor(red: 0.65, green: 0.23, blue: 0.8, alpha: 0.4)
 
-        XCTAssertEqual(color.javascriptHexString(), "#A63BCC")
+        XCTAssertEqual(color.javascriptHexString, "#A63BCC")
     }
 
 }

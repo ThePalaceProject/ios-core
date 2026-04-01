@@ -55,10 +55,12 @@ public final class PlaybackBootstrapper {
     private var isInitialized = false
     private var commandTargets: [Any] = []
     private let commandCenter = MPRemoteCommandCenter.shared()
+    private let bookRegistry: TPPBookRegistryProvider
 
     // MARK: - Initialization
 
-    private init() {
+    private init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        self.bookRegistry = bookRegistry
         Log.info(#file, "🚀 PlaybackBootstrapper created - app launch context")
 
         // Log the launch context for debugging cold start issues
@@ -153,7 +155,7 @@ public final class PlaybackBootstrapper {
         // CRITICAL: Load book registry from disk for CarPlay cold starts
         // Just accessing TPPBookRegistry.shared creates the singleton but doesn't load data
         // We must explicitly call load() to read books from disk
-        TPPBookRegistry.shared.load()
+        (bookRegistry as? TPPBookRegistry)?.load()
 
         // Full initialization if not done yet
         ensureInitialized()

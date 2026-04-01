@@ -52,10 +52,16 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     }
 
     private let notificationCenter = UNUserNotificationCenter.current()
+    private let accountsManager: AccountsManager
+    private let networkExecutor: TPPNetworkExecutor
+    private let bookRegistry: TPPBookRegistry
 
     static let shared = NotificationService()
 
     override init() {
+        self.accountsManager = .shared
+        self.networkExecutor = .shared
+        self.bookRegistry = TPPBookRegistry.shared
         super.init()
 
         // Update library token when the user changes library account.
@@ -113,7 +119,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             return
         }
         let request = URLRequest(url: requestUrl, applyingCustomUserAgent: true)
-        _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { _, response, error in
+        _ = networkExecutor.addBearerAndExecute(request) { _, response, error in
             let status = (response as? HTTPURLResponse)?.statusCode
             // Token exists if status code is 200, doesn't exist if 404.
             switch status {
@@ -134,7 +140,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         request.httpMethod = "PUT"
         request.httpBody = requestBody
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { _, response, error in
+        _ = networkExecutor.addBearerAndExecute(request) { _, response, error in
             if let error = error {
                 TPPErrorLogger.logError(error,
                                         summary: "Couldn't upload token data",
@@ -152,12 +158,12 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     ///
     /// Update token when user account changes
     func updateToken() {
-        guard !(AccountsManager.shared.currentAccount?.hasUpdatedToken ?? false) else {
+        guard !(accountsManager.currentAccount?.hasUpdatedToken ?? false) else {
             return
         }
 
-        AccountsManager.shared.currentAccount?.hasUpdatedToken = true
-        AccountsManager.shared.currentAccount?.getProfileDocument { profileDocument in
+        accountsManager.currentAccount?.hasUpdatedToken = true
+        accountsManager.currentAccount?.getProfileDocument { profileDocument in
             guard let endpointHref = profileDocument?.linksWith(.deviceRegistration).first?.href,
                   let endpointUrl = URL(string: endpointHref)
             else {
@@ -183,7 +189,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         request.httpMethod = "DELETE"
         request.httpBody = requestBody
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        _ = TPPNetworkExecutor.shared.addBearerAndExecute(request) { _, response, error in
+        _ = networkExecutor.addBearerAndExecute(request) { _, response, error in
             if let error = error {
                 TPPErrorLogger.logError(error,
                                         summary: "Couldn't delete token data",
@@ -241,8 +247,10 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         let userInfo = response.notification.request.content.userInfo
         let isHoldNotification = isHoldRelatedNotification(userInfo)
 
-        // Force sync on hold notification tap (server may send notification before loan is ready)
-        syncWithThrottle(forceSync: isHoldNotification) { [weak self] errorDocument, newBooks in
+        // Sync to fetch fresh data from server
+        // Uses throttle shared with applicationDidBecomeActive to avoid duplicate syncs
+        // Note: Server may send notifications before OPDS feed reflects availability
+        syncWithThrottle { [weak self] errorDocument, newBooks in
             if let errorDocument = errorDocument {
                 Log.error(#file, "[Notification] Sync failed: \(errorDocument)")
             } else {
@@ -254,7 +262,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         // Navigate to Holds tab for hold-related notifications
         if isHoldNotification {
             Task { @MainActor in
-                guard let currentAccount = AccountsManager.shared.currentAccount,
+                guard let currentAccount = self.accountsManager.currentAccount,
                       currentAccount.details?.supportsReservations == true else {
                     Log.warn(#file, "[Notification] Cannot navigate to Holds - account doesn't support reservations")
                     completionHandler()
@@ -279,26 +287,28 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
     /// Syncs the book registry with throttling to prevent redundant network calls.
     /// Uses the same throttle as applicationDidBecomeActive to coordinate syncs.
-    /// - Parameter forceSync: Bypasses throttle (e.g. when user taps a hold notification).
-    private func syncWithThrottle(forceSync: Bool = false, completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
+    private func syncWithThrottle(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
+        // Skip if user isn't authenticated
         guard TPPUserAccount.sharedAccount().hasCredentials() else {
             completion?(nil, false)
             return
         }
 
+        // Check throttle
         let lastSync = UserDefaults.standard.double(forKey: Self.lastSyncTimestampKey)
         let now = Date().timeIntervalSince1970
 
-        guard forceSync || (now - lastSync) > Self.syncThrottleSeconds else {
+        guard (now - lastSync) > Self.syncThrottleSeconds else {
             Log.debug(#file, "[Notification Sync] Skipped - synced recently")
             completion?(nil, false)
             return
         }
 
+        // Update timestamp before sync to prevent concurrent triggers
         UserDefaults.standard.set(now, forKey: Self.lastSyncTimestampKey)
 
-        Log.info(#file, "[Notification Sync] Starting sync (forced: \(forceSync))")
-        TPPBookRegistry.shared.sync(completion: completion)
+        Log.info(#file, "[Notification Sync] Starting sync")
+        bookRegistry.sync(completion: completion)
     }
 
     // MARK: - Notification Classification
@@ -339,14 +349,14 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
     /// Logs current held books state for debugging availability sync issues
     private func logHeldBooksState() {
-        let heldBooks = TPPBookRegistry.shared.heldBooks
+        let heldBooks = bookRegistry.heldBooks
         Log.info(#file, "[Notification] Held books count: \(heldBooks.count)")
 
         for book in heldBooks {
             var status = "unknown"
             var position: UInt = 0
 
-            book.defaultAcquisition?.availability.matchUnavailable(
+            book.defaultAcquisition?.availability.match(unavailable: 
                 { _ in status = "unavailable" },
                 limited: { _ in status = "limited" },
                 unlimited: { _ in status = "unlimited" },
@@ -390,7 +400,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         var holdPosition: UInt = 0
 
         let oldAvail = cachedRecord.book.defaultAcquisition?.availability
-        oldAvail?.matchUnavailable(
+        oldAvail?.match(unavailable: 
             { _ in oldStatus = "unavailable" },
             limited: { _ in oldStatus = "limited" },
             unlimited: { _ in oldStatus = "unlimited" },
@@ -403,7 +413,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         )
 
         let newAvail = newBook.defaultAcquisition?.availability
-        newAvail?.matchUnavailable(
+        newAvail?.match(unavailable: 
             { _ in newStatus = "unavailable" },
             limited: { _ in newStatus = "limited" },
             unlimited: { _ in newStatus = "unlimited" },
@@ -432,7 +442,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     class func updateAppIconBadge(heldBooks: [TPPBook]) {
         var readyCount = 0
         for book in heldBooks {
-            book.defaultAcquisition?.availability.matchUnavailable(
+            book.defaultAcquisition?.availability.match(unavailable: 
                 nil,
                 limited: nil,
                 unlimited: nil,

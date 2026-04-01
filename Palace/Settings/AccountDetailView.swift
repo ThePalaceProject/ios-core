@@ -17,10 +17,12 @@ struct AccountDetailView: View {
     /// When true, forces showing sign-in form even if user has stale credentials.
     /// Used when presenting for re-authentication (e.g., from borrow flow after 401).
     private let forceReauthMode: Bool
+    private let settings: TPPSettings
 
-    init(libraryAccountID: String, forceReauthMode: Bool = false) {
+    init(libraryAccountID: String, forceReauthMode: Bool = false, settings: TPPSettings = TPPSettings.shared) {
         _viewModel = StateObject(wrappedValue: AccountDetailViewModel(libraryAccountID: libraryAccountID))
         self.forceReauthMode = forceReauthMode
+        self.settings = settings
     }
 
     var body: some View {
@@ -35,13 +37,6 @@ struct AccountDetailView: View {
             })
             .onAppear {
                 viewModel.refreshSignInState()
-            }
-            .task {
-                if forceReauthMode,
-                   viewModel.selectedUserAccount.authState == .credentialsStale,
-                   viewModel.businessLogic.selectedAuthentication?.isOidc == true {
-                    viewModel.signIn()
-                }
             }
     }
 
@@ -67,11 +62,10 @@ struct AccountDetailView: View {
         let needsSignIn = !viewModel.isSignedIn
         let needsReauth = forceReauthMode && viewModel.selectedUserAccount.authState == .credentialsStale
 
-        let isBrowserBasedAuth = viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
-            viewModel.businessLogic.selectedAuthentication?.isSaml == true ||
-            viewModel.businessLogic.selectedAuthentication?.isOidc == true
+        let isOAuthOrSAML = viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
+            viewModel.businessLogic.selectedAuthentication?.isSaml == true
 
-        return (needsSignIn || needsReauth) && isBrowserBasedAuth
+        return (needsSignIn || needsReauth) && isOAuthOrSAML
     }
 
     // MARK: - Sign In Prompt View
@@ -83,7 +77,6 @@ struct AccountDetailView: View {
             signInMessageSection
             SectionSeparator()
             signInButtonSection
-            registrationLinkIfAvailable
             reportIssueLinkIfAvailable
             Spacer()
         }
@@ -102,7 +95,8 @@ struct AccountDetailView: View {
             Text(viewModel.libraryName)
                 .palaceFont(.headline)
                 .foregroundColor(.secondary)
-                .horizontallyCentered()
+
+            Spacer()
         }
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.vertical, Layout.verticalPaddingLarge)
@@ -131,15 +125,11 @@ struct AccountDetailView: View {
     private func samlIDPList(idps: [OPDS2SamlIDP]) -> some View {
         VStack(spacing: Layout.buttonIDPSpacing) {
             ForEach(idps, id: \.displayName) { idp in
-                HStack {
-                    ActionButtonView(
-                        title: Strings.Generic.signin,
-                        isLoading: viewModel.isLoading,
-                        action: { viewModel.selectSAMLIDP(idp) }
-                    )
-                    .frame(width: Layout.buttonWidth)
-                    Spacer()
-                }
+                ActionButtonView(
+                    title: Strings.Generic.signin,
+                    isLoading: viewModel.isLoading,
+                    action: { viewModel.selectSAMLIDP(idp) }
+                )
             }
         }
         .padding(.horizontal, Layout.horizontalPadding)
@@ -149,15 +139,11 @@ struct AccountDetailView: View {
     }
 
     private var singleSignInButton: some View {
-        HStack {
-            ActionButtonView(
-                title: Strings.Generic.signin,
-                isLoading: viewModel.isLoading,
-                action: { viewModel.signIn() }
-            )
-            .frame(width: Layout.buttonWidth)
-            Spacer()
-        }
+        ActionButtonView(
+            title: Strings.Generic.signin,
+            isLoading: viewModel.isLoading,
+            action: { viewModel.signIn() }
+        )
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.top, Layout.verticalPaddingLarge)
         // Force view refresh when isLoading changes
@@ -167,13 +153,14 @@ struct AccountDetailView: View {
     @ViewBuilder
     private var registrationLinkIfAvailable: some View {
         if viewModel.businessLogic.registrationIsPossible() {
-            Button(action: { viewModel.openRegistration() }) {
-                Text(DisplayStrings.signUpForCard)
-                    .foregroundColor(Color(TPPConfiguration.mainColor()))
-                    .horizontallyCentered()
-            }
+            ActionButtonView(
+                title: DisplayStrings.signUpForCard,
+                isLoading: false,
+                style: .secondary,
+                action: { viewModel.openRegistration() }
+            )
             .padding(.horizontal, Layout.horizontalPadding)
-            .padding(.top, Layout.verticalPaddingLarge)
+            .padding(.top, Layout.verticalPaddingMedium)
         }
     }
 
@@ -225,8 +212,6 @@ struct AccountDetailView: View {
             }
         }
         .listStyle(GroupedListStyle())
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Strings.Generic.accountSettingsRegion)
     }
 
     @ViewBuilder
@@ -255,9 +240,13 @@ struct AccountDetailView: View {
 
             Spacer()
         }
-        .padding(.vertical, Layout.verticalPaddingSmall)
         .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets())
+        .listRowInsets(EdgeInsets(
+            top: Layout.verticalPaddingSmall,
+            leading: Layout.horizontalPadding,
+            bottom: Layout.verticalPaddingSmall,
+            trailing: Layout.horizontalPadding
+        ))
     }
 
     @ViewBuilder
@@ -426,7 +415,7 @@ struct AccountDetailView: View {
 
             Spacer()
 
-            if TPPSettings.shared.userPresentedAgeCheck {
+            if settings.userPresentedAgeCheck {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(.green)
                     .accessibilityLabel(NSLocalizedString("Verified", comment: "Age check verified"))
@@ -434,7 +423,7 @@ struct AccountDetailView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if !TPPSettings.shared.userPresentedAgeCheck {
+            if !settings.userPresentedAgeCheck {
                 viewModel.performAgeCheck()
             }
         }

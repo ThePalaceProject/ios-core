@@ -102,7 +102,7 @@ struct NormalBookCell: View {
         .onAppear {
             // Initialize with current progress if downloading
             if isDownloading {
-                downloadProgress = MyBooksDownloadCenter.shared.downloadProgress(for: model.book.identifier)
+                downloadProgress = model.downloadCenter.downloadProgress(for: model.book.identifier)
             }
         }
     }
@@ -110,7 +110,7 @@ struct NormalBookCell: View {
     // MARK: - Download Progress Publisher
 
     private var downloadProgressPublisher: AnyPublisher<Double, Never> {
-        MyBooksDownloadCenter.shared.downloadProgressPublisher
+        model.downloadCenter.downloadProgressPublisher
             .filter { [model] (update: (String, Double)) in
                 update.0 == model.book.identifier
             }
@@ -142,12 +142,15 @@ struct NormalBookCell: View {
         if isDownloading {
             VStack(alignment: .leading, spacing: 2) {
                 if hasMeaningfulProgress {
+                    // Show progress bar when we have meaningful progress
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
+                            // Background track
                             RoundedRectangle(cornerRadius: 2)
                                 .fill(Color.secondary.opacity(0.2))
                                 .frame(height: 4)
 
+                            // Progress fill
                             RoundedRectangle(cornerRadius: 2)
                                 .fill(Color(TPPConfiguration.mainColor()))
                                 .frame(width: geometry.size.width * downloadProgress, height: 4)
@@ -155,18 +158,11 @@ struct NormalBookCell: View {
                     }
                     .frame(height: 4)
                 } else {
+                    // Show indeterminate spinner for initial checkout phase
                     ProgressView()
                         .scaleEffect(0.7)
                 }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Strings.DownloadAnnouncements.downloadingTitle(model.book.title))
-            .accessibilityValue(
-                hasMeaningfulProgress
-                    ? Strings.DownloadAnnouncements.percentComplete(Int(downloadProgress * 100))
-                    : Strings.BookCell.downloading
-            )
-            .accessibilityIdentifier( AccessibilityID.BookDetail.downloadProgress)
             .padding(.bottom, 4)
             .transition(.opacity.combined(with: .move(edge: .top)))
         } else if isDownloadFailed {
@@ -223,8 +219,10 @@ struct NormalBookCell: View {
     @ViewBuilder private var unreadImageView: some View {
         VStack {
             ImageProviders.MyBooksView.unreadBadge
+                .resizable()
                 .frame(width: 10, height: 10)
                 .foregroundColor(Color(TPPConfiguration.accentColor()))
+                .accessibilityHidden(true)
             Spacer()
         }
         .opacity(model.showUnreadIndicator ? 1.0 : 0.0)

@@ -27,7 +27,11 @@ import UIKit
      - Parameter error: An error. If the error contains a localizedDescription, that will be used for the alert message.
      - Returns: The alert controller to be presented.
      */
-    class func alert(title: String?, error: NSError?) -> UIAlertController {
+    class func alert(
+        title: String?,
+        error: NSError?,
+        activityTracker: ErrorActivityTracker = .shared
+    ) -> UIAlertController {
         // IMPORTANT: Log all errors that result in user-facing alerts
         // This ensures enhanced logging captures them
         if let error = error {
@@ -41,7 +45,7 @@ import UIKit
         // Track in the activity trail for error detail views
         Task {
             let msg = "Error alert: \(title ?? "Unknown") — \(error?.localizedDescription ?? "no error")"
-            await ErrorActivityTracker.shared.log(msg, category: .general)
+            await activityTracker.log(msg, category: .general)
         }
 
         var message = ""
@@ -240,33 +244,8 @@ import UIKit
                     completion?()
                     return
                 }
-                // Guard: VC may have a live transition coordinator (e.g. a push/pop
-                // animation still in flight) even when isBeingPresented is false.
-                // Presenting into an active transition causes UIKit to throw
-                // NSInternalInconsistencyException during the CA commit phase.
-                guard vc.transitionCoordinator == nil else {
-                    if retryCount < maxAlertRetries {
-                        Log.debug(#file, "Presenter has active transition coordinator, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
-                        retryPresentation(alertController: alertController, viewController: viewController,
-                                          animated: animated, completion: completion, retryCount: retryCount)
-                    } else {
-                        Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: presenter still has active transition")
-                        completion?()
-                    }
-                    return
-                }
-                guard !vc.isBeingPresented && !vc.isBeingDismissed else {
-                    if retryCount < maxAlertRetries {
-                        Log.debug(#file, "Presenter is in transition, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
-                        retryPresentation(alertController: alertController, viewController: viewController,
-                                          animated: animated, completion: completion, retryCount: retryCount)
-                    } else {
-                        Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: presenter still in transition")
-                        completion?()
-                    }
-                    return
-                }
-                safePresent(alertController, on: vc, animated: animated, completion: completion)
+                vc.present(alertController, animated: animated, completion: completion)
+                if let msg = alertController.message { Log.info(#file, msg) }
             }
             return
         }
@@ -314,25 +293,6 @@ import UIKit
             guard top.isViewLoaded else {
                 Log.warn(#file, "Cannot present alert: view not loaded")
                 completion?()
-                return
-            }
-
-            // Guard: a live transition coordinator means a navigation push/pop or modal
-            // animation is still in-flight at the CALayer level, even if isBeingPresented
-            // is already false. Presenting into this window triggers UIKit's
-            // NSInternalInconsistencyException during _UIAfterCACommitBlock execution.
-            guard top.transitionCoordinator == nil else {
-                if retryCount < maxAlertRetries {
-                    Log.debug(#file, "Top controller has active transition coordinator, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
-                    retryPresentation(alertController: alertController, viewController: viewController,
-                                      animated: animated, completion: completion, retryCount: retryCount)
-                } else {
-                    Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: transition coordinator still active")
-                    if let msg = alertController.message {
-                        Log.warn(#file, "Dropped alert with message: \(msg)")
-                    }
-                    completion?()
-                }
                 return
             }
 
@@ -387,30 +347,14 @@ import UIKit
                     return
                 }
 
-                safePresent(alertController, on: presented, animated: animated, completion: completion)
+                // Present on top of the presented view controller
+                presented.present(alertController, animated: animated, completion: completion)
+                if let msg = alertController.message { Log.info(#file, msg) }
             } else {
-                safePresent(alertController, on: top, animated: animated, completion: completion)
+                top.present(alertController, animated: animated, completion: completion)
+                if let msg = alertController.message { Log.info(#file, msg) }
             }
         }
-    }
-
-    /// Presents an alert controller wrapped in ObjC exception handling.
-    /// UIKit can throw NSInternalInconsistencyException during animated transitions
-    /// when the view hierarchy is in an unexpected state (e.g. a VC that doesn't
-    /// contain an alert controller is asked for its contained alert controller).
-    private class func safePresent(_ alertController: UIAlertController,
-                                   on presenter: UIViewController,
-                                   animated: Bool,
-                                   completion: (() -> Void)?) {
-        let exception = TPPObjCExceptionCatcher.catchException {
-            presenter.present(alertController, animated: animated, completion: completion)
-        }
-        if let exception = exception {
-            Log.error(#file, "ObjC exception presenting alert: \(exception.name.rawValue) — \(exception.reason ?? "unknown")")
-            completion?()
-            return
-        }
-        if let msg = alertController.message { Log.info(#file, msg) }
     }
 
     /// Retries alert presentation after a short delay to allow transitions to complete.

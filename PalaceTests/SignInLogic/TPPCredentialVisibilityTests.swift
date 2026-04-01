@@ -28,7 +28,6 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
         drmAuthorizer = TPPDRMAuthorizingMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
@@ -217,7 +216,6 @@ final class TPPDRMFailureCredentialPreservationTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
         drmAuthorizer = TPPDRMAuthorizingMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
@@ -472,7 +470,6 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
         drmAuthorizer = TPPDRMAuthorizingMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
@@ -577,7 +574,6 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
         drmAuthorizer = TPPDRMAuthorizingMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
@@ -786,7 +782,6 @@ final class TPPCapturedCredentialsTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
         drmAuthorizer = TPPDRMAuthorizingMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()

@@ -23,12 +23,12 @@ import ReadiumStreamer
     var libraryService: LibraryService! = nil
     var readerModule: ReaderModuleAPI! = nil
 
-    override init() {
+    init(bookRegistry: TPPBookRegistry = .shared) {
         super.init()
         libraryService = LibraryService()
         readerModule = ReaderModule(delegate: self,
                                     resourcesServer: libraryService.httpServer,
-                                    bookRegistry: TPPBookRegistry.shared)
+                                    bookRegistry: bookRegistry)
 
         ReadiumEnableLog(withMinimumSeverityLevel: .debug)
     }

@@ -121,8 +121,8 @@ final class ReaderService {
 
     /// Creates an EPUB view controller from a publication (used by EPUBReaderView)
     @MainActor
-    func makeEPUBViewController(for publication: Publication, book: TPPBook, forSample: Bool) async throws -> UIViewController {
-        let bookRegistry = TPPBookRegistry.shared
+    func makeEPUBViewController(for publication: Publication, book: TPPBook, forSample: Bool, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) async throws -> UIViewController {
+        let bookRegistry = bookRegistry
 
         // Sync reading position with server before opening (shows "Stay or Move"
         // dialog when the server has a different position from another device).

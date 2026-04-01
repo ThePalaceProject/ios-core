@@ -144,7 +144,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     private func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: "org.thepalaceproject.palace.refresh", using: nil) { task in
-            self.handleAppRefresh(task: task as! BGAppRefreshTask)
+            guard let refreshTask = task as? BGAppRefreshTask else { return }
+            self.handleAppRefresh(task: refreshTask)
         }
     }
 
@@ -374,7 +375,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     /// Creates and returns the app's root view controller
     func createRootViewController() -> UIViewController {
+        let container = AppContainer()
         let root = AppTabHostView()
+            .environment(\.appContainer, container)
         return UIHostingController(rootView: root)
     }
 
@@ -385,12 +388,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         UINavigationBar.appearance().tintColor = TPPConfiguration.iconColor()
 
-        if let defaultAppearance = TPPConfiguration.defaultAppearance() {
-            UINavigationBar.appearance().standardAppearance = defaultAppearance
-            UINavigationBar.appearance().compactAppearance = defaultAppearance
-            UINavigationBar.appearance().scrollEdgeAppearance = defaultAppearance
-            UINavigationBar.appearance().compactScrollEdgeAppearance = defaultAppearance
-        }
+        let defaultAppearance = TPPConfiguration.defaultAppearance()
+        UINavigationBar.appearance().standardAppearance = defaultAppearance
+        UINavigationBar.appearance().compactAppearance = defaultAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = defaultAppearance
+        UINavigationBar.appearance().compactScrollEdgeAppearance = defaultAppearance
     }
 }
 
@@ -537,20 +539,20 @@ final class MemoryPressureMonitor {
 
     /// Proactively cleans up caches based on severity
     private func proactiveCacheCleanup(severity: CleanupSeverity) async {
-        monitorQueue.async {
-            switch severity {
-            case .high:
-                // Aggressive cleanup
-                URLCache.shared.removeAllCachedResponses()
-                TPPNetworkExecutor.shared.clearCache()
+        switch severity {
+        case .high:
+            // Aggressive cleanup
+            URLCache.shared.removeAllCachedResponses()
+            TPPNetworkExecutor.shared.clearCache()
+            await MainActor.run {
                 MyBooksDownloadCenter.shared.pauseAllDownloads()
-                Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
-
-            case .medium:
-                // Moderate cleanup - just network caches
-                URLCache.shared.removeAllCachedResponses()
-                Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
             }
+            Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
+
+        case .medium:
+            // Moderate cleanup - just network caches
+            URLCache.shared.removeAllCachedResponses()
+            Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
         }
     }
 
@@ -564,10 +566,11 @@ final class MemoryPressureMonitor {
             URLCache.shared.removeAllCachedResponses()
             TPPNetworkExecutor.shared.clearCache()
 
-            MyBooksDownloadCenter.shared.pauseAllDownloads()
+            DispatchQueue.main.async {
+                MyBooksDownloadCenter.shared.pauseAllDownloads()
+            }
 
             self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
-
         }
     }
 

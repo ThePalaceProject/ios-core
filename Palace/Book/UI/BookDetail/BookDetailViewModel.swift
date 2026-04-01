@@ -78,7 +78,8 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Dependencies
 
     let registry: TPPBookRegistryProvider
-    let downloadCenter = MyBooksDownloadCenter.shared
+    let downloadCenter: MyBooksDownloadCenter
+    private let accountsManager: AccountsManager
     private var cancellables = Set<AnyCancellable>()
 
     // Note: audiobook management moved to BookService
@@ -106,9 +107,11 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     /// Initializer with dependency injection for testing
-    init(book: TPPBook, registry: TPPBookRegistryProvider) {
+    init(book: TPPBook, registry: TPPBookRegistryProvider, downloadCenter: MyBooksDownloadCenter = .shared, accountsManager: AccountsManager = .shared) {
         self.book = book
         self.registry = registry
+        self.downloadCenter = downloadCenter
+        self.accountsManager = accountsManager
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
@@ -135,7 +138,7 @@ final class BookDetailViewModel: ObservableObject {
         #if LCP
         if let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) {
             var lcpAudiobooks: LCPAudiobooks?
-            if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: bookIdentifier),
+            if let localURL = downloadCenter.fileUrl(for: bookIdentifier),
                FileManager.default.fileExists(atPath: localURL.path) {
                 lcpAudiobooks = LCPAudiobooks(for: localURL)
             } else {
@@ -463,7 +466,7 @@ final class BookDetailViewModel: ObservableObject {
         }
     }
 
-    private func removeProcessingButton(_ button: BookButtonType) {
+    func removeProcessingButton(_ button: BookButtonType) {
         self.processingButtons.remove(button)
     }
 
@@ -476,11 +479,11 @@ final class BookDetailViewModel: ObservableObject {
     /// Ensures authentication document is loaded and handles sign-in if needed.
     private func ensureAuthAndExecute(_ action: @escaping () -> Void) {
         let businessLogic = TPPSignInBusinessLogic(
-            libraryAccountID: AccountsManager.shared.currentAccount?.uuid ?? "",
-            libraryAccountsProvider: AccountsManager.shared,
+            libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
+            libraryAccountsProvider: accountsManager,
             urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookRegistry: (registry as? TPPBookRegistrySyncing) ?? { preconditionFailure("registry must conform to TPPBookRegistrySyncing") }(),
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
@@ -750,7 +753,7 @@ final class BookDetailViewModel: ObservableObject {
         } else {
             let webController = BundledHTMLViewController(
                 fileURL: url,
-                title: AccountsManager.shared.currentAccount?.name ?? ""
+                title: accountsManager.currentAccount?.name ?? ""
             )
             top.present(webController, animated: true)
         }
@@ -901,10 +904,10 @@ extension BookDetailViewModel {
         }
     }
 
-    static func presentEndOfBookAlert(for book: TPPBook) {
+    static func presentEndOfBookAlert(for book: TPPBook, downloadCenter: MyBooksDownloadCenter = .shared) {
         let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
             forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-            allowedRelations: [.borrow, .generic],
+            allowedRelations: TPPOPDSAcquisitionRelationSetBorrow | TPPOPDSAcquisitionRelationSetGeneric,
             acquisitions: book.acquisitions
         )
 
@@ -912,7 +915,7 @@ extension BookDetailViewModel {
             let alert = TPPReturnPromptHelper.audiobookPrompt { returnWasChosen in
                 if returnWasChosen {
                     NavigationCoordinatorHub.shared.coordinator?.pop()
-                    MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+                    downloadCenter.returnBook(withIdentifier: book.identifier)
                 }
                 TPPAppStoreReviewPrompt.presentIfAvailable()
             }

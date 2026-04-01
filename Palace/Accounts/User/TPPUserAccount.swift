@@ -145,7 +145,6 @@ private enum StorageKey: String {
                     }
 
                     self.notifyAccountChange = true
-
                 }
 
                 if self.needsAgeCheck {
@@ -170,22 +169,15 @@ private enum StorageKey: String {
             var credentials = _credentials.read()
 
             if credentials == nil {
-                // if there are no credentials in memory, try to migrate from legacy storage keys
                 if let barcode = legacyBarcode, let pin = legacyPin {
-                    // barcode and pin was used previously
                     credentials = .barcodeAndPin(barcode: barcode, pin: pin)
-
-                    // remove legacy storage and save into new place
                     keychainTransaction.perform {
                         _credentials.write(credentials)
                         _barcode.write(nil)
                         _pin.write(nil)
                     }
                 } else if let authToken = legacyAuthToken {
-                    // auth token was used previously
                     credentials = .token(authToken: authToken, barcode: legacyBarcode, pin: legacyPin)
-
-                    // remove legacy storage and save into new place
                     keychainTransaction.perform {
                         _credentials.write(credentials)
                         _authToken.write(nil)
@@ -196,15 +188,9 @@ private enum StorageKey: String {
             return credentials
         }
         set {
-            guard let newValue = newValue else {
-                return
-            }
-
+            guard let newValue = newValue else { return }
             _credentials.write(newValue)
 
-            // make sure to set the barcode related to the current account (aka library)
-            // not the one we just signed in to, because we could have signed in into
-            // library A, but still browsing the catalog of library B.
             if case let .barcodeAndPin(barcode: userBarcode, pin: _) = newValue {
                 TPPErrorLogger.setUserID(userBarcode)
             }
@@ -214,11 +200,6 @@ private enum StorageKey: String {
     }
 
     class func sharedAccount() -> TPPUserAccount {
-        // Note: it's important to use `currentAccountId` instead of
-        // `currentAccount.uuid` because the former is immediately available
-        // (being saved into the UserDefaults) while the latter is only available
-        // after the app startup sequence is complete (i.e. authentication
-        // document has been loaded.
         return sharedAccount(libraryUUID: AccountsManager.shared.currentAccountId)
     }
 
@@ -237,12 +218,9 @@ private enum StorageKey: String {
     }
 
     private func notifyAccountDidChange() {
-        // Update modern Combine publisher
         Task { @MainActor in
             UserAccountPublisher.shared.updateState(from: self)
         }
-
-        // Maintain backward compatibility with legacy notification system
         NotificationCenter.default.post(
             name: Notification.Name.TPPUserAccountDidChange,
             object: self
@@ -298,57 +276,31 @@ private enum StorageKey: String {
         .keyForLibrary(uuid: libraryUUID)
         .asKeychainVariable(with: accountInfoQueue)
 
-    // MARK: - Check
+    // MARK: - Check (delegates to UserAccountAuthHelper)
 
     func hasBarcodeAndPIN() -> Bool {
-        if let credentials = credentials, case TPPCredentials.barcodeAndPin = credentials {
-            return true
-        }
-        return false
+        UserAccountAuthHelper.hasBarcodeAndPIN(credentials: credentials)
     }
 
     func hasAuthToken() -> Bool {
-        if let credentials = credentials, case TPPCredentials.token = credentials {
-            return true
-        }
-        return false
+        UserAccountAuthHelper.hasAuthToken(credentials: credentials)
     }
 
     func isTokenRefreshRequired() -> Bool {
-        guard let authDefinition = authDefinition else { return false }
-
-        if authDefinition.isToken {
-            guard authDefinition.tokenURL != nil,
-                  username != nil,
-                  pin != nil else {
-                return false
-            }
-
-            return authTokenHasExpired
-        }
-
-        let isOAuthAndNeedsRefresh = authDefinition.isOauth &&
-            !hasAuthToken() &&
-            (authDefinition.tokenURL != nil)
-
-        return (authTokenHasExpired || isOAuthAndNeedsRefresh) && hasCredentials()
+        UserAccountAuthHelper.isTokenRefreshRequired(
+            authDefinition: authDefinition,
+            credentials: credentials,
+            username: username,
+            pin: pin
+        )
     }
 
-    func hasAdobeToken() -> Bool {
-        return adobeToken != nil
-    }
+    func hasAdobeToken() -> Bool { adobeToken != nil }
+    func hasLicensor() -> Bool { licensor != nil }
+    func hasCredentials() -> Bool { UserAccountAuthHelper.hasCredentials(credentials) }
 
-    func hasLicensor() -> Bool {
-        return licensor != nil
-    }
-
-    func hasCredentials() -> Bool {
-        return hasAuthToken() || hasBarcodeAndPIN()
-    }
-
-    // Oauth requires login to load catalog
     var catalogRequiresAuthentication: Bool {
-        return authDefinition?.catalogRequiresAuthentication ?? false
+        UserAccountAuthHelper.catalogRequiresAuthentication(authDefinition: authDefinition)
     }
 
     // MARK: - Legacy
@@ -359,67 +311,14 @@ private enum StorageKey: String {
 
     // MARK: - GET
 
-    /// The barcode of this user; for NYPL, this is either an actual barcode
-    /// or a username.
-    /// You should be able to use either one as authentication with the
-    /// circulation manager and platform.nypl.org, because they both pass auth
-    /// information to the ILS, which is the source of truth. The ILS will
-    /// validate credentials the same whether the patron identifier is a
-    /// username or one of their barcodes. However, it's possible that some
-    /// features of platform.nypl.org will work if you give them a 14-digit
-    /// barcode but not a 7-letter username or a 16-digit NYC ID.
-    var barcode: String? {
-        guard let credentials = credentials else { return nil }
-
-        switch credentials {
-        case let TPPCredentials.barcodeAndPin(barcode: barcode, pin: _):
-            return barcode
-        case let TPPCredentials.token(_, barcode, _, _):
-            return barcode
-        default:
-            return nil
-        }
-    }
-
-    /// For any library but the NYPL, this identifier can be anything they want.
-    ///
-    /// For NYPL, this is *a* barcode, either a 14-digit NYPL-issued barcode, or
-    /// a 16-digit "NYC ID" barcode issued by New York City. It's in fact
-    /// possible for NYC residents to get a NYC ID and set that up **as a**
-    /// NYPL barcode, even if they already have a NYPL card. We use
-    /// authorization_identifier to mean the "number that's probably on the
-    ///  piece of plastic the patron uses as their library card".
-    /// - Note: A patron can have multiple barcodes, because patrons may lose
-    /// their library card and get a new one with a different barcode.
-    /// Authenticating with any of those barcodes should work.
-    /// - Note: This is NOT the unique ILS ID. That's internal-only and it's not
-    /// exposed to the public.
+    var barcode: String? { UserAccountAuthHelper.barcode(from: credentials) }
     var authorizationIdentifier: String? { _authorizationIdentifier.read() }
+    var PIN: String? { UserAccountAuthHelper.pin(from: credentials) }
 
-    var PIN: String? {
-        guard let credentials = credentials else { return nil }
-
-        switch credentials {
-        case let TPPCredentials.barcodeAndPin(barcode: _, pin: pin):
-            return pin
-        case let TPPCredentials.token(_, _, pin, _):
-            return pin
-        default:
-            return nil
-        }
-    }
-
-    var needsAuth: Bool {
-        let authType = authDefinition?.authType ?? .none
-        return authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token || authType == .oidc
-    }
-
-    var needsAgeCheck: Bool {
-        return authDefinition?.authType == .coppa
-    }
+    var needsAuth: Bool { UserAccountAuthHelper.needsAuth(authDefinition: authDefinition) }
+    var needsAgeCheck: Bool { UserAccountAuthHelper.needsAgeCheck(authDefinition: authDefinition) }
 
     var deviceID: String? { _deviceID.read() }
-    /// The user ID to use with Adobe DRM.
     var userID: String? { _userID.read() }
     var adobeVendor: String? { _adobeVendor.read() }
     var provider: String? { _provider.read() }
@@ -428,97 +327,29 @@ private enum StorageKey: String {
     var licensor: [String: Any]? { _licensor.read() }
     var cookies: [HTTPCookie]? { _cookies.read() }
 
-    /// The current authentication state of this account.
-    /// Computed based on stored auth state and credentials.
     var authState: TPPAccountAuthState {
-        // If we have stored auth state, use it
-        if let storedState = _authState.read() {
-            Log.debug(#file, "🔐 authState: storedState=\(storedState), hasCredentials=\(hasCredentials())")
-            // Validate: if state is loggedIn or credentialsStale but no credentials, reset to loggedOut
-            if storedState.hasStoredCredentials && !hasCredentials() {
-                Log.debug(#file, "🔐 authState: returning .loggedOut (no credentials but stored state has them)")
-                return .loggedOut
-            }
-            return storedState
-        }
-
-        // No stored state - derive from credentials
-        let derivedState: TPPAccountAuthState = hasCredentials() ? .loggedIn : .loggedOut
-        Log.debug(#file, "🔐 authState: no stored state, derived=\(derivedState)")
-        return derivedState
+        UserAccountAuthHelper.resolveAuthState(
+            storedState: _authState.read(),
+            hasCredentials: hasCredentials()
+        )
     }
 
-    var authToken: String? {
-        if let credentials = _credentials.read(),
-           case let TPPCredentials.token(authToken: token, barcode: _, pin: _, expirationDate: _) = credentials {
-            return token
-        }
-        return nil
-    }
+    var authToken: String? { UserAccountAuthHelper.authToken(from: _credentials.read()) }
 
     var authTokenHasExpired: Bool {
-        // Only return true if we HAVE a token and it's expired
-        // If we don't have a token at all, that's not "expired", it's just missing
-        guard let credentials = credentials,
-              case let TPPCredentials.token(authToken: _, barcode: _, pin: _, expirationDate: expirationDate) = credentials else {
-            return false  // No token = not expired
-        }
-
-        // Check if expiration date exists and is in the past
-        guard let expirationDate = expirationDate else {
-            return false  // No expiration = doesn't expire
-        }
-
-        return expirationDate <= Date()  // Expired if date is in the past
+        UserAccountAuthHelper.isTokenExpired(credentials: credentials)
     }
 
-    private enum TokenExpiry {
-        static let refreshThresholdSeconds: TimeInterval = 300  // 5 minutes
-    }
-
-    /// Returns true if the auth token exists and will expire within 5 minutes.
-    /// Use this for proactive token refresh before making requests.
     var authTokenNearExpiry: Bool {
-        guard let credentials = credentials,
-              case let TPPCredentials.token(authToken: _, barcode: _, pin: _, expirationDate: expirationDate) = credentials,
-              let expirationDate = expirationDate else {
-            return false
-        }
-
-        let expiryThreshold = Date().addingTimeInterval(TokenExpiry.refreshThresholdSeconds)
-        return expirationDate <= expiryThreshold
+        UserAccountAuthHelper.isTokenNearExpiry(credentials: credentials)
     }
 
     var patronFullName: String? {
-        if let patron = patron,
-           let name = patron["name"] as? [String: String] {
-            var fullname = ""
-
-            if let first = name["first"] {
-                fullname.append(first)
-            }
-
-            if let middle = name["middle"] {
-                if fullname.count > 0 {
-                    fullname.append(" ")
-                }
-                fullname.append(middle)
-            }
-
-            if let last = name["last"] {
-                if fullname.count > 0 {
-                    fullname.append(" ")
-                }
-                fullname.append(last)
-            }
-
-            return fullname.count > 0 ? fullname : nil
-        }
-
-        return nil
+        UserAccountAuthHelper.patronFullName(from: patron)
     }
 
     // MARK: - SET
+
     @objc(setBarcode:PIN:)
     func setBarcode(_ barcode: String, PIN: String) {
         credentials = .barcodeAndPin(barcode: barcode, pin: PIN)
@@ -530,7 +361,6 @@ private enum StorageKey: String {
             _adobeToken.write(token)
             _patron.write(patron)
         }
-
         notifyAccountDidChange()
     }
 
@@ -551,12 +381,6 @@ private enum StorageKey: String {
         _licensor.write(licensor)
     }
 
-    /// This authorization identifier is returned by the circulation manager
-    /// upon successful sign-in.
-    /// - parameter identifier: For NYPL, this can either be
-    /// a 14-digit NYPL-issued barcode, or a 16-digit "NYC ID"
-    /// barcode issued by New York City. For other libraries,
-    /// this can be any string they want.
     @objc(setAuthorizationIdentifier:)
     func setAuthorizationIdentifier(_ identifier: String) {
         _authorizationIdentifier.write(identifier)
@@ -588,7 +412,6 @@ private enum StorageKey: String {
         notifyAccountDidChange()
     }
 
-    /// - parameter id: The user ID to use for Adobe DRM.
     @objc(setUserID:)
     func setUserID(_ id: String) {
         _userID.write(id)
@@ -601,22 +424,16 @@ private enum StorageKey: String {
         notifyAccountDidChange()
     }
 
-    /// Sets the authentication state of the account.
-    /// - Parameter state: The new authentication state.
     func setAuthState(_ state: TPPAccountAuthState) {
         Log.debug(#file, "Auth state changing from \(authState) to \(state)")
         _authState.write(state)
 
-        // Update Combine publisher
         Task { @MainActor in
             UserAccountPublisher.shared.updateState(from: self)
         }
-
         notifyAccountDidChange()
     }
 
-    /// Marks the account credentials as stale (e.g., after receiving a 401).
-    /// This preserves Adobe DRM activation while signaling that re-authentication is needed.
     func markCredentialsStale() {
         guard authState == .loggedIn else {
             Log.debug(#file, "Cannot mark credentials stale - current state is \(authState)")
@@ -625,37 +442,24 @@ private enum StorageKey: String {
         setAuthState(.credentialsStale)
     }
 
-    /// Marks the account as fully logged in (e.g., after successful re-authentication).
     func markLoggedIn() {
         setAuthState(.loggedIn)
     }
 
     // MARK: - Cache Refresh
 
-    /// Forces a refresh of all cached credentials from keychain storage.
-    /// This is useful when credentials may have been updated by another component
-    /// or to verify that credentials were successfully persisted.
-    ///
-    /// - Returns: `true` if credentials were found after refresh, `false` otherwise.
     @discardableResult
     func refreshCredentialsFromKeychain() -> Bool {
         return accountInfoQueue.sync(flags: .barrier) {
-            // Invalidate caches and re-read from keychain without toggling
-            // libraryUUID. The old nil-toggle pattern caused EXC_BAD_ACCESS
-            // when swift_release_dealloc raced with concurrent property access.
-            updateKeychainKeys()
+            guard let uuid = libraryUUID else { return hasCredentials() }
+            libraryUUID = nil
+            libraryUUID = uuid
             return hasCredentials()
         }
     }
 
     // MARK: - Atomic Snapshot
 
-    /// A thread-safe snapshot of all credential-related state for a given library.
-    /// Reading multiple properties from the `TPPUserAccount` singleton outside of
-    /// a barrier is inherently racy because any background thread (e.g.
-    /// `TPPNetworkExecutor`) can call `sharedAccount(libraryUUID:)` between reads,
-    /// changing which library's keychain data the singleton points at.
-    /// Use `credentialSnapshot(for:)` to read everything atomically.
     struct CredentialSnapshot {
         let hasCredentials: Bool
         let hasAuthToken: Bool
@@ -664,77 +468,37 @@ private enum StorageKey: String {
         let pin: String?
     }
 
-    /// Atomically sets the singleton to the given library, refreshes all keychain
-    /// caches, and captures every credential-related property in a single barrier.
-    /// This eliminates race conditions where `libraryUUID` changes between reads.
     class func credentialSnapshot(for libraryUUID: String?) -> CredentialSnapshot {
         return shared.accountInfoQueue.sync(flags: .barrier) {
             if shared.libraryUUID != libraryUUID {
                 shared.libraryUUID = libraryUUID
             }
 
-            // Invalidate caches so the next read fetches fresh keychain data.
-            // The old nil-toggle pattern (set nil then restore) caused
-            // EXC_BAD_ACCESS in swift_release_dealloc.
-            shared.updateKeychainKeys()
+            if let uuid = shared.libraryUUID {
+                shared.libraryUUID = nil
+                shared.libraryUUID = uuid
+            }
 
             let creds = shared.credentials
-            let hasCreds = shared.hasCredentials()
-            let hasToken: Bool
-            if let creds = creds, case .token = creds {
-                hasToken = true
-            } else {
-                hasToken = false
-            }
-
-            let state: TPPAccountAuthState
-            if let stored = shared._authState.read() {
-                if stored.hasStoredCredentials && !hasCreds {
-                    state = .loggedOut
-                } else {
-                    state = stored
-                }
-            } else {
-                state = hasCreds ? .loggedIn : .loggedOut
-            }
-
-            var snapshotBarcode: String?
-            var snapshotPin: String?
-            if let creds = creds {
-                switch creds {
-                case let .barcodeAndPin(barcode: b, pin: p):
-                    snapshotBarcode = b
-                    snapshotPin = p
-                case let .token(_, barcode: b, pin: p, _):
-                    snapshotBarcode = b
-                    snapshotPin = p
-                default:
-                    break
-                }
-            }
+            let hasCreds = UserAccountAuthHelper.hasCredentials(creds)
+            let hasToken = UserAccountAuthHelper.hasAuthToken(credentials: creds)
+            let state = UserAccountAuthHelper.resolveAuthState(
+                storedState: shared._authState.read(),
+                hasCredentials: hasCreds
+            )
 
             return CredentialSnapshot(
                 hasCredentials: hasCreds,
                 hasAuthToken: hasToken,
                 authState: state,
-                barcode: snapshotBarcode,
-                pin: snapshotPin
+                barcode: UserAccountAuthHelper.barcode(from: creds),
+                pin: UserAccountAuthHelper.pin(from: creds)
             )
         }
     }
 
     // MARK: - Atomic Write
 
-    /// Performs all writes atomically within a single barrier, guaranteeing that
-    /// `libraryUUID` (and therefore all keychain keys) remains stable for the
-    /// duration of the block.
-    ///
-    /// Without this, a background thread (e.g. `TPPNetworkExecutor`) can call
-    /// `sharedAccount(libraryUUID:)` between individual writes, changing the
-    /// keys mid-operation and writing credentials to the wrong library. This was
-    /// the root cause of PP-3784.
-    ///
-    /// Subclasses (e.g. mocks) can override to skip the barrier when not needed.
     func atomicUpdate(for libraryUUID: String?,
                       _ block: (TPPUserAccount) -> Void) {
         accountInfoQueue.sync(flags: .barrier) {
@@ -770,13 +534,9 @@ private enum StorageKey: String {
             }
         }
 
-        // Post events after releasing the queue lock to prevent deadlock
-        // Update modern Combine publisher
         Task { @MainActor in
             UserAccountPublisher.shared.signOut()
         }
-
-        // Maintain backward compatibility with legacy notification system
         notifyAccountDidChange()
         NotificationCenter.default.post(name: Notification.Name.TPPDidSignOut, object: nil)
     }
