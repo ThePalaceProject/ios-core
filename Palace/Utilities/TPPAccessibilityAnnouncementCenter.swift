@@ -22,24 +22,20 @@ final class TPPAccessibilityAnnouncementCenter {
     private let postHandler: PostHandler
     private let isVoiceOverRunning: VoiceOverRunningProvider
     private let timeProvider: TimeProvider
-    private let progressStep: Int
     private let deduplicationInterval: TimeInterval
     private let lock = NSLock()
 
-    private var lastProgressBucketByKey: [String: Int] = [:]
     private var recentAnnouncements: [String: Date] = [:]
 
     init(
         postHandler: @escaping PostHandler = { UIAccessibility.post(notification: $0, argument: $1) },
         isVoiceOverRunning: @escaping VoiceOverRunningProvider = { UIAccessibility.isVoiceOverRunning },
         timeProvider: @escaping TimeProvider = { Date() },
-        progressStep: Int = 20,
         deduplicationInterval: TimeInterval = 2.0
     ) {
         self.postHandler = postHandler
         self.isVoiceOverRunning = isVoiceOverRunning
         self.timeProvider = timeProvider
-        self.progressStep = max(5, progressStep)
         self.deduplicationInterval = deduplicationInterval
     }
 
@@ -97,20 +93,6 @@ final class TPPAccessibilityAnnouncementCenter {
 
     func announceRetryingDownload(title: String) {
         announce(Strings.DownloadAnnouncements.retryingDownload(title))
-    }
-
-    // MARK: - Download Progress
-
-    func announceDownloadProgress(title: String, identifier: String, progress: Double) {
-        // Intermediate progress announcements are suppressed; only start and
-        // completion are announced so VoiceOver users are not interrupted while
-        // listening to a book.
-    }
-
-    func resetProgress(identifier: String) {
-        lock.lock()
-        lastProgressBucketByKey.removeValue(forKey: identifier)
-        lock.unlock()
     }
 
     // MARK: - Search Announcements (PP-3673)
@@ -181,28 +163,6 @@ final class TPPAccessibilityAnnouncementCenter {
         recentAnnouncements = recentAnnouncements.filter { _, time in
             now.timeIntervalSince(time) < deduplicationInterval
         }
-        return true
-    }
-
-    // MARK: - Progress Helpers
-
-    private func progressPercent(_ progress: Double) -> Int {
-        let clamped = max(0.0, min(1.0, progress))
-        return Int((clamped * 100.0).rounded(.down))
-    }
-
-    private func progressBucket(for percent: Int) -> Int {
-        guard percent > 0 else { return 0 }
-        return (percent / progressStep) * progressStep
-    }
-
-    private func shouldAnnounceProgress(identifier: String, bucket: Int) -> Bool {
-        guard bucket > 0 else { return false }
-        lock.lock()
-        defer { lock.unlock() }
-        let lastBucket = lastProgressBucketByKey[identifier] ?? -progressStep
-        guard bucket > lastBucket else { return false }
-        lastProgressBucketByKey[identifier] = bucket
         return true
     }
 }
