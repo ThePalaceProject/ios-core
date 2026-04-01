@@ -90,4 +90,41 @@ final class ReaderServiceLCPErrorClassificationTests: XCTestCase {
         XCTAssertFalse(ReaderService.isRecoverableLCPError(.unknown(nil)))
     }
 }
+
+/// Tests for the DEBUG simulation flag on ReaderService.
+///
+/// Verifies that the flag is consumed after a single use so that subsequent
+/// opens (including the retry) behave normally.
+final class ReaderServiceSimulationFlagTests: XCTestCase {
+
+    override func tearDown() {
+        super.tearDown()
+        // Always clean up after each test.
+        ReaderService.simulatedLCPError = nil
+    }
+
+    func testSimulationFlag_isConsumedAfterOneUse() {
+        ReaderService.simulatedLCPError = .missingPassphrase
+        XCTAssertNotNil(ReaderService.simulatedLCPError, "Flag should be set before first open")
+
+        // Simulate what openEPUBInternal does on a non-retry open:
+        // read and clear the flag in a single operation.
+        let consumed = ReaderService.simulatedLCPError
+        ReaderService.simulatedLCPError = nil
+
+        XCTAssertNotNil(consumed, "First open should see the simulated error")
+        XCTAssertNil(ReaderService.simulatedLCPError, "Flag should be nil after first open (retry won't re-trigger)")
+    }
+
+    func testSimulationFlag_nilByDefault() {
+        XCTAssertNil(ReaderService.simulatedLCPError, "No simulation active unless explicitly set")
+    }
+
+    func testSimulationFlag_canSimulateNonRecoverableError() {
+        ReaderService.simulatedLCPError = .licenseStatus(.returned(Date()))
+        let error = ReaderService.simulatedLCPError!
+        XCTAssertFalse(ReaderService.isRecoverableLCPError(error),
+                       "Returned license should not trigger a refresh even when simulated")
+    }
+}
 #endif

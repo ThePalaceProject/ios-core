@@ -10,6 +10,20 @@ final class ReaderService {
 
     private lazy var r3Owner: TPPR3Owner = TPPR3Owner()
 
+    #if DEBUG
+    /// Set to a non-nil `LCPError` before opening a book to simulate an LCP
+    /// failure on the first open attempt. Consumed after a single use so the
+    /// retry (or subsequent opens) behave normally.
+    ///
+    /// Usage in tests or the simulator:
+    /// ```swift
+    /// ReaderService.simulatedLCPError = .missingPassphrase
+    /// // now tap/call openEPUB — the retry path fires, re-fetches the license,
+    /// // and opens the book transparently (or shows the error after one retry)
+    /// ```
+    static var simulatedLCPError: LCPError? = nil
+    #endif
+
     private func topPresenter() -> UIViewController {
         guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
             return UIViewController()
@@ -26,6 +40,19 @@ final class ReaderService {
 
     @MainActor
     private func openEPUBInternal(_ book: TPPBook, isRetry: Bool) {
+        #if DEBUG
+        if !isRetry, let simulatedError = Self.simulatedLCPError {
+            Self.simulatedLCPError = nil
+            Log.info(#file, "DEBUG: simulating LCP open failure with \(simulatedError)")
+            presentOpenFailureAlert(
+                for: .openFailed(simulatedError),
+                book: book,
+                isRetry: false
+            )
+            return
+        }
+        #endif
+
         r3Owner.libraryService.openBook(book, sender: topPresenter()) { result in
             switch result {
             case .success(let publication):
