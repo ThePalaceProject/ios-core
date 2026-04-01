@@ -104,7 +104,7 @@ final class TPPXMLSwiftTests: XCTestCase {
       XCTFail("Failed to parse valid.xml")
       return
     }
-    let bars = root.children(withName: "bar") as? [TPPXML] ?? []
+    let bars = root.childrenWithName("bar")
     XCTAssertEqual(bars.count, 2, "Should find 2 'bar' children")
   }
 
@@ -116,7 +116,7 @@ final class TPPXMLSwiftTests: XCTestCase {
       XCTFail("Failed to parse valid.xml")
       return
     }
-    let result = root.children(withName: "nonexistent") as? [TPPXML] ?? []
+    let result = root.childrenWithName("nonexistent")
     XCTAssertTrue(result.isEmpty, "Non-existent child name should return empty array")
   }
 
@@ -168,8 +168,8 @@ final class TPPXMLSwiftTests: XCTestCase {
       return
     }
     // second bar has a="hello" b="goodbye"
-    let bars = root.children(withName: "bar") as? [TPPXML] ?? []
-    guard bars.count >= 2 else {
+    let bars = root.childrenWithName("bar")
+guard bars.count >= 2 else {
       XCTFail("Expected at least 2 bar children")
       return
     }
@@ -188,8 +188,8 @@ final class TPPXMLSwiftTests: XCTestCase {
       XCTFail("Failed to parse valid.xml")
       return
     }
-    let bars = root.children(withName: "bar") as? [TPPXML] ?? []
-    guard bars.count >= 2 else {
+    let bars = root.childrenWithName("bar")
+guard bars.count >= 2 else {
       XCTFail("Expected at least 2 bar children")
       return
     }

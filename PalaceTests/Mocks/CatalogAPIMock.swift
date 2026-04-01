@@ -85,6 +85,24 @@ final class CatalogAPIMock: CatalogAPI {
         return stubbedSearchFeed
     }
 
+    func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
+        searchCalls.append((query: query, baseURL: searchDescriptorURL))
+
+        if simulatedDelay > 0 {
+            try await Task.sleep(nanoseconds: UInt64(simulatedDelay * 1_000_000_000))
+        }
+
+        if let error = searchError {
+            throw error
+        }
+
+        return stubbedSearchFeed
+    }
+
+    func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
+        return []
+    }
+
     // MARK: - Test Helpers
 
     /// Reset all stubs and call tracking

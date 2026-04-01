@@ -19,6 +19,7 @@ import Foundation
     assert(configuration.urlCache != nil)
     configuration.urlCache?.diskCapacity = 1024 * 1024 * TPPSession.diskCacheInMegabytes
     configuration.urlCache?.memoryCapacity = 1024 * 1024 * TPPSession.memoryCacheInMegabytes
+    configuration.urlCredentialStorage = nil
 
     session = URLSession(
       configuration: configuration,

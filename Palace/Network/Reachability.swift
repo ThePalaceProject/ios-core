@@ -17,6 +17,7 @@ class Reachability: NSObject {
 
     private let connectionMonitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "NetworkMonitor")
+    private let stateLock = NSLock()
 
     /// Publishes connectivity changes (replaces `.TPPReachabilityChanged` notification)
     private let connectivitySubject = CurrentValueSubject<Bool, Never>(false)
@@ -29,7 +30,11 @@ class Reachability: NSObject {
             .eraseToAnyPublisher()
     }
 
-    private(set) var isConnected = false
+    private var _isConnected = false
+    private(set) var isConnected: Bool {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return _isConnected }
+        set { stateLock.lock(); _isConnected = newValue; stateLock.unlock() }
+    }
 
     func startMonitoring() {
         connectionMonitor.pathUpdateHandler = { [weak self] path in
@@ -38,7 +43,9 @@ class Reachability: NSObject {
 
             guard newStatus != self.isConnected else { return }
             self.isConnected = newStatus
-            self.connectivitySubject.send(newStatus)
+            DispatchQueue.main.async {
+                self.connectivitySubject.send(newStatus)
+            }
 
             DispatchQueue.main.async {
                 NotificationCenter.default.post(
@@ -52,6 +59,16 @@ class Reachability: NSObject {
 
     func stopMonitoring() {
         connectionMonitor.cancel()
+    }
+
+    // MARK: - Connection Type
+
+    /// Returns `true` when the current path uses a Wi-Fi (or Ethernet) interface.
+    /// Ethernet is treated as equivalent to Wi-Fi for download-restriction purposes.
+    var isOnWiFi: Bool {
+        let path = connectionMonitor.currentPath
+        return path.status == .satisfied
+            && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet))
     }
 
     // MARK: - Reachability Check

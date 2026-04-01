@@ -29,6 +29,7 @@ final class HoldsViewModel: ObservableObject {
     @Published var reservedBookVMs: [HoldsBookViewModel] = []
     @Published var heldBookVMs: [HoldsBookViewModel] = []
     @Published var isLoading: Bool = false
+    @Published var syncError: SyncError? = nil
     @Published var showLibraryAccountView: Bool = false
     @Published var selectNewLibrary: Bool = false
     @Published var showSearchSheet: Bool = false
@@ -38,6 +39,11 @@ final class HoldsViewModel: ObservableObject {
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
     private let settings: TPPSettings
+
+    struct SyncError: Identifiable {
+        let id = UUID()
+        let message: String
+    }
 
     convenience init() {
         self.init(bookRegistry: TPPBookRegistry.shared)
@@ -52,6 +58,7 @@ final class HoldsViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.isLoading = true
+                self?.syncError = nil
             }
             .store(in: &cancellables)
 
@@ -67,7 +74,29 @@ final class HoldsViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        NotificationCenter.default.publisher(for: .TPPSyncFailed)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                self?.handleSyncFailure(notification)
+            }
+            .store(in: &cancellables)
+
         reloadData()
+    }
+
+    private func handleSyncFailure(_ notification: Notification) {
+        isLoading = false
+        if let errorDoc = notification.userInfo?[TPPBookRegistry.syncFailureErrorDocumentKey] as? [AnyHashable: Any],
+           let detail = (errorDoc["detail"] as? String) ?? (errorDoc["title"] as? String),
+           !detail.isEmpty {
+            syncError = SyncError(message: detail)
+        } else {
+            syncError = SyncError(message: Strings.HoldsView.syncFailedMessage)
+        }
+    }
+
+    func dismissSyncError() {
+        syncError = nil
     }
 
     private var allBooks: [TPPBook] {

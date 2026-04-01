@@ -22,9 +22,7 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
     @Published var isLoading = false
     @Published var state: AudiobookSamplePlayerState = .initialized {
         didSet {
-            DispatchQueue.main.async {
-                self.isLoading = self.state == .loading
-            }
+            isLoading = state == .loading
         }
     }
 

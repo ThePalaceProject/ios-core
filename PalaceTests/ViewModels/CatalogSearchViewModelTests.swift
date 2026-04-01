@@ -69,6 +69,14 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
         return searchResult
     }
 
+    func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
+        return try await search(query: query, baseURL: searchDescriptorURL)
+    }
+
+    func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
+        return []
+    }
+
     func fetchFeed(at url: URL) async throws -> CatalogFeed? {
         return try await loadTopLevelCatalog(at: url)
     }

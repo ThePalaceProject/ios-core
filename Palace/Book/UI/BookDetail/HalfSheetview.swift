@@ -37,6 +37,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     @ObservedObject var viewModel: ViewModel
     var backgroundColor: Color
     @Binding var coverImage: UIImage?
+    @AccessibilityFocusState private var isBookTitleFocused: Bool
     @State private var originalState: TPPBookState = .unregistered
     @State private var didChangeState: Bool = false
     let accountsManager: AccountsManager
@@ -78,7 +79,14 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                         DispatchQueue.main.async {
                             viewModel.handleAction(for: type)
                         }
-                    case .return, .remove:
+                    case .return:
+                        if viewModel.isReturning {
+                            didChangeState = true
+                            viewModel.handleAction(for: .return)
+                        } else {
+                            viewModel.bookState = .returning
+                        }
+                    case .remove:
                         didChangeState = true
                         viewModel.handleAction(for: type)
                     default:
@@ -98,7 +106,14 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                         DispatchQueue.main.async {
                             viewModel.handleAction(for: type)
                         }
-                    case .return, .remove:
+                    case .return:
+                        if viewModel.isReturning {
+                            didChangeState = true
+                            viewModel.handleAction(for: .return)
+                        } else {
+                            viewModel.bookState = .returning
+                        }
+                    case .remove:
                         didChangeState = true
                         viewModel.handleAction(for: type)
                     default:
@@ -143,8 +158,13 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                 )
             }
         }
+        .accessibilityIdentifier(AccessibilityID.BookDetail.halfSheet)
         .onAppear {
             originalState = bookRegistry.state(for: viewModel.book.identifier)
+            NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                isBookTitleFocused = true
+            }
         }
         .onDisappear {
             // Always sync to latest registry state to avoid reverting the UI after a successful download
@@ -206,7 +226,8 @@ private extension HalfSheetView {
                         .scaledToFit()
                         .frame(width: 60, height: 90)
                         .cornerRadius(4)
-                        .accessibilityHidden(true) // Book title provides context
+                        .adaptiveShadowLight(radius: 2)
+                        .accessibilityHidden(true)
                 } else {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.gray.opacity(0.25))
@@ -218,6 +239,7 @@ private extension HalfSheetView {
                     Text(viewModel.book.title)
                         .font(.body)
                         .foregroundColor(.primary)
+                        .accessibilityFocused($isBookTitleFocused)
 
                     if let authors = viewModel.book.authors, !authors.isEmpty {
                         Text(authors)

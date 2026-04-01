@@ -51,9 +51,9 @@ import Foundation
 
     guard parseIdentifier(from: entryXML) else { return nil }
 
-    parseLinks(from: entryXML)
-
     providerName = (entryXML.firstChild(withName: "distribution")?.attributes as? [String: String])?["bibframe:ProviderName"]
+
+    parseLinks(from: entryXML)
 
     if let dateString = entryXML.firstChild(withName: "issued")?.value {
       published = NSDate.date(withISO8601DateString: dateString) as Date?

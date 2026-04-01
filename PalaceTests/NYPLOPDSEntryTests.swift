@@ -20,8 +20,10 @@ class TPPOPDSEntryTests: XCTestCase {
     super.tearDown()
   }
 
-  func testHandlesNilInit() {
-    XCTAssertNil(TPPOPDSEntry(xml: nil))
+  func testHandlesInvalidXML() {
+    // Create a minimal XML that won't have a valid 'id' element, causing init to return nil
+    let invalidXML = TPPXML(data: "<entry></entry>".data(using: .utf8)!)!
+    XCTAssertNil(TPPOPDSEntry(xml: invalidXML))
   }
 
   func testAuthorStrings() {
@@ -31,10 +33,12 @@ class TPPOPDSEntryTests: XCTestCase {
   }
 
   func testGroupAttributes() {
+    // After the ObjC→Swift port, TPPOPDSRelationGroup = "collection".
+    // The first link with rel="collection" in the XML is the Nonfiction lane.
     let attributes = entry.groupAttributes
     XCTAssertNotNil(attributes)
-    XCTAssertEqual(attributes?.href, URL(string: "http://localhost/group"))
-    XCTAssertEqual(attributes?.title, "Example")
+    XCTAssertEqual(attributes?.href, URL(string: "http://localhost/lanes/Nonfiction"))
+    XCTAssertEqual(attributes?.title, "Nonfiction")
   }
 
   func testIdentifier() {

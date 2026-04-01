@@ -133,8 +133,9 @@ struct HTMLTextView: View {
             .characterEncoding: String.Encoding.utf8.rawValue
         ]
 
-        // No try/catch - let exceptions propagate for testing
-        let nsAttr = try! NSAttributedString(data: data, options: options, documentAttributes: nil)
+        guard let nsAttr = try? NSAttributedString(data: data, options: options, documentAttributes: nil) else {
+            return AttributedString(html)
+        }
         return AttributedString(nsAttr)
     }
 

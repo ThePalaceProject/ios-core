@@ -95,7 +95,7 @@ final class TPPConfigurationTests: XCTestCase {
   func test_minimumVersionURL_returnsValidURL() {
     let url = TPPConfiguration.minimumVersionURL()
     XCTAssertNotNil(url, "minimumVersionURL should return a non-nil URL")
-    XCTAssertTrue(url.absoluteString.contains("minimum-version"))
+    XCTAssertTrue(url?.absoluteString.contains("minimum-version") == true)
   }
 
   // MARK: - Navigation Bar Appearance

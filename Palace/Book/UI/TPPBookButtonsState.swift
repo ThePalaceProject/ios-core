@@ -14,7 +14,7 @@ import Foundation
 }
 
 /// Returns a Borrow, Keep, Hold, Holding, or HoldingFOQ state.
-@objc func TPPBookButtonsViewStateWithAvailability(_ availability: TPPOPDSAcquisitionAvailability?) -> TPPBookButtonsState {
+func TPPBookButtonsViewStateWithAvailability(_ availability: TPPOPDSAcquisitionAvailability?) -> TPPBookButtonsState {
   guard let availability = availability else {
     TPPErrorLogger.logError(
       withCode: .noURL,

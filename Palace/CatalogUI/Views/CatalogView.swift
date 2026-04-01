@@ -186,6 +186,8 @@ private extension CatalogView {
                 }
             )
             .accessibilityIdentifier(AccessibilityID.Catalog.scrollView)
+            .accessibilityLabel(Strings.Generic.catalogRegion)
+            .accessibilityElement(children: .contain)
         } else {
             EmptyView()
         }

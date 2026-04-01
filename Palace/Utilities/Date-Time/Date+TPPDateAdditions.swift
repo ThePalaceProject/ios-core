@@ -2,10 +2,19 @@ import Foundation
 
 extension NSDate {
 
-  private static let rfc3339Formatter: DateFormatter = {
+  private static let rfc3339FormatterNoFraction: DateFormatter = {
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ssX5"
+    return formatter
+  }()
+
+  private static let rfc3339FormatterWithFraction: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss.SSSSSSX5"
     return formatter
   }()
 
@@ -13,14 +22,11 @@ extension NSDate {
   @objc static func date(withRFC3339String string: String?) -> NSDate? {
     guard let string = string else { return nil }
 
-    let formatter = rfc3339Formatter
-    formatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ssX5"
-    if let date = formatter.date(from: string) {
+    if let date = rfc3339FormatterNoFraction.date(from: string) {
       return date as NSDate
     }
 
-    formatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss.SSSSSSX5"
-    return formatter.date(from: string) as NSDate?
+    return rfc3339FormatterWithFraction.date(from: string) as NSDate?
   }
 
   /// Parses an ISO-8601 full date string with no time info, e.g. "2020-01-22".

@@ -74,12 +74,37 @@ struct HoldsView: View {
 
     private var mainContent: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if let syncError = model.syncError {
+                syncErrorBanner(syncError)
+            }
             if model.showSearchSheet {
                 searchBar
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
             content
         }
+    }
+
+    private func syncErrorBanner(_ error: HoldsViewModel.SyncError) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.orange)
+            Text(error.message)
+                .font(.caption)
+                .foregroundColor(.primary)
+                .lineLimit(2)
+            Spacer()
+            Button {
+                model.dismissSyncError()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.secondary)
+            }
+            .accessibilityLabel(Strings.Generic.close)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.15))
     }
 
     @ViewBuilder

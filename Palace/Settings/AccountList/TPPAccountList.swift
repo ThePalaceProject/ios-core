@@ -25,6 +25,16 @@ import Foundation
         self.completion = completion
         self.accountsManager = accountsManager
         super.init(nibName: nil, bundle: nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(catalogDidLoad),
+            name: .TPPCatalogDidLoad,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     @available(*, unavailable)
@@ -47,12 +57,40 @@ import Foundation
             finishConfiguration()
         } else {
             showLoading()
-            accountsManager.loadCatalogs { success in
-                DispatchQueue.main.async {
-                    self.hideLoading()
-                    success ? self.finishConfiguration() : self.showLoadingFailureAlert()
+        }
+
+        // Always call loadCatalogs: if data is already in memory this returns immediately
+        // and triggers a silent background refresh when the cache is stale (>5 min).
+        accountsManager.loadCatalogs { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.hideLoading()
+                success ? self.finishConfiguration() : self.showLoadingFailureAlert()
+                self.datasource.loadData()
+                self.tableView.reloadData()
+            }
+        }
+    }
+
+    @objc private func catalogDidLoad() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.datasource.loadData()
+            self.tableView.reloadData()
+        }
+    }
+
+    @objc private func pullToRefresh() {
+        accountsManager.clearCache()
+        accountsManager.loadCatalogs { [weak self] success in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.tableView.refreshControl?.endRefreshing()
+                if success {
                     self.datasource.loadData()
                     self.tableView.reloadData()
+                } else {
+                    self.showLoadingFailureAlert()
                 }
             }
         }
@@ -73,6 +111,10 @@ import Foundation
         tableView.estimatedRowHeight = estimatedRowHeight
         tableView.backgroundColor = TPPConfiguration.backgroundColor()
         tableView.register(TPPAccountListCell.self, forCellReuseIdentifier: TPPAccountListCell.reuseIdentifier)
+
+        let refreshControl = UIRefreshControl()
+        refreshControl.addTarget(self, action: #selector(pullToRefresh), for: .valueChanged)
+        tableView.refreshControl = refreshControl
 
         stackView.addArrangedSubview(searchBar)
         stackView.addArrangedSubview(tableView)

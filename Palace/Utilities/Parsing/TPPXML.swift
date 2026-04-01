@@ -32,6 +32,23 @@ import Foundation
     super.init()
   }
 
+  /// Convenience initializer that parses XML data.
+  /// Returns nil if parsing fails or data is nil/empty.
+  @objc convenience init?(data: Data?) {
+    guard let result = TPPXML.xml(withData: data) else { return nil }
+    self.init()
+    self.attributes = result.attributes
+    self.name = result.name
+    self.namespaceURI = result.namespaceURI
+    self.qualifiedName = result.qualifiedName
+    self.mutableChildren = result.mutableChildren
+    self.mutableValue = result.mutableValue
+    // Re-parent children
+    for child in self.mutableChildren {
+      child.parent = self
+    }
+  }
+
   @objc static func xml(withData data: Data?) -> TPPXML? {
     guard let data = data else { return nil }
 

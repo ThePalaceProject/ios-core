@@ -112,7 +112,15 @@ enum OPDS2BookBridge {
         }
 
         let type = link.type ?? "application/octet-stream"
-        let indirectAcqs = convertIndirectAcquisitions(link.properties?.indirectAcquisition)
+        var indirectAcqs = convertIndirectAcquisitions(link.properties?.indirectAcquisition)
+
+        // OPDS 2 feeds may omit indirectAcquisition in link properties.
+        // When the link type is an intermediate/fulfillment type, synthesize
+        // the expected indirect acquisition chain so Palace recognizes the format.
+        if indirectAcqs.isEmpty {
+            indirectAcqs = Self.synthesizeIndirectAcquisitions(forType: type)
+        }
+
         let availability = convertAvailability(
             availability: link.properties?.availability,
             copies: link.properties?.copies,
@@ -126,6 +134,34 @@ enum OPDS2BookBridge {
             indirectAcquisitions: indirectAcqs,
             availability: availability
         )
+    }
+
+    /// When OPDS 2 links omit indirectAcquisition, infer the content types
+    /// from the link type so TPPOPDSAcquisitionPath can find a supported path.
+    private static func synthesizeIndirectAcquisitions(forType type: String) -> [TPPOPDSIndirectAcquisition] {
+        let contentTypes: [String]
+        switch type {
+        case "application/vnd.librarysimplified.bearer-token+json",
+             "application/atom+xml;type=entry;profile=opds-catalog":
+            // Common fulfillment types — the final content could be EPUB, PDF, or audiobook
+            contentTypes = [
+                "application/epub+zip",
+                "application/pdf",
+                "application/audiobook+json",
+                "audio/mpeg"
+            ]
+        case "application/vnd.readium.lcp.license.v1.0+json":
+            contentTypes = [
+                "application/epub+zip",
+                "application/pdf",
+                "application/audiobook+lcp"
+            ]
+        default:
+            return []
+        }
+        return contentTypes.map {
+            TPPOPDSIndirectAcquisition(type: $0, indirectAcquisitions: [])
+        }
     }
 
     /// Extract image URLs from OPDS2 images array
@@ -243,7 +279,7 @@ extension OPDS2Publication {
             published: nil,
             publisher: nil,
             subtitle: nil,
-            summary: metadata.description,
+            summary: metadata.description?.stringByDecodingHTMLEntities,
             title: metadata.title,
             updated: metadata.updated ?? Date(),
             annotationsURL: specialLinks.annotations,
@@ -408,7 +444,7 @@ struct OPDS2FullPublication: Codable, Equatable, Sendable, Identifiable {
             published: metadata.published,
             publisher: metadata.publisher,
             subtitle: metadata.subtitle,
-            summary: metadata.description,
+            summary: metadata.description?.stringByDecodingHTMLEntities,
             title: metadata.title,
             updated: metadata.modified ?? Date(),
             annotationsURL: specialLinks.annotations,

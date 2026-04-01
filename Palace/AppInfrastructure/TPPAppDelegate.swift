@@ -64,10 +64,17 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func performBackgroundStartupTasks() {
+        let isFreshInstall = TPPSettings.shared.appVersion == nil
         TPPKeychainManager.validateKeychain()
         TPPMigrationManager.migrate()
         NetworkQueue.shared().addObserverForOfflineQueue()
         Reachability.shared.startMonitoring()
+
+        logCredentialStateAtLaunch(isFreshInstall: isFreshInstall)
+
+        PalaceAuthTokenProvider.tokenResolver = {
+            TPPUserAccount.sharedAccount().authToken
+        }
 
         DispatchQueue.main.async {
             self.audiobookLifecycleManager.didFinishLaunching()
@@ -83,6 +90,48 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
+    private func logCredentialStateAtLaunch(isFreshInstall: Bool) {
+        let account = TPPUserAccount.sharedAccount()
+        let accountId = AccountsManager.shared.currentAccountId ?? "nil"
+        let authDef = account.authDefinition
+        let authType = authDef?.authType.rawValue ?? "none"
+        let hasCredentials = account.hasCredentials()
+        let hasBarcode = account.barcode != nil
+        let hasPin = account.PIN != nil
+        let hasToken = account.authToken != nil
+        let authState = account.authState
+        let tokenExpired = account.authTokenHasExpired
+        let tokenNearExpiry = account.authTokenNearExpiry
+        let hasTokenURL = authDef?.tokenURL != nil
+
+        Log.info(#file, "🔑 [LAUNCH] Credential state diagnostic:")
+        Log.info(#file, "  freshInstall=\(isFreshInstall), accountId=\(accountId)")
+        Log.info(#file, "  authType=\(authType), authState=\(authState)")
+        Log.info(#file, "  hasCredentials=\(hasCredentials), hasBarcode=\(hasBarcode), hasPin=\(hasPin)")
+        Log.info(#file, "  hasToken=\(hasToken), tokenExpired=\(tokenExpired), tokenNearExpiry=\(tokenNearExpiry)")
+        Log.info(#file, "  hasTokenURL=\(hasTokenURL)")
+
+        if hasBarcode, let barcode = account.barcode {
+            let barcodeShape: String
+            if barcode.allSatisfy({ $0.isNumber }) {
+                barcodeShape = "numeric"
+            } else if barcode.count > 50 {
+                barcodeShape = "token-like"
+            } else {
+                barcodeShape = "alphanumeric"
+            }
+            Log.info(#file, "  barcodeShape=\(barcodeShape), barcodeLen=\(barcode.count)")
+        }
+
+        if isFreshInstall && hasCredentials {
+            Log.warn(#file, "  ⚠️ ANOMALY: Fresh install but credentials exist (keychain may not have been fully cleaned)")
+        }
+
+        if hasToken && !hasBarcode && authDef?.isToken == true {
+            Log.warn(#file, "  ⚠️ ANOMALY: Has auth token but no barcode - token refresh will fail")
+        }
+    }
+
     private func setupBookRegistryAndNotifications() {
         DispatchQueue.global(qos: .background).async {
             _ = TPPBookRegistry.shared
@@ -95,7 +144,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     private func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: "org.thepalaceproject.palace.refresh", using: nil) { task in
-            self.handleAppRefresh(task: task as! BGAppRefreshTask)
+            guard let refreshTask = task as? BGAppRefreshTask else { return }
+            self.handleAppRefresh(task: refreshTask)
         }
     }
 
@@ -489,20 +539,20 @@ final class MemoryPressureMonitor {
 
     /// Proactively cleans up caches based on severity
     private func proactiveCacheCleanup(severity: CleanupSeverity) async {
-        monitorQueue.async {
-            switch severity {
-            case .high:
-                // Aggressive cleanup
-                URLCache.shared.removeAllCachedResponses()
-                TPPNetworkExecutor.shared.clearCache()
+        switch severity {
+        case .high:
+            // Aggressive cleanup
+            URLCache.shared.removeAllCachedResponses()
+            TPPNetworkExecutor.shared.clearCache()
+            await MainActor.run {
                 MyBooksDownloadCenter.shared.pauseAllDownloads()
-                Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
-
-            case .medium:
-                // Moderate cleanup - just network caches
-                URLCache.shared.removeAllCachedResponses()
-                Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
             }
+            Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
+
+        case .medium:
+            // Moderate cleanup - just network caches
+            URLCache.shared.removeAllCachedResponses()
+            Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
         }
     }
 
@@ -516,10 +566,11 @@ final class MemoryPressureMonitor {
             URLCache.shared.removeAllCachedResponses()
             TPPNetworkExecutor.shared.clearCache()
 
-            MyBooksDownloadCenter.shared.pauseAllDownloads()
+            DispatchQueue.main.async {
+                MyBooksDownloadCenter.shared.pauseAllDownloads()
+            }
 
             self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
-
         }
     }
 

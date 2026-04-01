@@ -96,6 +96,8 @@ func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRelation) -
 
   private static let availabilityKey = "availability"
   private static let hrefURLKey = "href"
+  // NOTE: The misspelling "indirectAcqusitions" (missing 'i') is preserved for
+  // backward compatibility with data persisted by older ObjC versions of this code.
   private static let indirectAcquisitionsKey = "indirectAcqusitions"
   private static let relationKey = "rel"
   private static let typeKey = "type"

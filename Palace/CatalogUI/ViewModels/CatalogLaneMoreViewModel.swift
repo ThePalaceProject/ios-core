@@ -139,19 +139,30 @@ class CatalogLaneMoreViewModel: ObservableObject {
         facetGroups.removeAll()
         nextPageURL = nil
         
-        let feedObjc = feed.opdsFeed
-        extractNextPageURL(from: feedObjc)
-        
-        if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-          switch feedObjc.type {
-          case .acquisitionGrouped:
-            processGroupedFeed(entries: entries, feedObjc: feedObjc)
-          case .acquisitionUngrouped:
-            processUngroupedFeed(entries: entries, feedObjc: feedObjc)
-          case .navigation, .invalid:
-            break
-          @unknown default:
-            break
+        // OPDS 2 path
+        if let opds2 = feed.opds2Feed {
+          nextPageURL = opds2.nextPageURL
+          if opds2.isGroupedFeed {
+            processOPDS2GroupedFeed(opds2)
+          } else if opds2.isPublicationFeed {
+            processOPDS2PublicationFeed(opds2)
+          }
+        } else {
+          // OPDS 1 path
+          let feedObjc = feed.opdsFeed
+          extractNextPageURL(from: feedObjc)
+
+          if let entries = feedObjc.entries as? [TPPOPDSEntry] {
+            switch feedObjc.type {
+            case .acquisitionGrouped:
+              processGroupedFeed(entries: entries, feedObjc: feedObjc)
+            case .acquisitionUngrouped:
+              processUngroupedFeed(entries: entries, feedObjc: feedObjc)
+            case .navigation, .invalid:
+              break
+            @unknown default:
+              break
+            }
           }
         }
         
@@ -205,6 +216,33 @@ class CatalogLaneMoreViewModel: ObservableObject {
     )
   }
   
+  // MARK: - OPDS 2 Processing
+
+  private func processOPDS2GroupedFeed(_ feed: OPDS2Feed) {
+    guard let groups = feed.groups else { return }
+    var newLanes: [CatalogLaneModel] = []
+    for group in groups {
+      let books = (group.publications ?? []).compactMap { $0.toBook() }
+      guard !books.isEmpty else { continue }
+      newLanes.append(CatalogLaneModel(
+        title: group.title,
+        books: books,
+        moreURL: group.moreURL,
+        isLoading: books.count < 3
+      ))
+    }
+    lanes = newLanes
+    storeOriginalCatalogBooks(newLanes.flatMap { $0.books })
+    facetGroups = CatalogViewModel.extractOPDS2Facets(from: feed).0
+  }
+
+  private func processOPDS2PublicationFeed(_ feed: OPDS2Feed) {
+    let books = (feed.publications ?? []).compactMap { $0.toBook() }
+    ungroupedBooks = books
+    storeOriginalCatalogBooks(books)
+    facetGroups = CatalogViewModel.extractOPDS2Facets(from: feed).0
+  }
+
   // MARK: - Pagination
   
   private func extractNextPageURL(from feed: TPPOPDSFeed) {
@@ -225,12 +263,19 @@ class CatalogLaneMoreViewModel: ObservableObject {
     
     do {
       if let feed = try await api.fetchFeed(at: nextURL) {
-        let feedObjc = feed.opdsFeed
-        extractNextPageURL(from: feedObjc)
-        
-        if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-          let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+        if let opds2 = feed.opds2Feed {
+          nextPageURL = opds2.nextPageURL
+          let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
+          let newBooks = pubs.compactMap { $0.toBook() }
           ungroupedBooks.append(contentsOf: newBooks)
+        } else {
+          let feedObjc = feed.opdsFeed
+          extractNextPageURL(from: feedObjc)
+
+          if let entries = feedObjc.entries as? [TPPOPDSEntry] {
+            let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+            ungroupedBooks.append(contentsOf: newBooks)
+          }
         }
       }
     } catch {
@@ -354,12 +399,17 @@ class CatalogLaneMoreViewModel: ObservableObject {
       for filter in sortedFilters {
         if let filterURL = CatalogFilterService.findFilterInCurrentFacets(filter, in: currentFacetGroups) {
           if let feed = try await api.fetchFeed(at: filterURL) {
-            if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
-              ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
-            }
-            
-            if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
-              currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
+            if let opds2 = feed.opds2Feed {
+              let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
+              ungroupedBooks = pubs.compactMap { $0.toBook() }
+              currentFacetGroups = CatalogViewModel.extractOPDS2Facets(from: opds2).0
+            } else {
+              if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
+                ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+              }
+              if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
+                currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
+              }
             }
           }
         }

@@ -61,7 +61,7 @@ struct AppTabHostView: View {
         }
         .tint(Color.accentColor)
         .onAppear { AppTabRouterHub.shared.router = router }
-        .onChange(of: router.selected) { _ in
+        .onChange(of: router.selected) { newTab in
             // Respect reduce motion accessibility setting
             if UIAccessibility.isReduceMotionEnabled {
                 NavigationCoordinatorHub.shared.coordinator?.popToRoot()
@@ -75,6 +75,13 @@ struct AppTabHostView: View {
                 top.dismiss(animated: true)
             }
             NotificationCenter.default.post(name: .AppTabSelectionDidChange, object: nil)
+            // Announce the new tab for VoiceOver when tab changes
+            if UIAccessibility.isVoiceOverRunning {
+                let message = Self.accessibilityLabel(for: newTab)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    UIAccessibility.post(notification: .announcement, argument: message)
+                }
+            }
         }
         .onAppear {
             updateHoldsBadge()
@@ -86,6 +93,17 @@ struct AppTabHostView: View {
 }
 
 private extension AppTabHostView {
+    /// VoiceOver announcement label for each tab (matches tab item text).
+    static func accessibilityLabel(for tab: AppTab) -> String {
+        switch tab {
+        case .catalog: return Strings.Settings.catalog
+        case .myBooks: return Strings.MyBooksView.navTitle
+        case .holds: return Strings.HoldsView.reservations
+        case .settings: return Strings.Settings.settings
+        default: return ""
+        }
+    }
+
     func updateHoldsBadge() {
         guard bookRegistry.state == .loaded || bookRegistry.state == .synced else {
             return

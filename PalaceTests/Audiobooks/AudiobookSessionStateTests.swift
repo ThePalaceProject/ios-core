@@ -96,8 +96,12 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
     // MARK: - Session Manager Initial State
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
-    func testSessionManager_initialState_isIdle() {
+    @MainActor
+    func testSessionManager_initialState_isIdle() async {
         let manager = AudiobookSessionManager.shared
+        // Reset to idle in case a previous test modified the singleton
+        await manager.stopPlayback(dismissPhoneUI: false)
+
         XCTAssertEqual(manager.state, .idle)
         XCTAssertNil(manager.currentBook)
         XCTAssertFalse(manager.isPlaying)

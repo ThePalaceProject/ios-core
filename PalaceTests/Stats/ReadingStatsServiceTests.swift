@@ -24,12 +24,13 @@ final class ReadingStatsServiceTests: XCTestCase {
   }
 
   func testRecordSessionIgnoresZeroDuration() async {
+    let now = Date()
     let session = ReadingSession(
       bookID: "b1",
       bookTitle: "Test",
       format: .epub,
-      startTime: Date(),
-      endTime: Date(), // zero duration
+      startTime: now,
+      endTime: now, // exactly zero duration
       pagesRead: 0
     )
     await service.recordSession(session)

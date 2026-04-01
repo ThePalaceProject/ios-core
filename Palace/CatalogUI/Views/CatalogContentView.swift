@@ -83,6 +83,10 @@ private extension CatalogContentView {
                     onSelect: onBookSelected
                 )
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(Strings.Generic.booksListLabel)
+            .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.ungroupedBooks.count))
+            .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
             .opacity(viewModel.isOptimisticLoading ? 0.6 : 1.0)
             .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.isOptimisticLoading)
         }

@@ -45,8 +45,8 @@ final class TPPBookBearerTokenTests: XCTestCase {
     }
 
     override func tearDown() {
-        TPPKeychain.shared()?.removeObject(forKey: fulfillURLKey)
-        TPPKeychain.shared()?.removeObject(forKey: tokenKey)
+        TPPKeychain.shared.removeObject(forKey: fulfillURLKey)
+        TPPKeychain.shared.removeObject(forKey: tokenKey)
         book = nil
         super.tearDown()
     }
@@ -116,7 +116,7 @@ final class TPPBookBearerTokenTests: XCTestCase {
         XCTAssertEqual(book.bearerTokenFulfillURL, url1)
         XCTAssertEqual(book2.bearerTokenFulfillURL, url2)
 
-        TPPKeychain.shared()?.removeObject(forKey: key2)
+        TPPKeychain.shared.removeObject(forKey: key2)
     }
 
     /// Tests that keychain data persists across different TPPBook instances with the same identifier.

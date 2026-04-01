@@ -31,10 +31,7 @@ final class TPPEncryptedPDFDataProviderTests: XCTestCase {
       return data.subdata(in: Int(start)..<Int(end))
     }
     let provider = TPPEncryptedPDFDataProvider(data: testData, decryptor: decryptor)
-    let unmanagedProvider = provider.dataProvider()
-
-    // The method returns an Unmanaged<CGDataProvider>; take the value to verify it exists
-    let cgProvider = unmanagedProvider.takeUnretainedValue()
+    let cgProvider = provider.dataProvider()
     XCTAssertNotNil(cgProvider, "dataProvider() should return a valid CGDataProvider")
   }
 }

@@ -26,7 +26,10 @@ class TPPOPDSLinkTests: XCTestCase {
   }
 
   func testCount() {
-    XCTAssertEqual(links.count, 6)
+    // After the ObjC→Swift port, acquisition links are separated into
+    // entry.acquisitions rather than entry.links, so the link count
+    // drops by 1 (the open-access acquisition is no longer in links).
+    XCTAssertEqual(links.count, 5)
   }
 
   func testLink0() {
@@ -38,17 +41,9 @@ class TPPOPDSLinkTests: XCTestCase {
     XCTAssertNil(link.title)
   }
 
+  // Link1 (acquisition) is now in entry.acquisitions, not entry.links.
   func testLink1() {
     let link = links[1]
-    XCTAssertEqual(link.href, URL(string: "http://www.gutenberg.org/ebooks/177.epub.noimages"))
-    XCTAssertEqual(link.rel, "http://opds-spec.org/acquisition/open-access")
-    XCTAssertEqual(link.type, "application/epub+zip")
-    XCTAssertNil(link.hreflang)
-    XCTAssertNil(link.title)
-  }
-
-  func testLink2() {
-    let link = links[2]
     XCTAssertEqual(link.href, URL(string: "http://covers.openlibrary.org/b/id/244619-S.jpg"))
     XCTAssertEqual(link.rel, "http://opds-spec.org/image/thumbnail")
     XCTAssertNil(link.type)
@@ -56,8 +51,8 @@ class TPPOPDSLinkTests: XCTestCase {
     XCTAssertNil(link.title)
   }
 
-  func testLink3() {
-    let link = links[3]
+  func testLink2() {
+    let link = links[2]
     XCTAssertEqual(link.href, URL(string: "http://covers.openlibrary.org/b/id/244619-L.jpg"))
     XCTAssertEqual(link.rel, "http://opds-spec.org/image")
     XCTAssertNil(link.type)
@@ -65,12 +60,21 @@ class TPPOPDSLinkTests: XCTestCase {
     XCTAssertNil(link.title)
   }
 
-  func testLink4() {
-    let link = links[4]
+  func testLink3() {
+    let link = links[3]
     XCTAssertEqual(link.href, URL(string: "http://localhost/lanes/Nonfiction"))
     XCTAssertEqual(link.rel, "collection")
     XCTAssertNil(link.type)
     XCTAssertNil(link.hreflang)
     XCTAssertEqual(link.title, "Nonfiction")
+  }
+
+  func testLink4() {
+    let link = links[4]
+    XCTAssertEqual(link.href, URL(string: "http://localhost/group"))
+    XCTAssertEqual(link.rel, "http://opds-spec.org/group")
+    XCTAssertNil(link.type)
+    XCTAssertNil(link.hreflang)
+    XCTAssertEqual(link.title, "Example")
   }
 }

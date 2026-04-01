@@ -1,7 +1,7 @@
 import XCTest
 @testable import Palace
 
-class TPPKeychainSwiftTests: XCTestCase {
+class TPPKeychainSwiftLegacyTests: XCTestCase {
 
   func test0() {
     TPPKeychain.sharedKeychain.setObject("foo", forKey: "D5AAFADD-E036-4CA6-BBC7-B5962455831D")

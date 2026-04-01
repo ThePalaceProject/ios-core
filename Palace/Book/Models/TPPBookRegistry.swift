@@ -76,6 +76,7 @@ private class BoolWithDelay {
 
 @objcMembers
 class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
+    static let syncFailureErrorDocumentKey = "TPPBookRegistrySyncFailureErrorDocument"
     private let syncQueueKey = DispatchSpecificKey<Void>()
 
     @objc enum RegistryState: Int {
@@ -85,15 +86,19 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     private let registryFolderName = "registry"
     private let registryFileName = "registry.json"
 
-    private var accountDidChange = NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
-        .receive(on: RunLoop.main)
-        .sink { _ in
-            TPPBookRegistry.shared.load()
+    private var accountDidChangeCancellable: AnyCancellable?
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                TPPBookRegistry.shared.sync()
+    private func setupAccountDidChangeObserver() {
+        accountDidChangeCancellable = NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.load()
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                    self?.sync()
+                }
             }
-        }
+    }
 
     private var registry = [String: TPPBookRegistryRecord]() {
         didSet {
@@ -170,6 +175,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         self.accountsManager = .shared
         super.init()
         syncQueue.setSpecific(key: syncQueueKey, value: ())
+        setupAccountDidChangeObserver()
     }
 
     fileprivate init(account: String, accountsManager: AccountsManager = .shared) {
@@ -337,7 +343,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         guard let account = accountsManager.currentAccount?.uuid else { return }
 
         var didChange = false
-        syncQueue.sync {
+        syncQueue.sync(flags: .barrier) {
             for (identifier, record) in self.registry {
                 guard record.state == .downloadSuccessful || record.state == .used else { continue }
                 let fileExists = self.checkIfBookFileExists(for: record.book, account: account)
@@ -389,6 +395,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 if let errorDocument = errorDocument as? [AnyHashable: Any] {
                     self.state = .loaded
                     self.syncUrl = nil
+                    self.postSyncFailure(errorDocument)
                     completion?(errorDocument, false)
                     return
                 }
@@ -396,6 +403,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 guard let feed = feed else {
                     self.state = .loaded
                     self.syncUrl = nil
+                    self.postSyncFailure(nil)
                     completion?(nil, false)
                     return
                 }
@@ -490,6 +498,14 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 completion?(nil, changesMade)
             }
         }
+    }
+
+    private func postSyncFailure(_ errorDocument: [AnyHashable: Any]?) {
+        var userInfo: [AnyHashable: Any] = [:]
+        if let errorDocument {
+            userInfo[TPPBookRegistry.syncFailureErrorDocumentKey] = errorDocument
+        }
+        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: userInfo)
     }
 
     private func save() {
@@ -704,13 +720,15 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     func updatedBookMetadata(_ book: TPPBook) -> TPPBook? {
-        performSync {
-            guard let bookRecord = self.registry[book.identifier] else { return nil }
+        var result: TPPBook?
+        syncQueue.sync(flags: .barrier) {
+            guard let bookRecord = self.registry[book.identifier] else { return }
             let updatedBook = bookRecord.book.bookWithMetadata(from: book)
             self.registry[book.identifier]?.book = updatedBook
-            self.save()
-            return updatedBook
+            result = updatedBook
         }
+        if result != nil { self.save() }
+        return result
     }
 
     func state(for bookIdentifier: String?) -> TPPBookState {

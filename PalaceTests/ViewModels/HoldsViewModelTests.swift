@@ -334,7 +334,7 @@ final class HoldsViewModelTests: XCTestCase {
 
         let description = viewModel.openSearchDescription
 
-        XCTAssertEqual(description.books.count, 2, "OpenSearchDescription should include all held books")
+        XCTAssertEqual(description.books?.count, 2, "OpenSearchDescription should include all held books")
     }
 
     // MARK: - Published Properties Tests
@@ -442,13 +442,13 @@ final class HoldsBookViewModelTests: XCTestCase {
         var reservedBookIsReady = false
         var readyBookIsReady = false
 
-        reservedBook.defaultAcquisition?.availability.matchUnavailable(nil,
+        reservedBook.defaultAcquisition?.availability.match(unavailable: nil,
                                                                        limited: nil,
                                                                        unlimited: nil,
                                                                        reserved: nil,
                                                                        ready: { _ in reservedBookIsReady = true })
 
-        readyBook.defaultAcquisition?.availability.matchUnavailable(nil,
+        readyBook.defaultAcquisition?.availability.match(unavailable: nil,
                                                                     limited: nil,
                                                                     unlimited: nil,
                                                                     reserved: nil,
@@ -480,7 +480,7 @@ final class HoldsBadgeCountTests: XCTestCase {
     private func calculateReadyCount(for books: [TPPBook]) -> Int {
         var readyCount = 0
         for book in books {
-            book.defaultAcquisition?.availability.matchUnavailable(nil,
+            book.defaultAcquisition?.availability.match(unavailable: nil,
                                                                    limited: nil,
                                                                    unlimited: nil,
                                                                    reserved: nil,
@@ -563,7 +563,7 @@ final class HoldsBadgeCountTests: XCTestCase {
         let book = TPPBookMocker.snapshotReservedBook()
         var isReserved = false
 
-        book.defaultAcquisition?.availability.matchUnavailable(nil,
+        book.defaultAcquisition?.availability.match(unavailable: nil,
                                                                limited: nil,
                                                                unlimited: nil,
                                                                reserved: { _ in isReserved = true },
@@ -576,7 +576,7 @@ final class HoldsBadgeCountTests: XCTestCase {
         let book = TPPBookMocker.snapshotReadyBook()
         var isReady = false
 
-        book.defaultAcquisition?.availability.matchUnavailable(nil,
+        book.defaultAcquisition?.availability.match(unavailable: nil,
                                                                limited: nil,
                                                                unlimited: nil,
                                                                reserved: nil,

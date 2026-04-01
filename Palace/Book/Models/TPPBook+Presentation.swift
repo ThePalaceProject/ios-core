@@ -18,10 +18,26 @@ extension TPPBook {
     private static let coverRegistry = TPPBookCoverRegistry.shared
 
     func fetchCoverImage() {
+        fetchCoverImage(forDisplayHeight: nil)
+    }
+
+    /// Fetches the cover at a resolution appropriate for the given display height (in points).
+    /// When `displayHeight` is provided, the decoded image is sized to match the view rather
+    /// than the conservative device memory-tier cap, so the image is always sharp at its
+    /// actual display size without wasting memory decoding more than needed.
+    func fetchCoverImage(forDisplayHeight displayHeight: CGFloat?) {
         let simpleKey = identifier
         let coverKey = "\(identifier)_cover"
 
-        if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: coverKey) {
+        // For size-aware fetches use a dedicated cache key so different sizes don't collide.
+        // When a displayHeight is given, only check the size-specific key — falling back to
+        // the generic keys risks returning a small thumbnail that was cached from a list/lane
+        // view, which would appear pixelated at larger display sizes.
+        let sizeKey: String? = displayHeight.map { "\(identifier)_\(Int($0))pt" }
+        let lookupKeys: [String] = sizeKey != nil ? [sizeKey!] : [simpleKey, coverKey]
+
+        if let img = lookupKeys.lazy.compactMap({ [weak self] in
+          self?.imageCache.get(for: $0) }).first {
             DispatchQueue.main.async {
                 self.coverImage = img
                 self.updateDominantColor(using: img)
@@ -31,22 +47,47 @@ extension TPPBook {
 
         guard !isCoverLoading else { return }
 
-        DispatchQueue.main.async {
-            self.isCoverLoading = true
-        }
+        DispatchQueue.main.async { self.isCoverLoading = true }
 
-        TPPBookCoverRegistryBridge.shared.coverImageForBook(self) { [weak self] image in
-            guard let self = self else { return }
-            let final = image ?? self.thumbnailImage
-
-            DispatchQueue.main.async {
-                self.coverImage = final
-                if let img = final {
-                    self.imageCache.set(img, for: self.identifier)
-                    self.imageCache.set(img, for: coverKey)
-                    self.updateDominantColor(using: img)
+        if let displayHeight {
+            Task { [weak self] in
+                guard let self else { return }
+                let img = await TPPBookCoverRegistry.shared.coverImage(for: self, displayPoints: displayHeight)
+                let final = img ?? self.thumbnailImage
+                await MainActor.run {
+                    self.coverImage = final
+                    if let img = final {
+                        self.imageCache.set(img, for: self.identifier)
+                        self.imageCache.set(img, for: sizeKey ?? coverKey)
+                        self.updateDominantColor(using: img)
+                    }
+                    self.isCoverLoading = false
                 }
-                self.isCoverLoading = false
+            }
+        } else {
+            let startFetch = { [weak self] in
+                guard let self else { return }
+
+                TPPBookCoverRegistryBridge.shared.coverImageForBook(self) { [weak self] image in
+                    guard let self = self else { return }
+                    let final = image ?? self.thumbnailImage
+
+                    DispatchQueue.main.async {
+                        self.coverImage = final
+                        if let img = final {
+                            self.imageCache.set(img, for: self.identifier)
+                            self.imageCache.set(img, for: coverKey)
+                            self.updateDominantColor(using: img)
+                        }
+                        self.isCoverLoading = false
+                    }
+                }
+            }
+
+            if Thread.isMainThread {
+                startFetch()
+            } else {
+                DispatchQueue.main.async(execute: startFetch)
             }
         }
     }
@@ -62,26 +103,31 @@ extension TPPBook {
             return
         }
 
-        guard !isThumbnailLoading else { return }
-
-        DispatchQueue.main.async {
+        let startFetch = { [weak self] in
+            guard let self, !self.isThumbnailLoading else { return }
             self.isThumbnailLoading = true
+
+            TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(self) { [weak self] image in
+                guard let self = self else { return }
+
+                DispatchQueue.main.async {
+                    self.thumbnailImage = image
+                    if let img = image {
+                        self.imageCache.set(img, for: self.identifier)
+                        self.imageCache.set(img, for: thumbnailKey)
+                        if self.coverImage == nil {
+                            self.updateDominantColor(using: img)
+                        }
+                    }
+                    self.isThumbnailLoading = false
+                }
+            }
         }
 
-        TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(self) { [weak self] image in
-            guard let self = self else { return }
-
-            DispatchQueue.main.async {
-                self.thumbnailImage = image
-                if let img = image {
-                    self.imageCache.set(img, for: self.identifier)
-                    self.imageCache.set(img, for: thumbnailKey)
-                    if self.coverImage == nil {
-                        self.updateDominantColor(using: img)
-                    }
-                }
-                self.isThumbnailLoading = false
-            }
+        if Thread.isMainThread {
+            startFetch()
+        } else {
+            DispatchQueue.main.async(execute: startFetch)
         }
     }
 

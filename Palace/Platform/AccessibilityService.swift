@@ -25,9 +25,10 @@ actor AccessibilityService: AccessibilityServiceProtocol {
 
     // MARK: - Combine
 
-    private nonisolated(unsafe) let preferencesSubject: CurrentValueSubject<AccessibilityPreferences, Never>
     private nonisolated(unsafe) let contentSizeSubject = PassthroughSubject<UIContentSizeCategory, Never>()
     private var cancellables = Set<AnyCancellable>()
+
+    private nonisolated(unsafe) let preferencesSubject: CurrentValueSubject<AccessibilityPreferences, Never>
 
     nonisolated var preferencesPublisher: AnyPublisher<AccessibilityPreferences, Never> {
         preferencesSubject.eraseToAnyPublisher()

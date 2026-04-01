@@ -96,7 +96,7 @@ final class TPPPDFLocationCoverageTests: XCTestCase {
     // SRS: TPPPDFLocation id handles nil values as empty strings
     func testPDFLocation_id_handlesNils() {
         let loc = TPPPDFLocation(title: nil, subtitle: nil, pageLabel: nil, pageNumber: 5, level: 0)
-        XCTAssertEqual(loc.id, "5---0")
+        XCTAssertEqual(loc.id, "5----0")
     }
 
     // SRS: TPPPDFLocation different locations produce different ids

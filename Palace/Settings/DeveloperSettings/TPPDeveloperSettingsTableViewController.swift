@@ -10,6 +10,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case libraryRegistryDebugging
         case dataManagement
         case developerTools
+        case featurePreviews
         case badgeTesting
         case errorSimulation
     }
@@ -20,6 +21,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let emailLogsCellIdentifier = "emailLogsCell"
     private let sendErrorLogsCellIdentifier = "sendErrorLogsCell"
     private let errorSimulationCellIdentifier = "errorSimulationCell"
+    private let incrementalSpeedSliderCellIdentifier = "incrementalSpeedSliderCell"
     private let badgeLoggingCellIdentifier = "badgeLoggingCell"
     private let testHoldsCellIdentifier = "testHoldsCell"
 
@@ -63,6 +65,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: emailLogsCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: sendErrorLogsCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: errorSimulationCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: incrementalSpeedSliderCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: badgeLoggingCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: testHoldsCellIdentifier)
     }
@@ -73,6 +76,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         switch Section(rawValue: section)! {
         case .librarySettings: return 2
         case .developerTools: return 2
+        case .featurePreviews: return 1
         case .badgeTesting:
             #if DEBUG
             return 2
@@ -81,9 +85,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             #endif
         case .errorSimulation:
             #if DEBUG
-            return 2  // Simulate Borrow Error + Preview Error Details
+            return 3  // Simulate Borrow Error + Simulate Sync Failure + Preview Error Details
             #else
-            return 1  // Simulate Borrow Error (available in TestFlight for QA)
+            return 2  // Simulate Borrow Error + Simulate Sync Failure (available in TestFlight for QA)
             #endif
         default: return 1
         }
@@ -107,6 +111,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             case 0: return cellForSendErrorLogs()
             default: return cellForEmailAudiobookLogs()
             }
+        case .featurePreviews:
+            return cellForIncrementalSpeedSlider()
         case .badgeTesting:
             #if DEBUG
             switch indexPath.row {
@@ -119,6 +125,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case .errorSimulation:
             switch indexPath.row {
             case 0: return cellForErrorSimulation()
+            case 1: return cellForSyncFailureSimulation()
             default:
                 #if DEBUG
                 return cellForPreviewErrorDetails()
@@ -139,6 +146,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             return "Data Management"
         case .developerTools:
             return "Developer Tools"
+        case .featurePreviews:
+            return "Feature Previews"
         case .badgeTesting:
             #if DEBUG
             return "Badge Testing"
@@ -217,6 +226,22 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     #if DEBUG
+    @objc func incrementalSpeedSliderSwitchDidChange(sender: UISwitch) {
+        DebugSettings.shared.isIncrementalSpeedSliderEnabled = sender.isOn
+    }
+
+    private func cellForIncrementalSpeedSlider() -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier)!
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "Incremental Speed Slider"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.accessoryView = createSwitch(
+            isOn: DebugSettings.shared.isIncrementalSpeedSliderEnabled,
+            action: #selector(incrementalSpeedSliderSwitchDidChange)
+        )
+        return cell
+    }
+
     @objc func badgeLoggingSwitchDidChange(sender: UISwitch) {
         DebugSettings.shared.isBadgeLoggingEnabled = sender.isOn
     }
@@ -245,6 +270,19 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
     #else
+    private func cellForIncrementalSpeedSlider() -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier)!
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "Incremental Speed Slider"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        // In non-DEBUG builds, the switch reads the same DebugSettings property
+        let switchControl = UISwitch()
+        switchControl.isOn = DebugSettings.shared.isIncrementalSpeedSliderEnabled
+        switchControl.isEnabled = false
+        cell.accessoryView = switchControl
+        return cell
+    }
+
     private func cellForBadgeLogging() -> UITableViewCell {
         return UITableViewCell()
     }
@@ -263,6 +301,19 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         cell.textLabel?.adjustsFontSizeToFitWidth = true
         cell.detailTextLabel?.text = currentError.displayName
         cell.detailTextLabel?.textColor = currentError == .none ? .secondaryLabel : .systemOrange
+        cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+
+    private func cellForSyncFailureSimulation() -> UITableViewCell {
+        let currentFailure = DebugSettings.shared.simulatedSyncFailure
+
+        let cell = UITableViewCell(style: .value1, reuseIdentifier: "syncFailureSimulationCell")
+        cell.selectionStyle = .default
+        cell.textLabel?.text = "Simulate Sync Failure"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.detailTextLabel?.text = currentFailure.displayName
+        cell.detailTextLabel?.textColor = currentFailure == .none ? .secondaryLabel : .systemRed
         cell.accessoryType = .disclosureIndicator
         return cell
     }
@@ -353,6 +404,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             switch indexPath.row {
             case 0:
                 showErrorSimulationPicker()
+            case 1:
+                showSyncFailurePicker()
             default:
                 #if DEBUG
                 showPreviewErrorDetails()
@@ -435,6 +488,41 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         if let popover = alert.popoverPresentationController {
             popover.sourceView = tableView
             popover.sourceRect = tableView.rectForRow(at: IndexPath(row: 0, section: Section.errorSimulation.rawValue))
+        }
+
+        present(alert, animated: true)
+    }
+
+    private func showSyncFailurePicker() {
+        let alert = UIAlertController(
+            title: "Simulate Sync Failure",
+            message: "Simulates the loans feed sync failing silently \u{2014} the exact scenario reported by users where hold notifications don't convert to checkouts.\n\nEnable, then pull-to-refresh on Holds or switch to foreground.",
+            preferredStyle: .actionSheet
+        )
+
+        for failureType in DebugSettings.SimulatedSyncFailure.allCases {
+            let isSelected = DebugSettings.shared.simulatedSyncFailure == failureType
+            let checkmark = isSelected ? " \u{2713}" : ""
+
+            alert.addAction(UIAlertAction(title: failureType.displayName + checkmark, style: .default) { [weak self] _ in
+                DebugSettings.shared.simulatedSyncFailure = failureType
+                self?.tableView.reloadData()
+
+                if failureType != .none {
+                    let confirmAlert = TPPAlertUtils.alert(
+                        title: "Sync Failure Enabled",
+                        message: "'\(failureType.displayName)' will be simulated on every sync. Go to Holds and pull to refresh \u{2014} notice how nothing happens and no error is shown.\n\nDisable when done testing."
+                    )
+                    self?.present(confirmAlert, animated: true)
+                }
+            })
+        }
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = tableView
+            popover.sourceRect = tableView.rectForRow(at: IndexPath(row: 1, section: Section.errorSimulation.rawValue))
         }
 
         present(alert, animated: true)

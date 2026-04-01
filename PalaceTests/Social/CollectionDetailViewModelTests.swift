@@ -304,7 +304,17 @@ final class MockBookRegistryForCollections: TPPBookRegistryProvider {
         Empty().eraseToAnyPublisher()
     }
 
+    var syncStatePublisher: AnyPublisher<Bool, Never> { Just(false).eraseToAnyPublisher() }
+    var isSyncing: Bool { false }
+    var myBooks: [TPPBook] { [] }
+    var state: TPPBookRegistry.RegistryState { .loaded }
+    var registryState: TPPBookRegistry.RegistryState { .loaded }
     var heldBooks: [TPPBook] { [] }
+
+    func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) { completion?(nil, false) }
+    func sync() {}
+    func load() {}
+    func updatedBookMetadata(_ book: TPPBook) -> TPPBook? { stubbedBooks[book.identifier] }
 
     func book(forIdentifier bookIdentifier: String?) -> TPPBook? {
         guard let id = bookIdentifier else { return nil }
@@ -316,7 +326,7 @@ final class MockBookRegistryForCollections: TPPBookRegistryProvider {
     func coverImage(for book: TPPBook, handler: @escaping (UIImage?) -> Void) { handler(nil) }
     func setProcessing(_ processing: Bool, for bookIdentifier: String) {}
     func processing(forIdentifier bookIdentifier: String) -> Bool { false }
-    func state(for bookIdentifier: String?) -> TPPBookState { .Unregistered }
+    func state(for bookIdentifier: String?) -> TPPBookState { .unregistered }
     func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark] { [] }
     func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String) {}
     func location(forIdentifier identifier: String) -> TPPBookLocation? { nil }

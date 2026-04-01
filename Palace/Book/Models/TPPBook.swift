@@ -263,7 +263,7 @@ public class TPPBook: NSObject, ObservableObject {
             identifier: identifier,
             imageURL: URL(string: dictionary[ImageURLKey] as? String ?? ""),
             imageThumbnailURL: URL(string: dictionary[ImageThumbnailURLKey] as? String ?? ""),
-            published: dictionary[PublishedKey] as? Date,
+            published: (dictionary[PublishedKey] as? String).flatMap { Date.rfc1123DateFormatter.date(from: $0) } ?? (dictionary[PublishedKey] as? Date),
             publisher: dictionary[PublisherKey] as? String,
             subtitle: dictionary[SubtitleKey] as? String,
             summary: dictionary[SummaryKey] as? String,

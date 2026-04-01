@@ -196,7 +196,7 @@ final class BookButtonStateTests: XCTestCase {
             timeTrackingURL: nil,
             contributors: [:],
             bookDuration: nil,
-            imageCache: nil
+            imageCache: MockImageCache()
         )
         let buttons = BookButtonState.downloadInProgress.buttonTypes(book: book)
         XCTAssertEqual(buttons, [.cancel])
@@ -237,7 +237,7 @@ final class BookButtonStateTests: XCTestCase {
             timeTrackingURL: nil,
             contributors: [:],
             bookDuration: nil,
-            imageCache: nil
+            imageCache: MockImageCache()
         )
         let buttons = BookButtonState.downloadFailed.buttonTypes(book: book)
         XCTAssertEqual(buttons, [.cancel, .retry])
@@ -278,7 +278,7 @@ final class BookButtonStateTests: XCTestCase {
             timeTrackingURL: nil,
             contributors: [:],
             bookDuration: nil,
-            imageCache: nil
+            imageCache: MockImageCache()
         )
         let buttons = BookButtonState.unsupported.buttonTypes(book: book)
         XCTAssertTrue(buttons.isEmpty)
@@ -319,7 +319,7 @@ final class BookButtonStateTests: XCTestCase {
             timeTrackingURL: nil,
             contributors: [:],
             bookDuration: nil,
-            imageCache: nil
+            imageCache: MockImageCache()
         )
         let buttons = BookButtonState.returning.buttonTypes(book: book)
         XCTAssertEqual(buttons, [.returning])

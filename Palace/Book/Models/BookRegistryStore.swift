@@ -196,12 +196,19 @@ class BookRegistryStore {
   }
 
   func updatedBookMetadata(_ book: TPPBook) -> TPPBook? {
-    return performSync {
-      guard let bookRecord = self.registry[book.identifier] else { return nil }
+    var result: TPPBook?
+    let block = {
+      guard let bookRecord = self.registry[book.identifier] else { return }
       let updatedBook = bookRecord.book.bookWithMetadata(from: book)
       self.registry[book.identifier]?.book = updatedBook
-      return updatedBook
+      result = updatedBook
     }
+    if DispatchQueue.getSpecific(key: syncQueueKey) != nil {
+      block()
+    } else {
+      syncQueue.sync(flags: .barrier, execute: block)
+    }
+    return result
   }
 
   func setState(_ state: TPPBookState, for identifier: String, onComplete: (() -> Void)? = nil) {

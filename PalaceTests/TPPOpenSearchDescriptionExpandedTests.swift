@@ -63,51 +63,51 @@ final class TPPOpenSearchDescriptionExpandedTests: XCTestCase {
     XCTAssertEqual(description.books?.count, 2)
   }
 
-  func test_initWithTitle_nilBooks_setsNilBooks() {
-    let description = TPPOpenSearchDescription(title: "Search", books: nil)
+  func test_initWithTitle_emptyBooks_setsEmptyBooks() {
+    let description = TPPOpenSearchDescription(title: "Search", books: [])
     XCTAssertNotNil(description)
-    XCTAssertNil(description.books)
+    XCTAssertEqual(description.books?.count, 0)
   }
 
   // MARK: - URL Generation
 
   func test_opdsURLForSearching_encodesSpecialCharacters() {
-    let description = TPPOpenSearchDescription(title: "title", books: nil)
-    description.opdsurlTemplate = "https://example.com/search?q={searchTerms}"
-    let url = description.opdsurl(forSearching: "hello world")
+    let description = TPPOpenSearchDescription(title: "title", books: [])
+    description.opdsURLTemplate = "https://example.com/search?q={searchTerms}"
+    let url = description.opdsURL(forSearchingString: "hello world")
     XCTAssertNotNil(url)
     XCTAssertTrue(url!.absoluteString.contains("hello%20world"))
   }
 
   func test_opdsURLForSearching_encodesAmpersand() {
-    let description = TPPOpenSearchDescription(title: "title", books: nil)
-    description.opdsurlTemplate = "https://example.com/search?q={searchTerms}"
-    let url = description.opdsurl(forSearching: "cats & dogs")
+    let description = TPPOpenSearchDescription(title: "title", books: [])
+    description.opdsURLTemplate = "https://example.com/search?q={searchTerms}"
+    let url = description.opdsURL(forSearchingString: "cats & dogs")
     XCTAssertNotNil(url)
     XCTAssertTrue(url!.absoluteString.contains("%26"))
   }
 
   func test_opdsURLForSearching_encodesUnicode() {
-    let description = TPPOpenSearchDescription(title: "title", books: nil)
-    description.opdsurlTemplate = "https://example.com/search?q={searchTerms}"
-    let url = description.opdsurl(forSearching: "caf\u{00e9}")
+    let description = TPPOpenSearchDescription(title: "title", books: [])
+    description.opdsURLTemplate = "https://example.com/search?q={searchTerms}"
+    let url = description.opdsURL(forSearchingString: "caf\u{00e9}")
     XCTAssertNotNil(url)
     XCTAssertTrue(url!.absoluteString.contains("caf%C3%A9"))
   }
 
   func test_opdsURLForSearching_preservesEntrypoint() {
-    let description = TPPOpenSearchDescription(title: "title", books: nil)
-    description.opdsurlTemplate = "https://example.com/search/?entrypoint=All&q={searchTerms}"
-    let url = description.opdsurl(forSearching: "test")
+    let description = TPPOpenSearchDescription(title: "title", books: [])
+    description.opdsURLTemplate = "https://example.com/search/?entrypoint=All&q={searchTerms}"
+    let url = description.opdsURL(forSearchingString: "test")
     XCTAssertNotNil(url)
     XCTAssertTrue(url!.absoluteString.contains("entrypoint=All"))
     XCTAssertTrue(url!.absoluteString.contains("q=test"))
   }
 
   func test_opdsURLForSearching_emptyString_returnsURL() {
-    let description = TPPOpenSearchDescription(title: "title", books: nil)
-    description.opdsurlTemplate = "https://example.com/search?q={searchTerms}"
-    let url = description.opdsurl(forSearching: "")
+    let description = TPPOpenSearchDescription(title: "title", books: [])
+    description.opdsURLTemplate = "https://example.com/search?q={searchTerms}"
+    let url = description.opdsURL(forSearchingString: "")
     XCTAssertNotNil(url, "Empty search string should still produce a valid URL")
   }
 }

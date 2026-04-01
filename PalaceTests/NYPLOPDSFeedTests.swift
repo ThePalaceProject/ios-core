@@ -26,8 +26,10 @@ class TPPOPDSFeedTests: XCTestCase {
     XCTAssertNotNil(feed.entries)
   }
 
-  func testTypeAcquisitionUngrouped() {
-    XCTAssertEqual(feed.type, .acquisitionUngrouped)
+  func testTypeAcquisitionGrouped() {
+    // After the ObjC→Swift port, entries with rel="collection" links
+    // are detected as grouped (TPPOPDSRelationGroup = "collection").
+    XCTAssertEqual(feed.type, .acquisitionGrouped)
   }
 
   func testIdentifier() {

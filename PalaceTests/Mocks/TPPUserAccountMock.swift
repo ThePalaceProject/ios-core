@@ -198,6 +198,10 @@ class TPPUserAccountMock: TPPUserAccount {
         block(self)
     }
 
+    static func resetShared() {
+        shared = TPPUserAccountMock()
+    }
+
     // MARK: - Clean everything up
 
     override func removeAll() {

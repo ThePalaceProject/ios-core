@@ -131,7 +131,7 @@ final class AppTabRouterCoverageTests: XCTestCase {
 
 // MARK: - TPPBookContentType Tests
 
-final class TPPBookContentTypeTests: XCTestCase {
+final class TPPBookContentTypeExtendedTests: XCTestCase {
 
     // SRS: TPPBookContentType from nil mime type returns unsupported
     func testFromMimeType_nil() {

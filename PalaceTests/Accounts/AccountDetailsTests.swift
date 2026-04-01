@@ -32,7 +32,7 @@ final class LoginKeyboardTests: XCTestCase {
 
     func testInit_WithNoInputString_ReturnsNone() {
         let keyboard = LoginKeyboard("No input")
-        XCTAssertEqual(keyboard, .none)
+        XCTAssertEqual(keyboard, LoginKeyboard.none)
     }
 
     func testInit_WithNilString_ReturnsNil() {
@@ -180,12 +180,11 @@ final class AuthenticationTests: XCTestCase {
     // MARK: - Helper Methods
 
     private func createMockAuthentication(type: AccountDetails.AuthType) -> AccountDetails.Authentication {
-        // Use reflection or create minimal mock - for now use the TestAuthentication helper
-        return TestAuthentication(authType: type)
+        return makeTestAuthentication(authType: type)
     }
 
     private func createMockAuthenticationWithCoppaUrls() -> AccountDetails.Authentication {
-        return TestAuthentication(
+        return makeTestAuthentication(
             authType: .coppa,
             coppaUnderUrl: URL(string: "https://example.com/under13"),
             coppaOverUrl: URL(string: "https://example.com/over13")
@@ -220,54 +219,26 @@ final class URLTypeTests: XCTestCase {
 
 // MARK: - Test Helper
 
-/// A test-only subclass that allows creating Authentication instances without OPDS2 documents
-private class TestAuthentication: AccountDetails.Authentication {
-
-    init(
-        authType: AccountDetails.AuthType,
-        coppaUnderUrl: URL? = nil,
-        coppaOverUrl: URL? = nil
-    ) {
-        // We need to call super.init with an OPDS2 auth document
-        // For now, we'll create a minimal mock
-        super.init(coder: TestAuthenticationCoder(
-            authType: authType,
-            coppaUnderUrl: coppaUnderUrl,
-            coppaOverUrl: coppaOverUrl
-        ))!
+/// Creates Authentication instances via JSON/Codable for testing.
+private func makeTestAuthentication(
+    authType: AccountDetails.AuthType,
+    coppaUnderUrl: URL? = nil,
+    coppaOverUrl: URL? = nil
+) -> AccountDetails.Authentication {
+    var dict: [String: Any] = [
+        "authType": authType.rawValue,
+        "authPasscodeLength": 4,
+        "patronIDKeyboard": LoginKeyboard.standard.rawValue,
+        "pinKeyboard": LoginKeyboard.numeric.rawValue,
+        "supportsBarcodeScanner": false,
+        "supportsBarcodeDisplay": false
+    ]
+    if let url = coppaUnderUrl {
+        dict["coppaUnderUrl"] = url.absoluteString
     }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
+    if let url = coppaOverUrl {
+        dict["coppaOverUrl"] = url.absoluteString
     }
-}
-
-/// Mock coder for creating test Authentication instances
-private class TestAuthenticationCoder: NSCoder {
-    let authType: AccountDetails.AuthType
-    let coppaUnderUrl: URL?
-    let coppaOverUrl: URL?
-
-    init(authType: AccountDetails.AuthType, coppaUnderUrl: URL?, coppaOverUrl: URL?) {
-        self.authType = authType
-        self.coppaUnderUrl = coppaUnderUrl
-        self.coppaOverUrl = coppaOverUrl
-        super.init()
-    }
-
-    override func decodeObject() -> Any? {
-        let mockData: [String: Any] = [
-            "authType": authType.rawValue,
-            "authPasscodeLength": 4,
-            "patronIDKeyboard": LoginKeyboard.standard.rawValue,
-            "pinKeyboard": LoginKeyboard.numeric.rawValue,
-            "supportsBarcodeScanner": false,
-            "supportsBarcodeDisplay": false,
-            "coppaUnderUrl": coppaUnderUrl?.absoluteString as Any,
-            "coppaOverUrl": coppaOverUrl?.absoluteString as Any
-        ]
-        return try? JSONSerialization.data(withJSONObject: mockData)
-    }
-
-    override var allowsKeyedCoding: Bool { true }
+    let data = try! JSONSerialization.data(withJSONObject: dict)
+    return try! JSONDecoder().decode(AccountDetails.Authentication.self, from: data)
 }

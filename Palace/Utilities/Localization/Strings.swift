@@ -100,6 +100,9 @@ struct Strings {
 
         // Accessibility - Catalog
         static let moreBooksInLane = NSLocalizedString("More books in %@", comment: "VoiceOver: See more books in a catalog lane")
+        static let horizontalLaneHint = NSLocalizedString("Swipe horizontally to browse. Double tap to open a book.", comment: "VoiceOver: Hint for horizontal book lanes")
+        static let catalogRegion = NSLocalizedString("Catalog", comment: "VoiceOver: Label for main catalog / browse region")
+        static let booksListLabel = NSLocalizedString("Books list", comment: "VoiceOver: Label for a list of books")
         static let expandSection = NSLocalizedString("Expand section", comment: "VoiceOver: Expand a collapsible section")
         static let collapseSection = NSLocalizedString("Collapse section", comment: "VoiceOver: Collapse an expanded section")
 
@@ -149,6 +152,20 @@ struct Strings {
             String.localizedStringWithFormat(
                 NSLocalizedString("Download failed for %@.", comment: "VoiceOver announcement when a download fails"),
                 title
+            )
+        }
+
+        static func downloadingTitle(_ title: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("Downloading %@", comment: "VoiceOver accessibility label for download progress indicator, %@ is the book title"),
+                title
+            )
+        }
+
+        static func percentComplete(_ percent: Int) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%d percent complete", comment: "VoiceOver accessibility value for download progress"),
+                percent
             )
         }
 
@@ -239,6 +256,25 @@ struct Strings {
                 query
             )
         }
+
+        static func searchResultsListValue(bookCount: Int) -> String {
+            switch bookCount {
+            case 0:
+                return NSLocalizedString("No results", comment: "Accessibility value when search has no results")
+            case 1:
+                return NSLocalizedString("1 book", comment: "Accessibility value when search has one result")
+            default:
+                return String.localizedStringWithFormat(
+                    NSLocalizedString("%d books", comment: "Accessibility value for search results count. %d is number of books"),
+                    bookCount
+                )
+            }
+        }
+
+        static let searchResultsListHint = NSLocalizedString(
+            "Swipe to browse results. Double tap to open a book.",
+            comment: "Accessibility hint for search results list"
+        )
 
         static func searchFailed() -> String {
             NSLocalizedString(
@@ -339,6 +375,10 @@ struct Strings {
         static let syncDescription = NSLocalizedString("Save your reading position and bookmarks to all your other devices.", comment: "")
         static let authenticateToRevealPIN = NSLocalizedString("Authenticate to reveal your PIN.", comment: "")
         static let deleteServerData = NSLocalizedString("Delete Server Data", comment: "")
+        static let downloadOnlyOnWiFi = NSLocalizedString("Download Only on Wi-Fi", comment: "Toggle label to restrict downloads to Wi-Fi connections")
+        static let downloadOnlyOnWiFiDescription = NSLocalizedString("When enabled, books and audiobooks will only download over Wi-Fi. Downloads will be blocked on cellular data.", comment: "Description for Download Only on Wi-Fi setting")
+        static let downloadRestrictedToWiFi = NSLocalizedString("Downloads are restricted to Wi-Fi in Settings. Connect to a Wi-Fi network or change your download settings to continue.", comment: "Alert message when download is blocked due to Wi-Fi only setting")
+        static let wifiRequired = NSLocalizedString("Wi-Fi Required", comment: "Alert title when download is blocked due to Wi-Fi only setting")
     }
 
     struct AccountDetail {
@@ -553,6 +593,8 @@ struct Strings {
         static let bookmarkSyncError = NSLocalizedString("There was an error syncing bookmarks to the server. Ensure your device is connected to the internet.", comment: "Alert message when bookmark sync fails")
         static let libraryLoadError = NSLocalizedString("We can\u{2019}t get your library right now. Please try again.", comment: "Alert message when library data fails to load, with retry option")
         static let libraryLoadErrorLegacy = NSLocalizedString("We can\u{2019}t get your library right now. Please close and reopen the app to try again.", comment: "Alert message when library data fails to load, no retry available")
+        static let wifiRequired = Strings.Settings.wifiRequired
+        static let downloadRestrictedToWiFi = Strings.Settings.downloadRestrictedToWiFi
     }
 
     struct BookDetailView {
@@ -615,5 +657,9 @@ struct Strings {
             Look here from time to time to see if your book is available to download.
             """, comment: "")
         static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "")
+        static let syncFailedMessage = NSLocalizedString(
+            "There was a problem loading your reservations. Please try again later.",
+            comment: "Error message when holds sync fails"
+        )
     }
 }

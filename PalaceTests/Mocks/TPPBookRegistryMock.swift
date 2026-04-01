@@ -11,6 +11,7 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
     var isSyncing: Bool = false
     var myBooks: [TPPBook] = []
     var state: TPPBookRegistry.RegistryState = .loaded
+    var registryState: TPPBookRegistry.RegistryState { state }
 
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
         registrySubject.eraseToAnyPublisher()

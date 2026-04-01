@@ -245,7 +245,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         var req = URLRequest(url: url, applyingCustomUserAgent: true)
 
         if let selectedAuth = selectedAuthentication,
-           selectedAuth.isOauth || selectedAuth.isSaml || selectedAuth.isToken {
+           selectedAuth.isOauth || selectedAuth.isSaml || selectedAuth.isToken || selectedAuth.isOidc {
 
             // The nil-coalescing on the authToken covers 2 cases:
             // - sign in, where uiDelegate has the token because we just obtained it
@@ -314,14 +314,10 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                 }
 
                 #if FEATURE_DRM_CONNECTOR
-                if AdobeCertificate.defaultCertificate?.hasExpired == true {
-                    self.finalizeSignIn(forDRMAuthorization: true)
-                } else if self.shouldSkipAdobeActivation() {
-                    // Refreshing stale credentials - Adobe DRM is still valid, skip activation
-                    self.finalizeSignIn(forDRMAuthorization: true)
-                } else {
-                    self.drmAuthorizeUserData(responseData, loggingContext: loggingContext)
-                }
+                // PP-3649: Save DRM credentials from profile document but defer Adobe
+                // device activation to borrow time. This avoids burning device activations
+                // for users who never borrow Adobe DRM content.
+                self.saveDRMCredentials(responseData, loggingContext: loggingContext)
                 #else
                 self.finalizeSignIn(forDRMAuthorization: true)
                 #endif
@@ -552,7 +548,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         let selectedAuth = selectedAuthentication
         userAccount.atomicUpdate(for: libraryAccountID) { account in
             if let selectedAuth {
-                if selectedAuth.isOauth || selectedAuth.isSaml || selectedAuth.isToken {
+                if selectedAuth.isOauth || selectedAuth.isSaml || selectedAuth.isToken || selectedAuth.isOidc {
                     if let patron {
                         account.setPatron(patron)
                     }

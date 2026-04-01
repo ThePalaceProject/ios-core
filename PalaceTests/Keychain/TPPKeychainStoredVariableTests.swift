@@ -15,7 +15,7 @@ final class TPPKeychainStoredVariableTests: XCTestCase {
 
     override func tearDown() {
         // Clean up test keychain entries
-        TPPKeychain.shared()?.removeObject(forKey: testKey)
+        TPPKeychain.shared.removeObject(forKey: testKey)
         super.tearDown()
     }
 
@@ -75,7 +75,7 @@ final class TPPKeychainStoredVariableTests: XCTestCase {
         XCTAssertNil(result)
 
         // Cleanup
-        TPPKeychain.shared()?.removeObject(forKey: newKey)
+        TPPKeychain.shared.removeObject(forKey: newKey)
     }
 
     // MARK: - Codable Variable
@@ -97,7 +97,7 @@ final class TPPKeychainStoredVariableTests: XCTestCase {
         let result = variable.read()
         XCTAssertNil(result)
 
-        TPPKeychain.shared()?.removeObject(forKey: uniqueKey)
+        TPPKeychain.shared.removeObject(forKey: uniqueKey)
     }
 
     // MARK: - Transaction

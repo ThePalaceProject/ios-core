@@ -9,9 +9,9 @@ import Foundation
 
 @objc class TPPOPDSFeed: NSObject {
 
-  @objc private(set) var entries: [Any] = []
+  @objc private(set) var entries: [TPPOPDSEntry] = []
   @objc private(set) var identifier: String?
-  @objc private(set) var links: [Any] = []
+  @objc private(set) var links: [TPPOPDSLink] = []
   @objc private(set) var title: String?
   @objc private(set) var updated: Date?
   @objc private(set) var licensor: NSDictionary?
@@ -24,7 +24,7 @@ import Foundation
     if typeIsCached { return _type }
     typeIsCached = true
 
-    guard let entries = self.entries as? [TPPOPDSEntry], !entries.isEmpty else {
+    guard !self.entries.isEmpty else {
       _type = .acquisitionUngrouped
       return _type
     }
@@ -97,6 +97,9 @@ import Foundation
         var problemDocDict: NSDictionary?
         if response?.isProblemDocument() == true {
           problemDocDict = try? JSONSerialization.jsonObject(with: data, options: []) as? NSDictionary
+          if problemDocDict == nil {
+            problemDocDict = TPPProblemDocument.fromProblemResponseData(data)?.dictionaryValue as NSDictionary?
+          }
         }
 
         TPPErrorLogger.logNetworkError(

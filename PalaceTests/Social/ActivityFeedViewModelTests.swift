@@ -109,6 +109,7 @@ final class ActivityFeedViewModelTests: XCTestCase {
         let expectation = expectation(description: "Activities update")
         sut.$activities
             .dropFirst()
+            .prefix(1)
             .sink { activities in
                 if !activities.isEmpty {
                     expectation.fulfill()
