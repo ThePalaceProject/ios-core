@@ -26,58 +26,63 @@ rm -rf TestResults.xcresult
 echo "Detecting test environment and finding suitable simulator..."
 
 if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
-    echo "Running in CI environment - trying multiple fallback strategies"
-    
+    echo "Running in CI environment"
+
     # List available simulators for debugging
     echo "Available iPhone simulators in CI:"
-    xcrun simctl list devices available | grep iPhone | head -5
-    
-    # Try multiple simulator options that are commonly available in CI
-    # Updated for macOS 26 / Xcode 26 runners (iOS 26 simulators)
-    # Fallback to older devices for macos-14 runners
-    SIMULATORS=("iPhone 16e" "iPhone 17" "iPhone 17 Pro" "iPhone Air" "iPhone SE (3rd generation)" "iPhone 15" "iPhone 14")
-    
-    TEST_RAN=false
-    for SIM in "${SIMULATORS[@]}"; do
-        echo "Attempting to use: $SIM"
-        # Clean previous result bundle
-        rm -rf TestResults.xcresult
-        
-        # Run tests - allow failure so we can check if xcresult was created
-        # Snapshot tests removed from test target - no skip flags needed
-        echo "Starting xcodebuild test on $SIM..."
-        set +e
-        xcodebuild test \
-            -project Palace.xcodeproj \
-            -scheme Palace \
-            -destination "platform=iOS Simulator,name=$SIM" \
-            -configuration Debug \
-            -resultBundlePath TestResults.xcresult \
-            -enableCodeCoverage YES \
-            -parallel-testing-enabled NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            GCC_OPTIMIZATION_LEVEL=0 \
-            SWIFT_OPTIMIZATION_LEVEL=-Onone \
-            ENABLE_TESTABILITY=YES
-        TEST_EXIT_CODE=$?
-        set -e
-        
-        # If xcresult was created, tests ran (even if some failed) - stop trying simulators
-        if [ -d "TestResults.xcresult" ]; then
-            echo "✅ Tests executed on simulator: $SIM (exit code: $TEST_EXIT_CODE)"
-            TEST_RAN=true
-            break
-        else
-            echo "❌ Simulator $SIM unavailable or build failed, trying next..."
-        fi
-    done
-    
-    if [ "$TEST_RAN" = "false" ]; then
-        echo "🔴 ERROR: No simulator could run tests!"
+    xcrun simctl list devices available | grep iPhone | head -10
+
+    # Pick the first available iPhone simulator by UDID — never rely on device names
+    # since those vary across Xcode / macOS image versions.
+    # Use grep -oE with a UUID regex to extract just the UDID, not the trailing
+    # state word "(Shutdown)" which a greedy sed match would capture instead.
+    # Also print installed runtimes for debugging in case no devices are found.
+    echo "Installed simulator runtimes:"
+    xcrun simctl list runtimes | grep iOS || echo "(none found)"
+
+    SIMULATOR_ID=$(xcrun simctl list devices available \
+        | grep "iPhone" \
+        | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' \
+        | head -1)
+
+    if [ -z "$SIMULATOR_ID" ]; then
+        echo "🔴 ERROR: No iPhone simulator available in this CI environment!"
+        echo "Full simctl device list:"
+        xcrun simctl list devices available
         exit 1
     fi
+
+    SIMULATOR_NAME=$(xcrun simctl list devices available \
+        | grep "$SIMULATOR_ID" \
+        | sed 's/^[[:space:]]*//' \
+        | sed 's/ (.*//' \
+        | head -1)
+    echo "Using simulator: $SIMULATOR_NAME ($SIMULATOR_ID)"
+
+    set +e
+    xcodebuild test \
+        -project Palace.xcodeproj \
+        -scheme Palace \
+        -destination "id=$SIMULATOR_ID" \
+        -configuration Debug \
+        -resultBundlePath TestResults.xcresult \
+        -enableCodeCoverage YES \
+        -parallel-testing-enabled NO \
+        CODE_SIGNING_REQUIRED=NO \
+        CODE_SIGNING_ALLOWED=NO \
+        ONLY_ACTIVE_ARCH=YES \
+        GCC_OPTIMIZATION_LEVEL=0 \
+        SWIFT_OPTIMIZATION_LEVEL=-Onone \
+        ENABLE_TESTABILITY=YES
+    TEST_EXIT_CODE=$?
+    set -e
+
+    if [ ! -d "TestResults.xcresult" ]; then
+        echo "🔴 ERROR: No xcresult produced — build likely failed before tests ran."
+        exit 1
+    fi
+
+    echo "✅ Tests executed on: $SIMULATOR_NAME (exit code: $TEST_EXIT_CODE)"
 
     # Propagate the test exit code so CI detects failures
     if [ "$TEST_EXIT_CODE" -ne 0 ]; then
