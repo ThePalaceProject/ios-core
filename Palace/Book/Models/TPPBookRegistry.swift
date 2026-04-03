@@ -220,6 +220,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             guard let self = self else { return }
 
             var newRegistry = [String: TPPBookRegistryRecord]()
+            var booksNeedingRedownload = [TPPBook]()
             if FileManager.default.fileExists(atPath: url.path),
                let data     = try? Data(contentsOf: url),
                let json     = try? JSONSerialization.jsonObject(with: data) as? TPPBookRegistryData,
@@ -240,8 +241,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                                 Log.info(#file, "  ✅ '\(record.book.title)' was downloading but file exists - marking as successful")
                                 record.state = .downloadSuccessful
                             } else {
-                                Log.warn(#file, "  ⚠️ '\(record.book.title)' was downloading but file missing - marking as failed")
-                                record.state = .downloadFailed
+                                Log.warn(#file, "  ⚠️ '\(record.book.title)' was downloading but file missing — scheduling re-download")
+                                record.state = .downloadNeeded
+                                booksNeedingRedownload.append(record.book)
                             }
                         } else if record.state == .SAMLStarted {
                             if fileExists {
@@ -253,9 +255,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                             }
                         } else if record.state == .downloadSuccessful {
                             if !fileExists {
-                                Log.error(#file, "  ❌ '\(record.book.title)' marked as downloaded but FILE MISSING - marking as download needed")
-                                Log.error(#file, "     This suggests the file was deleted or the path is wrong")
+                                Log.warn(#file, "  ⚠️ '\(record.book.title)' marked as downloaded but FILE MISSING — scheduling re-download")
                                 record.state = .downloadNeeded
+                                booksNeedingRedownload.append(record.book)
                             } else {
                                 Log.debug(#file, "  ✓ '\(record.book.title)' downloaded and file verified")
                             }
@@ -300,6 +302,18 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
                 NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
                 Log.info(#file, "  📖 Registry loaded with \(bookCount) books")
+
+                // Auto-restart downloads for books whose files were missing (PP-3704).
+                // This handles orphaned LCP audiobook downloads where the .lcpa never arrived.
+                if !booksNeedingRedownload.isEmpty {
+                    Log.info(#file, "  📥 Auto-restarting \(booksNeedingRedownload.count) orphaned download(s)")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        for book in booksNeedingRedownload {
+                            Log.info(#file, "  📥 Re-downloading '\(book.title)'")
+                            MyBooksDownloadCenter.shared.startDownload(for: book)
+                        }
+                    }
+                }
             }
         }
     }
