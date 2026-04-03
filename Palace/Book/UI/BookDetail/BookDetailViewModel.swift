@@ -677,11 +677,16 @@ final class BookDetailViewModel: ObservableObject {
     private func prefetchLCPStreamingIfPossible() {
         guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book), let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) else { return }
         if let localURL = downloadCenter.fileUrl(for: bookIdentifier), FileManager.default.fileExists(atPath: localURL.path) {
+            Log.info(#file, "🎵 [LCP PREFETCH] Skipped (local file exists) — detail view: \(bookIdentifier)")
             return
         }
 
-        guard let lcpAudiobooks = LCPAudiobooks(for: licenseUrl) else { return }
+        guard let lcpAudiobooks = LCPAudiobooks(for: licenseUrl) else {
+            Log.warn(#file, "🎵 [LCP PREFETCH] Skipped (LCPAudiobooks init failed) — detail view: \(bookIdentifier)")
+            return
+        }
 
+        Log.info(#file, "🎵 [LCP PREFETCH] Triggered from detail view — \(bookIdentifier) (\(book.title))")
         didPrefetchLCPStreaming = true
         lcpAudiobooks.startPrefetch()
     }
