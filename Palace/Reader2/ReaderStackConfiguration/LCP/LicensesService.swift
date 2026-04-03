@@ -10,6 +10,7 @@ import Foundation
 import ReadiumShared
 import ReadiumLCP
 import ReadiumZIPFoundation
+import CryptoSwift
 
 enum TPPLicensesServiceError: Error {
     case licenseError(message: String)
@@ -45,15 +46,16 @@ class TPPLicensesService: NSObject {
         self.lcpl = lcpl
         self.link = link
 
-        let isGoogleAPIs = url.host?.lowercased().contains("googleapis.com") == true
         Log.info(#file, "📥 [LCP DOWNLOAD] Starting publication download")
         Log.info(#file, "  Host: \(url.host ?? "unknown")")
-        Log.info(#file, "  Is googleapis.com: \(isGoogleAPIs)")
-        Log.warn(#file, "  ⚠️ Session type: background (credentials NOT stripped — fix pending)")
         Log.info(#file, "  Full URL: \(url.absoluteString)")
 
         let request = URLRequest(url: url, applyingCustomUserAgent: true)
-        let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(lcpl.hashValue)")
+        // Use sha256 of the license path for a stable session identifier across app launches.
+        // Swift's URL.hashValue is randomized per process (SE-0206), so using it caused
+        // background download sessions to be orphaned on every app restart (PP-3704).
+        let stableHash = lcpl.absoluteString.sha256()
+        let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(stableHash)")
         let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
         Log.info(#file, "  Background session ID: \(backgroundIdentifier)")
         let session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: .main)

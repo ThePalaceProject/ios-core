@@ -318,19 +318,21 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         let fileExists = FileManager.default.fileExists(atPath: bookURL.path)
 
         #if LCP
-        // For LCP audiobooks: Check license file (content file optional for streaming)
+        // For LCP audiobooks: require the actual .lcpa content file, not just the .lcpl license.
+        // Previously, having only the .lcpl was considered sufficient ("streaming-only"), but this
+        // caused orphaned downloads to stay in downloadSuccessful state permanently, forcing
+        // Readium to stream the full ZIP from GCS on every interaction (PP-3704).
         if LCPAudiobooks.canOpenBook(book) {
-            let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
-            let licenseExists = FileManager.default.fileExists(atPath: licenseURL.path)
-
-            if licenseExists {
-                // Streaming LCP audiobooks only need license file
-                Log.debug(#file, "  ✓ LCP audiobook license file exists (content file: \(fileExists ? "yes" : "streaming-only"))")
+            if fileExists {
+                Log.debug(#file, "  ✓ LCP audiobook content file (.lcpa) exists")
                 return true
             }
-
-            // No license file - check for content file
-            return fileExists
+            let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
+            let licenseExists = FileManager.default.fileExists(atPath: licenseURL.path)
+            if licenseExists {
+                Log.warn(#file, "  ⚠️ LCP audiobook has license (.lcpl) but content file (.lcpa) is MISSING — will reset to downloadNeeded")
+            }
+            return false
         }
         #endif
 
