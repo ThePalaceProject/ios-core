@@ -10,6 +10,7 @@ import Foundation
 import ReadiumShared
 import ReadiumLCP
 import ReadiumZIPFoundation
+import CryptoSwift
 
 enum TPPLicensesServiceError: Error {
     case licenseError(message: String)
@@ -45,21 +46,28 @@ class TPPLicensesService: NSObject {
         self.lcpl = lcpl
         self.link = link
 
-        // PP-3704: No credentials may be sent to storage.googleapis.com (or any googleapis.com).
-        // Sending cookies/Authorization causes 401. Use ephemeral session (no cookies) for that domain.
+        Log.info(#file, "📥 [LCP DOWNLOAD] Starting publication download")
+        Log.info(#file, "  Host: \(url.host ?? "unknown")")
+        Log.info(#file, "  Full URL: \(url.absoluteString)")
+
         let request = URLRequest(url: url, applyingCustomUserAgent: true)
         let session: URLSession
+
         if url.host?.lowercased().contains("googleapis.com") == true {
-            Log.info("LCP", "Using ephemeral session (no credentials) for googleapis.com publication download: \(url.absoluteString)")
+            // PP-3704: No credentials may be sent to googleapis.com — use ephemeral session
+            Log.info(#file, "  Session type: ephemeral (no credentials for googleapis.com)")
             let config = URLSessionConfiguration.ephemeral
             config.timeoutIntervalForRequest = 60
             config.timeoutIntervalForResource = 600
             session = URLSession(configuration: config, delegate: self, delegateQueue: .main)
         } else {
-            // Create download task and return it to MyBooksDownloadCenter
-            // to hande task cancellation correctly
-            let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(lcpl.hashValue)")
+            // Use sha256 for a stable session identifier across app launches (PP-3704).
+            // Swift's URL.hashValue is randomized per process (SE-0206), so using it caused
+            // background download sessions to be orphaned on every app restart.
+            let stableHash = lcpl.absoluteString.sha256()
+            let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(stableHash)")
             let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
+            Log.info(#file, "  Background session ID: \(backgroundIdentifier)")
             session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: .main)
         }
         let task = session.downloadTask(with: request)
