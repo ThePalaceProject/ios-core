@@ -438,9 +438,14 @@ extension BookCellModel {
     private func prefetchLCPStreamingIfPossible() {
         guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book) else { return }
         if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+            Log.info(#file, "🎵 [LCP PREFETCH] Skipped (local file exists) — cell: \(book.identifier)")
             return
         }
-        guard let license = licenseURL(forBookIdentifier: book.identifier), let lcpAudiobooks = LCPAudiobooks(for: license) else { return }
+        guard let license = licenseURL(forBookIdentifier: book.identifier), let lcpAudiobooks = LCPAudiobooks(for: license) else {
+            Log.warn(#file, "🎵 [LCP PREFETCH] Skipped (no license found) — cell: \(book.identifier)")
+            return
+        }
+        Log.info(#file, "🎵 [LCP PREFETCH] Triggered from book cell — \(book.identifier) (\(book.title))")
         didPrefetchLCPStreaming = true
         lcpAudiobooks.startPrefetch()
     }

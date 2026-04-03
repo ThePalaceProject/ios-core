@@ -1101,6 +1101,7 @@
 		PP3702BF000000000000002 /* AccountAwareNetworkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3702FR000000000000002 /* AccountAwareNetworkTests.swift */; };
 		PP3702BF000000000000003 /* ArraySafetyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3702FR000000000000003 /* ArraySafetyTests.swift */; };
 		PP3702BF000000000000004 /* AccountSwitchCleanupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3702FR000000000000004 /* AccountSwitchCleanupTests.swift */; };
+		PP3704B001000000000000001 /* LCPSessionOrphaningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3704A001000000000000001 /* LCPSessionOrphaningTests.swift */; };
 		PP3784B002CREDVIS0001ABCD /* TPPCredentialVisibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3784A001CREDVIS0001ABCD /* TPPCredentialVisibilityTests.swift */; };
 		PP3819BF01A0B1C2D3E4F506 /* TPPIdleSignOutRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3819FR01A0B1C2D3E4F507 /* TPPIdleSignOutRegressionTests.swift */; };
 		QAAMT002T260955EF00000001 /* AccountModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAAMT001T260955EF00000001 /* AccountModelTests.swift */; };
@@ -2072,6 +2073,7 @@
 		PP3702FR000000000000002 /* AccountAwareNetworkTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountAwareNetworkTests.swift; sourceTree = "<group>"; };
 		PP3702FR000000000000003 /* ArraySafetyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ArraySafetyTests.swift; path = Performance/ArraySafetyTests.swift; sourceTree = "<group>"; };
 		PP3702FR000000000000004 /* AccountSwitchCleanupTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountSwitchCleanupTests.swift; sourceTree = "<group>"; };
+		PP3704A001000000000000001 /* LCPSessionOrphaningTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LCPSessionOrphaningTests.swift; sourceTree = "<group>"; };
 		PP3784A001CREDVIS0001ABCD /* TPPCredentialVisibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPCredentialVisibilityTests.swift; sourceTree = "<group>"; };
 		PP3819FR01A0B1C2D3E4F507 /* TPPIdleSignOutRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPIdleSignOutRegressionTests.swift; sourceTree = "<group>"; };
 		QAAMT001T260955EF00000001 /* AccountModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountModelTests.swift; sourceTree = "<group>"; };
@@ -2495,6 +2497,7 @@
 				3C0E625DA84AEEFF9840A601 /* LCPAudiobooksTests.swift */,
 				F6F691D8676CFC56232C6790 /* LCPPDFsTests.swift */,
 				QALCS001T260955EF00000001 /* LicensesServiceTests.swift */,
+				PP3704A001000000000000001 /* LCPSessionOrphaningTests.swift */,
 			);
 			path = LCP;
 			sourceTree = "<group>";
@@ -4810,6 +4813,7 @@
 				58AF4A75D388F83A1F5B140B /* LCPLibraryServiceTests.swift in Sources */,
 				CCD4CE5B21BED732364D2899 /* LCPAudiobooksTests.swift in Sources */,
 				F8027019D604EEB6191B37E1 /* LCPPDFsTests.swift in Sources */,
+				PP3704B001000000000000001 /* LCPSessionOrphaningTests.swift in Sources */,
 				FA346754BE76A48C92CF0754 /* OPDS2FeedParsingTests.swift in Sources */,
 				E33196F7DAE1612BD57E3CC9 /* OPDS2AuthenticationDocumentTests.swift in Sources */,
 				E5A09A812F0D72D000CC23EA /* URLResponseAuthenticationTests.swift in Sources */,
@@ -6172,9 +6176,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 455;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",

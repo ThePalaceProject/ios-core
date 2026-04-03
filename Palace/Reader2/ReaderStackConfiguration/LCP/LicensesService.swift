@@ -10,6 +10,7 @@ import Foundation
 import ReadiumShared
 import ReadiumLCP
 import ReadiumZIPFoundation
+import CryptoSwift
 
 enum TPPLicensesServiceError: Error {
     case licenseError(message: String)
@@ -45,14 +46,18 @@ class TPPLicensesService: NSObject {
         self.lcpl = lcpl
         self.link = link
 
-        // Create download task and return it to MyBooksDownloadCenter
-        // to hande task cancellation correctly
-        // Background task identifier is unique to create unique download sessions for each class instance.
-        // Otherwise, single download session calls one delegate class methods,
-        // and only one book's status is updated.
+        Log.info(#file, "📥 [LCP DOWNLOAD] Starting publication download")
+        Log.info(#file, "  Host: \(url.host ?? "unknown")")
+        Log.info(#file, "  Full URL: \(url.absoluteString)")
+
         let request = URLRequest(url: url, applyingCustomUserAgent: true)
-        let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(lcpl.hashValue)")
+        // Use sha256 of the license path for a stable session identifier across app launches.
+        // Swift's URL.hashValue is randomized per process (SE-0206), so using it caused
+        // background download sessions to be orphaned on every app restart (PP-3704).
+        let stableHash = lcpl.absoluteString.sha256()
+        let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(stableHash)")
         let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
+        Log.info(#file, "  Background session ID: \(backgroundIdentifier)")
         let session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: .main)
         let task = session.downloadTask(with: request)
         task.resume()
@@ -114,6 +119,31 @@ extension TPPLicensesService: URLSessionDownloadDelegate {
             return
         }
 
+        // Log HTTP status — a 401 here means credentials leaked to GCS
+        if let httpResponse = downloadTask.response as? HTTPURLResponse {
+            let statusCode = httpResponse.statusCode
+            let requestURL = downloadTask.currentRequest?.url?.absoluteString ?? "unknown"
+            Log.info(#file, "📥 [LCP DOWNLOAD] HTTP \(statusCode) — URL: \(requestURL)")
+
+            if statusCode != 200 {
+                Log.error(#file, "📥 [LCP DOWNLOAD] ❌ Server returned HTTP \(statusCode) — this may be a GCS credential leak (PP-3704)")
+                TPPErrorLogger.logError(
+                    withCode: .ignore,
+                    summary: "LCP download non-200 HTTP status",
+                    metadata: [
+                        "http_status": String(statusCode),
+                        "request_url": requestURL,
+                        "session_id": session.configuration.identifier ?? "ephemeral"
+                    ]
+                )
+                completionHandler?(nil, TPPLicensesServiceError.licenseError(message: "Server returned HTTP \(statusCode) — download failed"))
+                return
+            }
+        }
+
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: location.path)[.size] as? Int64) ?? 0
+        Log.info(#file, "📥 [LCP DOWNLOAD] ✅ Download finished — size: \(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))")
+
         let safeCopy = FileManager.default.temporaryDirectory.appendingPathComponent("download_\(UUID().uuidString).zip")
 
         do {
@@ -125,12 +155,14 @@ extension TPPLicensesService: URLSessionDownloadDelegate {
                     do {
                         if (try? await Archive(url: safeCopy, accessMode: .read)) != nil {
                             try await self.injectLicense(lcpl: lcpl, to: safeCopy, at: licensePathInZip)
-
+                            Log.info(#file, "📥 [LCP DOWNLOAD] ✅ License injected — ready for local playback")
                             completionHandler?(safeCopy, nil)
                         } else {
+                            Log.error(#file, "📥 [LCP DOWNLOAD] ❌ Failed to open archive after download")
                             completionHandler?(nil, TPPLicensesServiceError.licenseError(message: "Failed to open archive"))
                         }
                     } catch {
+                        Log.error(#file, "📥 [LCP DOWNLOAD] ❌ License injection failed: \(error.localizedDescription)")
                         completionHandler?(nil, error)
                     }
                 }
@@ -138,13 +170,28 @@ extension TPPLicensesService: URLSessionDownloadDelegate {
                 completionHandler?(safeCopy, nil)
             }
         } catch {
+            Log.error(#file, "📥 [LCP DOWNLOAD] ❌ File copy failed: \(error.localizedDescription)")
             completionHandler?(nil, error)
         }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        // Check the task wasn't cancelled
+        if let httpResponse = task.response as? HTTPURLResponse {
+            Log.info(#file, "📥 [LCP DOWNLOAD] Task completed — HTTP status: \(httpResponse.statusCode)")
+        }
         if let nsError = error as? NSError, nsError.code != NSURLErrorCancelled {
+            Log.error(#file, "📥 [LCP DOWNLOAD] ❌ Session task failed: \(nsError.localizedDescription) (code: \(nsError.code))")
+            if let failingURL = nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String {
+                Log.error(#file, "  Failing URL: \(failingURL)")
+            }
+            TPPErrorLogger.logError(
+                nsError,
+                summary: "LCP background download task failed",
+                metadata: [
+                    "error_code": String(nsError.code),
+                    "session_id": session.configuration.identifier ?? "ephemeral"
+                ]
+            )
             completionHandler?(nil, error)
         }
     }

@@ -136,13 +136,19 @@ import Foundation
                         ]
                         completion(minimal as NSDictionary, nil)
                     }
-                case .failure(let error):
-                    completion(nil, LCPAudiobooks.nsError(for: error))
-                }
-
             case .failure(let error):
-                completion(nil, LCPAudiobooks.nsError(for: error))
+                let nsErr = LCPAudiobooks.nsError(for: error)
+                Log.error(#file, "🎵 [LCP STREAM] ❌ publicationOpener.open failed: \(error)")
+                TPPErrorLogger.logError(nsErr, summary: "LCP publication open failed", metadata: ["error": String(describing: error)])
+                completion(nil, nsErr)
             }
+
+        case .failure(let error):
+            let nsErr = LCPAudiobooks.nsError(for: error)
+            Log.error(#file, "🎵 [LCP STREAM] ❌ assetRetriever.retrieve failed: \(error)")
+            TPPErrorLogger.logError(nsErr, summary: "LCP asset retrieval failed", metadata: ["error": String(describing: error)])
+            completion(nil, nsErr)
+        }
 
             self.publicationCacheQueue.async {
                 if self.currentPrefetchTask?.isCancelled == true { self.currentPrefetchTask = nil }
@@ -237,8 +243,29 @@ extension LCPAudiobooks {
     }
 
     public func startPrefetch() {
+        let urlDescription: String
+        switch audiobookUrl {
+        case let fileURL as FileURL:
+            urlDescription = "file://\(fileURL.url.lastPathComponent)"
+        case let httpURL as HTTPURL:
+            urlDescription = httpURL.url.host ?? httpURL.url.absoluteString
+        default:
+            urlDescription = String(describing: audiobookUrl)
+        }
+        Log.info(#file, "🎵 [LCP PREFETCH] Starting silent prefetch — source: \(urlDescription)")
+
         DispatchQueue.global(qos: .userInteractive).async { [weak self] in
-            self?.loadContentDictionary { _, _ in
+            self?.loadContentDictionary { _, error in
+                if let error = error {
+                    Log.warn(#file, "🎵 [LCP PREFETCH] ❌ Silent prefetch failed — source: \(urlDescription), error: \(error.localizedDescription)")
+                    TPPErrorLogger.logError(
+                        error as NSError,
+                        summary: "LCP silent prefetch failed",
+                        metadata: ["source_url": urlDescription]
+                    )
+                } else {
+                    Log.info(#file, "🎵 [LCP PREFETCH] ✅ Silent prefetch succeeded — source: \(urlDescription)")
+                }
             }
         }
     }
