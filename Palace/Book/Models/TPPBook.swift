@@ -396,12 +396,12 @@ public class TPPBook: NSObject, ObservableObject {
         defaultAcquisition?.availability.matchUnavailable(
             nil,
             limited: { limited in
-                if let until = limited.until, until.timeIntervalSinceNow > 0 { date = until }
+                if let until = limited.until { date = until }
             },
             unlimited: nil,
             reserved: nil,
             ready: { ready in
-                if let until = ready.until, until.timeIntervalSinceNow > 0 { date = until }
+                if let until = ready.until { date = until }
             }
         )
 
