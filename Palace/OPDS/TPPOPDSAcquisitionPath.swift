@@ -18,6 +18,7 @@ let ContentTypePDFLCP = "application/pdf+lcp"
 let ContentTypeAudiobookLCP = "application/audiobook+lcp"
 let ContentTypeAudiobookZip = "application/audiobook+zip"
 let ContentTypeBiblioboard = "application/json"
+let ContentTypeOPDSPublication = "application/opds-publication+json"
 
 // MARK: - TPPOPDSAcquisitionPath
 
@@ -46,7 +47,8 @@ let ContentTypeBiblioboard = "application/json"
       ContentTypeOverdriveAudiobook,
       ContentTypeOctetStream,
       ContentTypeBiblioboard,
-      ContentTypeAudiobookZip
+      ContentTypeAudiobookZip,
+      ContentTypeOPDSPublication
     ]
 
     #if FEATURE_DRM_CONNECTOR
@@ -96,6 +98,20 @@ let ContentTypeBiblioboard = "application/json"
         ContentTypeEpubZip,
         ContentTypeOpenAccessPDF,
         ContentTypeOpenAccessAudiobook
+      ],
+      ContentTypeOPDSPublication: [
+        ContentTypeAdobeAdept,
+        ContentTypeBearerToken,
+        ContentTypeFindaway,
+        ContentTypeEpubZip,
+        ContentTypeOpenAccessPDF,
+        ContentTypeOpenAccessAudiobook,
+        ContentTypeFeedbooksAudiobook,
+        ContentTypeOverdriveAudiobook,
+        ContentTypeOctetStream,
+        ContentTypeReadiumLCP,
+        ContentTypeAudiobookZip,
+        ContentTypeAudiobookLCP
       ]
     ]
 

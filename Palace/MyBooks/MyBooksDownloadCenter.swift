@@ -1154,6 +1154,9 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
             return .none
         case ContentTypeBearerToken:
             return .simplifiedBearerTokenJSON
+        case ContentTypeOPDSPublication:
+            // Intermediate type — will be handled by handleOPDS2PublicationResponse
+            return .none
         #if FEATURE_OVERDRIVE
         case "application/json":
             return .overdriveManifestJSON
@@ -1177,47 +1180,73 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
             lowercased.contains("opds-catalog")
     }
 
-    /// Handles OPDS entry XML response by parsing it and following the actual acquisition link
-    /// - Returns: `true` if a follow-up download was successfully started
-    private func handleOPDSEntryResponse(
+    /// Checks if the MIME type indicates an OPDS 2 publication JSON response
+    private func isOPDS2PublicationMimeType(_ mimeType: String) -> Bool {
+        let lowercased = mimeType.lowercased()
+        return lowercased.contains("opds-publication+json") ||
+            lowercased.contains("opds+json")
+    }
+
+    /// Handles an OPDS 2 publication JSON response by parsing it and following the actual acquisition link.
+    /// The borrow endpoint returns a publication JSON with fulfillment links — we parse it,
+    /// extract the direct content link, and start a new download for the actual content.
+    private func handleOPDS2PublicationResponse(
         at location: URL,
         for book: TPPBook,
         originalTask: URLSessionDownloadTask,
         session: URLSession
     ) async -> Bool {
-        guard let xmlData = try? Data(contentsOf: location) else {
-            Log.error(#file, "Failed to read OPDS entry XML for \(book.identifier)")
+        guard let jsonData = try? Data(contentsOf: location) else {
+            Log.error(#file, "Failed to read OPDS2 publication JSON for \(book.identifier)")
             return false
         }
 
-        // Try to parse as OPDS entry and extract acquisition link
-        guard let xml = TPPXML.xml(withData: xmlData), let entry = TPPOPDSEntry(xml: xml) else {
-            Log.warn(#file, "Failed to parse XML as OPDS entry for \(book.identifier)")
+        // Parse the OPDS2 publication
+        let publication: OPDS2Publication
+        do {
+            publication = try JSONDecoder().decode(OPDS2Publication.self, from: jsonData)
+        } catch {
+            // Try as full publication
+            do {
+                let fullPub = try JSONDecoder().decode(OPDS2FullPublication.self, from: jsonData)
+                if let updatedBook = fullPub.toBook() {
+                    return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
+                }
+            } catch {
+                Log.error(#file, "Failed to decode OPDS2 publication JSON for \(book.identifier): \(error)")
+            }
             return false
         }
 
-        // Create a temporary book from the entry to get updated acquisition links
-        guard let updatedBook = TPPBook(entry: entry) else {
-            Log.warn(#file, "Failed to create book from OPDS entry for \(book.identifier)")
+        guard let updatedBook = publication.toBook() else {
+            Log.warn(#file, "Failed to convert OPDS2 publication to book for \(book.identifier)")
             return false
         }
 
-        // Find the direct acquisition link (not another OPDS catalog entry)
-        guard let acquisition = updatedBook.defaultAcquisition,
-              !acquisition.type.lowercased().contains("opds-catalog") else {
-            Log.warn(#file, "No direct acquisition link in OPDS entry for \(book.identifier)")
+        return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
+    }
+
+    /// Follows the acquisition link from an updated book (from OPDS entry or OPDS2 publication response)
+    private func followAcquisitionLink(
+        from updatedBook: TPPBook,
+        originalBook: TPPBook,
+        originalTask: URLSessionDownloadTask,
+        session: URLSession
+    ) async -> Bool {
+        // Find a direct acquisition link (not another intermediate type)
+        guard let acquisition = updatedBook.defaultAcquisition else {
+            Log.warn(#file, "No acquisition link in OPDS2 publication for \(originalBook.identifier)")
             return false
         }
 
         let acquisitionURL = acquisition.hrefURL
-        Log.info(#file, "📖 Following acquisition link from OPDS entry: \(acquisitionURL)")
+        Log.info(#file, "📖 Following acquisition link from OPDS2 publication: \(acquisitionURL) (type: \(acquisition.type))")
 
-        // CRITICAL: Remove the original task's mapping before creating a new one
-        // This prevents the original task's completion handler from interfering
+        // Remove original task mapping
         await taskIdentifierToBook.remove(originalTask.taskIdentifier)
 
-        // Update the book in registry with new acquisition info
-        let registryLocation = bookRegistry.location(forIdentifier: book.identifier)
+        // Update book in registry
+        let registryLocation = bookRegistry.location(forIdentifier: originalBook.identifier)
         bookRegistry.addBook(
             updatedBook,
             location: registryLocation,
@@ -1227,13 +1256,11 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
             genericBookmarks: nil as [TPPBookLocation]?
         )
 
-        // Detect rights from the new acquisition type
+        // Detect rights from new acquisition type
         let newRights = detectRightsManagement(from: acquisition.type)
 
-        // Create new download task for the actual content
+        // Create follow-up download request
         var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
-
-        // Add authorization if needed
         if let token = userAccount.authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -1251,6 +1278,32 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         newTask.resume()
         Log.info(#file, "📖 Started follow-up download task \(newTask.taskIdentifier) for \(updatedBook.identifier)")
         return true
+    }
+
+    /// Handles OPDS entry XML response by parsing it and following the actual acquisition link
+    /// - Returns: `true` if a follow-up download was successfully started
+    private func handleOPDSEntryResponse(
+        at location: URL,
+        for book: TPPBook,
+        originalTask: URLSessionDownloadTask,
+        session: URLSession
+    ) async -> Bool {
+        guard let xmlData = try? Data(contentsOf: location) else {
+            Log.error(#file, "Failed to read OPDS entry XML for \(book.identifier)")
+            return false
+        }
+
+        guard let xml = TPPXML.xml(withData: xmlData), let entry = TPPOPDSEntry(xml: xml) else {
+            Log.warn(#file, "Failed to parse XML as OPDS entry for \(book.identifier)")
+            return false
+        }
+
+        guard let updatedBook = TPPBook(entry: entry) else {
+            Log.warn(#file, "Failed to create book from OPDS entry for \(book.identifier)")
+            return false
+        }
+
+        return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
     }
 
     private func handleDownloadProgress(
@@ -1365,6 +1418,17 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                 return
             } else {
                 Log.warn(#file, "⚠️ Failed to extract acquisition link from OPDS entry for \(book.identifier)")
+                try? FileManager.default.removeItem(at: location)
+                failureRequiringAlert = true
+            }
+        } else if !failureRequiringAlert && isOPDS2PublicationMimeType(mimeType) {
+            Log.info(#file, "📖 Received OPDS2 publication JSON for \(book.identifier), extracting fulfillment link")
+
+            if await handleOPDS2PublicationResponse(at: location, for: book, originalTask: task, session: session) {
+                try? FileManager.default.removeItem(at: location)
+                return
+            } else {
+                Log.warn(#file, "⚠️ Failed to extract fulfillment link from OPDS2 publication for \(book.identifier)")
                 try? FileManager.default.removeItem(at: location)
                 failureRequiringAlert = true
             }

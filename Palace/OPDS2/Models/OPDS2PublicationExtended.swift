@@ -142,7 +142,8 @@ enum OPDS2BookBridge {
         let contentTypes: [String]
         switch type {
         case "application/vnd.librarysimplified.bearer-token+json",
-             "application/atom+xml;type=entry;profile=opds-catalog":
+             "application/atom+xml;type=entry;profile=opds-catalog",
+             "application/opds-publication+json":
             // Common fulfillment types — the final content could be EPUB, PDF, or audiobook
             contentTypes = [
                 "application/epub+zip",
