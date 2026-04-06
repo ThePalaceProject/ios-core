@@ -68,6 +68,11 @@ struct ErrorDetail {
     ) async -> ErrorDetail {
         let trail = await ErrorActivityTracker.shared.recentActivities(seconds: 300)
 
+        // captureDeviceContext() accesses UIDevice.current, which requires the main thread.
+        // Hop to the main actor explicitly so the call is always safe regardless of
+        // which concurrency context `capture()` is awaited from.
+        let deviceContext = await MainActor.run { captureDeviceContext() }
+
         let bookInfo: BookInfo? = bookIdentifier.map {
             BookInfo(identifier: $0, title: bookTitle)
         }
@@ -80,11 +85,13 @@ struct ErrorDetail {
             activityTrail: trail,
             timestamp: Date(),
             bookInfo: bookInfo,
-            deviceContext: captureDeviceContext()
+            deviceContext: deviceContext
         )
     }
 
     /// Captures current device/app context synchronously.
+    /// Must be called on the main thread (UIDevice.current is main-actor-only).
+    @MainActor
     private static func captureDeviceContext() -> DeviceContext {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"

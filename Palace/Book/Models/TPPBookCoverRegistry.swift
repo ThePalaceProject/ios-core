@@ -145,20 +145,92 @@ actor TPPBookCoverRegistry {
 
     // MARK: - Public API
 
-    func coverImage(for book: TPPBook) async -> UIImage? {
+    func coverImage(for book: TPPBook, displayHeight: CGFloat? = nil) async -> UIImage? {
         if let url = book.imageURL, let image = await fetchImage(from: url, for: book, isCover: true) {
             return image
         }
 
-        return await thumbnailImage(for: book)
+        return await thumbnailImage(for: book, displayHeight: displayHeight)
     }
 
-    func thumbnailImage(for book: TPPBook) async -> UIImage? {
+    func thumbnailImage(for book: TPPBook, displayHeight: CGFloat? = nil) async -> UIImage? {
         if let url = book.imageThumbnailURL, let image = await fetchImage(from: url, for: book, isCover: false) {
             return image
         }
 
-        return await placeholder(for: book)
+        return await placeholder(for: book, displayHeight: displayHeight)
+    }
+
+    /// Fetches a cover decoded at the minimum pixel size needed for a given display size.
+    /// Pass the view's point height (or width); the method converts to pixels using screen scale
+    /// and clamps to a sensible max. Use this instead of `coverImage(for:)` when you know
+    /// the display size ahead of time so you don't over- or under-fetch.
+    func coverImage(for book: TPPBook, displayPoints: CGFloat) async -> UIImage? {
+        let scale = await MainActor.run { UIScreen.main.scale }
+        let neededPixels = min(displayPoints * scale * 1.5, 1200) // 1.5× for sharp rendering
+        let key = "\(book.identifier)_\(Int(neededPixels))px" as NSString
+
+        if let cached = imageCache.get(for: key as String) { return cached }
+
+        // No network image — fall back directly to a size-aware placeholder so TenPrint
+        // renders at the display size rather than the fixed 80×120 thumbnail size.
+        guard let url = book.imageURL else { return await coverImage(for: book, displayHeight: displayPoints) }
+        if await hostFailureTracker.isHostFailing(url.host) { return await coverImage(for: book, displayHeight: displayPoints) }
+
+        await acquireFetchSlot()
+        defer { Task { await self.releaseFetchSlot() } }
+
+        do {
+            let (data, _) = try await Self.imageSession.data(from: url)
+            await hostFailureTracker.recordSuccess(for: url.host)
+            guard let image = Self.downsampleImage(data: data, maxDimension: neededPixels) else {
+                return await coverImage(for: book, displayHeight: displayPoints)
+            }
+            imageCache.set(image, for: key as String, expiresIn: nil)
+            return image
+        } catch {
+            return await coverImage(for: book, displayHeight: displayPoints)
+        }
+    }
+
+    /// Fetches a full-resolution cover for the audiobook player, where the image
+    /// is displayed at full screen width. Uses the actual screen pixel width as the
+    /// decode limit, bypassing the conservative per-device memory caps used elsewhere.
+    func playerCoverImage(for book: TPPBook) async -> UIImage? {
+        guard let url = book.imageURL else {
+            return await coverImage(for: book)
+        }
+
+        let screenPixelWidth = await MainActor.run {
+            UIScreen.main.bounds.width * UIScreen.main.scale
+        }
+        let playerDimension = min(screenPixelWidth, 1200)
+        let key = "\(book.identifier)_player" as NSString
+
+        if let cached = imageCache.get(for: key as String) {
+            return cached
+        }
+
+        if await hostFailureTracker.isHostFailing(url.host) {
+            return await coverImage(for: book)
+        }
+
+        await acquireFetchSlot()
+        defer { Task { await self.releaseFetchSlot() } }
+
+        do {
+            let (data, _) = try await Self.imageSession.data(from: url)
+            await hostFailureTracker.recordSuccess(for: url.host)
+
+            guard let image = Self.downsampleImage(data: data, maxDimension: playerDimension) else {
+                return await coverImage(for: book)
+            }
+
+            imageCache.set(image, for: key as String, expiresIn: nil)
+            return image
+        } catch {
+            return await coverImage(for: book)
+        }
     }
 
     private func fetchImage(from url: URL, for book: TPPBook, isCover: Bool) async -> UIImage? {
@@ -283,22 +355,9 @@ actor TPPBookCoverRegistry {
         }
     }
 
-    private func placeholder(for book: TPPBook) async -> UIImage? {
+    private func placeholder(for book: TPPBook, displayHeight: CGFloat? = nil) async -> UIImage? {
         await MainActor.run {
-            let size = CGSize(width: 80, height: 120)
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = UIScreen.main.scale
-            return UIGraphicsImageRenderer(size: size, format: format)
-                .image { ctx in
-                    if let view = NYPLTenPrintCoverView(
-                        frame: CGRect(origin: .zero, size: size),
-                        withTitle: book.title,
-                        withAuthor: book.authors ?? "Unknown Author",
-                        withScale: 0.4
-                    ) {
-                        view.layer.render(in: ctx.cgContext)
-                    }
-                }
+            tenPrintImage(title: book.title, authors: book.authors, displayHeight: displayHeight)
         }
     }
 
@@ -378,23 +437,36 @@ actor TPPBookCoverRegistry {
 
     /// Generate a placeholder image without requiring a book reference.
     /// This prevents EXC_BAD_ACCESS crashes when the book is deallocated.
-    func generatePlaceholder(title: String, authors: String?) async -> UIImage? {
+    func generatePlaceholder(title: String, authors: String?, displayHeight: CGFloat? = nil) async -> UIImage? {
         await MainActor.run {
-            let size = CGSize(width: 80, height: 120)
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = UIScreen.main.scale
-            return UIGraphicsImageRenderer(size: size, format: format)
-                .image { ctx in
-                    if let view = NYPLTenPrintCoverView(
-                        frame: CGRect(origin: .zero, size: size),
-                        withTitle: title,
-                        withAuthor: authors ?? "Unknown Author",
-                        withScale: 0.4
-                    ) {
-                        view.layer.render(in: ctx.cgContext)
-                    }
-                }
+            tenPrintImage(title: title, authors: authors, displayHeight: displayHeight)
         }
+    }
+
+    /// Renders a TenPrint cover at the given display height (or the default 120 pt if nil).
+    /// The view scale and aspect ratio are kept proportional to the original 80×120 design.
+    /// Must be called on the MainActor.
+    @MainActor
+    private func tenPrintImage(title: String, authors: String?, displayHeight: CGFloat?) -> UIImage? {
+        let baseHeight: CGFloat = 120
+        let height = displayHeight ?? baseHeight
+        let width = height * (80.0 / baseHeight)       // maintain 2:3 aspect ratio
+        let viewScale = 0.4 * (height / baseHeight)    // keep strokes/fonts proportional
+
+        let size = CGSize(width: width, height: height)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = UIScreen.main.scale
+        return UIGraphicsImageRenderer(size: size, format: format)
+            .image { ctx in
+                if let view = NYPLTenPrintCoverView(
+                    frame: CGRect(origin: .zero, size: size),
+                    withTitle: title,
+                    withAuthor: authors ?? "Unknown Author",
+                    withScale: Float(viewScale)
+                ) {
+                    view.layer.render(in: ctx.cgContext)
+                }
+            }
     }
 }
 
@@ -414,6 +486,7 @@ public class TPPBookCoverRegistryBridge: NSObject {
     public func coverImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
         // Capture all needed data early to avoid accessing potentially deallocated book later
         let bookIdentifier = book.identifier
+        let coverKey = "\(bookIdentifier)_cover"
         let imageURL = book.imageURL
         let thumbnailURL = book.imageThumbnailURL
         let title = book.title
@@ -440,10 +513,8 @@ public class TPPBookCoverRegistryBridge: NSObject {
             // Use main actor for UI-related cache operations
             await MainActor.run {
                 if let img = img {
-                    // Use shared cache directly instead of book.imageCache to prevent EXC_BAD_ACCESS
-                    sharedImageCache.set(img, for: bookIdentifier)
-                    // Only update book's cache if book is still alive
-                    book?.imageCache.set(img, for: bookIdentifier)
+                    sharedImageCache.set(img, for: coverKey)
+                    book?.imageCache.set(img, for: coverKey)
                 }
                 completion(img)
             }
@@ -455,6 +526,7 @@ public class TPPBookCoverRegistryBridge: NSObject {
     public func thumbnailImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
         // Capture all needed data early to avoid accessing potentially deallocated book later
         let bookIdentifier = book.identifier
+        let thumbnailKey = "\(bookIdentifier)_thumbnail"
         let thumbnailURL = book.imageThumbnailURL
         let title = book.title
         let authors = book.authors
@@ -475,10 +547,8 @@ public class TPPBookCoverRegistryBridge: NSObject {
             // Use main actor for UI-related cache operations
             await MainActor.run {
                 if let img = img {
-                    // Use shared cache directly instead of book.imageCache to prevent EXC_BAD_ACCESS
-                    sharedImageCache.set(img, for: bookIdentifier)
-                    // Only update book's cache if book is still alive
-                    book?.imageCache.set(img, for: bookIdentifier)
+                    sharedImageCache.set(img, for: thumbnailKey)
+                    book?.imageCache.set(img, for: thumbnailKey)
                 }
                 completion(img)
             }

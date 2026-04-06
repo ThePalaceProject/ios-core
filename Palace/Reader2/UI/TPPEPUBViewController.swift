@@ -22,6 +22,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     private var keyboardDisconnectObserver: NSObjectProtocol?
     private var isShiftPressed = false
     private lazy var keyboardNavigationHandler = KeyboardNavigationHandler(navigable: self)
+    private var lastChapterHREF: String?
 
     init(publication: Publication,
          book: TPPBook,
@@ -187,16 +188,12 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
     override func updateViewsForVoiceOver(isRunning: Bool) {
         super.updateViewsForVoiceOver(isRunning: isRunning)
-
-        if isRunning {
-            navigator.view.isAccessibilityElement = false
-            navigator.view.accessibilityElementsHidden = false
-            navigator.view.accessibilityLabel = nil
-            navigator.view.accessibilityTraits = []
-            navigator.view.accessibilityCustomActions = nil
-        } else {
+        if !isRunning {
             configureAccessibilityActions()
         }
+        // Readium handles the heavy lifting: forces scroll mode,
+        // sets .causesPageTurn, and implements accessibilityScroll
+        // for automatic chapter advancement.
     }
 
     /// Reclaim first responder after each page load so UIKeyCommands stay active.
@@ -204,11 +201,56 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     override func didChangeLocation(_ locator: Locator) {
         claimFirstResponder()
 
-        if UIAccessibility.isVoiceOverRunning {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                guard let self else { return }
-                UIAccessibility.post(notification: .screenChanged, argument: self.navigator.view)
-            }
+        let newHREF = locator.href.string
+        let isChapterChange = (newHREF != lastChapterHREF)
+        let wasManual = manualNavigationPending
+        manualNavigationPending = false
+        lastChapterHREF = newHREF
+
+        guard UIAccessibility.isVoiceOverRunning, isChapterChange else { return }
+
+        // Readium's accessibilityScroll navigates but never posts
+        // .pageScrolled (WWDC 2019 Session 248). Post it immediately
+        // so VoiceOver's "Read All" continues into the new chapter.
+        let status = locator.title.flatMap { $0.isEmpty ? nil : $0 } ?? "Page changed"
+        UIAccessibility.post(notification: .pageScrolled, argument: status)
+
+        // For manual page turns only (toolbar buttons, keyboard, edge taps),
+        // use JavaScript to focus the first content element so VoiceOver
+        // lands on chapter content rather than the back button (WCAG 3.2.3).
+        // Skipped for accessibilityScroll ("Read All") to avoid interrupting
+        // continuous reading.
+        guard wasManual else { return }
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard self.lastChapterHREF == newHREF else { return }
+
+            // Temporarily hide the navbar from VoiceOver so it can't
+            // steal focus from the content element we're about to target.
+            // The navbar is always visible when VoiceOver is on, so without
+            // this VoiceOver prefers the back button over web content.
+            let navbar = self.navigationController?.navigationBar
+            navbar?.accessibilityElementsHidden = true
+
+            let js = """
+            (function() {
+                var el = document.querySelector('h1, h2, h3, h4, h5, h6, p, [role="heading"]');
+                if (el) {
+                    el.setAttribute('tabindex', '-1');
+                    el.focus();
+                    return el.tagName;
+                }
+                return null;
+            })()
+            """
+            await self.epubNavigator.evaluateJavaScript(js)
+
+            UIAccessibility.post(notification: .screenChanged, argument: self.navigator.view)
+
+            // Restore navbar accessibility after VoiceOver has settled
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            navbar?.accessibilityElementsHidden = false
         }
     }
 

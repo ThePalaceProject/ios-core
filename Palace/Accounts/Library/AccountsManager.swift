@@ -469,13 +469,17 @@ struct CatalogCacheMetadata: Codable {
     func clearCache() {
         // network cache
         TPPNetworkExecutor.shared.clearCache()
-        // file caches
-        let keys = ["library_list_", "accounts_catalog_", "authentication_document_"]
+        // file caches — files are named with a hash suffix (e.g. accounts_catalog_<hash>.json)
+        // so we enumerate the directory and delete by prefix match rather than exact name
+        let prefixes = ["library_list_", "accounts_catalog_", "authentication_document_"]
         let fm = FileManager.default
-        if let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false) {
-            for key in keys {
-                let url = appSupport.appendingPathComponent("\(key).json")
-                try? fm.removeItem(at: url)
+        if let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false),
+           let contents = try? fm.contentsOfDirectory(at: appSupport, includingPropertiesForKeys: nil) {
+            for fileUrl in contents {
+                let name = fileUrl.lastPathComponent
+                if prefixes.contains(where: { name.hasPrefix($0) }) {
+                    try? fm.removeItem(at: fileUrl)
+                }
             }
         }
     }

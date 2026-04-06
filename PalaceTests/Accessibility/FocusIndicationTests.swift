@@ -93,13 +93,13 @@ final class FocusIndicationTests: XCTestCase {
         let containerView = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
 
         let topButton = UIButton(frame: CGRect(x: 10, y: 10, width: 100, height: 44))
-        topButton.accessibilityLabel = "Top Button"
+        topButton.accessibilityLabel = "Top Action"
 
         let middleButton = UIButton(frame: CGRect(x: 10, y: 64, width: 100, height: 44))
-        middleButton.accessibilityLabel = "Middle Button"
+        middleButton.accessibilityLabel = "Middle Action"
 
         let bottomButton = UIButton(frame: CGRect(x: 10, y: 118, width: 100, height: 44))
-        bottomButton.accessibilityLabel = "Bottom Button"
+        bottomButton.accessibilityLabel = "Bottom Action"
 
         containerView.addSubview(topButton)
         containerView.addSubview(middleButton)

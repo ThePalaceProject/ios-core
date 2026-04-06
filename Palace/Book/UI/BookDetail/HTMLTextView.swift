@@ -24,8 +24,14 @@ struct HTMLTextView: View {
     /// Parse HTML on the main thread to avoid WebKit threading crashes.
     /// NSAttributedString with .html documentType uses WebKit internally
     /// and will crash with EXC_BAD_ACCESS if called from a background thread.
+    ///
+    /// We also guard against app-backgrounded state: SwiftUI can trigger
+    /// onAppear/onChange during state restoration while the app is in the
+    /// background, causing NSInternalInconsistencyException "unexpected start
+    /// state" inside WebKit's HTML state machine.
     @MainActor
     private func parseHTML() {
+        guard UIApplication.shared.applicationState != .background else { return }
         isLoading = true
         attributedString = Self.makeAttributedString(from: htmlContent)
         isLoading = false
@@ -68,28 +74,37 @@ struct HTMLTextView: View {
             .characterEncoding: String.Encoding.utf8.rawValue
         ]
 
-        do {
-            // NSAttributedString HTML parsing uses WebKit and must be on main thread
-            let nsAttr = try NSAttributedString(data: data, options: options, documentAttributes: nil)
-            let mutable = NSMutableAttributedString(attributedString: nsAttr)
+        // NSAttributedString with .html uses WebKit internally and can throw
+        // ObjC NSExceptions (e.g. "unexpected start state") that Swift's
+        // do/catch cannot intercept. Wrap in ObjC @try/@catch to recover.
+        var nsAttr: NSAttributedString?
+        let exception = TPPObjCExceptionCatcher.catchException {
+            nsAttr = try? NSAttributedString(data: data, options: options, documentAttributes: nil)
+        }
 
-            // Safely enumerate and update font attributes
-            let fullRange = NSRange(location: 0, length: mutable.length)
-            guard fullRange.length > 0 else {
-                return AttributedString(stripHTMLTags(from: html))
-            }
-
-            mutable.enumerateAttribute(.font, in: fullRange, options: .longestEffectiveRangeNotRequired) { _, range, _ in
-                mutable.addAttribute(.font, value: UIFont.palaceFont(ofSize: 17), range: range)
-            }
-
-            mutable.addAttribute(.foregroundColor, value: UIColor.label, range: fullRange)
-
-            return AttributedString(mutable)
-        } catch {
-            Log.warn(#file, "Failed to parse HTML: \(error.localizedDescription)")
+        if let exception = exception {
+            Log.error(#file, "ObjC exception parsing HTML: \(exception.name.rawValue) — \(exception.reason ?? "unknown")")
             return AttributedString(stripHTMLTags(from: html))
         }
+
+        guard let parsed = nsAttr else {
+            Log.warn(#file, "NSAttributedString returned nil for HTML input")
+            return AttributedString(stripHTMLTags(from: html))
+        }
+
+        let mutable = NSMutableAttributedString(attributedString: parsed)
+        let fullRange = NSRange(location: 0, length: mutable.length)
+        guard fullRange.length > 0 else {
+            return AttributedString(stripHTMLTags(from: html))
+        }
+
+        mutable.enumerateAttribute(.font, in: fullRange, options: .longestEffectiveRangeNotRequired) { _, range, _ in
+            mutable.addAttribute(.font, value: UIFont.palaceFont(ofSize: 17), range: range)
+        }
+
+        mutable.addAttribute(.foregroundColor, value: UIColor.label, range: fullRange)
+
+        return AttributedString(mutable)
     }
 
     /// Logs HTML content for crash diagnostics.

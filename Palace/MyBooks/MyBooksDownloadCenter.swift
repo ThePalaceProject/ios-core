@@ -205,7 +205,7 @@ struct DownloadErrorInfo {
     }
 
     func announceDownloadStarted(for book: TPPBook) {
-        accessibilityAnnouncements.announceDownloadStarted(title: book.title)
+        accessibilityAnnouncements.announceDownloadStarted(title: book.title, identifier: book.identifier)
     }
 
     func announceDownloadCompleted(for book: TPPBook) {
@@ -440,6 +440,20 @@ struct DownloadErrorInfo {
             break
         case .downloadSuccessful, .used, .unsupported, .returning:
             NSLog("Ignoring nonsensical download request.")
+            return
+        }
+
+        if TPPSettings.shared.downloadOnlyOnWiFi && !Reachability.shared.isOnWiFi {
+            Log.info(#file, "Download blocked for '\(book.title)' — Wi-Fi only mode is enabled and device is not on Wi-Fi")
+            runOnMainAsync {
+                self.publishAndAnnounceError(
+                    DownloadErrorInfo(
+                        bookId: book.identifier,
+                        title: DisplayStrings.wifiRequired,
+                        message: DisplayStrings.downloadRestrictedToWiFi
+                    )
+                )
+            }
             return
         }
 
@@ -1051,12 +1065,9 @@ extension MyBooksDownloadCenter {
                 TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
                 self.bookRegistry.setState(.unregistered, for: identifier)
                 self.bookRegistry.removeBook(forIdentifier: identifier)
-                Task {
-                    try? await TPPBookRegistry.shared.syncAsync()
-                    runOnMainAsync {
-                        self.announceReturnSucceeded(for: book)
-                        completion?()
-                    }
+                self.performPostReturnSyncThen {
+                    self.announceReturnSucceeded(for: book)
+                    completion?()
                 }
             }
         } else {
@@ -1077,22 +1088,16 @@ extension MyBooksDownloadCenter {
                             TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
                             self.bookRegistry.updateAndRemoveBook(returnedBook)
                             self.bookRegistry.setState(.unregistered, for: identifier)
-                            Task {
-                                try? await TPPBookRegistry.shared.syncAsync()
-                                runOnMainAsync {
-                                    self.announceReturnSucceeded(for: book)
-                                    completion?()
-                                }
+                            self.performPostReturnSyncThen {
+                                self.announceReturnSucceeded(for: book)
+                                completion?()
                             }
                         }
                     } else {
                         NSLog("Failed to create book from entry. Book not removed from registry.")
-                        Task {
-                            try? await TPPBookRegistry.shared.syncAsync()
-                            runOnMainAsync {
-                                self.announceReturnFailed(for: book)
-                                completion?()
-                            }
+                        self.performPostReturnSyncThen {
+                            self.announceReturnFailed(for: book)
+                            completion?()
                         }
                     }
                 } else {
@@ -1110,12 +1115,9 @@ extension MyBooksDownloadCenter {
                                 TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
                                 self.bookRegistry.setState(.unregistered, for: identifier)
                                 self.bookRegistry.removeBook(forIdentifier: identifier)
-                                Task {
-                                    try? await TPPBookRegistry.shared.syncAsync()
-                                    runOnMainAsync {
-                                        self.announceReturnSucceeded(for: book)
-                                        completion?()
-                                    }
+                                self.performPostReturnSyncThen {
+                                    self.announceReturnSucceeded(for: book)
+                                    completion?()
                                 }
                             }
                         } else if errorType == TPPProblemDocument.TypeInvalidCredentials {
@@ -1186,6 +1188,20 @@ extension MyBooksDownloadCenter {
                     }
                 }
             }
+        }
+    }
+
+    /// Performs a registry sync after a return. On failure, posts `TPPSyncFailed` so the
+    /// Reservations tab can show the sync error banner; completion is always called so the return UI is dismissed.
+    private func performPostReturnSyncThen(completion: @escaping () -> Void) {
+        Task {
+            do {
+                _ = try await TPPBookRegistry.shared.syncAsync()
+            } catch {
+                Log.error(#file, "Post-return sync failed: \(error.localizedDescription)")
+                NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+            }
+            runOnMainAsync(completion)
         }
     }
 }

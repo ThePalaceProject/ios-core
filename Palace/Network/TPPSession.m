@@ -48,6 +48,7 @@ static TPPSession *sharedSession = nil;
   
   configuration.URLCache.diskCapacity = 1024 * 1024 * diskCacheInMegabytes;
   configuration.URLCache.memoryCapacity = 1024 * 1024 * memoryCacheInMegabytes;
+  configuration.URLCredentialStorage = nil;
   
   self.session = [NSURLSession sessionWithConfiguration:configuration
                                                delegate:self

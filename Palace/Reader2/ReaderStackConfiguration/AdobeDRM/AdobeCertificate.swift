@@ -237,6 +237,78 @@ class AdobeDRMService: NSObject {
         }
         adept.fulfill(withACSMData: acsmData, tag: tag, userID: userID, deviceID: deviceID)
     }
+
+    // MARK: - On-Demand Activation (PP-3649)
+
+    /// Ensures the device is activated with Adobe DRM, performing on-demand
+    /// activation if needed. This is called at borrow time for Adobe DRM content
+    /// instead of at login, to avoid burning activations unnecessarily.
+    ///
+    /// - Throws: `PalaceError.drm` if activation fails or credentials are unavailable.
+    func ensureDeviceActivated() async throws {
+        let userAccount = TPPUserAccount.sharedAccount()
+
+        if let userID = userAccount.userID,
+           let deviceID = userAccount.deviceID,
+           isUserAuthorized(userID, deviceID: deviceID) {
+            Log.info(#file, "Adobe device already activated — skipping activation")
+            return
+        }
+
+        guard AdobeCertificate.isDRMAvailable else {
+            Log.error(#file, "Adobe DRM not available — certificate missing or expired")
+            throw PalaceError.drm(.noActivation)
+        }
+
+        guard let licensor = userAccount.licensor,
+              let vendor = licensor["vendor"] as? String, !vendor.isEmpty,
+              let clientToken = licensor["clientToken"] as? String, !clientToken.isEmpty else {
+            Log.error(#file, "No Adobe DRM licensor credentials stored — cannot activate")
+            throw PalaceError.drm(.noActivation)
+        }
+
+        var items = clientToken
+            .replacingOccurrences(of: "\n", with: "")
+            .components(separatedBy: "|")
+        let tokenPassword = items.last
+        items.removeLast()
+        let tokenUsername = (items as NSArray).componentsJoined(by: "|")
+
+        Log.info(#file, "Performing on-demand Adobe device activation for borrow")
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            guard let adept = self.adeptInstance else {
+                continuation.resume(throwing: PalaceError.drm(.noActivation))
+                return
+            }
+
+            adept.authorize(withVendorID: vendor,
+                            username: tokenUsername,
+                            password: tokenPassword) { success, error, deviceID, userID in
+                if success, let userID = userID, let deviceID = deviceID {
+                    Log.info(#file, "On-demand Adobe activation succeeded")
+                    TPPMainThreadRun.asyncIfNeeded {
+                        userAccount.setUserID(userID)
+                        userAccount.setDeviceID(deviceID)
+                    }
+                    continuation.resume()
+                } else {
+                    let activationError = error ?? NSError(
+                        domain: "AdobeDRM",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Adobe device activation failed"]
+                    )
+                    Log.error(#file, "On-demand Adobe activation failed: \(activationError.localizedDescription)")
+                    TPPErrorLogger.logError(
+                        withCode: .invalidLicensor,
+                        summary: "On-demand Adobe device activation failed (PP-3649)",
+                        metadata: ["error": activationError.localizedDescription]
+                    )
+                    continuation.resume(throwing: PalaceError.drm(.authenticationFailed))
+                }
+            }
+        }
+    }
 }
 
 #endif

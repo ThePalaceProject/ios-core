@@ -45,15 +45,23 @@ class TPPLicensesService: NSObject {
         self.lcpl = lcpl
         self.link = link
 
-        // Create download task and return it to MyBooksDownloadCenter
-        // to hande task cancellation correctly
-        // Background task identifier is unique to create unique download sessions for each class instance.
-        // Otherwise, single download session calls one delegate class methods,
-        // and only one book's status is updated.
+        // PP-3704: No credentials may be sent to storage.googleapis.com (or any googleapis.com).
+        // Sending cookies/Authorization causes 401. Use ephemeral session (no cookies) for that domain.
         let request = URLRequest(url: url, applyingCustomUserAgent: true)
-        let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(lcpl.hashValue)")
-        let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
-        let session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: .main)
+        let session: URLSession
+        if url.host?.lowercased().contains("googleapis.com") == true {
+            Log.info("LCP", "Using ephemeral session (no credentials) for googleapis.com publication download: \(url.absoluteString)")
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = 60
+            config.timeoutIntervalForResource = 600
+            session = URLSession(configuration: config, delegate: self, delegateQueue: .main)
+        } else {
+            // Create download task and return it to MyBooksDownloadCenter
+            // to hande task cancellation correctly
+            let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(lcpl.hashValue)")
+            let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
+            session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: .main)
+        }
         let task = session.downloadTask(with: request)
         task.resume()
         return task

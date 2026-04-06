@@ -15,6 +15,10 @@ class TPPUserAccountMock: TPPUserAccount {
         return shared
     }
 
+    static func resetShared() {
+        shared.removeAll()
+    }
+
     // MARK: - Variable redefinitions to avoid keychain
 
     var _authDefinition: AccountDetails.Authentication?

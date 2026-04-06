@@ -60,6 +60,7 @@ final class TPPUserAccountAuthStateTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         userAccount = TPPUserAccountMock()
     }
 
@@ -162,6 +163,7 @@ final class TPPAdobeActivationSkipTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
         drmAuthorizer = TPPDRMAuthorizingMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
@@ -295,6 +297,7 @@ final class UserAccountPublisherAuthStateTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         publisher = UserAccountPublisher()
         cancellables = []
     }

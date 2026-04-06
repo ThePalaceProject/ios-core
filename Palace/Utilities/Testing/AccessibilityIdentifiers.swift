@@ -29,7 +29,7 @@ public enum AccessibilityID {
     /// In tests, use the actual tab labels:
     /// - app.tabBars.buttons["Catalog"]
     /// - app.tabBars.buttons["My Books"]
-    /// - app.tabBars.buttons["Reservations"]
+    /// - app.tabBars.buttons["Holds"]
     /// - app.tabBars.buttons["Settings"]
     ///
     /// The constants below are kept for reference but are NOT used by SwiftUI TabView.
@@ -38,8 +38,8 @@ public enum AccessibilityID {
         public static let catalogTab = "Catalog"
         /// ⚠️ Not used - tabs identified by label "My Books"
         public static let myBooksTab = "My Books"
-        /// ⚠️ Not used - tabs identified by label "Reservations"
-        public static let holdsTab = "Reservations"
+        /// ⚠️ Not used - tabs identified by label "Holds"
+        public static let holdsTab = "Holds"
         /// ⚠️ Not used - tabs identified by label "Settings"
         public static let settingsTab = "Settings"
     }
@@ -80,6 +80,7 @@ public enum AccessibilityID {
         public static let resultsScrollView = "search.resultsScrollView"
         public static let noResultsView = "search.noResultsView"
         public static let loadingIndicator = "search.loadingIndicator"
+        public static let formatFilterRow = "search.formatFilterRow"
 
         public static func resultCell(_ bookID: String) -> String { "search.result.\(bookID)" }
     }
@@ -154,9 +155,9 @@ public enum AccessibilityID {
         public static let sortByTitle = "myBooks.sort.title"
     }
 
-    // MARK: - Holds/Reservations Screen
+    // MARK: - Holds Screen
 
-    /// Holds/Reservations screen identifiers
+    /// Holds screen identifiers
     public enum Holds {
         public static let navigationBar = "holds.navigationBar"
         public static let sortButton = "holds.sortButton"
@@ -166,6 +167,9 @@ public enum AccessibilityID {
         public static let searchButton = "holds.searchButton"
         public static let searchField = "holds.searchField"
         public static let libraryButton = "holds.libraryButton"
+
+        // Sync error
+        public static let syncErrorBanner = "holds.syncErrorBanner"
 
         // Hold cells
         public static func holdCell(_ bookID: String) -> String { "holds.holdCell.\(bookID)" }
@@ -199,6 +203,9 @@ public enum AccessibilityID {
         // Advanced
         public static let advancedButton = "settings.advancedButton"
         public static let deleteServerDataButton = "settings.deleteServerDataButton"
+
+        // Downloads
+        public static let downloadOnlyOnWiFiToggle = "settings.downloadOnlyOnWiFiToggle"
     }
 
     // MARK: - Audiobook Player

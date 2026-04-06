@@ -20,12 +20,15 @@ final class DeviceLogCollectorTests: XCTestCase {
     }
 
     func testCollectLogs_containsExpectedHeader() async {
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 7)
+        // Use a 1-day range here to avoid an expensive OSLogStore scan immediately
+        // before testCollectLogs_defaultParameterIs7Days (which tests the 7-day default).
+        // Running two 7-day collections back-to-back exceeds CI time budgets.
+        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
         let output = String(data: data, encoding: .utf8) ?? ""
 
         XCTAssertTrue(output.contains("=== Device Logs (OSLogStore) ==="), "Output should contain the header")
         XCTAssertTrue(output.contains("Generated:"), "Output should contain generation timestamp")
-        XCTAssertTrue(output.contains("Time Range: Last 7 day(s)"), "Output should contain time range")
+        XCTAssertTrue(output.contains("Time Range: Last 1 day(s)"), "Output should contain time range")
     }
 
     func testCollectLogs_containsEndMarker() async {
@@ -54,17 +57,27 @@ final class DeviceLogCollectorTests: XCTestCase {
 
     // MARK: - Log Capture Tests
 
+    /// Polls collectLogs until the marker appears (or times out at ~1.5 s).
+    /// OSLogStore has its own flush schedule, so we poll rather than sleep a fixed amount.
+    /// Intentionally capped at 5 iterations to avoid monopolising the shared actor
+    /// (serialised calls) and blowing the CI test-suite time budget.
+    private func pollForOSLogMarker(_ marker: String) async -> String {
+        for _ in 0..<5 {
+            let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
+            let output = String(data: data, encoding: .utf8) ?? ""
+            if output.contains(marker) { return output }
+            try? await Task.sleep(nanoseconds: 300_000_000) // 300 ms per attempt
+        }
+        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
     func testCollectLogs_capturesRecentOSLogEntries() async {
-        // Write a unique marker to os_log so we can verify it appears in collected logs
         let marker = "DeviceLogCollectorTest_\(UUID().uuidString)"
         let palaceLog = OSLog(subsystem: Log.subsystem, category: "Test")
         os_log("%{public}@", log: palaceLog, type: .error, marker)
 
-        // Brief delay to let the log system flush
-        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
-
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-        let output = String(data: data, encoding: .utf8) ?? ""
+        let output = await pollForOSLogMarker(marker)
 
         XCTAssertTrue(
             output.contains(marker),
@@ -73,27 +86,21 @@ final class DeviceLogCollectorTests: XCTestCase {
     }
 
     func testCollectLogs_formattedEntriesContainExpectedFields() async {
-        // Log a known message
         let marker = "FormatTest_\(UUID().uuidString)"
         let palaceLog = OSLog(subsystem: Log.subsystem, category: "FormatTest")
         os_log("%{public}@", log: palaceLog, type: .info, marker)
 
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        let output = await pollForOSLogMarker(marker)
 
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-        let output = String(data: data, encoding: .utf8) ?? ""
-
-        // Find the line containing our marker
         let lines = output.components(separatedBy: "\n")
         let markerLine = lines.first { $0.contains(marker) }
 
         if let line = markerLine {
-            // Verify format: [timestamp] [LEVEL] [subsystem/category] message
             XCTAssertTrue(line.contains("["), "Log line should contain bracket-delimited fields")
             XCTAssertTrue(line.contains(Log.subsystem), "Log line should contain the subsystem")
             XCTAssertTrue(line.contains("FormatTest"), "Log line should contain the category")
         }
-        // If markerLine is nil, the log system may not have flushed in time — not a hard failure
+        // If markerLine is nil the log system hasn't flushed yet — not a hard failure
     }
 
     // MARK: - Default Parameter Tests
@@ -111,7 +118,6 @@ final class DeviceLogCollectorTests: XCTestCase {
         let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
         let output = String(data: data, encoding: .utf8) ?? ""
 
-        // Should contain entry count like "=== End Device Logs (42 entries) ==="
         let entryCountPattern = "End Device Logs \\(\\d+ entries\\)"
         let hasEntryCount = output.range(of: entryCountPattern, options: .regularExpression) != nil
         let hasError = output.contains("Failed to access OSLogStore")

@@ -529,15 +529,18 @@ final class AudiobookTimeTrackerLifecycleTests: XCTestCase {
             tracker.receiveValue(time)
         }
 
-        // Act - simulate app termination notification
+        // Act - simulate app termination notification.
+        // The handler is registered with queue: .main, so it is dispatched asynchronously
+        // on the main queue. Poll until save() has been called before flushing.
         NotificationCenter.default.post(name: UIApplication.willTerminateNotification, object: nil)
 
-        // Give time for notification to be processed
-        let expectation = XCTestExpectation(description: "Notification processed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
+        let entriesSaved = XCTNSPredicateExpectation(
+            predicate: NSPredicate { [weak mockDataManager] _, _ in
+                mockDataManager?.savedTimeEntries.isEmpty == false
+            },
+            object: nil
+        )
+        wait(for: [entriesSaved], timeout: 2.0)
 
         mockDataManager.flush()
 
