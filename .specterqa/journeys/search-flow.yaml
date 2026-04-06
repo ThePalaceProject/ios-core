@@ -1,0 +1,37 @@
+scenario:
+  id: search-flow
+  name: "Search Flow"
+  description: "Verify search functionality: opening search, typing a query, viewing results, clearing and dismissing search."
+  tags: [tier1, ios, search, CAT-004, SEARCH-001, SEARCH-002]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: launch_and_open_search
+      description: "Launch app and open the search interface"
+      goal: >
+        Launch the Palace app and wait for the Catalog screen to load. Tap the search
+        button or search bar to open the search interface. Confirm a text input field
+        appears and the keyboard is visible.
+      checkpoint: search_interface_open
+      max_iterations: 15
+
+    - id: type_query_and_view_results
+      description: "Type 'fiction' and verify search results appear"
+      goal: >
+        Type the word 'fiction' into the search field. Wait for search results to load.
+        Confirm that at least one search result appears showing a book title and cover
+        image matching the query.
+      checkpoint: search_results_displayed
+      max_iterations: 15
+
+    - id: clear_and_dismiss_search
+      description: "Clear the search field and dismiss search"
+      goal: >
+        Clear the search field using the clear button (X). Then dismiss the search
+        interface by tapping Cancel or navigating back. Confirm the catalog screen
+        is restored with book lanes visible and no error alerts present.
+      checkpoint: search_dismissed_catalog_restored
+      max_iterations: 10

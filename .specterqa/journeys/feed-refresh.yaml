@@ -1,0 +1,39 @@
+scenario:
+  id: feed-refresh
+  name: "Feed Refresh"
+  description: "Verify pull-to-refresh on the catalog reloads content without errors, and borrowed books persist after refresh."
+  tags: [tier2, ios, catalog, CAT-009, REFRESH-001]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: launch_and_note_catalog
+      description: "Launch app and note initial catalog content"
+      goal: >
+        Launch the Palace app on Palace Bookshelf. Wait for the Catalog to load
+        with book lanes. Note the first lane title and the first book in that lane.
+        Confirm multiple lanes are visible with book covers.
+      checkpoint: initial_catalog_noted
+      max_iterations: 15
+
+    - id: pull_to_refresh
+      description: "Pull down to refresh the catalog"
+      goal: >
+        Perform a pull-to-refresh gesture by swiping down from the top of the
+        catalog content area. A refresh indicator should appear briefly. Wait
+        for the catalog to reload. Confirm book lanes reappear after the refresh
+        completes. The catalog should have content loaded — not an error state.
+      checkpoint: catalog_refreshed
+      max_iterations: 15
+
+    - id: verify_content_after_refresh
+      description: "Verify catalog content is present after refresh"
+      goal: >
+        After the refresh, confirm at least one lane with books is visible.
+        The lane titles and book covers should be displayed. The tab bar should
+        remain visible. No error alerts or blank screens should be present.
+        The app should be in a stable, usable state.
+      checkpoint: content_present_after_refresh
+      max_iterations: 10

@@ -1,0 +1,37 @@
+scenario:
+  id: my-books-empty
+  name: "My Books Empty State"
+  description: "Verify the My Books tab displays an appropriate empty state when no books have been borrowed."
+  tags: [tier1, ios, my_books, LIB-001, LIB-002, NAV-002]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: navigate_to_my_books
+      description: "Launch app and navigate to the My Books tab"
+      goal: >
+        Launch the Palace app and wait for the Catalog to load. Tap the 'My Books'
+        tab in the bottom tab bar. Confirm the My Books screen appears with a
+        'My Books' navigation title.
+      checkpoint: my_books_screen_loaded
+      max_iterations: 15
+
+    - id: verify_empty_state
+      description: "Verify empty state message and no book cells"
+      goal: >
+        Confirm the My Books screen shows an empty state view with a message
+        indicating no books are available (e.g., suggesting the user browse the catalog).
+        Verify that no book cells, covers, or grid items are displayed. The tab bar
+        should remain visible with the My Books tab highlighted.
+      checkpoint: empty_state_displayed
+      max_iterations: 10
+
+    - id: verify_no_errors
+      description: "Verify no error alerts"
+      goal: >
+        Confirm no error alerts or popups are displayed on the empty My Books screen.
+        The app should be in a stable state.
+      checkpoint: no_errors_detected
+      max_iterations: 5

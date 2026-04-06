@@ -1,0 +1,55 @@
+scenario:
+  id: auth-sign-in
+  name: "Authentication Sign-In"
+  description: "Verify sign-in UI flow for an authenticated library. Tests form elements and dismissal — does NOT enter real credentials."
+  tags: [tier2, ios, auth, AUTH-001, AUTH-002, AUTH-003]
+
+  # UNBLOCKED: This journey now tests the sign-in UI without requiring
+  # real credentials. It verifies form elements are present and dismissal
+  # works. Lyrasis Reads is available on the test sim.
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: add_authenticated_library
+      description: "Add a library that requires sign-in"
+      goal: >
+        From the Settings tab, tap Libraries, then tap 'Add Library'. Search
+        for a library that requires authentication (e.g., 'Lyrasis Reads').
+        Select it and confirm it appears in the library list. Switch to this
+        library using the library switcher in the nav bar.
+      checkpoint: auth_library_added
+      max_iterations: 25
+
+    - id: navigate_to_sign_in
+      description: "Find and open the sign-in screen"
+      goal: >
+        With the authenticated library selected, go to the Settings tab.
+        Find a 'Sign In' or 'Log In' button associated with the library.
+        Tap it. Confirm a sign-in form appears with fields for credentials
+        (barcode/username and PIN/password).
+      checkpoint: sign_in_form_visible
+      max_iterations: 15
+
+    - id: verify_sign_in_elements
+      description: "Verify sign-in form has required fields"
+      goal: >
+        On the sign-in screen, confirm: (1) a text field for barcode or
+        username, (2) a text field for PIN or password, (3) a Sign In or
+        Submit button. If there are additional options (e.g., 'Sync bookmarks'),
+        note them. Do NOT enter credentials — just verify the form elements
+        are present and properly labeled.
+      checkpoint: sign_in_elements_verified
+      max_iterations: 10
+
+    - id: dismiss_sign_in
+      description: "Dismiss the sign-in screen without signing in"
+      goal: >
+        Tap Cancel, Back, or navigate away from the sign-in screen without
+        entering credentials. Confirm the Settings screen or catalog is
+        restored. No error alerts should appear from dismissing without
+        signing in.
+      checkpoint: sign_in_dismissed
+      max_iterations: 10

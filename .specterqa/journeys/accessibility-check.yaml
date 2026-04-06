@@ -1,0 +1,48 @@
+scenario:
+  id: accessibility-check
+  name: "Accessibility Check"
+  description: "Verify key UI elements have proper VoiceOver accessibility labels, traits, and identifiers."
+  tags: [tier2, ios, accessibility, A11Y-001, A11Y-003, A11Y-004, WCAG-001]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: verify_tab_bar_accessibility
+      description: "Launch app and verify tab bar accessibility labels"
+      goal: >
+        Launch the Palace app and wait for the Catalog to load. Inspect the bottom tab
+        bar visually. Confirm all four tabs (Catalog, My Books, Reservations, Settings)
+        appear to have text labels. Each tab icon should be accompanied by its name label.
+      checkpoint: tab_bar_labels_visible
+      max_iterations: 15
+
+    - id: verify_catalog_element_accessibility
+      description: "Verify catalog elements have accessible appearances"
+      goal: >
+        On the Catalog screen, confirm: (1) the search button has a visible icon or label,
+        (2) book covers in the lanes appear to be interactive (not just decorative images),
+        (3) lane titles are visible text. Tap on the first book cover to verify it responds
+        to interaction.
+      checkpoint: catalog_elements_accessible
+      max_iterations: 10
+
+    - id: verify_book_detail_accessibility
+      description: "Verify book detail screen elements are properly labeled"
+      goal: >
+        On the book detail screen, confirm: (1) the title text is prominently displayed,
+        (2) the author name is visible as a separate text element, (3) the cover image
+        is present, (4) the action button (Get/Borrow/Reserve) has clear text label.
+        Navigate back to the catalog.
+      checkpoint: book_detail_accessible
+      max_iterations: 10
+
+    - id: verify_settings_accessibility
+      description: "Navigate to Settings and verify interactive elements are labeled"
+      goal: >
+        Tap the Settings tab. Confirm the sign-in button has clear text. Scroll down
+        and verify 'About Palace', 'Privacy Policy', and other links have visible
+        text labels. No error alerts should be present.
+      checkpoint: settings_accessible
+      max_iterations: 10

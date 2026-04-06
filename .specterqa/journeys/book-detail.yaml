@@ -1,0 +1,46 @@
+scenario:
+  id: book-detail
+  name: "Book Detail"
+  description: "Verify the book detail screen displays cover image, title, author, description, action buttons, and metadata."
+  tags: [tier1, ios, catalog, CAT-005, BOOK-001, BOOK-002]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: launch_and_open_book
+      description: "Launch app and tap a book to open its detail screen"
+      goal: >
+        Launch the Palace app and wait for the Catalog screen to load with book lanes.
+        Tap on the first book cover in the first lane. Confirm the book detail screen
+        opens showing the book's cover image, title, and author name.
+      checkpoint: book_detail_loaded
+      max_iterations: 15
+
+    - id: verify_detail_elements
+      description: "Verify cover, title, author, and action button are visible"
+      goal: >
+        On the book detail screen, confirm: (1) a large book cover image is displayed,
+        (2) the book title text is visible, (3) the author name is shown, and
+        (4) at least one action button (Get, Borrow, Reserve, or Sample) is present.
+      checkpoint: detail_elements_present
+      max_iterations: 10
+
+    - id: scroll_to_description
+      description: "Scroll down to reveal description and metadata"
+      goal: >
+        Swipe up on the book detail screen to scroll down. Confirm that a book
+        description or summary text becomes visible. Look for an information section
+        with metadata like publisher, categories, or distributor.
+      checkpoint: description_and_metadata_visible
+      max_iterations: 10
+
+    - id: navigate_back_to_catalog
+      description: "Tap back to return to the catalog"
+      goal: >
+        Tap the back button or navigate back from the book detail screen. Confirm
+        the catalog screen reappears with book lanes still loaded. No error alerts
+        should be present.
+      checkpoint: catalog_restored
+      max_iterations: 10

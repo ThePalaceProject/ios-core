@@ -1,0 +1,48 @@
+scenario:
+  id: borrow-book
+  name: "Borrow a Book"
+  description: "Verify a user can borrow a book from the A1QA Test Library, see it appear in My Books, and return it."
+  tags: [tier1, ios, critical_path, BOOK-003, BOOK-004, BOOK-005]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: navigate_to_book_detail
+      description: "Launch app and open a book's detail screen"
+      goal: >
+        Launch the Palace app on A1QA Test Library. Wait for the Catalog to load
+        with book lanes (e.g., 'Accessible EPUB Test', 'Palace Bookshelf').
+        Tap a book from the 'Accessible EPUB Test' or 'Palace Bookshelf' lane
+        to open its detail screen. Confirm the detail shows a title and a 'Borrow' button.
+      checkpoint: book_detail_with_borrow_button
+      max_iterations: 15
+
+    - id: borrow_book
+      description: "Tap Borrow and confirm the book is borrowed"
+      goal: >
+        Tap the 'Borrow' button on the book detail screen. Wait for the button
+        to change — it should become 'Read' or 'Download' or show a progress
+        indicator. Confirm the borrow action completed without error alerts.
+      checkpoint: book_borrowed
+      max_iterations: 20
+
+    - id: verify_in_my_books
+      description: "Navigate to My Books and verify the borrowed book appears"
+      goal: >
+        Tap the 'My Books' tab in the bottom tab bar. Confirm the My Books screen
+        now shows at least one book (the one just borrowed). The book's title or
+        cover should be visible. The empty state message should no longer appear.
+      checkpoint: book_in_my_books
+      max_iterations: 15
+
+    - id: return_book
+      description: "Return the borrowed book"
+      goal: >
+        Tap on the borrowed book in My Books to open its detail screen. Look for
+        a 'Return' or 'Delete' button. Tap it and confirm any confirmation dialog.
+        Navigate back to My Books and verify the book is removed and the empty
+        state returns.
+      checkpoint: book_returned
+      max_iterations: 20

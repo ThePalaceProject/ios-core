@@ -1,0 +1,71 @@
+scenario:
+  id: pdf-reading
+  name: "PDF Reading"
+  description: "Verify PDF reader: borrow a PDF book, navigate pages, use thumbnails, search within PDF, add bookmarks, and check TOC."
+  tags: [tier2, ios, reader, PDF-001, PDF-002, PDF-003, PDF-004]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: borrow_and_open_pdf
+      description: "Search for a PDF book, borrow it, and open the reader"
+      goal: >
+        On the Catalog screen (Palace Bookshelf), tap Search. Search for a known
+        PDF book (try 'Pharo by Example' or browse the catalog for a PDF-format book).
+        Tap on the book, then tap 'Borrow' or 'Get'. Once borrowed, tap 'Read'.
+        Confirm the PDF reader screen opens showing a rendered PDF page.
+      checkpoint: pdf_reader_opened
+      max_iterations: 25
+
+    - id: navigate_pages
+      description: "Navigate forward and backward through PDF pages"
+      goal: >
+        In the PDF reader, swipe left or use the next-page control to advance to
+        the next page. Do this 3-4 times. Confirm the page number increases. Then
+        swipe right or use the previous-page control to go back one page. Confirm
+        the page number decreases by 1. Navigation should be smooth.
+      checkpoint: pdf_page_navigation_works
+      max_iterations: 15
+
+    - id: use_thumbnails
+      description: "Open thumbnail view and navigate to a page"
+      goal: >
+        Open the Table of Contents or thumbnail view (tap the TOC/grid icon in the
+        toolbar). Confirm thumbnail previews of pages are displayed. Tap on the
+        second thumbnail. Confirm the reader jumps to that page and the page number
+        matches the thumbnail selected.
+      checkpoint: thumbnail_navigation_works
+      max_iterations: 15
+
+    - id: search_within_pdf
+      description: "Search for text within the PDF"
+      goal: >
+        Open the search function (magnifying glass icon in the toolbar). Confirm
+        the search screen appears with a text field. Type a common word (e.g., 'the'
+        or 'chapter'). Confirm search results appear showing matching lines or pages.
+        Tap on a search result and confirm the reader navigates to that page. Close
+        the search screen.
+      checkpoint: pdf_search_works
+      max_iterations: 20
+
+    - id: add_bookmark
+      description: "Add a bookmark and verify it in the bookmarks list"
+      goal: >
+        Navigate to a page, then add a bookmark (bookmark icon in the toolbar). Go
+        to the next page and add another bookmark. Open the bookmarks list (via TOC
+        or bookmarks tab). Confirm at least 2 bookmarks are displayed. Tap a bookmark
+        to verify it navigates to the correct page.
+      checkpoint: pdf_bookmarks_work
+      max_iterations: 15
+
+    - id: resume_and_return
+      description: "Verify reading position persists and return the book"
+      goal: >
+        Navigate to a page past the beginning (e.g., page 5+). Note the page number.
+        Return to the book detail screen. Tap 'Read' again. Confirm the PDF opens
+        at the same page. Then return the book ('Return' or 'Delete' button) and
+        verify it's removed from My Books.
+      checkpoint: pdf_position_saved_and_returned
+      max_iterations: 15

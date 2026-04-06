@@ -1,0 +1,57 @@
+scenario:
+  id: reader-typography
+  name: "Reader Typography Settings"
+  description: "Verify EPUB reader typography controls: font size, font family, brightness, and color theme."
+  tags: [tier2, ios, reader, TYPO-001, TYPO-002, TYPO-003]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: open_book_in_reader
+      description: "Borrow and open a book in the EPUB reader"
+      goal: >
+        On the Catalog screen (A1QA Test Library), find an ebook in the
+        'Accessible EPUB Test' lane. Tap it, tap 'Borrow', wait for download,
+        then tap 'Read'. Confirm the EPUB reader opens with book content visible.
+      checkpoint: reader_opened
+      max_iterations: 25
+
+    - id: open_typography_settings
+      description: "Open the reader settings panel"
+      goal: >
+        Tap the center of the reader to reveal the toolbar. Find and tap the
+        settings icon (gear, 'Aa', or text settings button). Confirm a settings
+        panel opens with typography options like font size controls, font family
+        selector, and/or color theme options.
+      checkpoint: settings_panel_opened
+      max_iterations: 15
+
+    - id: change_font_size
+      description: "Increase and decrease font size"
+      goal: >
+        Find the font size controls ('+'/'-' buttons or a slider). Tap the
+        increase button 2-3 times. Confirm the text in the reader gets visibly
+        larger. Then tap the decrease button 2-3 times. Confirm the text returns
+        to approximately its original size. Text should reflow cleanly.
+      checkpoint: font_size_changed
+      max_iterations: 15
+
+    - id: change_color_theme
+      description: "Switch between reader color themes"
+      goal: >
+        Find the color theme options (typically white, sepia, dark/night).
+        If available, tap the sepia or dark theme option. Confirm the reader
+        background and text colors change accordingly. Switch back to the
+        default (white) theme. The text should remain readable in all themes.
+      checkpoint: color_theme_changed
+      max_iterations: 15
+
+    - id: cleanup
+      description: "Close reader and return the book"
+      goal: >
+        Dismiss the settings panel. Navigate back from the reader. Tap 'Return'
+        or 'Delete' to return the book. Verify it's removed from My Books.
+      checkpoint: book_returned
+      max_iterations: 15

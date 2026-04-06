@@ -1,0 +1,57 @@
+scenario:
+  id: sample-content
+  name: "Sample Content Playback"
+  description: "Verify the sample player works on an audiobook: play sample, pause, resume, and dismiss without borrowing."
+  tags: [tier2, ios, audiobook, SAMPLE-001, SAMPLE-002]
+
+  # NOTE: Sample playback requires a library with audiobooks that offer
+  # a 'Play Sample' button (typically OverDrive content). Palace Bookshelf
+  # may not have sample-enabled audiobooks. If no sample button is found,
+  # this journey should be marked as skipped.
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: find_audiobook_with_sample
+      description: "Find an audiobook that offers a Play Sample button"
+      goal: >
+        On the Catalog screen, browse or search for audiobooks. Look for an
+        audiobook whose detail screen has a 'Play Sample' button (in addition
+        to or instead of 'Borrow'/'Get'). If the catalog has an 'Audiobooks'
+        tab, switch to it first. Open a book detail and look for sample controls.
+        If no sample button exists on any book, note this and stop — the journey
+        cannot proceed without sample-enabled content.
+      checkpoint: sample_button_found
+      max_iterations: 25
+
+    - id: play_sample
+      description: "Tap Play Sample and verify the sample player appears"
+      goal: >
+        Tap the 'Play Sample' button on the book detail screen. Confirm a sample
+        player appears (either inline on the detail screen or as a separate player
+        view). The player should show a pause button, indicating playback started.
+        Audio should be playing.
+      checkpoint: sample_playing
+      max_iterations: 10
+
+    - id: pause_and_resume_sample
+      description: "Pause the sample, then resume playback"
+      goal: >
+        Tap the Pause button on the sample player. Confirm it changes to a Play
+        button and playback stops. Tap Play again. Confirm playback resumes and
+        the Pause button reappears. The sample player should remain stable.
+      checkpoint: sample_pause_resume_works
+      max_iterations: 10
+
+    - id: dismiss_sample
+      description: "Stop the sample and verify the book detail is intact"
+      goal: >
+        Stop or dismiss the sample player (tap the sample button again, or tap
+        a close/stop control). Confirm the book detail screen returns to its
+        normal state with the book title, author, and action buttons still visible.
+        The user should NOT have borrowed the book — the 'Borrow' or 'Get' button
+        should still be available. No error alerts should appear.
+      checkpoint: sample_dismissed
+      max_iterations: 10

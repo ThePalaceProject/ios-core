@@ -1,0 +1,51 @@
+scenario:
+  id: error-states
+  name: "Error States and Recovery"
+  description: "Verify the app handles various error conditions gracefully: broken feeds, network errors, and invalid content."
+  tags: [tier2, ios, error_handling, ERR-001, ERR-002, ERR-003]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: verify_error_display
+      description: "Verify catalog error display on broken feed"
+      goal: >
+        Switch to a library with a broken catalog feed (e.g., Palace Bookshelf
+        if its circulation server is down, or any library returning errors).
+        Confirm the catalog shows an error message with descriptive text and
+        a 'Reload' button. The error should not crash the app or show a
+        blank screen.
+      checkpoint: error_message_displayed
+      max_iterations: 15
+
+    - id: verify_reload_button
+      description: "Tap Reload and verify it attempts to refresh"
+      goal: >
+        Tap the 'Reload' button on the error screen. Confirm the app
+        attempts to fetch the feed again (may show a loading indicator).
+        If the feed is still broken, the error should reappear cleanly.
+        If the feed recovered, the catalog should load normally.
+      checkpoint: reload_attempted
+      max_iterations: 15
+
+    - id: recover_by_switching_library
+      description: "Switch to a working library to recover"
+      goal: >
+        Tap 'Switch Library' and select A1QA Test Library (or another
+        working library). Confirm the catalog loads successfully with
+        book lanes visible. The error state should be completely cleared.
+        Tab navigation should work normally after recovery.
+      checkpoint: recovered_via_library_switch
+      max_iterations: 15
+
+    - id: verify_tabs_after_error
+      description: "Verify all tabs work after error recovery"
+      goal: >
+        After recovering from the error, tap through all tabs: My Books,
+        Reservations, Settings, and back to Catalog. Confirm each tab
+        loads its content without errors. The app should be fully
+        functional after recovering from the catalog error.
+      checkpoint: tabs_work_after_recovery
+      max_iterations: 15

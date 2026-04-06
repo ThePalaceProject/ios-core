@@ -1,0 +1,37 @@
+scenario:
+  id: smoke-test
+  name: "Palace iOS Smoke Test"
+  description: "Quick end-to-end verify: app launches, catalog loads, all tabs respond, no crashes."
+  tags: [smoke, ios, critical_path]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: launch_and_verify_catalog
+      description: "Launch Palace and verify the Catalog screen loads with book lanes"
+      goal: >
+        Launch the Palace app. Confirm the Catalog screen appears with at least one
+        horizontal lane of book covers. The tab bar should be visible at the bottom
+        with four tabs. No crash dialogs or error alerts should appear.
+      checkpoint: catalog_loaded
+      max_iterations: 15
+
+    - id: cycle_all_tabs
+      description: "Navigate through all four tabs and verify each loads"
+      goal: >
+        Tap each tab in order: My Books, Reservations, Settings, then back to Catalog.
+        Each tab should load its screen without errors. My Books and Reservations may
+        show empty states. Settings should show library and account info. Return to
+        Catalog and confirm book lanes are still displayed.
+      checkpoint: all_tabs_responsive
+      max_iterations: 20
+
+    - id: verify_healthy_state
+      description: "Confirm no errors or crashes after full navigation cycle"
+      goal: >
+        Confirm the app is in a healthy state: no error alerts, no crash dialogs,
+        no blank screens. The Catalog screen should be visible with content loaded.
+      checkpoint: no_errors_detected
+      max_iterations: 5

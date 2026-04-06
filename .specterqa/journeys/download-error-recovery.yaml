@@ -1,0 +1,49 @@
+scenario:
+  id: download-error-recovery
+  name: "Download Error Recovery"
+  description: "Verify the app handles download failures gracefully and allows retry. Tests error states, retry flow, and queue behavior."
+  tags: [tier2, ios, downloads, DL-001, DL-002, DL-003]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: borrow_book_successfully
+      description: "Borrow a book to set up download test"
+      goal: >
+        On the Catalog screen (A1QA Test Library), tap a book from the
+        'Accessible EPUB Test' lane. Tap 'Borrow'. Wait for the borrow to
+        complete — the button should change to 'Read' or 'Download'. If the
+        download starts automatically, wait for it to complete or fail.
+      checkpoint: book_borrowed_for_error_test
+      max_iterations: 20
+
+    - id: verify_download_state_in_my_books
+      description: "Check download state in My Books"
+      goal: >
+        Navigate to My Books tab. Find the borrowed book. Check its state:
+        it should show either a download progress indicator, a 'Read' button
+        (download complete), or a retry indicator (download failed). Note the
+        current state for the next steps.
+      checkpoint: download_state_observed
+      max_iterations: 15
+
+    - id: verify_retry_or_read
+      description: "Verify the book can be read or retried"
+      goal: >
+        If the book shows 'Read', tap it to confirm the reader opens, then
+        go back. If it shows a failed/retry state, tap the retry button and
+        confirm the download restarts. In either case, confirm no permanent
+        error state — the user always has a path forward (read or retry).
+      checkpoint: recovery_path_available
+      max_iterations: 15
+
+    - id: cleanup
+      description: "Return the book to clean up"
+      goal: >
+        Open the book detail (from My Books or Catalog). Tap 'Return' or
+        'Delete'. Confirm the book is removed from My Books. The empty
+        state should return.
+      checkpoint: cleanup_complete
+      max_iterations: 15

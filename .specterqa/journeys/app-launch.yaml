@@ -1,0 +1,36 @@
+scenario:
+  id: app-launch
+  name: "App Launch"
+  description: "Verify the app launches successfully, the catalog screen loads with book lanes, and the tab bar is visible with all four tabs."
+  tags: [smoke, ios, critical_path, CAT-001, NAV-001]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: launch_and_verify_catalog
+      description: "Launch Palace and verify the Catalog screen loads"
+      goal: >
+        Launch the Palace app. Confirm the Catalog screen appears with at least one
+        horizontal lane of book covers visible. The navigation bar should show a library
+        name or 'Catalog' title.
+      checkpoint: catalog_screen_loaded
+      max_iterations: 15
+
+    - id: verify_tab_bar
+      description: "Verify the tab bar is visible with all four tabs"
+      goal: >
+        Confirm the bottom tab bar is visible and contains exactly four tabs:
+        Catalog, My Books, Reservations, and Settings. The Catalog tab should be
+        highlighted as the currently active tab.
+      checkpoint: tab_bar_visible_four_tabs
+      max_iterations: 10
+
+    - id: verify_no_error_alerts
+      description: "Verify no error alerts or crash dialogs are present"
+      goal: >
+        Confirm the app is in a stable state with no error alerts, crash dialogs,
+        or popup messages displayed. The catalog content should still be visible.
+      checkpoint: no_errors_detected
+      max_iterations: 5

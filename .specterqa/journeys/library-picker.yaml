@@ -1,0 +1,38 @@
+scenario:
+  id: library-picker
+  name: "Library Picker"
+  description: "Verify the library picker opens from Settings, displays available libraries, and can be dismissed."
+  tags: [tier1, ios, settings, SET-004, LIB-003, LIB-004]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: navigate_to_libraries
+      description: "Launch app, go to Settings, and open Libraries"
+      goal: >
+        Launch the Palace app and wait for the Catalog to load. Tap the 'Settings' tab.
+        On the Settings screen, tap the 'Libraries' button. Confirm the Libraries
+        screen opens showing at least one library entry with a name and description.
+      checkpoint: libraries_screen_open
+      max_iterations: 15
+
+    - id: verify_library_list
+      description: "Verify at least one library is displayed with details"
+      goal: >
+        Confirm the Libraries screen shows at least one library entry with its name
+        and a description or location. An 'Add Library' button should be visible in
+        the navigation bar. Note: do NOT tap 'Add Library' as the full library list
+        (2000+ entries) may cause performance issues.
+      checkpoint: library_list_visible
+      max_iterations: 10
+
+    - id: dismiss_and_return
+      description: "Dismiss the libraries screen and return to Settings"
+      goal: >
+        Tap the 'Settings' back button to return to the Settings screen. Confirm
+        the Settings screen is restored with no error alerts. The library selection
+        should remain unchanged.
+      checkpoint: settings_restored
+      max_iterations: 10
