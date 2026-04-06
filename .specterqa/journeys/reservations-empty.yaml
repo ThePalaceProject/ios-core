@@ -1,0 +1,28 @@
+scenario:
+  id: reservations-empty
+  name: "My Books and Reservations State Verification"
+  description: "Navigate to My Books (verify sort controls), Reservations (verify empty state), and return to Catalog."
+  tags: [navigation, ios, state_verification]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: check_my_books
+      description: "Navigate to My Books tab"
+      goal: >
+        Tap My Books. Verify the screen loads with Switch Library, Search Books,
+        and Sort by Title controls visible.
+
+    - id: check_reservations_empty
+      description: "Navigate to Reservations tab and verify empty state"
+      goal: >
+        Tap Reservations. Verify the empty state is shown with the informational
+        message about reserving books from the catalog.
+
+    - id: return_to_catalog
+      description: "Return to Catalog"
+      goal: >
+        Tap Catalog tab. Verify the catalog screen loads with filter tabs and
+        navigation controls.

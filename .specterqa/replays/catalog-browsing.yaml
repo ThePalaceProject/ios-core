@@ -1,0 +1,13 @@
+replay:
+  name: catalog-browsing
+  bundle_id: org.thepalaceproject.palace
+  device_id: 31CF5C43-DD55-4889-B3B2-9A6810B4E98F
+  recorded_at: '2026-04-06T10:37:24'
+  steps:
+  - action: swipe
+    direction: left
+  - action: swipe
+    direction: up
+    expect_elements:
+    - Switch Library
+    - Search Catalog
