@@ -12,9 +12,9 @@ scenario:
     - id: borrow_and_open_epub
       description: "Search for a book, borrow it, and open the EPUB reader"
       goal: >
-        On the Catalog screen (Palace Bookshelf), tap the Search button. Search for
-        a book (try 'Flower Fables' or any available ebook). Tap on the book in the
-        results. On the book detail screen, tap the 'Borrow' or 'Get' button. Once
+        On the Catalog screen (A1QA Test Library), find an ebook in the
+        'Accessible EPUB Test' lane. Tap on a book (e.g., 'Fundamental Accessibility
+        Tests: Basic Functionality'). On the book detail screen, tap 'Borrow'. Once
         borrowed, tap the 'Read' button. Confirm the EPUB reader screen opens showing
         book content (text on a page).
       checkpoint: epub_reader_opened

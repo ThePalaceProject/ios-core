@@ -12,7 +12,7 @@ scenario:
     - id: open_subcategory
       description: "Launch app and open a catalog subcategory"
       goal: >
-        Launch the Palace app on Palace Bookshelf. Wait for the Catalog to load.
+        Launch the Palace app on A1QA Test Library. Wait for the Catalog to load.
         Find a lane with a 'More' button (e.g., 'DPLA Publications', 'Fiction', or
         any lane with a disclosure arrow). Tap the 'More' button to open the full
         subcategory view. Confirm a list or grid of books appears with sorting

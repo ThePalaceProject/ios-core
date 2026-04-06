@@ -12,7 +12,7 @@ scenario:
     - id: launch_and_note_catalog
       description: "Launch app and note initial catalog content"
       goal: >
-        Launch the Palace app on Palace Bookshelf. Wait for the Catalog to load
+        Launch the Palace app on A1QA Test Library. Wait for the Catalog to load
         with book lanes. Note the first lane title and the first book in that lane.
         Confirm multiple lanes are visible with book covers.
       checkpoint: initial_catalog_noted

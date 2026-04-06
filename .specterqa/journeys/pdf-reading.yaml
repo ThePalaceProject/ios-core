@@ -12,9 +12,9 @@ scenario:
     - id: borrow_and_open_pdf
       description: "Search for a PDF book, borrow it, and open the reader"
       goal: >
-        On the Catalog screen (Palace Bookshelf), tap Search. Search for a known
-        PDF book (try 'Pharo by Example' or browse the catalog for a PDF-format book).
-        Tap on the book, then tap 'Borrow' or 'Get'. Once borrowed, tap 'Read'.
+        On the Catalog screen (A1QA Test Library), browse the catalog for a
+        PDF-format book (check the 'Palace Bookshelf' or 'Palace Marketplace' lanes).
+        Tap on the book, then tap 'Borrow'. Once borrowed, tap 'Read'.
         Confirm the PDF reader screen opens showing a rendered PDF page.
       checkpoint: pdf_reader_opened
       max_iterations: 25

@@ -12,7 +12,8 @@ scenario:
     - id: borrow_first_book
       description: "Search for and borrow an ebook"
       goal: >
-        On the Catalog screen (Palace Bookshelf), search for a book. Tap
+        On the Catalog screen (A1QA Test Library), find a book in the
+        'Accessible EPUB Test' or 'Palace Bookshelf' lane. Tap
         on the first result, then tap 'Borrow' or 'Get' on the detail screen.
         Confirm the button changes to 'Read'. Note the book title. Navigate
         back to the catalog.
