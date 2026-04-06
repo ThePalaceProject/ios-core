@@ -760,11 +760,12 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testSearch_UnicodeCharacters_Works() async {
-        let viewModel = createViewModel()
+        // Use generous debounce + wait to avoid CI cold-start main-actor contention
+        let viewModel = createViewModel(debounceInterval: 0.5)
 
         viewModel.updateSearchQuery("日本語の本")
 
-        await waitForDebounce(interval: 0.2)
+        await waitForDebounce(interval: 2.0)
 
         XCTAssertEqual(mockRepository.lastSearchQuery, "日本語の本")
     }
