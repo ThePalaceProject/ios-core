@@ -43,6 +43,9 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
     private(set) var lastLoadURL: URL?
     private(set) var searchHistory: [(query: String, url: URL)] = []
 
+    /// Callback fired after each search — use with XCTestExpectation for deterministic waits
+    var onSearchCalled: (() -> Void)?
+
     // MARK: - CatalogRepositoryProtocol
 
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed? {
@@ -71,9 +74,11 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
         }
 
         if let error = searchError {
+            onSearchCalled?()
             throw error
         }
 
+        onSearchCalled?()
         return searchResult
     }
 
@@ -760,26 +765,26 @@ final class CatalogSearchViewModelTests: XCTestCase {
     }
 
     func testSearch_UnicodeCharacters_Works() async {
-        // Use generous debounce + wait to avoid CI cold-start main-actor contention
-        let viewModel = createViewModel(debounceInterval: 0.5)
+        let searchCalled = expectation(description: "search called with unicode query")
+        mockRepository.onSearchCalled = { searchCalled.fulfill() }
 
+        let viewModel = createViewModel()
         viewModel.updateSearchQuery("日本語の本")
 
-        await waitForDebounce(interval: 2.0)
-
+        await fulfillment(of: [searchCalled], timeout: 5.0)
         XCTAssertEqual(mockRepository.lastSearchQuery, "日本語の本")
     }
 
     func testSearch_VeryLongQuery_Works() async {
-        // Use a generous debounce + wait so this test is not sensitive to cold-start
-        // main-actor contention (e.g. Firebase init in the first test of the process).
-        let viewModel = createViewModel(debounceInterval: 0.5)
+        let searchCalled = expectation(description: "search called with long query")
+        mockRepository.onSearchCalled = { searchCalled.fulfill() }
+
+        let viewModel = createViewModel()
         let longQuery = (0..<100).map { _ in "test" }.joined(separator: " ")
 
         viewModel.updateSearchQuery(longQuery)
 
-        await waitForDebounce(interval: 2.0)
-
+        await fulfillment(of: [searchCalled], timeout: 5.0)
         XCTAssertEqual(mockRepository.lastSearchQuery, longQuery)
     }
 
