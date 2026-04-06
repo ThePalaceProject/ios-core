@@ -241,8 +241,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                                 Log.info(#file, "  ✅ '\(record.book.title)' was downloading but file exists - marking as successful")
                                 record.state = .downloadSuccessful
                             } else {
-                                Log.warn(#file, "  ⚠️ '\(record.book.title)' was downloading but file missing - marking as failed")
-                                record.state = .downloadFailed
+                                // Interrupted download, not a real failure — show Download button, not error
+                                Log.info(#file, "  📥 '\(record.book.title)' download was interrupted — marking as download needed")
+                                record.state = .downloadNeeded
                             }
                         } else if record.state == .SAMLStarted {
                             if fileExists {
