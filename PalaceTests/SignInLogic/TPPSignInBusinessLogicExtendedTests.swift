@@ -27,7 +27,6 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
         drmAuthorizer = TPPDRMAuthorizingMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
@@ -596,7 +595,6 @@ final class TPPSignInOAuthFlowTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
 
@@ -634,7 +632,6 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
         networkExecutor = TPPNetworkErrorMock()

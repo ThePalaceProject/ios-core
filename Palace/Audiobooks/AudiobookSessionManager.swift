@@ -260,10 +260,8 @@ public final class AudiobookSessionManager: ObservableObject {
         // Capture book ID before clearing state
         let bookId = currentBook?.identifier
 
-        // Prefer the live position from the player over the cached value, which
-        // may lag behind if the user scrubbed or the position update hadn't fired yet.
-        let livePosition = manager?.audiobook.player.currentTrackPosition ?? currentPosition
-        if let position = livePosition {
+        // Save position before stopping
+        if let position = currentPosition {
             manager?.saveLocation(position)
         }
 
@@ -376,22 +374,6 @@ public final class AudiobookSessionManager: ObservableObject {
     }
 
     // MARK: - Private Methods
-
-    /// PP-3703: Returns true when playback failed due to bearer token refresh (e.g. 401 on CM fulfill)
-    /// and the account is SAML with credentials, so we should trigger re-auth and re-open the audiobook.
-    /// Extracted for unit testing to prevent regressions.
-    static func shouldTriggerSAMLReauthForPlaybackFailure(error: Error?, userAccount: TPPUserAccount, currentBook: TPPBook?) -> Bool {
-        let nsError = error as NSError?
-        let isAuthRequired = nsError?.domain == Self.openAccessPlayerErrorDomain
-            && nsError?.code == Self.openAccessPlayerErrorAuthenticationRequiredCode
-        return isAuthRequired
-            && userAccount.authDefinition?.isSaml == true
-            && userAccount.hasCredentials()
-            && currentBook != nil
-    }
-
-    private static let openAccessPlayerErrorDomain = "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer"
-    private static let openAccessPlayerErrorAuthenticationRequiredCode = 5 // OpenAccessPlayerError.authenticationRequired
 
     private func subscribeToGlobalEvents() {
         // Subscribe to manager creation events
@@ -515,37 +497,12 @@ public final class AudiobookSessionManager: ObservableObject {
             nowPlayingCoordinator?.setPlaybackState(playing: false)
             playbackStatePublisher.send(state)
 
-        case .playbackFailed(let position, let error):
+        case .playbackFailed(let position):
             Log.error(#file, "Playback failed at position: \(String(describing: position))")
             isPlaying = false
             state = .error(bookId: bookId, message: "Playback failed")
-            playbackStatePublisher.send(state)
-
-            // PP-3703: When BiblioBoard bearer token refresh fails due to SAML session expiration
-            // (401 on CM fulfill link), trigger SAML re-login and then re-fetch fulfill to resume playback.
-            let userAccount = TPPUserAccount.sharedAccount()
-            if Self.shouldTriggerSAMLReauthForPlaybackFailure(error: error, userAccount: userAccount, currentBook: currentBook),
-               let book = currentBook {
-                Log.info(#file, "SAML + BiblioBoard: Bearer token refresh failed (session expired) - triggering re-auth, will re-open audiobook after login")
-                userAccount.markCredentialsStale()
-                let reauthenticator = TPPReauthenticator()
-                reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true) { [weak self] in
-                    Task { @MainActor in
-                        guard let self else { return }
-                        guard self.currentBook?.identifier == book.identifier else { return }
-                        guard TPPUserAccount.sharedAccount().hasCredentials() else {
-                            Log.info(#file, "SAML re-auth cancelled or failed - not re-opening audiobook")
-                            self.errorPublisher.send(.notAuthenticated)
-                            return
-                        }
-                        Log.info(#file, "SAML re-auth succeeded - re-fetching fulfill link and resuming audiobook")
-                        _ = await self.openAudiobook(book, startPlaying: true)
-                    }
-                }
-                return
-            }
-
             errorPublisher.send(.unknown("Playback failed"))
+            playbackStatePublisher.send(state)
 
         case .playbackCompleted(let position):
             Log.info(#file, "Playback completed at: \(position.timestamp)")

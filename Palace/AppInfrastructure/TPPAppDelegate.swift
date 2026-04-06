@@ -64,17 +64,10 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func performBackgroundStartupTasks() {
-        let isFreshInstall = TPPSettings.shared.appVersion == nil
         TPPKeychainManager.validateKeychain()
         TPPMigrationManager.migrate()
         NetworkQueue.shared().addObserverForOfflineQueue()
         Reachability.shared.startMonitoring()
-
-        logCredentialStateAtLaunch(isFreshInstall: isFreshInstall)
-
-        PalaceAuthTokenProvider.tokenResolver = {
-            TPPUserAccount.sharedAccount().authToken
-        }
 
         DispatchQueue.main.async {
             self.audiobookLifecycleManager.didFinishLaunching()
@@ -87,48 +80,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil) { [weak self] notification in
             self?.signingIn(notification)
-        }
-    }
-
-    private func logCredentialStateAtLaunch(isFreshInstall: Bool) {
-        let account = TPPUserAccount.sharedAccount()
-        let accountId = AccountsManager.shared.currentAccountId ?? "nil"
-        let authDef = account.authDefinition
-        let authType = authDef?.authType.rawValue ?? "none"
-        let hasCredentials = account.hasCredentials()
-        let hasBarcode = account.barcode != nil
-        let hasPin = account.PIN != nil
-        let hasToken = account.authToken != nil
-        let authState = account.authState
-        let tokenExpired = account.authTokenHasExpired
-        let tokenNearExpiry = account.authTokenNearExpiry
-        let hasTokenURL = authDef?.tokenURL != nil
-
-        Log.info(#file, "🔑 [LAUNCH] Credential state diagnostic:")
-        Log.info(#file, "  freshInstall=\(isFreshInstall), accountId=\(accountId)")
-        Log.info(#file, "  authType=\(authType), authState=\(authState)")
-        Log.info(#file, "  hasCredentials=\(hasCredentials), hasBarcode=\(hasBarcode), hasPin=\(hasPin)")
-        Log.info(#file, "  hasToken=\(hasToken), tokenExpired=\(tokenExpired), tokenNearExpiry=\(tokenNearExpiry)")
-        Log.info(#file, "  hasTokenURL=\(hasTokenURL)")
-
-        if hasBarcode, let barcode = account.barcode {
-            let barcodeShape: String
-            if barcode.allSatisfy({ $0.isNumber }) {
-                barcodeShape = "numeric"
-            } else if barcode.count > 50 {
-                barcodeShape = "token-like"
-            } else {
-                barcodeShape = "alphanumeric"
-            }
-            Log.info(#file, "  barcodeShape=\(barcodeShape), barcodeLen=\(barcode.count)")
-        }
-
-        if isFreshInstall && hasCredentials {
-            Log.warn(#file, "  ⚠️ ANOMALY: Fresh install but credentials exist (keychain may not have been fully cleaned)")
-        }
-
-        if hasToken && !hasBarcode && authDef?.isToken == true {
-            Log.warn(#file, "  ⚠️ ANOMALY: Has auth token but no barcode - token refresh will fail")
         }
     }
 

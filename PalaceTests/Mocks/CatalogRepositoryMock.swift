@@ -23,23 +23,11 @@ final class CatalogRepositoryTestMock: CatalogRepositoryProtocol {
     /// Error to throw from loadTopLevelCatalog
     var loadTopLevelCatalogError: Error?
 
-    /// The result to return from search(query:baseURL:)
+    /// The result to return from search
     var searchResult: CatalogFeed?
 
     /// Error to throw from search
     var searchError: Error?
-
-    /// The result to return from search(query:searchDescriptorURL:)
-    var searchWithDescriptorResult: CatalogFeed?
-
-    /// Error to throw from search(query:searchDescriptorURL:)
-    var searchWithDescriptorError: Error?
-
-    /// Entry points to return from fetchSearchEntryPoints
-    var fetchSearchEntryPointsResult: [SearchFormatEntry] = []
-
-    /// Error to throw from fetchSearchEntryPoints
-    var fetchSearchEntryPointsError: Error?
 
     /// Delay to simulate network latency (in seconds)
     var simulatedDelay: TimeInterval = 0
@@ -52,14 +40,8 @@ final class CatalogRepositoryTestMock: CatalogRepositoryProtocol {
     /// Number of times loadTopLevelCatalog was called
     private(set) var loadTopLevelCatalogCallCount = 0
 
-    /// Number of times search(query:baseURL:) was called
+    /// Number of times search was called
     private(set) var searchCallCount = 0
-
-    /// Number of times search(query:searchDescriptorURL:) was called
-    private(set) var searchWithDescriptorCallCount = 0
-
-    /// Number of times fetchSearchEntryPoints was called
-    private(set) var fetchSearchEntryPointsCallCount = 0
 
     /// Number of times invalidateCache was called
     private(set) var invalidateCacheCallCount = 0
@@ -70,11 +52,8 @@ final class CatalogRepositoryTestMock: CatalogRepositoryProtocol {
     /// The last query passed to search
     private(set) var lastSearchQuery: String?
 
-    /// The last base URL passed to search(query:baseURL:)
+    /// The last base URL passed to search
     private(set) var lastSearchBaseURL: URL?
-
-    /// The last descriptor URL passed to search(query:searchDescriptorURL:)
-    private(set) var lastSearchDescriptorURL: URL?
 
     /// The last URL passed to invalidateCache
     private(set) var lastInvalidatedURL: URL?
@@ -122,38 +101,6 @@ final class CatalogRepositoryTestMock: CatalogRepositoryProtocol {
         return searchResult
     }
 
-    func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
-        searchWithDescriptorCallCount += 1
-        lastSearchQuery = query
-        lastSearchDescriptorURL = searchDescriptorURL
-
-        if simulatedDelay > 0 || simulateSlowConnection {
-            let delay = simulateSlowConnection ? 2.0 : simulatedDelay
-            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-        }
-
-        if let error = searchWithDescriptorError ?? searchError {
-            throw error
-        }
-
-        return searchWithDescriptorResult ?? searchResult
-    }
-
-    func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
-        fetchSearchEntryPointsCallCount += 1
-
-        if simulatedDelay > 0 || simulateSlowConnection {
-            let delay = simulateSlowConnection ? 2.0 : simulatedDelay
-            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-        }
-
-        if let error = fetchSearchEntryPointsError {
-            throw error
-        }
-
-        return fetchSearchEntryPointsResult
-    }
-
     func fetchFeed(at url: URL) async throws -> CatalogFeed? {
         // Reuse loadTopLevelCatalog logic for fetchFeed
         return try await loadTopLevelCatalog(at: url)
@@ -172,21 +119,14 @@ final class CatalogRepositoryTestMock: CatalogRepositoryProtocol {
         loadTopLevelCatalogError = nil
         searchResult = nil
         searchError = nil
-        searchWithDescriptorResult = nil
-        searchWithDescriptorError = nil
-        fetchSearchEntryPointsResult = []
-        fetchSearchEntryPointsError = nil
         simulatedDelay = 0
         simulateSlowConnection = false
         loadTopLevelCatalogCallCount = 0
         searchCallCount = 0
-        searchWithDescriptorCallCount = 0
-        fetchSearchEntryPointsCallCount = 0
         invalidateCacheCallCount = 0
         lastLoadURL = nil
         lastSearchQuery = nil
         lastSearchBaseURL = nil
-        lastSearchDescriptorURL = nil
         lastInvalidatedURL = nil
         loadHistory.removeAll()
         searchHistory.removeAll()

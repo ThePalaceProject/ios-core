@@ -19,7 +19,6 @@ enum NYPLResult<SuccessInfo> {
     private var isRefreshing = false
     private var retryQueue: [URLSessionTask] = []
     private let retryQueueLock = NSLock()
-    private var pendingRefreshCompletions: [(NYPLResult<Data>) -> Void] = []
     private var activeTasks: [URLSessionTask] = []
     private let activeTasksLock = NSLock()
 
@@ -186,13 +185,6 @@ extension TPPNetworkExecutor {
                                     cachePolicy: urlSession.configuration.requestCachePolicy)
         urlRequest.applyCustomUserAgent()
         let account = TPPUserAccount.sharedAccount(libraryUUID: accountId ?? AccountsManager.shared.currentAccountId)
-
-        if let authDef = account.authDefinition, authDef.isSaml,
-           let cookies = account.cookies, !cookies.isEmpty {
-            let shared = HTTPCookieStorage.shared
-            for cookie in cookies { shared.setCookie(cookie) }
-        }
-
         if let authToken = account.authToken, useTokenIfAvailable {
             urlRequest.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
@@ -353,7 +345,7 @@ extension TPPNetworkExecutor {
             }
 
             if self.isRefreshing {
-                Log.debug(#file, "Token refresh already in progress, queueing for completion")
+                Log.debug(#file, "Token refresh already in progress, queueing task for retry")
                 if let task {
                     self.retryQueueLock.lock()
                     self.retryQueue.append(task)
@@ -361,8 +353,9 @@ extension TPPNetworkExecutor {
                         self.responder.addCompletion(completion, taskID: task.taskIdentifier)
                     }
                     self.retryQueueLock.unlock()
-                } else if let completion {
-                    self.pendingRefreshCompletions.append(completion)
+                } else {
+                    let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"])
+                    completion?(NYPLResult.failure(error, nil))
                 }
                 return
             }
@@ -370,46 +363,18 @@ extension TPPNetworkExecutor {
             self.isRefreshing = true
 
             let account = TPPUserAccount.sharedAccount(libraryUUID: capturedAccountId)
-            guard let username = account.username, !username.isEmpty,
-                  let password = account.pin, !password.isEmpty,
+            guard let username = account.username,
+                  let password = account.pin,
                   let tokenURL = account.authDefinition?.tokenURL else {
-                let usernameLen = account.username?.count ?? -1
-                let pinLen = account.pin?.count ?? -1
-                let hasTokenURL = account.authDefinition?.tokenURL != nil
-                Log.error(#file, "Cannot refresh token: invalid credentials or tokenURL for account \(capturedAccountId ?? "nil") (usernameLen=\(usernameLen), pinLen=\(pinLen), hasTokenURL=\(hasTokenURL))")
+                Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
                 self.isRefreshing = false
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
                 completion?(NYPLResult.failure(error, nil))
                 return
             }
 
-            let authDef = account.authDefinition
-            let authType = authDef?.authType.rawValue ?? "unknown"
-            let credentialType: String
-            switch account.credentials {
-            case .token(let authToken, let barcode, let pin, let expirationDate):
-                let hasBarcode = barcode != nil && !barcode!.isEmpty
-                let hasPin = pin != nil && !pin!.isEmpty
-                let hasToken = !authToken.isEmpty
-                let tokenExpired = expirationDate.map { $0 < Date() } ?? false
-                credentialType = "token(hasBarcode=\(hasBarcode), hasPin=\(hasPin), hasToken=\(hasToken), tokenExpired=\(tokenExpired))"
-            case .barcodeAndPin(let barcode, _):
-                credentialType = "barcodeAndPin(barcodeLen=\(barcode.count))"
-            case .cookies:
-                credentialType = "cookies"
-            case .none:
-                credentialType = "nil"
-            }
-            let isOAuth = authDef?.isOauth == true
-            let isToken = authDef?.isToken == true
-            let isBasic = authDef?.isBasic == true
+            let authType = account.authDefinition?.authType.rawValue ?? "unknown"
             Log.info(#file, "Refreshing token for auth type: \(authType), account: \(capturedAccountId ?? "current")")
-            Log.info(#file, "  Auth flags: isBasic=\(isBasic), isToken=\(isToken), isOAuth=\(isOAuth)")
-            Log.info(#file, "  Credential type: \(credentialType)")
-            Log.info(#file, "  Using username(len=\(username.count)) + password(len=\(password.count)) for Basic Auth")
-            if isOAuth && !isToken {
-                Log.warn(#file, "  ⚠️ POTENTIAL MISMATCH: OAuth auth type but attempting Basic Auth token refresh")
-            }
 
             if let task {
                 self.retryQueueLock.lock()
@@ -421,10 +386,7 @@ extension TPPNetworkExecutor {
             }
 
             self.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: capturedAccountId) { result in
-                defer {
-                    self.isRefreshing = false
-                    self.pendingRefreshCompletions.removeAll()
-                }
+                defer { self.isRefreshing = false }
 
                 switch result {
                 case .success(let tokenResponse):
@@ -441,6 +403,7 @@ extension TPPNetworkExecutor {
                         }
 
                         let mutableRequest = self.request(for: originalURL)
+                        // Note: Retry tracking is now handled by URL-based tracking in TPPNetworkResponder
                         let newTask = self.urlSession.dataTask(with: mutableRequest)
                         self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
                         newTasks.append(newTask)
@@ -454,11 +417,11 @@ extension TPPNetworkExecutor {
                     Log.info(#file, "Retrying \(retryCount) failed request(s) with new token")
                     newTasks.forEach { $0.resume() }
 
-                    let successResult: NYPLResult<Data> = .success(Data(), nil)
+                    // For proactive refresh (task was nil), call completion to let caller proceed
+                    // The completion handler will trigger the original request with the new token
                     if task == nil {
-                        completion?(successResult)
+                        completion?(NYPLResult.success(Data(), nil))
                     }
-                    self.pendingRefreshCompletions.forEach { $0(successResult) }
 
                 case .failure(let error):
                     Log.error(#file, "Failed to refresh token with error: \(error.localizedDescription)")
@@ -483,9 +446,7 @@ extension TPPNetworkExecutor {
                     let nsError = NSError(domain: TPPErrorLogger.clientDomain,
                                           code: TPPErrorCode.invalidCredentials.rawValue,
                                           userInfo: [NSLocalizedDescriptionKey: "Token refresh failed: \(error.localizedDescription)"])
-                    let failureResult: NYPLResult<Data> = .failure(nsError, nil)
-                    completion?(failureResult)
-                    self.pendingRefreshCompletions.forEach { $0(failureResult) }
+                    completion?(NYPLResult.failure(nsError, nil))
                 }
             }
         }

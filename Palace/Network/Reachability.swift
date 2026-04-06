@@ -41,16 +41,6 @@ class Reachability: NSObject {
         connectionMonitor.cancel()
     }
 
-    // MARK: - Connection Type
-
-    /// Returns `true` when the current path uses a Wi-Fi (or Ethernet) interface.
-    /// Ethernet is treated as equivalent to Wi-Fi for download-restriction purposes.
-    var isOnWiFi: Bool {
-        let path = connectionMonitor.currentPath
-        return path.status == .satisfied
-            && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet))
-    }
-
     // MARK: - Reachability Check
 
     func isConnectedToNetwork() -> Bool {

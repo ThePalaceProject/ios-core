@@ -18,195 +18,201 @@ final class StatusAnnouncementTests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// Reference-type wrapper so captured closures share the same storage.
     private class Capture {
         var items: [String] = []
         var notifications: [UIAccessibility.Notification] = []
-        var expectation: XCTestExpectation?
     }
 
     private func makeAnnouncer(
         capture: Capture,
         voiceOverRunning: Bool = true,
-        deduplicationInterval: TimeInterval = 0.0,
-        timeProvider: @escaping () -> Date = { Date() }
+        deduplicationInterval: TimeInterval = 0.0
     ) -> TPPAccessibilityAnnouncementCenter {
         TPPAccessibilityAnnouncementCenter(
             postHandler: { notification, message in
                 capture.notifications.append(notification)
                 capture.items.append(message)
-                capture.expectation?.fulfill()
             },
             isVoiceOverRunning: { voiceOverRunning },
-            timeProvider: timeProvider,
             deduplicationInterval: deduplicationInterval
         )
     }
 
     // MARK: - 1. Search Workflow Announcements
 
+    /// PP-3673 AC 2: Search with results announces "Showing results for <query>".
     func testPP3673_searchWithResults_announcesResultsForQuery() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceSearchResults(query: "fantasy", count: 15)
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 1)
         let msg = capture.items[0]
         XCTAssertTrue(msg.contains("15"), "Should mention count")
         XCTAssertTrue(msg.contains("fantasy"), "Should mention query")
     }
 
+    /// PP-3673 AC 2: Search with no results announces "no results found".
     func testPP3673_searchNoResults_announcesNoResults() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceSearchResults(query: "zzzznotfound", count: 0)
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 1)
         let msg = capture.items[0].lowercased()
         XCTAssertTrue(msg.contains("no results"), "Should say no results")
         XCTAssertTrue(msg.contains("zzzznotfound"), "Should include query")
     }
 
+    /// PP-3673 AC 2: Search failure announces an error.
     func testPP3673_searchFailed_announces() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceSearchFailed()
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 1)
         let msg = capture.items[0].lowercased()
         XCTAssertTrue(msg.contains("search") && msg.contains("failed"))
     }
 
+    /// PP-3673 AC 2: Re-run search announces new status.
     func testPP3673_searchRerun_announcesNewStatus() {
         var currentTime = Date(timeIntervalSince1970: 100)
         let capture = Capture()
-        let exp = expectation(description: "announcements")
-        exp.expectedFulfillmentCount = 2
-        capture.expectation = exp
-        let announcer = makeAnnouncer(
-            capture: capture,
-            deduplicationInterval: 2.0,
-            timeProvider: { currentTime }
+        let announcer = TPPAccessibilityAnnouncementCenter(
+            postHandler: { _, message in capture.items.append(message) },
+            isVoiceOverRunning: { true },
+            timeProvider: { currentTime },
+            deduplicationInterval: 2.0
         )
 
         announcer.announceSearchResults(query: "robots", count: 5)
         currentTime = currentTime.addingTimeInterval(3.0)
         announcer.announceSearchResults(query: "robots", count: 0)
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 2, "Both results and no-results should be announced")
     }
 
+    /// PP-3673 AC 2: Announcement does NOT shift focus — uses .announcement, not .screenChanged.
     func testPP3673_searchAnnouncement_usesAnnouncementNotification() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceSearchResults(query: "test", count: 3)
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.notifications.count, 1)
         XCTAssertEqual(capture.notifications[0], UIAccessibility.Notification.announcement)
     }
 
     // MARK: - 2. Borrow / Checkout / Download Workflow Announcements
 
+    /// PP-3673 AC 3: Borrow started is announced.
     func testPP3673_borrowStarted_announces() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceBorrowStarted(title: "Moby Dick")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 1)
         XCTAssertTrue(capture.items[0].contains("Moby Dick"))
     }
 
+    /// PP-3673 AC 3: Borrow success is announced without focus shift.
     func testPP3673_borrowSucceeded_announcesWithoutFocusShift() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceBorrowSucceeded(title: "The Odyssey")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 1)
         XCTAssertTrue(capture.items[0].contains("The Odyssey"))
         XCTAssertEqual(capture.notifications[0], UIAccessibility.Notification.announcement,
                        "Must use .announcement to avoid moving focus")
     }
 
+    /// PP-3673 AC 3: Borrow failure is announced.
     func testPP3673_borrowFailed_announces() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceBorrowFailed(title: "War and Peace")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 1)
         XCTAssertTrue(capture.items[0].contains("War and Peace"))
         let msg = capture.items[0].lowercased()
         XCTAssertTrue(msg.contains("failed"), "Should indicate failure")
     }
 
+    /// PP-3673 AC 3: Download started is announced.
     func testPP3673_downloadStarted_announces() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceDownloadStarted(title: "Dune")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 1)
         XCTAssertTrue(capture.items[0].contains("Dune"))
     }
 
+    /// PP-3673 AC 3: Download completed is announced.
     func testPP3673_downloadCompleted_announces() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceDownloadCompleted(title: "1984")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 1)
         XCTAssertTrue(capture.items[0].contains("1984"))
     }
 
+    /// PP-3673 AC 3: Download failure is announced.
     func testPP3673_downloadFailed_announces() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceDownloadFailed(title: "Catch-22")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 1)
         let msg = capture.items[0].lowercased()
         XCTAssertTrue(msg.contains("failed") || msg.contains("could not"), "Should indicate failure")
     }
 
+    /// PP-3673 AC 3: Full borrow lifecycle (started → succeeded) produces two distinct announcements.
     func testPP3673_borrowLifecycle_producesSequentialAnnouncements() {
         let capture = Capture()
-        let exp = expectation(description: "announcements")
-        exp.expectedFulfillmentCount = 2
-        capture.expectation = exp
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceBorrowStarted(title: "The Hobbit")
         announcer.announceBorrowSucceeded(title: "The Hobbit")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 2,
                        "Both started and succeeded should be announced")
         XCTAssertTrue(capture.items[0].lowercased().contains("started") ||
@@ -216,39 +222,42 @@ final class StatusAnnouncementTests: XCTestCase {
 
     // MARK: - 3. Error Message Announcements
 
+    /// PP-3673 AC 4: Error messages are announced via VoiceOver.
     func testPP3673_errorMessage_announcedViaVoiceOver() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceError("Unable to connect to server.")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items, ["Unable to connect to server."])
     }
 
+    /// PP-3673 AC 4: Status with title and message produces a clear combined announcement.
     func testPP3673_statusWithTitleAndMessage_isClear() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceStatus(title: "Borrow Failed", message: "The book is not available.")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 1)
         let msg = capture.items[0]
         XCTAssertTrue(msg.contains("Borrow Failed"))
         XCTAssertTrue(msg.contains("The book is not available."))
     }
 
+    /// PP-3673 AC 4: Error announcement uses .announcement to avoid focus shift.
     func testPP3673_errorAnnouncement_doesNotMoveFocus() {
         let capture = Capture()
-        capture.expectation = expectation(description: "announcement")
         let announcer = makeAnnouncer(capture: capture)
 
         announcer.announceError("Network error")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.notifications.count, 1)
         XCTAssertEqual(capture.notifications[0], UIAccessibility.Notification.announcement,
                        "Error must use .announcement to avoid moving VoiceOver focus")
@@ -256,65 +265,64 @@ final class StatusAnnouncementTests: XCTestCase {
 
     // MARK: - 4. Deduplication / Flood Prevention
 
+    /// PP-3673 AC 1: Identical messages in quick succession are collapsed.
     func testPP3673_quickSuccession_sameMessage_collapsed() {
         let currentTime = Date(timeIntervalSince1970: 1000)
         let capture = Capture()
-        capture.expectation = expectation(description: "single announcement")
-        let announcer = makeAnnouncer(
-            capture: capture,
-            deduplicationInterval: 2.0,
-            timeProvider: { currentTime }
+        let announcer = TPPAccessibilityAnnouncementCenter(
+            postHandler: { _, message in capture.items.append(message) },
+            isVoiceOverRunning: { true },
+            timeProvider: { currentTime },
+            deduplicationInterval: 2.0
         )
 
         announcer.announceError("Error A")
         announcer.announceError("Error A")
         announcer.announceError("Error A")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 1,
                        "Duplicate messages in quick succession should collapse to 1")
     }
 
+    /// PP-3673 AC 1: Updated status replaces prior — "Loading…" then "10 results" are both announced.
     func testPP3673_updatedStatus_replacesOld() {
         let capture = Capture()
-        let exp = expectation(description: "announcements")
-        exp.expectedFulfillmentCount = 2
-        capture.expectation = exp
         let announcer = makeAnnouncer(capture: capture, deduplicationInterval: 0)
 
         announcer.announceMessage("Loading…")
         announcer.announceSearchResults(query: "test", count: 10)
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 2,
                        "Different messages should both be announced")
     }
 
+    /// PP-3673 AC 1: Multiple different status messages in quick succession are all announced.
     func testPP3673_differentMessages_allAnnounced() {
         let capture = Capture()
-        let exp = expectation(description: "announcements")
-        exp.expectedFulfillmentCount = 3
-        capture.expectation = exp
         let announcer = makeAnnouncer(capture: capture, deduplicationInterval: 0)
 
         announcer.announceBorrowStarted(title: "Book A")
         announcer.announceBorrowSucceeded(title: "Book A")
         announcer.announceDownloadStarted(title: "Book A")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 3,
                        "All distinct messages should be announced")
     }
 
     // MARK: - 5. WCAG Conformance Checks
 
+    /// PP-3673 AC 5: All status announcements are programmatically determinable (use .announcement).
     func testPP3673_allAnnouncementTypes_areProgrammaticallyDeterminable() {
         let capture = Capture()
-        let exp = expectation(description: "announcements")
-        exp.expectedFulfillmentCount = 17
-        capture.expectation = exp
         let announcer = makeAnnouncer(capture: capture)
 
+        // Exercise all announcement types
         announcer.announceSearchResults(query: "test", count: 5)
         announcer.announceSearchFailed()
         announcer.announceBorrowStarted(title: "T")
@@ -333,7 +341,8 @@ final class StatusAnnouncementTests: XCTestCase {
         announcer.announceRetryingReturn(title: "T")
         announcer.announceRetryingDownload(title: "T")
 
-        waitForExpectations(timeout: 5.0)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertEqual(capture.items.count, 17, "All 17 announcement methods should produce output")
 
         for (index, notification) in capture.notifications.enumerated() {
@@ -342,6 +351,7 @@ final class StatusAnnouncementTests: XCTestCase {
         }
     }
 
+    /// PP-3673 AC 5: VoiceOver disabled means zero announcements for all types.
     func testPP3673_voiceOverDisabled_noAnnouncements() {
         let capture = Capture()
         let announcer = makeAnnouncer(capture: capture, voiceOverRunning: false)
@@ -357,11 +367,14 @@ final class StatusAnnouncementTests: XCTestCase {
         announcer.announceError("Error")
         announcer.announceMessage("Status")
 
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+
         XCTAssertTrue(capture.items.isEmpty, "No announcements when VoiceOver is off")
     }
 
     // MARK: - 6. Localized String Sanity
 
+    /// PP-3673: Search announcement strings are properly localized (not raw keys).
     func testPP3673_searchStrings_areLocalized() {
         let resultsMsg = Strings.SearchAnnouncements.searchResultsFound("test", count: 5)
         XCTAssertFalse(resultsMsg.isEmpty)
@@ -380,6 +393,7 @@ final class StatusAnnouncementTests: XCTestCase {
         XCTAssertTrue(additionalMsg.contains("10"))
     }
 
+    /// PP-3673: Status announcement strings produce understandable output.
     func testPP3673_statusStrings_areUnderstandable() {
         let errorMsg = Strings.StatusAnnouncements.errorOccurred("Server error")
         XCTAssertEqual(errorMsg, "Server error")

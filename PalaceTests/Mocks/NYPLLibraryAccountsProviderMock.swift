@@ -48,10 +48,6 @@ class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider {
         return tppAccount.details!.auths.first { $0.authType == .saml }!
     }
 
-    var oidcAuthentication: AccountDetails.Authentication {
-        return tppAccount.details!.auths.first { $0.authType == .oidc }!
-    }
-
     var tppAccountUUID: String {
         return tppAccount.uuid
     }

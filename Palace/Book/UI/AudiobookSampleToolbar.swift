@@ -104,12 +104,16 @@ struct AudiobookSampleToolbar: View {
         switch player.state {
         case .paused:
             Images.play
+                .resizable()
                 .square(length: playbackButtonLength)
                 .padding(.trailing)
+                .accessibilityHidden(true)
         case .playing:
             Images.pause
+                .resizable()
                 .square(length: playbackButtonLength)
                 .padding(.trailing)
+                .accessibilityHidden(true)
         default:
             loadingView
                 .square(length: playbackButtonLength)
@@ -133,8 +137,10 @@ struct AudiobookSampleToolbar: View {
             player.goBack()
         } label: {
             Images.stepBack
+                .resizable()
                 .square(length: playbackButtonLength)
                 .padding(.trailing)
+                .accessibilityHidden(true)
         }
         .accessibilityLabel(Strings.Generic.skipBack30)
     }

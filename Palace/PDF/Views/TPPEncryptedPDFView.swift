@@ -17,30 +17,19 @@ struct TPPEncryptedPDFView: View {
     @EnvironmentObject var metadata: TPPPDFDocumentMetadata
 
     @State private var showingDocumentInfo = true
-    @State private var isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
 
     var body: some View {
         ZStack {
             TPPEncryptedPDFViewer(encryptedPDF: encryptedPDF, currentPage: $metadata.currentPage, showingDocumentInfo: $showingDocumentInfo)
                 .edgesIgnoringSafeArea([.all])
-                .accessibilityScrollAction { edge in
-                    handleAccessibilityScroll(edge)
-                }
             VStack {
                 TPPPDFLabel(encryptedPDF.title ?? metadata.book.title)
                     .padding(.top)
                 Spacer()
                 TPPPDFLabel("\(metadata.currentPage + 1)/\(encryptedPDF.pageCount)")
-                if isVoiceOverRunning {
-                    TPPPDFAccessibilityToolbar(
-                        currentPage: $metadata.currentPage,
-                        pageCount: encryptedPDF.pageCount
-                    )
-                } else {
-                    TPPPDFPreviewBar(document: encryptedPDF, currentPage: $metadata.currentPage)
-                }
+                TPPPDFPreviewBar(document: encryptedPDF, currentPage: $metadata.currentPage)
             }
-            .opacity(showingDocumentInfo || isVoiceOverRunning ? 1 : 0)
+            .opacity(showingDocumentInfo ? 1 : 0)
             .contentShape(Rectangle())
             .onTapGesture(count: 2) {
                 // TPPEncryptedPDFPageViewController doesn't receive double tap without this
@@ -49,22 +38,6 @@ struct TPPEncryptedPDFView: View {
                 showingDocumentInfo.toggle()
             }
         }
-        .navigationBarHidden(!showingDocumentInfo && !isVoiceOverRunning)
-        .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.voiceOverStatusDidChangeNotification)) { _ in
-            isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
-        }
-    }
-
-    private func handleAccessibilityScroll(_ edge: Edge) {
-        switch edge {
-        case .trailing, .bottom:
-            guard metadata.currentPage < encryptedPDF.pageCount - 1 else { return }
-            metadata.currentPage += 1
-        case .leading, .top:
-            guard metadata.currentPage > 0 else { return }
-            metadata.currentPage -= 1
-        }
-        let status = String(format: Strings.TPPBaseReaderViewController.pageOf, metadata.currentPage + 1) + "\(encryptedPDF.pageCount)"
-        UIAccessibility.post(notification: .pageScrolled, argument: status)
+        .navigationBarHidden(!showingDocumentInfo)
     }
 }

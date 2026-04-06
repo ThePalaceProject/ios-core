@@ -1,17 +1,11 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Accessibility focus (list callout when entering Holds)
-private enum HoldsAccessibilityFocus: Hashable {
-    case list
-}
-
 struct HoldsView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator
     typealias DisplayStrings = Strings.HoldsView
 
     @StateObject private var model = HoldsViewModel()
-    @AccessibilityFocusState private var accessibilityFocus: HoldsAccessibilityFocus?
     @StateObject private var logoObserver = CatalogLogoObserver()
     @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
     private var allBooks: [TPPBook] {
@@ -54,26 +48,6 @@ struct HoldsView: View {
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
-                    if !model.isLoading, UIAccessibility.isVoiceOverRunning {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.visibleBooks.count)
-                            UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.holdsListLabel), \(value)")
-                            if !model.visibleBooks.isEmpty {
-                                accessibilityFocus = .list
-                            }
-                        }
-                    }
-                }
-                .onChange(of: model.isLoading) { isLoading in
-                    if !isLoading, UIAccessibility.isVoiceOverRunning {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.visibleBooks.count)
-                            UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.holdsListLabel), \(value)")
-                            if !model.visibleBooks.isEmpty {
-                                accessibilityFocus = .list
-                            }
-                        }
-                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
                     let account = AccountsManager.shared.currentAccount
@@ -100,10 +74,6 @@ struct HoldsView: View {
 
     private var mainContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let error = model.syncError {
-                syncErrorBanner(error)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
             if model.showSearchSheet {
                 searchBar
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -135,45 +105,12 @@ struct HoldsView: View {
                     )
                     .padding(.horizontal, 8)
                 }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel(Strings.Generic.holdsListLabel)
-                .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.visibleBooks.count))
-                .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
-                .accessibilityFocused($accessibilityFocus, equals: .list)
                 .scrollIndicators(.visible)
                 .refreshable { model.refresh() }
                 .dismissKeyboardOnTap()
                 .accessibilityIdentifier(AccessibilityID.Holds.scrollView)
             }
         }
-    }
-
-    private func syncErrorBanner(_ error: HoldsViewModel.SyncError) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.white)
-                .font(.body)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Strings.HoldsView.syncFailedTitle)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.white)
-                Text(error.message)
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.9))
-            }
-            Spacer()
-            Button {
-                withAnimation { model.dismissSyncError() }
-            } label: {
-                Image(systemName: "xmark")
-                    .foregroundColor(.white.opacity(0.8))
-                    .font(.caption)
-            }
-            .accessibilityLabel(Strings.Generic.close)
-        }
-        .padding(12)
-        .background(Color.red.opacity(0.85))
-        .accessibilityIdentifier(AccessibilityID.Holds.syncErrorBanner)
     }
 
     /// Placeholder text when there are no holds at all
@@ -228,7 +165,7 @@ struct HoldsView: View {
             ImageProviders.MyBooksView.search
         }
         .accessibilityIdentifier(AccessibilityID.Holds.searchButton)
-        .accessibilityLabel(NSLocalizedString("Search Holds", comment: ""))
+        .accessibilityLabel(NSLocalizedString("Search Reservations", comment: ""))
     }
 
     private func presentBookDetail(_ book: TPPBook) {
@@ -238,7 +175,7 @@ struct HoldsView: View {
 
     private var searchBar: some View {
         HStack {
-            TextField(NSLocalizedString("Search Holds", comment: ""), text: $model.searchQuery)
+            TextField(NSLocalizedString("Search Reservations", comment: ""), text: $model.searchQuery)
                 .searchBarStyle()
                 .accessibilityIdentifier(AccessibilityID.Holds.searchField)
                 .onChange(of: model.searchQuery) { query in
@@ -271,7 +208,7 @@ struct HoldsView: View {
         let holdsRoot = HoldsView()
 
         let hosting = UIHostingController(rootView: holdsRoot)
-        hosting.title = Strings.HoldsView.holds
+        hosting.title = NSLocalizedString("Reservations", comment: "Nav title for Holds")
         hosting.tabBarItem.image = UIImage(named: "Holds")
 
         return hosting

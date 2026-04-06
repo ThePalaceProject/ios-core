@@ -36,10 +36,8 @@ struct CatalogLaneRowView: View {
                             book: book,
                             width: nil,
                             height: 150,
-                            usePulseSkeleton: true,
-                            treatImageAsDecorativeInLists: true
+                            usePulseSkeleton: true
                         )
-                        .adaptiveShadow(radius: 4)
                         .padding(.vertical)
                     })
                     .buttonStyle(.plain)
@@ -48,10 +46,6 @@ struct CatalogLaneRowView: View {
             }
             .padding(.horizontal, 12)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(title)
-        .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: books.count))
-        .accessibilityHint(Strings.Generic.horizontalLaneHint)
     }
 
     private func accessibilityLabel(for book: TPPBook) -> String {

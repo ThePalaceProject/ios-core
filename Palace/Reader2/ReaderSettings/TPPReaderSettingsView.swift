@@ -123,11 +123,11 @@ struct TPPReaderSettingsView: View {
     ///
     /// - Parameter size: text size
     /// - Returns: Text element
+    // accesslint:disable A11Y.SWIFTUI.DYNAMIC_TYPE - Intentional fixed sizes for font-size picker preview
     @ViewBuilder
     func fontSizeText(size: Double) -> some View {
         Text("A")
             .font(.system(size: size, weight: .medium, design: .rounded))
-            .accessibilityLabel(String(format: NSLocalizedString("Font size %g", comment: "Font size picker option"), size))
     }
 
     /// Screen brightness control

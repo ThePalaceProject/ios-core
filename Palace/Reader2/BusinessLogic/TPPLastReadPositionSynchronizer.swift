@@ -113,22 +113,6 @@ class TPPLastReadPositionSynchronizer {
                                         book: TPPBook) async {
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async {
-                guard let window = UIApplication.shared.delegate?.window as? UIWindow,
-                      let rootVC = window.rootViewController else {
-                    continuation.resume()
-                    return
-                }
-
-                var topVC = rootVC
-                while let presented = topVC.presentedViewController {
-                    topVC = presented
-                }
-
-                guard topVC.view.window != nil else {
-                    continuation.resume()
-                    return
-                }
-
                 let alert = UIAlertController(title: DisplayStrings.syncReadingPositionAlertTitle,
                                               message: DisplayStrings.syncReadingPositionAlertBody,
                                               preferredStyle: .alert)
@@ -150,7 +134,7 @@ class TPPLastReadPositionSynchronizer {
                 alert.addAction(stayAction)
                 alert.addAction(moveAction)
 
-                topVC.present(alert, animated: true)
+                TPPPresentationUtils.safelyPresent(alert)
             }
         }
     }

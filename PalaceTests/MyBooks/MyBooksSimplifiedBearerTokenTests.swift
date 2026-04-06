@@ -13,16 +13,6 @@ import XCTest
 
 final class MyBooksSimplifiedBearerTokenTests: XCTestCase {
 
-    override func setUp() {
-        super.setUp()
-        HTTPStubURLProtocol.reset()
-    }
-
-    override func tearDown() {
-        HTTPStubURLProtocol.reset()
-        super.tearDown()
-    }
-
     // MARK: - Parsing
 
     func testParsing_validDictionary_createsToken() {

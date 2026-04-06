@@ -211,7 +211,6 @@ class TPPCaching {
         config.timeoutIntervalForResource = requestTimeout * 2
         config.requestCachePolicy = .useProtocolCachePolicy
         config.urlCache = makeCache()
-        config.urlCredentialStorage = nil
 
         if #available(iOS 11.0, *) {
             // Originally set to `true`

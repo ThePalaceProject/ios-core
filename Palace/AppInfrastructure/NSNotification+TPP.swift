@@ -14,7 +14,6 @@ extension Notification.Name {
     static let TPPCatalogDidLoad = Notification.Name("TPPCatalogDidLoad")
     static let TPPSyncBegan = Notification.Name("TPPSyncBegan")
     static let TPPSyncEnded = Notification.Name("TPPSyncEnded")
-    static let TPPSyncFailed = Notification.Name("TPPSyncFailed")
     static let TPPUseBetaDidChange = Notification.Name("TPPUseBetaDidChange")
     static let TPPUserAccountDidChange = Notification.Name("TPPUserAccountDidChangeNotification")
     static let TPPDidSignOut = Notification.Name("TPPDidSignOut")
@@ -42,7 +41,6 @@ extension Notification.Name {
     public static let TPPCatalogDidLoad = Notification.Name.TPPCatalogDidLoad
     public static let TPPSyncBegan = Notification.Name.TPPSyncBegan
     public static let TPPSyncEnded = Notification.Name.TPPSyncEnded
-    public static let TPPSyncFailed = Notification.Name.TPPSyncFailed
     public static let TPPUseBetaDidChange = Notification.Name.TPPUseBetaDidChange
     public static let TPPUserAccountDidChange = Notification.Name.TPPUserAccountDidChange
     public static let TPPDidSignOut = Notification.Name.TPPDidSignOut

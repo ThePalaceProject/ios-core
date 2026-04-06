@@ -8,21 +8,13 @@
 
 import Foundation
 
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in loadView; modal overlay, not a navigated screen
 class LoadingViewController: UIViewController {
     var spinner = UIActivityIndicatorView(style: .large)
 
-    override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
-        super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
-        title = NSLocalizedString("Loading", comment: "Loading overlay title")
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
     override func loadView() {
         view = UIView()
+        title = NSLocalizedString("Loading", comment: "Loading overlay title")
         view.backgroundColor = UIColor(white: 0, alpha: 0.7)
         view.accessibilityViewIsModal = true
         view.accessibilityLabel = NSLocalizedString("Loading", comment: "Loading overlay accessibility label")

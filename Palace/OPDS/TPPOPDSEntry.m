@@ -51,9 +51,9 @@
   
   if (![self parseIdentifierFromXML:entryXML]) return nil;
   
-  self.providerName = [entryXML firstChildWithName:@"distribution"].attributes[@"bibframe:ProviderName"];
-  
   [self parseLinksFromXML:entryXML];
+  
+  self.providerName = [entryXML firstChildWithName:@"distribution"].attributes[@"bibframe:ProviderName"];
   
   NSString *dateString = [entryXML firstChildWithName:@"issued"].value;
   if (dateString) {
@@ -161,8 +161,22 @@
     }
     if ([linkXML.attributes[@"rel"] containsString:TPPOPDSRelationPreview]) {
       TPPOPDSAcquisition *acquisition = [TPPOPDSAcquisition acquisitionWithLinkXML:linkXML];
-      if (acquisition && !self.previewLink) {
-        self.previewLink = acquisition;
+      if (acquisition) {
+        NSString *mimeType = acquisition.type;
+        BOOL isEpubPreview = [mimeType isEqualToString:@"application/epub+zip"];
+        BOOL isPalaceMarketplace = [self.providerName isEqualToString:@"Palace Marketplace"];
+        
+        if (isPalaceMarketplace) {
+          if (isEpubPreview) {
+            if (!self.previewLink) {
+              self.previewLink = acquisition;
+            }
+          }
+        } else {
+          if (!self.previewLink) {
+            self.previewLink = acquisition;
+          }
+        }
       }
     }
     

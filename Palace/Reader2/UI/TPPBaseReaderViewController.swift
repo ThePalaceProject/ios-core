@@ -16,6 +16,7 @@ import ReadiumShared
 import Combine
 
 /// This class is meant to be subclassed by each publication format view controller. It contains the shared behavior, eg. navigation bar toggling.
+// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad from publication.metadata.title
 class TPPBaseReaderViewController: UIViewController, Loggable {
     typealias DisplayStrings = Strings.TPPBaseReaderViewController
 
@@ -50,12 +51,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     /// `DirectionalNavigationAdapter`) should override this to return `true`
     /// to prevent double-toggling the toolbar.
     var usesInputObserversForTapHandling: Bool { false }
-
-    /// Set before any user-initiated navigation (toolbar buttons, keyboard,
-    /// edge taps). Cleared by `didChangeLocation` after use. Lets subclasses
-    /// distinguish manual page turns from VoiceOver's automatic
-    /// `accessibilityScroll` which flows through Readium's internal path.
-    var manualNavigationPending = false
 
     private var currentLocationIsBookmarked: Bool {
         bookmarksBusinessLogic.currentLocation(in: navigator) != nil
@@ -101,7 +96,6 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         bookmarksBusinessLogic.syncBookmarks { (_, _) in }
 
         super.init(nibName: nil, bundle: nil)
-        title = publication.metadata.title
 
         NotificationCenter.default.addObserver(self, selector: #selector(voiceOverStatusDidChange), name: Notification.Name(UIAccessibility.voiceOverStatusDidChangeNotification.rawValue), object: nil)
 
@@ -120,6 +114,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        title = publication.metadata.title
         view.backgroundColor = TPPConfiguration.backgroundColor()
 
         // Ensure content extends under navigation bar without shifting when bar appears/disappears
@@ -510,16 +506,20 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
 
     @objc private func goBackward() {
-        manualNavigationPending = true
         Task {
             await navigator.goBackward(options: NavigatorGoOptions(animated: false))
+            if let title = self.navigator.currentLocation?.title {
+                UIAccessibility.post(notification: .announcement, argument: title)
+            }
         }
     }
 
     @objc private func goForward() {
-        manualNavigationPending = true
         Task {
             await navigator.goForward(options: NavigatorGoOptions(animated: false))
+            if let title = self.navigator.currentLocation?.title {
+                UIAccessibility.post(notification: .announcement, argument: title)
+            }
         }
     }
 
@@ -535,12 +535,10 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     func handleKeyboardCommand(_ command: ReaderKeyboardCommand) {
         switch command {
         case .goBackward:
-            manualNavigationPending = true
             Task { @MainActor in
                 await navigator.goBackward(options: NavigatorGoOptions(animated: false))
             }
         case .goForward:
-            manualNavigationPending = true
             Task { @MainActor in
                 await navigator.goForward(options: NavigatorGoOptions(animated: false))
             }
@@ -631,7 +629,6 @@ extension TPPBaseReaderViewController: VisualNavigatorDelegate {
         let viewport = navigator.view.bounds
         let thresholdRange = 0...(0.2 * viewport.width)
 
-        manualNavigationPending = true
         Task {
             var moved = false
             if thresholdRange ~= point.x {
@@ -641,7 +638,6 @@ extension TPPBaseReaderViewController: VisualNavigatorDelegate {
             }
 
             if !moved {
-                manualNavigationPending = false
                 toggleNavigationBar()
             }
         }

@@ -22,7 +22,7 @@ import Foundation
     private let licenseUrl: URL?
     private let assetRetriever: AssetRetriever
     private let publicationOpener: PublicationOpener
-    private let httpClient: LCPCredentialStrippingHTTPClient
+    private let httpClient: DefaultHTTPClient
 
     private var cachedPublication: Publication?
     private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
@@ -43,7 +43,7 @@ import Foundation
 
         self.licenseUrl = licenseUrl ?? (audiobookUrl.pathExtension.lowercased() == "lcpl" ? audiobookUrl : nil)
 
-        let httpClient = LCPCredentialStrippingHTTPClient()
+        let httpClient = DefaultHTTPClient()
         self.httpClient = httpClient
         self.assetRetriever = AssetRetriever(httpClient: httpClient)
 

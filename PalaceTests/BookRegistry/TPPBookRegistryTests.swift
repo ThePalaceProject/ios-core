@@ -456,23 +456,18 @@ final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
             }
             .store(in: &cancellables)
 
-        // Subscribe for the first event before calling load() so we don't miss it.
-        registry.bookStatePublisher
-            .first()
-            .sink { _ in expectation.fulfill() }
-            .store(in: &cancellables)
-
         registry.load()
 
-        // allBooks uses syncQueue.sync — drains the async load barrier before returning.
-        // If no books were loaded there are no publisher events, so fulfill immediately.
-        let registryCount = registry.allBooks.count
-        if registryCount == 0 {
+        // Wait a moment for async events
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 5.0)
 
+        // Check that we received state updates for books that were loaded from disk.
+        // After load(), allBooks reflects the disk state (not stale in-memory data).
+        let registryCount = registry.allBooks.count
         if registryCount > 0 {
             XCTAssertFalse(receivedStateUpdates.isEmpty, "Should have received state updates for loaded books")
         }

@@ -8,21 +8,23 @@
 
 import SwiftUI
 
+// accesslint:disable A11Y.SWIFTUI.MISSING_LABEL - These are image constants;
+// accessibility (labels / hidden) is configured at each usage site.
 struct ImageProviders {
     struct AudiobookSampleToolbar {
-        static var pause: some View { Image(systemName: "pause.circle").resizable().accessibilityHidden(true) }
-        static var play: some View { Image(systemName: "play.circle").resizable().accessibilityHidden(true) }
-        static var stepBack: some View { Image(systemName: "gobackward.30").resizable().accessibilityHidden(true) }
+        static let pause = Image(systemName: "pause.circle")
+        static let play = Image(systemName: "play.circle")
+        static let stepBack = Image(systemName: "gobackward.30")
     }
 
     struct MyBooksView {
         static let bookPlaceholder = UIImage(systemName: "book.closed.fill")
-        static var audiobookBadge: some View { Image("AudiobookBadge").resizable().accessibilityHidden(true) }
-        static var unreadBadge: some View { Image("Unread").resizable().accessibilityHidden(true) }
-        static var clock: some View { Image("Clock").accessibilityHidden(true) }
-        static var myLibraryIcon: some View { Image("MyLibraryIcon").accessibilityHidden(true) }
-        static var search: some View { Image("Search").accessibilityHidden(true) }
-        static var sort: some View { Image(systemName: "arrow.up.arrow.down").accessibilityHidden(true) }
-        static var filter: some View { Image(systemName: "line.3.horizontal.decrease").accessibilityHidden(true) }
+        static let audiobookBadge = Image("AudiobookBadge")
+        static let unreadBadge = Image("Unread")
+        static let clock = Image("Clock")
+        static let myLibraryIcon = Image("MyLibraryIcon")
+        static let search = Image("Search")
+        static let sort = Image(systemName: "arrow.up.arrow.down")
+        static let filter = Image(systemName: "line.3.horizontal.decrease")
     }
 }
