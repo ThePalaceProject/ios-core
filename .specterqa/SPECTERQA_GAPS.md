@@ -1,10 +1,21 @@
 # SpecterQA iOS -- Gaps & Issues Report
 
-## Version: 7.0.0 | App: Palace iOS | Date: 2026-04-06
+## Version: 7.0.0 → 8.0.0 | App: Palace iOS | Date: 2026-04-06
 
 **Reporter:** Palace iOS team (Maurice Carrier)
 **Environment:** macOS 15 (Darwin 25.0.0), Xcode 16.1, iOS 26 Simulator (iPhone 12), Apple Silicon (M-series)
-**Scope:** 29 E2E journeys recorded and replayed against Palace iOS reading app (EPUB, PDF, audiobooks, OPDS catalogs, multi-library auth)
+**Scope:** 13 audited E2E replays (120+ steps) against Palace iOS reading app (EPUB, PDF, audiobooks, OPDS catalogs, multi-library auth)
+
+### v8.0.0 Retest Results (2026-04-06)
+
+| Issue | v8 Status | Notes |
+|-------|-----------|-------|
+| #1 WKWebView blindness | **Still open** | Not addressed |
+| #2 press_key("return") crash | **Still broken** | Returns "ok" but kills session silently — delayed crash |
+| #3 ios_set_appearance during session | **Still broken** | Same "Shutdown" error via simctl |
+| #4 Screenshots too large | **FIXED** | New `quality` param: `thumbnail` (25%), `standard` (50%), `full` |
+| #5-7 Assertion/wait/indices | **Still open** | No changes |
+| New: WDA backend | **Added** | `specterqa-ios wda` — WebDriverAgent for headless CI |
 
 ---
 

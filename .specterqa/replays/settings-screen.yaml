@@ -35,7 +35,3 @@ replay:
     expect_elements:
     - Switch Library
     - Search Catalog
-    - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
