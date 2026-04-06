@@ -326,6 +326,7 @@ struct AccountDetailView: View {
             .disabled(viewModel.isSignedIn)
             .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
             .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
+            .accessibilityLabel(viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername)
 
             if !viewModel.isSignedIn && viewModel.businessLogic.selectedAuthentication?.supportsBarcodeScanner == true {
                 Button(action: { viewModel.scanBarcode() }, label: {
@@ -337,6 +338,7 @@ struct AccountDetailView: View {
         }
         .padding(.vertical, Layout.verticalPaddingInput)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+        .accessibilityElement(children: .contain)
     }
 
     private var pinInputCell: some View {
@@ -372,6 +374,7 @@ struct AccountDetailView: View {
         }
         .padding(.vertical, Layout.verticalPaddingInput)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+        .accessibilityElement(children: .contain)
     }
 
     private var logInSignOutCell: some View {
