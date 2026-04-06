@@ -87,3 +87,36 @@ Two build phases (two targets) — new source files need entries in both Sources
 ## Secrets
 
 Never commit: `APIKeys.swift`, `GoogleService-Info.plist`, `TPPSecrets.swift`, `.env` files.
+
+## SpecterQA E2E Testing
+
+29 journey YAMLs in `.specterqa/journeys/`, 29 replay YAMLs in `.specterqa/replays/`.
+MCP server: `specterqa-ios==7.0.0`. Preferred sim: iPhone 12 (`31CF5C43-DD55-4889-B3B2-9A6810B4E98F`, iOS 26).
+
+### MCP Tool Rules — MANDATORY
+
+**`ios_tap` only accepts `element_index` (integer).** Call `ios_elements()` first. Indices change after every navigation — always re-fetch before tapping.
+
+**`ios_type` works. `ios_press_key(key="return")` crashes the session.** Search auto-submits after typing. For forms, tap a submit button element instead. Never press return after typing.
+
+**`ios_set_appearance` / `ios_simctl` fail during active sessions.** Set appearance BEFORE `ios_start_session` via bash: `xcrun simctl ui <UDID> appearance dark`.
+
+**`ios_screenshot` exceeds MCP size limit.** Use `ios_elements()` instead — returns labels, types, positions. This IS your screenshot.
+
+**Kill stale runners before every session.** `pgrep -f "xcodebuild test-without-building" | xargs -r kill -9`. Old runners hold the port and block new sessions.
+
+**EPUB reader nav controls are invisible to XCTest.** Readium WKWebView renders outside the accessibility tree. Page content IS visible but back/settings buttons are not. `ios_swipe_back` does NOT exit the reader.
+
+**`ios_save_replay` captures ALL actions since session start.** For clean replays, start a fresh session per journey. 0-step replays are valid (e.g., app-launch).
+
+### Simulator Setup
+
+```bash
+# Kill stale runners, boot sim, enable dev settings
+pgrep -f "xcodebuild test-without-building" | xargs -r kill -9
+xcrun simctl boot 31CF5C43-DD55-4889-B3B2-9A6810B4E98F 2>/dev/null || true
+xcrun simctl spawn 31CF5C43-DD55-4889-B3B2-9A6810B4E98F defaults write org.thepalaceproject.palace showDeveloperSettings -bool true
+xcrun simctl spawn 31CF5C43-DD55-4889-B3B2-9A6810B4E98F defaults write org.thepalaceproject.palace NYPLUseBetaLibrariesKey -bool true
+```
+
+Two libraries configured: A1QA Test Library (signed in) + Lyrasis Reads. Credentials at `~/.specterqa/credentials/a1qa-test.env`.
