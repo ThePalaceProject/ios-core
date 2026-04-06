@@ -260,22 +260,25 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                             }
                         } else if record.state == .downloadSuccessful {
                             if !fileExists {
-                                #if LCP
-                                if LCPAudiobooks.canOpenBook(record.book) {
-                                    // LCP audiobooks remain playable via streaming even without .lcpa.
-                                    // Schedule a silent background re-download to get the local file (PP-3704).
-                                    Log.warn(#file, "  ⚠️ '\(record.book.title)' LCP audiobook missing .lcpa — keeping playable, scheduling background re-download")
-                                    lcpBooksNeedingBackgroundRedownload.append(record.book)
-                                } else {
-                                    Log.error(#file, "  ❌ '\(record.book.title)' marked as downloaded but FILE MISSING - marking as download needed")
-                                    record.state = .downloadNeeded
-                                }
-                                #else
                                 Log.error(#file, "  ❌ '\(record.book.title)' marked as downloaded but FILE MISSING - marking as download needed")
                                 record.state = .downloadNeeded
-                                #endif
                             } else {
+                                #if LCP
+                                // For LCP audiobooks, checkIfBookFileExists returns true if .lcpl
+                                // exists (to keep the book playable via streaming). But we also
+                                // need to check if the .lcpa content file is actually present —
+                                // if not, schedule a silent background re-download (PP-3704).
+                                if LCPAudiobooks.canOpenBook(record.book),
+                                   let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: record.book, account: account),
+                                   !FileManager.default.fileExists(atPath: bookURL.path) {
+                                    Log.warn(#file, "  ⚠️ '\(record.book.title)' LCP audiobook playable via streaming but .lcpa MISSING — scheduling background re-download")
+                                    lcpBooksNeedingBackgroundRedownload.append(record.book)
+                                } else {
+                                    Log.debug(#file, "  ✓ '\(record.book.title)' downloaded and file verified")
+                                }
+                                #else
                                 Log.debug(#file, "  ✓ '\(record.book.title)' downloaded and file verified")
+                                #endif
                             }
                         }
 
