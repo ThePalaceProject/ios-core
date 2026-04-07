@@ -39,6 +39,11 @@ struct BookImageView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .transition(.opacity)
+                    // PP-3968: an explicit empty label tells iOS the image is
+                    // intentionally undescribed and disables VoiceOver Image
+                    // Recognition (text-on-cover OCR), which would otherwise
+                    // read printed blurbs/quotes/series-name from cover art.
+                    .accessibilityLabel(Text(verbatim: ""))
                     .accessibilityHidden(true)
             }
 
@@ -50,6 +55,7 @@ struct BookImageView: View {
                     .background(Circle().fill(Color.colorAudiobookBackground))
                     .clipShape(Circle())
                     .padding([.trailing, .bottom], 10)
+                    .accessibilityLabel(Text(verbatim: ""))
                     .accessibilityHidden(true)
             }
         }

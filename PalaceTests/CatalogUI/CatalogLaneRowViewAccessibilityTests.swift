@@ -96,6 +96,42 @@ final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
         }
     }
 
+    // MARK: - PP-3968: Catalog cell accessibility label format
+
+    /// Audible/Libby-style label: "Title, by Author".
+    func testAccessibilityLabel_ebook_titleByAuthor() {
+        let book = TPPBookMocker.mockBook(title: "The Great Gatsby", authors: "F. Scott Fitzgerald")
+        let label = CatalogLaneRowView.accessibilityLabel(for: book)
+        XCTAssertEqual(label, "The Great Gatsby, by F. Scott Fitzgerald")
+    }
+
+    /// Ebook with no author falls back to just the title — no trailing punctuation.
+    func testAccessibilityLabel_ebook_noAuthor_titleOnly() {
+        let book = TPPBookMocker.mockBook(title: "Untitled Work", authors: nil)
+        let label = CatalogLaneRowView.accessibilityLabel(for: book)
+        XCTAssertEqual(label, "Untitled Work")
+    }
+
+    /// Audiobook with author but no narrator: "Title, audiobook, by Author".
+    func testAccessibilityLabel_audiobook_authorOnly() {
+        let audiobook = TPPBookMocker.snapshotAudiobook() // narrators empty
+        let label = CatalogLaneRowView.accessibilityLabel(for: audiobook)
+        XCTAssertTrue(audiobook.isAudiobook, "Test prerequisite: book should be an audiobook")
+        XCTAssertEqual(label, "Pride and Prejudice, audiobook, by Jane Austen")
+    }
+
+    /// PP-3968 acceptance: the label must NEVER contain blurbs, summaries, or
+    /// any free-form text that could come from a cover image OCR pass — only
+    /// title, author, audiobook designation, and narrator.
+    func testAccessibilityLabel_doesNotIncludeSummaryOrBlurbs() {
+        let book = TPPBookMocker.mockBook(title: "Test Title", authors: "Test Author")
+        // Sanity-check the mock so we know `summary` actually has content.
+        XCTAssertNotNil(book.summary)
+        let label = CatalogLaneRowView.accessibilityLabel(for: book)
+        XCTAssertFalse(label.contains(book.summary ?? "<missing>"),
+                       "Cell label leaked the book summary into VoiceOver: \(label)")
+    }
+
     // MARK: - PP-3980: Swimlane heading trait
 
     /// Regression test for PP-3980. The catalog swimlane title must carry the

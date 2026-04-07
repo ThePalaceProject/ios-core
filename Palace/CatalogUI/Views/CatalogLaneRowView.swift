@@ -43,7 +43,13 @@ struct CatalogLaneRowView: View {
                         .padding(.vertical)
                     })
                     .buttonStyle(.plain)
-                    .accessibilityLabel(accessibilityLabel(for: book))
+                    // PP-3968: replace the children with a single, predictable
+                    // VoiceOver announcement (Title, by Author, narrated by …)
+                    // and drop the "button" trait so the cell sounds like a
+                    // static list item — matches Audible/Libby UX.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(book.voiceOverLabel)
+                    .accessibilityRemoveTraits(.isButton)
                 }
             }
             .padding(.horizontal, 12)
@@ -55,15 +61,11 @@ struct CatalogLaneRowView: View {
         .accessibilityAddTraits(.isHeader)
     }
 
-    private func accessibilityLabel(for book: TPPBook) -> String {
-        var components = [book.title]
-        if book.isAudiobook {
-            components.append(Strings.Generic.audiobook)
-        }
-        if let authors = book.authors, !authors.isEmpty {
-            components.append(authors)
-        }
-        return components.joined(separator: ", ")
+    /// PP-3968: legacy hook used by `accessibilityLabel(for:)`-style call sites.
+    /// Delegates to `TPPBook.voiceOverLabel`, which is the single source of
+    /// truth for cell announcements across catalog lanes, My Books, and Holds.
+    static func accessibilityLabel(for book: TPPBook) -> String {
+        book.voiceOverLabel
     }
 
     @ViewBuilder

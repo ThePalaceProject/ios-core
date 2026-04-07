@@ -126,6 +126,32 @@ struct Strings {
         static let nextPage = NSLocalizedString("Next page", comment: "Full Keyboard Access: Custom action to go to next page (Tab-Z menu)")
         static let previousPage = NSLocalizedString("Previous page", comment: "Full Keyboard Access: Custom action to go to previous page (Tab-Z menu)")
         static let toggleToolbar = NSLocalizedString("Toggle toolbar", comment: "Full Keyboard Access: Custom action to show/hide reader toolbar (Tab-Z menu)")
+
+        // Accessibility - Book cell labels (PP-3968)
+        static func bookByAuthor(title: String, author: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, by %2$@", comment: "VoiceOver: book cell label, e.g. 'The Great Gatsby, by F. Scott Fitzgerald'"),
+                title, author
+            )
+        }
+        static func audiobookNarratedBy(title: String, narrator: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, narrated by %2$@", comment: "VoiceOver: audiobook cell label without author, e.g. 'Title, narrated by Narrator'"),
+                title, narrator
+            )
+        }
+        static func audiobookByAuthorNarratedBy(title: String, author: String, narrator: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, by %2$@, narrated by %3$@", comment: "VoiceOver: audiobook cell label with author and narrator"),
+                title, author, narrator
+            )
+        }
+        static func audiobookByAuthor(title: String, author: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, audiobook, by %2$@", comment: "VoiceOver: audiobook cell label with author but no narrator"),
+                title, author
+            )
+        }
     }
 
     struct DownloadAnnouncements {

@@ -222,7 +222,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
 
-    #if DEBUG
     @objc func incrementalSpeedSliderSwitchDidChange(sender: UISwitch) {
         DebugSettings.shared.isIncrementalSpeedSliderEnabled = sender.isOn
     }
@@ -239,6 +238,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
 
+    #if DEBUG
     @objc func badgeLoggingSwitchDidChange(sender: UISwitch) {
         DebugSettings.shared.isBadgeLoggingEnabled = sender.isOn
     }

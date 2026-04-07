@@ -1117,6 +1117,9 @@
 		PP3784B002CREDVIS0001ABCD /* TPPCredentialVisibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3784A001CREDVIS0001ABCD /* TPPCredentialVisibilityTests.swift */; };
 		PP3819BF01A0B1C2D3E4F506 /* TPPIdleSignOutRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3819FR01A0B1C2D3E4F507 /* TPPIdleSignOutRegressionTests.swift */; };
 		PP3838A11B0000000000001B /* PDFAccessibilityToolbarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3838A11A0000000000001A /* PDFAccessibilityToolbarTests.swift */; };
+		PP3968A11B0000000000002B /* TPPBook+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */; };
+		PP3968A11B0000000000002C /* TPPBook+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */; };
+		PP3968A11B0000000000003B /* TPPBookAccessibilityLabelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3968A11A0000000000003A /* TPPBookAccessibilityLabelTests.swift */; };
 		PP3969A11B0000000000001B /* BookImageViewAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3969A11A0000000000001A /* BookImageViewAccessibilityTests.swift */; };
 		QAAMT002T260955EF00000001 /* AccountModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAAMT001T260955EF00000001 /* AccountModelTests.swift */; };
 		QAAPD002T260955EF00000001 /* AccountProfileDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAAPD001T260955EF00000001 /* AccountProfileDocumentTests.swift */; };
@@ -2107,6 +2110,8 @@
 		PP3784A001CREDVIS0001ABCD /* TPPCredentialVisibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPCredentialVisibilityTests.swift; sourceTree = "<group>"; };
 		PP3819FR01A0B1C2D3E4F507 /* TPPIdleSignOutRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPIdleSignOutRegressionTests.swift; sourceTree = "<group>"; };
 		PP3838A11A0000000000001A /* PDFAccessibilityToolbarTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PDFAccessibilityToolbarTests.swift; sourceTree = "<group>"; };
+		PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Accessibility.swift"; sourceTree = "<group>"; };
+		PP3968A11A0000000000003A /* TPPBookAccessibilityLabelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPBookAccessibilityLabelTests.swift; sourceTree = "<group>"; };
 		PP3969A11A0000000000001A /* BookImageViewAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookImageViewAccessibilityTests.swift; sourceTree = "<group>"; };
 		QAAMT001T260955EF00000001 /* AccountModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountModelTests.swift; sourceTree = "<group>"; };
 		QAAPD001T260955EF00000001 /* AccountProfileDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountProfileDocumentTests.swift; sourceTree = "<group>"; };
@@ -2904,6 +2909,7 @@
 				E5A1412928D4F1B20091AD2D /* TPPBook.swift */,
 				E5A1413428D94DDA0091AD2D /* TPPContentType.swift */,
 				73B5DFFB26055F8B00225C12 /* TPPBook+Additions.swift */,
+				PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */,
 				E6DA7E9F1F2A718600CFBEC8 /* TPPBookAuthor.swift */,
 				73FB0AC824EB403D0072E430 /* TPPBookContentTypeConverter.swift */,
 				171966A824170819007BB87E /* TPPBookState.swift */,
@@ -4274,6 +4280,7 @@
 				A77E63314ED6F70CC68C0DA0 /* AudiobookAccessibilityTests.swift */,
 				PP3969A11A0000000000001A /* BookImageViewAccessibilityTests.swift */,
 				PP3838A11A0000000000001A /* PDFAccessibilityToolbarTests.swift */,
+				PP3968A11A0000000000003A /* TPPBookAccessibilityLabelTests.swift */,
 				4609134D5A2D39DD0D8E7DCA /* CatalogAccessibilityTests.swift */,
 				A047896E4B4E78F19CF33603 /* FacetToolbarAccessibilityTests.swift */,
 				D72DFEC346C543E50A57BE49 /* ReaderAccessibilityTests.swift */,
@@ -4925,6 +4932,7 @@
 				FC0AD7762077072EC062F780 /* AudiobookAccessibilityTests.swift in Sources */,
 				PP3969A11B0000000000001B /* BookImageViewAccessibilityTests.swift in Sources */,
 				PP3838A11B0000000000001B /* PDFAccessibilityToolbarTests.swift in Sources */,
+				PP3968A11B0000000000003B /* TPPBookAccessibilityLabelTests.swift in Sources */,
 				AC7D22C5A54C9291CD111AC8 /* CatalogAccessibilityTests.swift in Sources */,
 				963D25AD30656028E36395ED /* FacetToolbarAccessibilityTests.swift in Sources */,
 				DE0A30E3FA1B8A7EA46BCCBE /* ReaderAccessibilityTests.swift in Sources */,
@@ -5242,6 +5250,7 @@
 				21E41782292810EE00A78606 /* TPPBookLocation+pageNumber.swift in Sources */,
 				73EB0AF325821DF4006BC997 /* TPPSettingsAccountsList.swift in Sources */,
 				73B5E0012605679B00225C12 /* TPPBook+Additions.swift in Sources */,
+				PP3968A11B0000000000002B /* TPPBook+Accessibility.swift in Sources */,
 				73EB0AF425821DF4006BC997 /* Data+Base64.swift in Sources */,
 				21E4177D292810E000A78606 /* TPPPDFLocation.swift in Sources */,
 				E55E2FA629E7A9670093F916 /* AudioBookmark.swift in Sources */,
@@ -5467,6 +5476,7 @@
 				E59892ED28AC909000C44A85 /* AudiobookSampleToolbar.swift in Sources */,
 				21DDE32825D2CEFC002CBCE3 /* AdobeDRMContentProtection.swift in Sources */,
 				73B5DFFE2605679800225C12 /* TPPBook+Additions.swift in Sources */,
+				PP3968A11B0000000000002C /* TPPBook+Accessibility.swift in Sources */,
 				E5B8E9832E0F0492002E0F3D /* ImageCacheType.swift in Sources */,
 				21DDE31325D2CE9A002CBCE3 /* AdobeDRMLibraryService.swift in Sources */,
 				0813875A1BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.m in Sources */,
@@ -6008,7 +6018,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 456;
+				CURRENT_PROJECT_VERSION = 458;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6065,7 +6075,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 456;
+				CURRENT_PROJECT_VERSION = 458;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -6251,11 +6261,8 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 457;
+				CURRENT_PROJECT_VERSION = 458;
 				DEVELOPMENT_TEAM = "";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 455;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -6314,7 +6321,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 457;
+				CURRENT_PROJECT_VERSION = 458;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
