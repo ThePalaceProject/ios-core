@@ -74,11 +74,28 @@ enum Group: Int {
         }
 
         let registryBooks = bookRegistry.myBooks
-        let isConnected = Reachability.shared.isConnectedToNetwork()
 
-        let newBooks = isConnected
-            ? registryBooks
-            : registryBooks.filter { !$0.isExpired }
+        // Always filter out expired books. Previously this only happened offline,
+        // relying on sync to remove expired books when online. But if sync hasn't
+        // run yet (or is delayed), expired books would remain visible with stale UI.
+        let (active, expired) = registryBooks.reduce(into: ([TPPBook](), [TPPBook]())) { result, book in
+            if book.isExpired {
+                result.1.append(book)
+            } else {
+                result.0.append(book)
+            }
+        }
+
+        if !expired.isEmpty {
+            Log.info(#file, "📚 Removing \(expired.count) expired book(s) from My Books")
+            for book in expired {
+                Log.info(#file, "  → '\(book.title)' expired")
+                MyBooksDownloadCenter.shared.deleteLocalContent(for: book.identifier)
+                bookRegistry.setState(.unregistered, for: book.identifier)
+            }
+        }
+
+        let newBooks = active
 
         // Update published properties
         self.allBooks = newBooks

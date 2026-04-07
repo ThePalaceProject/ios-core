@@ -226,6 +226,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             guard let self = self else { return }
 
             var newRegistry = [String: TPPBookRegistryRecord]()
+            var lcpBooksNeedingBackgroundRedownload = [TPPBook]()
             if FileManager.default.fileExists(atPath: url.path),
                let data     = try? Data(contentsOf: url),
                let json     = try? JSONSerialization.jsonObject(with: data) as? TPPBookRegistryData,
@@ -260,10 +261,24 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                         } else if record.state == .downloadSuccessful {
                             if !fileExists {
                                 Log.error(#file, "  ❌ '\(record.book.title)' marked as downloaded but FILE MISSING - marking as download needed")
-                                Log.error(#file, "     This suggests the file was deleted or the path is wrong")
                                 record.state = .downloadNeeded
                             } else {
+                                #if LCP
+                                // For LCP audiobooks, checkIfBookFileExists returns true if .lcpl
+                                // exists (to keep the book playable via streaming). But we also
+                                // need to check if the .lcpa content file is actually present —
+                                // if not, schedule a silent background re-download (PP-3704).
+                                if LCPAudiobooks.canOpenBook(record.book),
+                                   let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: record.book, account: account),
+                                   !FileManager.default.fileExists(atPath: bookURL.path) {
+                                    Log.warn(#file, "  ⚠️ '\(record.book.title)' LCP audiobook playable via streaming but .lcpa MISSING — scheduling background re-download")
+                                    lcpBooksNeedingBackgroundRedownload.append(record.book)
+                                } else {
+                                    Log.debug(#file, "  ✓ '\(record.book.title)' downloaded and file verified")
+                                }
+                                #else
                                 Log.debug(#file, "  ✓ '\(record.book.title)' downloaded and file verified")
+                                #endif
                             }
                         }
 
@@ -307,6 +322,19 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
                 NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
                 Log.info(#file, "  📖 Registry loaded with \(bookCount) books")
+
+                // Silently re-download .lcpa files for LCP audiobooks that only have
+                // the .lcpl license (PP-3704). Books stay playable via streaming while
+                // the background download runs. Once it completes, Readium will
+                // automatically use the local file on next open.
+                if !lcpBooksNeedingBackgroundRedownload.isEmpty {
+                    Log.info(#file, "  📥 Scheduling background .lcpa re-download for \(lcpBooksNeedingBackgroundRedownload.count) orphaned LCP audiobook(s)")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                        for book in lcpBooksNeedingBackgroundRedownload {
+                            MyBooksDownloadCenter.shared.redownloadLCPContentFile(for: book)
+                        }
+                    }
+                }
             }
         }
     }
@@ -325,18 +353,20 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         let fileExists = FileManager.default.fileExists(atPath: bookURL.path)
 
         #if LCP
-        // For LCP audiobooks: Check license file (content file optional for streaming)
+        // For LCP audiobooks: the .lcpl license is sufficient for streaming playback.
+        // If the .lcpa content file is missing, the book remains playable via streaming
+        // while a background re-download is triggered to fetch the local copy (PP-3704).
         if LCPAudiobooks.canOpenBook(book) {
-            let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
-            let licenseExists = FileManager.default.fileExists(atPath: licenseURL.path)
-
-            if licenseExists {
-                // Streaming LCP audiobooks only need license file
-                Log.debug(#file, "  ✓ LCP audiobook license file exists (content file: \(fileExists ? "yes" : "streaming-only"))")
+            if fileExists {
+                Log.debug(#file, "  ✓ LCP audiobook content file (.lcpa) exists")
                 return true
             }
-
-            // No license file - check for content file
+            let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
+            let licenseExists = FileManager.default.fileExists(atPath: licenseURL.path)
+            if licenseExists {
+                Log.warn(#file, "  ⚠️ LCP audiobook has license (.lcpl) but content file (.lcpa) is MISSING — will schedule background re-download")
+                return true  // Keep playable via streaming; re-download triggered separately
+            }
             return fileExists
         }
         #endif
