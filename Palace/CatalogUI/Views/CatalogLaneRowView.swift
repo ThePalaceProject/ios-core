@@ -43,7 +43,13 @@ struct CatalogLaneRowView: View {
                         .padding(.vertical)
                     })
                     .buttonStyle(.plain)
-                    .accessibilityLabel(accessibilityLabel(for: book))
+                    // PP-3968: replace the children with a single, predictable
+                    // VoiceOver announcement (Title, by Author, narrated by …)
+                    // and drop the "button" trait so the cell sounds like a
+                    // static list item — matches Audible/Libby UX.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Self.accessibilityLabel(for: book))
+                    .accessibilityRemoveTraits(.isButton)
                 }
             }
             .padding(.horizontal, 12)
@@ -55,15 +61,41 @@ struct CatalogLaneRowView: View {
         .accessibilityAddTraits(.isHeader)
     }
 
-    private func accessibilityLabel(for book: TPPBook) -> String {
-        var components = [book.title]
+    /// PP-3968: Build a single, predictable VoiceOver label per book cell.
+    /// Mirrors how Audible/Libby announce a list item:
+    ///
+    ///   • Ebook with author:           "Title, by Author"
+    ///   • Ebook without author:        "Title"
+    ///   • Audiobook with narrator:     "Title, by Author, narrated by Narrator"
+    ///   • Audiobook, no author:        "Title, narrated by Narrator"
+    ///   • Audiobook, no narrator:      "Title, audiobook, by Author"
+    ///   • Audiobook, neither:          "Title, audiobook"
+    ///
+    /// Static so the unit tests can call it without instantiating the view.
+    static func accessibilityLabel(for book: TPPBook) -> String {
+        let title = book.title
+        let author = book.authors?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let narrator = book.narrators?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasAuthor = !(author?.isEmpty ?? true)
+        let hasNarrator = !(narrator?.isEmpty ?? true)
+
         if book.isAudiobook {
-            components.append(Strings.Generic.audiobook)
+            switch (hasAuthor, hasNarrator) {
+            case (true, true):
+                return Strings.Generic.audiobookByAuthorNarratedBy(title: title, author: author!, narrator: narrator!)
+            case (true, false):
+                return Strings.Generic.audiobookByAuthor(title: title, author: author!)
+            case (false, true):
+                return Strings.Generic.audiobookNarratedBy(title: title, narrator: narrator!)
+            case (false, false):
+                return "\(title), \(Strings.Generic.audiobook)"
+            }
         }
-        if let authors = book.authors, !authors.isEmpty {
-            components.append(authors)
+
+        if hasAuthor {
+            return Strings.Generic.bookByAuthor(title: title, author: author!)
         }
-        return components.joined(separator: ", ")
+        return title
     }
 
     @ViewBuilder
