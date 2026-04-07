@@ -52,6 +52,7 @@ struct CatalogLaneRowView: View {
         .accessibilityLabel(title)
         .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: books.count))
         .accessibilityHint(Strings.Generic.horizontalLaneHint)
+        .accessibilityAddTraits(.isHeader)
     }
 
     private func accessibilityLabel(for book: TPPBook) -> String {
@@ -78,6 +79,7 @@ struct CatalogLaneRowView: View {
                 .lineLimit(3)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             if let more = moreURL, let onMoreTapped = onMoreTapped {
                 Button("More…") {

@@ -309,7 +309,7 @@ struct BookDetailView: View {
     }
 
     private var imageView: some View {
-        BookImageView(book: viewModel.book, height: 280 * imageScale, treatImageAsDecorativeInLists: true)
+        BookImageView(book: viewModel.book, height: 280 * imageScale, treatImageAsDecorativeInLists: false)
             .accessibilityIdentifier(AccessibilityID.BookDetail.coverImage)
             .opacity(imageOpacity)
             .adaptiveShadow(backgroundColor: headerColor)
