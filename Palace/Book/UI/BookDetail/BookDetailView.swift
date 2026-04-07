@@ -309,7 +309,12 @@ struct BookDetailView: View {
     }
 
     private var imageView: some View {
-        BookImageView(book: viewModel.book, height: 280 * imageScale, treatImageAsDecorativeInLists: false)
+        // PP-3968: the detail screen redundantly announces title, author,
+        // narrator, format, and summary directly below the cover, so the
+        // cover itself should be fully decorative for VoiceOver. Hiding it
+        // also prevents iOS Image Recognition from OCR-reading printed
+        // blurbs/quotes/awards stickers off the cover art.
+        BookImageView(book: viewModel.book, height: 280 * imageScale, treatImageAsDecorativeInLists: true)
             .accessibilityIdentifier(AccessibilityID.BookDetail.coverImage)
             .opacity(imageOpacity)
             .adaptiveShadow(backgroundColor: headerColor)

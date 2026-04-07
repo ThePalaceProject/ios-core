@@ -310,6 +310,8 @@
 		73B5DFDF26052A1800225C12 /* TPPBookButtonsState.m in Sources */ = {isa = PBXBuildFile; fileRef = 73B5DFDA26052A1800225C12 /* TPPBookButtonsState.m */; };
 		73B5DFFE2605679800225C12 /* TPPBook+Additions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B5DFFB26055F8B00225C12 /* TPPBook+Additions.swift */; };
 		73B5E0012605679B00225C12 /* TPPBook+Additions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B5DFFB26055F8B00225C12 /* TPPBook+Additions.swift */; };
+		PP3968A11B0000000000002B /* TPPBook+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */; };
+		PP3968A11B0000000000002C /* TPPBook+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */; };
 		73C3CF5425C8EB6900CA8166 /* TPPUserAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CE5304243C020800315E63 /* TPPUserAccount.swift */; };
 		73C3CF5825C8EB6B00CA8166 /* TPPUserAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CE5304243C020800315E63 /* TPPUserAccount.swift */; };
 		73C3CF5A25CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73C3CF5925CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift */; };
@@ -1647,6 +1649,7 @@
 		73B5DFDA26052A1800225C12 /* TPPBookButtonsState.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPBookButtonsState.m; sourceTree = "<group>"; };
 		73B5DFDB26052A1800225C12 /* TPPBookButtonsState.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPBookButtonsState.h; sourceTree = "<group>"; };
 		73B5DFFB26055F8B00225C12 /* TPPBook+Additions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Additions.swift"; sourceTree = "<group>"; };
+		PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Accessibility.swift"; sourceTree = "<group>"; };
 		73C3CF5925CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NYPLNetworkExecutorMock.swift; sourceTree = "<group>"; };
 		73CDA120243EDAD8009CC6A6 /* URLRequest+Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLRequest+Logging.swift"; sourceTree = "<group>"; };
 		73CEF82F252699C9006B2820 /* FirebaseCrashlytics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FirebaseCrashlytics.framework; path = Carthage/Build/iOS/FirebaseCrashlytics.framework; sourceTree = "<group>"; };
@@ -2904,6 +2907,7 @@
 				E5A1412928D4F1B20091AD2D /* TPPBook.swift */,
 				E5A1413428D94DDA0091AD2D /* TPPContentType.swift */,
 				73B5DFFB26055F8B00225C12 /* TPPBook+Additions.swift */,
+				PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */,
 				E6DA7E9F1F2A718600CFBEC8 /* TPPBookAuthor.swift */,
 				73FB0AC824EB403D0072E430 /* TPPBookContentTypeConverter.swift */,
 				171966A824170819007BB87E /* TPPBookState.swift */,
@@ -5242,6 +5246,7 @@
 				21E41782292810EE00A78606 /* TPPBookLocation+pageNumber.swift in Sources */,
 				73EB0AF325821DF4006BC997 /* TPPSettingsAccountsList.swift in Sources */,
 				73B5E0012605679B00225C12 /* TPPBook+Additions.swift in Sources */,
+				PP3968A11B0000000000002B /* TPPBook+Accessibility.swift in Sources */,
 				73EB0AF425821DF4006BC997 /* Data+Base64.swift in Sources */,
 				21E4177D292810E000A78606 /* TPPPDFLocation.swift in Sources */,
 				E55E2FA629E7A9670093F916 /* AudioBookmark.swift in Sources */,
@@ -5467,6 +5472,7 @@
 				E59892ED28AC909000C44A85 /* AudiobookSampleToolbar.swift in Sources */,
 				21DDE32825D2CEFC002CBCE3 /* AdobeDRMContentProtection.swift in Sources */,
 				73B5DFFE2605679800225C12 /* TPPBook+Additions.swift in Sources */,
+				PP3968A11B0000000000002C /* TPPBook+Accessibility.swift in Sources */,
 				E5B8E9832E0F0492002E0F3D /* ImageCacheType.swift in Sources */,
 				21DDE31325D2CE9A002CBCE3 /* AdobeDRMLibraryService.swift in Sources */,
 				0813875A1BC5767F003DEA6A /* UIButton+NYPLAppearanceAdditions.m in Sources */,
@@ -6250,9 +6256,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 458;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
