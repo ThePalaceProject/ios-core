@@ -205,25 +205,15 @@ struct DownloadErrorInfo {
     }
 
     func announceDownloadStarted(for book: TPPBook) {
-        accessibilityAnnouncements.announceDownloadStarted(title: book.title, identifier: book.identifier)
-    }
-
-    func announceDownloadProgress(for book: TPPBook, progress: Double) {
-        accessibilityAnnouncements.announceDownloadProgress(
-            title: book.title,
-            identifier: book.identifier,
-            progress: progress
-        )
+        accessibilityAnnouncements.announceDownloadStarted(title: book.title)
     }
 
     func announceDownloadCompleted(for book: TPPBook) {
         accessibilityAnnouncements.announceDownloadCompleted(title: book.title)
-        accessibilityAnnouncements.resetProgress(identifier: book.identifier)
     }
 
     func announceDownloadFailed(for book: TPPBook) {
         accessibilityAnnouncements.announceDownloadFailed(title: book.title)
-        accessibilityAnnouncements.resetProgress(identifier: book.identifier)
     }
 
     func announceBorrowStarted(for book: TPPBook) {
@@ -1401,8 +1391,6 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                     downloadProgressPublisher.send((book.identifier, progress))
                 }
 
-                announceDownloadProgress(for: book, progress: progress)
-
                 if progress > 0.95 || Int(progress * 100) % 20 == 0 {
                     broadcastUpdate()
                 }
@@ -2108,7 +2096,6 @@ extension MyBooksDownloadCenter {
                 await MainActor.run {
                     self.downloadProgressPublisher.send((book.identifier, progressValue))
                 }
-                self.announceDownloadProgress(for: book, progress: progressValue)
                 self.broadcastUpdate()
             }
         }
@@ -2671,9 +2658,6 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
             // Publish to progress publisher so UI updates (HalfSheet, BookCell, etc.)
             await MainActor.run {
                 self.downloadProgressPublisher.send((tag, progress))
-            }
-            if let book = self.bookRegistry.book(forIdentifier: tag) {
-                self.announceDownloadProgress(for: book, progress: progress)
             }
             self.broadcastUpdate()
         }
