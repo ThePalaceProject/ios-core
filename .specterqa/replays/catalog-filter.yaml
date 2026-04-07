@@ -1,0 +1,31 @@
+replay:
+  name: catalog-filter
+  bundle_id: org.thepalaceproject.palace
+  device_id: 31CF5C43-DD55-4889-B3B2-9A6810B4E98F
+  recorded_at: '2026-04-06T22:41:40'
+  steps:
+  - action: tap
+    element_index: 9
+    element_label: More books in Unlimited Listens ODL Feed
+    x: 357.33333333333326
+    y: 206.5
+    expect_elements:
+    - Search Catalog
+    - Filter
+  - action: tap
+    element_index: 6
+    element_label: Filter
+    x: 352.1666717529297
+    y: 111.33333206176758
+    expect_elements:
+    - Filters
+    - Availability
+    - Distributor
+    - Collection Name
+    - CANCEL
+    - APPLY FILTERS
+  - action: tap
+    element_index: 9
+    element_label: CANCEL
+    x: 69.66666666666666
+    y: 706.4999999999999

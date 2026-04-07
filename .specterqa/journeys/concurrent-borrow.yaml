@@ -1,0 +1,43 @@
+scenario:
+  id: concurrent-borrow
+  name: "Concurrent Book Borrowing"
+  description: "Borrow a book while another book is already in My Books, verify both appear, then return one."
+  tags: [borrow, my_books, ios]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: open_book_detail
+      description: "Tap a book in the Accessible EPUB Test lane to view its detail"
+      goal: >
+        Tap a book in the Accessible EPUB Test lane. Verify the book detail screen
+        loads with Borrow button and INFORMATION/FORMAT/PUBLISHER metadata.
+
+    - id: borrow_book
+      description: "Tap Borrow to add the book to My Books"
+      goal: >
+        Tap Borrow. Verify the borrow confirmation sheet appears with Cancel option.
+
+    - id: dismiss_sheet
+      description: "Dismiss the confirmation sheet"
+      goal: >
+        Tap the sheet grabber to dismiss. Verify we return to the book detail.
+
+    - id: check_my_books
+      description: "Navigate to My Books and verify the book appears alongside any
+        existing borrowed books"
+      goal: >
+        Tap My Books. Verify the screen loads with Switch Library, Search Books,
+        and Sort by Title controls.
+
+    - id: return_book
+      description: "Tap Return on the borrowed book"
+      goal: >
+        Tap Return. Verify the confirmation dialog appears.
+
+    - id: confirm_return
+      description: "Confirm the return"
+      goal: >
+        Tap Return in the confirmation dialog. Verify the book is removed from My Books.

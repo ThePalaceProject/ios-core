@@ -1,21 +1,34 @@
 # SpecterQA iOS -- Gaps & Issues Report
 
-## Version: 7.0.0 → 8.0.0 | App: Palace iOS | Date: 2026-04-06
+## Version: 7.0.0 → 8.0.0 → 10.0.0 → 10.1.0 | App: Palace iOS | Date: 2026-04-07
 
 **Reporter:** Palace iOS team (Maurice Carrier)
 **Environment:** macOS 15 (Darwin 25.0.0), Xcode 16.1, iOS 26 Simulator (iPhone 12), Apple Silicon (M-series)
-**Scope:** 13 audited E2E replays (120+ steps) against Palace iOS reading app (EPUB, PDF, audiobooks, OPDS catalogs, multi-library auth)
+**Scope:** 17 audited E2E replays (~120 steps) against Palace iOS reading app (EPUB, PDF, audiobooks, OPDS catalogs, multi-library auth)
 
-### v8.0.0 Retest Results (2026-04-06)
+**See also:** `SPECTERQA_DOGFOOD_v10.1.0.md` — comprehensive tool-by-tool dogfood report.
 
-| Issue | v8 Status | Notes |
-|-------|-----------|-------|
+### v10.1.0 Retest Results (2026-04-07)
+
+| Issue | v10.1 Status | Notes |
+|-------|--------------|-------|
 | #1 WKWebView blindness | **Still open** | Not addressed |
-| #2 press_key("return") crash | **Still broken** | Returns "ok" but kills session silently — delayed crash |
-| #3 ios_set_appearance during session | **Still broken** | Same "Shutdown" error via simctl |
-| #4 Screenshots too large | **FIXED** | New `quality` param: `thumbnail` (25%), `standard` (50%), `full` |
-| #5-7 Assertion/wait/indices | **Still open** | No changes |
-| New: WDA backend | **Added** | `specterqa-ios wda` — WebDriverAgent for headless CI |
+| #2 press_key("return") crash | **Still broken** | Same delayed-crash pattern |
+| #2b NEW: ios_type async crash | **NEW REGRESSION** | `ios_type` now triggers same delayed-runner-crash as `press_key` |
+| #3 ios_set_appearance during session | **Still broken** | Error message changed but behavior identical |
+| #4 Screenshots too large | Fixed in v8 | `quality` param: thumbnail/standard/full |
+| #5-7 Assertion primitives | **Still open** | No `expect_not_elements`, `expect_state`, `expect_count` |
+| #10 Recording scope control | **NEW v10.1.0** | `ios_start_recording` / `ios_stop_recording` — perfect workflow |
+| #11 Wait primitives | **NEW v10.1.0** | `ios_wait(seconds)` and `ios_wait_for_element(label, timeout)` |
+| #13 Per-step timeout | **NEW v10.1.0** | 10s default per replay step |
+| #14 Label-based element matching | **NEW v10.1.0** | `ios_tap(label="Save", type="Button")` — biggest ergonomic win |
+| #16 Replay parameterization | Added in v10 | `--var KEY=VALUE` for `${VAR}` substitution |
+| #18 Accessibility audit | **NEW v10.1.0** | `ios_accessibility_audit` — small targets, duplicates, missing labels |
+| New: WDA backend | Available since v8 | Not yet tested |
+| **NEW issue:** `ci` command flakiness | **NEW v10.1.0** | Cross-replay state contamination; individual runs pass |
+| **NEW issue:** No runner reuse in `ci` | Pre-existing | 17 replays = 12-15 min; should be <3 min with reuse + parallel |
+
+**Score: 7 of 18 gaps closed in 1 day.** Critical bugs (#1-3) remain.
 
 ---
 

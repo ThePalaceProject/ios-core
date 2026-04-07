@@ -1,0 +1,27 @@
+scenario:
+  id: catalog-filter
+  name: "Catalog Feed Filter UI"
+  description: "Open a catalog feed detail, open the Filter sheet, verify all filter sections, and dismiss."
+  tags: [catalog, ios, filtering]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: open_feed_detail
+      description: "Tap More to open a catalog lane's full feed view"
+      goal: >
+        Tap "More books in..." on a catalog lane. Verify the feed detail screen loads
+        with Search Catalog and Filter buttons.
+
+    - id: open_filter_sheet
+      description: "Tap Filter to open the filter options sheet"
+      goal: >
+        Tap Filter. Verify the Filters sheet appears with sections for Availability,
+        Distributor, and Collection Name, plus CANCEL and APPLY FILTERS buttons.
+
+    - id: dismiss_filter
+      description: "Tap CANCEL to dismiss the filter sheet"
+      goal: >
+        Tap CANCEL. Verify the sheet is dismissed.
