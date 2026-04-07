@@ -310,8 +310,6 @@
 		73B5DFDF26052A1800225C12 /* TPPBookButtonsState.m in Sources */ = {isa = PBXBuildFile; fileRef = 73B5DFDA26052A1800225C12 /* TPPBookButtonsState.m */; };
 		73B5DFFE2605679800225C12 /* TPPBook+Additions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B5DFFB26055F8B00225C12 /* TPPBook+Additions.swift */; };
 		73B5E0012605679B00225C12 /* TPPBook+Additions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B5DFFB26055F8B00225C12 /* TPPBook+Additions.swift */; };
-		PP3968A11B0000000000002B /* TPPBook+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */; };
-		PP3968A11B0000000000002C /* TPPBook+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */; };
 		73C3CF5425C8EB6900CA8166 /* TPPUserAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CE5304243C020800315E63 /* TPPUserAccount.swift */; };
 		73C3CF5825C8EB6B00CA8166 /* TPPUserAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CE5304243C020800315E63 /* TPPUserAccount.swift */; };
 		73C3CF5A25CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73C3CF5925CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift */; };
@@ -1119,6 +1117,8 @@
 		PP3784B002CREDVIS0001ABCD /* TPPCredentialVisibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3784A001CREDVIS0001ABCD /* TPPCredentialVisibilityTests.swift */; };
 		PP3819BF01A0B1C2D3E4F506 /* TPPIdleSignOutRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3819FR01A0B1C2D3E4F507 /* TPPIdleSignOutRegressionTests.swift */; };
 		PP3838A11B0000000000001B /* PDFAccessibilityToolbarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3838A11A0000000000001A /* PDFAccessibilityToolbarTests.swift */; };
+		PP3968A11B0000000000002B /* TPPBook+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */; };
+		PP3968A11B0000000000002C /* TPPBook+Accessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */; };
 		PP3968A11B0000000000003B /* TPPBookAccessibilityLabelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3968A11A0000000000003A /* TPPBookAccessibilityLabelTests.swift */; };
 		PP3969A11B0000000000001B /* BookImageViewAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP3969A11A0000000000001A /* BookImageViewAccessibilityTests.swift */; };
 		QAAMT002T260955EF00000001 /* AccountModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = QAAMT001T260955EF00000001 /* AccountModelTests.swift */; };
@@ -1650,7 +1650,6 @@
 		73B5DFDA26052A1800225C12 /* TPPBookButtonsState.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPBookButtonsState.m; sourceTree = "<group>"; };
 		73B5DFDB26052A1800225C12 /* TPPBookButtonsState.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPBookButtonsState.h; sourceTree = "<group>"; };
 		73B5DFFB26055F8B00225C12 /* TPPBook+Additions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Additions.swift"; sourceTree = "<group>"; };
-		PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Accessibility.swift"; sourceTree = "<group>"; };
 		73C3CF5925CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NYPLNetworkExecutorMock.swift; sourceTree = "<group>"; };
 		73CDA120243EDAD8009CC6A6 /* URLRequest+Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLRequest+Logging.swift"; sourceTree = "<group>"; };
 		73CEF82F252699C9006B2820 /* FirebaseCrashlytics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FirebaseCrashlytics.framework; path = Carthage/Build/iOS/FirebaseCrashlytics.framework; sourceTree = "<group>"; };
@@ -2111,6 +2110,7 @@
 		PP3784A001CREDVIS0001ABCD /* TPPCredentialVisibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPCredentialVisibilityTests.swift; sourceTree = "<group>"; };
 		PP3819FR01A0B1C2D3E4F507 /* TPPIdleSignOutRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPIdleSignOutRegressionTests.swift; sourceTree = "<group>"; };
 		PP3838A11A0000000000001A /* PDFAccessibilityToolbarTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PDFAccessibilityToolbarTests.swift; sourceTree = "<group>"; };
+		PP3968A11A0000000000002A /* TPPBook+Accessibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Accessibility.swift"; sourceTree = "<group>"; };
 		PP3968A11A0000000000003A /* TPPBookAccessibilityLabelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPBookAccessibilityLabelTests.swift; sourceTree = "<group>"; };
 		PP3969A11A0000000000001A /* BookImageViewAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookImageViewAccessibilityTests.swift; sourceTree = "<group>"; };
 		QAAMT001T260955EF00000001 /* AccountModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountModelTests.swift; sourceTree = "<group>"; };
@@ -6260,9 +6260,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 458;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
