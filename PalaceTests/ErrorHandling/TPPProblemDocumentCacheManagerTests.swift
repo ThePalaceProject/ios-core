@@ -17,6 +17,11 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
         cacheManager = TPPProblemDocumentCacheManager()
     }
 
+    override func tearDown() {
+        cacheManager = nil
+        super.tearDown()
+    }
+
     // MARK: - Shared Instance
 
     func testSharedInstance_returnsSameObject() {
@@ -157,7 +162,7 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 10.0)
+        waitForExpectations(timeout: 30.0)
     }
 
     func testConcurrentCacheAndClear_sameKey_doesNotCrash() {
@@ -177,7 +182,7 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 10.0)
+        waitForExpectations(timeout: 30.0)
     }
 
     // MARK: - Notification

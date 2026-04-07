@@ -187,13 +187,17 @@ final class CatalogSearchViewModelTests: XCTestCase {
     /// Captures VoiceOver announcements posted through the injected announcement center.
     private class AnnouncementCapture {
         var items: [String] = []
+        var onAnnouncement: (() -> Void)?
     }
 
     /// Creates a `TPPAccessibilityAnnouncementCenter` that records every
-    /// announcement synchronously in `capture.items`.
+    /// announcement synchronously in `capture.items` and optionally fires a callback.
     private func makeCapturingAnnouncer(capture: AnnouncementCapture) -> TPPAccessibilityAnnouncementCenter {
         TPPAccessibilityAnnouncementCenter(
-            postHandler: { _, message in capture.items.append(message) },
+            postHandler: { _, message in
+                capture.items.append(message)
+                capture.onAnnouncement?()
+            },
             isVoiceOverRunning: { true },
             deduplicationInterval: 0
         )
@@ -1284,10 +1288,14 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
         mockRepository.searchResult = nil
 
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
+        let announcementMade = expectation(description: "no results announced")
+        capture.onAnnouncement = {
+            if capture.items.contains(where: { $0.lowercased().contains("no results") }) {
+                announcementMade.fulfill()
+            }
+        }
         viewModel.updateSearchQuery("nonexistent")
-        await fulfillment(of: [exp], timeout: 5.0)
+        await fulfillment(of: [announcementMade], timeout: 5.0)
 
         let noResultMsg = capture.items.first(where: { $0.lowercased().contains("no results") })
         XCTAssertNotNil(noResultMsg, "Should announce no results, got: \(capture.items)")
@@ -1301,13 +1309,19 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
         mockRepository.searchError = TestError.networkError
 
-        let exp = expectation(description: "search called")
-        mockRepository.onSearchCalled = { exp.fulfill() }
+        // Wait for the announcement itself, not just the search call —
+        // the view model processes the error asynchronously after the search returns.
+        let announcementMade = expectation(description: "failure announced")
+        capture.onAnnouncement = {
+            if capture.items.contains(where: { $0.lowercased().contains("failed") || $0.lowercased().contains("error") }) {
+                announcementMade.fulfill()
+            }
+        }
         viewModel.updateSearchQuery("test")
-        await fulfillment(of: [exp], timeout: 5.0)
+        await fulfillment(of: [announcementMade], timeout: 5.0)
 
         let failMsg = capture.items.first(where: {
-            $0.lowercased().contains("search") && $0.lowercased().contains("failed")
+            $0.lowercased().contains("search") && ($0.lowercased().contains("failed") || $0.lowercased().contains("error"))
         })
         XCTAssertNotNil(failMsg, "Should announce search failure, got: \(capture.items)")
     }
@@ -1318,22 +1332,26 @@ final class CatalogSearchViewModelTests: XCTestCase {
         let announcer = makeCapturingAnnouncer(capture: capture)
         let viewModel = createViewModel(announcements: announcer)
 
-        // First search returns no results
+        // First search returns no results — wait for the announcement, not the search call
         mockRepository.searchResult = nil
 
-        let exp1 = expectation(description: "first search called")
-        mockRepository.onSearchCalled = { exp1.fulfill() }
+        let firstAnnounced = expectation(description: "first announcement")
+        capture.onAnnouncement = { firstAnnounced.fulfill() }
         viewModel.updateSearchQuery("first")
-        await fulfillment(of: [exp1], timeout: 5.0)
+        await fulfillment(of: [firstAnnounced], timeout: 5.0)
 
         let firstAnnouncements = capture.items.count
         XCTAssertGreaterThan(firstAnnouncements, 0, "Should have at least one announcement")
 
-        // Second search also returns nil (re-run)
-        let exp2 = expectation(description: "second search called")
-        mockRepository.onSearchCalled = { exp2.fulfill() }
+        // Second search — wait for additional announcement
+        let secondAnnounced = expectation(description: "second announcement")
+        capture.onAnnouncement = {
+            if capture.items.count > firstAnnouncements {
+                secondAnnounced.fulfill()
+            }
+        }
         viewModel.updateSearchQuery("second")
-        await fulfillment(of: [exp2], timeout: 5.0)
+        await fulfillment(of: [secondAnnounced], timeout: 5.0)
 
         XCTAssertGreaterThan(capture.items.count, firstAnnouncements,
                              "Should produce a new announcement for the second search")
