@@ -240,3 +240,91 @@ These are filed in our internal tracker.
 **Our test suite stands at 16/17 reliable tests** (when run individually) with 13/17 reliable through the `ci` command. We will continue to use SpecterQA for catalog navigation, my-books management, settings, search, and library switching tests. We will not invest in reader-level or form-level tests until gaps #1 and #2 are resolved.
 
 **Thank you for shipping the wait primitives, recording control, and accessibility audit. Those three alone justify the upgrade.**
+
+---
+
+## Strategic Signal — Honest Read From a Customer
+
+This section is the part most vendors don't want to hear. We're including it because we think you actually want it, and because the iteration speed you've shown over the past 3 days suggests you can act on it.
+
+### Iteration speed is your biggest asset
+
+You shipped **5 new tools in one day** in response to our gaps report. That's the fastest vendor responsiveness we have ever seen. v5 → v10.1 in three days felt like watching a startup find product-market fit in real time. Whatever you're doing internally to enable that — protect it. It is your moat right now.
+
+### But there is a worrying pattern
+
+Across v7 → v8 → v10 → v10.1, you've shipped fast on **perimeter features** (new tools, new params, new CLI flags) and consistently avoided the **architectural** problems:
+
+| Easy wins shipped in 3 days | Hard problems unsolved across 4 versions |
+|-----------------------------|------------------------------------------|
+| `--var KEY=VALUE` parameterization | WKWebView accessibility (gap #1) |
+| Label-based taps | `press_key("return")` runner crash (#2) |
+| `ios_wait` / `ios_wait_for_element` | `simctl` invisibility during sessions (#3) |
+| `ios_accessibility_audit` | `ci` cross-replay state contamination |
+| `ios_start_recording` / `ios_stop_recording` | XCTest runner deploy time (~30s × N replays) |
+| Per-step timeout | NEW: `ios_type` async runner crash (v10.1) |
+
+The hard ones require architecture work — WKWebView bridges, runner lifecycle, key event synthesis, simctl routing. Layering more capabilities on top of a foundation with known cracks is going to bite you. The new `ios_type` async crash in v10.1.0 is exactly this — you added more functionality without addressing the underlying runner crash pattern that has affected `press_key` since v7.
+
+**Our suggestion:** Stop shipping new MCP tools for one release cycle. Devote that cycle to fixing #1, #2, #3, and the `ci` cross-replay contamination. You will lose some apparent velocity but gain product credibility that will be impossible to claw back later.
+
+### Utility — what is the tool actually for?
+
+Be ruthlessly clear on this internally. From our perspective as a customer, the value prop is:
+
+> **AI-assisted recording with deterministic, free CI replay.** Record once with Claude/an agent. Replay forever in CI without paying for AI inference. $0.80/PR vs $6-8/PR for AI-driven runs.
+
+That's a strong, defensible product idea. Everything else (a11y audit, screenshots, simctl) is a bonus that supports the core value prop. **Make sure every release advances that core value prop, not the bonuses.**
+
+### Marketplace position — would this succeed in an agent-first world?
+
+**Yes, but the window is narrow — maybe 3-6 months.**
+
+**Your unique advantages today:**
+- MCP-first design — genuinely novel. No other test tool ships as an MCP server.
+- AI-driven recording workflow — `start_recording` / `stop_recording` is the right abstraction.
+- Built-in accessibility audit — most competitors don't have this.
+- Replay-as-CI cost model — better than AI-driven test execution.
+
+**Your competitive threats, ranked by danger:**
+
+1. **Maestro** is the elephant in the room. Mature, free, YAML-based, has waits/asserts/conditionals/parameterization, handles forms reliably, large GitHub community. Maestro YAML is human-readable and editable. **If Maestro ships an MCP server next quarter — and they will — your primary differentiator evaporates.** That is your countdown timer. Everything you ship between now and then should make it harder for Maestro-with-MCP to catch up.
+
+2. **XCUITest** is Apple's official path. Free, native, well-documented. Hand-written but rock solid. The "no AI cost in CI" angle doesn't differentiate against XCUITest because XCUITest also has zero AI cost.
+
+3. **Detox / Appium** for cross-platform teams. Established, reliable, free.
+
+4. **Browserstack / Sauce Labs** for paid cloud. They have cloud sims, parallelization, screenshot diffing — things you don't. They will add MCP servers too.
+
+### What you need to do to win the window
+
+In priority order:
+
+1. **Fix #1, #2, #3, and `ci` flakiness in the next release cycle.** Not more tools. The foundation. Without these, no amount of MCP polish saves you when Maestro-with-MCP ships.
+
+2. **Make `ci` rock-solid AND fast.** Runner reuse + parallel execution. 17 replays in 3 minutes, not 15. CI speed is a competitive advantage that compounds — every team that adopts you gets faster as their suite grows.
+
+3. **Match Maestro's YAML primitives** in the replay format. Your MCP tools are now ahead of your replay format — `wait_for_element` exists in MCP but not as a step type in YAML. That's a design smell. The YAML format should be a first-class surface, not a recording artifact.
+
+4. **Lean hard into MCP differentiation while you can.** Recording control + label-based tap + accessibility audit is a great start — keep going. Visual diffing on screenshots. AI-suggested assertions. Journey synthesis from natural language. These are things that are hard to add to Maestro because Maestro wasn't designed agent-first.
+
+5. **Build community.** Open source the runner if you can. Publish examples. Get on iOS testing podcasts. Right now Maestro has GitHub stars, blog posts, conference talks. You have a customer (us) writing a 240-line dogfood report. That asymmetry is not sustainable.
+
+### Where we stand as a customer
+
+**We will keep using SpecterQA.** The recording workflow with Claude is genuinely good, and we have 16/17 reliable tests we want to keep maintaining. We will keep filing gaps. We will keep dogfooding new releases.
+
+**But we will not bet our entire test strategy on SpecterQA** until critical gaps close. We're maintaining a parallel XCUITest suite (150+ tests in `PalaceUITests/`). Our journey YAMLs describe **intent**, not implementation — if we ever need to migrate to Maestro or back to XCUITest exclusively, the journeys translate directly. This is deliberate insurance against vendor risk.
+
+The fact that we wrote that paragraph should tell you something useful. We want SpecterQA to win. We're not seeing the foundational fixes that would let us commit fully.
+
+### Our prediction
+
+- **Best case:** You fix the critical bugs in the next month, ship runner reuse + parallel CI, and acquire enough customers to be acquired by Browserstack / Sauce Labs / Mabl as their MCP play in 12-18 months.
+- **Median case:** You stay in a niche of AI-forward iOS teams who can tolerate the gaps. Sustainable but small.
+- **Worst case:** Maestro ships an MCP server in Q3 with comparable ergonomics, and SpecterQA becomes a footnote. The architectural debt that piled up while you shipped perimeter features makes it impossible to catch up.
+
+We're rooting for the best case. The team is clearly capable of it. **The question is whether you can resist the dopamine of shipping new tools and instead spend a release cycle on the unsexy foundation work.**
+
+That's the signal. Take it for what it's worth — coming from a customer that has spent 3 days dogfooding 4 versions of your product back to back, and that wants you to succeed.
+
