@@ -59,11 +59,21 @@ load_config() {
   return 0
 }
 
-# Extract ticket number from text (e.g., "PP-3605" from commit message)
+# Extract the first ticket number from text (e.g., "PP-3605" from commit message).
+# Preserved for backward compatibility; prefer extract_tickets for new code.
 extract_ticket() {
   local text="$1"
   local project_key="${JIRA_PROJECT_KEY:-PP}"
   echo "$text" | grep -oE "${project_key}-[0-9]+" | head -1
+}
+
+# Extract ALL unique ticket numbers from text, one per line, preserving the
+# order they first appear. Used by the post-commit hook so a single commit
+# touching several tickets links and comments on every one of them.
+extract_tickets() {
+  local text="$1"
+  local project_key="${JIRA_PROJECT_KEY:-PP}"
+  echo "$text" | grep -oE "${project_key}-[0-9]+" | awk '!seen[$0]++'
 }
 
 # Check if ticket exists in Jira
@@ -1169,6 +1179,9 @@ main() {
       ;;
     extract-ticket)
       extract_ticket "$@"
+      ;;
+    extract-tickets)
+      extract_tickets "$@"
       ;;
     get-link)
       get_jira_link "$@"
