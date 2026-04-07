@@ -15,6 +15,18 @@ struct BookImageView: View {
         book.coverImage != nil || book.thumbnailImage != nil
     }
 
+    /// Single combined accessibility label for the cover stack. The cover image is always
+    /// announced first; if the book is an audiobook, the badge information is appended so
+    /// VoiceOver users still hear it without the badge becoming a separate focus target.
+    var combinedAccessibilityLabel: String {
+        let coverLabel = String(format: NSLocalizedString("Cover image for %@", comment: "Book cover accessibility"), book.title)
+        if book.isAudiobook {
+            let audiobookLabel = NSLocalizedString("Audiobook", comment: "Audiobook badge accessibility")
+            return "\(coverLabel), \(audiobookLabel)"
+        }
+        return coverLabel
+    }
+
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             // Show pulsing skeleton until image is ready
@@ -27,8 +39,7 @@ struct BookImageView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .transition(.opacity)
-                    .accessibilityLabel(treatImageAsDecorativeInLists ? "" : String(format: NSLocalizedString("Cover image for %@", comment: "Book cover accessibility"), book.title))
-                    .accessibilityHidden(treatImageAsDecorativeInLists)
+                    .accessibilityHidden(true)
             }
 
             if book.isAudiobook {
@@ -39,11 +50,13 @@ struct BookImageView: View {
                     .background(Circle().fill(Color.colorAudiobookBackground))
                     .clipShape(Circle())
                     .padding([.trailing, .bottom], 10)
-                    .accessibilityLabel(NSLocalizedString("Audiobook", comment: "Audiobook badge accessibility"))
-                    .accessibilityHidden(treatImageAsDecorativeInLists)
+                    .accessibilityHidden(true)
             }
         }
-        .accessibilityElement(children: treatImageAsDecorativeInLists ? .ignore : .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityHidden(treatImageAsDecorativeInLists)
+        .accessibilityLabel(combinedAccessibilityLabel)
+        .accessibilityAddTraits(.isImage)
         .frame(width: width, height: height)
         .onAppear {
             // Suppress skeleton immediately if something is already available to show

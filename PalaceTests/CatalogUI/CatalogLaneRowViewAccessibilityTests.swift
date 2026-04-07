@@ -96,6 +96,41 @@ final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
         }
     }
 
+    // MARK: - PP-3980: Swimlane heading trait
+
+    /// Regression test for PP-3980. The catalog swimlane title must carry the
+    /// `.header` accessibility trait so VoiceOver users can navigate between
+    /// swimlanes via the heading rotor. SwiftUI's accessibility tree is not
+    /// materialized in unit-test environments without VoiceOver running, so we
+    /// guard the modifier at the source level — this is a sentinel regression
+    /// test that fails the moment someone removes the trait from
+    /// `CatalogLaneRowView`.
+    func testSwimlaneTitle_sourceDeclaresHeaderAccessibilityTrait() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()        // CatalogUI
+            .deletingLastPathComponent()        // PalaceTests
+            .deletingLastPathComponent()        // repo root
+            .appendingPathComponent("Palace/CatalogUI/Views/CatalogLaneRowView.swift")
+
+        let source = try String(contentsOf: url, encoding: .utf8)
+
+        // The lane scroller container must carry the .header trait so its title
+        // appears in the VoiceOver heading rotor.
+        XCTAssertTrue(
+            source.contains(".accessibilityAddTraits(.isHeader)"),
+            "CatalogLaneRowView must apply .accessibilityAddTraits(.isHeader) to expose the swimlane title as a heading for VoiceOver navigation (PP-3980)."
+        )
+
+        // The static header() builder must also be header-trait annotated so the
+        // visible Text element gets the heading role even if the container is
+        // restructured.
+        let headerSection = source.components(separatedBy: "static func header(").last ?? ""
+        XCTAssertTrue(
+            headerSection.contains(".accessibilityAddTraits(.isHeader)"),
+            "CatalogLaneRowView.header() must apply .isHeader to the title Text (PP-3980)."
+        )
+    }
+
     // MARK: - Helper Methods
 
     /// Replicates the accessibility label generation logic from CatalogLaneRowView
