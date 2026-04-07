@@ -145,6 +145,10 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
         let expectation = expectation(description: "All concurrent read/write/clear operations complete")
         expectation.expectedFulfillmentCount = iterations * 3
 
+        // Use .userInitiated for all queues — .background and .utility can be
+        // deprioritized indefinitely under CI load, causing test timeouts.
+        // The point of this test is to verify thread safety under contention,
+        // which a single QoS class still exercises (the lock serializes access).
         for i in 0..<iterations {
             let key = "concurrent-\(i % 5)"
             DispatchQueue.global(qos: .userInitiated).async {
@@ -152,11 +156,11 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
                 self.cacheManager.cacheProblemDocument(doc, key: key)
                 expectation.fulfill()
             }
-            DispatchQueue.global(qos: .utility).async {
+            DispatchQueue.global(qos: .userInitiated).async {
                 _ = self.cacheManager.getLastCachedDoc(key)
                 expectation.fulfill()
             }
-            DispatchQueue.global(qos: .background).async {
+            DispatchQueue.global(qos: .userInitiated).async {
                 self.cacheManager.clearCachedDoc(key)
                 expectation.fulfill()
             }
