@@ -36,6 +36,11 @@ class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider {
         return tppAccount.details!.auths.first { $0.authType == .basic }!
     }
 
+    /// Legacy alias used by tests written before the rename.
+    var basicAuthentication: AccountDetails.Authentication {
+        return barcodeAuthentication
+    }
+
     var oauthAuthentication: AccountDetails.Authentication {
         return tppAccount.details!.auths.first { $0.authType == .oauthIntermediary }!
     }

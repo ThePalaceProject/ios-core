@@ -46,7 +46,7 @@ def main() -> int:
 
     # Locate the existing file ref ID for each orphan basename
     file_ref_re = re.compile(
-        r'^\s*([A-F0-9]{24})\s+/\*\s+(\S+\.swift)\s+\*/\s+=\s+\{isa = PBXFileReference;',
+        r'^\s*([A-Za-z0-9]{20,30})\s+/\*\s+(\S+\.swift)\s+\*/\s+=\s+\{isa = PBXFileReference;',
         re.MULTILINE,
     )
     fileref_by_name: dict[str, str] = {}
