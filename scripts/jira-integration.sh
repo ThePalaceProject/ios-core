@@ -59,11 +59,21 @@ load_config() {
   return 0
 }
 
-# Extract ticket number from text (e.g., "PP-3605" from commit message)
+# Extract the first ticket number from text (e.g., "PP-3605" from commit message).
+# Preserved for backward compatibility; prefer extract_tickets for new code.
 extract_ticket() {
   local text="$1"
   local project_key="${JIRA_PROJECT_KEY:-PP}"
   echo "$text" | grep -oE "${project_key}-[0-9]+" | head -1
+}
+
+# Extract ALL unique ticket numbers from text, one per line, preserving the
+# order they first appear. Used by the post-commit hook so a single commit
+# touching several tickets links and comments on every one of them.
+extract_tickets() {
+  local text="$1"
+  local project_key="${JIRA_PROJECT_KEY:-PP}"
+  echo "$text" | grep -oE "${project_key}-[0-9]+" | awk '!seen[$0]++'
 }
 
 # Check if ticket exists in Jira
@@ -270,7 +280,7 @@ for item in items:
 " "$text"
 }
 
-# Find existing "Fix Details" comment ID for a ticket
+# Find existing "Ready for QA" or "Fix Details" comment ID for a ticket
 find_fix_comment_id() {
   local ticket="$1"
   
@@ -280,15 +290,15 @@ find_fix_comment_id() {
     -H "Content-Type: application/json" \
     "$JIRA_URL/rest/api/3/issue/$ticket/comment")
   
-  # Find comment containing "Fix Details" and return its ID
+  # Find comment containing our fix-details heading (updated text or legacy)
   echo "$response" | jq -r '
     [.comments[]? | select(
-      .body.content[]?.content[]?.text? // empty | contains("Fix Details")
+      (.body.content[]?.content[]?.text? // empty) | test("Ready for QA|Fix Details")
     ) | .id] | first // empty
   ' 2>/dev/null
 }
 
-# Add a structured fix comment with root cause and testing steps
+# Add a structured fix comment for QA: what changed + how to verify
 add_fix_comment() {
   local ticket="$1"
   local root_cause="$2"
@@ -300,7 +310,7 @@ add_fix_comment() {
   fi
   
   if [[ -z "$ticket" ]]; then
-    echo -e "${RED}❌ Usage: jira-integration.sh add-fix-comment <ticket> <root_cause> <testing_steps> [commit_sha]${NC}"
+    echo -e "${RED}❌ Usage: jira-integration.sh add-fix-comment <ticket> <what_changed> <how_to_verify_qa> [commit_sha]${NC}"
     return 1
   fi
   
@@ -347,101 +357,45 @@ Message: $commit_msg"
   
   # Use jq for proper JSON construction with escaping
   local json_payload
+  # Omit Build/commit section when commit_info is empty (empty codeBlock can break JIRA API)
   if [[ "$list_items_json" != "[]" ]]; then
     # Use ordered list for testing steps
     json_payload=$(jq -n \
       --arg root_cause "$root_cause" \
       --argjson list_items "$list_items_json" \
       --arg commit_info "$commit_info" \
-      '{
-        body: {
-          type: "doc",
-          version: 1,
-          content: [
-            {
-              type: "heading",
-              attrs: { level: 3 },
-              content: [{ type: "text", text: "🔧 Fix Details" }]
-            },
-            {
-              type: "heading", 
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "Root Cause" }]
-            },
-            {
-              type: "paragraph",
-              content: [{ type: "text", text: $root_cause }]
-            },
-            {
-              type: "heading",
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "Testing Steps" }]
-            },
-            {
-              type: "orderedList",
-              attrs: { order: 1 },
-              content: $list_items
-            },
-            {
-              type: "heading",
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "Commit Information" }]
-            },
-            {
-              type: "codeBlock",
-              attrs: { language: "text" },
-              content: [{ type: "text", text: $commit_info }]
-            }
-          ]
-        }
-      }')
+      '(
+        [
+          { type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "✅ Ready for QA" }] },
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "What changed" }] },
+          { type: "paragraph", content: [{ type: "text", text: $root_cause }] },
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "How to verify (QA)" }] },
+          { type: "orderedList", attrs: { order: 1 }, content: $list_items }
+        ] + (if ($commit_info | length) > 0 then [
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "Build/commit (traceability)" }] },
+          { type: "codeBlock", attrs: { language: "text" }, content: [{ type: "text", text: $commit_info }] }
+        ] else [] end)
+      ) as $content
+      | { body: { type: "doc", version: 1, content: $content } }')
   else
     # Plain text for testing steps
     json_payload=$(jq -n \
       --arg root_cause "$root_cause" \
       --arg testing_steps "$testing_steps" \
       --arg commit_info "$commit_info" \
-      '{
-        body: {
-          type: "doc",
-          version: 1,
-          content: [
-            {
-              type: "heading",
-              attrs: { level: 3 },
-              content: [{ type: "text", text: "🔧 Fix Details" }]
-            },
-            {
-              type: "heading", 
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "Root Cause" }]
-            },
-            {
-              type: "paragraph",
-              content: [{ type: "text", text: $root_cause }]
-            },
-            {
-              type: "heading",
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "Testing Steps" }]
-            },
-            {
-              type: "paragraph",
-              content: [{ type: "text", text: $testing_steps }]
-            },
-            {
-              type: "heading",
-              attrs: { level: 4 },
-              content: [{ type: "text", text: "Commit Information" }]
-            },
-            {
-              type: "codeBlock",
-              attrs: { language: "text" },
-              content: [{ type: "text", text: $commit_info }]
-            }
-          ]
-        }
-      }')
+      '(
+        [
+          { type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "✅ Ready for QA" }] },
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "What changed" }] },
+          { type: "paragraph", content: [{ type: "text", text: $root_cause }] },
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "How to verify (QA)" }] },
+          { type: "paragraph", content: [{ type: "text", text: $testing_steps }] }
+        ] + (if ($commit_info | length) > 0 then [
+          { type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: "Build/commit (traceability)" }] },
+          { type: "codeBlock", attrs: { language: "text" }, content: [{ type: "text", text: $commit_info }] }
+        ] else [] end)
+      ) as $content
+      | { body: { type: "doc", version: 1, content: $content } }')
   fi
   
   local response
@@ -556,10 +510,12 @@ add_build_info() {
   
   local comment="✅ *Merged to ${branch:-main}*
 
-*Build:* ${build_number}"
+*Ready for QA:* TestFlight build *${build_number}*
+Use the \"How to verify (QA)\" steps in the fix comment above to validate this change."
 
   if [[ -n "$pr_number" ]]; then
     comment+="
+
 *PR:* [#${pr_number}|${repo_url}/pull/${pr_number}]"
   fi
   
@@ -567,10 +523,6 @@ add_build_info() {
     comment+="
 *Title:* ${pr_title}"
   fi
-  
-  comment+="
-
-This fix will be available in the next TestFlight build."
   
   add_comment "$ticket" "$comment"
 }
@@ -597,7 +549,7 @@ interactive_fix_comment() {
   echo -e "${BLUE}📋 Adding fix details to $ticket${NC}"
   echo ""
   
-  echo -e "${YELLOW}Enter root cause (press Enter twice when done):${NC}"
+  echo -e "${YELLOW}Enter what changed (user-facing summary for QA; press Enter twice when done):${NC}"
   local root_cause=""
   local line
   while IFS= read -r line; do
@@ -606,7 +558,7 @@ interactive_fix_comment() {
   done
   
   echo ""
-  echo -e "${YELLOW}Enter testing steps (press Enter twice when done):${NC}"
+  echo -e "${YELLOW}Enter how to verify (QA steps; press Enter twice when done):${NC}"
   local testing_steps=""
   while IFS= read -r line; do
     [[ -z "$line" ]] && break
@@ -1228,6 +1180,9 @@ main() {
     extract-ticket)
       extract_ticket "$@"
       ;;
+    extract-tickets)
+      extract_tickets "$@"
+      ;;
     get-link)
       get_jira_link "$@"
       ;;
@@ -1255,7 +1210,7 @@ main() {
       echo "Comments & Linking:"
       echo "  comment <ticket> <text>           Add a comment to a ticket"
       echo "  link-commit <ticket> [sha]        Link a commit to a ticket"
-      echo "  add-fix-comment <ticket> <root_cause> <testing_steps> [sha]"
+      echo "  add-fix-comment <ticket> <what_changed> <how_to_verify_qa> [sha]"
       echo "                                    Add structured fix details"
       echo "  add-build-info <ticket> <build> [pr_num] [pr_title] [branch]"
       echo "                                    Add merge/build info to ticket"

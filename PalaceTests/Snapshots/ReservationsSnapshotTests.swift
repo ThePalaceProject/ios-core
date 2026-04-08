@@ -73,7 +73,7 @@ final class ReservationsSnapshotTests: XCTestCase {
         let emptyView = Text(Strings.HoldsView.emptyMessage)
             .multilineTextAlignment(.center)
             .foregroundColor(Color(white: 0.667))
-            .font(.system(size: 18))
+            .font(.body)
             .padding(.horizontal, 24)
             .padding(.top, 100)
             .accessibilityIdentifier(AccessibilityID.Holds.emptyStateView)

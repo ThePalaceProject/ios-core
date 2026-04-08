@@ -85,8 +85,8 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
 
         sut.prefetch(books: books, visibleRange: 2..<5, buffer: 2)
 
-        // Give the Task time to execute
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // Yield to allow the prefetch Task { @MainActor } to execute
+        await Task.yield(); await Task.yield(); await Task.yield()
 
         // Models in visible + buffer range should be cached
         XCTAssertGreaterThan(sut.count, 0)

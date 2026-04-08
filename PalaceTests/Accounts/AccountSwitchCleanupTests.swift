@@ -92,7 +92,7 @@ final class AccountSwitchCleanupTests: XCTestCase {
     // MARK: - Bookmark Cleanup Model Cache
 
     @MainActor
-    func testBookCellModelCache_ClearsOnAccountChange() async throws {
+    func testBookCellModelCache_ClearsOnAccountChange() {
         let mockImageCache = MockImageCache()
         let mockRegistry = TPPBookRegistryMock()
 
@@ -109,11 +109,7 @@ final class AccountSwitchCleanupTests: XCTestCase {
         // Simulate account change notification
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
 
-        try await Task.sleep(nanoseconds: 100_000_000) // 100ms for notification delivery
-
-        // Cache should be cleared (the built-in observer does this)
-        // Note: we created with observeRegistryChanges: false, but account change
-        // observer is always active. The cache handles this in setupAccountChangeObserver.
-        // If the cache was created with its own account observer, it should clear.
+        // NotificationCenter delivers synchronously to all observers on the posting thread.
+        // No sleep needed — any cache-clear triggered by the notification is already done.
     }
 }

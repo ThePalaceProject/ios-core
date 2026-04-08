@@ -101,11 +101,10 @@ final class CatalogRepositoryTests: XCTestCase {
         networkClientMock.stubOPDSResponse(for: catalogURL, xml: opdsXML)
         _ = try await sut.loadTopLevelCatalog(at: catalogURL)
 
-        // Invalidate cache to force refetch (but cache entry still exists internally as fallback)
+        // Invalidate cache to force refetch (but cache entry still exists internally as fallback).
+        // invalidateCache uses cacheQueue.async; loadTopLevelCatalog also reads via cacheQueue.async,
+        // so the next load is serialized after the invalidation — no sleep needed.
         sut.invalidateCache(for: catalogURL)
-
-        // Wait for cache invalidation
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1s
 
         // Set up network failure
         networkClientMock.errorToThrow = NetworkClientMockError.networkUnavailable
@@ -225,11 +224,10 @@ final class CatalogRepositoryTests: XCTestCase {
         _ = try await sut.loadTopLevelCatalog(at: facetURL)
         XCTAssertEqual(networkClientMock.sendCallCount, 2)
 
-        // Act - Invalidate only main catalog
+        // Invalidate only main catalog.
+        // Both invalidateCache and loadTopLevelCatalog dispatch through cacheQueue —
+        // the next load sees the cleared entry without any extra wait.
         sut.invalidateCache(for: catalogURL)
-
-        // Wait for async cache invalidation
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1s
 
         // Assert - Main catalog should fetch fresh, fiction should use cache
         _ = try await sut.loadTopLevelCatalog(at: catalogURL)

@@ -37,6 +37,72 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
         XCTAssertGreaterThan(borrowPolicy.maxAttempts, 0)
     }
 
+    func testBorrowPolicy_retriesOnNoActiveLoan() {
+        let policy = DownloadErrorRecovery.RetryPolicy.borrowOperation
+        let error = PalaceError.bookRegistry(.bookNotFound)
+        XCTAssertTrue(policy.shouldRetry(error), "Borrow should retry on 'no active loan' (bookNotFound)")
+    }
+
+    func testBorrowPolicy_retriesOnTimeout() {
+        let policy = DownloadErrorRecovery.RetryPolicy.borrowOperation
+        let error = PalaceError.network(.timeout)
+        XCTAssertTrue(policy.shouldRetry(error), "Borrow should retry on timeout")
+    }
+
+    func testBorrowPolicy_retriesOnNoConnection() {
+        let policy = DownloadErrorRecovery.RetryPolicy.borrowOperation
+        let error = PalaceError.network(.noConnection)
+        XCTAssertTrue(policy.shouldRetry(error), "Borrow should retry on no connection")
+    }
+
+    func testBorrowPolicy_doesNotRetryOnInvalidCredentials() {
+        let policy = DownloadErrorRecovery.RetryPolicy.borrowOperation
+        let error = PalaceError.network(.unauthorized)
+        XCTAssertFalse(policy.shouldRetry(error), "Borrow should NOT retry on unauthorized")
+    }
+
+    func testBorrowPolicy_doesNotRetryOnInvalidLicense() {
+        let policy = DownloadErrorRecovery.RetryPolicy.borrowOperation
+        let error = PalaceError.download(.invalidLicense)
+        XCTAssertFalse(policy.shouldRetry(error), "Borrow should NOT retry on invalid license")
+    }
+
+    func testBorrowPolicy_retriesOnNSURLTimeout() {
+        let policy = DownloadErrorRecovery.RetryPolicy.borrowOperation
+        let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: nil)
+        XCTAssertTrue(policy.shouldRetry(error), "Borrow should retry on NSURLError timeout")
+    }
+
+    func testBorrowPolicy_doesNotRetryOnHTTPError() {
+        let policy = DownloadErrorRecovery.RetryPolicy.borrowOperation
+        let error = NSError(domain: "HTTPErrorDomain", code: 500, userInfo: nil)
+        XCTAssertFalse(policy.shouldRetry(error), "Borrow should NOT retry on generic HTTP error")
+    }
+
+    func testBorrowPolicy_recoversAfterNoActiveLoan() async throws {
+        let recovery = DownloadErrorRecovery()
+        var attempts = 0
+
+        let result = try await recovery.executeWithRetry(
+            policy: DownloadErrorRecovery.RetryPolicy(
+                maxAttempts: 3,
+                baseDelay: 0.01,
+                maxDelay: 0.05,
+                overallTimeout: 10,
+                shouldRetry: DownloadErrorRecovery.RetryPolicy.borrowOperation.shouldRetry
+            )
+        ) {
+            attempts += 1
+            if attempts < 2 {
+                throw PalaceError.bookRegistry(.bookNotFound)
+            }
+            return "Borrowed"
+        }
+
+        XCTAssertEqual(result, "Borrowed")
+        XCTAssertEqual(attempts, 2, "Should succeed on second attempt after no-active-loan")
+    }
+
     // MARK: - Successful Operations
 
     func testExecuteWithRetry_successfulOperation_returnsResult() async throws {

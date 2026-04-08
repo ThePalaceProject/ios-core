@@ -11,3 +11,4 @@
 #endif
 
 #import "NYPLTenPrintCoverView.h"
+#import "../Utilities/TPPObjCExceptionCatcher.h"

@@ -1068,14 +1068,13 @@ extension TPPAnnotationsTests {
         // Act
         TPPAnnotations.deleteBookmarks([b1, b2, b3])
 
-        // Wait for async operations
-        let waitExpectation = expectation(description: "Wait for deletes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            waitExpectation.fulfill()
-        }
-        waitForExpectations(timeout: 5.0)
+        // Primary assertion: the method doesn't crash.
+        // Drain the main queue once so any synchronously-dispatched work completes.
+        // Request count is not asserted because it depends on sync-permission state.
+        let drain = XCTestExpectation(description: "drain main queue")
+        DispatchQueue.main.async { drain.fulfill() }
+        wait(for: [drain], timeout: 1.0)
 
         // Note: Actual request count depends on sync permission state
-        // The main validation is that the method doesn't crash
     }
 }

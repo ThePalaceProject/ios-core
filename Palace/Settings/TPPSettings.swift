@@ -58,7 +58,7 @@ import Combine
     static private let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
     static private let enterLCPPassphraseManually = "TPPSettingsEnterLCPPassphraseManually"
     static let showDeveloperSettingsKey = "showDeveloperSettings"
-    static private let downloadOnlyOnWiFiKey = "TPPSettingsDownloadOnlyOnWiFi"
+    static let downloadOnlyOnWiFiKey = "TPPSettingsDownloadOnlyOnWiFi"
 
     // Set to nil (the default) if no custom feed should be used.
     var customMainFeedURL: URL? {

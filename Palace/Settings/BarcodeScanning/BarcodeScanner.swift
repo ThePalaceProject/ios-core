@@ -15,7 +15,6 @@ fileprivate extension CGRect {
     }
 }
 
-// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     private var captureSession: AVCaptureSession!
     private var previewLayer: AVCaptureVideoPreviewLayer!
@@ -27,6 +26,7 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     init(completion: @escaping (_ barcode: String?) -> Void) {
         self.completion = completion
         super.init(nibName: nil, bundle: nil)
+        title = NSLocalizedString("Scan Barcode", comment: "Barcode scanner screen title")
     }
 
     @available(*, unavailable)
@@ -36,8 +36,6 @@ class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
-        title = NSLocalizedString("Scan Barcode", comment: "Barcode scanner screen title")
         view.backgroundColor = UIColor.black
         captureSession = AVCaptureSession()
 

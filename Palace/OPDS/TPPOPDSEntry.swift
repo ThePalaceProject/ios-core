@@ -148,18 +148,9 @@ import Foundation
       }
 
       if rel.contains(TPPOPDSRelationPreview) {
-        if let acquisition = TPPOPDSAcquisition.acquisition(withLinkXML: linkXML) {
-          let mimeType = acquisition.type
-          let isEpubPreview = mimeType == "application/epub+zip"
-          let isPalaceMarketplace = providerName == "Palace Marketplace"
-
-          if isPalaceMarketplace {
-            if isEpubPreview && previewLink == nil {
-              previewLink = acquisition
-            }
-          } else if previewLink == nil {
-            previewLink = acquisition
-          }
+        if let acquisition = TPPOPDSAcquisition.acquisition(withLinkXML: linkXML),
+           previewLink == nil {
+          previewLink = acquisition
         }
       }
 

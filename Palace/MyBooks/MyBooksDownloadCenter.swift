@@ -101,22 +101,12 @@ import OverdriveProcessor
         accessibilityAnnouncements.announceDownloadStarted(title: book.title, identifier: book.identifier)
     }
 
-    func announceDownloadProgress(for book: TPPBook, progress: Double) {
-        accessibilityAnnouncements.announceDownloadProgress(
-            title: book.title,
-            identifier: book.identifier,
-            progress: progress
-        )
-    }
-
     func announceDownloadCompleted(for book: TPPBook) {
         accessibilityAnnouncements.announceDownloadCompleted(title: book.title)
-        accessibilityAnnouncements.resetProgress(identifier: book.identifier)
     }
 
     func announceDownloadFailed(for book: TPPBook) {
         accessibilityAnnouncements.announceDownloadFailed(title: book.title)
-        accessibilityAnnouncements.resetProgress(identifier: book.identifier)
     }
 
     func announceBorrowStarted(for book: TPPBook) {
@@ -869,6 +859,59 @@ import OverdriveProcessor
 }
 
 extension MyBooksDownloadCenter {
+
+    /// Silently re-downloads the .lcpa content file for an LCP audiobook that only
+    /// has the .lcpl license. The book stays in downloadSuccessful state (playable
+    /// via streaming) while the download runs in the background (PP-3704).
+    func redownloadLCPContentFile(for book: TPPBook) {
+        #if LCP
+        guard LCPAudiobooks.canOpenBook(book) else { return }
+        guard let licenseURL = Self.lcpLicenseURL(forBookIdentifier: book.identifier) else {
+            Log.warn(#file, "📥 [LCP RE-DOWNLOAD] No license file found for '\(book.title)' — skipping")
+            return
+        }
+        guard let destURL = fileUrl(for: book.identifier) else { return }
+
+        // Skip if .lcpa already exists (another re-download may have completed)
+        if FileManager.default.fileExists(atPath: destURL.path) {
+            Log.info(#file, "📥 [LCP RE-DOWNLOAD] .lcpa already exists for '\(book.title)' — skipping")
+            return
+        }
+
+        Log.info(#file, "📥 [LCP RE-DOWNLOAD] Starting background .lcpa download for '\(book.title)'")
+
+        let lcpService = LCPLibraryService()
+        _ = lcpService.fulfill(licenseURL, progress: { _ in }) { localUrl, error in
+            if let error {
+                Log.error(#file, "📥 [LCP RE-DOWNLOAD] ❌ Failed for '\(book.title)': \(error.localizedDescription)")
+                return
+            }
+            guard let localUrl else {
+                Log.error(#file, "📥 [LCP RE-DOWNLOAD] ❌ No local URL returned for '\(book.title)'")
+                return
+            }
+
+            do {
+                let parentDir = destURL.deletingLastPathComponent()
+                if !FileManager.default.fileExists(atPath: parentDir.path) {
+                    try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+                }
+                try FileManager.default.moveItem(at: localUrl, to: destURL)
+                Log.info(#file, "📥 [LCP RE-DOWNLOAD] ✅ .lcpa stored for '\(book.title)' — local playback now available")
+            } catch {
+                Log.warn(#file, "📥 [LCP RE-DOWNLOAD] ⚠️ File move failed for '\(book.title)': \(error.localizedDescription) — streaming still available")
+            }
+        }
+        #endif
+    }
+
+    /// Returns the .lcpl license URL for an LCP audiobook, if it exists on disk.
+    private static func lcpLicenseURL(forBookIdentifier identifier: String) -> URL? {
+        guard let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else { return nil }
+        let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
+        return FileManager.default.fileExists(atPath: licenseURL.path) ? licenseURL : nil
+    }
+
     func deleteLocalContent(for identifier: String, account: String? = nil) {
         let current_account: String? = account ?? accountsManager.currentAccountId
         guard let book = bookRegistry.book(forIdentifier: identifier),
@@ -1346,8 +1389,6 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                 await MainActor.run {
                     downloadProgressPublisher.send((book.identifier, progress))
                 }
-
-                announceDownloadProgress(for: book, progress: progress)
 
                 if progress > 0.95 || Int(progress * 100) % 20 == 0 {
                     broadcastUpdate()
@@ -2066,7 +2107,6 @@ extension MyBooksDownloadCenter {
                 await MainActor.run {
                     self.downloadProgressPublisher.send((book.identifier, progressValue))
                 }
-                self.announceDownloadProgress(for: book, progress: progressValue)
                 self.broadcastUpdate()
             }
         }
@@ -2629,9 +2669,6 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
             // Publish to progress publisher so UI updates (HalfSheet, BookCell, etc.)
             await MainActor.run {
                 self.downloadProgressPublisher.send((tag, progress))
-            }
-            if let book = self.bookRegistry.book(forIdentifier: tag) {
-                self.announceDownloadProgress(for: book, progress: progress)
             }
             self.broadcastUpdate()
         }

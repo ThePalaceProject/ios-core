@@ -393,15 +393,15 @@ public class TPPBook: NSObject, ObservableObject {
     @objc func getExpirationDate() -> Date? {
         var date: Date?
 
-        defaultAcquisition?.availability.match(unavailable: 
+        defaultAcquisition?.availability.match(unavailable:
             nil,
             limited: { limited in
-                if let until = limited.until, until.timeIntervalSinceNow > 0 { date = until }
+                if let until = limited.until { date = until }
             },
             unlimited: nil,
             reserved: nil,
             ready: { ready in
-                if let until = ready.until, until.timeIntervalSinceNow > 0 { date = until }
+                if let until = ready.until { date = until }
             }
         )
 
@@ -503,6 +503,20 @@ public class TPPBook: NSObject, ObservableObject {
         }
 
         return contentTypes.first(where: { $0 != .unsupported }) ?? .unsupported
+    }
+
+    /// PP-3649: Whether this book requires Adobe DRM activation before download.
+    /// Used by MyBooksDownloadCenter to perform on-demand device activation.
+    @objc var requiresAdobeDRM: Bool {
+        guard let acquisition = defaultAcquisition else { return false }
+        let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+            forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+            allowedRelations: NYPLOPDSAcquisitionRelationSetAll,
+            acquisitions: [acquisition]
+        )
+        return paths.contains { path in
+            path.types.contains(ContentTypeAdobeAdept)
+        }
     }
 }
 

@@ -18,8 +18,14 @@ final class CatalogAPIMock: CatalogAPI {
     /// The feed to return from fetchFeed, keyed by URL
     var stubbedFeeds: [URL: CatalogFeed] = [:]
 
-    /// The feed to return from search
+    /// The feed to return from search(query:baseURL:)
     var stubbedSearchFeed: CatalogFeed?
+
+    /// The feed to return from search(query:searchDescriptorURL:)
+    var stubbedSearchWithDescriptorFeed: CatalogFeed?
+
+    /// Entry points to return from fetchSearchEntryPoints
+    var stubbedSearchEntryPoints: [SearchFormatEntry] = []
 
     /// Error to throw from fetchFeed (if set, takes precedence over stubbedFeeds)
     var fetchFeedError: Error?
@@ -35,8 +41,14 @@ final class CatalogAPIMock: CatalogAPI {
     /// URLs that fetchFeed was called with
     private(set) var fetchFeedCalls: [URL] = []
 
-    /// Search queries that search was called with
+    /// Search queries that search(query:baseURL:) was called with
     private(set) var searchCalls: [(query: String, baseURL: URL)] = []
+
+    /// Calls to search(query:searchDescriptorURL:)
+    private(set) var searchWithDescriptorCalls: [(query: String, descriptorURL: URL)] = []
+
+    /// Calls to fetchSearchEntryPoints
+    private(set) var fetchSearchEntryPointsCalls: [URL] = []
 
     /// Delay to simulate network latency (in seconds)
     var simulatedDelay: TimeInterval = 0
@@ -86,7 +98,7 @@ final class CatalogAPIMock: CatalogAPI {
     }
 
     func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
-        searchCalls.append((query: query, baseURL: searchDescriptorURL))
+        searchWithDescriptorCalls.append((query: query, descriptorURL: searchDescriptorURL))
 
         if simulatedDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(simulatedDelay * 1_000_000_000))
@@ -96,11 +108,21 @@ final class CatalogAPIMock: CatalogAPI {
             throw error
         }
 
-        return stubbedSearchFeed
+        return stubbedSearchWithDescriptorFeed ?? stubbedSearchFeed
     }
 
     func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
-        return []
+        fetchSearchEntryPointsCalls.append(url)
+
+        if simulatedDelay > 0 {
+            try await Task.sleep(nanoseconds: UInt64(simulatedDelay * 1_000_000_000))
+        }
+
+        if let error = fetchFeedError {
+            throw error
+        }
+
+        return stubbedSearchEntryPoints
     }
 
     // MARK: - Test Helpers
@@ -109,11 +131,15 @@ final class CatalogAPIMock: CatalogAPI {
     func reset() {
         stubbedFeeds = [:]
         stubbedSearchFeed = nil
+        stubbedSearchWithDescriptorFeed = nil
+        stubbedSearchEntryPoints = []
         fetchFeedError = nil
         searchError = nil
         defaultFeed = nil
         fetchFeedCalls = []
         searchCalls = []
+        searchWithDescriptorCalls = []
+        fetchSearchEntryPointsCalls = []
         simulatedDelay = 0
         failAfterCallCount = nil
     }

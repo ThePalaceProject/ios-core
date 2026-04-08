@@ -123,6 +123,32 @@ struct Strings {
         static let nextPage = NSLocalizedString("Next page", comment: "Full Keyboard Access: Custom action to go to next page (Tab-Z menu)")
         static let previousPage = NSLocalizedString("Previous page", comment: "Full Keyboard Access: Custom action to go to previous page (Tab-Z menu)")
         static let toggleToolbar = NSLocalizedString("Toggle toolbar", comment: "Full Keyboard Access: Custom action to show/hide reader toolbar (Tab-Z menu)")
+
+        // Accessibility - Book cell labels (PP-3968)
+        static func bookByAuthor(title: String, author: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, by %2$@", comment: "VoiceOver: book cell label, e.g. 'The Great Gatsby, by F. Scott Fitzgerald'"),
+                title, author
+            )
+        }
+        static func audiobookNarratedBy(title: String, narrator: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, narrated by %2$@", comment: "VoiceOver: audiobook cell label without author, e.g. 'Title, narrated by Narrator'"),
+                title, narrator
+            )
+        }
+        static func audiobookByAuthorNarratedBy(title: String, author: String, narrator: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, by %2$@, narrated by %3$@", comment: "VoiceOver: audiobook cell label with author and narrator"),
+                title, author, narrator
+            )
+        }
+        static func audiobookByAuthor(title: String, author: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, audiobook, by %2$@", comment: "VoiceOver: audiobook cell label with author but no narrator"),
+                title, author
+            )
+        }
     }
 
     struct DownloadAnnouncements {
@@ -375,6 +401,8 @@ struct Strings {
         static let syncDescription = NSLocalizedString("Save your reading position and bookmarks to all your other devices.", comment: "")
         static let authenticateToRevealPIN = NSLocalizedString("Authenticate to reveal your PIN.", comment: "")
         static let deleteServerData = NSLocalizedString("Delete Server Data", comment: "")
+        static let downloads = NSLocalizedString("Downloads", comment: "Section header for download-related settings")
+        static let aboutSectionHeader = NSLocalizedString("About and legal", comment: "VoiceOver: Settings list section header for About, Privacy, Licenses")
         static let downloadOnlyOnWiFi = NSLocalizedString("Download Only on Wi-Fi", comment: "Toggle label to restrict downloads to Wi-Fi connections")
         static let downloadOnlyOnWiFiDescription = NSLocalizedString("When enabled, books and audiobooks will only download over Wi-Fi. Downloads will be blocked on cellular data.", comment: "Description for Download Only on Wi-Fi setting")
         static let downloadRestrictedToWiFi = NSLocalizedString("Downloads are restricted to Wi-Fi in Settings. Connect to a Wi-Fi network or change your download settings to continue.", comment: "Alert message when download is blocked due to Wi-Fi only setting")

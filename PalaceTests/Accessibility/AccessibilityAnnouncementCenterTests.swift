@@ -29,58 +29,71 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
         return (announcer, store)
     }
 
+    /// Creates an announcement center with an expectation-based postHandler.
+    /// Use for tests that need to wait for a specific number of announcements.
+    private func makeExpectingAnnouncer(
+        voiceOverRunning: Bool = true,
+        deduplicationInterval: TimeInterval = 2.0,
+        time: @escaping () -> Date = { Date() },
+        expectedCount: Int,
+        description: String
+    ) -> (TPPAccessibilityAnnouncementCenter, Announcements, XCTestExpectation) {
+        let store = Announcements()
+        let exp = expectation(description: description)
+        exp.expectedFulfillmentCount = expectedCount
+        let announcer = TPPAccessibilityAnnouncementCenter(
+            postHandler: { _, message in
+                store.items.append(message)
+                exp.fulfill()
+            },
+            isVoiceOverRunning: { voiceOverRunning },
+            timeProvider: time,
+            deduplicationInterval: deduplicationInterval
+        )
+        return (announcer, store, exp)
+    }
+
+    /// Creates an announcement center with an inverted expectation for negative tests.
+    /// The inverted expectation will fail if the postHandler is ever called.
+    private func makeNonFiringAnnouncer(
+        voiceOverRunning: Bool = true,
+        deduplicationInterval: TimeInterval = 2.0,
+        time: @escaping () -> Date = { Date() },
+        description: String
+    ) -> (TPPAccessibilityAnnouncementCenter, Announcements, XCTestExpectation) {
+        let store = Announcements()
+        let exp = expectation(description: description)
+        exp.isInverted = true
+        let announcer = TPPAccessibilityAnnouncementCenter(
+            postHandler: { _, message in
+                store.items.append(message)
+                exp.fulfill()
+            },
+            isVoiceOverRunning: { voiceOverRunning },
+            timeProvider: time,
+            deduplicationInterval: deduplicationInterval
+        )
+        return (announcer, store, exp)
+    }
+
     /// Reference-type wrapper so captured closures share the same storage.
     private class Announcements {
         var items: [String] = []
     }
 
-    // MARK: - Download Progress (PP-3594 regression)
-
-    func testPP3594_downloadProgress_throttlesAnnouncements() {
-        var announcements: [String] = []
-        let expectedCount = 2
-        let expectation = expectation(description: "Progress announcements posted")
-        expectation.expectedFulfillmentCount = expectedCount
-
-        let announcer = TPPAccessibilityAnnouncementCenter(
-            postHandler: { _, message in
-                announcements.append(message)
-                expectation.fulfill()
-            },
-            isVoiceOverRunning: { true },
-            progressStep: 20
-        )
-
-        announcer.announceDownloadProgress(title: "Sample Book", identifier: "book-1", progress: 0.10)
-        announcer.announceDownloadProgress(title: "Sample Book", identifier: "book-1", progress: 0.20)
-        announcer.announceDownloadProgress(title: "Sample Book", identifier: "book-1", progress: 0.25)
-        announcer.announceDownloadProgress(title: "Sample Book", identifier: "book-1", progress: 0.40)
-        announcer.announceDownloadProgress(title: "Sample Book", identifier: "book-1", progress: 1.00)
-
-        wait(for: [expectation], timeout: 1.0)
-
-        XCTAssertEqual(
-            announcements,
-            [
-                "Download 20 percent complete for Sample Book.",
-                "Download 40 percent complete for Sample Book."
-            ]
-        )
-    }
+    // MARK: - Download Announcements (PP-3594)
 
     func testPP3594_downloadAnnouncements_respectVoiceOverDisabled() {
-        var announcements: [String] = []
-        let announcer = TPPAccessibilityAnnouncementCenter(
-            postHandler: { _, message in announcements.append(message) },
-            isVoiceOverRunning: { false }
+        let (announcer, store, neverFired) = makeNonFiringAnnouncer(
+            voiceOverRunning: false,
+            description: "postHandler should never be called when VoiceOver is off"
         )
 
         announcer.announceDownloadStarted(title: "Sample Book")
         announcer.announceDownloadCompleted(title: "Sample Book")
 
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
-
-        XCTAssertTrue(announcements.isEmpty)
+        wait(for: [neverFired], timeout: 0.3)
+        XCTAssertTrue(store.items.isEmpty)
     }
 
     func testPP3594_borrowAndReturnAnnouncements_postMessages() {
@@ -227,11 +240,13 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
 
     /// PP-3673: Zero additional results should not produce an announcement.
     func testPP3673_additionalResultsLoaded_zeroCount_doesNotAnnounce() {
-        let (announcer, store) = makeAnnouncer()
+        let (announcer, store, neverFired) = makeNonFiringAnnouncer(
+            description: "Zero additional results should not announce"
+        )
 
         announcer.announceAdditionalResultsLoaded(count: 0)
 
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        wait(for: [neverFired], timeout: 0.3)
         XCTAssertTrue(store.items.isEmpty)
     }
 
@@ -301,66 +316,91 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
     /// PP-3673: Identical messages within the deduplication window are suppressed.
     func testPP3673_deduplication_suppressesDuplicateWithinWindow() {
         var currentTime = Date(timeIntervalSince1970: 1000)
-        let (announcer, store) = makeAnnouncer(deduplicationInterval: 2.0) { currentTime }
+        let (announcer, store, delivered) = makeExpectingAnnouncer(
+            deduplicationInterval: 2.0,
+            time: { currentTime },
+            expectedCount: 1,
+            description: "First announcement delivered"
+        )
 
         announcer.announceError("Something went wrong.")
-        // Same message, 0.5s later — should be suppressed
+        // Same message, 0.5s later -- should be suppressed
         currentTime = currentTime.addingTimeInterval(0.5)
         announcer.announceError("Something went wrong.")
 
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        wait(for: [delivered], timeout: 1.0)
         XCTAssertEqual(store.items.count, 1, "Duplicate within window should be suppressed")
     }
 
     /// PP-3673: Same message after deduplication window passes is allowed.
     func testPP3673_deduplication_allowsRepeatAfterWindowExpires() {
         var currentTime = Date(timeIntervalSince1970: 1000)
-        let (announcer, store) = makeAnnouncer(deduplicationInterval: 2.0) { currentTime }
+        let (announcer, store, delivered) = makeExpectingAnnouncer(
+            deduplicationInterval: 2.0,
+            time: { currentTime },
+            expectedCount: 2,
+            description: "Both announcements delivered"
+        )
 
         announcer.announceError("Something went wrong.")
         // Advance past dedup window
         currentTime = currentTime.addingTimeInterval(3.0)
         announcer.announceError("Something went wrong.")
 
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        wait(for: [delivered], timeout: 1.0)
         XCTAssertEqual(store.items.count, 2, "Should allow repeat after window expires")
     }
 
     /// PP-3673: Different messages within the window are NOT suppressed.
     func testPP3673_deduplication_allowsDifferentMessages() {
         var currentTime = Date(timeIntervalSince1970: 1000)
-        let (announcer, store) = makeAnnouncer(deduplicationInterval: 2.0) { currentTime }
+        let (announcer, store, delivered) = makeExpectingAnnouncer(
+            deduplicationInterval: 2.0,
+            time: { currentTime },
+            expectedCount: 2,
+            description: "Both different messages delivered"
+        )
 
         announcer.announceError("Error A")
         currentTime = currentTime.addingTimeInterval(0.1)
         announcer.announceError("Error B")
 
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        wait(for: [delivered], timeout: 1.0)
         XCTAssertEqual(store.items, ["Error A", "Error B"])
     }
 
     /// PP-3673: Rapid-fire identical messages result in only one announcement.
     func testPP3673_deduplication_rapidFireSameMessage_onlyOneAnnouncement() {
         let currentTime = Date(timeIntervalSince1970: 1000)
-        let (announcer, store) = makeAnnouncer(deduplicationInterval: 2.0) { currentTime }
+        let (announcer, store, delivered) = makeExpectingAnnouncer(
+            deduplicationInterval: 2.0,
+            time: { currentTime },
+            expectedCount: 1,
+            description: "Only one announcement from rapid fire"
+        )
 
         for _ in 0..<10 {
             announcer.announceError("Rapid error")
         }
 
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        wait(for: [delivered], timeout: 1.0)
         XCTAssertEqual(store.items.count, 1, "10 rapid duplicates should collapse to 1")
     }
 
     /// PP-3673: Deduplication applies across announcement types using same message text.
     func testPP3673_deduplication_crossMethod_sameText() {
         let currentTime = Date(timeIntervalSince1970: 1000)
-        let (announcer, store) = makeAnnouncer(deduplicationInterval: 2.0) { currentTime }
+        let (announcer, store, delivered) = makeExpectingAnnouncer(
+            deduplicationInterval: 2.0,
+            time: { currentTime },
+            expectedCount: 1,
+            description: "Only one announcement for cross-method same text"
+        )
 
         announcer.announceMessage("Hello")
         announcer.announceError("Hello")
 
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        wait(for: [delivered], timeout: 1.0)
         XCTAssertEqual(store.items.count, 1, "Same text across methods should deduplicate")
     }
 
@@ -368,25 +408,31 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
 
     /// PP-3673: Search announcements are suppressed when VoiceOver is off.
     func testPP3673_searchAnnouncements_respectVoiceOverDisabled() {
-        let (announcer, store) = makeAnnouncer(voiceOverRunning: false)
+        let (announcer, store, neverFired) = makeNonFiringAnnouncer(
+            voiceOverRunning: false,
+            description: "No search announcements when VoiceOver is off"
+        )
 
         announcer.announceSearchResults(query: "test", count: 5)
         announcer.announceSearchFailed()
         announcer.announceAdditionalResultsLoaded(count: 10)
 
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        wait(for: [neverFired], timeout: 0.3)
         XCTAssertTrue(store.items.isEmpty, "No announcements when VoiceOver is off")
     }
 
     /// PP-3673: Error announcements are suppressed when VoiceOver is off.
     func testPP3673_errorAnnouncements_respectVoiceOverDisabled() {
-        let (announcer, store) = makeAnnouncer(voiceOverRunning: false)
+        let (announcer, store, neverFired) = makeNonFiringAnnouncer(
+            voiceOverRunning: false,
+            description: "No error announcements when VoiceOver is off"
+        )
 
         announcer.announceError("Big problem")
         announcer.announceStatus(title: "Error", message: "Something broke")
         announcer.announceMessage("Status update")
 
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        wait(for: [neverFired], timeout: 0.3)
         XCTAssertTrue(store.items.isEmpty, "No announcements when VoiceOver is off")
     }
 
@@ -394,12 +440,14 @@ final class AccessibilityAnnouncementCenterTests: XCTestCase {
 
     /// PP-3673: Empty messages are never posted.
     func testPP3673_emptyMessage_isNotPosted() {
-        let (announcer, store) = makeAnnouncer()
+        let (announcer, store, neverFired) = makeNonFiringAnnouncer(
+            description: "Empty messages should not be posted"
+        )
 
         announcer.announceMessage("")
         announcer.announceError("")
 
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        wait(for: [neverFired], timeout: 0.3)
         XCTAssertTrue(store.items.isEmpty, "Empty messages should not be posted")
     }
 

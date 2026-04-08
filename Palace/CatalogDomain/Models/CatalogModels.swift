@@ -73,12 +73,6 @@ public struct CatalogEntry: Identifiable {
     }
 }
 
-/// Represents a format entry point (e.g. "All", "eBooks", "Audiobooks")
-/// with optional search descriptor URL for searching within that format.
-public struct SearchFormatEntry: Identifiable, Equatable {
-    public let id: String
-    public let title: String
-    public let groupsFeedURL: URL
-    public let searchDescriptorURL: URL?
-    public let isActive: Bool
-}
+// SearchFormatEntry is defined in CatalogUI/ViewModels/CatalogFilterModels.swift
+// (kept there because the ViewModel layer was the original consumer; the
+// CatalogDomain layer references it via this comment for clarity).

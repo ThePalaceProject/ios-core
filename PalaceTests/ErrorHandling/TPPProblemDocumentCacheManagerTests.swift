@@ -14,10 +14,12 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // Use a fresh instance to avoid shared-state pollution across tests.
-        // The singleton's clearCachedDoc sets keys to [] (not nil), which
-        // prevents cacheProblemDocument from appending to that key again.
         cacheManager = TPPProblemDocumentCacheManager()
+    }
+
+    override func tearDown() {
+        cacheManager = nil
+        super.tearDown()
     }
 
     // MARK: - Shared Instance
@@ -57,19 +59,21 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
     // MARK: - Multiple Documents Per Key
 
     func testCacheMultipleDocuments_lastEntryRetrievable() {
-        // Note: The current implementation only appends when count >= CACHE_SIZE
-        // (eviction path). For count < CACHE_SIZE, only the first entry persists.
-        // This test verifies the first-cached document is retrievable.
-        let doc = TPPProblemDocument.fromDictionary([
+        let first = TPPProblemDocument.fromDictionary([
             "title": "First Error",
             "detail": "First detail"
         ])
+        let second = TPPProblemDocument.fromDictionary([
+            "title": "Second Error",
+            "detail": "Second detail"
+        ])
 
-        cacheManager.cacheProblemDocument(doc, key: "test-key-2")
+        cacheManager.cacheProblemDocument(first, key: "test-key-2")
+        cacheManager.cacheProblemDocument(second, key: "test-key-2")
 
         let retrieved = cacheManager.getLastCachedDoc("test-key-2")
         XCTAssertNotNil(retrieved)
-        XCTAssertEqual(retrieved?.title, "First Error")
+        XCTAssertEqual(retrieved?.title, "Second Error")
     }
 
     // MARK: - Clear
@@ -94,27 +98,26 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
 
     // MARK: - LRU Behavior
 
-    func testCache_exceedingSize_evictsAndAppendsNewEntry() {
-        // Fill up to CACHE_SIZE (5) by using separate fresh instances per key,
-        // since the implementation only creates a new array for nil keys
-        // and only evicts+appends when count >= CACHE_SIZE.
-        // We cache CACHE_SIZE docs first via the nil-key path (one per key),
-        // then verify that subsequent caching on a full key triggers eviction.
-
-        // First, fill the key with CACHE_SIZE entries by re-creating the manager
-        // for each entry (since the append-when-below-capacity path is broken).
-        // Instead, test the eviction path directly by pre-filling the cache.
+    func testCache_exceedingSize_evictsOldestEntry() {
         let key = "lru-test"
-        let firstDoc = TPPProblemDocument.fromDictionary([
-            "title": "First",
-            "detail": "First detail"
-        ])
-        cacheManager.cacheProblemDocument(firstDoc, key: key)
 
-        // After one cacheProblemDocument call, the key has 1 entry.
+        for i in 0..<TPPProblemDocumentCacheManager.CACHE_SIZE {
+            let doc = TPPProblemDocument.fromDictionary([
+                "title": "Doc \(i)",
+                "detail": "Detail \(i)"
+            ])
+            cacheManager.cacheProblemDocument(doc, key: key)
+        }
+
+        let overflow = TPPProblemDocument.fromDictionary([
+            "title": "Overflow",
+            "detail": "Should evict Doc 0"
+        ])
+        cacheManager.cacheProblemDocument(overflow, key: key)
+
         let retrieved = cacheManager.getLastCachedDoc(key)
         XCTAssertNotNil(retrieved)
-        XCTAssertEqual(retrieved?.title, "First")
+        XCTAssertEqual(retrieved?.title, "Overflow")
     }
 
     func testClearThenReCache_works() {
@@ -135,13 +138,17 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
     // on the main thread (standard with -parallel-testing-enabled NO), a blocked main
     // thread can prevent any NotificationCenter observer from dispatching back to main,
     // causing a 10-second hang until timeout. Use waitForExpectations(timeout:) instead
-    // -- it PUMPS the main run loop so notifications and any observers can fire freely.
+    // — it PUMPS the main run loop so notifications and any observers can fire freely.
 
     func testConcurrentReadWrite_doesNotCrash() {
         let iterations = 20
         let expectation = expectation(description: "All concurrent read/write/clear operations complete")
         expectation.expectedFulfillmentCount = iterations * 3
 
+        // Use .userInitiated for all queues — .background and .utility can be
+        // deprioritized indefinitely under CI load, causing test timeouts.
+        // The point of this test is to verify thread safety under contention,
+        // which a single QoS class still exercises (the lock serializes access).
         for i in 0..<iterations {
             let key = "concurrent-\(i % 5)"
             DispatchQueue.global(qos: .userInitiated).async {
@@ -149,17 +156,17 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
                 self.cacheManager.cacheProblemDocument(doc, key: key)
                 expectation.fulfill()
             }
-            DispatchQueue.global(qos: .utility).async {
+            DispatchQueue.global(qos: .userInitiated).async {
                 _ = self.cacheManager.getLastCachedDoc(key)
                 expectation.fulfill()
             }
-            DispatchQueue.global(qos: .background).async {
+            DispatchQueue.global(qos: .userInitiated).async {
                 self.cacheManager.clearCachedDoc(key)
                 expectation.fulfill()
             }
         }
 
-        waitForExpectations(timeout: 10.0)
+        waitForExpectations(timeout: 30.0)
     }
 
     func testConcurrentCacheAndClear_sameKey_doesNotCrash() {
@@ -179,7 +186,7 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 10.0)
+        waitForExpectations(timeout: 30.0)
     }
 
     // MARK: - Notification
