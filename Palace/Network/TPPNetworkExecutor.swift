@@ -29,6 +29,18 @@ private actor TokenRefreshCoordinator {
         isRefreshing = value
     }
 
+    /// Atomically attempts to claim the single-flight refresh slot.
+    /// Returns `true` if the caller now owns the in-flight refresh, `false`
+    /// if another caller already holds it. This collapses the previous
+    /// check-then-act pattern into a single actor-hop so two concurrent
+    /// 401s can never both proceed past the guard.
+    func tryClaimRefreshSlot() -> Bool {
+        guard !isRefreshing else { return false }
+        isRefreshing = true
+        refreshAttemptCount += 1
+        return true
+    }
+
     func resetRefreshAttemptCount() {
         refreshAttemptCount = 0
     }
@@ -44,21 +56,33 @@ private actor TokenRefreshCoordinator {
     }
 }
 
-/// Actor that serializes access to the active tasks list.
-private actor ActiveTasksCoordinator {
-    var tasks: [URLSessionTask] = []
+/// Lock-protected store for the active tasks list.
+///
+/// Intentionally NOT an actor: the `@objc` methods that drive this
+/// (`pauseAllTasks`, `resumeAllTasks`, `cancelNonEssentialTasks`) are
+/// invoked from synchronous call sites — most importantly during account
+/// switches, where we *must* finish cancelling before the caller proceeds,
+/// otherwise in-flight requests can complete against the wrong account's
+/// credentials. A fire-and-forget `Task { await actor.… }` would silently
+/// break that invariant.
+private final class ActiveTasksStore {
+    private var tasks: [URLSessionTask] = []
+    private let lock = NSLock()
 
     func add(_ task: URLSessionTask) {
+        lock.lock(); defer { lock.unlock() }
         tasks.append(task)
     }
 
     func remove(_ task: URLSessionTask) {
+        lock.lock(); defer { lock.unlock() }
         if let index = tasks.firstIndex(of: task) {
             tasks.remove(at: index)
         }
     }
 
     func pauseNonAudioTasks() {
+        lock.lock(); defer { lock.unlock() }
         for task in tasks {
             if let url = task.originalRequest?.url,
                Self.isAudiobookRelated(url: url) {
@@ -70,10 +94,13 @@ private actor ActiveTasksCoordinator {
     }
 
     func resumeAll() {
+        lock.lock(); defer { lock.unlock() }
         tasks.forEach { $0.resume() }
     }
 
+    @discardableResult
     func cancelNonEssential() -> Int {
+        lock.lock(); defer { lock.unlock() }
         let toCancel = tasks.filter { task in
             guard let url = task.originalRequest?.url else { return true }
             return !Self.isAudiobookRelated(url: url)
@@ -97,7 +124,7 @@ private actor ActiveTasksCoordinator {
 @objc class TPPNetworkExecutor: NSObject {
     private let urlSession: URLSession
     private let tokenCoordinator = TokenRefreshCoordinator()
-    private let activeTasksCoordinator = ActiveTasksCoordinator()
+    private let activeTasksStore = ActiveTasksStore()
 
     private let responder: TPPNetworkResponder
     private var _accountsManager: TPPLibraryAccountsProvider?
@@ -180,26 +207,25 @@ private actor ActiveTasksCoordinator {
         let task = executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
 
         if let task = task {
-            Task { await activeTasksCoordinator.add(task) }
+            activeTasksStore.add(task)
         }
     }
 
     @objc func pauseAllTasks() {
-        Task { await activeTasksCoordinator.pauseNonAudioTasks() }
+        activeTasksStore.pauseNonAudioTasks()
     }
 
     @objc func resumeAllTasks() {
-        Task { await activeTasksCoordinator.resumeAll() }
+        activeTasksStore.resumeAll()
     }
 
     /// Cancels all active tasks that are not related to audiobook streaming.
     /// Called during account switches to prevent requests from completing with
-    /// the wrong account's credentials.
+    /// the wrong account's credentials. Synchronous on purpose — see
+    /// `ActiveTasksStore` doc-comment.
     @objc func cancelNonEssentialTasks() {
-        Task {
-            let count = await activeTasksCoordinator.cancelNonEssential()
-            Log.info(#file, "Cancelled \(count) non-essential tasks during account switch")
-        }
+        let count = activeTasksStore.cancelNonEssential()
+        Log.info(#file, "Cancelled \(count) non-essential tasks during account switch")
     }
 }
 
@@ -259,6 +285,16 @@ extension TPPNetworkExecutor {
                                     cachePolicy: urlSession.configuration.requestCachePolicy)
         urlRequest.applyCustomUserAgent()
         let account = TPPUserAccount.sharedAccount(libraryUUID: accountId ?? accountsManager.currentAccountId)
+
+        // SAML auth uses cookies, not tokens — make sure they are installed in
+        // the shared cookie storage before the request goes out. Removing this
+        // block silently regresses SAML sign-in.
+        if let authDef = account.authDefinition, authDef.isSaml,
+           let cookies = account.cookies, !cookies.isEmpty {
+            let shared = HTTPCookieStorage.shared
+            for cookie in cookies { shared.setCookie(cookie) }
+        }
+
         if let authToken = account.authToken, useTokenIfAvailable {
             urlRequest.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
@@ -418,9 +454,10 @@ extension TPPNetworkExecutor {
                 return
             }
 
-            let alreadyRefreshing = await self.tokenCoordinator.isRefreshing
+            // Atomic check-and-claim: only one caller can take the refresh slot.
+            let claimed = await self.tokenCoordinator.tryClaimRefreshSlot()
 
-            if alreadyRefreshing {
+            if !claimed {
                 Log.debug(#file, "Token refresh already in progress, queueing task for retry")
                 if let task {
                     await self.tokenCoordinator.appendToRetryQueue(task)
@@ -433,8 +470,6 @@ extension TPPNetworkExecutor {
                 }
                 return
             }
-
-            await self.tokenCoordinator.setRefreshing(true)
 
             let account = TPPUserAccount.sharedAccount(libraryUUID: capturedAccountId)
             guard let username = account.username,
@@ -543,15 +578,38 @@ extension TPPNetworkExecutor {
     }
 }
 
+// MARK: - Continuation safety helper
+
+/// Thread-safe one-shot guard for `withCheckedThrowingContinuation` bridges.
+/// Calling `tryConsume()` returns `true` exactly once for the lifetime of the
+/// instance; subsequent calls return `false`. Use to guarantee a continuation
+/// is resumed at most once even if the underlying completion handler is
+/// invoked multiple times by a buggy producer.
+private final class ContinuationGuard {
+    private var consumed = false
+    private let lock = NSLock()
+    func tryConsume() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if consumed { return false }
+        consumed = true
+        return true
+    }
+}
+
 // MARK: - Async/Await API
 
 extension TPPNetworkExecutor {
 
     /// Async version of GET that bridges to the completion-handler API.
     /// Timeout is handled by the URLSession configuration, not by a manual timer.
+    /// The `ContinuationGuard` ensures the continuation is resumed exactly
+    /// once even if a future regression in the completion path invokes the
+    /// callback twice (e.g. through the token-refresh / retry paths).
     func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
         return try await withCheckedThrowingContinuation { continuation in
+            let guarded = ContinuationGuard()
             GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
+                guard guarded.tryConsume() else { return }
                 switch result {
                 case let .success(data, response):
                     continuation.resume(returning: (data, response))
@@ -565,7 +623,9 @@ extension TPPNetworkExecutor {
     /// Async version of GET with full request control.
     func GET(request: URLRequest, cachePolicy: NSURLRequest.CachePolicy = .useProtocolCachePolicy, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
         return try await withCheckedThrowingContinuation { continuation in
+            let guarded = ContinuationGuard()
             GET(request: request, cachePolicy: cachePolicy, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                guard guarded.tryConsume() else { return }
                 if let error = error {
                     continuation.resume(throwing: error)
                 } else {
@@ -578,7 +638,9 @@ extension TPPNetworkExecutor {
     /// Async version of PUT.
     func PUT(_ reqURL: URL, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
         return try await withCheckedThrowingContinuation { continuation in
+            let guarded = ContinuationGuard()
             PUT(reqURL, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                guard guarded.tryConsume() else { return }
                 if let error = error {
                     continuation.resume(throwing: error)
                 } else {
@@ -591,7 +653,9 @@ extension TPPNetworkExecutor {
     /// Async version of POST.
     func POST(_ request: URLRequest, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
         return try await withCheckedThrowingContinuation { continuation in
+            let guarded = ContinuationGuard()
             POST(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                guard guarded.tryConsume() else { return }
                 if let error = error {
                     continuation.resume(throwing: error)
                 } else {
@@ -604,7 +668,9 @@ extension TPPNetworkExecutor {
     /// Async version of DELETE.
     func DELETE(_ request: URLRequest, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
         return try await withCheckedThrowingContinuation { continuation in
+            let guarded = ContinuationGuard()
             DELETE(request, useTokenIfAvailable: useTokenIfAvailable) { data, response, error in
+                guard guarded.tryConsume() else { return }
                 if let error = error {
                     continuation.resume(throwing: error)
                 } else {

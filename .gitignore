@@ -113,3 +113,7 @@ docs/spec/
 !.specterqa/PR_TEST_EVIDENCE.md
 !.specterqa/DOGFOOD_NOTES.md
 scripts/sim-test/
+
+# Backup pbxproj variants
+*.pbxproj.swift-only
+*.pbxproj.bak
