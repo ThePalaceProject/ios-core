@@ -114,6 +114,7 @@ class TPPNetworkResponderTests: XCTestCase {
         // Create a minimal URLSession and invalidate it
         let config = URLSessionConfiguration.ephemeral
         let session = URLSession(configuration: config, delegate: responder, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
         session.invalidateAndCancel()
 
         waitForExpectations(timeout: 3)

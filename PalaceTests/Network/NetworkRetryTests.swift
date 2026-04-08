@@ -56,6 +56,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let (_, response) = try await session.data(for: request)
 
         let httpResponse = response as! HTTPURLResponse
@@ -74,6 +75,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let (_, response) = try await session.data(for: request)
 
         let httpResponse = response as! HTTPURLResponse
@@ -91,6 +93,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let (_, response) = try await session.data(for: request)
 
         let httpResponse = response as! HTTPURLResponse
@@ -109,6 +112,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let (_, response) = try await session.data(for: request)
 
         let httpResponse = response as! HTTPURLResponse
@@ -134,6 +138,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         _ = try await session.data(for: request)
 
         // 4xx errors should not be retried
@@ -160,6 +165,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         _ = try await session.data(for: request)
 
         lock.lock()
@@ -189,6 +195,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let (_, response) = try await session.data(for: request)
 
         let httpResponse = response as! HTTPURLResponse
@@ -314,6 +321,7 @@ final class NetworkRequestQueueTests: XCTestCase {
         }
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let urls = (0..<10).map { URL(string: "https://example.com/item/\($0)")! }
 
         await withTaskGroup(of: Void.self) { group in
@@ -342,6 +350,7 @@ final class NetworkRequestQueueTests: XCTestCase {
         }
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
 
         // Sequential requests
         for i in 0..<5 {

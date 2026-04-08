@@ -627,6 +627,7 @@ final class ConcurrentTokenRefreshTests: XCTestCase {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
 
         let tokenURL = URL(string: "https://example.com/token")!
         let request = TokenRequest(url: tokenURL, username: "user", password: "pass")

@@ -71,8 +71,8 @@ import Combine
         currentPageCancellable = $currentPage
             .debounce(for: .seconds(1), scheduler: RunLoop.main)
             .removeDuplicates()
-            .sink { value in
-                self.setCurrentPage(value)
+            .sink { [weak self] value in
+                self?.setCurrentPage(value)
             }
     }
 
