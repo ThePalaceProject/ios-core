@@ -428,7 +428,7 @@ final class NetworkClientTests: XCTestCase {
 
         XCTAssertEqual(response.response.statusCode, 400)
 
-        let problemData = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any]
+        let problemData = (try? JSONSerialization.jsonObject(with: response.data)) as? [String: Any]
         XCTAssertEqual(problemData?["title"] as? String, "Bad Request")
     }
 

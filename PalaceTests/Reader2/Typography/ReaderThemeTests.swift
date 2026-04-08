@@ -39,7 +39,7 @@ final class ReaderThemeTests: XCTestCase {
     func testAllThemes_haveValidBackgroundColors() {
         for theme in ReaderTheme.allCases {
             XCTAssertNotNil(theme.backgroundColor,
-                            "Theme '\(theme.name)' should have a valid background color")
+                            "Theme '\(theme.rawValue)' should have a valid background color")
         }
     }
 
@@ -48,7 +48,7 @@ final class ReaderThemeTests: XCTestCase {
     func testAllThemes_haveValidTextColors() {
         for theme in ReaderTheme.allCases {
             XCTAssertNotNil(theme.textColor,
-                            "Theme '\(theme.name)' should have a valid text color")
+                            "Theme '\(theme.rawValue)' should have a valid text color")
         }
     }
 
@@ -56,21 +56,21 @@ final class ReaderThemeTests: XCTestCase {
 
     func testAllThemes_haveCSSHexBackgrounds() {
         for theme in ReaderTheme.allCases {
-            let hex = theme.cssBackgroundHex
+            let hex = theme.backgroundCSSHex
             XCTAssertTrue(hex.hasPrefix("#"),
-                          "CSS hex for '\(theme.name)' background should start with #")
+                          "CSS hex for '\(theme.rawValue)' background should start with #")
             XCTAssertEqual(hex.count, 7,
-                           "CSS hex for '\(theme.name)' background should be 7 chars (#RRGGBB)")
+                           "CSS hex for '\(theme.rawValue)' background should be 7 chars (#RRGGBB)")
         }
     }
 
     func testAllThemes_haveCSSHexTextColors() {
         for theme in ReaderTheme.allCases {
-            let hex = theme.cssTextHex
+            let hex = theme.textCSSHex
             XCTAssertTrue(hex.hasPrefix("#"),
-                          "CSS hex for '\(theme.name)' text should start with #")
+                          "CSS hex for '\(theme.rawValue)' text should start with #")
             XCTAssertEqual(hex.count, 7,
-                           "CSS hex for '\(theme.name)' text should be 7 chars (#RRGGBB)")
+                           "CSS hex for '\(theme.rawValue)' text should be 7 chars (#RRGGBB)")
         }
     }
 
@@ -78,16 +78,16 @@ final class ReaderThemeTests: XCTestCase {
         let hexPattern = try! NSRegularExpression(pattern: "^#[0-9A-Fa-f]{6}$")
 
         for theme in ReaderTheme.allCases {
-            let bgRange = NSRange(theme.cssBackgroundHex.startIndex..., in: theme.cssBackgroundHex)
+            let bgRange = NSRange(theme.backgroundCSSHex.startIndex..., in: theme.backgroundCSSHex)
             XCTAssertNotNil(
-                hexPattern.firstMatch(in: theme.cssBackgroundHex, range: bgRange),
-                "Background hex '\(theme.cssBackgroundHex)' for '\(theme.name)' does not match #RRGGBB"
+                hexPattern.firstMatch(in: theme.backgroundCSSHex, range: bgRange),
+                "Background hex '\(theme.backgroundCSSHex)' for '\(theme.rawValue)' does not match #RRGGBB"
             )
 
-            let txtRange = NSRange(theme.cssTextHex.startIndex..., in: theme.cssTextHex)
+            let txtRange = NSRange(theme.textCSSHex.startIndex..., in: theme.textCSSHex)
             XCTAssertNotNil(
-                hexPattern.firstMatch(in: theme.cssTextHex, range: txtRange),
-                "Text hex '\(theme.cssTextHex)' for '\(theme.name)' does not match #RRGGBB"
+                hexPattern.firstMatch(in: theme.textCSSHex, range: txtRange),
+                "Text hex '\(theme.textCSSHex)' for '\(theme.rawValue)' does not match #RRGGBB"
             )
         }
     }
@@ -115,7 +115,7 @@ final class ReaderThemeTests: XCTestCase {
     }
 
     func testCreamTheme_hasLightBackground() {
-        XCTAssertFalse(ReaderTheme.cream.isDark,
+        XCTAssertFalse(ReaderTheme.sepia.isDark,
                        "Cream theme should NOT be dark")
     }
 
@@ -154,7 +154,7 @@ final class ReaderThemeTests: XCTestCase {
             let data = try JSONEncoder().encode(theme)
             let decoded = try JSONDecoder().decode(ReaderTheme.self, from: data)
             XCTAssertEqual(decoded, theme,
-                           "Codable round-trip failed for theme '\(theme.name)'")
+                           "Codable round-trip failed for theme '\(theme.rawValue)'")
         }
     }
 
@@ -164,9 +164,9 @@ final class ReaderThemeTests: XCTestCase {
         let decoded = try JSONDecoder().decode(ReaderTheme.self, from: data)
 
         XCTAssertEqual(decoded.id, theme.id)
-        XCTAssertEqual(decoded.name, theme.name)
-        XCTAssertEqual(decoded.backgroundColorHex, theme.backgroundColorHex)
-        XCTAssertEqual(decoded.textColorHex, theme.textColorHex)
+        XCTAssertEqual(decoded.rawValue, theme.rawValue)
+        XCTAssertEqual(decoded.backgroundCSSHex, theme.backgroundCSSHex)
+        XCTAssertEqual(decoded.textCSSHex, theme.textCSSHex)
     }
 
     // MARK: - Equatable
@@ -184,15 +184,15 @@ final class ReaderThemeTests: XCTestCase {
     // MARK: - Specific Color Values
 
     func testLightTheme_whiteBackground() {
-        XCTAssertEqual(ReaderTheme.light.backgroundColorHex, "#FFFFFF")
-        XCTAssertEqual(ReaderTheme.light.textColorHex, "#000000")
+        XCTAssertEqual(ReaderTheme.light.backgroundCSSHex, "#FFFFFF")
+        XCTAssertEqual(ReaderTheme.light.textCSSHex, "#000000")
     }
 
     func testDarkTheme_darkBackground() {
-        XCTAssertEqual(ReaderTheme.dark.backgroundColorHex, "#1E1E1E")
+        XCTAssertEqual(ReaderTheme.dark.backgroundCSSHex, "#1E1E1E")
     }
 
     func testNightTheme_nearBlackBackground() {
-        XCTAssertEqual(ReaderTheme.night.backgroundColorHex, "#0A0A0A")
+        XCTAssertEqual(ReaderTheme.night.backgroundCSSHex, "#0A0A0A")
     }
 }
