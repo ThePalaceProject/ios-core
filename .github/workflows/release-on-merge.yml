@@ -6,19 +6,22 @@ on:
     types: [closed]
 jobs:
   create-release:
+    if: github.event.pull_request.merged == true
     runs-on: macos-26
+    outputs:
+      version: ${{ steps.notes.outputs.version }}
     steps:
       - name: Set up Xcode 26
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '26'
-
       - name: Verify Xcode Version
         run: xcodebuild -version
       - name: Checkout main repo and submodules
         uses: actions/checkout@v3
         with:
           submodules: true
+          fetch-depth: 0
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
       - name: Checkout Certificates
         uses: actions/checkout@v3
@@ -31,23 +34,23 @@ jobs:
         env:
           BUILD_CONTEXT: ci
           GITHUB_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-      - name: Verify path and version
+      - name: Capture version output
+        id: notes
         run: |
-          echo "Release notes path: " $RELEASE_NOTES_PATH
-          cat $RELEASE_NOTES_PATH
-          echo "Changelog path:     " $CHANGELOG_PATH
-          cat $CHANGELOG_PATH
-          echo "Version:            " $VERSION_NUM
+          echo "Release notes path: $RELEASE_NOTES_PATH"
+          cat "$RELEASE_NOTES_PATH"
+          echo "Changelog path: $CHANGELOG_PATH"
+          cat "$CHANGELOG_PATH"
+          echo "Version: $VERSION_NUM"
+          echo "version=$VERSION_NUM" >> "$GITHUB_OUTPUT"
+      - name: Promote prerelease or create final release
         env:
-          RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
-          CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
-          VERSION_NUM: ${{ env.VERSION_NUM }}
-      - name: Create or update release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view "$VERSION_NUM" > /dev/null 2>&1; then
+            # Existing release (likely a prerelease from release-rc) — promote to final
             gh release edit "$VERSION_NUM" \
+              --prerelease=false \
               --title "$VERSION_NUM" \
               --notes-file "$RELEASE_NOTES_PATH"
           else
@@ -55,3 +58,10 @@ jobs:
               --title "$VERSION_NUM" \
               --notes-file "$RELEASE_NOTES_PATH"
           fi
+
+  jira-sync:
+    needs: create-release
+    uses: ./.github/workflows/jira-release-sync.yml
+    with:
+      tag: ${{ needs.create-release.outputs.version }}
+    secrets: inherit
