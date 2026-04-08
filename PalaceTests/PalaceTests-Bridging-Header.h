@@ -3,7 +3,7 @@
 //
 
 #import "Palace-Bridging-Header.h"
-#import "ObjCExceptionCatcher.h"
+#import "../Palace/Utilities/TPPObjCExceptionCatcher.h"
 
 #import "ADEPT/NYPLADEPTErrors.h"
 #import "ADEPT/NYPLADEPT.h"

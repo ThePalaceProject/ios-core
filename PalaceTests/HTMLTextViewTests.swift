@@ -696,7 +696,7 @@ final class HTMLTextViewTests: XCTestCase {
     // occur with raw/unsanitized parsing.
 
     /// Tests that potentially problematic inputs are handled safely by the defensive code.
-    /// We use ObjCExceptionCatcher to safely test if the unsafe method would crash.
+    /// We use TPPObjCExceptionCatcher to safely test if the unsafe method would crash.
     func testDefensiveMeasuresPreventCrashes() {
         // Inputs that might trigger "unexpected start state" or other parser issues
         let problematicInputs: [(name: String, html: String)] = [
@@ -718,7 +718,7 @@ final class HTMLTextViewTests: XCTestCase {
             XCTAssertNotNil(safeResult, "Safe method should handle '\(name)' without crashing")
 
             // Test if unsafe method would throw an exception
-            let unsafeException = ObjCExceptionCatcher.catchException {
+            let unsafeException = TPPObjCExceptionCatcher.catchException {
                 _ = HTMLTextView.makeAttributedStringUnsafe(from: html)
             }
 
@@ -739,7 +739,7 @@ final class HTMLTextViewTests: XCTestCase {
 
         // Check if unsafe method has issues with BOM
         var unsafeSucceeded = false
-        let exception = ObjCExceptionCatcher.catchException {
+        let exception = TPPObjCExceptionCatcher.catchException {
             let unsafeResult = HTMLTextView.makeAttributedStringUnsafe(from: htmlWithBOM)
             unsafeSucceeded = String(unsafeResult.characters).contains("Content")
         }
@@ -762,7 +762,7 @@ final class HTMLTextViewTests: XCTestCase {
         XCTAssertNotNil(safeResult)
 
         // Check if unsafe method has issues
-        let exception = ObjCExceptionCatcher.catchException {
+        let exception = TPPObjCExceptionCatcher.catchException {
             _ = HTMLTextView.makeAttributedStringUnsafe(from: htmlWithControlChars)
         }
 
@@ -785,7 +785,7 @@ final class HTMLTextViewTests: XCTestCase {
             let safeResult = HTMLTextView.makeAttributedString(from: html)
 
             var unsafeResult: AttributedString?
-            let exception = ObjCExceptionCatcher.catchException {
+            let exception = TPPObjCExceptionCatcher.catchException {
                 unsafeResult = HTMLTextView.makeAttributedStringUnsafe(from: html)
             }
 

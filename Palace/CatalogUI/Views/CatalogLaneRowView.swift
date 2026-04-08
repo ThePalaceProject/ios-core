@@ -43,7 +43,7 @@ struct CatalogLaneRowView: View {
                         .padding(.vertical)
                     })
                     .buttonStyle(.plain)
-                    .accessibilityLabel(accessibilityLabel(for: book))
+                    .accessibilityLabel(Self.accessibilityLabel(for: book))
                 }
             }
             .padding(.horizontal, 12)
@@ -54,15 +54,10 @@ struct CatalogLaneRowView: View {
         .accessibilityHint(Strings.Generic.horizontalLaneHint)
     }
 
-    private func accessibilityLabel(for book: TPPBook) -> String {
-        var components = [book.title]
-        if book.isAudiobook {
-            components.append(Strings.Generic.audiobook)
-        }
-        if let authors = book.authors, !authors.isEmpty {
-            components.append(authors)
-        }
-        return components.joined(separator: ", ")
+    /// PP-3968: Single source of truth for the catalog cell VoiceOver label.
+    /// Delegates to TPPBook.voiceOverLabel for the canonical Audible/Libby-style format.
+    static func accessibilityLabel(for book: TPPBook) -> String {
+        book.voiceOverLabel
     }
 
     @ViewBuilder
