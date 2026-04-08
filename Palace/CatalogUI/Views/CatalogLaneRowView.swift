@@ -50,6 +50,7 @@ struct CatalogLaneRowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
+        .accessibilityAddTraits(.isHeader) // PP-3980: scroll container exposes title in heading rotor
         .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: books.count))
         .accessibilityHint(Strings.Generic.horizontalLaneHint)
     }
@@ -73,6 +74,7 @@ struct CatalogLaneRowView: View {
                 .lineLimit(3)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader) // PP-3980: expose swimlane title in heading rotor
             Spacer()
             if let more = moreURL, let onMoreTapped = onMoreTapped {
                 Button("More…") {
