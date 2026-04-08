@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snapshot Test Failures</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --accent: #e94560;
+            --success: #4ecca3;
+            --border: #333;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: var(--accent);
+        }
+        
+        .summary {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: var(--bg-secondary);
+            border-radius: 10px;
+        }
+        
+        .snapshot-card {
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+        
+        .snapshot-header {
+            padding: 15px 20px;
+            background: rgba(233, 69, 96, 0.2);
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .snapshot-header h2 {
+            font-size: 1.2rem;
+            color: var(--accent);
+        }
+        
+        .comparison-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            padding: 20px;
+        }
+        
+        .image-panel {
+            text-align: center;
+        }
+        
+        .image-panel h3 {
+            margin-bottom: 10px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .image-panel img {
+            max-width: 100%;
+            height: auto;
+            border: 2px solid var(--border);
+            border-radius: 5px;
+            background: #fff;
+        }
+        
+        .image-panel.reference h3 { color: var(--success); }
+        .image-panel.actual h3 { color: var(--accent); }
+        .image-panel.diff h3 { color: #f39c12; }
+        
+        .no-image {
+            padding: 40px;
+            background: var(--bg-primary);
+            border-radius: 5px;
+            color: var(--text-secondary);
+        }
+        
+        .file-list {
+            padding: 15px 20px;
+            background: rgba(0,0,0,0.2);
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        .file-list code {
+            background: var(--bg-primary);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>📸 Snapshot Test Failures</h1>
+<div class="summary"><strong>3</strong> snapshot failure(s) detected</div>
+    <div class="snapshot-card">
+        <div class="snapshot-header">
+            <h2>❌ testCatalogSearchView_withBooks.iPhone-SE</h2>
+        </div>
+        <div class="comparison-container">
+
+            <div class="image-panel actual">
+                <h3>Actual (Failed)</h3>
+                <img src="testCatalogSearchView_withBooks.iPhone-SE.png" alt="Actual">
+            </div>
+
+            <div class="image-panel">
+                <h3>Snapshot</h3>
+                <img src="testCatalogSearchView_withBooks.iPhone-SE.png" alt="Snapshot">
+            </div>
+
+        </div>
+        <div class="file-list">
+            Files: <code>testCatalogSearchView_withBooks.iPhone-SE.png</code>
+        </div>
+    </div>
+
+    <div class="snapshot-card">
+        <div class="snapshot-header">
+            <h2>❌ testBookListView_grid.iPhone-SE</h2>
+        </div>
+        <div class="comparison-container">
+
+            <div class="image-panel actual">
+                <h3>Actual (Failed)</h3>
+                <img src="testBookListView_grid.iPhone-SE.png" alt="Actual">
+            </div>
+
+            <div class="image-panel">
+                <h3>Snapshot</h3>
+                <img src="testBookListView_grid.iPhone-SE.png" alt="Snapshot">
+            </div>
+
+        </div>
+        <div class="file-list">
+            Files: <code>testBookListView_grid.iPhone-SE.png</code>
+        </div>
+    </div>
+
+    <div class="snapshot-card">
+        <div class="snapshot-header">
+            <h2>❌ testSettingsView_mainScreen.1</h2>
+        </div>
+        <div class="comparison-container">
+
+            <div class="image-panel actual">
+                <h3>Actual (Failed)</h3>
+                <img src="testSettingsView_mainScreen.1.png" alt="Actual">
+            </div>
+
+            <div class="image-panel">
+                <h3>Snapshot</h3>
+                <img src="testSettingsView_mainScreen.1.png" alt="Snapshot">
+            </div>
+
+        </div>
+        <div class="file-list">
+            Files: <code>testSettingsView_mainScreen.1.png</code>
+        </div>
+    </div>
+
+</body>
+</html>
