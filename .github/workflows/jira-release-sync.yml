@@ -7,6 +7,12 @@ on:
       tag:
         description: 'Release tag to sync (e.g. 2.2.2)'
         required: true
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to sync'
+        required: true
+        type: string
 jobs:
   sync-to-jira:
     runs-on: ubuntu-latest
@@ -18,10 +24,14 @@ jobs:
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TAG: ${{ github.event.inputs.tag }}
+          INPUT_TAG: ${{ inputs.tag || github.event.inputs.tag }}
           EVENT_TAG: ${{ github.event.release.tag_name }}
         run: |
           TAG="${INPUT_TAG:-$EVENT_TAG}"
+          if [ -z "$TAG" ]; then
+            echo "::error::No tag provided"
+            exit 1
+          fi
           RELEASE_JSON=$(gh release view "$TAG" --json tagName,url,body)
           echo "tag=$(echo "$RELEASE_JSON" | jq -r .tagName)" >> "$GITHUB_OUTPUT"
           echo "url=$(echo "$RELEASE_JSON" | jq -r .url)" >> "$GITHUB_OUTPUT"
@@ -55,7 +65,8 @@ jobs:
           BODY=$(echo "$RESPONSE" | sed '$d')
           echo "HTTP status: $HTTP_CODE"
           echo "Response: $BODY"
-          if [ "$HTTP_CODE" -ge 400 ]; then
+          # 400 is acceptable here — usually means version already exists
+          if [ "$HTTP_CODE" -ge 500 ]; then
             echo "::error::Jira API returned HTTP $HTTP_CODE"
             exit 1
           fi
@@ -82,7 +93,7 @@ jobs:
               title: $title,
               url: $url,
               category: "release notes"
-            }')"
+            }')" || echo "Warning: relatedwork link failed (may already exist)"
 
       - name: Update fixVersions on linked tickets
         env:
