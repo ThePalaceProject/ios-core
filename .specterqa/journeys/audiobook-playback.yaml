@@ -1,0 +1,72 @@
+# Audiobook playback — borrow an audiobook, open the player, play, pause, scrub, navigate chapters.
+# Covers CUJ-2 (audiobook listen). Sleep timer lives in sleep-timer.yaml.
+scenario:
+  id: audiobook-playback
+  name: "Audiobook Playback"
+  description: "Verify a user can borrow an audiobook, open the player, play/pause, scrub, and navigate chapters."
+  tags: [tier2, ios, audiobook, AUDIO-001, AUDIO-002, AUDIO-003]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: find_and_borrow_audiobook
+      description: "Find an audiobook in the catalog and borrow it"
+      goal: >
+        On the Catalog screen (A1QA Test Library), tap the 'Audiobooks' filter tab to
+        narrow lanes to audiobook titles. Tap an audiobook cover to open its detail
+        screen. Confirm the detail indicates the format is audiobook (e.g., a headphones
+        icon, duration in hours/minutes, or 'Audiobook' label). Tap 'Borrow'. Wait for
+        the button to change to 'Listen' or 'Download'.
+      checkpoint: audiobook_borrowed
+      max_iterations: 25
+      # REQUIRES: A1QA Test Library must expose at least one audiobook in catalog.
+
+    - id: open_audiobook_player
+      description: "Open the audiobook player"
+      goal: >
+        Tap 'Listen' (or 'Download' first if required, then 'Listen' once download
+        completes). Wait for the audiobook player screen to appear. Confirm player
+        controls are visible: a large Play button, skip-forward and skip-back buttons,
+        a scrubber/progress bar, and a chapter or table-of-contents button.
+      checkpoint: audiobook_player_opened
+      max_iterations: 30
+
+    - id: play_and_pause
+      description: "Start playback and pause"
+      goal: >
+        Tap the Play button. Confirm the button changes to a Pause icon and the
+        scrubber/progress indicator begins advancing. Wait ~3 seconds. Tap Pause.
+        Confirm the button reverts to Play and the scrubber stops advancing. No
+        error alerts should appear.
+      checkpoint: play_pause_works
+      max_iterations: 15
+
+    - id: skip_forward_back
+      description: "Use skip forward and skip back controls"
+      goal: >
+        Tap the skip-forward control (commonly +15s or +30s). Confirm the scrubber
+        position advances by the indicated amount. Tap skip-back. Confirm the
+        scrubber position retreats. The displayed elapsed time should update.
+      checkpoint: skip_controls_work
+      max_iterations: 15
+
+    - id: open_chapters_and_jump
+      description: "Open the chapter list and jump to a different chapter"
+      goal: >
+        Tap the chapters / table-of-contents button. Confirm a list of chapters or
+        tracks is shown. Tap a chapter other than the current one. Confirm the
+        player returns to the playback screen and the displayed chapter title or
+        elapsed position reflects the jump.
+      checkpoint: chapter_navigation_works
+      max_iterations: 15
+
+    - id: cleanup_return
+      description: "Return the audiobook"
+      goal: >
+        Navigate back from the player to the book detail screen. Tap 'Return' or
+        'Delete' and confirm any dialog. Verify the button reverts to 'Borrow' /
+        'Get'. The app should remain stable.
+      checkpoint: audiobook_returned
+      max_iterations: 15

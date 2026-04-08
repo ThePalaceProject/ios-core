@@ -1,0 +1,34 @@
+executable: /usr/bin/xcodebuild
+arguments:
+  - -project
+  - Palace.xcodeproj
+  - -scheme
+  - Palace
+  - -destination
+  - platform=iOS Simulator,id=DF4A2A27-9888-429D-A749-2E157A049A37
+  - test
+# Exclude DRM (cannot link in CI), Pods, generated, and test files themselves.
+exclude:
+  - Palace/Reader2/ReaderStackConfiguration/AdobeDRM
+  - Palace/Reader2/ReaderStackConfiguration/LCP
+  - PalaceTests
+  - PalaceUITests
+  - Pods
+  - .build
+  - build
+  - SourcePackages
+# Exclude calls that are framework-boundary noise; mutating these is wasteful.
+excludeCalls:
+  - print
+  - NSLog
+  - Log.debug
+  - Log.info
+  - Log.warn
+  - Log.error
+coverageThreshold: 0e+0
+# This is the BASELINE config. Validate Muter works on a single file first:
+#   muter run --files-to-mutate Palace/SignInLogic/TPPReauthenticator.swift
+# Then expand module-by-module per the master test plan's Tier 5 strategy:
+#   muter run --files-to-mutate Palace/MyBooks
+#   muter run --files-to-mutate Palace/Network
+#   muter run --files-to-mutate Palace/SignInLogic

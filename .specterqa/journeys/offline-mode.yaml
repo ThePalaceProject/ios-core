@@ -1,0 +1,67 @@
+# Offline mode — borrow + download online, simulate offline, verify book opens, restore network and re-sync.
+# Covers CUJ-4. Network toggling uses simctl from a separate shell; this journey assumes the human or
+# harness toggles airplane mode between the marked steps.
+scenario:
+  id: offline-mode
+  name: "Offline Mode Reading"
+  description: "Verify a downloaded EPUB can be opened and read while the device is offline, and that state re-syncs when network returns."
+  tags: [tier2, ios, offline, OFFLINE-001, OFFLINE-002]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: borrow_and_download_online
+      description: "While online, borrow a book and ensure it is downloaded"
+      goal: >
+        On the Catalog (A1QA Test Library), open a book detail (prefer something
+        from the 'Accessible EPUB Test' lane). Tap 'Borrow'. If a 'Download' button
+        appears, tap it and wait for the download to complete (button becomes 'Read').
+        Do NOT open the reader yet. Navigate to My Books and confirm the book is
+        present and shows a fully-downloaded state.
+      checkpoint: book_downloaded_online
+      max_iterations: 30
+
+    - id: go_offline
+      description: "Disable network connectivity"
+      goal: >
+        Wait for the human operator (or external script) to disable network on the
+        simulator. Then refresh / re-observe the My Books screen. Confirm the app
+        does not crash and the previously downloaded book is still listed. An
+        offline indicator or a network-error toast may appear — that is acceptable
+        as long as the downloaded book remains accessible.
+      checkpoint: offline_state_visible
+      max_iterations: 15
+      # REQUIRES: external network toggle. Run from a separate shell:
+      #   xcrun simctl status_bar <UDID> override --dataNetwork none --wifiMode failed
+      # or use Network Link Conditioner / airplane mode in the sim's Settings app.
+
+    - id: open_book_offline
+      description: "Open the downloaded book while offline and read"
+      goal: >
+        Tap the downloaded book in My Books. Tap 'Read'. Confirm the EPUB reader
+        opens and shows page content even though the device is offline. Swipe to
+        advance one page and confirm the page content changes. No fatal error
+        alerts should appear (a non-blocking 'offline' notice is acceptable).
+      checkpoint: book_reads_offline
+      max_iterations: 20
+
+    - id: restore_network_and_resync
+      description: "Re-enable network and verify the app re-syncs cleanly"
+      goal: >
+        Wait for the operator to re-enable network. Navigate back from the reader
+        to My Books, then to the Catalog. Confirm the catalog reloads with book
+        lanes (sync succeeded). The previously borrowed book should still be in
+        My Books. No persistent error banners.
+      checkpoint: resync_successful
+      max_iterations: 20
+      # REQUIRES: external network toggle to restore connectivity.
+
+    - id: cleanup_return
+      description: "Return the book"
+      goal: >
+        Open the book detail and tap 'Return' or 'Delete'. Confirm any dialog.
+        Verify it disappears from My Books.
+      checkpoint: book_returned
+      max_iterations: 15

@@ -1,0 +1,60 @@
+# Bookmark persistence — add a bookmark, fully close the reader, reopen, verify it survives.
+# Complements epub-reading.yaml which only verifies bookmark add within a single reader session.
+scenario:
+  id: bookmark-add-and-restore
+  name: "Bookmark Add and Restore"
+  description: "Verify a bookmark added in the EPUB reader survives closing and reopening the reader."
+  tags: [tier2, ios, reader, EPUB-005]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: borrow_and_open_epub
+      description: "Borrow an EPUB and open the reader"
+      goal: >
+        On the Catalog (A1QA Test Library), open a book in the 'Accessible EPUB Test'
+        lane, tap 'Borrow', then tap 'Read'. Confirm the EPUB reader opens with
+        page content visible.
+      checkpoint: epub_reader_opened
+      max_iterations: 25
+
+    - id: advance_and_bookmark
+      description: "Advance several pages and add a bookmark"
+      goal: >
+        Swipe left (or tap the right edge) to advance 4-5 pages so the bookmark
+        is not on the cover/first page. Note any visible chapter title or page
+        marker. Tap the center of the screen to reveal the toolbar, then tap
+        the bookmark / ribbon icon to add a bookmark. Confirm the icon shows
+        the filled/active state.
+      checkpoint: bookmark_added
+      max_iterations: 20
+
+    - id: close_reader_fully
+      description: "Exit the reader back to My Books"
+      goal: >
+        Tap the back / close button on the reader to return to the book detail
+        screen. Then navigate to the My Books tab. Confirm the borrowed book
+        is listed and the reader is fully dismissed.
+      checkpoint: reader_closed
+      max_iterations: 15
+
+    - id: reopen_and_verify_bookmark
+      description: "Reopen the book and verify the bookmark persists"
+      goal: >
+        Tap the book in My Books, then tap 'Read' to reopen the reader. Tap the
+        center of the screen to show the toolbar. Open the bookmarks panel
+        (commonly via a TOC button with a 'Bookmarks' tab, or a dedicated
+        bookmarks icon). Confirm the previously added bookmark appears in the
+        list. Tap it and confirm the reader jumps to the bookmarked page.
+      checkpoint: bookmark_persisted
+      max_iterations: 20
+
+    - id: cleanup_return
+      description: "Return the book"
+      goal: >
+        Navigate back to the book detail and tap 'Return' / 'Delete'. Confirm
+        any dialog. Verify the book is removed from My Books.
+      checkpoint: book_returned
+      max_iterations: 15

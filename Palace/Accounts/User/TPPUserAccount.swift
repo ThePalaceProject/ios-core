@@ -49,6 +49,14 @@ private enum StorageKey: String {
     /// that re-authentication occurred and skip credential cleanup.
     var signInGeneration: Int = 0
 
+    /// An opaque, per-sign-in identifier that rotates each time a successful
+    /// sign-in completes (i.e. new credentials are written). This is purely
+    /// observable for defense-in-depth tests verifying session-fixation
+    /// protection — it is NOT used for any authentication, authorization, or
+    /// network purpose and must never be persisted or transmitted.
+    /// Exposed as `String` so it is Obj-C friendly via `@objcMembers`.
+    public private(set) var sessionIdentifier: String = UUID().uuidString
+
     var libraryUUID: String? {
         didSet {
             guard libraryUUID != oldValue else { return }
@@ -190,6 +198,11 @@ private enum StorageKey: String {
         set {
             guard let newValue = newValue else { return }
             _credentials.write(newValue)
+
+            // Rotate the observable session identifier on successful sign-in.
+            // Purely for test observation of session-fixation defense; not used
+            // for auth.
+            sessionIdentifier = UUID().uuidString
 
             if case let .barcodeAndPin(barcode: userBarcode, pin: _) = newValue {
                 TPPErrorLogger.setUserID(userBarcode)
@@ -397,6 +410,10 @@ private enum StorageKey: String {
         keychainTransaction.perform {
             _credentials.write(.token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate))
         }
+        // Rotate the observable session identifier on successful sign-in.
+        // Purely for test observation of session-fixation defense; not used
+        // for auth.
+        sessionIdentifier = UUID().uuidString
         notifyAccountDidChange()
     }
 

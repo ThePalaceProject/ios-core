@@ -1,0 +1,47 @@
+# Basic barcode + PIN sign-in flow. Covers the basic-auth slice of CUJ-5.
+# OAuth, SAML, OIDC, Clever, and card-creation flows must be authored interactively per provider.
+scenario:
+  id: sign-in-basic
+  name: "Sign In — Basic Barcode + PIN"
+  description: "Verify a user can sign in to a basic-auth library using barcode and PIN, and the signed-in state persists."
+  tags: [tier1, ios, auth, AUTH-001]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: navigate_to_sign_in
+      description: "Open Settings and find the Sign In entry for the active library"
+      goal: >
+        Tap the 'Settings' tab. On the Settings screen, find the active library
+        account row (or the 'Libraries' / 'Accounts' section). Tap the library
+        that uses basic barcode+PIN auth. Find and tap a 'Sign In' button. Confirm
+        a sign-in form appears with two text fields (barcode/library card number
+        and PIN/password) and a 'Sign In' / 'Log In' button.
+      checkpoint: sign_in_form_visible
+      max_iterations: 20
+      # REQUIRES: a basic-auth library configured. If A1QA Test Library is already
+      # signed in, sign out first via sign-out.yaml or pick a second library.
+
+    - id: enter_credentials
+      description: "Enter test barcode and PIN"
+      goal: >
+        Tap the barcode field and enter the test barcode. Tap the PIN field and
+        enter the test PIN. Tap the 'Sign In' / 'Log In' button. Wait for the
+        request to complete.
+      checkpoint: credentials_submitted
+      max_iterations: 15
+      # REQUIRES: test credentials at ~/.specterqa/credentials/a1qa-test.env
+      # (PALACE_TEST_BARCODE, PALACE_TEST_PIN). The agent should resolve these
+      # before running and substitute into the type actions.
+
+    - id: verify_signed_in
+      description: "Verify signed-in state"
+      goal: >
+        Confirm the sign-in form is dismissed. The Settings screen for the library
+        should now show a 'Sign Out' button (instead of 'Sign In') and may show
+        the user's name or barcode. No error alerts should appear. Navigate to
+        the Catalog tab and confirm content loads as a signed-in user.
+      checkpoint: signed_in_state_visible
+      max_iterations: 15

@@ -17,9 +17,20 @@ enum NYPLResult<SuccessInfo> {
 private actor TokenRefreshCoordinator {
     var isRefreshing = false
     var retryQueue: [URLSessionTask] = []
+    /// Count of underlying token-refresh attempts that actually took the
+    /// single-flight slot (i.e. transitioned `isRefreshing` from false to true).
+    /// Read-only; test-observable via `TPPNetworkExecutor.refreshAttemptCount`.
+    private(set) var refreshAttemptCount: Int = 0
 
     func setRefreshing(_ value: Bool) {
+        if value && !isRefreshing {
+            refreshAttemptCount += 1
+        }
         isRefreshing = value
+    }
+
+    func resetRefreshAttemptCount() {
+        refreshAttemptCount = 0
     }
 
     func appendToRetryQueue(_ task: URLSessionTask) {
@@ -147,6 +158,20 @@ private actor ActiveTasksCoordinator {
     }
 
     @objc static let shared = TPPNetworkExecutor(cachingStrategy: .fallback)
+
+    /// Number of underlying token-refresh attempts that have taken the
+    /// single-flight slot since process start (or last reset). Concurrent
+    /// 401s that coalesce behind an in-flight refresh do NOT increment this.
+    /// Exposed for adversarial tests; safe to read from any context.
+    var refreshAttemptCount: Int {
+        get async { await tokenCoordinator.refreshAttemptCount }
+    }
+
+    /// Test-only: resets the refresh-attempt counter to zero. Does not affect
+    /// in-flight refresh state.
+    func resetRefreshAttemptCount() async {
+        await tokenCoordinator.resetRefreshAttemptCount()
+    }
 
     func GET(_ reqURL: URL,
              useTokenIfAvailable: Bool = true,

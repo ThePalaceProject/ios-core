@@ -60,7 +60,14 @@ import OverdriveProcessor
         bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
         accountsManager: AccountsManager = .shared,
         networkExecutor: TPPNetworkExecutor = .shared,
-        accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter()
+        accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
+        // Test seam: inject a URLSession (e.g. one configured with a custom
+        // URLProtocol) so chaos / fault-injection tests can drive download
+        // failure paths without standing up a real network. When `nil`, the
+        // production background session is constructed as before — behavior
+        // preserved exactly. When provided, the caller is responsible for
+        // pointing the session's delegate at this instance.
+        urlSession: URLSession? = nil
     ) {
         self.userAccount = userAccount
         self.bookRegistry = bookRegistry
@@ -80,14 +87,18 @@ import OverdriveProcessor
         NSLog("Cannot import ADEPT")
         #endif
 
-        let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
-        let configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
-        configuration.isDiscretionary = false
-        configuration.waitsForConnectivity = false
-        if #available(iOS 13.0, *) {
-            configuration.allowsConstrainedNetworkAccess = true
+        if let injected = urlSession {
+            self.session = injected
+        } else {
+            let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
+            let configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
+            configuration.isDiscretionary = false
+            configuration.waitsForConnectivity = false
+            if #available(iOS 13.0, *) {
+                configuration.allowsConstrainedNetworkAccess = true
+            }
+            self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
         }
-        self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
 
         // Setup intelligent download management
         setupNetworkMonitoring()

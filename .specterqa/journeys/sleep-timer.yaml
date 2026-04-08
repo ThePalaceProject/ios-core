@@ -1,0 +1,51 @@
+# Sleep timer — exercise the audiobook sleep timer menu and verify a duration can be selected and cancelled.
+# Covers CUJ-2 sleep timer portion. Assumes an audiobook is already borrowed (or borrows one inline).
+scenario:
+  id: sleep-timer
+  name: "Audiobook Sleep Timer"
+  description: "Verify the sleep timer can be opened, a duration set, the active state shown, and the timer cancelled."
+  tags: [tier2, ios, audiobook, AUDIO-004]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: open_audiobook_player
+      description: "Borrow (if needed) and open an audiobook in the player"
+      goal: >
+        On the Catalog (A1QA Test Library), tap the 'Audiobooks' filter, open an
+        audiobook detail, borrow it if not already borrowed, and tap 'Listen' to
+        open the player. Confirm the player controls are visible.
+      checkpoint: audiobook_player_opened
+      max_iterations: 30
+      # REQUIRES: at least one audiobook available in A1QA Test Library catalog.
+
+    - id: open_sleep_timer_menu
+      description: "Open the sleep timer menu"
+      goal: >
+        Look on the audiobook player for a sleep-timer control — typically a moon
+        icon, a clock icon, or a 'Sleep Timer' / 'Sleep' label in a toolbar or
+        overflow menu. Tap it. Confirm a list of duration options appears
+        (e.g., 'Off', '15 minutes', '30 minutes', '45 minutes', '60 minutes',
+        'End of chapter').
+      checkpoint: sleep_timer_menu_open
+      max_iterations: 15
+
+    - id: select_duration
+      description: "Select a 15-minute sleep timer"
+      goal: >
+        Tap '15 minutes' (or the shortest non-Off option available). The menu
+        should dismiss and the player should indicate the timer is active —
+        either via a highlighted moon icon, a countdown label, or a status badge.
+      checkpoint: sleep_timer_active
+      max_iterations: 10
+
+    - id: cancel_sleep_timer
+      description: "Cancel the active sleep timer"
+      goal: >
+        Reopen the sleep timer menu and tap 'Off' (or the cancel option). Confirm
+        the menu dismisses and the active-timer indicator on the player is cleared.
+        The app should remain stable with no errors.
+      checkpoint: sleep_timer_cancelled
+      max_iterations: 10
