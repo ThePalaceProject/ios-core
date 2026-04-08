@@ -1018,8 +1018,7 @@ final class FetchOpenAccessManifestLCPSafetyTests: XCTestCase {
         )
     }
 
-    func testBearerTokenResponseVsLCPLicense_areDistinct() {
-        let bearerJSON: [String: Any] = [
+    func testBearerTokenResponseVsLCPLicense_areDistinct() {        let bearerJSON: [String: Any] = [
             "access_token": "token-123",
             "expires_in": 3600,
             "location": "https://example.com/manifest.json"

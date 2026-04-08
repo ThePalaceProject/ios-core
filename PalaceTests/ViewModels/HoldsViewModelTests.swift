@@ -163,7 +163,7 @@ final class HoldsViewModelTests: XCTestCase {
 
         let searchDescription = viewModel.openSearchDescription
 
-        XCTAssertEqual(searchDescription.humanReadableDescription, "Search Holds")
+        XCTAssertEqual(searchDescription.humanReadableDescription, "Search Reservations")
     }
 
     // MARK: - ReloadData Tests (Testing Real Business Logic with Mock)

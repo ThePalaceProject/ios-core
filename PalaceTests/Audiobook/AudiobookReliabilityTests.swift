@@ -122,8 +122,7 @@ final class DownloadWatchdogTests: XCTestCase {
         XCTAssertEqual(watchdog.configuration.checkInterval, 5.0)
     }
 
-    func testDefaultConfiguration() {
-        // Given/When
+    func testDefaultConfiguration() {        // Given/When
         let config = DownloadWatchdog.Configuration.default
 
         // Then

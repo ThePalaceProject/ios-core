@@ -1467,8 +1467,7 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
         XCTAssertEqual(results.count, 100)
     }
 
-    func testMultipleSynchronizersWithSameRegistry_DoNotConflict() {
-        // Arrange
+    func testMultipleSynchronizersWithSameRegistry_DoNotConflict() {        // Arrange
         let sync1 = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
         let sync2 = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
 

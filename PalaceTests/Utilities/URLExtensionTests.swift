@@ -42,8 +42,7 @@ final class URLExtensionTests: XCTestCase {
 
     // MARK: - File URL Tests
 
-    func testFileURL_isFileURL() {
-        let fileURL = URL(fileURLWithPath: "/tmp/test.txt")
+    func testFileURL_isFileURL() {        let fileURL = URL(fileURLWithPath: "/tmp/test.txt")
         XCTAssertTrue(fileURL.isFileURL)
     }
 

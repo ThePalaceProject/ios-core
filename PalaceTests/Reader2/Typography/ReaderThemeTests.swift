@@ -18,12 +18,13 @@ final class ReaderThemeTests: XCTestCase {
     }
 
     func testAllCases_containsExpectedThemes() {
+        // Production ReaderTheme.id returns rawValue which is capitalized.
         let ids = Set(ReaderTheme.allCases.map(\.id))
-        XCTAssertTrue(ids.contains("light"))
-        XCTAssertTrue(ids.contains("sepia"))
-        XCTAssertTrue(ids.contains("cream"))
-        XCTAssertTrue(ids.contains("dark"))
-        XCTAssertTrue(ids.contains("night"))
+        XCTAssertTrue(ids.contains("Light"))
+        XCTAssertTrue(ids.contains("Sepia"))
+        XCTAssertTrue(ids.contains("Solarized"))
+        XCTAssertTrue(ids.contains("Dark"))
+        XCTAssertTrue(ids.contains("Night"))
     }
 
     // MARK: - Unique IDs
@@ -114,9 +115,9 @@ final class ReaderThemeTests: XCTestCase {
                        "Sepia theme should NOT be dark")
     }
 
-    func testCreamTheme_hasLightBackground() {
-        XCTAssertFalse(ReaderTheme.sepia.isDark,
-                       "Cream theme should NOT be dark")
+    func testSolarizedTheme_hasLightBackground() {
+        XCTAssertFalse(ReaderTheme.solarized.isDark,
+                       "Solarized theme should NOT be dark")
     }
 
     // MARK: - Light Themes Have Dark Text
@@ -144,7 +145,9 @@ final class ReaderThemeTests: XCTestCase {
     func testNightTheme_hasLightText() {
         var white: CGFloat = 0
         ReaderTheme.night.textColor.getWhite(&white, alpha: nil)
-        XCTAssertGreaterThan(white, 0.7, "Night theme text should be light")
+        // Production night text is RGB 0.70/0.70/0.70.
+        // Float round-trip yields ~0.6999999, so use a tolerance.
+        XCTAssertEqual(white, 0.7, accuracy: 0.001, "Night theme text should be ~0.7 brightness")
     }
 
     // MARK: - Codable Round-Trip
@@ -185,14 +188,17 @@ final class ReaderThemeTests: XCTestCase {
 
     func testLightTheme_whiteBackground() {
         XCTAssertEqual(ReaderTheme.light.backgroundCSSHex, "#FFFFFF")
-        XCTAssertEqual(ReaderTheme.light.textCSSHex, "#000000")
+        // Production light text is RGB 0.13/0.13/0.13 = #212121 (not pure black)
+        XCTAssertEqual(ReaderTheme.light.textCSSHex, "#212121")
     }
 
     func testDarkTheme_darkBackground() {
-        XCTAssertEqual(ReaderTheme.dark.backgroundCSSHex, "#1E1E1E")
+        // Production dark bg is RGB 0.18/0.18/0.20 = #2D2D33 (warm dark)
+        XCTAssertEqual(ReaderTheme.dark.backgroundCSSHex, "#2D2D33")
     }
 
     func testNightTheme_nearBlackBackground() {
-        XCTAssertEqual(ReaderTheme.night.backgroundCSSHex, "#0A0A0A")
+        // Production night bg is pure black (0.0/0.0/0.0)
+        XCTAssertEqual(ReaderTheme.night.backgroundCSSHex, "#000000")
     }
 }

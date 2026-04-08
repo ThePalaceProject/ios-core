@@ -68,6 +68,12 @@ final class ChaosURLProtocol: URLProtocol {
       _plan = Plan()
       _requestCount = 0
     }
+    // Invalidate any URLSessions created via ChaosHarness.chaosSession() so
+    // their delegate queues stop processing. Without this the leaked
+    // URLSessions can fire callbacks against torn-down state long after the
+    // owning test method has returned, causing libdispatch use-after-free
+    // crashes on whichever unrelated test happens to run next.
+    ChaosHarness._invalidateRegisteredSessions()
   }
 
   static func currentRequestCount() -> Int {
@@ -261,11 +267,35 @@ final class FailingFileManager {
 
 enum ChaosHarness {
 
+  // Track every URLSession we hand out so reset() can invalidate them.
+  // Without this tracking, sessions leak past test boundaries and their
+  // private delegate queues fire callbacks on freed state, crashing
+  // libdispatch on whichever test runs next.
+  private static let registryQueue = DispatchQueue(label: "ChaosHarness.registry")
+  private static var registeredSessions: [URLSession] = []
+
+  fileprivate static func _invalidateRegisteredSessions() {
+    let toCancel: [URLSession] = registryQueue.sync {
+      let snapshot = registeredSessions
+      registeredSessions.removeAll(keepingCapacity: false)
+      return snapshot
+    }
+    for s in toCancel {
+      s.invalidateAndCancel()
+    }
+  }
+
   /// Install ChaosURLProtocol into a fresh URLSession for hermetic use.
+  /// Sessions are tracked and automatically invalidated on the next call to
+  /// `ChaosURLProtocol.reset()` (which happens in test tearDown).
   static func chaosSession() -> URLSession {
     let config = URLSessionConfiguration.ephemeral
     config.protocolClasses = [ChaosURLProtocol.self]
-    return URLSession(configuration: config)
+    let session = URLSession(configuration: config)
+    registryQueue.sync {
+      registeredSessions.append(session)
+    }
+    return session
   }
 
   /// Run a block while a memory warning is broadcast in the middle.

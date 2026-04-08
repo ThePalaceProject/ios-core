@@ -147,6 +147,7 @@ final class AuthFlowSecurityTests: XCTestCase {
         // and rotates inside the credentials setter and setAuthToken. Both
         // sign-in entry points (basic + token) trigger rotation.
         let account = TPPUserAccount.sharedAccount()
+        defer { account.removeAll() } // Cleanup so we don't pollute downstream tests
         let before = account.sessionIdentifier
 
         // Drive a sign-in via setBarcode (routes through the credentials setter,

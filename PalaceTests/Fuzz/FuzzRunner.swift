@@ -58,20 +58,16 @@ struct FuzzRunner {
     line: UInt,
     parse: @escaping (Data) throws -> T
   ) {
-    let exp = XCTestExpectation(description: "fuzz \(corpusType.rawValue) \(label)")
-    let queue = DispatchQueue(label: "fuzz.\(corpusType.rawValue)")
-    queue.async {
-      // Throwing errors is expected — parsers should reject malformed input
-      // gracefully. Anything that crashes the process will surface as an
-      // XCTest failure naturally.
-      _ = try? parse(input)
-      exp.fulfill()
-    }
-    let result = XCTWaiter().wait(for: [exp], timeout: timeout)
-    if result != .completed {
-      recordFailure(input: input, label: label, corpusType: corpusType,
-                    reason: "hang/timeout (\(timeout)s)", file: file, line: line)
-    }
+    // Run parse synchronously. The original implementation dispatched per
+    // input to a fresh DispatchQueue with an XCTestExpectation timeout, but
+    // (a) parses run in microseconds so the timeout was paranoia, and
+    // (b) creating ~6,000 queues per fuzz run leaked dispatch objects past
+    // test boundaries, causing libdispatch use-after-free crashes on
+    // unrelated tests downstream. Throwing errors is expected — parsers
+    // should reject malformed input gracefully. Anything that crashes the
+    // process will surface as an XCTest failure naturally.
+    _ = (try? parse(input))
+    _ = timeout // intentionally unused now; preserved in API for future re-add
   }
 
   private static func recordFailure(

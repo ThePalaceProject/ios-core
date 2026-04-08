@@ -580,6 +580,23 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 @MainActor
 final class AccountDetailPINVisibilityTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        // Reset shared user account state to prevent test pollution from
+        // previous tests (in this class or elsewhere) that set credentials.
+        if let libraryID = AccountsManager.shared.currentAccountId {
+            TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
+        }
+    }
+
+    override func tearDown() {
+        // Same reset on the way out so we don't pollute downstream classes.
+        if let libraryID = AccountsManager.shared.currentAccountId {
+            TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
+        }
+        super.tearDown()
+    }
+
     func testPINVisibility_DefaultsToHidden() async {
         guard let libraryID = AccountsManager.shared.currentAccountId else {
             XCTSkip("No current account available for testing")

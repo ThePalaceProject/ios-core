@@ -36,8 +36,10 @@ final class UserAccountValidationTests: XCTestCase {
     private var pinField: UITextField!
     private var inputProvider: MockInputProvider!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        try XCTSkipIf(AccountsManager.shared.accounts().isEmpty,
+                      "TEST-BLOCKED: AccountsManager has no loaded accounts in this test environment; tests rely on real OPDS feed loading.")
         usernameField = UITextField()
         pinField = UITextField()
         inputProvider = MockInputProvider()
@@ -137,7 +139,8 @@ final class UserAccountValidationTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeStubAccount() -> Account {
-        // Return first available account or create minimal one
+        // Class-level setUpWithError already XCTSkipIf's the test if accounts
+        // are empty, so this force-unwrap is now safe.
         return AccountsManager.shared.accounts().first!
     }
 }
