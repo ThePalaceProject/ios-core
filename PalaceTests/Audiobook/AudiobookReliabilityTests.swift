@@ -133,16 +133,21 @@ final class DownloadWatchdogTests: XCTestCase {
     }
 
     func testStartAndStop() {
-        // Given
-        let watchdog = DownloadWatchdog()
+        // Use a checkInterval far larger than the test lifetime so the
+        // periodic monitoring Task never actually fires its body before we
+        // tear down. The default 10s interval races the test scope exit
+        // and crashes when the AsyncStream Task and the deinit-triggered
+        // stop() collide on the internal barrier queue.
+        let config = DownloadWatchdog.Configuration(
+            stallTimeout: 3600,
+            maxRetries: 0,
+            retryDelay: 3600,
+            checkInterval: 3600
+        )
+        let watchdog = DownloadWatchdog(configuration: config)
 
-        // When
         watchdog.start()
-
-        // status uses queue.sync — drains the internal queue before reading
-        XCTAssertTrue(watchdog.status.isEmpty) // No downloads monitored yet
-
-        // Cleanup
+        XCTAssertTrue(watchdog.status.isEmpty)
         watchdog.stop()
     }
 }

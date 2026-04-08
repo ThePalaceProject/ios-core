@@ -1504,6 +1504,7 @@
 		LNEX01BF00000000000001 /* LoanExpiryHandlingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */; };
 		NEWTST002CONFIGTEST0001 /* TPPConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST001CONFIGTEST0001 /* TPPConfigurationTests.swift */; };
 		NEWTST004KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST003KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift */; };
+		KCHAVAIL00BUILD000000001 /* KeychainAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = KCHAVAIL00FILEREF000001 /* KeychainAvailability.swift */; };
 		NEWTST006OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST005OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift */; };
 		NEWTST008PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST007PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift */; };
 		NEWTST010XMLSWFTEST0001 /* TPPXMLSwiftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST009XMLSWFTEST0001 /* TPPXMLSwiftTests.swift */; };
@@ -2771,6 +2772,7 @@
 		LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoanExpiryHandlingTests.swift; sourceTree = "<group>"; };
 		NEWTST001CONFIGTEST0001 /* TPPConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPConfigurationTests.swift; sourceTree = "<group>"; };
 		NEWTST003KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPKeychainSwiftTests.swift; sourceTree = "<group>"; };
+		KCHAVAIL00FILEREF000001 /* KeychainAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainAvailability.swift; sourceTree = "<group>"; };
 		NEWTST005OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPOpenSearchDescriptionExpandedTests.swift; sourceTree = "<group>"; };
 		NEWTST007PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFDataProviderTests.swift; sourceTree = "<group>"; };
 		NEWTST009XMLSWFTEST0001 /* TPPXMLSwiftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPXMLSwiftTests.swift; sourceTree = "<group>"; };
@@ -5493,6 +5495,7 @@
 			children = (
 				B4B50C3748C44CC18D709C5F /* TPPKeychainStoredVariableTests.swift */,
 				NEWTST003KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift */,
+				KCHAVAIL00FILEREF000001 /* KeychainAvailability.swift */,
 				C5FEA90508D9A3EEE2D86046 /* TPPKeychainManagerTests.swift */,
 			);
 			path = Keychain;
@@ -6254,6 +6257,7 @@
 				BKTST00012F27000000BF05 /* TPPBookExtensionsTests.swift in Sources */,
 				NEWTST002CONFIGTEST0001 /* TPPConfigurationTests.swift in Sources */,
 				NEWTST004KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift in Sources */,
+				KCHAVAIL00BUILD000000001 /* KeychainAvailability.swift in Sources */,
 				NEWTST006OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift in Sources */,
 				NEWTST008PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift in Sources */,
 				NEWTST010XMLSWFTEST0001 /* TPPXMLSwiftTests.swift in Sources */,

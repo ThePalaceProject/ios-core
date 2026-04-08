@@ -6,6 +6,11 @@ final class TPPKeychainSwiftTests: XCTestCase {
   private let testKey1 = "TPPKeychainTest_\(UUID().uuidString)"
   private let testKey2 = "TPPKeychainTest_\(UUID().uuidString)"
 
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    try KeychainAvailability.skipIfUnavailable()
+  }
+
   override func tearDown() {
     super.tearDown()
     TPPKeychain.shared.removeObject(forKey: testKey1)

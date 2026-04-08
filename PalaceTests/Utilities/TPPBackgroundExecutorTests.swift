@@ -24,6 +24,11 @@ private class MockBackgroundWorkOwner: NSObject, NYPLBackgroundWorkOwner {
     /// Set to true to simulate returning nil from setUpWorkItem
     var returnNilWorkItem = false
 
+    /// Optional expectation fulfilled inside performBackgroundWork. Lets tests
+    /// wait on the actual work running rather than racing a fixed sleep
+    /// against the background-QoS queue (which CI throttles aggressively).
+    var workExpectation: XCTestExpectation?
+
     func setUpWorkItem(wrapping backgroundWork: @escaping () -> Void) -> (() -> Void)? {
         setUpWorkItemCalled = true
 
@@ -43,6 +48,8 @@ private class MockBackgroundWorkOwner: NSObject, NYPLBackgroundWorkOwner {
         if workDuration > 0 {
             Thread.sleep(forTimeInterval: workDuration)
         }
+
+        workExpectation?.fulfill()
     }
 }
 
@@ -69,17 +76,13 @@ final class TPPBackgroundExecutorTests: XCTestCase {
 
     func testExecutorPerformsBackgroundWork() {
         let owner = MockBackgroundWorkOwner()
-        let executor = TPPBackgroundExecutor(owner: owner, taskName: "TestWork")
-
         let expectation = self.expectation(description: "Background work completed")
+        owner.workExpectation = expectation
+        let executor = TPPBackgroundExecutor(owner: owner, taskName: "TestWork")
 
         executor.dispatchBackgroundWork()
 
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 3.0)
+        waitForExpectations(timeout: 10.0)
         XCTAssertTrue(owner.workPerformed, "Executor should call performBackgroundWork on owner")
         XCTAssertEqual(owner.performBackgroundWorkCallCount, 1)
     }
@@ -124,17 +127,16 @@ final class TPPBackgroundExecutorTests: XCTestCase {
 
     func testMultipleDispatches() {
         let owner = MockBackgroundWorkOwner()
+        let expectation = self.expectation(description: "Multiple dispatches")
+        expectation.expectedFulfillmentCount = 1
+        expectation.assertForOverFulfill = false
+        owner.workExpectation = expectation
         let executor = TPPBackgroundExecutor(owner: owner, taskName: "MultiDispatch")
 
         executor.dispatchBackgroundWork()
         executor.dispatchBackgroundWork()
 
-        let expectation = self.expectation(description: "Multiple dispatches")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 2.0) {
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 4.0)
+        waitForExpectations(timeout: 10.0)
         XCTAssertGreaterThanOrEqual(owner.performBackgroundWorkCallCount, 1,
                                      "Should perform work at least once from multiple dispatches")
     }

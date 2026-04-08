@@ -59,6 +59,13 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         | head -1)
     echo "Using simulator: $SIMULATOR_NAME ($SIMULATOR_ID)"
 
+    # Forward CI-detection env vars into the simulator child process so the
+    # in-test isRunningInCI check (GITHUB_ACTIONS / CI / BUILD_CONTEXT) sees
+    # them. Without SIMCTL_CHILD_*, host env does not reach launchd_sim.
+    export SIMCTL_CHILD_GITHUB_ACTIONS="${GITHUB_ACTIONS:-true}"
+    export SIMCTL_CHILD_CI="${CI:-true}"
+    export SIMCTL_CHILD_BUILD_CONTEXT="ci"
+
     set +e
     xcodebuild test \
         -project Palace.xcodeproj \
@@ -67,7 +74,8 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -configuration Debug \
         -resultBundlePath TestResults.xcresult \
         -enableCodeCoverage YES \
-        -parallel-testing-enabled NO \
+        -parallel-testing-enabled YES \
+        -maximum-parallel-testing-workers 4 \
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO \
         ONLY_ACTIVE_ARCH=YES \

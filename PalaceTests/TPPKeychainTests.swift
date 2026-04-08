@@ -3,6 +3,11 @@ import XCTest
 
 class TPPKeychainSwiftLegacyTests: XCTestCase {
 
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    try KeychainAvailability.skipIfUnavailable()
+  }
+
   func test0() {
     TPPKeychain.sharedKeychain.setObject("foo", forKey: "D5AAFADD-E036-4CA6-BBC7-B5962455831D")
     XCTAssertEqual(TPPKeychain.sharedKeychain.object(forKey: "D5AAFADD-E036-4CA6-BBC7-B5962455831D") as? String, "foo")

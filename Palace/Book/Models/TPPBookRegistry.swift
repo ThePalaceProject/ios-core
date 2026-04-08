@@ -1035,9 +1035,31 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
         syncQueue.async(flags: .barrier) { [weak self] in
             guard let self else { return }
+            guard self.registry[bookIdentifier] != nil else { return }
 
-            self.deleteGenericBookmark(oldLocation, forIdentifier: bookIdentifier)
-            self.addGenericBookmark(newLocation, forIdentifier: bookIdentifier)
+            // Delete old bookmark inline (matching the logic in deleteGenericBookmark)
+            // so the replace is atomic within a single barrier — delegating to the
+            // public methods would dispatch two new barriers and lose atomicity.
+            if let locationDict = oldLocation.locationStringDictionary(),
+               let annotationId = locationDict["annotationId"] as? String,
+               !annotationId.isEmpty {
+                self.registry[bookIdentifier]?.genericBookmarks?.removeAll { existing in
+                    guard let existingDict = existing.locationStringDictionary(),
+                          let existingId = existingDict["annotationId"] as? String else {
+                        return false
+                    }
+                    return existingId == annotationId
+                }
+            } else {
+                self.registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(oldLocation) }
+            }
+
+            // Add new bookmark inline
+            if self.registry[bookIdentifier]?.genericBookmarks == nil {
+                self.registry[bookIdentifier]?.genericBookmarks = [TPPBookLocation]()
+            }
+            self.registry[bookIdentifier]?.genericBookmarks?.append(newLocation)
+            self.save()
         }
     }
 }

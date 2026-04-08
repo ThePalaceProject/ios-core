@@ -74,7 +74,7 @@ import Foundation
 
     @objc private func catalogDidLoad() {
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.isViewLoaded else { return }
             self.datasource.loadData()
             self.tableView.reloadData()
         }
