@@ -40,7 +40,7 @@ jobs:
           echo "Version: $VERSION_NUM"
       - name: Guard against clobbering shipped release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
         run: |
           if gh release view "$VERSION_NUM" > /dev/null 2>&1; then
             IS_PRERELEASE=$(gh release view "$VERSION_NUM" --json isPrerelease --jq .isPrerelease)
@@ -51,7 +51,7 @@ jobs:
           fi
       - name: Create or update prerelease
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
         run: |
           if gh release view "$VERSION_NUM" > /dev/null 2>&1; then
             gh release edit "$VERSION_NUM" \
