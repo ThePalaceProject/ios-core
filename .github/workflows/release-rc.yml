@@ -32,18 +32,17 @@ jobs:
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-certificates
       - name: Create release notes
-        id: notes
-        run: |
-          ./scripts/create-release-notes.sh
-          echo "version=$VERSION_NUM" >> "$GITHUB_OUTPUT"
+        run: ./scripts/create-release-notes.sh
         env:
           BUILD_CONTEXT: ci
           GITHUB_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-      - name: Verify path and version
+      - name: Capture version output
+        id: notes
         run: |
           echo "Release notes path: $RELEASE_NOTES_PATH"
           cat "$RELEASE_NOTES_PATH"
           echo "Version: $VERSION_NUM"
+          echo "version=$VERSION_NUM" >> "$GITHUB_OUTPUT"
       - name: Guard against clobbering shipped release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
