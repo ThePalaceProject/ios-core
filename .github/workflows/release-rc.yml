@@ -40,7 +40,7 @@ jobs:
           echo "Version: $VERSION_NUM"
       - name: Guard against clobbering shipped release
         env:
-          GH_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view "$VERSION_NUM" > /dev/null 2>&1; then
             IS_PRERELEASE=$(gh release view "$VERSION_NUM" --json isPrerelease --jq .isPrerelease)
@@ -54,15 +54,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view "$VERSION_NUM" > /dev/null 2>&1; then
-            echo "Deleting existing prerelease $VERSION_NUM (and its tag) for clean recreate"
+            echo "Deleting existing prerelease $VERSION_NUM (and its tag)"
             gh release delete "$VERSION_NUM" --yes --cleanup-tag
           fi
       - name: Create prerelease
         env:
-          GH_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$VERSION_NUM" \
             --prerelease \
             --target "$GITHUB_REF_NAME" \
             --title "$VERSION_NUM (RC)" \
             --notes-file "$RELEASE_NOTES_PATH"
+      - name: Trigger Jira release sync
+        env:
+          GH_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+        run: |
+          echo "Dispatching jira-release-sync for tag $VERSION_NUM"
+          gh workflow run jira-release-sync.yml -f tag="$VERSION_NUM"
