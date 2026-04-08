@@ -9,6 +9,28 @@
 import XCTest
 @testable import Palace
 
+// Inert session used to mint suspended URLSessionDownloadTask handles for test
+// helpers that take a task as a parameter. Using URLSession.shared accumulates
+// suspended tasks on the process-wide singleton across tests, leaking dispatch
+// state. This shared ephemeral session is invalidated at process exit only.
+private let inertTestSession: URLSession = {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [InertNoOpURLProtocol.self]
+    return URLSession(configuration: config)
+}()
+
+/// URLProtocol that immediately fails any request without hitting the network,
+/// so suspended tasks created on `inertTestSession` never accidentally call out.
+final class InertNoOpURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: NSError(domain: "InertNoOp", code: -1, userInfo: nil))
+    }
+    override func stopLoading() {}
+}
+
+
 // MARK: - Mock Delegate
 
 final class MockBackgroundDownloadDelegate: BackgroundDownloadHandlerDelegate {
@@ -209,7 +231,7 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
 
         mockDelegate.fileUrls[book.identifier] = destFile
 
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
         let result = handler.moveFile(at: sourceFile, toDestinationForBook: book, forDownloadTask: task)
 
         XCTAssertTrue(result)
@@ -222,7 +244,7 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
     func testMoveFile_noFileUrl_returnsFalse() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let source = URL(fileURLWithPath: "/tmp/nonexistent.epub")
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
 
         // fileUrls is empty, so fileUrl returns nil
         let result = handler.moveFile(at: source, toDestinationForBook: book, forDownloadTask: task)
@@ -234,7 +256,7 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
         handler = BackgroundDownloadHandler(delegate: nil)
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let source = URL(fileURLWithPath: "/tmp/test.epub")
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
 
         let result = handler.moveFile(at: source, toDestinationForBook: book, forDownloadTask: task)
         XCTAssertFalse(result)
@@ -249,7 +271,7 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
         let destFile = FileManager.default.temporaryDirectory.appendingPathComponent("dest_\(UUID().uuidString).epub")
         mockDelegate.fileUrls[book.identifier] = destFile
 
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
         let result = handler.moveFile(at: nonexistentSource, toDestinationForBook: book, forDownloadTask: task)
 
         XCTAssertFalse(result)
@@ -271,7 +293,7 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
         try Data("new content".utf8).write(to: sourceFile)
         mockDelegate.fileUrls[book.identifier] = destFile
 
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
         let result = handler.replaceBook(book, withFileAtURL: sourceFile, forDownloadTask: task)
 
         XCTAssertTrue(result)
@@ -293,7 +315,7 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
         try Data("new content".utf8).write(to: sourceFile)
         mockDelegate.fileUrls[book.identifier] = destFile
 
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
         let result = handler.replaceBook(book, withFileAtURL: sourceFile, forDownloadTask: task)
 
         XCTAssertTrue(result)
@@ -308,7 +330,7 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
         handler = BackgroundDownloadHandler(delegate: nil)
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let source = URL(fileURLWithPath: "/tmp/test.epub")
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
 
         let result = handler.replaceBook(book, withFileAtURL: source, forDownloadTask: task)
         XCTAssertFalse(result)
@@ -317,7 +339,7 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
     func testReplaceBook_noFileUrl_returnsFalse() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let source = URL(fileURLWithPath: "/tmp/test.epub")
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
 
         // fileUrls is empty
         let result = handler.replaceBook(book, withFileAtURL: source, forDownloadTask: task)
@@ -330,7 +352,7 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
 
         // Setup download info
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
         let info = MyBooksDownloadInfo(downloadProgress: 0.0, downloadTask: task, rightsManagement: .unknown)
         await mockDelegate.stateManager.bookIdentifierToDownloadInfo.set(book.identifier, value: info)
 
@@ -354,7 +376,7 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
     func testHandleDownloadProgress_noDelegate_doesNotCrash() async {
         handler = BackgroundDownloadHandler(delegate: nil)
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
 
         // Should not crash
         await handler.handleDownloadProgress(

@@ -38,6 +38,20 @@ final class AudiobookEventsTests: XCTestCase {
 /// SRS: AUDIO-004 -- Time entries are queued and persisted correctly
 final class AudiobookDataManagerSaveTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        if let dir = TPPBookContentMetadataFilesHelper.directory(for: "timetracker") {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent("store.json"))
+        }
+    }
+
+    override func tearDown() {
+        if let dir = TPPBookContentMetadataFilesHelper.directory(for: "timetracker") {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent("store.json"))
+        }
+        super.tearDown()
+    }
+
     /// SRS: AUDIO-004 -- Time entries are queued and persisted correctly
     func testSave_addsEntryToQueue() {
         let dataManager = AudiobookDataManager(syncTimeInterval: 3600)

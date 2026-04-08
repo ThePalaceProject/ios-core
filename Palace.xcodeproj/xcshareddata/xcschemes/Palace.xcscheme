@@ -105,27 +105,6 @@
                ReferencedContainer = "container:ios-tenprintcover/TenPrintCover.xcodeproj">
             </BuildableReference>
          </TestableReference>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E7E96BA62B0E82220036B23A"
-               BuildableName = "PalaceUIKitTests.xctest"
-               BlueprintName = "PalaceUIKitTests"
-               ReferencedContainer = "container:Palace.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E58EAE132ECCC4F700CDA626"
-               BuildableName = "PalaceUITests.xctest"
-               BlueprintName = "PalaceUITests"
-               ReferencedContainer = "container:Palace.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

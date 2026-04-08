@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7D14A1DFDD362D25525D21FE /* TPPProcessInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48AE22D7C0BC6134885E9F0 /* TPPProcessInfo.swift */; };
+		C4F88ED5F0206FAAF93DB27C /* TPPProcessInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48AE22D7C0BC6134885E9F0 /* TPPProcessInfo.swift */; };
+		A467B678AF1566E5745403E0 /* TPPSignInOIDCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546D02E6F8B0007CCFA03 /* TPPSignInOIDCTests.swift */; };
 		FC5C80424EE10131FA0087F2 /* TPPSAMLSignInTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71E3B2C7B51DEBF595766568 /* TPPSAMLSignInTests.swift */; };
 		EC75FDA52C9B331548ED96A1 /* URLResponseNYPLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4NETW003FR000000000001 /* URLResponseNYPLTests.swift */; };
 		D8323F4CCF51DE6D1961CBDC /* TPPBookAccessibilityLabelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A8468ADD34076BF5935E56B /* TPPBookAccessibilityLabelTests.swift */; };
@@ -1646,6 +1649,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		E48AE22D7C0BC6134885E9F0 /* TPPProcessInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPProcessInfo.swift; sourceTree = "<group>"; };
 		FE2159403F0FCBE90CFC6858 /* BookImageViewAccessibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookImageViewAccessibilityTests.swift; sourceTree = "<group>"; };
 		44B9D77A2797816A93F9D35B /* PDFAccessibilityToolbarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFAccessibilityToolbarTests.swift; sourceTree = "<group>"; };
 		5A8468ADD34076BF5935E56B /* TPPBookAccessibilityLabelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookAccessibilityLabelTests.swift; sourceTree = "<group>"; };
@@ -3531,6 +3535,7 @@
 				34BD75A5447FB7BD0DA90F57 /* SendableSubject.swift */,
 				6DEA83D0B2D2A423B42AB1D4 /* TPPNull.swift */,
 				2A234B732B9A9604F5535E1E /* JWK */,
+				E48AE22D7C0BC6134885E9F0 /* TPPProcessInfo.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -6324,7 +6329,7 @@
 				E9A2B669C2E26107FDE81873 /* SnapshotTestConfiguration.swift in Sources */,
 				237B6705CA505A8CE33EAE6D /* TPPDeferredAdobeActivationTests.swift in Sources */,				C54572940A4584060C2DC457 /* ReaderThemeTests.swift in Sources */,				1C18F75CD734D8C4ABA2D816 /* BookImageViewAccessibilityTests.swift in Sources */,
 				D8323F4CCF51DE6D1961CBDC /* TPPBookAccessibilityLabelTests.swift in Sources */,
-				059C1DFA5BF79EEE154645E3 /* LCPSessionOrphaningTests.swift in Sources */,				EC75FDA52C9B331548ED96A1 /* URLResponseNYPLTests.swift in Sources */,				FC5C80424EE10131FA0087F2 /* TPPSAMLSignInTests.swift in Sources */,
+				059C1DFA5BF79EEE154645E3 /* LCPSessionOrphaningTests.swift in Sources */,				EC75FDA52C9B331548ED96A1 /* URLResponseNYPLTests.swift in Sources */,				FC5C80424EE10131FA0087F2 /* TPPSAMLSignInTests.swift in Sources */,				A467B678AF1566E5745403E0 /* TPPSignInOIDCTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -6840,6 +6845,7 @@
 				713D4F2E308535B3C2479B3C /* TPPPDFViewController.swift in Sources */,
 				4DE364F5D585D79C2FCFF132 /* TPPBook+Accessibility.swift in Sources */,
 				D5C512E422949D363A5AD13C /* TPPObjCExceptionCatcher.m in Sources */,
+				C4F88ED5F0206FAAF93DB27C /* TPPProcessInfo.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -7364,6 +7370,7 @@
 				B1B26CD8A984F5C42D43B6CD /* TPPPDFViewController.swift in Sources */,
 				D987D93E00D55416261ED333 /* TPPBook+Accessibility.swift in Sources */,
 				2F1D7D501EBB74D0A990E167 /* TPPObjCExceptionCatcher.m in Sources */,
+				7D14A1DFDD362D25525D21FE /* TPPProcessInfo.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -25,19 +25,20 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         Log.info(#file, "📱 App launch - initializing playback bootstrapper")
         PlaybackBootstrapper.shared.ensureInitialized()
 
-        // Configure Firebase once at startup
+        // Configure Firebase once at startup. The SDK MUST be initialized
+        // (other code paths assume FirebaseApp.app() is non-nil), but the
+        // network-firing parts (Remote Config fetch, analytics endpoints,
+        // Transifex translation pull) are gated below to avoid leaking
+        // dispatch state during tests.
         FirebaseApp.configure()
 
-        // Initialize FirebaseManager (consolidated Firebase access to prevent mutex crashes)
-        // This replaces separate DeviceSpecificErrorMonitor and RemoteFeatureFlags initialization
-        Task {
-            await FirebaseManager.shared.fetchAndActivateRemoteConfig()
-            // Update feature flag cache after Remote Config is fetched
-            // This ensures isCarPlayEnabledCached has the latest value for next app launch
-            _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+        if !TPPProcessInfo.isRunningTests {
+            Task {
+                await FirebaseManager.shared.fetchAndActivateRemoteConfig()
+                _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+            }
+            TPPErrorLogger.configureCrashAnalytics()
         }
-
-        TPPErrorLogger.configureCrashAnalytics()
         TPPErrorLogger.logNewAppLaunch()
 
         GeneralCache<String, Data>.clearCacheOnUpdate()
@@ -83,7 +84,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             // This would prevent iOS from purging downloaded audiobook files
         }
 
-        TransifexManager.setup()
+        if !TPPProcessInfo.isRunningTests {
+            TransifexManager.setup()
+        }
 
         NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil) { [weak self] notification in
             self?.signingIn(notification)
