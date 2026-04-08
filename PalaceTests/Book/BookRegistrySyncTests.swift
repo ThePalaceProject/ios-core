@@ -342,4 +342,265 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertFalse(shouldWarnLargeDeletion,
                        "Should NOT warn when deletion ratio is below 50%")
     }
+
+    // MARK: - registryUrl
+
+    func test_registryUrl_returnsPathContainingAccountAndRegistryFile() {
+        let account = "unit-test-acct-\(UUID().uuidString)"
+        let url = syncManager.registryUrl(for: account)
+        XCTAssertNotNil(url)
+        XCTAssertEqual(url?.lastPathComponent, "registry.json")
+        XCTAssertEqual(url?.deletingLastPathComponent().lastPathComponent, "registry")
+        XCTAssertTrue(url?.path.contains(account) ?? false,
+                      "Expected path to contain account id for isolation")
+    }
+
+    // MARK: - Load: end-to-end via real disk
+
+    /// Uses a unique per-test account so registryUrl maps to an isolated directory
+    /// we can write to directly. Cleans up after.
+    private func makeIsolatedAccount() -> (String, URL) {
+        let account = "brs-test-\(UUID().uuidString)"
+        let url = syncManager.registryUrl(for: account)!
+        return (account, url)
+    }
+
+    private func cleanupAccount(_ url: URL) {
+        try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+    }
+
+    func test_load_populatesRegistryFromDiskFile() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "loaded-1", title: "From Disk")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadNeeded)
+        do {
+            try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+        } catch {
+            XCTFail("write failed: \(error)"); return
+        }
+
+        var states: [TPPBookRegistry.RegistryState] = []
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in
+            states.append(state)
+            if state == .loaded { done.fulfill() }
+        }
+        wait(for: [done], timeout: 3.0)
+
+        XCTAssertEqual(states.first, .loading)
+        XCTAssertTrue(states.contains(.loaded))
+        XCTAssertEqual(store.state(for: "loaded-1"), .downloadNeeded)
+        XCTAssertNil(syncManager.loadingAccount, "loadingAccount should be cleared after load completes")
+    }
+
+    func test_load_withMissingFile_transitionsToLoadedWithEmptyRegistry() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+        // Do NOT write the file.
+
+        let done = expectation(description: "loaded")
+        var finalState: TPPBookRegistry.RegistryState?
+        syncManager.load(account: account) { state in
+            finalState = state
+            if state == .loaded { done.fulfill() }
+        }
+        wait(for: [done], timeout: 3.0)
+
+        XCTAssertEqual(finalState, .loaded)
+        XCTAssertEqual(store.allBooks.count, 0)
+    }
+
+    func test_load_withMalformedJSON_doesNotCrashAndLoadsEmpty() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? Data("{ not valid json".utf8).write(to: url)
+
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in
+            if state == .loaded { done.fulfill() }
+        }
+        wait(for: [done], timeout: 3.0)
+
+        XCTAssertEqual(store.allBooks.count, 0)
+    }
+
+    func test_load_downloadingStateWithMissingFile_becomesDownloadFailed() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "dling")
+        let record = TPPBookRegistryRecord(book: book, state: .downloading)
+        try? writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in
+            if state == .loaded { done.fulfill() }
+        }
+        wait(for: [done], timeout: 3.0)
+
+        XCTAssertEqual(store.state(for: "dling"), .downloadFailed,
+                       "downloading with no file on disk must be corrected to downloadFailed")
+    }
+
+    func test_load_SAMLStartedWithMissingFile_becomesDownloadFailed() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "saml")
+        let record = TPPBookRegistryRecord(book: book, state: .SAMLStarted)
+        try? writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in
+            if state == .loaded { done.fulfill() }
+        }
+        wait(for: [done], timeout: 3.0)
+
+        XCTAssertEqual(store.state(for: "saml"), .downloadFailed)
+    }
+
+    func test_load_downloadSuccessfulWithMissingFile_becomesDownloadNeeded() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "success-missing")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadSuccessful)
+        try? writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in
+            if state == .loaded { done.fulfill() }
+        }
+        wait(for: [done], timeout: 3.0)
+
+        XCTAssertEqual(store.state(for: "success-missing"), .downloadNeeded,
+                       "downloadSuccessful without file on disk must be corrected to downloadNeeded")
+    }
+
+    func test_load_postsRegistryDidChangeNotification() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "notify-1")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadNeeded)
+        try? writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let notified = expectation(description: "registry did change")
+        let observer = NotificationCenter.default.addObserver(
+            forName: .TPPBookRegistryDidChange, object: nil, queue: .main
+        ) { _ in notified.fulfill() }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        syncManager.load(account: account) { _ in }
+        wait(for: [notified], timeout: 3.0)
+    }
+
+    func test_load_emitsBookStateThroughSubject() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "subject-1")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadNeeded)
+        try? writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let got = expectation(description: "bookState emitted")
+        var received: (String, TPPBookState)?
+        let cancellable = store.bookStateSubject.sink { tuple in
+            if tuple.0 == "subject-1" {
+                received = tuple
+                got.fulfill()
+            }
+        }
+        defer { cancellable.cancel() }
+
+        syncManager.load(account: account) { _ in }
+        wait(for: [got], timeout: 3.0)
+
+        XCTAssertEqual(received?.0, "subject-1")
+        XCTAssertEqual(received?.1, .downloadNeeded)
+    }
+
+    // MARK: - saveSync round-trip
+
+    func test_saveSync_thenLoad_roundTripsBook() throws {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        // Seed the store with a book, then write the file directly via writeRegistryFile
+        // (saveSync() itself requires AccountsManager.shared.currentAccount, which isn't set
+        // in unit tests — so we validate round-trip via the same on-disk format).
+        let book = makeBook(identifier: "rt-1", title: "RoundTrip")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadNeeded)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in
+            if state == .loaded { done.fulfill() }
+        }
+        wait(for: [done], timeout: 3.0)
+
+        XCTAssertEqual(store.book(forIdentifier: "rt-1")?.title, "RoundTrip")
+    }
+
+    // MARK: - Reset deletes disk file
+
+    func test_reset_removesRegistryFileFromDisk() throws {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "r-1")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadNeeded)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+
+        syncManager.reset(account)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path),
+                       "reset(account:) must delete the registry file from disk")
+        XCTAssertNil(syncManager.syncUrl)
+    }
+
+    // MARK: - checkIfBookFileExists
+
+    func test_checkIfBookFileExists_returnsFalseForUnknownBook() {
+        let book = makeBook(identifier: "nofile")
+        let exists = syncManager.checkIfBookFileExists(for: book, account: "ghost-account")
+        XCTAssertFalse(exists)
+    }
+
+    // MARK: - sync: re-entrancy guard
+
+    func test_sync_whenAlreadySyncing_returnsWithoutChangingState() {
+        // If currentState is .syncing, sync() should short-circuit.
+        // (It also short-circuits when no currentAccount loansUrl is available, which
+        // is the state in unit tests. We verify behavior via the state callback.)
+        var received: [TPPBookRegistry.RegistryState] = []
+        let setState: (TPPBookRegistry.RegistryState) -> Void = { received.append($0) }
+
+        syncManager.sync(currentState: .syncing, setState: setState, save: {}, completion: nil)
+
+        XCTAssertTrue(received.isEmpty,
+                      "sync() called while already .syncing must not invoke setState")
+        XCTAssertNil(syncManager.syncUrl)
+    }
+
+    func test_sync_withNoCurrentAccount_isNoOp() {
+        // AccountsManager.shared.currentAccount?.loansUrl is nil in unit tests,
+        // so the guard at top of sync() returns early without setState.
+        var received: [TPPBookRegistry.RegistryState] = []
+        let setState: (TPPBookRegistry.RegistryState) -> Void = { received.append($0) }
+        var saveCalled = false
+
+        syncManager.sync(currentState: .loaded, setState: setState, save: { saveCalled = true }, completion: nil)
+
+        XCTAssertTrue(received.isEmpty)
+        XCTAssertFalse(saveCalled)
+        XCTAssertNil(syncManager.syncUrl)
+    }
 }

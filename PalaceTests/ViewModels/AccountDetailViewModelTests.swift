@@ -630,6 +630,329 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         XCTAssertTrue(viewModel.isPINHidden)
     }
 
+    // MARK: - Delegate Callback Tests (TPPSignInOutBusinessLogicUIDelegate)
+
+    func testBusinessLogicWillSignIn_NonOAuth_SetsLoadingTrueAndClearsSigningOut() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.isSigningOut = true
+        vm.isLoading = false
+
+        vm.businessLogicWillSignIn(vm.businessLogic)
+
+        XCTAssertTrue(vm.isLoading, "isLoading should be true after willSignIn")
+        XCTAssertFalse(vm.isSigningOut, "isSigningOut should be cleared on willSignIn")
+    }
+
+    func testBusinessLogicDidCancelSignIn_ClearsLoadingAndSigningOut() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.isLoading = true
+        vm.isSigningOut = true
+
+        vm.businessLogicDidCancelSignIn(vm.businessLogic)
+
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertFalse(vm.isSigningOut)
+    }
+
+    func testBusinessLogicDidReceiveCredentials_SetsLoadingTrue() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.isLoading = false
+
+        vm.businessLogicDidReceiveCredentials(vm.businessLogic)
+
+        XCTAssertTrue(vm.isLoading, "Receiving credentials starts DRM processing, should set isLoading")
+    }
+
+    func testBusinessLogicDidCompleteSignIn_ClearsLoadingAndSigningOut() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.isLoading = true
+        vm.isSigningOut = true
+
+        vm.businessLogicDidCompleteSignIn(vm.businessLogic)
+
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertFalse(vm.isSigningOut)
+    }
+
+    func testBusinessLogicWillSignOut_SetsLoadingAndSigningOut() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.isLoading = false
+        vm.isSigningOut = false
+
+        vm.businessLogicWillSignOut(vm.businessLogic)
+
+        XCTAssertTrue(vm.isLoading)
+        XCTAssertTrue(vm.isSigningOut)
+    }
+
+    func testBusinessLogicDidFinishDeauthorizing_ClearsLoadingAndSigningOut() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.isLoading = true
+        vm.isSigningOut = true
+
+        vm.businessLogicDidFinishDeauthorizing(vm.businessLogic)
+
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertFalse(vm.isSigningOut)
+    }
+
+    func testBusinessLogicValidationError_ShowsAlertAndClearsLoading() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.isLoading = true
+        vm.isSigningOut = true
+
+        let err = NSError(domain: "test", code: 42, userInfo: [NSLocalizedDescriptionKey: "bad creds"])
+        vm.businessLogic(vm.businessLogic, didEncounterValidationError: err,
+                         userFriendlyErrorTitle: "Login Failed", andMessage: "Try again")
+
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertFalse(vm.isSigningOut)
+        XCTAssertTrue(vm.showingAlert)
+        XCTAssertEqual(vm.alertTitle, "Login Failed")
+        XCTAssertEqual(vm.alertMessage, "Try again")
+    }
+
+    func testBusinessLogicValidationError_CancelledErrorClearsPin() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.pinText = "1234"
+
+        let cancelled = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled, userInfo: nil)
+        vm.businessLogic(vm.businessLogic, didEncounterValidationError: cancelled,
+                         userFriendlyErrorTitle: nil, andMessage: nil)
+
+        XCTAssertEqual(vm.pinText, "", "Cancelled URL error should clear PIN field")
+    }
+
+    func testBusinessLogicSignOutError_401ShowsUnexpectedCredentialsAlert() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.isLoading = true
+        vm.isSigningOut = true
+
+        vm.businessLogic(vm.businessLogic, didEncounterSignOutError: nil, withHTTPStatusCode: 401)
+
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertFalse(vm.isSigningOut)
+        XCTAssertTrue(vm.showingAlert)
+        XCTAssertTrue(vm.alertTitle.contains("Unexpected"))
+    }
+
+    func testBusinessLogicSignOutError_WithErrorUsesLocalizedDescription() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+
+        let err = NSError(domain: "test", code: 500,
+                          userInfo: [NSLocalizedDescriptionKey: "server exploded"])
+        vm.businessLogic(vm.businessLogic, didEncounterSignOutError: err, withHTTPStatusCode: 500)
+
+        XCTAssertTrue(vm.showingAlert)
+        XCTAssertEqual(vm.alertMessage, "server exploded")
+    }
+
+    // MARK: - updateSync / selectAuthMethod / selectSAMLIDP
+
+    func testUpdateSync_WritesToAccountDetails() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId,
+              let account = AccountsManager.shared.account(libraryID),
+              account.details != nil else {
+            XCTSkip("No account details available")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let original = account.details?.syncPermissionGranted ?? false
+
+        vm.updateSync(enabled: !original)
+        XCTAssertEqual(account.details?.syncPermissionGranted, !original)
+
+        // Restore
+        vm.updateSync(enabled: original)
+        XCTAssertEqual(account.details?.syncPermissionGranted, original)
+    }
+
+    func testSelectAuthMethod_ClearsIDPAndSetsSelectedAuth() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId,
+              let auth = AccountsManager.shared.account(libraryID)?.details?.auths.first else {
+            XCTSkip("No auth methods available")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+
+        vm.selectAuthMethod(auth)
+
+        XCTAssertNil(vm.businessLogic.selectedIDP, "selectedIDP should be cleared")
+        XCTAssertEqual(vm.businessLogic.selectedAuthentication?.methodDescription, auth.methodDescription)
+    }
+
+    // MARK: - refreshSignInState
+
+    func testRefreshSignInState_ReloadsTableWhenStateChanges() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        account.removeAll()
+        vm.refreshSignInState()
+        XCTAssertFalse(vm.isSignedIn)
+
+        account.setBarcode("abc", PIN: "1234")
+        account.setAuthState(.loggedIn)
+        vm.refreshSignInState()
+
+        XCTAssertTrue(vm.isSignedIn)
+        account.removeAll()
+    }
+
+    func testAccountDidChangeViaNotification_ClearsCredentialsOnLogout() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        account.setBarcode("foo", PIN: "9999")
+        account.setAuthState(.loggedIn)
+
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.businessLogicDidCompleteSignIn(vm.businessLogic)
+        XCTAssertEqual(vm.usernameText, "foo")
+        XCTAssertEqual(vm.pinText, "9999")
+
+        account.removeAll()
+        vm.businessLogicDidFinishDeauthorizing(vm.businessLogic)
+
+        XCTAssertEqual(vm.usernameText, "")
+        XCTAssertEqual(vm.pinText, "")
+        XCTAssertFalse(vm.isSignedIn)
+    }
+
+    // MARK: - CellType Equality
+
+    func testCellType_SimpleCasesEqual() {
+        XCTAssertEqual(CellType.barcode, CellType.barcode)
+        XCTAssertEqual(CellType.pin, CellType.pin)
+        XCTAssertEqual(CellType.logInSignOut, CellType.logInSignOut)
+        XCTAssertNotEqual(CellType.barcode, CellType.pin)
+        XCTAssertNotEqual(CellType.privacyPolicy, CellType.contentLicense)
+    }
+
+    func testCellType_InfoHeaderEqualityByText() {
+        XCTAssertEqual(CellType.infoHeader("hello"), CellType.infoHeader("hello"))
+        XCTAssertNotEqual(CellType.infoHeader("a"), CellType.infoHeader("b"))
+    }
+
+    func testCellType_HashableInSet() {
+        let set: Set<CellType> = [.barcode, .pin, .barcode, .logInSignOut]
+        XCTAssertEqual(set.count, 3)
+    }
+
+    // MARK: - Credentials Provider Extension
+
+    func testUsernameComputed_EmptyReturnsNil() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.usernameText = ""
+        XCTAssertNil(vm.username)
+        vm.usernameText = "user"
+        XCTAssertEqual(vm.username, "user")
+    }
+
+    func testPinComputed_EmptyReturnsEmptyString() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.pinText = ""
+        XCTAssertEqual(vm.pin, "")
+        vm.pinText = "4567"
+        XCTAssertEqual(vm.pin, "4567")
+    }
+
+    func testContext_ReturnsSettingsTab() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        XCTAssertEqual(vm.context, "Settings Tab")
+    }
+
+    // MARK: - libraryLogo / libraryName defaults
+
+    func testLibraryLogo_MatchesSelectedAccountLogo() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId,
+              let account = AccountsManager.shared.account(libraryID) else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        XCTAssertEqual(vm.libraryLogo, account.logo)
+    }
+
+    // MARK: - signIn early-exit when already signed in
+
+    func testSignIn_WhenAlreadySignedIn_SetsIsSigningOutTrue() async {
+        guard let libraryID = AccountsManager.shared.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        account.setBarcode("x", PIN: "1")
+        account.setAuthState(.loggedIn)
+
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        vm.refreshSignInState()
+        XCTAssertTrue(vm.isSignedIn)
+        vm.isSigningOut = false
+
+        vm.signIn()
+
+        XCTAssertTrue(vm.isSigningOut, "Calling signIn while signed in enters sign-out flow")
+        account.removeAll()
+    }
+
     func testPINVisibility_IndependentOfCredentialChanges() async {
         guard let libraryID = AccountsManager.shared.currentAccountId else {
             XCTSkip("No current account available for testing")

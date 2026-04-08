@@ -7,6 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C2A355EBB5690A235E9E6F22 /* AccountDetailViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5CBFE0B23AFFE343E256AE1 /* AccountDetailViewModelTests.swift */; };
+		D96E403E3CC3E3C7C64C36BF /* AudiobookPlayerSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F44E712F0C639A00184B0C /* AudiobookPlayerSnapshotTests.swift */; };
+		CBCB444F4C168A9CCF792BFA /* AudiobookTrackerExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 500A72CE85F5DBA5FC681080 /* AudiobookTrackerExtendedTests.swift */; };
+		EAA2D00728C00311D0CF0D81 /* BookDetailSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DDB7EFFCB479426AC9DB8B8 /* BookDetailSnapshotTests.swift */; };
+		580E510FBD2D480D21A50AFC /* CatalogSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E14AD4ABD07DEBF7ED255792 /* CatalogSnapshotTests.swift */; };
+		607C5492BCD1F00E3156DDE6 /* DownloadOnlyOnWiFiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78529336066D2340C7B0FCE0 /* DownloadOnlyOnWiFiTests.swift */; };
+		8BF1ED0A02EF37A9C314EF87 /* FacetsSelectorSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFF01FA3FC49ED92737F33F3 /* FacetsSelectorSnapshotTests.swift */; };
+		E883263AB3FBE050343F385C /* HoldsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AF3302384CAD3BB95FB6B56 /* HoldsSnapshotTests.swift */; };
+		52D28CF48E65246A4592205B /* PDFViewsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A09A4B2F0D6EF100CC23EA /* PDFViewsSnapshotTests.swift */; };
+		BCD408E85CBFEFAE483C19D4 /* ReservationsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F44E612F0C637D00184B0C /* ReservationsSnapshotTests.swift */; };
+		083A37353E8CF921FC35C836 /* SearchSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F44E622F0C637D00184B0C /* SearchSnapshotTests.swift */; };
+		95EA0EDAFB3A8258514E4877 /* SettingsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F44E632F0C637D00184B0C /* SettingsSnapshotTests.swift */; };
+		E9A2B669C2E26107FDE81873 /* SnapshotTestConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = C097A3177BD44F2ABFC7A49C /* SnapshotTestConfiguration.swift */; };
+		237B6705CA505A8CE33EAE6D /* TPPDeferredAdobeActivationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557641B8197B528D886F32DB /* TPPDeferredAdobeActivationTests.swift */; };
 		199BD406A0C9A8F3DFF998CE /* PalaceCheckGenerators.swift in Sources */ = {isa = PBXBuildFile; fileRef = 142D46BAD0D6D86963ACCA7E /* PalaceCheckGenerators.swift */; };
 		2BEF8AC75AE50395F092751A /* FuzzRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BFD7CCC67838590BD9E203D /* FuzzRunner.swift */; };
 		411FE5619F2A1B79454C26ED /* ChaosFaultInjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC95BE63D9C7C7AE1EFB8D6B /* ChaosFaultInjectionTests.swift */; };
@@ -6282,7 +6296,20 @@
 				2328B4483544EAC500B592B6 /* UserAccountValidationTests.swift in Sources */,
 				1318423C032ACE063AD6847F /* TPPKeychainTests.swift in Sources */,
 				6EB2C35167224D90DCCBE1C0 /* TPPBackgroundExecutorTests.swift in Sources */,
-				6B0BA478542867A920369D75 /* TPPObjCExceptionCatcher.m in Sources */,
+				6B0BA478542867A920369D75 /* TPPObjCExceptionCatcher.m in Sources */,				C2A355EBB5690A235E9E6F22 /* AccountDetailViewModelTests.swift in Sources */,
+				D96E403E3CC3E3C7C64C36BF /* AudiobookPlayerSnapshotTests.swift in Sources */,
+				CBCB444F4C168A9CCF792BFA /* AudiobookTrackerExtendedTests.swift in Sources */,
+				EAA2D00728C00311D0CF0D81 /* BookDetailSnapshotTests.swift in Sources */,
+				580E510FBD2D480D21A50AFC /* CatalogSnapshotTests.swift in Sources */,
+				607C5492BCD1F00E3156DDE6 /* DownloadOnlyOnWiFiTests.swift in Sources */,
+				8BF1ED0A02EF37A9C314EF87 /* FacetsSelectorSnapshotTests.swift in Sources */,
+				E883263AB3FBE050343F385C /* HoldsSnapshotTests.swift in Sources */,
+				52D28CF48E65246A4592205B /* PDFViewsSnapshotTests.swift in Sources */,
+				BCD408E85CBFEFAE483C19D4 /* ReservationsSnapshotTests.swift in Sources */,
+				083A37353E8CF921FC35C836 /* SearchSnapshotTests.swift in Sources */,
+				95EA0EDAFB3A8258514E4877 /* SettingsSnapshotTests.swift in Sources */,
+				E9A2B669C2E26107FDE81873 /* SnapshotTestConfiguration.swift in Sources */,
+				237B6705CA505A8CE33EAE6D /* TPPDeferredAdobeActivationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
