@@ -246,7 +246,7 @@ class AdobeDRMService: NSObject {
     ///
     /// - Throws: `PalaceError.drm` if activation fails or credentials are unavailable.
     func ensureDeviceActivated() async throws {
-        let userAccount = TPPUserAccount.sharedAccount()
+        let userAccount = AccountsManager.shared.currentUserAccount
 
         if let userID = userAccount.userID,
            let deviceID = userAccount.deviceID,

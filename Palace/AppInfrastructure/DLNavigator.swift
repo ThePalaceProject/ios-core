@@ -79,7 +79,7 @@ class DLNavigator {
             }
             return
         }
-        if TPPUserAccount.sharedAccount(libraryUUID: libraryId).isSignedIn() {
+        if AccountsManager.shared.userAccount(for: libraryId).isSignedIn() {
             return
         }
         SignInModalPresenter.presentSignInModalForCurrentAccount {

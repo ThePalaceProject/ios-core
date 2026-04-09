@@ -343,7 +343,7 @@ final class BookDetailViewModel: ObservableObject {
 
         isLoadingRelatedBooks = true
 
-        TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
+        TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: AccountsManager.shared.currentUserAccount.hasAdobeToken()) { [weak self] feed, _ in
             guard let self else { return }
 
             DispatchQueue.main.async {
@@ -493,13 +493,13 @@ final class BookDetailViewModel: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
-                let account = TPPUserAccount.sharedAccount()
+                let account = AccountsManager.shared.currentUserAccount
                 if account.needsAuth && !account.hasCredentials() {
                     self.showHalfSheet = false
                     SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
                         guard let self else { return }
                         // Only proceed if user successfully logged in, not if they cancelled
-                        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+                        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
                             Log.info(#file, "Sign-in cancelled or failed, not proceeding with action")
                             // Clear any processing state for download-related buttons
                             self.processingButtons.remove(.download)
@@ -576,7 +576,7 @@ final class BookDetailViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self = self else { return }
                 #if FEATURE_DRM_CONNECTOR
-                let user = TPPUserAccount.sharedAccount()
+                let user = AccountsManager.shared.currentUserAccount
 
                 if user.hasCredentials() {
                     if user.hasAuthToken() {

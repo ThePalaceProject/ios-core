@@ -446,7 +446,7 @@ public final class AudiobookSessionManager: ObservableObject {
             return true
         }
 
-        return TPPUserAccount.sharedAccount().hasCredentials()
+        return AccountsManager.shared.currentUserAccount.hasCredentials()
     }
 
     private func openBookWithService(
@@ -528,7 +528,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
             // PP-3703: When BiblioBoard bearer token refresh fails due to SAML session expiration
             // (401 on CM fulfill link), trigger SAML re-login and then re-fetch fulfill to resume playback.
-            let userAccount = TPPUserAccount.sharedAccount()
+            let userAccount = AccountsManager.shared.currentUserAccount
             if Self.shouldTriggerSAMLReauthForPlaybackFailure(error: error, userAccount: userAccount, currentBook: currentBook),
                let book = currentBook {
                 Log.info(#file, "SAML + BiblioBoard: Bearer token refresh failed (session expired) - triggering re-auth, will re-open audiobook after login")
@@ -538,7 +538,7 @@ public final class AudiobookSessionManager: ObservableObject {
                     Task { @MainActor in
                         guard let self else { return }
                         guard self.currentBook?.identifier == book.identifier else { return }
-                        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+                        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
                             Log.info(#file, "SAML re-auth cancelled or failed - not re-opening audiobook")
                             self.errorPublisher.send(.notAuthenticated)
                             return

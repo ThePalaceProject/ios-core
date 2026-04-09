@@ -40,9 +40,14 @@ private enum StorageKey: String {
 
 @objcMembers class TPPUserAccount: NSObject, TPPUserAccountProvider {
     static private let shared = TPPUserAccount()
-    private let accountInfoQueue = DispatchQueue(label: "TPPUserAccount.accountInfoQueue")
+    private let accountInfoQueue: DispatchQueue
     private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
     private var notifyAccountChange: Bool = true
+
+    /// When non-nil, this instance is bound to a specific library and its
+    /// keychain keys are immutable. The mutable `libraryUUID` path is only
+    /// used by the legacy singleton (where `boundLibraryUUID` is nil).
+    let boundLibraryUUID: String?
 
     /// PP-3819: Incremented by `cancelPendingSignOut()` each time the user
     /// signs in, so that a stale DRM deauthorization callback can detect
@@ -56,6 +61,35 @@ private enum StorageKey: String {
     /// network purpose and must never be persisted or transmitted.
     /// Exposed as `String` so it is Obj-C friendly via `@objcMembers`.
     public private(set) var sessionIdentifier: String = UUID().uuidString
+
+    // MARK: - Initializers
+
+    /// Legacy singleton initializer. Uses mutable `libraryUUID` path.
+    /// Internal (not private) so that test mocks can subclass.
+    override init() {
+        self.boundLibraryUUID = nil
+        self.accountInfoQueue = DispatchQueue(label: "TPPUserAccount.accountInfoQueue")
+        super.init()
+    }
+
+    /// Per-account initializer. Creates an instance bound to a specific library
+    /// with immutable keychain keys. Each instance owns its own serial queue,
+    /// eliminating cross-account contention entirely.
+    ///
+    /// Prefer this over `sharedAccount(libraryUUID:)` — it is not subject to
+    /// the TOCTOU race that the singleton pattern has.
+    init(libraryUUID: String) {
+        self.boundLibraryUUID = libraryUUID
+        self.accountInfoQueue = DispatchQueue(label: "TPPUserAccount.\(libraryUUID)")
+        super.init()
+        // Set the mutable libraryUUID so the lazy keychain vars initialize
+        // with the correct keys. Since boundLibraryUUID is set, the didSet
+        // path that calls updateKeychainKeys() will fire once and then the
+        // keys are effectively frozen (no caller can change libraryUUID on
+        // a bound instance via the public API — sharedAccount(libraryUUID:)
+        // only mutates the singleton).
+        self.libraryUUID = libraryUUID
+    }
 
     var libraryUUID: String? {
         didSet {
@@ -488,6 +522,34 @@ private enum StorageKey: String {
         let cookies: [HTTPCookie]?
     }
 
+    /// Instance-level snapshot — reads from this instance's keychain variables.
+    /// On bound (per-account) instances the keys are immutable, so this is
+    /// inherently race-free without needing a barrier.
+    func credentialSnapshot() -> CredentialSnapshot {
+        return accountInfoQueue.sync {
+            let creds = self.credentials
+            let hasCreds = UserAccountAuthHelper.hasCredentials(creds)
+            let hasToken = UserAccountAuthHelper.hasAuthToken(credentials: creds)
+            let state = UserAccountAuthHelper.resolveAuthState(
+                storedState: self._authState.read(),
+                hasCredentials: hasCreds
+            )
+
+            return CredentialSnapshot(
+                hasCredentials: hasCreds,
+                hasAuthToken: hasToken,
+                authState: state,
+                barcode: UserAccountAuthHelper.barcode(from: creds),
+                pin: UserAccountAuthHelper.pin(from: creds),
+                authToken: UserAccountAuthHelper.authToken(from: creds),
+                authDefinition: self.authDefinition,
+                cookies: self._cookies.read()
+            )
+        }
+    }
+
+    /// Legacy class-level snapshot — delegates to the singleton with UUID switching.
+    /// Deprecated: prefer `AccountsManager.shared.userAccount(for:).credentialSnapshot()`.
     class func credentialSnapshot(for libraryUUID: String?) -> CredentialSnapshot {
         return shared.accountInfoQueue.sync(flags: .barrier) {
             if shared.libraryUUID != libraryUUID {

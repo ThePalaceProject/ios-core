@@ -32,6 +32,15 @@ struct CatalogCacheMetadata: Codable {
     var currentAccount: Account? { get }
 }
 
+/// Resolves per-library `TPPUserAccount` instances. Prefer this over
+/// `TPPUserAccount.sharedAccount(libraryUUID:)` — instances returned by
+/// this protocol have immutable keychain keys and are not subject to the
+/// TOCTOU race in the singleton's mutable `libraryUUID` pattern.
+@objc protocol TPPUserAccountResolving: NSObjectProtocol {
+    func userAccount(for libraryUUID: String) -> TPPUserAccount
+    var currentUserAccount: TPPUserAccount { get }
+}
+
 @objc protocol TPPLibraryAccountsProvider: TPPCurrentLibraryAccountProvider {
     var tppAccountUUID: String { get }
     var currentAccountId: String? { get }
@@ -39,7 +48,7 @@ struct CatalogCacheMetadata: Codable {
 }
 
 /// Manages library accounts asynchronously with authentication & image loading
-@objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider {
+@objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider, TPPUserAccountResolving {
 
     static let shared = AccountsManager()
     static func sharedInstance() -> AccountsManager { shared }
@@ -124,7 +133,7 @@ struct CatalogCacheMetadata: Codable {
 
             self.currentAccount?.hasUpdatedToken = false
             currentAccountId = newValue?.uuid
-            TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
+            TPPErrorLogger.setUserID(self.currentUserAccount.barcode)
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         }
     }
@@ -176,6 +185,36 @@ struct CatalogCacheMetadata: Codable {
         return performRead {
             !(self.accountSets[self.accountSet]?.isEmpty ?? true)
         }
+    }
+
+    // MARK: - Per-Account User Credentials
+
+    /// Cache of per-library `TPPUserAccount` instances. Each instance has
+    /// immutable keychain keys, eliminating the TOCTOU race that the
+    /// singleton's mutable `libraryUUID` pattern was subject to.
+    private var userAccounts = [String: TPPUserAccount]()
+    private let userAccountsLock = NSLock()
+
+    /// Returns a library-scoped `TPPUserAccount` instance. Creates and
+    /// caches a new one on first access for a given UUID.
+    func userAccount(for libraryUUID: String) -> TPPUserAccount {
+        userAccountsLock.lock()
+        defer { userAccountsLock.unlock() }
+        if let existing = userAccounts[libraryUUID] {
+            return existing
+        }
+        let account = TPPUserAccount(libraryUUID: libraryUUID)
+        userAccounts[libraryUUID] = account
+        return account
+    }
+
+    /// Convenience for the current library's user account.
+    var currentUserAccount: TPPUserAccount {
+        guard let id = currentAccountId else {
+            // Fallback to legacy singleton when no account is selected
+            return TPPUserAccount.sharedAccount()
+        }
+        return userAccount(for: id)
     }
 
     // MARK: – Load logic
@@ -422,11 +461,11 @@ struct CatalogCacheMetadata: Codable {
             if accountExistenceChanged || currentAccountMissingDetails, let current = self.currentAccount {
                 group.enter()
                 current.loadLogo()
-                current.loadAuthenticationDocument(using: TPPUserAccount.sharedAccount()) { _ in
+                current.loadAuthenticationDocument(using: self.currentUserAccount) { _ in
                     if current.details?.needsAgeCheck ?? false {
                         group.enter()
                         self.ageCheck.verifyCurrentAccountAgeRequirement(
-                            userAccountProvider: TPPUserAccount.sharedAccount(),
+                            userAccountProvider: self.currentUserAccount,
                             currentLibraryAccountProvider: self
                         ) { _ in group.leave() }
                     }

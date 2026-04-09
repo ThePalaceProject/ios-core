@@ -280,7 +280,7 @@ actor ErrorLogExporter {
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
         let libraryName = accountsManager.currentAccount?.name ?? "No library selected"
         let patronIdentifier = await MainActor.run {
-            TPPUserAccount.sharedAccount().authorizationIdentifier
+            AccountsManager.shared.currentUserAccount.authorizationIdentifier
         }
 
         var deviceInfo = """

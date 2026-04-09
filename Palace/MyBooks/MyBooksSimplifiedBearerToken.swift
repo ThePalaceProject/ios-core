@@ -49,7 +49,7 @@ class MyBooksSimplifiedBearerToken {
         var request = URLRequest(url: fulfillURL)
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
-        if let authToken = TPPUserAccount.sharedAccount().authToken {
+        if let authToken = AccountsManager.shared.currentUserAccount.authToken {
             request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
 

@@ -90,12 +90,12 @@ final class BookActionHandler {
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
-                let account = TPPUserAccount.sharedAccount()
+                let account = AccountsManager.shared.currentUserAccount
                 if account.needsAuth && !account.hasCredentials() {
                     self.viewModel?.showHalfSheet = false
                     SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
                         guard let self else { return }
-                        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+                        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
                             Log.info(#file, "Sign-in cancelled or failed, not proceeding with action")
                             self.viewModel?.processingButtons.remove(.download)
                             self.viewModel?.processingButtons.remove(.get)
@@ -168,7 +168,7 @@ final class BookActionHandler {
             Task { @MainActor in
                 guard let self = self else { return }
                 #if FEATURE_DRM_CONNECTOR
-                let user = TPPUserAccount.sharedAccount()
+                let user = AccountsManager.shared.currentUserAccount
 
                 if user.hasCredentials() {
                     if user.hasAuthToken() {

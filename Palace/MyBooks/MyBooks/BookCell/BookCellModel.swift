@@ -489,12 +489,12 @@ extension BookCellModel {
     }
 
     func didSelectDownload() {
-        let account = TPPUserAccount.sharedAccount()
+        let account = AccountsManager.shared.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
             SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
                 guard let self else { return }
                 // Only proceed if user successfully logged in, not if they cancelled
-                guard TPPUserAccount.sharedAccount().hasCredentials() else {
+                guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
                     Log.info(#file, "Sign-in cancelled or failed, not starting download")
                     return
                 }
@@ -514,12 +514,12 @@ extension BookCellModel {
 
     func didSelectReserve() {
         isLoading = true
-        let account = TPPUserAccount.sharedAccount()
+        let account = AccountsManager.shared.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
             SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
                 guard let self else { return }
                 // Only proceed if user successfully logged in, not if they cancelled
-                guard TPPUserAccount.sharedAccount().hasCredentials() else {
+                guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
                     Log.info(#file, "Sign-in cancelled or failed, not proceeding with reservation")
                     self.isLoading = false
                     return

@@ -55,7 +55,7 @@ import OverdriveProcessor
     @MainActor private var pendingBroadcast: DispatchWorkItem?
 
     init(
-        userAccount: TPPUserAccount = TPPUserAccount.sharedAccount(),
+        userAccount: TPPUserAccount = AccountsManager.shared.currentUserAccount,
         reauthenticator: Reauthenticator = TPPReauthenticator(),
         bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
         accountsManager: AccountsManager = .shared,

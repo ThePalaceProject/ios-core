@@ -74,7 +74,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         logCredentialStateAtLaunch(isFreshInstall: isFreshInstall)
 
         PalaceAuthTokenProvider.tokenResolver = {
-            TPPUserAccount.sharedAccount().authToken
+            AccountsManager.shared.currentUserAccount.authToken
         }
 
         DispatchQueue.main.async {
@@ -94,7 +94,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func logCredentialStateAtLaunch(isFreshInstall: Bool) {
-        let account = TPPUserAccount.sharedAccount()
+        let account = AccountsManager.shared.currentUserAccount
         let accountId = AccountsManager.shared.currentAccountId ?? "nil"
         let authDef = account.authDefinition
         let authType = authDef?.authType.rawValue ?? "none"
@@ -226,7 +226,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
+        TPPErrorLogger.setUserID(AccountsManager.shared.currentUserAccount.barcode)
 
         // Resume Firebase operations when app becomes active
         FirebaseManager.shared.applicationDidBecomeActive()
@@ -245,7 +245,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     /// Syncs the book registry if the user has holds to ensure fresh availability data.
     /// Throttled to prevent excessive network calls on frequent app activation.
     private func syncIfUserHasHolds() {
-        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
             return
         }
 

@@ -38,7 +38,7 @@ import Foundation
   ) {
     Log.log("\(task.currentRequest?.url?.absoluteString ?? ""): Challenge Received: \(challenge.protectionSpace.authenticationMethod)")
 
-    let challenger = TPPBasicAuth(credentialsProvider: TPPUserAccount.sharedAccount())
+    let challenger = TPPBasicAuth(credentialsProvider: AccountsManager.shared.currentUserAccount)
     challenger.handleChallenge(challenge, completion: completionHandler)
   }
 

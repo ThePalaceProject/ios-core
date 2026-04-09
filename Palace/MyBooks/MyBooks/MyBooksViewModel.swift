@@ -68,7 +68,7 @@ enum Group: Int {
 
         // If the account requires authentication and user is not logged in,
         // don't show any books from the registry (they may be stale from a previous session)
-        let account = TPPUserAccount.sharedAccount()
+        let account = AccountsManager.shared.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
             Log.info(#file, "User not logged in - showing empty My Books")
             self.allBooks = []
@@ -113,7 +113,7 @@ enum Group: Int {
     func reloadData() {
         guard !isLoading else { return }
 
-        if TPPUserAccount.sharedAccount().needsAuth, !TPPUserAccount.sharedAccount().hasCredentials() {
+        if AccountsManager.shared.currentUserAccount.needsAuth, !AccountsManager.shared.currentUserAccount.hasCredentials() {
             SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
         } else {
             bookRegistry.sync { [weak self] _, _ in

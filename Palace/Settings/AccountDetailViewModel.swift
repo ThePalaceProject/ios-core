@@ -107,7 +107,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             drmAuthorizer: nil
         )
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
+        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
         self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         super.init()
@@ -480,7 +480,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func accountDidChange() {
-        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
+        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
 
         let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
@@ -511,7 +511,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func refreshSignInState() {
         let wasSignedIn = isSignedIn
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
+        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
         isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         if wasSignedIn != isSignedIn {

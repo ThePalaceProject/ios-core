@@ -310,7 +310,7 @@ actor UnifiedOPDSService {
     private func addAuthHeaders(to request: inout URLRequest, useToken: Bool) {
         guard useToken else { return }
 
-        let userAccount = TPPUserAccount.sharedAccount()
+        let userAccount = AccountsManager.shared.currentUserAccount
 
         if let authToken = userAccount.authToken {
             request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")

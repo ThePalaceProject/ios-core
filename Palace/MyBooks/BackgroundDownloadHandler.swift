@@ -109,7 +109,7 @@ final class BackgroundDownloadHandler: NSObject {
                 if let info = await stateManager.downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(detectedRights) {
                     await stateManager.bookIdentifierToDownloadInfo.set(book.identifier, value: info)
                 }
-            } else if TPPUserAccount.sharedAccount().isTokenRefreshRequired() {
+            } else if AccountsManager.shared.currentUserAccount.isTokenRefreshRequired() {
                 NSLog("Authentication might be needed after all")
                 TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
                 return
@@ -185,7 +185,7 @@ final class BackgroundDownloadHandler: NSObject {
         let newRights = detectRightsManagement(from: acquisition.type)
 
         var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
-        if let token = TPPUserAccount.sharedAccount().authToken {
+        if let token = AccountsManager.shared.currentUserAccount.authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 

@@ -22,7 +22,7 @@ enum BookService {
     }
 
     private static func openAfterTokenRefresh(_ book: TPPBook, onFinish: (() -> Void)?) {
-        let userAccount = TPPUserAccount.sharedAccount()
+        let userAccount = AccountsManager.shared.currentUserAccount
 
         if book.defaultBookContentType == .audiobook && userAccount.authTokenHasExpired {
             Log.info(#file, "🔄 Auth token expired for audiobook - refreshing before opening")
