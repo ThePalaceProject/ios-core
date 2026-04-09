@@ -1,5 +1,5 @@
 replay:
-  name: settings-screen
+  name: sign-out
   bundle_id: org.thepalaceproject.palace
   device_id: booted
   recorded_at: '2026-04-08T15:39:36'
@@ -71,4 +71,63 @@ replay:
     - Palace version 3.0.0 (453)
     - tab.bar.label
     - Catalog
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 2
+    element_label: Libraries
+    x: 195.0
+    y: 165.0
+    expect_elements:
+    - Settings
+    - Add Library
+    - Libraries
+    - A1QA Test Library
+    - A test library for A1QA.
+    - Palace Bookshelf
+    - Popular books free to download and keep, handpicked by librarians across the
+      US.
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Reservations
+    - Settings
+    - gearshape.fill
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: A1QA Test Library
+    x: 208.33333333333334
+    y: 174.5
+    expect_elements:
+    - Libraries
+    - A1QA Test Library
+    - Show
+    - Sign out
+    - By signing in, you agree to the End User License Agreement.
+    - Sync Bookmarks
+    - Save your reading position and bookmarks to all your other devices.
+    - Report an Issue
+    - Content Licenses
+    - Advanced
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Reservations
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Sign out
+    x: 195.0
+    y: 337.0
+    expect_elements:
+    - Libraries
+    - A1QA Test Library
+    - Library Card
+    - Show
+    - Forgot your password?
+    - By signing in, you agree to the End User License Agreement.
+    - Sign up for a library card
+    - Report an Issue
+    - Content Licenses
+    - tab.bar.label
     screenshot_threshold: 5.0
