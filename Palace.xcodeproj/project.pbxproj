@@ -4532,6 +4532,17 @@
 			path = Fuzz;
 			sourceTree = "<group>";
 		};
+		B276B087059115995C1F90B8 /* Fuzz */ = {
+			isa = PBXGroup;
+			children = (
+				9E49448110C43EB199A09AD3 /* FuzzCorpus.swift */,
+				7BFD7CCC67838590BD9E203D /* FuzzRunner.swift */,
+				1FFBDD2A1333CAF4E0F850AB /* ParserFuzzTests.swift */,
+				F6990140C2393E885A89B739 /* Corpus */,
+			);
+			path = Fuzz;
+			sourceTree = "<group>";
+		};
 		B358508756ABDE24E48382EA /* Notifications */ = {
 			isa = PBXGroup;
 			children = (
