@@ -46,8 +46,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/*.xcodeproj/project.pbxproj') }}
+          # Key on the branch name + run number so each run has a unique key
+          # (always saves) but restores from the latest cache for this branch.
+          # We deliberately do NOT key on pbxproj — every file-add edit
+          # invalidated the entire cache, forcing ~50min cold rebuilds that
+          # blew the job timeout before tests could even start.
+          key: ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}-${{ github.run_number }}
           restore-keys: |
+            ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}-
+            ${{ runner.os }}-deriveddata-develop-
             ${{ runner.os }}-deriveddata-
             
       - name: Cache Test History
