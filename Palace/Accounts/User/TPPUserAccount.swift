@@ -483,6 +483,9 @@ private enum StorageKey: String {
         let authState: TPPAccountAuthState
         let barcode: String?
         let pin: String?
+        let authToken: String?
+        let authDefinition: AccountDetails.Authentication?
+        let cookies: [HTTPCookie]?
     }
 
     class func credentialSnapshot(for libraryUUID: String?) -> CredentialSnapshot {
@@ -509,7 +512,10 @@ private enum StorageKey: String {
                 hasAuthToken: hasToken,
                 authState: state,
                 barcode: UserAccountAuthHelper.barcode(from: creds),
-                pin: UserAccountAuthHelper.pin(from: creds)
+                pin: UserAccountAuthHelper.pin(from: creds),
+                authToken: UserAccountAuthHelper.authToken(from: creds),
+                authDefinition: shared.authDefinition,
+                cookies: shared._cookies.read()
             )
         }
     }

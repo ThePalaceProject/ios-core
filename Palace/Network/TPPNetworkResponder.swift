@@ -324,7 +324,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
             logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
 
             if httpResponse.statusCode == 401 {
-                if (TPPUserAccount.sharedAccount().authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
+                let snap = TPPUserAccount.credentialSnapshot(for: AccountsManager.shared.currentAccountId)
+                if (snap.authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
                     tokenRefreshAttempts += 1
                     return handleExpiredTokenIfNeeded(for: httpResponse, with: task)
                 }
@@ -369,7 +370,6 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
                                        with task: URLSessionTask,
-                                       userAccount: TPPUserAccount = TPPUserAccount.sharedAccount(),
                                        networkExecutor: TPPNetworkExecutor = .shared) -> Bool {
     // Skip DELETE requests - intentionally don't refresh tokens for deletes
     // This prevents refresh loops when revoking/returning items
@@ -377,11 +377,19 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
         return false
     }
 
-    guard userAccount.hasCredentials() else {
+    // Use atomic snapshot to prevent TOCTOU races during account switches.
+    // Previously this used TPPUserAccount.sharedAccount() which resolves to
+    // whatever account is current at call time — if the user switched accounts
+    // between sending the request and receiving the 401, the wrong account's
+    // credentials would be checked/marked stale.
+    let accountId = AccountsManager.shared.currentAccountId
+    let snapshot = TPPUserAccount.credentialSnapshot(for: accountId)
+
+    guard snapshot.hasCredentials else {
         return false
     }
 
-    let authDef = userAccount.authDefinition
+    let authDef = snapshot.authDefinition
 
     if response.statusCode == 401 {
         // A 401 from a cross-domain redirect (e.g., to biblioboard.com) does NOT
@@ -393,7 +401,9 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
         }
 
         // Mark credentials as stale - preserves Adobe DRM activation
-        userAccount.markCredentialsStale()
+        TPPUserAccount.sharedAccount(libraryUUID: accountId).atomicUpdate(for: accountId) { account in
+            account.markCredentialsStale()
+        }
 
         if authDef?.isSaml == true {
             Log.info(#file, "Server returned 401 for SAML - credentials marked stale, will trigger re-auth flow")
@@ -402,12 +412,12 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
 
         let canRefreshToken = (authDef?.isToken == true || authDef?.isOauth == true) &&
             authDef?.tokenURL != nil &&
-            userAccount.username != nil &&
-            userAccount.pin != nil
+            snapshot.barcode != nil &&
+            snapshot.pin != nil
 
         if canRefreshToken {
             Log.info(#file, "Server returned 401 - triggering token refresh (server authority)")
-            networkExecutor.refreshTokenAndResume(task: task)
+            networkExecutor.refreshTokenAndResume(task: task, accountId: accountId)
             return true
         }
     }

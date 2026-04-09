@@ -284,18 +284,22 @@ extension TPPNetworkExecutor {
         var urlRequest = URLRequest(url: url,
                                     cachePolicy: urlSession.configuration.requestCachePolicy)
         urlRequest.applyCustomUserAgent()
-        let account = TPPUserAccount.sharedAccount(libraryUUID: accountId ?? accountsManager.currentAccountId)
+        // Use atomic snapshot to prevent TOCTOU races during account switches.
+        // Without this, another thread could change libraryUUID between
+        // sharedAccount() and the property reads, causing cross-account
+        // credential leaks.
+        let snapshot = TPPUserAccount.credentialSnapshot(for: accountId ?? accountsManager.currentAccountId)
 
         // SAML auth uses cookies, not tokens — make sure they are installed in
         // the shared cookie storage before the request goes out. Removing this
         // block silently regresses SAML sign-in.
-        if let authDef = account.authDefinition, authDef.isSaml,
-           let cookies = account.cookies, !cookies.isEmpty {
+        if let authDef = snapshot.authDefinition, authDef.isSaml,
+           let cookies = snapshot.cookies, !cookies.isEmpty {
             let shared = HTTPCookieStorage.shared
             for cookie in cookies { shared.setCookie(cookie) }
         }
 
-        if let authToken = account.authToken, useTokenIfAvailable {
+        if let authToken = snapshot.authToken, useTokenIfAvailable {
             urlRequest.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
         urlRequest.setValue("", forHTTPHeaderField: "Accept-Language")
@@ -310,14 +314,14 @@ extension TPPNetworkExecutor {
 extension TPPNetworkExecutor {
     @objc class func bearerAuthorized(request: URLRequest) -> URLRequest {
         var request = request
-        let userAccount = TPPUserAccount.sharedAccount()
+        let snapshot = TPPUserAccount.credentialSnapshot(for: AccountsManager.shared.currentAccountId)
 
-        if let authToken = userAccount.authToken, !authToken.isEmpty {
+        if let authToken = snapshot.authToken, !authToken.isEmpty {
             let tokenPrefix = String(authToken.prefix(8))
             Log.debug(#file, "Adding Bearer token (prefix: \(tokenPrefix)...) to request for \(request.url?.host ?? "unknown")")
             request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         } else {
-            Log.warn(#file, "No auth token available for request to \(request.url?.host ?? "unknown") - hasCredentials: \(userAccount.hasCredentials())")
+            Log.warn(#file, "No auth token available for request to \(request.url?.host ?? "unknown") - hasCredentials: \(snapshot.hasCredentials)")
             request.setValue("", forHTTPHeaderField: "Authorization")
         }
         return request
@@ -471,10 +475,14 @@ extension TPPNetworkExecutor {
                 return
             }
 
-            let account = TPPUserAccount.sharedAccount(libraryUUID: capturedAccountId)
-            guard let username = account.username,
-                  let password = account.pin,
-                  let tokenURL = account.authDefinition?.tokenURL else {
+            // Use atomic snapshot to prevent TOCTOU races: without this,
+            // another thread could switch libraryUUID between sharedAccount()
+            // and the .username/.pin reads, sending Account B's credentials
+            // to Account A's token endpoint.
+            let snapshot = TPPUserAccount.credentialSnapshot(for: capturedAccountId)
+            guard let username = snapshot.barcode,
+                  let password = snapshot.pin,
+                  let tokenURL = snapshot.authDefinition?.tokenURL else {
                 Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
                 await self.tokenCoordinator.setRefreshing(false)
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
@@ -482,7 +490,7 @@ extension TPPNetworkExecutor {
                 return
             }
 
-            let authType = account.authDefinition?.authType.rawValue ?? "unknown"
+            let authType = snapshot.authDefinition?.authType.rawValue ?? "unknown"
             Log.info(#file, "Refreshing token for auth type: \(authType), account: \(capturedAccountId ?? "current")")
 
             if let task {

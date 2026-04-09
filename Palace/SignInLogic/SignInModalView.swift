@@ -49,14 +49,29 @@ struct SignInModalView: View {
 @objcMembers
 class SignInModalPresenter: NSObject {
 
+    /// Guards against presenting multiple sign-in modals simultaneously.
+    /// Without this, each 401 response from concurrent network requests
+    /// (catalog refresh, bookmark sync, user profile fetch) would stack
+    /// another modal, trapping the user in an infinite loop.
+    private static var isPresenting = false
+
     /// Presents the SwiftUI sign-in modal
     /// - Parameters:
     ///   - libraryAccountID: The library account to sign into
     ///   - completion: Called when sign-in completes successfully
     static func presentSignInModal(libraryAccountID: String, completion: (() -> Void)?) {
+        guard !isPresenting else {
+            Log.debug(#file, "Sign-in modal already presented — suppressing duplicate")
+            return
+        }
+        isPresenting = true
+
         let view = SignInModalView(
             libraryAccountID: libraryAccountID,
-            completion: completion
+            completion: {
+                isPresenting = false
+                completion?()
+            }
         )
 
         let vc = UIHostingController(rootView: view)

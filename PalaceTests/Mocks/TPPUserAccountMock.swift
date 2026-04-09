@@ -179,12 +179,20 @@ class TPPUserAccountMock: TPPUserAccount {
             }
         }
 
+        var authToken: String?
+        if let creds = creds, case let .token(token, _, _, _) = creds {
+            authToken = token
+        }
+
         return CredentialSnapshot(
             hasCredentials: hasCreds,
             hasAuthToken: hasToken,
             authState: state,
             barcode: barcode,
-            pin: pin
+            pin: pin,
+            authToken: authToken,
+            authDefinition: mock.authDefinition,
+            cookies: nil
         )
     }
 
