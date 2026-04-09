@@ -66,6 +66,10 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     export SIMCTL_CHILD_CI="${CI:-true}"
     export SIMCTL_CHILD_BUILD_CONTEXT="ci"
 
+    # Parallel testing is disabled on CI: with 4 simulator clones, suite
+    # startup races on shared singleton/network state and the runner
+    # deadlocks ~5,300 tests in. Serial completes in ~30 min and fits
+    # well within the 60-min job timeout.
     set +e
     xcodebuild test \
         -project Palace.xcodeproj \
@@ -74,8 +78,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -configuration Debug \
         -resultBundlePath TestResults.xcresult \
         -enableCodeCoverage YES \
-        -parallel-testing-enabled YES \
-        -maximum-parallel-testing-workers 4 \
+        -parallel-testing-enabled NO \
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO \
         ONLY_ACTIVE_ARCH=YES \
