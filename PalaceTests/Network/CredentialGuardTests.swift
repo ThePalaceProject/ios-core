@@ -50,28 +50,45 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
         case .success:
             XCTFail("Expected failure for empty username")
         case .failure(let error):
-            XCTAssertTrue(error.localizedDescription.contains("empty credentials"),
-                          "Error should mention empty credentials, got: \(error.localizedDescription)")
+            XCTAssertTrue(error.localizedDescription.contains("empty username"),
+                          "Error should mention empty username, got: \(error.localizedDescription)")
         }
     }
 
-    func testExecute_EmptyPassword_ReturnsFailureWithoutNetworkCall() async {
-        let request = TokenRequest(url: tokenURL, username: "12345", password: "")
+    /// Empty password is valid for pinless libraries (PP-4045).
+    /// Libraries like Wolcott Public Library and Bentley Memorial Library
+    /// do not require a PIN. Basic Auth sends "barcode:" with empty password.
+    func testExecute_EmptyPassword_PinlessLogin_MakesNetworkCall() async {
+        let request = TokenRequest(url: tokenURL, username: "23160026460829", password: "")
 
-        HTTPStubURLProtocol.register { _ in
-            XCTFail("Network request should not be made with empty password")
-            return nil
+        var networkCallMade = false
+        HTTPStubURLProtocol.register { req in
+            networkCallMade = true
+            // Verify Basic Auth header is present with barcode and empty password
+            let authHeader = req.value(forHTTPHeaderField: "Authorization") ?? ""
+            XCTAssertTrue(authHeader.hasPrefix("Basic "), "Should have Basic auth header")
+            // Decode and verify format is "barcode:"
+            if let base64Data = Data(base64Encoded: authHeader.replacingOccurrences(of: "Basic ", with: "")),
+               let credential = String(data: base64Data, encoding: .utf8) {
+                XCTAssertEqual(credential, "23160026460829:", "Should be barcode with empty password")
+            }
+            // Return a valid token response
+            let tokenJSON = """
+            {"access_token": "test_token", "token_type": "Bearer", "expires_in": 3600}
+            """.data(using: .utf8)
+            return HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: tokenJSON)
         }
 
         let session = URLSession.stubbedSession()
         let result = await request.execute(session: session)
 
+        XCTAssertTrue(networkCallMade, "Network call should be made for pinless login")
+
         switch result {
-        case .success:
-            XCTFail("Expected failure for empty password")
+        case .success(let tokenResponse):
+            XCTAssertEqual(tokenResponse.accessToken, "test_token")
         case .failure(let error):
-            XCTAssertTrue(error.localizedDescription.contains("empty credentials"),
-                          "Error should mention empty credentials, got: \(error.localizedDescription)")
+            XCTFail("Pinless login should succeed, got error: \(error.localizedDescription)")
         }
     }
 
