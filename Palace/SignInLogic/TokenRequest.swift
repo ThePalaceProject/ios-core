@@ -44,11 +44,16 @@ import Foundation
         let looksLikeOAuthToken = username.count > 50 || username.contains(".")
         Log.info(#file, "  Credential shape: usernameLen=\(username.count), pinLen=\(password.count), looksLikeBarcode=\(looksLikeBarcode), looksLikeOAuthToken=\(looksLikeOAuthToken)")
 
-        guard !username.isEmpty, !password.isEmpty else {
-            Log.error(#file, "Aborting token request: empty credentials (usernameLen=\(username.count), pinLen=\(password.count))")
+        guard !username.isEmpty else {
+            Log.error(#file, "Aborting token request: empty username")
             return .failure(NSError(domain: "TokenRequest", code: -1,
-                                    userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"]))
+                                    userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty username"]))
         }
+        // Note: empty password is valid for libraries that don't require a PIN.
+        // Basic Auth with "barcode:" (empty password) is the correct format for
+        // pinless authentication. The original guard (!password.isEmpty) broke
+        // pinless login for libraries like Wolcott Public Library and Bentley
+        // Memorial Library (PP-4045).
 
         var request = URLRequest(url: url, applyingCustomUserAgent: true)
         request.httpMethod = HTTPMethodType.POST.rawValue

@@ -283,6 +283,13 @@ final class FirebaseManager {
         #endif
     }
 
+    /// Sets a custom key-value pair on Crashlytics for dashboard filtering.
+    func setCrashlyticsKey(_ key: String, value: String) {
+        #if FEATURE_CRASH_REPORTING
+        Crashlytics.crashlytics().setCustomValue(value, forKey: key)
+        #endif
+    }
+
     // MARK: - Analytics Events
 
     /// Logs an enhanced error event to Analytics.
