@@ -132,9 +132,17 @@ cmd_evidence() {
     test 2>&1 || true)
 
   # Parse test results
+  # Sum all "Executed N tests" lines to get the total across all test bundles
+  # (PalaceTests.xctest + TenPrintCoverTests.xctest, etc.)
+  # Using the top-level "All tests" summary which includes the grand total.
   local pass_count fail_count
-  pass_count=$(echo "$test_output" | grep -o 'Executed [0-9]* test' | tail -1 | grep -o '[0-9]*' || echo "0")
-  fail_count=$(echo "$test_output" | grep -o 'with [0-9]* failure' | tail -1 | grep -o '[0-9]*' || echo "0")
+  pass_count=$(echo "$test_output" | grep 'Executed [0-9]* test' | grep 'All tests' | head -1 | grep -o 'Executed [0-9]*' | grep -o '[0-9]*' || echo "0")
+  fail_count=$(echo "$test_output" | grep 'with [0-9]* failure' | grep 'All tests' | head -1 | grep -o '[0-9]* failure' | grep -o '[0-9]*' || echo "0")
+  # Fallback: if "All tests" line not found, sum across all bundles
+  if [ "$pass_count" = "0" ]; then
+    pass_count=$(echo "$test_output" | grep -o 'Executed [0-9]* test' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+    fail_count=$(echo "$test_output" | grep -o 'with [0-9]* failure' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+  fi
   local build_ok="false"
   echo "$test_output" | grep -q "BUILD SUCCEEDED\|TEST.*SUCCEEDED" && build_ok="true"
 
