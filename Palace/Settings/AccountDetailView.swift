@@ -344,18 +344,41 @@ struct AccountDetailView: View {
     }
 
     private var pinInputCell: some View {
-        TextField(pinLabel, text: $viewModel.pinText)
-            .textContentType(.password)
-            .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
-            .disabled(viewModel.isSignedIn)
-            .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
-            .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
-            .accessibilityLabel(pinLabel)
-            .focused($focusedField, equals: .pin)
-            .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
-            .submitLabel(.go)
-            .padding(.vertical, Layout.verticalPaddingInput)
-            .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+        HStack {
+            if viewModel.isPINHidden {
+                SecureField(pinLabel, text: $viewModel.pinText)
+                    .textContentType(.password)
+                    .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
+                    .disabled(viewModel.isSignedIn)
+                    .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+                    .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
+                    .accessibilityLabel(pinLabel)
+                    .focused($focusedField, equals: .pin)
+                    .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
+                    .submitLabel(.go)
+            } else {
+                TextField(pinLabel, text: $viewModel.pinText)
+                    .textContentType(.password)
+                    .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
+                    .disabled(viewModel.isSignedIn)
+                    .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+                    .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
+                    .accessibilityLabel(pinLabel)
+                    .focused($focusedField, equals: .pin)
+                    .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
+                    .submitLabel(.go)
+            }
+
+            if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
+                Button(action: { viewModel.togglePINVisibility() }, label: {
+                    Text(viewModel.isPINHidden ? DisplayStrings.show : DisplayStrings.hide)
+                        .foregroundColor(Color(TPPConfiguration.mainColor()))
+                })
+            }
+        }
+        .padding(.vertical, Layout.verticalPaddingInput)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+        .accessibilityElement(children: .contain)
     }
 
     private var logInSignOutCell: some View {
