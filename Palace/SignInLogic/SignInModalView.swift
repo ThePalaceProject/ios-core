@@ -91,7 +91,9 @@ class SignInModalPresenter: NSObject {
         // Anonymous and COPPA libraries (e.g. Palace Bookshelf) have no credential
         // form to render — presenting the modal would show an empty sheet with no
         // fields and no continue button (SQ-005). Skip the modal and call the
-        // completion so the calling flow proceeds without sign-in.
+        // completion so the calling flow proceeds without sign-in. This is an
+        // architectural invariant: the sign-in modal MUST NOT be presented for
+        // an auth method that has no form to render.
         let userAccount = accountsManager.userAccount(for: libraryID)
         if !userAccount.needsAuth {
             Log.info(#file, "Skipping sign-in modal — library \(libraryID) does not require authentication")

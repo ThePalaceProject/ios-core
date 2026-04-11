@@ -22,7 +22,22 @@ import OverdriveProcessor
 
     @objc static let shared = MyBooksDownloadCenter()
 
-    public var userAccount: TPPUserAccount
+    /// Optional override used by tests / fault-injection harnesses to pin a
+    /// specific user account. Production code MUST NOT set this — leave nil
+    /// so `userAccount` always resolves to the current account via
+    /// `AccountsManager`. Capturing a reference at init time silently breaks
+    /// download / read flows after the user switches library or signs in to
+    /// a different account (per-account TPPUserAccount instances are
+    /// account-scoped, not global).
+    private let injectedUserAccount: TPPUserAccount?
+
+    /// The user account whose credentials should drive download requests.
+    /// Always reflects the *current* account so library switches and fresh
+    /// sign-ins propagate to in-flight download decisions.
+    public var userAccount: TPPUserAccount {
+        injectedUserAccount ?? accountsManager.currentUserAccount
+    }
+
     private var reauthenticator: Reauthenticator
     var bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
@@ -55,7 +70,11 @@ import OverdriveProcessor
     @MainActor private var pendingBroadcast: DispatchWorkItem?
 
     init(
-        userAccount: TPPUserAccount = AccountsManager.shared.currentUserAccount,
+        // Test-only override. Production code passes nil so `userAccount`
+        // resolves to the current account via `accountsManager` on every
+        // access. See the property doc on `injectedUserAccount` for why
+        // capturing a reference at init time is a bug.
+        userAccount: TPPUserAccount? = nil,
         reauthenticator: Reauthenticator = TPPReauthenticator(),
         bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
         accountsManager: AccountsManager = .shared,
@@ -69,7 +88,7 @@ import OverdriveProcessor
         // pointing the session's delegate at this instance.
         urlSession: URLSession? = nil
     ) {
-        self.userAccount = userAccount
+        self.injectedUserAccount = userAccount
         self.bookRegistry = bookRegistry
         self.reauthenticator = reauthenticator
         self.accountsManager = accountsManager
