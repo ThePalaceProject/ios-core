@@ -116,7 +116,20 @@ import Foundation
           ]
         )
 
-        TPPAsyncDispatch { handler(nil, problemDocDict) }
+        // When the server returns an error without a problem document,
+        // synthesize one from the HTTP status so the error detail
+        // propagates to the UI instead of being swallowed as nil.
+        let errorDict: NSDictionary? = problemDocDict ?? {
+          let body = dataString?.prefix(500) ?? "No response body"
+          return [
+            "type": "http-error",
+            "title": HTTPURLResponse.localizedString(forStatusCode: httpResp.statusCode),
+            "status": httpResp.statusCode,
+            "detail": "Server returned HTTP \(httpResp.statusCode). \(body)"
+          ] as NSDictionary
+        }()
+
+        TPPAsyncDispatch { handler(nil, errorDict) }
         return
       }
 

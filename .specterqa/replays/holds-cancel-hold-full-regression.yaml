@@ -1,0 +1,143 @@
+replay:
+  name: holds-cancel-hold-full-regression
+  bundle_id: org.thepalaceproject.palace
+  device_id: 31CF5C43-DD55-4889-B3B2-9A6810B4E98F
+  recorded_at: '2026-04-12T02:38:24'
+  steps:
+  - action: tap
+    element_index: 4
+    element_label: Search Catalog
+    element_identifier: ''
+    x: 358.0
+    y: 69.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Cancel
+    - All
+    - Ebooks
+    - Audiobooks
+    - Audio New American Standard Bible - NASB 2020. Audiobook.
+    - Unread
+    - Audiobook
+    - Borrow
+    - 'Las islas de iros: el tesoro de Mundrah'
+    - Unread
+    - Borrow
+    - El Mundo de Indy. El gran refugio de mascotas
+    screenshot_threshold: 5.0
+  - action: type
+    text: MySQL Cookbook
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Cancel
+    - All
+    - Ebooks
+    - Audiobooks
+    - Audio New American Standard Bible - NASB 2020. Audiobook.
+    - Unread
+    - Audiobook
+    - Borrow
+    - 'Las islas de iros: el tesoro de Mundrah'
+    - Unread
+    - Borrow
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Cancel
+    element_identifier: ''
+    x: 343.66666666666663
+    y: 69.16666666666666
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - Catalog
+    - All
+    - Ebooks
+    - Audiobooks
+    - Unlimited Listens ODL Feed
+    - More books in Unlimited Listens ODL Feed
+    - Audio New American Standard Bible - NASB 2020, Audiobook
+    - Audiobook
+    - 'Las islas de iros: el tesoro de Mundrah'
+    - El Mundo de Indy. El gran refugio de mascotas
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 60
+    element_label: Holds
+    element_identifier: ''
+    x: 244.0
+    y: 786.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Holds
+    - Search
+    - MySQL Cookbook, You are 1st in line.
+    - Unread
+    - MySQL Cookbook
+    - Manage Hold
+    - Preview
+    - You are 1st in line.
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 9
+    element_label: Manage Hold
+    element_identifier: ''
+    x: 223.16666666666663
+    y: 217.33333333333331
+    expect_elements:
+    - sheet.grabber
+    - MANAGE HOLD
+    - A1QA Test Library
+    - MySQL Cookbook
+    - You are 1st in line.
+    - Cancel Hold
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 6
+    element_label: Cancel Hold
+    element_identifier: ''
+    x: 72.16667175292969
+    y: 746.0
+    expect_elements:
+    - Are you sure you want to remove "MySQL Cookbook" from your holds? You will no
+      longer be in line for this book.
+    - Cancel
+    - Remove Hold
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 3
+    element_label: Remove Hold
+    element_identifier: ''
+    x: 262.6666666666667
+    y: 492.66666666666674
+    expect_elements:
+    - The return of MySQL Cookbook could not be completed.
+    - Retry
+    - Remove from Device
+    - Cancel
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Cancel
+    element_identifier: ''
+    x: 195.0
+    y: 521.0
+    expect_elements:
+    - The return of MySQL Cookbook could not be completed.
+    - Retry
+    - Remove from Device
+    - Cancel
+    screenshot_threshold: 5.0

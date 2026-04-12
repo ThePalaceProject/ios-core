@@ -1103,6 +1103,29 @@ extension MyBooksDownloadCenter {
                         self.bookRegistry.setProcessing(false, for: book.identifier)
                     }
 
+                    // The OverDrive revoke endpoint returns XML that isn't a
+                    // valid OPDS feed (e.g., a simple success response). The
+                    // OPDS parser rejects it → PalaceError.parsing(.opdsFeedInvalid).
+                    // The revoke likely SUCCEEDED server-side — clean up locally
+                    // and sync to confirm, rather than showing an error.
+                    if case .parsing(.opdsFeedInvalid) = error as? PalaceError {
+                        Log.info(#file, "Revoke response was not a valid OPDS feed — treating as success and syncing to verify")
+                        if downloaded {
+                            self.deleteLocalContent(for: identifier)
+                            self.purgeAllAudiobookCaches(force: true)
+                        }
+                        TPPAnnotations.deleteAllBookmarks(forBook: book) {
+                            TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                            self.bookRegistry.setState(.unregistered, for: identifier)
+                            self.bookRegistry.removeBook(forIdentifier: identifier)
+                            self.performPostReturnSyncThen {
+                                self.announceReturnSucceeded(for: book)
+                                completion?()
+                            }
+                        }
+                        return
+                    }
+
                     // Extract problem document from the typed error
                     let problemDoc = (error as NSError).problemDocument
                     let problemType = problemDoc?.type
@@ -1151,7 +1174,11 @@ extension MyBooksDownloadCenter {
 
                     // All other errors — show alert with problem document if available
                     await MainActor.run {
+                        let serverDetail = problemDoc?.detail
+                            ?? (error as NSError).userInfo["problemDocumentDetail"] as? String
+                            ?? error.localizedDescription
                         let formattedMessage = String(format: Strings.MyDownloadCenter.returnFailedMessage, book.title)
+                            + "\n\n" + serverDetail
 
                         let operationId = "return-\(identifier)"
                         let retryAction: (() -> Void)? = {
