@@ -12,6 +12,12 @@ protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
 
     /// Error alert to present via SwiftUI `.alert` on the half sheet.
     var downloadErrorAlert: AlertModel? { get set }
+
+    /// Confirmation alert (return, cancel-hold) that must render ON the
+    /// half-sheet so it is visible and interactive. Previously this was
+    /// only bound to the BookCell behind the sheet, making Cancel Hold
+    /// non-functional (SQ-008).
+    var showAlert: AlertModel? { get set }
 }
 
 extension HalfSheetProvider {
@@ -123,11 +129,14 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                 })
             }
         }
-        .padding()
+        .padding([.horizontal, .top])
+        .padding(.bottom, 40) // SQ-008: ensure Cancel Hold button clears the home indicator safe area
         .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.bookState)
         .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.buttonState)
         .accessibleAnimation(.easeInOut(duration: 0.15), value: viewModel.downloadProgress)
-        .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
+        .presentationDetents(viewModel.isManagingHold
+            ? [.medium, .large]  // SQ-008: Cancel Hold button needs more room than .medium provides
+            : [UIDevice.current.isIpad ? .height(540) : .medium])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(viewModel.isProcessing(for: .returning))
         .alert(
@@ -155,6 +164,33 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                     title: Text(errorAlert.title),
                     message: Text(errorAlert.message),
                     dismissButton: .default(Text(errorAlert.buttonTitle ?? Strings.Generic.ok))
+                )
+            }
+        }
+        .alert(
+            item: Binding(
+                get: { viewModel.showAlert },
+                set: { viewModel.showAlert = $0 }
+            )
+        ) { confirmAlert in
+            if let secondary = confirmAlert.secondaryButtonTitle {
+                Alert(
+                    title: Text(confirmAlert.title),
+                    message: Text(confirmAlert.message),
+                    primaryButton: .destructive(
+                        Text(confirmAlert.buttonTitle ?? Strings.Generic.ok),
+                        action: confirmAlert.primaryAction
+                    ),
+                    secondaryButton: .cancel(
+                        Text(secondary),
+                        action: confirmAlert.secondaryAction
+                    )
+                )
+            } else {
+                Alert(
+                    title: Text(confirmAlert.title),
+                    message: Text(confirmAlert.message),
+                    dismissButton: .default(Text(confirmAlert.buttonTitle ?? Strings.Generic.ok))
                 )
             }
         }

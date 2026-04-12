@@ -1122,7 +1122,24 @@ extension MyBooksDownloadCenter {
                             }
                         }
                     } else {
+                        // No error dictionary from the server — the response was
+                        // either empty, unparseable, or a non-OPDS HTTP error.
+                        // Log everything we have so failures are diagnosable.
+                        Log.error(#file, "Return/cancel-hold failed for '\(book.title)' (id: \(identifier)) — no error dictionary from server. revokeURL: \(book.revokeURL?.absoluteString ?? "nil"), error keys: \(error?.keys.joined(separator: ", ") ?? "nil"), feed entries: \(feed?.entries.count ?? -1)")
+
                         runOnMainAsync {
+                            // Extract the server's problem document so we can
+                            // surface the real reason for failure via the
+                            // "View Problem Details" button on the alert.
+                            let problemDoc: TPPProblemDocument? = {
+                                guard let errorDict = error,
+                                      let data = try? JSONSerialization.data(withJSONObject: errorDict),
+                                      let doc = try? TPPProblemDocument.fromData(data) else {
+                                    return nil
+                                }
+                                return doc
+                            }()
+
                             let formattedMessage = String(format: Strings.MyDownloadCenter.returnFailedMessage, book.title)
 
                             let operationId = "return-\(identifier)"
@@ -1160,8 +1177,8 @@ extension MyBooksDownloadCenter {
 
                             alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
 
-                            if let error = error as? Decoder, let document = try? TPPProblemDocument(from: error) {
-                                TPPAlertUtils.setProblemDocument(controller: alert, document: document, append: true)
+                            if let doc = problemDoc {
+                                TPPAlertUtils.setProblemDocument(controller: alert, document: doc, append: true)
                             }
                             runOnMainAsync {
                                 TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)

@@ -44,6 +44,11 @@ final class BookDetailViewModel: ObservableObject {
     /// that would otherwise execute immediately without a second confirmation step.
     @Published var confirmationAlert: AlertModel?
 
+    /// SQ-008: Alert surfaced by the HalfSheetProvider protocol so that
+    /// cancel-hold and return confirmations render ON the half-sheet
+    /// (not behind it on the parent BookCell).
+    @Published var showAlert: AlertModel?
+
     @Published var relatedBooksByLane: [String: BookLane] = [:]
     @Published var isLoadingRelatedBooks = false
 
