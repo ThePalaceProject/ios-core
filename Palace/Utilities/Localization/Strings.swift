@@ -679,14 +679,14 @@ struct Strings {
     }
 
     struct HoldsView {
-        static let reservations = NSLocalizedString("Reservations", comment: "Nav title")
+        static let reservations = NSLocalizedString("Holds", comment: "Nav title for Holds tab")
         static let emptyMessage = NSLocalizedString("""
             When you reserve a book from the catalog, it will show up here. \
             Look here from time to time to see if your book is available to download.
             """, comment: "")
         static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "")
         static let syncFailedMessage = NSLocalizedString(
-            "There was a problem loading your reservations. Please try again later.",
+            "There was a problem loading your holds. Please try again later.",
             comment: "Error message when holds sync fails"
         )
     }
