@@ -387,26 +387,27 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         state = .syncing
         syncUrl = loansUrl
 
-        TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: true) { [weak self] feed, errorDocument in
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                if self.syncUrl != loansUrl { return }
+        Task { [weak self] in
+            guard let self else { return }
 
-                if let errorDocument = errorDocument as? [AnyHashable: Any] {
+            let feed: TPPOPDSFeed
+            do {
+                feed = try await OPDSFeedService.shared.fetchFeed(from: loansUrl, resetCache: true)
+            } catch {
+                let errorDocument = (error as NSError).userInfo as? [AnyHashable: Any]
+                Log.warn(#file, "Loans sync failed: \(error.localizedDescription)")
+                await MainActor.run {
                     self.state = .loaded
                     self.syncUrl = nil
                     self.postSyncFailure(errorDocument)
                     completion?(errorDocument, false)
-                    return
                 }
+                return
+            }
 
-                guard let feed = feed else {
-                    self.state = .loaded
-                    self.syncUrl = nil
-                    self.postSyncFailure(nil)
-                    completion?(nil, false)
-                    return
-                }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                if self.syncUrl != loansUrl { return }
 
                 var changesMade = false
                 // Use barrier to get exclusive write access. updateBook() uses

@@ -135,24 +135,26 @@ class BookRegistrySync {
     setState(.syncing)
     syncUrl = loansUrl
 
-    TPPOPDSFeed.withURL(loansUrl, shouldResetCache: true, useTokenIfAvailable: true) { [weak self] feed, errorDocument in
-      DispatchQueue.main.async { [weak self] in
-        guard let self else { return }
-        if self.syncUrl != loansUrl { return }
+    Task { [weak self] in
+      guard let self else { return }
 
-        if let errorDocument = errorDocument as? [AnyHashable: Any] {
+      let feed: TPPOPDSFeed
+      do {
+        feed = try await OPDSFeedService.shared.fetchFeed(from: loansUrl, resetCache: true)
+      } catch {
+        let errorDocument = (error as NSError).userInfo as? [AnyHashable: Any]
+        Log.warn(#file, "Loans sync failed: \(error.localizedDescription)")
+        await MainActor.run {
           setState(.loaded)
           self.syncUrl = nil
           completion?(errorDocument, false)
-          return
         }
+        return
+      }
 
-        guard let feed else {
-          setState(.loaded)
-          self.syncUrl = nil
-          completion?(nil, false)
-          return
-        }
+      await MainActor.run { [weak self] in
+        guard let self else { return }
+        if self.syncUrl != loansUrl { return }
 
         var changesMade = false
         self.store.mutateRegistrySync { registry in

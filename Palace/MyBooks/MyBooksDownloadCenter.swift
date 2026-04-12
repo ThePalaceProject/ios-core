@@ -1049,58 +1049,93 @@ extension MyBooksDownloadCenter {
         } else {
             bookRegistry.setProcessing(true, for: book.identifier)
 
-            TPPOPDSFeed.withURL(book.revokeURL, shouldResetCache: false, useTokenIfAvailable: true) { feed, error in
-                self.bookRegistry.setProcessing(false, for: book.identifier)
+            Task { [weak self] in
+                guard let self, let revokeURL = book.revokeURL else {
+                    await MainActor.run {
+                        self?.bookRegistry.setProcessing(false, for: book.identifier)
+                        self?.announceReturnFailed(for: book)
+                        completion?()
+                    }
+                    return
+                }
 
-                if let feed = feed, feed.entries.count == 1, let entry = feed.entries[0] as? TPPOPDSEntry {
+                do {
+                    let feed = try await OPDSFeedService.shared.fetchFeed(from: revokeURL)
+                    await MainActor.run {
+                        self.bookRegistry.setProcessing(false, for: book.identifier)
+                    }
+
+                    guard feed.entries.count == 1, let entry = feed.entries[0] as? TPPOPDSEntry else {
+                        Log.error(#file, "Revoke response had \(feed.entries.count) entries, expected 1")
+                        await MainActor.run {
+                            self.announceReturnFailed(for: book)
+                            completion?()
+                        }
+                        return
+                    }
+
+                    guard let returnedBook = TPPBook(entry: entry) else {
+                        Log.error(#file, "Failed to create book from revoke entry")
+                        await MainActor.run {
+                            self.announceReturnFailed(for: book)
+                            completion?()
+                        }
+                        return
+                    }
+
                     if downloaded {
                         self.deleteLocalContent(for: identifier)
                         self.purgeAllAudiobookCaches(force: true)
                     }
-                    if let returnedBook = TPPBook(entry: entry) {
-                        // Delete all server bookmarks before removing book
+
+                    TPPAnnotations.deleteAllBookmarks(forBook: book) {
+                        TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                        self.bookRegistry.updateAndRemoveBook(returnedBook)
+                        self.bookRegistry.setState(.unregistered, for: identifier)
+                        self.performPostReturnSyncThen {
+                            self.announceReturnSucceeded(for: book)
+                            completion?()
+                        }
+                    }
+
+                } catch {
+                    await MainActor.run {
+                        self.bookRegistry.setProcessing(false, for: book.identifier)
+                    }
+
+                    // Extract problem document from the typed error
+                    let problemDoc = (error as NSError).problemDocument
+                    let problemType = problemDoc?.type
+
+                    Log.error(#file, "Return failed for '\(book.title)': \(error.localizedDescription), problemDoc type: \(problemType ?? "nil")")
+
+                    // Loan already gone on server — clean up locally
+                    let isLoanGone = problemType == TPPProblemDocument.TypeNoActiveLoan
+                        || (problemDoc?.detail?.contains(TPPProblemDocument.DetailLoanTermLimitReached) == true)
+
+                    if isLoanGone {
+                        if downloaded {
+                            self.deleteLocalContent(for: identifier)
+                            self.purgeAllAudiobookCaches(force: true)
+                        }
                         TPPAnnotations.deleteAllBookmarks(forBook: book) {
-                            // Clear the deletion log since we're returning the book
                             TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
-                            self.bookRegistry.updateAndRemoveBook(returnedBook)
                             self.bookRegistry.setState(.unregistered, for: identifier)
+                            self.bookRegistry.removeBook(forIdentifier: identifier)
                             self.performPostReturnSyncThen {
                                 self.announceReturnSucceeded(for: book)
                                 completion?()
                             }
                         }
-                    } else {
-                        NSLog("Failed to create book from entry. Book not removed from registry.")
-                        self.performPostReturnSyncThen {
-                            self.announceReturnFailed(for: book)
-                            completion?()
-                        }
+                        return
                     }
-                } else {
-                    if let errorType = error?["type"] as? String {
-                        let isLoanGone = errorType == TPPProblemDocument.TypeNoActiveLoan
-                            || (error?["detail"] as? String)?.contains(TPPProblemDocument.DetailLoanTermLimitReached) == true
-                        if isLoanGone {
-                            if downloaded {
-                                self.deleteLocalContent(for: identifier)
-                                self.purgeAllAudiobookCaches(force: true)
-                            }
-                            // Delete all server bookmarks before removing book
-                            TPPAnnotations.deleteAllBookmarks(forBook: book) {
-                                // Clear the deletion log since we're returning the book
-                                TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
-                                self.bookRegistry.setState(.unregistered, for: identifier)
-                                self.bookRegistry.removeBook(forIdentifier: identifier)
-                                self.performPostReturnSyncThen {
-                                    self.announceReturnSucceeded(for: book)
-                                    completion?()
-                                }
-                            }
-                        } else if errorType == TPPProblemDocument.TypeInvalidCredentials {
-                            NSLog("Invalid credentials problem when returning a book, present sign in VC")
+
+                    // Invalid credentials — re-authenticate and retry
+                    if problemType == TPPProblemDocument.TypeInvalidCredentials {
+                        Log.info(#file, "Invalid credentials on return — triggering re-auth")
+                        await MainActor.run {
                             self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-                                guard let self = self else { return }
-                                // Only retry if user successfully authenticated; if they cancelled, just complete
+                                guard let self else { return }
                                 if self.userAccount.hasCredentials() {
                                     self.returnBook(withIdentifier: identifier, completion: completion)
                                 } else {
@@ -1110,84 +1145,55 @@ extension MyBooksDownloadCenter {
                                     }
                                 }
                             }
-                        } else {
-                            // Unhandled error type from server. Previously this fell
-                            // through silently with no user feedback. Log the error
-                            // and show a failure alert so the user knows it didn't work.
-                            let detail = error?["detail"] as? String ?? errorType
-                            Log.error(#file, "Unhandled revoke error type: \(errorType), detail: \(detail)")
-                            runOnMainAsync {
-                                self.announceReturnFailed(for: book)
-                                completion?()
-                            }
                         }
-                    } else {
-                        // No error dictionary from the server — the response was
-                        // either empty, unparseable, or a non-OPDS HTTP error.
-                        // Log everything we have so failures are diagnosable.
-                        Log.error(#file, "Return/cancel-hold failed for '\(book.title)' (id: \(identifier)) — no error dictionary from server. revokeURL: \(book.revokeURL?.absoluteString ?? "nil"), error keys: \(error?.keys.joined(separator: ", ") ?? "nil"), feed entries: \(feed?.entries.count ?? -1)")
+                        return
+                    }
 
-                        runOnMainAsync {
-                            // Extract the server's problem document so we can
-                            // surface the real reason for failure via the
-                            // "View Problem Details" button on the alert.
-                            let problemDoc: TPPProblemDocument? = {
-                                guard let errorDict = error,
-                                      let data = try? JSONSerialization.data(withJSONObject: errorDict),
-                                      let doc = try? TPPProblemDocument.fromData(data) else {
-                                    return nil
-                                }
-                                return doc
-                            }()
+                    // All other errors — show alert with problem document if available
+                    await MainActor.run {
+                        let formattedMessage = String(format: Strings.MyDownloadCenter.returnFailedMessage, book.title)
 
-                            let formattedMessage = String(format: Strings.MyDownloadCenter.returnFailedMessage, book.title)
-
-                            let operationId = "return-\(identifier)"
-                            let retryAction: (() -> Void)? = {
-                                guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
-                                return { [weak self] in
-                                    UserRetryTracker.shared.recordRetry(operationId: operationId)
-                                    self?.returnBook(withIdentifier: identifier, completion: completion)
-                                }
-                            }()
-
-                            let message = (retryAction == nil && !UserRetryTracker.shared.canRetry(operationId: operationId))
-                                ? Strings.MyDownloadCenter.tryAgainLater
-                                : formattedMessage
-
-                            let alert = UIAlertController(title: Strings.MyDownloadCenter.returnFailed, message: message, preferredStyle: .alert)
-
-                            if let retryAction = retryAction {
-                                alert.addAction(UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { _ in retryAction() })
+                        let operationId = "return-\(identifier)"
+                        let retryAction: (() -> Void)? = {
+                            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+                            return { [weak self] in
+                                UserRetryTracker.shared.recordRetry(operationId: operationId)
+                                self?.returnBook(withIdentifier: identifier, completion: completion)
                             }
+                        }()
 
-                            // Offer force-remove so the book doesn't stay stuck in the user's list
-                            alert.addAction(UIAlertAction(title: NSLocalizedString("Remove from Device", comment: "Button to remove a book locally when server return fails"), style: .destructive) { [weak self] _ in
-                                guard let self = self else { return }
-                                if downloaded {
-                                    self.deleteLocalContent(for: identifier)
-                                    self.purgeAllAudiobookCaches(force: true)
-                                }
-                                TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
-                                self.bookRegistry.setState(.unregistered, for: identifier)
-                                self.bookRegistry.removeBook(forIdentifier: identifier)
-                                self.announceReturnSucceeded(for: book)
-                                completion?()
-                            })
+                        let message = (retryAction == nil && !UserRetryTracker.shared.canRetry(operationId: operationId))
+                            ? Strings.MyDownloadCenter.tryAgainLater
+                            : formattedMessage
 
-                            alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
+                        let alert = UIAlertController(title: Strings.MyDownloadCenter.returnFailed, message: message, preferredStyle: .alert)
 
-                            if let doc = problemDoc {
-                                TPPAlertUtils.setProblemDocument(controller: alert, document: doc, append: true)
-                            }
-                            runOnMainAsync {
-                                TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
-                            }
+                        if let retryAction = retryAction {
+                            alert.addAction(UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { _ in retryAction() })
                         }
-                        runOnMainAsync {
-                            self.announceReturnFailed(for: book)
+
+                        alert.addAction(UIAlertAction(title: NSLocalizedString("Remove from Device", comment: "Button to remove a book locally when server return fails"), style: .destructive) { [weak self] _ in
+                            guard let self else { return }
+                            if downloaded {
+                                self.deleteLocalContent(for: identifier)
+                                self.purgeAllAudiobookCaches(force: true)
+                            }
+                            TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                            self.bookRegistry.setState(.unregistered, for: identifier)
+                            self.bookRegistry.removeBook(forIdentifier: identifier)
+                            self.announceReturnSucceeded(for: book)
                             completion?()
+                        })
+
+                        alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
+
+                        if let doc = problemDoc {
+                            TPPAlertUtils.setProblemDocument(controller: alert, document: doc, append: true)
                         }
+
+                        TPPPresentationUtils.safelyPresent(alert)
+                        self.announceReturnFailed(for: book)
+                        completion?()
                     }
                 }
             }
