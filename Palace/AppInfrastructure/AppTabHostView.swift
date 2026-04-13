@@ -78,6 +78,12 @@ struct AppTabHostView: View {
                 top.dismiss(animated: true)
             }
             NotificationCenter.default.post(name: .AppTabSelectionDidChange, object: nil)
+            // F-035: Auto-refresh My Books and Holds when their tabs
+            // become visible so the user doesn't have to pull-to-refresh
+            // to see newly borrowed/returned/held books.
+            if newTab == .myBooks || newTab == .holds {
+                TPPBookRegistry.shared.sync()
+            }
             // Announce the new tab for VoiceOver when tab changes
             if UIAccessibility.isVoiceOverRunning {
                 let message = Self.accessibilityLabel(for: newTab)
