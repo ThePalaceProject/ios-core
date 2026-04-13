@@ -12,6 +12,17 @@ import XCTest
 import Combine
 @testable import Palace
 
+// MARK: - Shared Helper
+
+/// Creates a MyBooksViewModel backed by a mock registry so init() does not
+/// hit TPPBookRegistry.shared / TPPUserAccount.sharedAccount, which can
+/// deadlock on CI when the main-thread syncQueue and notification observers
+/// re-enter loadData().
+@MainActor
+private func makeViewModel() -> MyBooksViewModel {
+    MyBooksViewModel(bookRegistry: TPPBookRegistryMock())
+}
+
 // MARK: - Facet Enum Tests (Real Production Enum)
 
 final class FacetEnumTests: XCTestCase {
@@ -78,10 +89,10 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
         super.tearDown()
     }
 
-    // MARK: - Initialization Tests (Testing Real ViewModel)
+    // MARK: - Initialization Tests
 
     func testInitialState_HasCorrectDefaults() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         XCTAssertFalse(viewModel.isLoading)
         XCTAssertNil(viewModel.alert)
@@ -93,14 +104,14 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     }
 
     func testInitialFacetSort_DefaultsToTitle() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // FacetViewModel is initialized with [.title, .author], so title is first
         XCTAssertEqual(viewModel.activeFacetSort, .title)
     }
 
     func testFacetViewModel_InitializedWithCorrectConfig() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         XCTAssertNotNil(viewModel.facetViewModel)
         XCTAssertEqual(viewModel.facetViewModel.facets, [.title, .author])
@@ -110,14 +121,14 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     // MARK: - Device Type Tests (Testing Real UIDevice Integration)
 
     func testIsPadProperty_MatchesUIDevice() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         XCTAssertEqual(viewModel.isPad, UIDevice.current.isIpad)
     }
 
     // MARK: - Filter Books Tests (Testing Real Async Business Logic)
 
     func testFilterBooks_WithEmptyQuery_ShowsAllBooks() async {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         await viewModel.filterBooks(query: "")
 
@@ -127,7 +138,7 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     }
 
     func testFilterBooks_WithQuery_UpdatesSearchQuery() async {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         viewModel.searchQuery = "Harry"
         await viewModel.filterBooks(query: "Harry")
@@ -139,7 +150,7 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     // MARK: - Reset Filter Tests
 
     func testResetFilter_ClearsSearchQuery() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         viewModel.searchQuery = "Test Query"
 
         viewModel.resetFilter()
@@ -152,7 +163,7 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     // MARK: - Sort Data Tests (Testing Real Sorting Business Logic)
 
     func testSortByAuthor_SortsCorrectly() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Change sort to author
         viewModel.facetViewModel.activeSort = .author
@@ -162,7 +173,7 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     }
 
     func testSortByTitle_SortsCorrectly() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Change sort to title
         viewModel.facetViewModel.activeSort = .title
@@ -174,7 +185,7 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     // MARK: - Alert Tests
 
     func testAlert_CanBeSet() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         viewModel.alert = AlertModel(title: "Test", message: "Message")
 
@@ -184,7 +195,7 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     }
 
     func testAlert_CanBeCleared() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         viewModel.alert = AlertModel(title: "Test", message: "Message")
 
         viewModel.alert = nil
@@ -195,7 +206,7 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     // MARK: - Selected Book Tests
 
     func testSelectedBook_CanBeSet() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         let mockBook = TPPBookMocker.mockBook(identifier: "test-book", title: "Test Book")
 
         viewModel.selectedBook = mockBook
@@ -207,7 +218,7 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     // MARK: - UI State Toggle Tests (Testing Published Properties)
 
     func testShowSearchSheet_CanToggle() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         XCTAssertFalse(viewModel.showSearchSheet)
         viewModel.showSearchSheet = true
@@ -217,7 +228,7 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     }
 
     func testSelectNewLibrary_CanToggle() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         XCTAssertFalse(viewModel.selectNewLibrary)
         viewModel.selectNewLibrary = true
@@ -225,7 +236,7 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     }
 
     func testShowLibraryAccountView_CanToggle() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         XCTAssertFalse(viewModel.showLibraryAccountView)
         viewModel.showLibraryAccountView = true
@@ -347,7 +358,7 @@ final class MyBooksViewModelSortingTests: XCTestCase {
 
     /// Tests that switching sort from title to author triggers re-sort
     func testSortChange_FromTitleToAuthor_UpdatesActiveFacetSort() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Initial state - verify facetViewModel exists
         XCTAssertNotNil(viewModel.facetViewModel)
@@ -411,7 +422,7 @@ final class MyBooksViewModelPublisherTests: XCTestCase {
 
     /// Tests that isLoading publisher emits changes
     func testIsLoadingPublisher_EmitsChanges() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var loadingStates: [Bool] = []
 
         viewModel.$isLoading
@@ -427,7 +438,7 @@ final class MyBooksViewModelPublisherTests: XCTestCase {
 
     /// Tests that alert publisher emits nil initially
     func testAlertPublisher_InitiallyNil() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var alertValues: [AlertModel?] = []
 
         viewModel.$alert
@@ -446,7 +457,7 @@ final class MyBooksViewModelPublisherTests: XCTestCase {
 
     /// Tests that alert publisher emits when alert is set
     func testAlertPublisher_EmitsWhenSet() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var alertValues: [AlertModel?] = []
 
         viewModel.$alert
@@ -465,7 +476,7 @@ final class MyBooksViewModelPublisherTests: XCTestCase {
 
     /// Tests that searchQuery publisher emits changes
     func testSearchQueryPublisher_EmitsChanges() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var queryValues: [String] = []
 
         viewModel.$searchQuery
@@ -483,7 +494,7 @@ final class MyBooksViewModelPublisherTests: XCTestCase {
 
     /// Tests that selectedBook publisher emits nil initially then book when set
     func testSelectedBookPublisher_EmitsChanges() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var selectedBooks: [TPPBook?] = []
 
         viewModel.$selectedBook
@@ -508,7 +519,7 @@ final class MyBooksViewModelPublisherTests: XCTestCase {
 
     /// Tests that showInstructionsLabel publisher emits changes
     func testShowInstructionsLabelPublisher_InitialState() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var values: [Bool] = []
 
         viewModel.$showInstructionsLabel
@@ -523,7 +534,7 @@ final class MyBooksViewModelPublisherTests: XCTestCase {
 
     /// Tests FacetViewModel activeSort publisher triggers ViewModel sort update
     func testFacetViewModelPublisher_TriggersSortUpdate() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var sortValues: [Facet] = []
 
         // Capture sort changes indirectly
@@ -548,7 +559,7 @@ final class MyBooksViewModelFilterTests: XCTestCase {
 
     /// Tests filtering with an empty query returns all books (reset to allBooks)
     func testFilterBooks_EmptyQuery_ResetsToAllBooks() async {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Set a search query
         viewModel.searchQuery = "Test"
@@ -562,7 +573,7 @@ final class MyBooksViewModelFilterTests: XCTestCase {
 
     /// Tests that filtering updates searchQuery property correctly
     func testFilterBooks_WithQuery_MaintainsSearchQuerySeparately() async {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         viewModel.searchQuery = "Harry Potter"
         await viewModel.filterBooks(query: "Harry Potter")
@@ -572,7 +583,7 @@ final class MyBooksViewModelFilterTests: XCTestCase {
 
     /// Tests that resetFilter restores books to allBooks state
     func testResetFilter_RestoresAllBooks() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         viewModel.searchQuery = "Some Query"
         viewModel.resetFilter()
@@ -690,7 +701,7 @@ final class MyBooksViewModelEmptyStateTests: XCTestCase {
 
     /// Tests that showInstructionsLabel reflects empty state
     func testShowInstructionsLabel_InitialState() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // showInstructionsLabel depends on books being empty or registry unloaded
         // This tests the property is accessible and boolean
@@ -700,7 +711,7 @@ final class MyBooksViewModelEmptyStateTests: XCTestCase {
 
     /// Tests that books array is accessible
     func testBooksArray_IsAccessible() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // books is published and should be accessible
         let books = viewModel.books
@@ -732,7 +743,7 @@ final class MyBooksViewModelLoadAccountTests: XCTestCase {
 
     /// Tests that loadAccount shows alert when registry is syncing
     func testLoadAccount_WhenSyncing_ShowsAlert() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // We can't easily mock the registry singleton, but we can test the alert mechanism
         // by verifying alert can be set with correct sync message
@@ -803,7 +814,7 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
 
     /// Tests that ViewModel can receive registry change notifications
     func testRegistryChangeNotification_IsRegistered() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // ViewModel registers for notifications in init
         // We verify by checking it doesn't crash when notification is posted
@@ -814,7 +825,7 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
 
     /// Tests that ViewModel can receive state change notifications
     func testStateChangeNotification_IsRegistered() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
 
@@ -823,7 +834,7 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
 
     /// Tests that ViewModel can receive sync ended notifications
     func testSyncEndedNotification_IsRegistered() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
 
@@ -845,7 +856,7 @@ final class MyBooksViewModelFacetIntegrationTests: XCTestCase {
 
     /// Tests FacetViewModel is properly configured
     func testFacetViewModel_ConfiguredCorrectly() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         XCTAssertEqual(viewModel.facetViewModel.facets, [.title, .author])
         XCTAssertEqual(viewModel.facetViewModel.groupName, Strings.MyBooksView.sortBy)
@@ -853,7 +864,7 @@ final class MyBooksViewModelFacetIntegrationTests: XCTestCase {
 
     /// Tests initial active sort is title (first in facets array)
     func testInitialActiveSort_IsFirstFacet() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // FacetViewModel initializes activeSort to facets.first
         XCTAssertEqual(viewModel.facetViewModel.activeSort, .title)
@@ -861,7 +872,7 @@ final class MyBooksViewModelFacetIntegrationTests: XCTestCase {
 
     /// Tests that changing facetViewModel.activeSort updates ViewModel.activeFacetSort
     func testFacetSortChange_PropagatestoViewModel() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         XCTAssertEqual(viewModel.activeFacetSort, viewModel.facetViewModel.activeSort)
 
@@ -886,7 +897,7 @@ final class MyBooksViewModelGuardConditionsTests: XCTestCase {
 
     /// Tests that loadData guards against concurrent loading
     func testLoadData_WhileLoading_GuardsAgainstReentry() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // After init completes, isLoading should be false
         XCTAssertFalse(viewModel.isLoading, "isLoading should be false after init completes")
@@ -894,7 +905,7 @@ final class MyBooksViewModelGuardConditionsTests: XCTestCase {
 
     /// Tests that reloadData respects isLoading guard
     func testReloadData_WhileLoading_GuardsAgainstReentry() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // ViewModel should have finished loading
         XCTAssertFalse(viewModel.isLoading)
@@ -995,7 +1006,7 @@ final class MyBooksViewModelBooksPublisherTests: XCTestCase {
 
     /// Tests that $books publisher emits initial value on subscription
     func testBooksPublisher_EmitsInitialValue() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var emissions: [[TPPBook]] = []
 
         viewModel.$books
@@ -1009,7 +1020,7 @@ final class MyBooksViewModelBooksPublisherTests: XCTestCase {
 
     /// Tests that $books publisher is accessible and typed correctly
     func testBooksPublisher_TypeIsCorrect() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Verify the publisher type compiles correctly
         let publisher: Published<[TPPBook]>.Publisher = viewModel.$books
@@ -1018,7 +1029,7 @@ final class MyBooksViewModelBooksPublisherTests: XCTestCase {
 
     /// Tests that books array starts empty or from registry
     func testBooksArray_InitialState() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // After init, books should be an array (may be empty or populated from registry)
         XCTAssertNotNil(viewModel.books)
@@ -1032,7 +1043,7 @@ final class MyBooksViewModelConcurrencyTests: XCTestCase {
 
     /// Tests that isLoading guard prevents concurrent loadData calls
     func testLoadData_ConcurrentCalls_OnlyOneExecutes() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // After init, loading should be complete
         XCTAssertFalse(viewModel.isLoading, "Loading should complete after init")
@@ -1043,7 +1054,7 @@ final class MyBooksViewModelConcurrencyTests: XCTestCase {
 
     /// Tests that reloadData respects isLoading guard
     func testReloadData_WhileLoading_RespectsGuard() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Verify ViewModel is in stable state after init
         XCTAssertFalse(viewModel.isLoading)
@@ -1051,7 +1062,7 @@ final class MyBooksViewModelConcurrencyTests: XCTestCase {
 
     /// Tests that filterBooks can be called multiple times
     func testFilterBooks_MultipleCalls_ProcessesAll() async {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Call filter multiple times with different queries
         await viewModel.filterBooks(query: "First")
@@ -1064,7 +1075,7 @@ final class MyBooksViewModelConcurrencyTests: XCTestCase {
 
     /// Tests rapid filter changes don't cause issues
     func testFilterBooks_RapidChanges_HandlesGracefully() async {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Simulate rapid filter changes
         for i in 0..<10 {
@@ -1184,7 +1195,7 @@ final class MyBooksViewModelSortPersistenceTests: XCTestCase {
 
     /// Tests that activeFacetSort stays in sync with facetViewModel.activeSort
     func testActiveFacetSort_StaysInSync() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Initial sync
         XCTAssertEqual(viewModel.activeFacetSort, viewModel.facetViewModel.activeSort)
@@ -1200,7 +1211,7 @@ final class MyBooksViewModelSortPersistenceTests: XCTestCase {
 
     /// Tests that sort order is maintained across filter operations
     func testSortOrder_MaintainedAfterFilter() async {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Set sort to author
         viewModel.facetViewModel.activeSort = .author
@@ -1215,7 +1226,7 @@ final class MyBooksViewModelSortPersistenceTests: XCTestCase {
 
     /// Tests that sort order is maintained after resetFilter
     func testSortOrder_MaintainedAfterReset() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         viewModel.facetViewModel.activeSort = .author
         viewModel.searchQuery = "test"
@@ -1297,7 +1308,7 @@ final class MyBooksViewModelStateTransitionTests: XCTestCase {
 
     /// Tests isLoading transitions during loadData
     func testIsLoading_TransitionsDuringLoad() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var loadingStates: [Bool] = []
 
         viewModel.$isLoading
@@ -1315,7 +1326,7 @@ final class MyBooksViewModelStateTransitionTests: XCTestCase {
 
     /// Tests showInstructionsLabel reflects registry state
     func testShowInstructionsLabel_ReflectsState() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Property should be accessible
         _ = viewModel.showInstructionsLabel
@@ -1324,7 +1335,7 @@ final class MyBooksViewModelStateTransitionTests: XCTestCase {
 
     /// Tests that alert can transition from nil to set to nil
     func testAlert_StateTransitions() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Initial state
         XCTAssertNil(viewModel.alert)
@@ -1514,7 +1525,7 @@ final class MyBooksViewModelUIBindingTests: XCTestCase {
 
     /// Tests showSearchSheet publisher emits on change
     func testShowSearchSheet_PublisherEmitsOnChange() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var emissions: [Bool] = []
 
         viewModel.$showSearchSheet
@@ -1532,7 +1543,7 @@ final class MyBooksViewModelUIBindingTests: XCTestCase {
 
     /// Tests selectNewLibrary publisher emits on change
     func testSelectNewLibrary_PublisherEmitsOnChange() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var emissions: [Bool] = []
 
         viewModel.$selectNewLibrary
@@ -1548,7 +1559,7 @@ final class MyBooksViewModelUIBindingTests: XCTestCase {
 
     /// Tests showLibraryAccountView publisher emits on change
     func testShowLibraryAccountView_PublisherEmitsOnChange() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var emissions: [Bool] = []
 
         viewModel.$showLibraryAccountView
@@ -1583,7 +1594,7 @@ final class MyBooksViewModelSearchQueryTests: XCTestCase {
 
     /// Tests searchQuery can be set and retrieved
     func testSearchQuery_SetAndRetrieve() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         viewModel.searchQuery = "Test Query"
 
@@ -1592,7 +1603,7 @@ final class MyBooksViewModelSearchQueryTests: XCTestCase {
 
     /// Tests searchQuery publisher emits all changes
     func testSearchQuery_PublisherEmitsAllChanges() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var queries: [String] = []
 
         viewModel.$searchQuery
@@ -1612,7 +1623,7 @@ final class MyBooksViewModelSearchQueryTests: XCTestCase {
 
     /// Tests searchQuery independent of filterBooks
     func testSearchQuery_IndependentOfFilterBooks() async {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Set query manually
         viewModel.searchQuery = "Manual Query"
@@ -1690,7 +1701,7 @@ final class MyBooksViewModelFacetPublisherTests: XCTestCase {
 
     /// Tests that FacetViewModel publishes activeSort changes
     func testFacetViewModel_PublishesActiveSortChanges() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
         var sortChanges: [Facet] = []
 
         viewModel.facetViewModel.$activeSort
@@ -1708,7 +1719,7 @@ final class MyBooksViewModelFacetPublisherTests: XCTestCase {
 
     /// Tests that MyBooksViewModel subscribes to FacetViewModel changes
     func testMyBooksViewModel_SubscribesToFacetChanges() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Change facet sort
         viewModel.facetViewModel.activeSort = .author
@@ -1719,7 +1730,7 @@ final class MyBooksViewModelFacetPublisherTests: XCTestCase {
 
     /// Tests round-trip facet sort change propagation
     func testFacetSort_RoundTripPropagation() {
-        let viewModel = MyBooksViewModel()
+        let viewModel = makeViewModel()
 
         // Initial: title
         XCTAssertEqual(viewModel.facetViewModel.activeSort, .title)

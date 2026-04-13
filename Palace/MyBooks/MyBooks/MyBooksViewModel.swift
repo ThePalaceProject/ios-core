@@ -34,13 +34,13 @@ enum Group: Int {
     var activeFacetSort: Facet
     let facetViewModel: FacetViewModel
     private var observers = Set<AnyCancellable>()
-    private let bookRegistry: TPPBookRegistry
+    private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
     private let settings: TPPSettings
     private var allBooks: [TPPBook] = []
 
     // MARK: - Initialization
-    init(bookRegistry: TPPBookRegistry = .shared, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
+    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.settings = settings
