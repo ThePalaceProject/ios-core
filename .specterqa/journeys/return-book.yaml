@@ -1,0 +1,25 @@
+scenario:
+  id: return-book
+  name: "Return a Borrowed Book"
+  description: "Verify a user can return a previously borrowed book from My Books."
+  tags: [tier1, ios, critical_path, BOOK-005]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: navigate_to_my_books
+      description: "Open My Books tab"
+      goal: >
+        Navigate to the My Books tab and verify borrowed books are visible.
+
+    - id: select_borrowed_book
+      description: "Tap on a borrowed book to open detail"
+      goal: >
+        Select a borrowed book from the list to open its detail screen.
+
+    - id: return_book
+      description: "Tap Return to return the book"
+      goal: >
+        Tap the Return button and confirm the book is removed from My Books.
