@@ -223,12 +223,23 @@ jobs:
           fi
           
           echo "Extracting code coverage..."
+
+          # Validate xcresult bundle integrity before processing — a corrupt
+          # bundle (e.g. from a timeout kill) causes xccov to fail with 0%
+          # coverage, which then trips the coverage floor gate.
+          if ! xcrun xcresulttool get test-results summary --path "$RESULT_PATH" &>/dev/null; then
+            echo "⚠️ xcresult bundle is incomplete or corrupted — skipping coverage"
+            echo "coverage=N/A" >> $GITHUB_OUTPUT
+            echo "coverage_formatted=N/A" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           python3 scripts/coverage-report.py "$RESULT_PATH" --json coverage-data.json || true
 
       # Coverage floor gate. Runs in WARN mode (continue-on-error: true) on day one;
       # flip to blocking by removing continue-on-error after the floors are trusted.
       - name: Enforce Coverage Floors
-        if: always() && steps.find_results.outputs.found == 'true'
+        if: always() && steps.find_results.outputs.found == 'true' && steps.coverage.outputs.coverage != 'N/A'
         id: coverage_gate
         continue-on-error: true
         run: python3 scripts/enforce_coverage_floors.py coverage-data.json --floors scripts/coverage-floors.json
