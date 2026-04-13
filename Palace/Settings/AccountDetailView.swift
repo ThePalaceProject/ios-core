@@ -11,8 +11,13 @@ import LocalAuthentication
 struct AccountDetailView: View {
     typealias DisplayStrings = Strings.Settings
 
+    enum SignInField: Hashable {
+        case barcode, pin
+    }
+
     @StateObject var viewModel: AccountDetailViewModel
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedField: SignInField?
 
     /// When true, forces showing sign-in form even if user has stale credentials.
     /// Used when presenting for re-authentication (e.g., from borrow flow after 401).
@@ -205,6 +210,7 @@ struct AccountDetailView: View {
                 Section {
                     ForEach(Array(section.enumerated()), id: \.element) { _, cellType in
                         cellView(for: cellType)
+                            .accessibilityElement(children: .contain)
                     }
                 } footer: {
                     sectionFooter(for: sectionIndex)
@@ -314,67 +320,42 @@ struct AccountDetailView: View {
     }
 
     private var barcodeInputCell: some View {
-        HStack {
-            TextField(
-                viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername,
-                text: $viewModel.usernameText
-            )
-            .textContentType(.username)
-            .autocapitalization(.none)
-            .autocorrectionDisabled()
-            .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
-            .disabled(viewModel.isSignedIn)
-            .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
-            .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
-            .accessibilityLabel(viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername)
-
-            if !viewModel.isSignedIn && viewModel.businessLogic.selectedAuthentication?.supportsBarcodeScanner == true {
-                Button(action: { viewModel.scanBarcode() }, label: {
-                    Image(systemName: "camera")
-                        .foregroundColor(Color(TPPConfiguration.mainColor()))
-                })
-                .accessibilityLabel(Strings.Generic.scanBarcode)
-            }
-        }
+        TextField(
+            viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername,
+            text: $viewModel.usernameText
+        )
+        .textContentType(.username)
+        .autocapitalization(.none)
+        .autocorrectionDisabled()
+        .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
+        .disabled(viewModel.isSignedIn)
+        .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+        .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
+        .accessibilityLabel(viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername)
+        .focused($focusedField, equals: .barcode)
+        .onSubmit { focusedField = .pin }
+        .submitLabel(.next)
         .padding(.vertical, Layout.verticalPaddingInput)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
-        .accessibilityElement(children: .contain)
+    }
+
+    private var pinLabel: String {
+        viewModel.businessLogic.selectedAuthentication?.pinLabel ?? DisplayStrings.pin
     }
 
     private var pinInputCell: some View {
-        HStack {
-            if viewModel.isPINHidden {
-                SecureField(
-                    viewModel.businessLogic.selectedAuthentication?.pinLabel ?? DisplayStrings.pin,
-                    text: $viewModel.pinText
-                )
-                .textContentType(.password)
-                .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
-                .disabled(viewModel.isSignedIn)
-                .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
-                .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
-            } else {
-                TextField(
-                    viewModel.businessLogic.selectedAuthentication?.pinLabel ?? DisplayStrings.pin,
-                    text: $viewModel.pinText
-                )
-                .textContentType(.password)
-                .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
-                .disabled(viewModel.isSignedIn)
-                .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
-                .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
-            }
-
-            if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
-                Button(action: { viewModel.togglePINVisibility() }, label: {
-                    Text(viewModel.isPINHidden ? DisplayStrings.show : DisplayStrings.hide)
-                        .foregroundColor(Color(TPPConfiguration.mainColor()))
-                })
-            }
-        }
-        .padding(.vertical, Layout.verticalPaddingInput)
-        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
-        .accessibilityElement(children: .contain)
+        TextField(pinLabel, text: $viewModel.pinText)
+            .textContentType(.password)
+            .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
+            .disabled(viewModel.isSignedIn)
+            .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+            .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
+            .accessibilityLabel(pinLabel)
+            .focused($focusedField, equals: .pin)
+            .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
+            .submitLabel(.go)
+            .padding(.vertical, Layout.verticalPaddingInput)
+            .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
     }
 
     private var logInSignOutCell: some View {
@@ -409,6 +390,9 @@ struct AccountDetailView: View {
         .disabled(!viewModel.canSignIn && !viewModel.isSignedIn)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .accessibilityIdentifier(AccessibilityID.SignIn.signInButton)
+        .accessibilityLabel(viewModel.isSignedIn ? DisplayStrings.signOut : Strings.Generic.signin)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityRemoveTraits(.isStaticText)
     }
 
     private var ageCheckCell: some View {
