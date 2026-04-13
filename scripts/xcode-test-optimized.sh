@@ -74,8 +74,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -configuration Debug \
         -resultBundlePath TestResults.xcresult \
         -enableCodeCoverage YES \
-        -parallel-testing-enabled YES \
-        -maximum-parallel-testing-workers 2 \
+        -parallel-testing-enabled NO \
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO \
         ONLY_ACTIVE_ARCH=YES \
