@@ -124,18 +124,7 @@ def parse_coverage_data(data: Dict) -> Dict:
             included_targets.append(f"{target_name}: {covered}/{executable} lines ({target_coverage:.1f}%)")
         else:
             excluded_targets.append(target_name)
-    
-    # Debug output
-    print(f"\n=== Coverage Target Analysis ===", file=sys.stderr)
-    print(f"Total targets in report: {len(targets)}", file=sys.stderr)
-    print(f"Included targets ({len(included_targets)}):", file=sys.stderr)
-    for t in included_targets:
-        print(f"  ✓ {t}", file=sys.stderr)
-    print(f"Excluded targets ({len(excluded_targets)}): {', '.join(excluded_targets[:10])}", file=sys.stderr)
-    if len(excluded_targets) > 10:
-        print(f"  ... and {len(excluded_targets) - 10} more", file=sys.stderr)
-    print(f"=================================\n", file=sys.stderr)
-        
+
         result['targets'].append({
             'name': target_name,
             'coverage': target_coverage,
@@ -169,6 +158,17 @@ def parse_coverage_data(data: Dict) -> Dict:
                     'coverage_formatted': f"{file_coverage:.1f}%"
                 })
     
+    # Debug output
+    print(f"\n=== Coverage Target Analysis ===", file=sys.stderr)
+    print(f"Total targets in report: {len(targets)}", file=sys.stderr)
+    print(f"Included targets ({len(included_targets)}):", file=sys.stderr)
+    for t in included_targets:
+        print(f"  ✓ {t}", file=sys.stderr)
+    print(f"Excluded targets ({len(excluded_targets)}): {', '.join(excluded_targets[:10])}", file=sys.stderr)
+    if len(excluded_targets) > 10:
+        print(f"  ... and {len(excluded_targets) - 10} more", file=sys.stderr)
+    print(f"=================================\n", file=sys.stderr)
+
     # Calculate total coverage from filtered targets
     if total_executable > 0:
         result['line_coverage'] = (total_covered / total_executable) * 100
