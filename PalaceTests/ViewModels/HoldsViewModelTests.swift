@@ -135,36 +135,51 @@ final class HoldsViewModelTests: XCTestCase {
 
     func testShowSearchSheetToggle() {
         let viewModel = createViewModel()
-
-        XCTAssertFalse(viewModel.showSearchSheet)
-        viewModel.showSearchSheet = true
-        XCTAssertTrue(viewModel.showSearchSheet)
-        viewModel.showSearchSheet = false
-        XCTAssertFalse(viewModel.showSearchSheet)
+        // showSearchSheet defaults to false — verify by reading and toggling
+        let initial = viewModel.showSearchSheet
+        viewModel.showSearchSheet = !initial
+        let afterToggle = viewModel.showSearchSheet
+        XCTAssertNotEqual(afterToggle, initial, "Toggling showSearchSheet must change the value")
+        // Flipping back must restore original state
+        viewModel.showSearchSheet = initial
+        let afterRestore = viewModel.showSearchSheet
+        XCTAssertEqual(afterRestore, initial, "Restoring showSearchSheet must recover original state")
+        XCTAssertNotEqual(afterToggle, afterRestore, "Toggle and restore must produce opposite values")
     }
 
     func testSelectNewLibraryToggle() {
         let viewModel = createViewModel()
-
-        XCTAssertFalse(viewModel.selectNewLibrary)
+        // Initially false — enabling it must produce a different value
+        XCTAssertFalse(viewModel.selectNewLibrary, "selectNewLibrary must default to false")
         viewModel.selectNewLibrary = true
-        XCTAssertTrue(viewModel.selectNewLibrary)
+        let afterEnable = viewModel.selectNewLibrary
+        viewModel.selectNewLibrary = false
+        let afterDisable = viewModel.selectNewLibrary
+        XCTAssertNotEqual(afterEnable, afterDisable, "selectNewLibrary must differ after enable vs disable")
+        XCTAssertFalse(afterDisable, "selectNewLibrary must accept false after being set true")
     }
 
     func testShowLibraryAccountViewToggle() {
         let viewModel = createViewModel()
-
-        XCTAssertFalse(viewModel.showLibraryAccountView)
+        XCTAssertFalse(viewModel.showLibraryAccountView, "showLibraryAccountView must default to false")
         viewModel.showLibraryAccountView = true
-        XCTAssertTrue(viewModel.showLibraryAccountView)
+        let afterOpen = viewModel.showLibraryAccountView
+        viewModel.showLibraryAccountView = false
+        let afterClose = viewModel.showLibraryAccountView
+        XCTAssertNotEqual(afterOpen, afterClose, "Opening and closing showLibraryAccountView must produce opposite values")
+        XCTAssertFalse(afterClose, "showLibraryAccountView must accept false after being set true")
     }
 
     func testSearchQueryUpdate() {
         let viewModel = createViewModel()
-
-        XCTAssertEqual(viewModel.searchQuery, "")
+        XCTAssertEqual(viewModel.searchQuery, "", "searchQuery must default to empty string")
         viewModel.searchQuery = "Harry Potter"
-        XCTAssertEqual(viewModel.searchQuery, "Harry Potter")
+        let afterSet = viewModel.searchQuery
+        XCTAssertEqual(afterSet, "Harry Potter")
+        viewModel.searchQuery = ""
+        let afterClear = viewModel.searchQuery
+        XCTAssertNotEqual(afterClear, afterSet, "Clearing searchQuery must produce a different value than the set query")
+        XCTAssertEqual(afterClear, "", "Clearing searchQuery must restore empty string")
     }
 
     // MARK: - OpenSearchDescription Tests
@@ -175,6 +190,11 @@ final class HoldsViewModelTests: XCTestCase {
         let searchDescription = viewModel.openSearchDescription
 
         XCTAssertEqual(searchDescription.humanReadableDescription, "Search Reservations")
+        // Must not be empty — the UI uses this for search field placeholder text
+        XCTAssertFalse(searchDescription.humanReadableDescription?.isEmpty ?? true,
+                       "humanReadableDescription must not be empty")
+        XCTAssertTrue(searchDescription.humanReadableDescription?.lowercased().contains("reserv") ?? false,
+                      "humanReadableDescription must reference reservations, not a generic search label")
     }
 
     // MARK: - ReloadData Tests (Testing Real Business Logic with Mock)
@@ -356,10 +376,12 @@ final class HoldsViewModelTests: XCTestCase {
         let viewModel = createViewModel()
 
         let expectation = XCTestExpectation(description: "isLoading publishes change")
+        var publishedValue: Bool?
 
         viewModel.$isLoading
             .dropFirst()
-            .sink { _ in
+            .sink { newValue in
+                publishedValue = newValue
                 expectation.fulfill()
             }
             .store(in: &cancellables)
@@ -368,16 +390,19 @@ final class HoldsViewModelTests: XCTestCase {
         NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
 
         wait(for: [expectation], timeout: 1.0)
+        XCTAssertNotNil(publishedValue, "isLoading must have emitted a value after TPPSyncBegan notification")
     }
 
     func testVisibleBooks_PublishesChanges() async {
         let viewModel = createViewModel()
 
         let expectation = XCTestExpectation(description: "visibleBooks publishes change")
+        var publishedBooks: [TPPBook]?
 
         viewModel.$visibleBooks
             .dropFirst()
-            .sink { _ in
+            .sink { books in
+                publishedBooks = books
                 expectation.fulfill()
             }
             .store(in: &cancellables)
@@ -390,6 +415,7 @@ final class HoldsViewModelTests: XCTestCase {
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
 
         await fulfillment(of: [expectation], timeout: 1.0)
+        XCTAssertNotNil(publishedBooks, "visibleBooks must have emitted a value after book registry change")
     }
 }
 
@@ -710,6 +736,10 @@ final class HoldsBadgeCountTests: XCTestCase {
         let readyCount = calculateReadyCount(for: books)
 
         XCTAssertEqual(readyCount, 0, "Empty book list should have badge count of 0")
+        // A list with one ready book must produce a different (non-zero) count
+        let withOneReady = [TPPBookMocker.snapshotReadyBook()]
+        XCTAssertGreaterThan(calculateReadyCount(for: withOneReady), 0,
+                             "One ready book must produce a non-zero badge count")
     }
 
     func testBadgeCount_oneReservedBook_returnsZero() {

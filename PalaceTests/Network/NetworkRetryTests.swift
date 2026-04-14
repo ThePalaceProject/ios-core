@@ -230,6 +230,9 @@ final class NetworkTimeoutTests: XCTestCase {
         XCTAssertGreaterThan(request.timeoutInterval, 0, "Timeout must be positive")
         // Verify the URL survived mutation
         XCTAssertEqual(request.url?.absoluteString, "https://example.com")
+        // Verify a shorter timeout also sticks (guards against floor clamping)
+        request.timeoutInterval = 5
+        XCTAssertEqual(request.timeoutInterval, 5, "Timeout must be updatable to smaller values")
     }
 
     func testDefaultTimeout_isReasonable() {
@@ -384,16 +387,28 @@ final class TPPNetworkExecutorTests: XCTestCase {
 
     func testExecutor_usesEphemeralCaching() {
         let executor = TPPNetworkExecutor(cachingStrategy: .ephemeral)
-        XCTAssertNotNil(executor)
+        // Executor must be able to build a valid request (not just non-nil)
+        let url = URL(string: "https://example.com/books")!
+        let request = executor.request(for: url, useTokenIfAvailable: false)
+        XCTAssertEqual(request.url, url, "Ephemeral executor must build requests with the correct URL")
+        XCTAssertGreaterThan(executor.requestTimeout, 0, "Executor must have a positive timeout")
     }
 
     func testExecutor_hasCorrectTimeout() {
         let executor = TPPNetworkExecutor(cachingStrategy: .ephemeral)
         XCTAssertGreaterThan(executor.requestTimeout, 0)
+        // Timeout must be under an unreasonably large ceiling (sanity check)
+        XCTAssertLessThanOrEqual(executor.requestTimeout, 3600,
+                                 "Timeout must not exceed one hour")
+        // Two calls must return the same timeout (it must be deterministic)
+        XCTAssertEqual(executor.requestTimeout, executor.requestTimeout)
     }
 
     func testExecutor_conformsToProtocol() {
         let executor = TPPNetworkExecutor(cachingStrategy: .ephemeral)
         XCTAssertTrue(executor is TPPRequestExecuting)
+        // As protocol, it must be assignable without concrete type
+        let asProtocol: TPPRequestExecuting = executor
+        XCTAssertNotNil(asProtocol, "Executor must be usable via protocol type")
     }
 }

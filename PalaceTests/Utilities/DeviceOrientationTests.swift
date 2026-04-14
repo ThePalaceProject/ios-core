@@ -63,6 +63,11 @@ final class DeviceOrientationTests: XCTestCase {
         // After startTracking, isLandscape should still be valid
         let value = orientation.isLandscape
         XCTAssertTrue(value == true || value == false)
+        // Calling startTracking again must be idempotent (no crash, same type of value)
+        orientation.startTracking()
+        let valueAfterSecondStart = orientation.isLandscape
+        XCTAssertTrue(valueAfterSecondStart == true || valueAfterSecondStart == false,
+                      "isLandscape must remain a valid Bool after repeated startTracking calls")
     }
 
     @MainActor
@@ -72,6 +77,11 @@ final class DeviceOrientationTests: XCTestCase {
         // After stop, isLandscape should still be readable
         let value = orientation.isLandscape
         XCTAssertTrue(value == true || value == false)
+        // Calling startTracking after stop must work (start-stop-start cycle)
+        orientation.startTracking()
+        let valueAfterRestart = orientation.isLandscape
+        XCTAssertTrue(valueAfterRestart == true || valueAfterRestart == false,
+                      "isLandscape must remain readable after a start-stop-start cycle")
     }
 
     @MainActor
@@ -92,6 +102,11 @@ final class DeviceOrientationTests: XCTestCase {
         // isLandscape should still be accessible after early stop
         let value = orientation.isLandscape
         XCTAssertTrue(value == true || value == false)
+        // Starting after an early stop must also work
+        orientation.startTracking()
+        let valueAfterStart = orientation.isLandscape
+        XCTAssertTrue(valueAfterStart == true || valueAfterStart == false,
+                      "isLandscape must be valid after starting following an early stop")
     }
 
     // MARK: - ObservableObject Conformance

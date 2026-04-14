@@ -27,6 +27,9 @@ final class DownloadStateManagerTests: XCTestCase {
 
     func testInit_defaultMaxConcurrentDownloads() {
         XCTAssertEqual(stateManager.maxConcurrentDownloads, 4)
+        // Default must be a positive integer (downloads must be enabled)
+        XCTAssertGreaterThan(stateManager.maxConcurrentDownloads, 0,
+                             "Default maxConcurrentDownloads must be positive")
     }
 
     func testInit_emptyCollections() async {
@@ -78,6 +81,9 @@ final class DownloadStateManagerTests: XCTestCase {
     func testDownloadInfo_sync_returnsNilForMissing() {
         let result = stateManager.downloadInfo(forBookIdentifier: "nonexistent")
         XCTAssertNil(result)
+        // A different unknown ID must also return nil (not a cached fallback)
+        let result2 = stateManager.downloadInfo(forBookIdentifier: "also-nonexistent")
+        XCTAssertNil(result2, "Multiple unknown identifiers must all return nil")
     }
 
     // MARK: - Download Progress
@@ -85,6 +91,10 @@ final class DownloadStateManagerTests: XCTestCase {
     func testDownloadProgress_noInfo_returnsZero() {
         let progress = stateManager.downloadProgress(for: "no-such-book")
         XCTAssertEqual(progress, 0.0, accuracy: 0.001)
+        // Must also return 0 for a different unknown identifier
+        let progress2 = stateManager.downloadProgress(for: "another-unknown-book")
+        XCTAssertEqual(progress2, 0.0, accuracy: 0.001,
+                       "downloadProgress must return 0.0 for any unknown book identifier")
     }
 
     // MARK: - Cleanup
@@ -182,14 +192,19 @@ final class DownloadStateManagerTests: XCTestCase {
                 }
             }
         }
-        // Should complete without crash
+        // After all concurrent tasks complete, all entries must have been removed
+        let finalCount = await stateManager.bookIdentifierToDownloadInfo.count()
+        XCTAssertEqual(finalCount, 0, "All concurrent remove() calls must complete, leaving count=0")
     }
 
     // MARK: - Max Concurrent Downloads
 
     func testMaxConcurrentDownloads_canBeChanged() {
+        let original = stateManager.maxConcurrentDownloads
         stateManager.maxConcurrentDownloads = 8
         XCTAssertEqual(stateManager.maxConcurrentDownloads, 8)
+        XCTAssertNotEqual(stateManager.maxConcurrentDownloads, original,
+                          "Setting maxConcurrentDownloads to 8 must change the value from the default")
 
         stateManager.maxConcurrentDownloads = 1
         XCTAssertEqual(stateManager.maxConcurrentDownloads, 1)

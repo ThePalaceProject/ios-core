@@ -29,6 +29,7 @@ final class CatalogSnapshotTests: XCTestCase {
 
     func testCatalogLaneRowView_withBooks() {
         let books = createMockBooks(count: 4)
+        XCTAssertEqual(books.count, 4, "Should create 4 mock books for this snapshot")
         let view = CatalogLaneRowView(
             title: "Featured Books",
             books: books,
@@ -43,9 +44,11 @@ final class CatalogSnapshotTests: XCTestCase {
     }
 
     func testCatalogLaneRowView_empty() {
+        let emptyBooks: [TPPBook] = []
+        XCTAssertTrue(emptyBooks.isEmpty, "Empty lane must have zero books")
         let view = CatalogLaneRowView(
             title: "Empty Lane",
-            books: [],
+            books: emptyBooks,
             moreURL: nil,
             onSelect: { _ in },
             onMoreTapped: nil
@@ -57,9 +60,11 @@ final class CatalogSnapshotTests: XCTestCase {
     }
 
     func testCatalogLaneRowView_loading() {
+        let emptyBooks: [TPPBook] = []
+        XCTAssertTrue(emptyBooks.isEmpty, "Loading state starts with no books")
         let view = CatalogLaneRowView(
             title: "Loading Lane",
-            books: [],
+            books: emptyBooks,
             moreURL: nil,
             onSelect: { _ in },
             onMoreTapped: nil,
@@ -73,6 +78,7 @@ final class CatalogSnapshotTests: XCTestCase {
 
     func testCatalogLaneRowView_noHeader() {
         let books = createMockBooks(count: 3)
+        XCTAssertEqual(books.count, 3, "Should create 3 mock books for no-header snapshot")
         let view = CatalogLaneRowView(
             title: "Hidden Header",
             books: books,
@@ -91,6 +97,7 @@ final class CatalogSnapshotTests: XCTestCase {
 
     func testBookImageView_epub() {
         let book = TPPBookMocker.snapshotEPUB()
+        XCTAssertFalse(book.title.isEmpty, "EPUB book must have a non-empty title")
         let view = BookImageView(book: book, height: 150)
             .frame(width: 100, height: 150)
             .background(Color(UIColor.systemBackground))
@@ -100,6 +107,7 @@ final class CatalogSnapshotTests: XCTestCase {
 
     func testBookImageView_audiobook() {
         let book = TPPBookMocker.snapshotAudiobook()
+        XCTAssertFalse(book.title.isEmpty, "Audiobook must have a non-empty title")
         let view = BookImageView(book: book, height: 150)
             .frame(width: 100, height: 150)
             .background(Color(UIColor.systemBackground))
@@ -110,12 +118,14 @@ final class CatalogSnapshotTests: XCTestCase {
     // MARK: - FacetToolbarView
 
     func testFacetToolbarView_withSort() {
+        let sortTitle = "Author"
+        XCTAssertFalse(sortTitle.isEmpty, "Sort title must be non-empty for sort toolbar test")
         let view = FacetToolbarView(
             title: "Fiction",
             showFilter: true,
             onSort: { },
             onFilter: { },
-            currentSortTitle: "Author"
+            currentSortTitle: sortTitle
         )
         .frame(width: 390, height: 50)
         .background(Color(UIColor.systemBackground))
@@ -124,12 +134,14 @@ final class CatalogSnapshotTests: XCTestCase {
     }
 
     func testFacetToolbarView_noSort() {
+        let currentSortTitle: String? = nil
+        XCTAssertNil(currentSortTitle, "No-sort toolbar must have nil currentSortTitle")
         let view = FacetToolbarView(
             title: "All Books",
             showFilter: false,
             onSort: nil,
             onFilter: { },
-            currentSortTitle: nil
+            currentSortTitle: currentSortTitle
         )
         .frame(width: 390, height: 50)
         .background(Color(UIColor.systemBackground))
@@ -144,6 +156,7 @@ final class CatalogSnapshotTests: XCTestCase {
             .frame(width: 390, height: 200)
             .background(Color(UIColor.systemBackground))
 
+        XCTAssertNotNil(view, "CatalogLaneSkeletonView must be constructible without parameters")
         assertMultiDeviceSnapshot(of: view)
     }
 

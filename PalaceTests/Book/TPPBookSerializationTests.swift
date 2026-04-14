@@ -18,18 +18,20 @@ class TPPBookSerializationTests: XCTestCase {
       "summary": "A great book.",
       "publisher": "Test Publisher"
     ])
-    XCTAssertNotNil(original)
+    guard let original = original else {
+      XCTFail("Valid dictionary must produce a non-nil TPPBook")
+      return
+    }
 
-    let dict = original!.dictionaryRepresentation()
+    let dict = original.dictionaryRepresentation()
     let restored = TPPBook(dictionary: dict as! [String: Any])
-    XCTAssertNotNil(restored)
 
-    XCTAssertEqual(restored?.identifier, original?.identifier)
-    XCTAssertEqual(restored?.title, original?.title)
-    XCTAssertEqual(restored?.subtitle, original?.subtitle)
-    XCTAssertEqual(restored?.summary, original?.summary)
-    XCTAssertEqual(restored?.publisher, original?.publisher)
-    XCTAssertEqual(restored?.categoryStrings?.count, original?.categoryStrings?.count)
+    XCTAssertEqual(restored?.identifier, original.identifier)
+    XCTAssertEqual(restored?.title, original.title)
+    XCTAssertEqual(restored?.subtitle, original.subtitle)
+    XCTAssertEqual(restored?.summary, original.summary)
+    XCTAssertEqual(restored?.publisher, original.publisher)
+    XCTAssertEqual(restored?.categoryStrings?.count, original.categoryStrings?.count)
   }
 
   func test_dictionaryRoundTrip_preservesIdentifier() throws {
@@ -60,7 +62,7 @@ class TPPBookSerializationTests: XCTestCase {
       "updated": "2024-01-01T00:00:00Z"
     ])
     XCTAssertNil(book, "Missing 'id' key must produce nil")
-    // Verify adding the id key makes it succeed
+    // Verify the same dictionary WITH id succeeds — proves id is the missing field
     let validBook = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories": ["Test"],
@@ -68,7 +70,7 @@ class TPPBookSerializationTests: XCTestCase {
       "title": "Title",
       "updated": "2024-01-01T00:00:00Z"
     ])
-    XCTAssertNotNil(validBook, "Complete dictionary must succeed")
+    XCTAssertEqual(validBook?.identifier, "123", "Adding 'id' must yield a book with that identifier")
   }
 
   func test_initFromDictionary_missingTitle_returnsNil() {

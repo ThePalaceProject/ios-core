@@ -253,7 +253,6 @@ final class SettingsViewModelTests: XCTestCase {
     func testSettingsViewModel_ClearCustomFeedURL_ClearsURL() async {
         // Arrange
         sut.customMainFeedURL = URL(string: "https://example.com")!
-        XCTAssertNotNil(sut.customMainFeedURL)
 
         // Act
         sut.clearCustomFeedURL()
@@ -261,6 +260,9 @@ final class SettingsViewModelTests: XCTestCase {
         // Assert
         XCTAssertNil(sut.customMainFeedURL)
         XCTAssertNil(mockSettings.customMainFeedURL)
+        // isUsingCustomFeed must also be false after clearing
+        XCTAssertFalse(sut.isUsingCustomFeed,
+                       "isUsingCustomFeed must be false after clearCustomFeedURL")
     }
 
     // MARK: - Custom Registry Server Tests
@@ -310,7 +312,6 @@ final class SettingsViewModelTests: XCTestCase {
     func testSettingsViewModel_ClearCustomRegistryServer_ClearsServer() async {
         // Arrange
         sut.customLibraryRegistryServer = "https://registry.example.com"
-        XCTAssertNotNil(sut.customLibraryRegistryServer)
 
         // Act
         sut.clearCustomRegistryServer()
@@ -318,6 +319,9 @@ final class SettingsViewModelTests: XCTestCase {
         // Assert
         XCTAssertNil(sut.customLibraryRegistryServer)
         XCTAssertNil(mockSettings.customLibraryRegistryServer)
+        // isUsingCustomRegistry must also be false after clearing
+        XCTAssertFalse(sut.isUsingCustomRegistry,
+                       "isUsingCustomRegistry must be false after clearCustomRegistryServer")
     }
 
     // MARK: - Computed Properties Tests
@@ -328,6 +332,10 @@ final class SettingsViewModelTests: XCTestCase {
 
         // Assert
         XCTAssertTrue(sut.isUsingCustomFeed)
+        // Clearing must toggle isUsingCustomFeed back to false
+        sut.clearCustomFeedURL()
+        XCTAssertFalse(sut.isUsingCustomFeed,
+                       "isUsingCustomFeed must be false after clearCustomFeedURL")
     }
 
     func testSettingsViewModel_IsUsingCustomFeed_FalseWhenURLNil() async {
@@ -336,6 +344,10 @@ final class SettingsViewModelTests: XCTestCase {
 
         // Assert
         XCTAssertFalse(sut.isUsingCustomFeed)
+        // Setting a URL must toggle isUsingCustomFeed to true
+        sut.customMainFeedURL = URL(string: "https://example.com")
+        XCTAssertTrue(sut.isUsingCustomFeed,
+                      "isUsingCustomFeed must be true after setting a non-nil URL")
     }
 
     func testSettingsViewModel_IsUsingCustomRegistry_TrueWhenServerSet() async {
@@ -344,6 +356,10 @@ final class SettingsViewModelTests: XCTestCase {
 
         // Assert
         XCTAssertTrue(sut.isUsingCustomRegistry)
+        // Clearing must toggle it back to false
+        sut.clearCustomRegistryServer()
+        XCTAssertFalse(sut.isUsingCustomRegistry,
+                       "isUsingCustomRegistry must be false after clearCustomRegistryServer")
     }
 
     func testSettingsViewModel_IsUsingCustomRegistry_FalseWhenServerNil() async {
@@ -352,6 +368,10 @@ final class SettingsViewModelTests: XCTestCase {
 
         // Assert
         XCTAssertFalse(sut.isUsingCustomRegistry)
+        // Setting a non-nil server must toggle it to true
+        sut.customLibraryRegistryServer = "https://registry.example.com"
+        XCTAssertTrue(sut.isUsingCustomRegistry,
+                      "isUsingCustomRegistry must be true when a server is set")
     }
 
     func testSettingsViewModel_IsUsingCustomRegistry_FalseWhenServerEmpty() async {
@@ -360,6 +380,10 @@ final class SettingsViewModelTests: XCTestCase {
 
         // Assert
         XCTAssertFalse(sut.isUsingCustomRegistry)
+        // Empty string must behave identically to nil (not using custom registry)
+        sut.customLibraryRegistryServer = nil
+        XCTAssertFalse(sut.isUsingCustomRegistry,
+                       "isUsingCustomRegistry must be false for both empty string and nil server")
     }
 
     func testSettingsViewModel_FormattedAppVersion_ReturnsFormattedString() async {

@@ -32,11 +32,15 @@ final class PDFExtensionsTests: XCTestCase {
     func testPdfThumbnailSize_IsSquare() {
         let size = CGSize.pdfThumbnailSize
         XCTAssertEqual(size.width, size.height)
+        XCTAssertGreaterThan(size.width, 0, "Thumbnail width must be positive")
+        XCTAssertEqual(size.width, 30, "Thumbnail must be 30x30")
     }
 
     func testPdfPreviewSize_IsSquare() {
         let size = CGSize.pdfPreviewSize
         XCTAssertEqual(size.width, size.height)
+        XCTAssertGreaterThan(size.width, 0, "Preview width must be positive")
+        XCTAssertEqual(size.width, 300, "Preview must be 300x300")
     }
 
     func testPdfPreviewSize_IsLargerThanThumbnail() {
@@ -51,11 +55,17 @@ final class PDFExtensionsTests: XCTestCase {
     func testPdfThumbnailRenderingQueue_HasCorrectLabel() {
         let queue = DispatchQueue.pdfThumbnailRenderingQueue
         XCTAssertEqual(queue.label, "org.thepalaceproject.palace.thumbnailRenderingQueue")
+        XCTAssertTrue(queue.label.contains("thepalaceproject"), "Queue label must use Palace org prefix")
+        XCTAssertNotEqual(queue.label, DispatchQueue.pdfImageRenderingQueue.label,
+                          "Thumbnail and image queues must have distinct labels")
     }
 
     func testPdfImageRenderingQueue_HasCorrectLabel() {
         let queue = DispatchQueue.pdfImageRenderingQueue
         XCTAssertEqual(queue.label, "org.thepalaceproject.palace.imageRenderingQueue")
+        XCTAssertTrue(queue.label.contains("thepalaceproject"), "Queue label must use Palace org prefix")
+        XCTAssertNotEqual(queue.label, DispatchQueue.pdfThumbnailRenderingQueue.label,
+                          "Image and thumbnail queues must have distinct labels")
     }
 
     func testPdfThumbnailRenderingQueue_CreatesNewInstanceEachTime() {
@@ -63,12 +73,16 @@ final class PDFExtensionsTests: XCTestCase {
         let queue2 = DispatchQueue.pdfThumbnailRenderingQueue
         // Each call creates a new dispatch queue (computed property)
         XCTAssertFalse(queue1 === queue2)
+        // Both must have the same label despite being different instances
+        XCTAssertEqual(queue1.label, queue2.label, "Both instances must have the same queue label")
     }
 
     func testPdfImageRenderingQueue_CreatesNewInstanceEachTime() {
         let queue1 = DispatchQueue.pdfImageRenderingQueue
         let queue2 = DispatchQueue.pdfImageRenderingQueue
         XCTAssertFalse(queue1 === queue2)
+        // Both must have the same label despite being different instances
+        XCTAssertEqual(queue1.label, queue2.label, "Both instances must have the same queue label")
     }
 
     // MARK: - TPPPDFPage+serialization Tests
@@ -81,6 +95,9 @@ final class PDFExtensionsTests: XCTestCase {
         XCTAssertNotNil(locationString)
         XCTAssertTrue(locationString!.contains("42"))
         XCTAssertTrue(locationString!.contains("pageNumber"))
+        // Must be valid JSON
+        let data = locationString!.data(using: .utf8)!
+        XCTAssertNoThrow(try JSONSerialization.jsonObject(with: data), "locationString must be valid JSON")
     }
 
     func testLocationString_PageZero_ReturnsValidJSON() {
@@ -88,7 +105,11 @@ final class PDFExtensionsTests: XCTestCase {
         let locationString = page.locationString
 
         XCTAssertNotNil(locationString)
-        XCTAssertTrue(locationString!.contains("0"))
+        XCTAssertTrue(locationString!.contains("pageNumber"), "JSON must contain 'pageNumber' key for page 0")
+        // Must round-trip correctly
+        let data = locationString!.data(using: .utf8)!
+        XCTAssertNoThrow(try JSONDecoder().decode(TPPPDFPage.self, from: data),
+                         "Page 0 location string must be decodable as TPPPDFPage")
     }
 
     func testLocationString_RoundTrips_WithDecoder() throws {
@@ -108,6 +129,10 @@ final class PDFExtensionsTests: XCTestCase {
         XCTAssertNotNil(selector)
         XCTAssertTrue(selector!.contains("LocatorPage"))
         XCTAssertTrue(selector!.contains("10"))
+        // Must be valid JSON parseable as a bookmark
+        let data = selector!.data(using: .utf8)!
+        XCTAssertNoThrow(try JSONDecoder().decode(TPPPDFPageBookmark.self, from: data),
+                         "bookmarkSelector must decode as TPPPDFPageBookmark")
     }
 
     func testBookmarkSelector_RoundTrips_AsTPPPDFPageBookmark() throws {
@@ -129,26 +154,31 @@ final class PDFExtensionsTests: XCTestCase {
         let locationString = page.locationString!
         let bookLocation = TPPBookLocation(locationString: locationString, renderer: "pdf")
 
-        XCTAssertNotNil(bookLocation)
         XCTAssertEqual(bookLocation?.pageNumber, 25)
+        XCTAssertNotNil(bookLocation, "TPPBookLocation must be created from valid PDF location string")
+        XCTAssertEqual(bookLocation?.renderer, "pdf", "Renderer must be preserved")
     }
 
     func testPageNumber_InvalidLocationString_ReturnsNil() {
         let bookLocation = TPPBookLocation(locationString: "not-json", renderer: "pdf")
 
         XCTAssertNil(bookLocation?.pageNumber)
+        // Invalid JSON means no page number, but the location object itself may still be valid
+        XCTAssertNotNil(bookLocation, "TPPBookLocation may still be created with invalid JSON")
     }
 
     func testPageNumber_EmptyLocationString_ReturnsNil() {
         let bookLocation = TPPBookLocation(locationString: "", renderer: "pdf")
 
         XCTAssertNil(bookLocation?.pageNumber)
+        XCTAssertEqual(bookLocation?.locationString, "", "Empty locationString must be preserved")
     }
 
     func testPageNumber_NonPDFLocationString_ReturnsNil() {
         let bookLocation = TPPBookLocation(locationString: "{\"chapter\": 1}", renderer: "readium")
 
         XCTAssertNil(bookLocation?.pageNumber)
+        XCTAssertEqual(bookLocation?.renderer, "readium", "Non-PDF renderer must be preserved")
     }
 
     func testPageNumber_PageZero_ReturnsZero() {
@@ -157,6 +187,7 @@ final class PDFExtensionsTests: XCTestCase {
         let bookLocation = TPPBookLocation(locationString: locationString, renderer: "pdf")
 
         XCTAssertEqual(bookLocation?.pageNumber, 0)
+        XCTAssertNotNil(bookLocation, "Page 0 must produce a valid TPPBookLocation")
     }
 
     func testPageNumber_LargePageNumber_ReturnsCorrectly() {
@@ -165,5 +196,6 @@ final class PDFExtensionsTests: XCTestCase {
         let bookLocation = TPPBookLocation(locationString: locationString, renderer: "pdf")
 
         XCTAssertEqual(bookLocation?.pageNumber, 99999)
+        XCTAssertTrue(locationString.contains("99999"), "Large page number must appear in location string")
     }
 }

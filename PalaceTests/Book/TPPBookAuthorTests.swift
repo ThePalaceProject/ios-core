@@ -33,6 +33,8 @@ final class TPPBookAuthorTests: XCTestCase {
         let author = TPPBookAuthor(authorName: "", relatedBooksURL: nil)
 
         XCTAssertEqual(author.name, "")
+        XCTAssertNil(author.relatedBooksURL, "Empty-name author with nil URL must have nil relatedBooksURL")
+        XCTAssertTrue(author.name.isEmpty, "Name must remain empty string, not nil or whitespace")
     }
 
     // MARK: - NSObject Conformance

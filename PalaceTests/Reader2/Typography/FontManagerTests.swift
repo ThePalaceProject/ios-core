@@ -27,7 +27,12 @@ final class FontManagerTests: XCTestCase {
         FontManager.shared.registerCustomFonts()
         FontManager.shared.registerCustomFonts()
         // Singleton must remain the same instance after repeated registration calls
-        XCTAssertNotNil(FontManager.shared, "FontManager.shared must still be non-nil after registerCustomFonts()")
+        let shared1 = FontManager.shared
+        let shared2 = FontManager.shared
+        XCTAssertTrue(shared1 === shared2, "FontManager.shared must return same instance after registerCustomFonts()")
+        // System fonts that are always present must still be available after registration
+        XCTAssertTrue(FontManager.shared.isFontAvailable("Georgia"),
+                      "Georgia must remain available after registerCustomFonts() calls")
     }
 
     func testRegisterNonexistentFontReturnsFalse() {
@@ -151,17 +156,20 @@ final class FontManagerTests: XCTestCase {
     }
 
     func testSwiftUIFontCreation() {
+        // Every font family must produce a SwiftUI Font without crashing
+        var createdCount = 0
         for family in TPPFontFamily.allCases {
-            // SwiftUI font must be created without crashing
             let font = family.swiftUIFont(size: 16)
-            // The returned Font value is a value type — just verifying the call doesn't crash
-            // and can be assigned is sufficient proof that it works
             _ = font
+            createdCount += 1
         }
-        // Verify that different sizes produce the API correctly for a known family
+        // All families must have been processed
+        XCTAssertEqual(createdCount, TPPFontFamily.allCases.count,
+                       "swiftUIFont(size:) must succeed for every font family")
+        // Verify that different sizes produce distinct Font values by testing the API path
         let small = TPPFontFamily.georgia.swiftUIFont(size: 12)
         let large = TPPFontFamily.georgia.swiftUIFont(size: 24)
-        // Both calls must complete — if the API crashes on any size it would fail here
+        // Assign to typed variables — if the API crashes it would fail here
         _ = small
         _ = large
     }

@@ -98,18 +98,15 @@ final class AccountAwareNetworkTests: XCTestCase {
         )
 
         let expectation = XCTestExpectation(description: "Refresh completes")
+        var completionCalled = false
 
         executor.refreshTokenAndResume(task: nil, accountId: "urn:uuid:test-account") { result in
-            switch result {
-            case .failure:
-                break // Expected: no credentials in test environment
-            case .success:
-                break
-            }
+            completionCalled = true
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 5.0)
+        XCTAssertTrue(completionCalled, "Completion handler must be called")
     }
 
     func testRefreshTokenAndResume_NilAccountId_DoesNotCrash() {
@@ -124,18 +121,15 @@ final class AccountAwareNetworkTests: XCTestCase {
         )
 
         let expectation = XCTestExpectation(description: "Refresh completes")
+        var callbackInvoked = false
 
         executor.refreshTokenAndResume(task: nil, accountId: nil) { result in
-            switch result {
-            case .failure:
-                break
-            case .success:
-                break
-            }
+            callbackInvoked = true
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 5.0)
+        XCTAssertTrue(callbackInvoked, "Completion must be called even with nil accountId")
     }
 
     func testRefreshTokenAndResume_DefaultAccountId_BackwardCompatible() {
@@ -150,19 +144,26 @@ final class AccountAwareNetworkTests: XCTestCase {
         )
 
         let expectation = XCTestExpectation(description: "Refresh completes")
+        var completionCallCount = 0
 
         // Call without accountId parameter (backward compatible)
         executor.refreshTokenAndResume(task: nil) { result in
+            completionCallCount += 1
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 5.0)
+        XCTAssertEqual(completionCallCount, 1, "Completion must be called exactly once")
     }
 
     // MARK: - Cancel Non-Essential Tasks
 
     func testCancelNonEssentialTasks_DoesNotCrash() {
         TPPNetworkExecutor.shared.cancelNonEssentialTasks()
+        // Verify the executor remains usable after cancellation
+        let url = URL(string: "https://example.com/")!
+        let request = TPPNetworkExecutor.shared.request(for: url, useTokenIfAvailable: false)
+        XCTAssertEqual(request.url, url, "Executor must still build requests after cancel")
     }
 
     func testCancelNonEssentialTasks_CancelsActiveTasks() {
@@ -183,11 +184,15 @@ final class AccountAwareNetworkTests: XCTestCase {
         }
 
         let url = URL(string: "https://example.com/api/catalog")!
-        executor.GET(url, useTokenIfAvailable: false) { _ in }
+        var callbackCount = 0
+        executor.GET(url, useTokenIfAvailable: false) { _ in callbackCount += 1 }
 
         executor.cancelNonEssentialTasks()
 
         HTTPStubURLProtocol.reset()
+        // Executor must survive cancel and still be able to build requests
+        let request = executor.request(for: url, useTokenIfAvailable: false)
+        XCTAssertEqual(request.url, url, "Executor must be usable after cancel")
     }
 
     // MARK: - executeTokenRefresh Account Parameter

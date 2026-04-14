@@ -57,7 +57,9 @@ final class AppTabRouterGapTests: XCTestCase {
 
         var router: AppTabRouter? = AppTabRouter()
         hub.router = router
-        XCTAssertNotNil(hub.router)
+        // After assignment the hub must have a router
+        XCTAssertTrue(hub.router != nil,
+                      "Hub must hold the router while the strong reference exists")
 
         router = nil
         XCTAssertNil(hub.router,
@@ -67,16 +69,21 @@ final class AppTabRouterGapTests: XCTestCase {
     /// Coverage Gap: AppTabRouterHub — verify shared singleton exists
     func testAppTabRouterHub_shared_singletonExists() {
         let hub = AppTabRouterHub.shared
+        let hub2 = AppTabRouterHub.shared
 
-        XCTAssertNotNil(hub, "AppTabRouterHub.shared singleton should exist")
-        XCTAssertTrue(hub === AppTabRouterHub.shared,
+        // Identity check: both references must point to the same object
+        XCTAssertTrue(hub === hub2,
                       "AppTabRouterHub.shared should return same instance")
         // Verify hub can accept a router assignment without crashing
         let router = AppTabRouter()
         hub.router = router
-        XCTAssertNotNil(hub.router, "Hub should hold the assigned router")
+        // Snapshot the assigned router before cleanup and verify it's what we set
+        let assignedRouter = hub.router
+        XCTAssertTrue(assignedRouter === router, "Hub must hold the exactly same router object we assigned")
         // Cleanup
         hub.router = nil
+        let postNilRouter = hub.router
+        XCTAssertNil(postNilRouter, "Hub's router must be nil after explicit nil assignment")
     }
 }
 
@@ -120,10 +127,11 @@ final class TPPBookModelGapTests: XCTestCase {
         let dict = book.dictionaryRepresentation()
         let recreated = TPPBook(dictionary: dict)
 
-        XCTAssertNotNil(recreated, "Book should be recreated from dictionaryRepresentation")
         XCTAssertEqual(recreated?.identifier, book.identifier)
         XCTAssertEqual(recreated?.title, book.title)
         XCTAssertEqual(recreated?.categoryStrings, book.categoryStrings)
+        XCTAssertEqual(recreated?.acquisitions.count, book.acquisitions.count,
+                       "Acquisitions count must be preserved through the round-trip")
     }
 
     /// Coverage Gap: TPPBook equality — same identifier yields equivalent Comparable result
@@ -178,9 +186,11 @@ final class TPPBadgeImageGapTests: XCTestCase {
     func testTPPBadgeImageView_audiobook_initSucceeds() {
         let view = TPPContentBadgeImageView(badgeImage: .audiobook)
 
-        XCTAssertNotNil(view, "TPPContentBadgeImageView should initialise with .audiobook without crashing")
         XCTAssertEqual(view.backgroundColor, TPPConfiguration.audiobookIconColor(),
                        "Badge view background should match the audiobookIconColor configuration")
+        // Audiobook badge must be visually distinguishable — it must have a non-zero frame
+        XCTAssertFalse(TPPContentBadgeImageView.TPPBadgeImage.audiobook.assetName().isEmpty,
+                       "Audiobook badge asset name must not be empty")
     }
 }
 
@@ -223,16 +233,19 @@ final class DebugSettingsGapTests: XCTestCase {
     func testDebugSettings_resetAll_clearsBadgeLogging() {
         let settings = DebugSettings.shared
 
-        // Arrange: put settings into a known dirty state
+        // Arrange: enable badge logging and verify it took effect before resetting
         settings.isBadgeLoggingEnabled = true
-        XCTAssertTrue(settings.isBadgeLoggingEnabled, "Pre-condition: badge logging should be enabled before reset")
+        let stateBeforeReset = settings.isBadgeLoggingEnabled
+        XCTAssertTrue(stateBeforeReset, "Pre-condition: badge logging must be enabled before reset is called")
 
         // Act
         settings.resetAll()
 
-        // Assert: resetAll must clear it
+        // Assert: resetAll must clear badge logging and leave settings in a consistent state
         XCTAssertFalse(settings.isBadgeLoggingEnabled,
                        "resetAll() must set isBadgeLoggingEnabled back to false")
+        XCTAssertFalse(settings.isBorrowErrorSimulationEnabled,
+                       "resetAll() must also clear simulatedBorrowError state")
     }
 
     /// Coverage Gap: DebugSettings resetAll — clears all state

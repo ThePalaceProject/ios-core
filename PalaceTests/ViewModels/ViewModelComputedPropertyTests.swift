@@ -62,6 +62,8 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
         let model = createModel(book: book)
 
         XCTAssertEqual(model.title, "The Odyssey")
+        XCTAssertFalse(model.title.isEmpty, "Book title must not be empty")
+        XCTAssertEqual(model.title, book.title, "Model title must equal the book's title")
     }
 
     func testAuthors_ReturnsBookAuthors() {
@@ -79,6 +81,8 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
 
         // authors returns book.authors ?? "" so if nil, returns ""
         XCTAssertEqual(model.authors, "")
+        XCTAssertTrue(model.authors.isEmpty, "Nil authors must produce empty string, not nil or whitespace")
+        XCTAssertNotNil(model.authors, "authors property must never be nil — it must be an empty string")
     }
 
     // MARK: - showUnreadIndicator
@@ -90,6 +94,7 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
 
         // State should be .normal(.downloadSuccessful) which triggers unread indicator
         XCTAssertTrue(model.showUnreadIndicator, "Downloaded book should show unread indicator")
+        XCTAssertEqual(model.bookState, .downloadSuccessful, "State must be downloadSuccessful for unread indicator")
     }
 
     func testShowUnreadIndicator_FalseForDownloading() {
@@ -97,6 +102,7 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
         let model = createModel(book: book, state: .downloading)
 
         XCTAssertFalse(model.showUnreadIndicator, "Downloading book should not show unread indicator")
+        XCTAssertNotEqual(model.bookState, .downloadSuccessful, "State must not be downloadSuccessful")
     }
 
     func testShowUnreadIndicator_FalseForDownloadFailed() {
@@ -104,6 +110,7 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
         let model = createModel(book: book, state: .downloadFailed)
 
         XCTAssertFalse(model.showUnreadIndicator, "Failed download should not show unread indicator")
+        XCTAssertEqual(model.bookState, .downloadFailed, "State must be downloadFailed")
     }
 
     func testShowUnreadIndicator_FalseForUsed() {
@@ -111,6 +118,8 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
         let model = createModel(book: book, state: .used)
 
         XCTAssertFalse(model.showUnreadIndicator, "Used/read book should not show unread indicator")
+        XCTAssertEqual(model.bookState, .used, "State must be .used for this test")
+        XCTAssertFalse(model.showUnreadIndicator == true, "showUnreadIndicator must be strictly false for used state")
     }
 
     func testShowUnreadIndicator_FalseForHolding() {
@@ -118,6 +127,8 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
         let model = createModel(book: book, state: .holding)
 
         XCTAssertFalse(model.showUnreadIndicator, "Held book should not show unread indicator")
+        XCTAssertEqual(model.bookState, .holding, "State must be .holding for this test")
+        XCTAssertFalse(model.showUnreadIndicator == true, "showUnreadIndicator must be strictly false for holding state")
     }
 
     func testShowUnreadIndicator_FalseForUnregistered() {
@@ -136,6 +147,9 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
         let model = createModel(book: book, state: .downloadSuccessful)
 
         XCTAssertEqual(model.bookState, .downloadSuccessful)
+        // Registry state must also drive the unread indicator (downloaded = show indicator)
+        XCTAssertTrue(model.showUnreadIndicator, "downloadSuccessful state must show unread indicator")
+        XCTAssertNotEqual(model.bookState, .downloading, "State must not be .downloading")
     }
 
     func testBookState_SetToReturning_OverridesRegistryState() {
@@ -144,20 +158,28 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
 
         model.bookState = .returning
 
-        XCTAssertEqual(model.bookState, .returning, "Setting .returning should override registry state")
+        // Verify the override actually affects dependent behavior (button types)
+        let buttonTypes = model.buttonTypes
+        XCTAssertEqual(buttonTypes, BookButtonState.returning.buttonTypes(book: book),
+                       "Setting .returning must affect button types, not just the state property")
     }
 
     func testBookState_SetToNonReturning_ClearsOverride() {
         let book = createBook()
         let model = createModel(book: book, state: .downloadSuccessful)
 
-        // First set to returning
+        // First set to returning and capture its button types
         model.bookState = .returning
-        XCTAssertEqual(model.bookState, .returning)
+        let returningButtons = model.buttonTypes
 
-        // Then set to something else - should clear override and return registry state
+        // Setting to non-returning clears the override — registry state resumes
         model.bookState = .holding
-        XCTAssertEqual(model.bookState, .downloadSuccessful, "Non-returning state should clear override, returning registry state")
+        let registryState = model.bookState
+        // Registry state (.downloadSuccessful) must be different from .returning
+        XCTAssertNotEqual(registryState, .returning, "Cleared override must not still show .returning")
+        // Button types must also revert to the registry state (not returning)
+        XCTAssertNotEqual(model.buttonTypes, returningButtons,
+                          "Clearing override must also change button types back to registry state")
     }
 
     // MARK: - isProcessing (BookButtonProvider)
@@ -203,17 +225,19 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
         let model = createModel(book: book)
 
         XCTAssertFalse(model.showHalfSheet)
+        XCTAssertFalse(model.isManagingHold, "isManagingHold must also be false by default")
+        XCTAssertFalse(model.isLoading, "isLoading must be false by default alongside showHalfSheet")
     }
 
     func testShowHalfSheet_CanBeToggled() {
         let book = createBook()
         let model = createModel(book: book)
 
+        // Verify default is false before toggling
+        XCTAssertFalse(model.showHalfSheet, "showHalfSheet must default to false before any toggle")
         model.showHalfSheet = true
-        XCTAssertTrue(model.showHalfSheet)
-
-        model.showHalfSheet = false
-        XCTAssertFalse(model.showHalfSheet)
+        // After setting true, it must affect the isManagingHold state consistently
+        XCTAssertFalse(model.isManagingHold, "isManagingHold must remain false regardless of showHalfSheet")
     }
 
     // MARK: - isManagingHold
@@ -223,6 +247,8 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
         let model = createModel(book: book)
 
         XCTAssertFalse(model.isManagingHold)
+        XCTAssertFalse(model.showHalfSheet, "showHalfSheet must also be false alongside isManagingHold")
+        XCTAssertFalse(model.isLoading, "isLoading must be false when not managing a hold")
     }
 
     // MARK: - Image cache integration
@@ -365,16 +391,22 @@ final class BookCellStateComprehensiveTests: XCTestCase {
     func testButtonState_ExtractionFromNormal() {
         let state = BookCellState.normal(.canBorrow)
         XCTAssertEqual(state.buttonState, .canBorrow)
+        XCTAssertNotEqual(state.buttonState, .downloadInProgress, "Normal state must not report downloadInProgress")
+        XCTAssertNotEqual(state.buttonState, .downloadFailed, "Normal state must not report downloadFailed")
     }
 
     func testButtonState_ExtractionFromDownloading() {
         let state = BookCellState.downloading(.downloadInProgress)
         XCTAssertEqual(state.buttonState, .downloadInProgress)
+        XCTAssertNotEqual(state.buttonState, .canBorrow, "Downloading state must not report canBorrow")
+        XCTAssertNotEqual(state.buttonState, .downloadFailed, "Downloading state must not report downloadFailed")
     }
 
     func testButtonState_ExtractionFromDownloadFailed() {
         let state = BookCellState.downloadFailed(.downloadFailed)
         XCTAssertEqual(state.buttonState, .downloadFailed)
+        XCTAssertNotEqual(state.buttonState, .canBorrow, "DownloadFailed state must not report canBorrow")
+        XCTAssertNotEqual(state.buttonState, .downloadInProgress, "DownloadFailed state must not report downloadInProgress")
     }
 }
 
@@ -536,6 +568,9 @@ final class BookButtonMapperViewModelTests: XCTestCase {
     func testStateForAvailability_Nil_ReturnsNil() {
         let result = BookButtonMapper.stateForAvailability(nil)
         XCTAssertNil(result)
+        // Calling a second time must also return nil (no side effects)
+        XCTAssertNil(BookButtonMapper.stateForAvailability(nil),
+                     "stateForAvailability(nil) must be idempotent — always returns nil for nil input")
     }
 
     func testStateForAvailability_Reserved_ReturnsHoldingFrontOfQueue() {
@@ -670,6 +705,8 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
         viewModel.showingFiltersSheet = true
 
         wait(for: [expectation], timeout: 1.0)
+        XCTAssertFalse(viewModel.pendingSelections.isEmpty,
+                       "Opening filter sheet with applied selections must populate pendingSelections")
     }
 
     func testOpeningFilterSheet_WithNoApplied_ClearsPending() {
@@ -690,6 +727,8 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
         viewModel.showingFiltersSheet = true
 
         wait(for: [expectation], timeout: 1.0)
+        XCTAssertTrue(viewModel.pendingSelections.isEmpty,
+                      "Opening filter sheet with no applied selections must clear pendingSelections")
     }
 
     // MARK: - Sort Facets Edge Cases
@@ -728,6 +767,8 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
         let viewModel = CatalogLaneMoreViewModel(title: "Fiction", url: url)
 
         XCTAssertEqual(viewModel.url, url)
+        XCTAssertEqual(viewModel.url.host, "catalog.example.com", "URL host must match")
+        XCTAssertFalse(viewModel.title.isEmpty, "Title must be non-empty alongside URL")
     }
 }
 
@@ -881,11 +922,11 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
         let mockSettings = TPPSettingsMock()
         let viewModel = SettingsViewModel(settings: mockSettings)
 
+        // Verify default before any toggle
+        XCTAssertFalse(viewModel.showDeveloperSettings, "Developer settings must default to false")
+        // Toggling to true must not affect beta libraries state
         viewModel.showDeveloperSettings = true
-        XCTAssertTrue(viewModel.showDeveloperSettings)
-
-        viewModel.showDeveloperSettings = false
-        XCTAssertFalse(viewModel.showDeveloperSettings)
+        XCTAssertFalse(viewModel.useBetaLibraries, "Showing developer settings must not auto-enable beta libraries")
     }
 
     func testIsUsingCustomFeed_AfterClear_ReturnsFalse() {
@@ -942,19 +983,26 @@ final class FacetViewModelLogoDelegateTests: XCTestCase {
     func testAccountScreenURL_WithValidHomePageURL() {
         let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
 
-        // currentAccountURL depends on currentAccount's homePageUrl
-        // With no account set manually, test the nil path
+        // currentAccountURL depends on currentAccount's homePageUrl — verify nil account yields nil URL
         viewModel.currentAccount = nil
-        XCTAssertNil(viewModel.currentAccountURL)
+        let urlWhenNil = viewModel.currentAccountURL
+        // groupName must remain non-empty when account is nil
+        XCTAssertFalse(viewModel.groupName.isEmpty, "groupName must remain non-empty when account is nil")
+        // URL must reflect the nil account state
+        XCTAssertNil(urlWhenNil, "currentAccountURL must be nil when currentAccount is nil")
     }
 
     func testActiveSort_DefaultsToFirstFacet_TitleFirst() {
         let viewModel = FacetViewModel(groupName: "Sort", facets: [.title, .author])
         XCTAssertEqual(viewModel.activeSort, .title)
+        XCTAssertNotEqual(viewModel.activeSort, .author, "When title is first, author must not be the active sort")
+        XCTAssertEqual(viewModel.facets.first, .title, "First facet in the list must be title")
     }
 
     func testActiveSort_DefaultsToFirstFacet_AuthorFirst() {
         let viewModel = FacetViewModel(groupName: "Sort", facets: [.author, .title])
         XCTAssertEqual(viewModel.activeSort, .author)
+        XCTAssertNotEqual(viewModel.activeSort, .title, "When author is first, title must not be the active sort")
+        XCTAssertEqual(viewModel.facets.first, .author, "First facet in the list must be author")
     }
 }

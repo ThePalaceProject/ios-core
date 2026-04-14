@@ -74,6 +74,9 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.fiftyBooksClub.evaluateProgress(ctx)
     XCTAssertEqual(progress, 1.0, accuracy: 0.001)
+    // Progress at exactly 50 must also produce an earned badge
+    let badge = BadgeCatalog.fiftyBooksClub.makeBadge(earnedDate: Date(), progress: progress)
+    XCTAssertTrue(badge.isEarned, "50 completions must earn the badge")
   }
 
   func testFiftyBooksClub_FailingCriteria() {
@@ -82,6 +85,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.fiftyBooksClub.evaluateProgress(ctx)
     XCTAssertLessThan(progress, 1.0)
+    // 10 books is 20% toward 50 — verify the exact expected ratio
+    XCTAssertEqual(progress, 0.2, accuracy: 0.001, "10/50 books must be 20% progress")
   }
 
   func testFiftyBooksClub_ProgressCalculation() {
@@ -90,6 +95,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.fiftyBooksClub.evaluateProgress(ctx)
     XCTAssertEqual(progress, 0.5, accuracy: 0.001)
+    // 25 books is strictly less than the target — badge not yet earned
+    XCTAssertFalse(BadgeCatalog.fiftyBooksClub.makeBadge(earnedDate: nil, progress: progress).isEarned)
   }
 
   func testFiftyBooksClub_CapsAtOne() {
@@ -98,6 +105,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.fiftyBooksClub.evaluateProgress(ctx)
     XCTAssertEqual(progress, 1.0, accuracy: 0.001)
+    // Progress must be capped — 75 books must not exceed 1.0
+    XCTAssertLessThanOrEqual(progress, 1.0, "Progress must never exceed 1.0")
   }
 
   // MARK: - HundredBooksClub
@@ -108,6 +117,9 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.hundredBooksClub.evaluateProgress(ctx)
     XCTAssertEqual(progress, 1.0, accuracy: 0.001)
+    // Must be strictly harder than fiftyBooksClub — 50 books must not earn it
+    let halfCtx = makeContext(completions: makeCompletions(count: 50))
+    XCTAssertLessThan(BadgeCatalog.hundredBooksClub.evaluateProgress(halfCtx), 1.0)
   }
 
   func testHundredBooksClub_FailingCriteria() {
@@ -116,6 +128,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.hundredBooksClub.evaluateProgress(ctx)
     XCTAssertLessThan(progress, 1.0)
+    // 30/100 books = 30% progress
+    XCTAssertEqual(progress, 0.3, accuracy: 0.001, "30/100 books must be 30% progress")
   }
 
   func testHundredBooksClub_ProgressCalculation() {
@@ -124,6 +138,9 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.hundredBooksClub.evaluateProgress(ctx)
     XCTAssertEqual(progress, 0.5, accuracy: 0.001)
+    // 50 books is strictly between 0 and 1 for the 100-book club
+    XCTAssertGreaterThan(progress, 0.0)
+    XCTAssertLessThan(progress, 1.0)
   }
 
   func testHundredBooksClub_ZeroCompletions() {
@@ -131,6 +148,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.hundredBooksClub.evaluateProgress(ctx)
     XCTAssertEqual(progress, 0.0, accuracy: 0.001)
+    // Zero completions must mean the badge is not earned
+    XCTAssertFalse(BadgeCatalog.hundredBooksClub.makeBadge(earnedDate: nil, progress: progress).isEarned)
   }
 
   // MARK: - SpeedReader
@@ -142,19 +161,14 @@ final class BadgeDefinitionTests: XCTestCase {
     let afternoonEnd = calendar.date(byAdding: .hour, value: 14, to: today)!
 
     let bookID = "speed-book"
-    let session = makeSession(
-      bookID: bookID,
-      startTime: morningStart,
-      endTime: afternoonEnd
-    )
-    let completion = makeCompletion(
-      bookID: bookID,
-      completedDate: afternoonEnd
-    )
+    let session = makeSession(bookID: bookID, startTime: morningStart, endTime: afternoonEnd)
+    let completion = makeCompletion(bookID: bookID, completedDate: afternoonEnd)
     let ctx = makeContext(sessions: [session], completions: [completion])
 
     let progress = BadgeCatalog.speedReader.evaluateProgress(ctx)
     XCTAssertEqual(progress, 1.0, accuracy: 0.001)
+    // Same-day completion must earn the badge
+    XCTAssertTrue(BadgeCatalog.speedReader.makeBadge(earnedDate: Date(), progress: progress).isEarned)
   }
 
   func testSpeedReader_FailingCriteria_MultiDayRead() {
@@ -163,19 +177,14 @@ final class BadgeDefinitionTests: XCTestCase {
     let today = Date()
 
     let bookID = "slow-book"
-    let session = makeSession(
-      bookID: bookID,
-      startTime: yesterday,
-      endTime: today
-    )
-    let completion = makeCompletion(
-      bookID: bookID,
-      completedDate: today
-    )
+    let session = makeSession(bookID: bookID, startTime: yesterday, endTime: today)
+    let completion = makeCompletion(bookID: bookID, completedDate: today)
     let ctx = makeContext(sessions: [session], completions: [completion])
 
     let progress = BadgeCatalog.speedReader.evaluateProgress(ctx)
     XCTAssertLessThan(progress, 1.0)
+    // Multi-day reads must produce partial or zero progress — never earned
+    XCTAssertFalse(BadgeCatalog.speedReader.makeBadge(earnedDate: nil, progress: progress).isEarned)
   }
 
   func testSpeedReader_ProgressWithCompletionsButNoneSameDay() {
@@ -185,6 +194,9 @@ final class BadgeDefinitionTests: XCTestCase {
     let progress = BadgeCatalog.speedReader.evaluateProgress(ctx)
     // Has completions but no same-day match: partial progress (0.5)
     XCTAssertEqual(progress, 0.5, accuracy: 0.001)
+    // Partial progress must be strictly between 0 and 1
+    XCTAssertGreaterThan(progress, 0.0)
+    XCTAssertLessThan(progress, 1.0)
   }
 
   func testSpeedReader_ZeroProgress_NoCompletions() {
@@ -192,6 +204,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.speedReader.evaluateProgress(ctx)
     XCTAssertEqual(progress, 0.0, accuracy: 0.001)
+    // Zero progress must also mean no earned date
+    XCTAssertFalse(BadgeCatalog.speedReader.makeBadge(earnedDate: nil, progress: progress).isEarned)
   }
 
   // MARK: - StreakLegend (30 days)
@@ -202,6 +216,10 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.streakLegend.evaluateProgress(ctx)
     XCTAssertEqual(progress, 1.0, accuracy: 0.001)
+    // StreakLegend must have a lower threshold than StreakImmortal (30 vs 100)
+    let sameCtx = makeContext(streak: streak)
+    let immortalProgress = BadgeCatalog.streakImmortal.evaluateProgress(sameCtx)
+    XCTAssertLessThan(immortalProgress, 1.0, "30 days must not earn StreakImmortal (100-day badge)")
   }
 
   func testStreakLegend_FailingCriteria() {
@@ -210,6 +228,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.streakLegend.evaluateProgress(ctx)
     XCTAssertLessThan(progress, 1.0)
+    // 10/30 days = 33.3% progress
+    XCTAssertEqual(progress, 10.0/30.0, accuracy: 0.01, "10-day streak must be roughly 33% of the 30-day target")
   }
 
   func testStreakLegend_ProgressCalculation() {
@@ -218,6 +238,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.streakLegend.evaluateProgress(ctx)
     XCTAssertEqual(progress, 0.5, accuracy: 0.001)
+    XCTAssertGreaterThan(progress, 0.0, "15-day streak must show meaningful progress")
+    XCTAssertLessThan(progress, 1.0, "15-day streak must not yet earn the badge")
   }
 
   func testStreakLegend_UsesLongestStreak() {
@@ -227,6 +249,10 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.streakLegend.evaluateProgress(ctx)
     XCTAssertEqual(progress, 1.0, accuracy: 0.001)
+    // Must differ from a context where the longest streak is also only 2 days
+    let shortCtx = makeContext(streak: ReadingStreak(currentStreakDays: 2, longestStreakDays: 2))
+    XCTAssertLessThan(BadgeCatalog.streakLegend.evaluateProgress(shortCtx), 1.0,
+                      "Only 2-day longest streak must not earn the badge")
   }
 
   // MARK: - StreakImmortal (100 days)
@@ -237,6 +263,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.streakImmortal.evaluateProgress(ctx)
     XCTAssertEqual(progress, 1.0, accuracy: 0.001)
+    // 100-day streak also earns StreakLegend (30-day) — verify the easier badge still passes
+    XCTAssertEqual(BadgeCatalog.streakLegend.evaluateProgress(ctx), 1.0, accuracy: 0.001)
   }
 
   func testStreakImmortal_FailingCriteria() {
@@ -245,6 +273,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.streakImmortal.evaluateProgress(ctx)
     XCTAssertLessThan(progress, 1.0)
+    // 50 days = 50% of the 100-day target
+    XCTAssertEqual(progress, 0.5, accuracy: 0.001, "50/100 days must be 50% progress")
   }
 
   func testStreakImmortal_ProgressCalculation() {
@@ -253,6 +283,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.streakImmortal.evaluateProgress(ctx)
     XCTAssertEqual(progress, 0.5, accuracy: 0.001)
+    XCTAssertGreaterThan(progress, 0.0)
+    XCTAssertLessThan(progress, 1.0)
   }
 
   func testStreakImmortal_CapsAtOne() {
@@ -261,6 +293,7 @@ final class BadgeDefinitionTests: XCTestCase {
 
     let progress = BadgeCatalog.streakImmortal.evaluateProgress(ctx)
     XCTAssertEqual(progress, 1.0, accuracy: 0.001)
+    XCTAssertLessThanOrEqual(progress, 1.0, "Progress must never exceed 1.0 even for 200-day streak")
   }
 
   // MARK: - WeekendWarrior (4 consecutive weekends)
@@ -271,21 +304,17 @@ final class BadgeDefinitionTests: XCTestCase {
 
     // Create sessions on 4 consecutive weekends (Saturday or Sunday)
     for weeksAgo in 0..<4 {
-      // Find the most recent Saturday
       let today = Date()
       guard let weekStart = calendar.date(byAdding: .weekOfYear, value: -weeksAgo, to: today) else { continue }
 
-      // Find Saturday of that week
       let weekday = calendar.component(.weekday, from: weekStart)
       let daysToSaturday = (7 - weekday) % 7
       guard let saturday = calendar.date(byAdding: .day, value: daysToSaturday == 0 && weekday != 7 ? -1 : daysToSaturday, to: weekStart) else { continue }
 
-      // For simplicity, just add a weekend day session
       let adjustedSaturday: Date
       if calendar.component(.weekday, from: saturday) == 7 {
         adjustedSaturday = saturday
       } else {
-        // Fallback: create a date that is definitely a Saturday
         var comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: weekStart)
         comps.weekday = 7
         adjustedSaturday = calendar.date(from: comps) ?? saturday
@@ -299,6 +328,8 @@ final class BadgeDefinitionTests: XCTestCase {
 
     // With 4 weekend sessions, should have meaningful progress
     XCTAssertGreaterThan(progress, 0.0)
+    // Progress must also be bounded within [0, 1]
+    XCTAssertLessThanOrEqual(progress, 1.0, "WeekendWarrior progress must never exceed 1.0")
   }
 
   func testWeekendWarrior_FailingCriteria_NoWeekendSessions() {
@@ -319,6 +350,8 @@ final class BadgeDefinitionTests: XCTestCase {
     let progress = BadgeCatalog.weekendWarrior.evaluateProgress(ctx)
 
     XCTAssertEqual(progress, 0.0, accuracy: 0.001)
+    // Weekday-only sessions must not earn the badge
+    XCTAssertFalse(BadgeCatalog.weekendWarrior.makeBadge(earnedDate: nil, progress: progress).isEarned)
   }
 
   func testWeekendWarrior_ProgressCalculation_TwoWeekends() {
@@ -341,6 +374,10 @@ final class BadgeDefinitionTests: XCTestCase {
     // 2 out of 4 required weekends
     XCTAssertGreaterThan(progress, 0.0)
     XCTAssertLessThanOrEqual(progress, 1.0)
+    // 2 weekends must yield less progress than 4 weekends
+    let noSessionCtx = makeContext(sessions: [])
+    XCTAssertGreaterThan(progress, BadgeCatalog.weekendWarrior.evaluateProgress(noSessionCtx),
+                         "2 weekend sessions must produce more progress than 0 sessions")
   }
 
   // MARK: - Badge Metadata
@@ -360,30 +397,40 @@ final class BadgeDefinitionTests: XCTestCase {
     XCTAssertEqual(badge.id, "hundred_books_club")
     XCTAssertEqual(badge.name, "100 Books Club")
     XCTAssertEqual(badge.tier, .gold)
+    // Gold tier must be higher/harder than the silver FiftyBooksClub
+    XCTAssertNotEqual(badge.tier, BadgeCatalog.fiftyBooksClub.tier, "100 Books Club must be gold; 50 Books Club is silver")
   }
 
   func testSpeedReader_Metadata() {
     let badge = BadgeCatalog.speedReader
     XCTAssertEqual(badge.id, "speed_reader")
     XCTAssertEqual(badge.tier, .silver)
+    XCTAssertFalse(badge.name.isEmpty, "SpeedReader must have a non-empty display name")
+    XCTAssertFalse(badge.iconName.isEmpty, "SpeedReader must have an icon name for the UI")
   }
 
   func testStreakLegend_Metadata() {
     let badge = BadgeCatalog.streakLegend
     XCTAssertEqual(badge.id, "streak_legend")
     XCTAssertEqual(badge.tier, .silver)
+    XCTAssertFalse(badge.descriptionText.isEmpty, "StreakLegend must have a description to show users")
+    XCTAssertFalse(badge.hint.isEmpty, "StreakLegend must provide a hint to guide users")
   }
 
   func testStreakImmortal_Metadata() {
     let badge = BadgeCatalog.streakImmortal
     XCTAssertEqual(badge.id, "streak_immortal")
     XCTAssertEqual(badge.tier, .gold)
+    // Gold tier: harder than silver StreakLegend — IDs must differ
+    XCTAssertNotEqual(badge.id, BadgeCatalog.streakLegend.id, "Immortal and Legend must have distinct IDs")
   }
 
   func testWeekendWarrior_Metadata() {
     let badge = BadgeCatalog.weekendWarrior
     XCTAssertEqual(badge.id, "weekend_warrior")
     XCTAssertEqual(badge.tier, .silver)
+    XCTAssertFalse(badge.name.isEmpty, "WeekendWarrior must have a non-empty display name")
+    XCTAssertFalse(badge.id.isEmpty, "WeekendWarrior must have a non-empty ID")
   }
 
   // MARK: - makeBadge
@@ -425,5 +472,9 @@ final class BadgeDefinitionTests: XCTestCase {
   func testBadgeCatalog_HasUniqueIDs() {
     let allIDs = BadgeCatalog.all.map(\.id)
     XCTAssertEqual(allIDs.count, Set(allIDs).count, "All badge IDs should be unique")
+    // Each ID must also be non-empty — blank IDs would break persistence / display
+    XCTAssertTrue(allIDs.allSatisfy { !$0.isEmpty }, "Every badge must have a non-empty ID")
+    // The catalog must contain at least 6 badges (the ones defined in this test suite)
+    XCTAssertGreaterThanOrEqual(allIDs.count, 6, "BadgeCatalog.all must include all defined badges")
   }
 }

@@ -33,18 +33,27 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
     func testSetting_canBeToggledOn() {
         TPPSettings.shared.downloadOnlyOnWiFi = true
         XCTAssertTrue(TPPSettings.shared.downloadOnlyOnWiFi)
+        // Setting must persist to UserDefaults immediately
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: settingsKey),
+                      "downloadOnlyOnWiFi=true must be reflected in UserDefaults")
     }
 
     func testSetting_canBeToggledOff() {
         TPPSettings.shared.downloadOnlyOnWiFi = true
         TPPSettings.shared.downloadOnlyOnWiFi = false
         XCTAssertFalse(TPPSettings.shared.downloadOnlyOnWiFi)
+        // Must also be false in UserDefaults
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: settingsKey),
+                       "downloadOnlyOnWiFi=false must be reflected in UserDefaults")
     }
 
     func testSetting_persistsAcrossReads() {
         TPPSettings.shared.downloadOnlyOnWiFi = true
         let value = UserDefaults.standard.bool(forKey: settingsKey)
         XCTAssertTrue(value, "Setting should be persisted in UserDefaults")
+        // Reading the setting again must return the same value (no side effects)
+        XCTAssertTrue(TPPSettings.shared.downloadOnlyOnWiFi,
+                      "Re-reading the setting after setting to true must still return true")
     }
 
     // MARK: - Protocol Conformance
@@ -54,6 +63,9 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
         let original = settings.downloadOnlyOnWiFi
         settings.downloadOnlyOnWiFi = !original
         XCTAssertNotEqual(settings.downloadOnlyOnWiFi, original)
+        // Change must also be visible through the concrete type
+        XCTAssertEqual(TPPSettings.shared.downloadOnlyOnWiFi, !original,
+                       "Protocol mutation must be visible through the concrete type")
         settings.downloadOnlyOnWiFi = original
     }
 

@@ -56,8 +56,12 @@ final class TPPBookContentMetadataFilesHelperTests: XCTestCase {
     func testCurrentAccountDirectory_returnsURLOrNil() {
         let url = TPPBookContentMetadataFilesHelper.currentAccountDirectory()
         // May be nil if no account is signed in during tests
-        // Just verify it doesn't crash
-        _ = url
+        if let url = url {
+            XCTAssertTrue(url.isFileURL, "currentAccountDirectory must return a file URL when signed in")
+            XCTAssertFalse(url.path.isEmpty, "currentAccountDirectory path must not be empty")
+        }
+        // nil is acceptable (no account signed in during tests)
+        XCTAssertTrue(url == nil || url!.isFileURL, "Result must be nil or a valid file URL")
     }
 
     // MARK: - Edge Cases
@@ -65,11 +69,13 @@ final class TPPBookContentMetadataFilesHelperTests: XCTestCase {
     func testDirectory_emptyString_handlesGracefully() {
         let url = TPPBookContentMetadataFilesHelper.directory(for: "")
         // Should handle empty string gracefully (may return nil or a path)
-        // Key requirement: must not crash
         if let url = url {
             XCTAssertTrue(url.isFileURL, "If URL is returned for empty ID, it should be a file URL")
+            XCTAssertFalse(url.path.isEmpty, "Returned path must not be empty")
         }
-        // Both nil and non-nil are acceptable for empty input
+        // Both nil and non-nil are acceptable for empty input; result must differ from a valid-account URL
+        let validURL = TPPBookContentMetadataFilesHelper.directory(for: "valid-account-id")
+        XCTAssertNotEqual(url, validURL, "Empty-ID directory must differ from a valid-account directory")
     }
 
     func testDirectory_specialCharacters_handlesGracefully() {

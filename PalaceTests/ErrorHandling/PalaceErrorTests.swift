@@ -66,21 +66,34 @@ final class PalaceErrorCategoryTests: XCTestCase {
     func testErrorCode_networkErrors_startAt1000() {
         let error = PalaceError.network(.noConnection)
         XCTAssertEqual(error.errorCode, 1000, "Network errors should start at 1000")
+        // Network error codes must be below the download range (3000)
+        XCTAssertLessThan(error.errorCode, 3000, "Network codes must be below download range")
+        // Must also have a non-nil description
+        XCTAssertNotNil(error.errorDescription, "Network error must have a human-readable description")
     }
 
     func testErrorCode_downloadErrors_startAt3000() {
         let error = PalaceError.download(.networkFailure)
         XCTAssertEqual(error.errorCode, 3000, "Download errors should start at 3000")
+        // Download codes must be above network range and below auth range
+        XCTAssertGreaterThanOrEqual(error.errorCode, 3000)
+        XCTAssertNotNil(error.errorDescription, "Download error must have a description")
     }
 
     func testErrorCode_authErrors_startAt6000() {
         let error = PalaceError.authentication(.invalidCredentials)
         XCTAssertEqual(error.errorCode, 6000, "Auth errors should start at 6000")
+        // Auth codes must be above DRM range (5000)
+        XCTAssertGreaterThan(error.errorCode, 5000, "Auth codes must exceed DRM range")
+        XCTAssertNotNil(error.errorDescription, "Auth error must have a description")
     }
 
     func testErrorCode_drmErrors_startAt5000() {
         let error = PalaceError.drm(.authenticationFailed)
         XCTAssertEqual(error.errorCode, 5000, "DRM errors should start at 5000")
+        // DRM codes must be between download (3000) and auth (6000)
+        XCTAssertGreaterThan(error.errorCode, 3000, "DRM codes must exceed download range")
+        XCTAssertLessThan(error.errorCode, 6000, "DRM codes must be below auth range")
     }
 
     func testErrorCode_uniquePerCase() {

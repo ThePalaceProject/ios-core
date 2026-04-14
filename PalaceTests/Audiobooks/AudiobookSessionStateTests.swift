@@ -91,6 +91,12 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
             AudiobookSessionState.playing(bookId: "a"),
             AudiobookSessionState.playing(bookId: "b")
         )
+        // Same bookId must be equal (sanity check against reflexivity)
+        XCTAssertEqual(
+            AudiobookSessionState.playing(bookId: "a"),
+            AudiobookSessionState.playing(bookId: "a"),
+            "Same bookId must produce equal states"
+        )
     }
 
     // MARK: - Session Manager Initial State
@@ -117,6 +123,8 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
         // Should be a no-op when no manager is bound
         manager.play()
         XCTAssertFalse(manager.isPlaying)
+        // State must still be .idle (no transition without a manager)
+        XCTAssertEqual(manager.state, .idle, "State must remain idle when play() is called without a manager")
     }
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
@@ -125,6 +133,8 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
         // Should be a no-op when no manager is bound
         manager.pause()
         XCTAssertFalse(manager.isPlaying)
+        // State must still be .idle (no transition without a manager)
+        XCTAssertEqual(manager.state, .idle, "State must remain idle when pause() is called without a manager")
     }
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
@@ -132,6 +142,8 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
         let manager = AudiobookSessionManager.shared
         manager.togglePlayPause()
         XCTAssertFalse(manager.isPlaying)
+        // State must remain idle after toggle without a manager
+        XCTAssertEqual(manager.state, .idle, "State must remain idle when togglePlayPause() is called without a manager")
     }
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
@@ -141,7 +153,8 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
         manager.skipToChapter(at: 0)
         manager.skipToChapter(at: -1)
         manager.skipToChapter(at: 999)
-        // No crash = success
+        // State must remain idle after all skip calls
+        XCTAssertEqual(manager.state, .idle, "State must remain idle after skipToChapter calls without a manager")
     }
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
@@ -149,6 +162,10 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
         let manager = AudiobookSessionManager.shared
         let rate = manager.cyclePlaybackRate()
         XCTAssertEqual(rate, .normalTime, "Without a manager, should return normalTime")
+        // Calling again must return the same value (deterministic for no-op case)
+        let rate2 = manager.cyclePlaybackRate()
+        XCTAssertEqual(rate2, .normalTime,
+                       "Repeated cyclePlaybackRate without a manager must always return normalTime")
     }
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
@@ -173,6 +190,9 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
         let testImage = UIImage()
         manager.updateCoverImage(testImage)
         XCTAssertNotNil(manager.coverImage)
+        // Updating with nil must clear the image
+        manager.updateCoverImage(nil)
+        XCTAssertNil(manager.coverImage, "updateCoverImage(nil) must clear the coverImage property")
     }
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
@@ -181,6 +201,9 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
         manager.updateCoverImage(UIImage())
         manager.updateCoverImage(nil)
         XCTAssertNil(manager.coverImage)
+        // Setting a new image after clearing must work
+        manager.updateCoverImage(UIImage())
+        XCTAssertNotNil(manager.coverImage, "Setting image after clearing must make coverImage non-nil again")
     }
 
     // MARK: - Publisher Tests
@@ -229,6 +252,10 @@ final class AudiobookSessionErrorDescriptionTests: XCTestCase {
         let msg = "Something specific went wrong"
         let error = AudiobookSessionError.unknown(msg)
         XCTAssertEqual(error.localizedDescription, msg)
+        // A different message must produce a different description
+        let otherError = AudiobookSessionError.unknown("Different error")
+        XCTAssertNotEqual(error.localizedDescription, otherError.localizedDescription,
+                          "Unknown errors with different messages must have different descriptions")
     }
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly

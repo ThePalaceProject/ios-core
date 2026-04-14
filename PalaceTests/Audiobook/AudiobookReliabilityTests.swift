@@ -84,8 +84,10 @@ final class AudiobookSessionManagerTests: XCTestCase {
     func testBackgroundCompletionHandlerRegistration() {
         let sessionId = "test-session-\(UUID().uuidString)"
         let expectation = expectation(description: "Background completion handler called")
+        var handlerCallCount = 0
 
         AudiobookSessionManager.shared.registerBackgroundCompletionHandler({
+            handlerCallCount += 1
             expectation.fulfill()
         }, forSessionIdentifier: sessionId)
 
@@ -96,6 +98,7 @@ final class AudiobookSessionManagerTests: XCTestCase {
         }
 
         waitForExpectations(timeout: 3.0)
+        XCTAssertEqual(handlerCallCount, 1, "Background completion handler must be called exactly once")
     }
 }
 

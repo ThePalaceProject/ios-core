@@ -88,6 +88,10 @@ final class URLResponseNYPLTests: XCTestCase {
             url: testURL, statusCode: 200, httpVersion: nil, headerFields: nil
         )!
         XCTAssertTrue(response.isSuccess())
+        XCTAssertEqual(response.statusCode, 200)
+        // 199 (one below 200) must NOT be success
+        let below = HTTPURLResponse(url: testURL, statusCode: 199, httpVersion: nil, headerFields: nil)!
+        XCTAssertFalse(below.isSuccess(), "199 must not be treated as success — boundary must be enforced")
     }
 
     func testIsSuccess_201Created_ReturnsTrue() {
@@ -128,6 +132,10 @@ final class URLResponseNYPLTests: XCTestCase {
             url: testURL, statusCode: 300, httpVersion: nil, headerFields: nil
         )!
         XCTAssertFalse(response.isSuccess())
+        XCTAssertEqual(response.statusCode / 100, 3, "300 must be in the 3xx redirect range")
+        // 299 (boundary) must still be success
+        let boundary = HTTPURLResponse(url: testURL, statusCode: 299, httpVersion: nil, headerFields: nil)!
+        XCTAssertTrue(boundary.isSuccess(), "299 must be treated as success — it is the last 2xx code")
     }
 
     func testIsSuccess_400BadRequest_ReturnsFalse() {

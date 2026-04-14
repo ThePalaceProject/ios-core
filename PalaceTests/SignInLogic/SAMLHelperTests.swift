@@ -74,8 +74,12 @@ final class SAMLHelperTests: XCTestCase {
 
     func testSAMLHelperCanBeInstantiated() {
         let helper = TPPSAMLHelper()
-        XCTAssertNotNil(helper)
+        // businessLogic must be nil before any configuration
         XCTAssertNil(helper.businessLogic, "businessLogic should be nil initially")
+        // Two independent instances must start in the same nil state
+        let helper2 = TPPSAMLHelper()
+        XCTAssertNil(helper2.businessLogic, "Second helper instance must also have nil businessLogic")
+        XCTAssertFalse(helper === helper2, "Two TPPSAMLHelper instances must be distinct objects")
     }
 
     // MARK: - Guard Behavior: nil IDP URL

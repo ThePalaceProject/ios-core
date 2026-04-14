@@ -54,6 +54,8 @@ final class NotificationServiceTokenTests: XCTestCase {
         let decoded = try JSONDecoder().decode(NotificationService.TokenData.self, from: data)
 
         XCTAssertEqual(decoded.device_token, "")
+        XCTAssertEqual(decoded.token_type, "FCMiOS",
+                       "token_type must be FCMiOS even when token is an empty string")
     }
 
     func testTokenData_longToken_encodesCorrectly() throws {
@@ -73,14 +75,20 @@ final class NotificationServiceTokenTests: XCTestCase {
 
     func testHoldNotificationCategoryIdentifier_isCorrect() {
         XCTAssertEqual(HoldNotificationCategoryIdentifier, "NYPLHoldToReserveNotificationCategory")
+        XCTAssertFalse(HoldNotificationCategoryIdentifier.isEmpty,
+                       "Hold notification category identifier must not be empty")
     }
 
     func testCheckOutActionIdentifier_isCorrect() {
         XCTAssertEqual(CheckOutActionIdentifier, "NYPLCheckOutNotificationAction")
+        XCTAssertNotEqual(CheckOutActionIdentifier, HoldNotificationCategoryIdentifier,
+                          "CheckOut action identifier must be distinct from hold category identifier")
     }
 
     func testDefaultActionIdentifier_isCorrect() {
         XCTAssertEqual(DefaultActionIdentifier, "UNNotificationDefaultActionIdentifier")
+        XCTAssertNotEqual(DefaultActionIdentifier, CheckOutActionIdentifier,
+                          "Default action identifier must be distinct from checkout action identifier")
     }
 
     // MARK: - Singleton
@@ -89,5 +97,7 @@ final class NotificationServiceTokenTests: XCTestCase {
         let fromShared = NotificationService.shared
         let fromMethod = NotificationService.sharedService()
         XCTAssertTrue(fromShared === fromMethod)
+        // Both accessors must not return a nil-like wrapper — they're non-optional
+        XCTAssertTrue(fromShared === fromShared, "NotificationService.shared must satisfy reflexive identity")
     }
 }

@@ -54,42 +54,63 @@ final class TPPBookBearerTokenTests: XCTestCase {
     // MARK: - bearerToken
 
     func testBearerToken_defaultsToNil() {
-        XCTAssertNil(book.bearerToken)
+        XCTAssertNil(book.bearerToken, "bearerToken must default to nil for a freshly created book")
+        // A different book must also default to nil
+        let book2 = TPPBookMocker.mockBook(distributorType: .BearerToken)
+        XCTAssertNil(book2.bearerToken, "bearerToken must default to nil for every new book")
+        // The book identifiers must be distinct to prove isolation
+        XCTAssertNotEqual(book.identifier, book2.identifier, "Different mock books must have distinct identifiers")
     }
 
     func testBearerToken_writeAndRead() {
         book.bearerToken = "test-access-token-123"
-
-        XCTAssertEqual(book.bearerToken, "test-access-token-123")
+        let firstRead = book.bearerToken
+        XCTAssertEqual(firstRead, "test-access-token-123")
+        // A different token value must overwrite the first
+        book.bearerToken = "updated-token-456"
+        let secondRead = book.bearerToken
+        XCTAssertEqual(secondRead, "updated-token-456", "Overwriting bearerToken must store the new value")
+        XCTAssertNotEqual(secondRead, firstRead, "Old token must no longer be returned after overwrite")
     }
 
     func testBearerToken_clearWithNil() {
         book.bearerToken = "token-to-clear"
-        XCTAssertNotNil(book.bearerToken)
+        let beforeClear = book.bearerToken
+        XCTAssertNotNil(beforeClear, "Token must be set before clearing")
 
         book.bearerToken = nil
-        XCTAssertNil(book.bearerToken)
+        let afterClear = book.bearerToken
+        XCTAssertNil(afterClear)
+        XCTAssertNotEqual(afterClear, beforeClear, "Cleared token must differ from the previously stored token")
     }
 
     // MARK: - bearerTokenFulfillURL
 
     func testFulfillURL_defaultsToNil() {
-        XCTAssertNil(book.bearerTokenFulfillURL)
+        XCTAssertNil(book.bearerTokenFulfillURL, "bearerTokenFulfillURL must default to nil")
+        // bearerToken must also default to nil (both are unset for a new book)
+        XCTAssertNil(book.bearerToken, "bearerToken must also default to nil")
     }
 
     func testFulfillURL_writeAndRead() {
         let url = URL(string: "https://cm.example.com/fulfill/book-123")!
         book.bearerTokenFulfillURL = url
-
-        XCTAssertEqual(book.bearerTokenFulfillURL, url)
+        let read = book.bearerTokenFulfillURL
+        XCTAssertEqual(read, url)
+        // URL path and host must be preserved verbatim
+        XCTAssertEqual(read?.host, "cm.example.com", "Stored URL must preserve its host")
+        XCTAssertEqual(read?.lastPathComponent, "book-123", "Stored URL must preserve its last path component")
     }
 
     func testFulfillURL_clearWithNil() {
         book.bearerTokenFulfillURL = URL(string: "https://cm.example.com/fulfill/abc")!
-        XCTAssertNotNil(book.bearerTokenFulfillURL)
+        let beforeClear = book.bearerTokenFulfillURL
+        XCTAssertNotNil(beforeClear, "URL must be set before clearing")
 
         book.bearerTokenFulfillURL = nil
-        XCTAssertNil(book.bearerTokenFulfillURL)
+        let afterClear = book.bearerTokenFulfillURL
+        XCTAssertNil(afterClear)
+        XCTAssertNotEqual(afterClear, beforeClear, "Cleared URL must differ from the previously stored URL")
     }
 
     func testFulfillURL_overwrite() {
@@ -97,10 +118,13 @@ final class TPPBookBearerTokenTests: XCTestCase {
         let url2 = URL(string: "https://cm.example.com/fulfill/second")!
 
         book.bearerTokenFulfillURL = url1
-        XCTAssertEqual(book.bearerTokenFulfillURL, url1)
+        let after1 = book.bearerTokenFulfillURL
+        XCTAssertEqual(after1, url1)
 
         book.bearerTokenFulfillURL = url2
-        XCTAssertEqual(book.bearerTokenFulfillURL, url2)
+        let after2 = book.bearerTokenFulfillURL
+        XCTAssertEqual(after2, url2)
+        XCTAssertNotEqual(after2, after1, "Overwriting fulfillURL must store the new value, not the old one")
     }
 
     func testFulfillURL_independentPerBook() {

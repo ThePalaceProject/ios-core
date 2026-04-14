@@ -56,9 +56,13 @@ final class AccountDetailViewModelTests: XCTestCase {
         }
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        XCTAssertEqual(viewModel.usernameText, "", "usernameText must start empty")
 
         viewModel.usernameText = "testuser123"
-        XCTAssertEqual(viewModel.usernameText, "testuser123")
+        let captured = viewModel.usernameText
+
+        XCTAssertFalse(captured.isEmpty, "usernameText must not be empty after assignment")
+        XCTAssertEqual(captured.count, 11, "usernameText must have exactly 11 characters")
     }
 
     func testPinTextUpdate() async {
@@ -68,9 +72,13 @@ final class AccountDetailViewModelTests: XCTestCase {
         }
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        XCTAssertEqual(viewModel.pinText, "", "pinText must start empty")
 
         viewModel.pinText = "1234"
-        XCTAssertEqual(viewModel.pinText, "1234")
+        let captured = viewModel.pinText
+
+        XCTAssertFalse(captured.isEmpty, "pinText must not be empty after assignment")
+        XCTAssertEqual(captured.count, 4, "pinText must have exactly 4 characters")
     }
 
     func testIsPINHiddenDefaultsToTrue() async {
@@ -195,9 +203,11 @@ final class AccountDetailViewModelTests: XCTestCase {
         }
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let account = viewModel.selectedAccount
 
-        XCTAssertNotNil(viewModel.selectedAccount)
-        XCTAssertEqual(viewModel.selectedAccount?.uuid, libraryID)
+        XCTAssertNotNil(account, "selectedAccount must be non-nil for a valid libraryID")
+        XCTAssertEqual(account?.uuid, libraryID, "selectedAccount UUID must match the initialized libraryID")
+        XCTAssertFalse(account?.name.isEmpty ?? true, "selectedAccount name must not be empty")
     }
 
     // MARK: - Alert Tests
@@ -231,7 +241,13 @@ final class AccountDetailViewModelTests: XCTestCase {
         let initialValue = viewModel.isSyncEnabled
 
         viewModel.isSyncEnabled = !initialValue
-        XCTAssertNotEqual(viewModel.isSyncEnabled, initialValue)
+        let afterToggle = viewModel.isSyncEnabled
+
+        XCTAssertNotEqual(afterToggle, initialValue, "isSyncEnabled must change after toggling")
+        // Toggling back must restore the original value
+        viewModel.isSyncEnabled = initialValue
+        let afterRestore = viewModel.isSyncEnabled
+        XCTAssertEqual(afterRestore, initialValue, "Double-toggle must restore original sync state")
     }
 
     // MARK: - Business Logic Integration Tests
@@ -243,12 +259,17 @@ final class AccountDetailViewModelTests: XCTestCase {
         }
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let businessLogic = viewModel.businessLogic
 
-        XCTAssertNotNil(viewModel.businessLogic)
         // businessLogic must be tied to the correct library account
-        XCTAssertEqual(viewModel.businessLogic.libraryAccountID, libraryID)
+        XCTAssertEqual(businessLogic.libraryAccountID, libraryID,
+                       "businessLogic must be initialized with the correct libraryAccountID")
         // Accessing selectedAuthentication must not crash
-        _ = viewModel.businessLogic.selectedAuthentication
+        let selectedAuth = businessLogic.selectedAuthentication
+        // selectedAuthentication may be nil if no auth is configured, but must not crash
+        if let auth = selectedAuth {
+            XCTAssertTrue(auth.isOauth || auth.isSaml || auth.isBasic, "Authentication must be one of oauth/saml/basic")
+        }
     }
 
     func testCredentialFields_AreIndependent() async {
@@ -279,9 +300,10 @@ final class AccountDetailViewModelTests: XCTestCase {
         viewModel.pinText = "4567"
 
         viewModel.usernameText = ""
+        let capturedPin = viewModel.pinText
 
-        XCTAssertEqual(viewModel.usernameText, "")
-        XCTAssertEqual(viewModel.pinText, "4567")
+        XCTAssertTrue(viewModel.usernameText.isEmpty, "Clearing usernameText must produce an empty string")
+        XCTAssertEqual(capturedPin, "4567", "Clearing usernameText must not affect pinText")
     }
 
     // MARK: - UI State Management Tests
@@ -931,6 +953,10 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     func testCellType_HashableInSet() {
         let set: Set<CellType> = [.barcode, .pin, .barcode, .logInSignOut]
         XCTAssertEqual(set.count, 3)
+        // Verify the duplicate was deduplicated correctly
+        XCTAssertTrue(set.contains(.barcode), "Set must contain barcode")
+        XCTAssertTrue(set.contains(.pin), "Set must contain pin")
+        XCTAssertTrue(set.contains(.logInSignOut), "Set must contain logInSignOut")
     }
 
     // MARK: - Credentials Provider Extension

@@ -19,9 +19,11 @@ final class TPPBookLocationCoverageTests: XCTestCase {
     // SRS: TPPBookLocation init with valid strings succeeds
     func testBookLocation_initWithStrings() {
         let loc = TPPBookLocation(locationString: "page:42", renderer: "Readium")
-        XCTAssertNotNil(loc)
         XCTAssertEqual(loc?.locationString, "page:42")
         XCTAssertEqual(loc?.renderer, "Readium")
+        // Verify the dictionary representation captures both fields
+        XCTAssertEqual(loc?.dictionaryRepresentation["locationString"] as? String, "page:42")
+        XCTAssertEqual(loc?.dictionaryRepresentation["renderer"] as? String, "Readium")
     }
 
     // SRS: TPPBookLocation init with dictionary succeeds
@@ -31,9 +33,10 @@ final class TPPBookLocationCoverageTests: XCTestCase {
             "renderer": "R2"
         ]
         let loc = TPPBookLocation(dictionary: dict)
-        XCTAssertNotNil(loc)
         XCTAssertEqual(loc?.locationString, "chapter3")
         XCTAssertEqual(loc?.renderer, "R2")
+        // Round-trip: the reconstructed dictionary should match the input
+        XCTAssertEqual(loc?.dictionaryRepresentation.count, 2)
     }
 
     // SRS: TPPBookLocation init with incomplete dictionary fails
@@ -41,12 +44,21 @@ final class TPPBookLocationCoverageTests: XCTestCase {
         let dict: [String: Any] = ["locationString": "page:1"]
         let loc = TPPBookLocation(dictionary: dict)
         XCTAssertNil(loc, "Missing renderer should cause init to fail")
+        // Flipped: missing locationString also fails
+        let dictMissingLS: [String: Any] = ["renderer": "readium"]
+        XCTAssertNil(TPPBookLocation(dictionary: dictMissingLS), "Missing locationString should also fail")
+        // Both keys present → must succeed
+        let complete: [String: Any] = ["locationString": "page:1", "renderer": "readium"]
+        XCTAssertNotNil(TPPBookLocation(dictionary: complete))
     }
 
     // SRS: TPPBookLocation init with empty dictionary fails
     func testBookLocation_initWithEmptyDictionary() {
         let loc = TPPBookLocation(dictionary: [:])
         XCTAssertNil(loc)
+        // A dictionary with one valid key but the wrong type for the other also fails
+        let wrongType: [String: Any] = ["locationString": 99, "renderer": "r"]
+        XCTAssertNil(TPPBookLocation(dictionary: wrongType), "Non-string locationString should fail")
     }
 
     // SRS: TPPBookLocation dictionaryRepresentation round-trips
@@ -118,6 +130,12 @@ final class TPPBookLocationKeyTests: XCTestCase {
     func testBookLocationData_stringAccessorWrongType() {
         let data: TPPBookLocationData = ["locationString": 42]
         XCTAssertNil(data.string(for: .locationString))
+        // Bool, Array, and Dict should also return nil — only String is valid
+        let boolData: TPPBookLocationData = ["locationString": true]
+        XCTAssertNil(boolData.string(for: .locationString))
+        // Missing key returns nil too
+        let emptyData: TPPBookLocationData = [:]
+        XCTAssertNil(emptyData.string(for: .renderer))
     }
 }
 
@@ -227,6 +245,11 @@ final class TPPProblemDocumentTests: XCTestCase {
     func testFromData_invalidJSON() {
         let data = "not json".data(using: .utf8)!
         XCTAssertThrowsError(try TPPProblemDocument.fromData(data))
+        // Empty data also throws
+        XCTAssertThrowsError(try TPPProblemDocument.fromData(Data()))
+        // A JSON array (not an object) should also throw or produce an error
+        let arrayData = "[1,2,3]".data(using: .utf8)!
+        XCTAssertThrowsError(try TPPProblemDocument.fromData(arrayData))
     }
 
     // SRS: TPPProblemDocument fromDictionary creates document
@@ -275,6 +298,9 @@ final class TPPProblemDocumentTests: XCTestCase {
             "detail": "Detail only"
         ])
         XCTAssertEqual(doc.stringValue, "Detail only")
+        // Neither title nor detail: stringValue should be an empty string or only separator
+        let emptyDoc = TPPProblemDocument.fromDictionary([:])
+        XCTAssertFalse(emptyDoc.stringValue.contains("nil"), "stringValue must not expose 'nil' literals")
     }
 
     // SRS: TPPProblemDocument stringValue without detail
@@ -283,6 +309,12 @@ final class TPPProblemDocumentTests: XCTestCase {
             "title": "Title only"
         ])
         XCTAssertEqual(doc.stringValue, "Title only: ")
+        // Must differ from a doc that has both title and detail
+        let full = TPPProblemDocument.fromDictionary(["title": "Title only", "detail": "D"])
+        XCTAssertNotEqual(doc.stringValue, full.stringValue, "Adding detail must change stringValue")
+        // Must differ from a doc that has no title either
+        let noTitle = TPPProblemDocument.fromDictionary([:])
+        XCTAssertNotEqual(doc.stringValue, noTitle.stringValue, "Title-only stringValue must differ from empty doc")
     }
 
     // SRS: TPPProblemDocument static type constants exist
@@ -368,21 +400,33 @@ final class TPPProblemDocumentTests: XCTestCase {
         {"message": "Server error occurred"}
         """
         let doc = TPPProblemDocument.fromProblemResponseData(json.data(using: .utf8)!)
-        // Non-problem-document JSON should still decode but with nil fields
-        // The important thing is it doesn't crash
-        _ = doc
+        // A JSON object without "type"/"title"/"detail"/"status" is not a valid problem document.
+        // Either nil is returned, or the decoded document has no meaningful fields.
+        if let doc = doc {
+            // If decode succeeds, meaningful problem fields must be absent
+            XCTAssertNil(doc.type, "Non-problem JSON must not produce a type field")
+            XCTAssertNil(doc.title, "Non-problem JSON must not produce a title field")
+        }
+        // nil is also a fully acceptable result for non-problem JSON
     }
 
     // SRS: TPPProblemDocument fromProblemResponseData with invalid data
     func testFromProblemResponseData_invalidData() {
         let doc = TPPProblemDocument.fromProblemResponseData("not json".data(using: .utf8)!)
         XCTAssertNil(doc)
+        // Empty data must also return nil, not crash
+        XCTAssertNil(TPPProblemDocument.fromProblemResponseData(Data()))
+        // Partially-valid JSON that truncates must return nil
+        XCTAssertNil(TPPProblemDocument.fromProblemResponseData("{\"type\":".data(using: .utf8)!))
     }
 
     // SRS: TPPProblemDocument fromResponseError with problemDoc in error
     func testFromResponseError_nilErrorNilData() {
         let doc = TPPProblemDocument.fromResponseError(nil, responseData: nil)
         XCTAssertNil(doc)
+        // Passing a non-nil empty data body must also not produce a document
+        let emptyDataDoc = TPPProblemDocument.fromResponseError(nil, responseData: Data())
+        XCTAssertNil(emptyDataDoc, "Empty data body must not produce a problem document")
     }
 
     // SRS: TPPProblemDocument fromResponseError with response data
@@ -418,21 +462,23 @@ final class TPPBookLocationEdgeCaseTests: XCTestCase {
 
     func test_init_withValidStringAndRenderer_createsLocation() {
         let location = TPPBookLocation(locationString: "chapter3", renderer: "readium")
-        XCTAssertNotNil(location)
         XCTAssertEqual(location?.locationString, "chapter3")
         XCTAssertEqual(location?.renderer, "readium")
+        // The dictionary round-trip must preserve both values
+        XCTAssertEqual(location?.dictionaryRepresentation["locationString"] as? String, "chapter3")
     }
 
     func test_init_withEmptyLocationString_createsLocation() {
         let location = TPPBookLocation(locationString: "", renderer: "readium")
-        XCTAssertNotNil(location)
         XCTAssertEqual(location?.locationString, "")
+        // Empty locationString location string is distinct from a nil location object
+        XCTAssertNotNil(location, "Empty locationString must still produce a location")
     }
 
     func test_init_withEmptyRenderer_createsLocation() {
         let location = TPPBookLocation(locationString: "chapter1", renderer: "")
-        XCTAssertNotNil(location)
         XCTAssertEqual(location?.renderer, "")
+        XCTAssertEqual(location?.locationString, "chapter1", "locationString must be preserved even when renderer is empty")
     }
 
     func test_init_withLongJSON_createsLocation() {
@@ -440,8 +486,9 @@ final class TPPBookLocationEdgeCaseTests: XCTestCase {
         {"href":"/chapter/1","progression":0.42,"totalProgression":0.15}
         """
         let location = TPPBookLocation(locationString: jsonString, renderer: "readium-2")
-        XCTAssertNotNil(location)
         XCTAssertEqual(location?.locationString, jsonString)
+        // Long JSON location strings must be parseable via locationStringDictionary
+        XCTAssertNotNil(location?.locationStringDictionary(), "Valid JSON locationString must parse to a dictionary")
     }
 
     // MARK: - Init from dictionary
@@ -452,26 +499,36 @@ final class TPPBookLocationEdgeCaseTests: XCTestCase {
             "renderer": "rmsdk"
         ]
         let location = TPPBookLocation(dictionary: dict)
-        XCTAssertNotNil(location)
         XCTAssertEqual(location?.locationString, "page42")
         XCTAssertEqual(location?.renderer, "rmsdk")
+        // The resulting location must round-trip back through its own dictionary
+        let roundTripped = TPPBookLocation(dictionary: location!.dictionaryRepresentation)
+        XCTAssertEqual(roundTripped?.locationString, "page42")
     }
 
     func test_initFromDictionary_missingLocationString_returnsNil() {
         let dict: [String: Any] = ["renderer": "readium"]
         let location = TPPBookLocation(dictionary: dict)
         XCTAssertNil(location)
+        // The full dict (both keys) must succeed — confirming renderer alone isn't enough
+        let full: [String: Any] = ["locationString": "chapter1", "renderer": "readium"]
+        XCTAssertNotNil(TPPBookLocation(dictionary: full))
     }
 
     func test_initFromDictionary_missingRenderer_returnsNil() {
         let dict: [String: Any] = ["locationString": "chapter1"]
         let location = TPPBookLocation(dictionary: dict)
         XCTAssertNil(location)
+        // locationString alone is not sufficient — renderer is required
+        XCTAssertNil(TPPBookLocation(dictionary: ["locationString": ""]))
     }
 
     func test_initFromDictionary_emptyDictionary_returnsNil() {
         let location = TPPBookLocation(dictionary: [:])
         XCTAssertNil(location)
+        // A dictionary with both keys present must NOT be nil
+        let nonEmpty: [String: Any] = ["locationString": "s", "renderer": "r"]
+        XCTAssertNotNil(TPPBookLocation(dictionary: nonEmpty), "Valid dict must produce a location")
     }
 
     func test_initFromDictionary_wrongTypes_returnsNil() {
@@ -481,6 +538,9 @@ final class TPPBookLocationEdgeCaseTests: XCTestCase {
         ]
         let location = TPPBookLocation(dictionary: dict)
         XCTAssertNil(location)
+        // Only one wrong type also fails
+        let oneWrong: [String: Any] = ["locationString": "valid", "renderer": 999]
+        XCTAssertNil(TPPBookLocation(dictionary: oneWrong), "Non-string renderer must fail")
     }
 
     func test_initFromDictionary_extraKeys_ignoresExtras() {
@@ -490,8 +550,10 @@ final class TPPBookLocationEdgeCaseTests: XCTestCase {
             "extraKey": "extraValue"
         ]
         let location = TPPBookLocation(dictionary: dict)
-        XCTAssertNotNil(location)
         XCTAssertEqual(location?.locationString, "chapter5")
+        XCTAssertEqual(location?.renderer, "readium", "Extra keys must not overwrite valid values")
+        // The extra key should NOT appear in dictionaryRepresentation
+        XCTAssertNil(location?.dictionaryRepresentation["extraKey"], "Extra input keys must be dropped from representation")
     }
 
     // MARK: - Dictionary round-trip
@@ -501,9 +563,11 @@ final class TPPBookLocationEdgeCaseTests: XCTestCase {
         let dict = original.dictionaryRepresentation
         let restored = TPPBookLocation(dictionary: dict)
 
-        XCTAssertNotNil(restored)
         XCTAssertEqual(restored?.locationString, original.locationString)
         XCTAssertEqual(restored?.renderer, original.renderer)
+        // The restored location must itself produce an identical dictionary
+        XCTAssertEqual(restored?.dictionaryRepresentation["locationString"] as? String,
+                       original.dictionaryRepresentation["locationString"] as? String)
     }
 
     func test_dictionaryRepresentation_containsExpectedKeys() {
@@ -548,6 +612,13 @@ final class TPPBookLocationEdgeCaseTests: XCTestCase {
             "locationString": 42
         ]
         XCTAssertNil(data.string(for: .locationString))
+        // The renderer key with a wrong type must also return nil
+        let rendererWrong: TPPBookLocationData = ["renderer": false]
+        XCTAssertNil(rendererWrong.string(for: .renderer))
+        // A valid string value must still be returned for a co-existing correct key
+        let mixed: TPPBookLocationData = ["locationString": 99, "renderer": "readium"]
+        XCTAssertNil(mixed.string(for: .locationString))
+        XCTAssertEqual(mixed.string(for: .renderer), "readium")
     }
 
     // MARK: - locationStringDictionary
@@ -567,23 +638,29 @@ final class TPPBookLocationEdgeCaseTests: XCTestCase {
     func test_locationStringDictionary_invalidJSON_returnsNil() {
         let location = TPPBookLocation(locationString: "not json at all", renderer: "readium")!
         let dict = location.locationStringDictionary()
-
         XCTAssertNil(dict)
+        // A valid JSON string must contrast: parsing succeeds and dict is non-nil
+        let validLoc = TPPBookLocation(locationString: "{\"href\":\"/ch/1\"}", renderer: "readium")!
+        XCTAssertNotNil(validLoc.locationStringDictionary(), "Valid JSON must parse successfully")
     }
 
     func test_locationStringDictionary_emptyString_returnsNil() {
         let location = TPPBookLocation(locationString: "", renderer: "readium")!
         let dict = location.locationStringDictionary()
-
         XCTAssertNil(dict)
+        // A whitespace-only string is also not valid JSON
+        let wsLoc = TPPBookLocation(locationString: "   ", renderer: "readium")!
+        XCTAssertNil(wsLoc.locationStringDictionary(), "Whitespace-only string must not parse to a dictionary")
     }
 
     func test_locationStringDictionary_arrayJSON_returnsNil() {
         // JSON array is not a dictionary
         let location = TPPBookLocation(locationString: "[1,2,3]", renderer: "readium")!
         let dict = location.locationStringDictionary()
-
         XCTAssertNil(dict)
+        // JSON null is also not a dictionary
+        let nullLoc = TPPBookLocation(locationString: "null", renderer: "readium")!
+        XCTAssertNil(nullLoc.locationStringDictionary(), "JSON null must not parse to a dictionary")
     }
 
     // MARK: - isSimilarTo
@@ -649,11 +726,17 @@ final class TPPBookLocationEdgeCaseTests: XCTestCase {
 
     func test_isSimilarTo_nonJSONLocationString_returnsFalse() {
         // When locationString is not valid JSON, locationStringDictionary returns nil
-        // so isSimilarTo should return false
+        // so isSimilarTo should return false even if both locations are identical
         let a = TPPBookLocation(locationString: "plaintext", renderer: "readium")!
         let b = TPPBookLocation(locationString: "plaintext", renderer: "readium")!
-
         XCTAssertFalse(a.isSimilarTo(b))
+        // Contrast: identical valid-JSON locations ARE similar
+        let json = "{\"href\":\"/ch/1\",\"progression\":0.5}"
+        let c = TPPBookLocation(locationString: json, renderer: "readium")!
+        let d = TPPBookLocation(locationString: json, renderer: "readium")!
+        XCTAssertTrue(c.isSimilarTo(d), "Identical valid-JSON locations must be similar")
+        // Non-JSON on one side and JSON on the other must not be similar
+        XCTAssertFalse(a.isSimilarTo(c), "Non-JSON location must not be similar to a JSON location")
     }
 
     func test_isSimilarTo_sameContentDifferentTimeStampAndAnnotationId_returnsTrue() {

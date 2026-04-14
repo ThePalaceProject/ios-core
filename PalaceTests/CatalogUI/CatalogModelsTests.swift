@@ -111,6 +111,11 @@ final class CatalogFilterModelTests: XCTestCase {
         let filter2 = CatalogFilter(id: "test", title: "Test", href: url, active: true)
 
         XCTAssertEqual(filter1, filter2)
+        // Symmetry: if equal, toggling either field must break equality
+        let filterDifferentId = CatalogFilter(id: "other", title: "Test", href: url, active: true)
+        XCTAssertNotEqual(filter1, filterDifferentId)
+        let filterDifferentActive = CatalogFilter(id: "test", title: "Test", href: url, active: false)
+        XCTAssertNotEqual(filter1, filterDifferentActive)
     }
 
     func testEquality_DifferentIdsMakesFiltersUnequal() {
@@ -118,6 +123,9 @@ final class CatalogFilterModelTests: XCTestCase {
         let filter2 = CatalogFilter(id: "id-2", title: "Same", href: nil, active: true)
 
         XCTAssertNotEqual(filter1, filter2)
+        // Verify each still equals itself (reflexivity)
+        XCTAssertEqual(filter1, filter1)
+        XCTAssertEqual(filter2, filter2)
     }
 
     func testEquality_DifferentTitlesMakesFiltersUnequal() {
@@ -125,6 +133,9 @@ final class CatalogFilterModelTests: XCTestCase {
         let filter2 = CatalogFilter(id: "same-id", title: "Title B", href: nil, active: true)
 
         XCTAssertNotEqual(filter1, filter2)
+        // Same ID does not override title difference
+        XCTAssertEqual(filter1.id, filter2.id, "Pre-condition: IDs are equal")
+        XCTAssertNotEqual(filter1.title, filter2.title, "Titles must differ")
     }
 
     func testEquality_DifferentActiveStateMakesFiltersUnequal() {
@@ -132,6 +143,8 @@ final class CatalogFilterModelTests: XCTestCase {
         let filter2 = CatalogFilter(id: "same-id", title: "Same", href: nil, active: false)
 
         XCTAssertNotEqual(filter1, filter2)
+        XCTAssertTrue(filter1.active, "filter1 must be active")
+        XCTAssertFalse(filter2.active, "filter2 must be inactive")
     }
 
     func testEquality_DifferentHrefMakesFiltersUnequal() {
@@ -139,6 +152,7 @@ final class CatalogFilterModelTests: XCTestCase {
         let filter2 = CatalogFilter(id: "same-id", title: "Same", href: URL(string: "https://b.com"), active: true)
 
         XCTAssertNotEqual(filter1, filter2)
+        XCTAssertNotEqual(filter1.href, filter2.href, "Pre-condition: hrefs must differ")
     }
 
     func testEquality_NilAndNonNilHrefMakesFiltersUnequal() {
@@ -146,6 +160,8 @@ final class CatalogFilterModelTests: XCTestCase {
         let filter2 = CatalogFilter(id: "same-id", title: "Same", href: URL(string: "https://example.org"), active: true)
 
         XCTAssertNotEqual(filter1, filter2)
+        XCTAssertNil(filter1.href, "filter1 href must be nil")
+        XCTAssertNotNil(filter2.href, "filter2 href must be non-nil")
     }
 
     // MARK: - Edge Cases
@@ -154,12 +170,21 @@ final class CatalogFilterModelTests: XCTestCase {
         let filter = CatalogFilter(id: "", title: "Empty ID Filter", href: nil, active: false)
 
         XCTAssertEqual(filter.id, "")
+        // An empty-ID filter must still equal itself
+        let sameFilter = CatalogFilter(id: "", title: "Empty ID Filter", href: nil, active: false)
+        XCTAssertEqual(filter, sameFilter)
+        // But differ from a non-empty-ID filter with the same other fields
+        let nonEmpty = CatalogFilter(id: "x", title: "Empty ID Filter", href: nil, active: false)
+        XCTAssertNotEqual(filter, nonEmpty)
     }
 
     func testEdgeCase_EmptyStringTitle() {
         let filter = CatalogFilter(id: "valid-id", title: "", href: nil, active: false)
 
         XCTAssertEqual(filter.title, "")
+        // Empty title must not break equality semantics
+        let sameFilter = CatalogFilter(id: "valid-id", title: "", href: nil, active: false)
+        XCTAssertEqual(filter, sameFilter)
     }
 
     func testEdgeCase_SpecialCharactersInTitle() {
@@ -171,6 +196,8 @@ final class CatalogFilterModelTests: XCTestCase {
         )
 
         XCTAssertEqual(filter.title, "Fiction & Non-Fiction (All)")
+        // Special characters must survive round-trip through id-lookup (title != id)
+        XCTAssertNotEqual(filter.id, filter.title)
     }
 
     func testEdgeCase_UnicodeInTitle() {
@@ -182,6 +209,7 @@ final class CatalogFilterModelTests: XCTestCase {
         )
 
         XCTAssertEqual(filter.title, "Livros em Portugues")
+        XCTAssertFalse(filter.active, "Filter with unicode title should preserve active=false")
     }
 
     func testEdgeCase_ComplexURL() {
@@ -194,6 +222,9 @@ final class CatalogFilterModelTests: XCTestCase {
         )
 
         XCTAssertEqual(filter.href?.absoluteString, "https://api.example.org/catalog/facets?type=audiobook&format=mp3&sort=author")
+        // URL with query params must be preserved exactly
+        XCTAssertEqual(filter.href?.query, "type=audiobook&format=mp3&sort=author")
+        XCTAssertEqual(filter.href?.host, "api.example.org")
     }
 }
 
@@ -283,6 +314,11 @@ final class CatalogFilterGroupModelTests: XCTestCase {
         let group2 = CatalogFilterGroup(id: "group-id", name: "Group", filters: filters)
 
         XCTAssertEqual(group1.hashValue, group2.hashValue)
+        // Also verify the groups are actually equal (hashValue alone is not proof)
+        XCTAssertEqual(group1, group2)
+        // A group with a different id must have a different hash (hash must discriminate)
+        let differentGroup = CatalogFilterGroup(id: "other-id", name: "Group", filters: filters)
+        XCTAssertNotEqual(group1, differentGroup)
     }
 
     func testHashable_GroupsCanBeUsedInSet() {
@@ -293,6 +329,9 @@ final class CatalogFilterGroupModelTests: XCTestCase {
         let groupSet: Set<CatalogFilterGroup> = [group1, group2, group3]
 
         XCTAssertEqual(groupSet.count, 3)
+        XCTAssertTrue(groupSet.contains(group1))
+        XCTAssertTrue(groupSet.contains(group2))
+        XCTAssertTrue(groupSet.contains(group3))
     }
 
     // MARK: - Equality Tests
@@ -304,6 +343,9 @@ final class CatalogFilterGroupModelTests: XCTestCase {
         let group2 = CatalogFilterGroup(id: "same", name: "Same Name", filters: filters)
 
         XCTAssertEqual(group1, group2)
+        // Both contain the same filter
+        XCTAssertEqual(group1.filters.count, group2.filters.count)
+        XCTAssertEqual(group1.filters.first?.id, group2.filters.first?.id)
     }
 
     func testEquality_DifferentIdsMakesGroupsUnequal() {
@@ -311,6 +353,8 @@ final class CatalogFilterGroupModelTests: XCTestCase {
         let group2 = CatalogFilterGroup(id: "id-2", name: "Same", filters: [])
 
         XCTAssertNotEqual(group1, group2)
+        XCTAssertEqual(group1.name, group2.name, "Pre-condition: names must be the same")
+        XCTAssertNotEqual(group1.id, group2.id, "Pre-condition: ids must differ")
     }
 
     func testEquality_DifferentNamesMakesGroupsUnequal() {
@@ -318,6 +362,8 @@ final class CatalogFilterGroupModelTests: XCTestCase {
         let group2 = CatalogFilterGroup(id: "same-id", name: "Name B", filters: [])
 
         XCTAssertNotEqual(group1, group2)
+        XCTAssertEqual(group1.id, group2.id, "Pre-condition: ids must be equal")
+        XCTAssertNotEqual(group1.name, group2.name)
     }
 
     func testEquality_DifferentFiltersMakesGroupsUnequal() {
@@ -328,6 +374,7 @@ final class CatalogFilterGroupModelTests: XCTestCase {
         let group2 = CatalogFilterGroup(id: "same-id", name: "Same", filters: [filter2])
 
         XCTAssertNotEqual(group1, group2)
+        XCTAssertNotEqual(group1.filters.first?.id, group2.filters.first?.id)
     }
 
     // MARK: - Filter Query Tests
@@ -395,6 +442,9 @@ final class CatalogFilterGroupModelTests: XCTestCase {
         let group = CatalogFilterGroup(id: "valid-id", name: "", filters: [])
 
         XCTAssertEqual(group.name, "")
+        // Empty name group should still equal itself
+        let sameGroup = CatalogFilterGroup(id: "valid-id", name: "", filters: [])
+        XCTAssertEqual(group, sameGroup)
     }
 
     func testEdgeCase_SpecialCharactersInName() {
@@ -405,6 +455,8 @@ final class CatalogFilterGroupModelTests: XCTestCase {
         )
 
         XCTAssertEqual(group.name, "Sort By: A-Z (Ascending)")
+        XCTAssertFalse(group.name.isEmpty)
+        XCTAssertEqual(group.id, "special")
     }
 }
 
@@ -473,6 +525,10 @@ final class CatalogLaneModelStructTests: XCTestCase {
 
         // Each lane should have a unique UUID even with identical content
         XCTAssertNotEqual(lane1.id, lane2.id)
+        // But each lane's ID must equal itself
+        XCTAssertEqual(lane1.id, lane1.id)
+        // IDs must be valid UUIDs
+        XCTAssertNotNil(UUID(uuidString: lane1.id.uuidString))
     }
 
     func testIdentifiable_IdIsUUID() {
@@ -480,6 +536,11 @@ final class CatalogLaneModelStructTests: XCTestCase {
 
         // Verify ID is a valid UUID (won't throw)
         XCTAssertNotNil(UUID(uuidString: lane.id.uuidString))
+        // ID must be stable across accesses
+        XCTAssertEqual(lane.id, lane.id)
+        // Same model should not regenerate a new ID
+        let sameLane = lane
+        XCTAssertEqual(lane.id, sameLane.id)
     }
 
     // MARK: - Books Collection Tests
@@ -582,6 +643,8 @@ final class CatalogLaneModelStructTests: XCTestCase {
         let lane = CatalogLaneModel(title: "", books: [], moreURL: nil)
 
         XCTAssertEqual(lane.title, "")
+        XCTAssertTrue(lane.books.isEmpty)
+        XCTAssertFalse(lane.isLoading)
     }
 
     func testEdgeCase_SpecialCharactersInTitle() {
@@ -592,6 +655,7 @@ final class CatalogLaneModelStructTests: XCTestCase {
         )
 
         XCTAssertEqual(lane.title, "New & Popular (This Week)")
+        XCTAssertNil(lane.moreURL)
     }
 
     func testEdgeCase_UnicodeInTitle() {
@@ -602,6 +666,7 @@ final class CatalogLaneModelStructTests: XCTestCase {
         )
 
         XCTAssertEqual(lane.title, "Libros en Espanol")
+        XCTAssertFalse(lane.isLoading)
     }
 
     func testEdgeCase_LongTitle() {
@@ -609,6 +674,8 @@ final class CatalogLaneModelStructTests: XCTestCase {
         let lane = CatalogLaneModel(title: longTitle, books: [], moreURL: nil)
 
         XCTAssertEqual(lane.title, longTitle)
+        XCTAssertEqual(lane.title.count, longTitle.count)
+        XCTAssertTrue(lane.books.isEmpty)
     }
 
     func testEdgeCase_ComplexMoreURL() {
@@ -616,6 +683,8 @@ final class CatalogLaneModelStructTests: XCTestCase {
         let lane = CatalogLaneModel(title: "Fiction", books: [], moreURL: complexURL)
 
         XCTAssertEqual(lane.moreURL?.absoluteString, "https://api.library.org/v1/catalog/lanes/fiction?page=2&limit=50&sort=popularity")
+        XCTAssertEqual(lane.moreURL?.host, "api.library.org")
+        XCTAssertEqual(lane.moreURL?.query, "page=2&limit=50&sort=popularity")
     }
 }
 

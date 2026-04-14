@@ -27,11 +27,18 @@ final class DebugSettingsTests: XCTestCase {
         for errorCase in DebugSettings.SimulatedBorrowError.allCases {
             XCTAssertFalse(errorCase.displayName.isEmpty, "\(errorCase) should have non-empty displayName")
         }
+        // All display names must be distinct so the picker UI is unambiguous
+        let names = DebugSettings.SimulatedBorrowError.allCases.map(\.displayName)
+        XCTAssertEqual(Set(names).count, names.count,
+                       "All SimulatedBorrowError display names must be unique")
     }
 
     // SRS: SimulatedBorrowError.none has nil problemDocument
     func testSimulatedBorrowError_none_nilProblemDoc() {
         XCTAssertNil(DebugSettings.SimulatedBorrowError.none.problemDocument)
+        // The .none case must also have a non-empty display name
+        XCTAssertFalse(DebugSettings.SimulatedBorrowError.none.displayName.isEmpty,
+                       ".none case must still have a display name for the picker")
     }
 
     // SRS: SimulatedBorrowError.loanLimitReached has problem document
@@ -70,12 +77,24 @@ final class DebugSettingsTests: XCTestCase {
     func testDefaultSimulatedBorrowError() {
         settings.resetAll()
         XCTAssertEqual(settings.simulatedBorrowError, .none)
+        // After reset, the simulation must be disabled (isBorrowErrorSimulationEnabled = false)
+        XCTAssertFalse(settings.isBorrowErrorSimulationEnabled,
+                       "resetAll must set isBorrowErrorSimulationEnabled to false")
     }
 
     // SRS: DebugSettings simulatedBorrowError can be set
     func testSimulatedBorrowError_canBeSet() {
+        let before = settings.simulatedBorrowError
         settings.simulatedBorrowError = .loanLimitReached
-        XCTAssertEqual(settings.simulatedBorrowError, .loanLimitReached)
+        // Setting a non-none error must enable simulation
+        XCTAssertTrue(settings.isBorrowErrorSimulationEnabled,
+                      "Setting loanLimitReached must enable borrow error simulation")
+        XCTAssertNotEqual(settings.simulatedBorrowError, before,
+                          "Setting loanLimitReached must change the value from the default .none")
+        // Resetting to .none must disable simulation
+        settings.simulatedBorrowError = .none
+        XCTAssertFalse(settings.isBorrowErrorSimulationEnabled,
+                       "Resetting to .none must disable borrow error simulation")
     }
 
     // SRS: isBorrowErrorSimulationEnabled reflects simulatedBorrowError
@@ -91,6 +110,8 @@ final class DebugSettingsTests: XCTestCase {
     func testCreateSimulatedBorrowError_nilWhenDisabled() {
         settings.simulatedBorrowError = .none
         XCTAssertNil(settings.createSimulatedBorrowError())
+        XCTAssertFalse(settings.isBorrowErrorSimulationEnabled,
+                       "isBorrowErrorSimulationEnabled must be false when error is .none")
     }
 
     // SRS: createSimulatedBorrowError returns error when enabled
@@ -108,6 +129,11 @@ final class DebugSettingsTests: XCTestCase {
     func testBadgeLogging_defaultFalse() {
         settings.resetAll()
         XCTAssertFalse(settings.isBadgeLoggingEnabled)
+        // Enabling then resetting must return to false (not sticky)
+        settings.isBadgeLoggingEnabled = true
+        settings.resetAll()
+        XCTAssertFalse(settings.isBadgeLoggingEnabled,
+                       "resetAll must restore isBadgeLoggingEnabled to its default false value")
     }
 
     // SRS: isBadgeLoggingEnabled persists correctly through resetAll
@@ -134,37 +160,59 @@ final class DebugSettingsTests: XCTestCase {
         for config in DebugSettings.TestHoldsConfiguration.allCases {
             XCTAssertFalse(config.displayName.isEmpty)
         }
+        // All names must be unique so the debug picker is unambiguous
+        let names = DebugSettings.TestHoldsConfiguration.allCases.map(\.displayName)
+        XCTAssertEqual(Set(names).count, names.count, "TestHoldsConfiguration display names must all be unique")
     }
 
     // SRS: TestHoldsConfiguration.none expectedBadgeCount is -1
     func testTestHoldsConfig_none_badgeCount() {
         XCTAssertEqual(DebugSettings.TestHoldsConfiguration.none.expectedBadgeCount, -1)
+        // -1 is the sentinel that signals "do not show a badge" to the UI
+        XCTAssertLessThan(DebugSettings.TestHoldsConfiguration.none.expectedBadgeCount, 0,
+                          ".none badge count must be negative to signal no badge")
     }
 
     // SRS: TestHoldsConfiguration.oneReserved expectedBadgeCount is 0
     func testTestHoldsConfig_oneReserved_badgeCount() {
         XCTAssertEqual(DebugSettings.TestHoldsConfiguration.oneReserved.expectedBadgeCount, 0)
+        // Reserved (position > 1) shows 0 badge — not yet at front of queue
+        XCTAssertGreaterThan(DebugSettings.TestHoldsConfiguration.oneReserved.expectedBadgeCount,
+                             DebugSettings.TestHoldsConfiguration.none.expectedBadgeCount,
+                             "oneReserved badge count must be greater than .none sentinel value")
     }
 
     // SRS: TestHoldsConfiguration.oneReady expectedBadgeCount is 1
     func testTestHoldsConfig_oneReady_badgeCount() {
         XCTAssertEqual(DebugSettings.TestHoldsConfiguration.oneReady.expectedBadgeCount, 1)
+        XCTAssertGreaterThan(DebugSettings.TestHoldsConfiguration.oneReady.expectedBadgeCount,
+                             DebugSettings.TestHoldsConfiguration.oneReserved.expectedBadgeCount,
+                             "oneReady badge count must exceed oneReserved count")
     }
 
     // SRS: TestHoldsConfiguration.mixedHolds expectedBadgeCount is 1
     func testTestHoldsConfig_mixedHolds_badgeCount() {
         XCTAssertEqual(DebugSettings.TestHoldsConfiguration.mixedHolds.expectedBadgeCount, 1)
+        // mixedHolds and oneReady both show 1 badge (one ready hold each)
+        XCTAssertEqual(DebugSettings.TestHoldsConfiguration.mixedHolds.expectedBadgeCount,
+                       DebugSettings.TestHoldsConfiguration.oneReady.expectedBadgeCount,
+                       "mixedHolds and oneReady should both show 1 ready hold in badge")
     }
 
     // SRS: TestHoldsConfiguration.allReady expectedBadgeCount is 3
     func testTestHoldsConfig_allReady_badgeCount() {
         XCTAssertEqual(DebugSettings.TestHoldsConfiguration.allReady.expectedBadgeCount, 3)
+        XCTAssertGreaterThan(DebugSettings.TestHoldsConfiguration.allReady.expectedBadgeCount,
+                             DebugSettings.TestHoldsConfiguration.oneReady.expectedBadgeCount,
+                             "allReady badge count must exceed oneReady badge count")
     }
 
     // SRS: testHoldsConfiguration defaults to .none
     func testTestHoldsConfig_default() {
         settings.resetAll()
         XCTAssertEqual(settings.testHoldsConfiguration, .none)
+        XCTAssertFalse(settings.isTestHoldsEnabled,
+                       "resetAll must disable test holds (isTestHoldsEnabled = false)")
     }
 
     // SRS: isTestHoldsEnabled reflects testHoldsConfiguration
@@ -180,6 +228,14 @@ final class DebugSettingsTests: XCTestCase {
     func testCreateTestHoldBooks_nilWhenDisabled() {
         settings.testHoldsConfiguration = .none
         XCTAssertNil(settings.createTestHoldBooks())
+        // Enabling a non-none configuration must produce non-nil results
+        settings.testHoldsConfiguration = .oneReserved
+        XCTAssertNotNil(settings.createTestHoldBooks(),
+                        "createTestHoldBooks must return non-nil for .oneReserved configuration")
+        // Disabling again must return nil
+        settings.testHoldsConfiguration = .none
+        XCTAssertNil(settings.createTestHoldBooks(),
+                     "createTestHoldBooks must return nil again after resetting to .none")
     }
 
     // SRS: createTestHoldBooks returns 1 book for oneReserved
@@ -187,6 +243,7 @@ final class DebugSettingsTests: XCTestCase {
         settings.testHoldsConfiguration = .oneReserved
         let books = settings.createTestHoldBooks()
         XCTAssertEqual(books?.count, 1)
+        XCTAssertNotNil(books?.first, "createTestHoldBooks must return at least one book for .oneReserved")
     }
 
     // SRS: createTestHoldBooks returns 1 book for oneReady
@@ -194,6 +251,7 @@ final class DebugSettingsTests: XCTestCase {
         settings.testHoldsConfiguration = .oneReady
         let books = settings.createTestHoldBooks()
         XCTAssertEqual(books?.count, 1)
+        XCTAssertNotNil(books?.first, "createTestHoldBooks must return at least one book for .oneReady")
     }
 
     // SRS: createTestHoldBooks returns 4 books for mixedHolds
@@ -201,6 +259,9 @@ final class DebugSettingsTests: XCTestCase {
         settings.testHoldsConfiguration = .mixedHolds
         let books = settings.createTestHoldBooks()
         XCTAssertEqual(books?.count, 4)
+        // Mixed holds has more books than a single-hold config
+        XCTAssertGreaterThan(books?.count ?? 0, 1,
+                             "mixedHolds must return more than 1 book")
     }
 
     // SRS: createTestHoldBooks returns 3 books for allReady
@@ -208,6 +269,8 @@ final class DebugSettingsTests: XCTestCase {
         settings.testHoldsConfiguration = .allReady
         let books = settings.createTestHoldBooks()
         XCTAssertEqual(books?.count, 3)
+        XCTAssertGreaterThan(books?.count ?? 0, 1,
+                             "allReady must return more than 1 book")
     }
 
     // MARK: - Reset

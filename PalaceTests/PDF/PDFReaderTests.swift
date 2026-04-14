@@ -90,6 +90,8 @@ final class PDFReaderTests: XCTestCase {
         let bookmark = TPPPDFPageBookmark(page: 1)
 
         XCTAssertTrue(bookmark is Bookmark)
+        XCTAssertEqual(bookmark.page, 1, "Page number must be preserved during Bookmark conformance init")
+        XCTAssertEqual(bookmark.type, "LocatorPage", "Bookmark type must be LocatorPage")
     }
 
     func testPDFPageBookmark_Encoding() throws {
@@ -130,6 +132,8 @@ final class PDFReaderTests: XCTestCase {
         let book = createPDFBook()
 
         XCTAssertEqual(book.defaultBookContentType, .pdf)
+        XCTAssertNotEqual(book.defaultBookContentType, .epub, "PDF book must not report epub content type")
+        XCTAssertFalse(book.isAudiobook, "PDF book must not be identified as audiobook")
     }
 
     func testLCPPDFBook_ContentType() {

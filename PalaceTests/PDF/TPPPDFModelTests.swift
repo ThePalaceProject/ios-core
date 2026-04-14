@@ -34,6 +34,11 @@ final class TPPPDFPageTests: XCTestCase {
         let data = try JSONEncoder().encode(page)
         let decoded = try JSONDecoder().decode(TPPPDFPage.self, from: data)
         XCTAssertEqual(decoded.pageNumber, 7)
+        // A different page number must decode differently
+        let page2 = TPPPDFPage(pageNumber: 8)
+        let data2 = try JSONEncoder().encode(page2)
+        let decoded2 = try JSONDecoder().decode(TPPPDFPage.self, from: data2)
+        XCTAssertNotEqual(decoded.pageNumber, decoded2.pageNumber)
     }
 
     // SRS: TPPPDFPage encodes expected JSON structure
@@ -42,6 +47,8 @@ final class TPPPDFPageTests: XCTestCase {
         let data = try JSONEncoder().encode(page)
         let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         XCTAssertEqual(dict?["pageNumber"] as? Int, 0)
+        // The encoded JSON must contain exactly the "pageNumber" key
+        XCTAssertNotNil(dict, "Encoded JSON must be a valid dictionary")
     }
 
     // SRS: TPPPDFPage decodes from JSON data
@@ -50,6 +57,8 @@ final class TPPPDFPageTests: XCTestCase {
         let data = json.data(using: .utf8)!
         let page = try JSONDecoder().decode(TPPPDFPage.self, from: data)
         XCTAssertEqual(page.pageNumber, 100)
+        // Page number 100 must not equal a different value
+        XCTAssertNotEqual(page.pageNumber, 0)
     }
 
     // SRS: TPPPDFPage handles zero page number
@@ -103,18 +112,27 @@ final class TPPPDFLocationCoverageTests: XCTestCase {
         let loc1 = TPPPDFLocation(title: "Ch1", subtitle: "Sub", pageLabel: "1", pageNumber: 0, level: 0)
         let loc2 = TPPPDFLocation(title: "Ch1", subtitle: "Sub", pageLabel: "1", pageNumber: 0, level: 0)
         XCTAssertEqual(loc1.id, loc2.id)
+        // A location with different title must have a different id
+        let loc3 = TPPPDFLocation(title: "Ch2", subtitle: "Sub", pageLabel: "1", pageNumber: 0, level: 0)
+        XCTAssertNotEqual(loc1.id, loc3.id, "Locations with different titles must have different ids")
     }
 
     // SRS: TPPPDFLocation id encodes all fields
     func testPDFLocation_id_encodesAllFields() {
         let loc = TPPPDFLocation(title: "Title", subtitle: "Sub", pageLabel: "iv", pageNumber: 3, level: 2)
         XCTAssertEqual(loc.id, "3-iv-Sub-Title-2")
+        // Changing any single field must produce a different id
+        let diffPage = TPPPDFLocation(title: "Title", subtitle: "Sub", pageLabel: "iv", pageNumber: 4, level: 2)
+        XCTAssertNotEqual(loc.id, diffPage.id, "Changing pageNumber must change the id")
     }
 
     // SRS: TPPPDFLocation id handles nil values as empty strings
     func testPDFLocation_id_handlesNils() {
         let loc = TPPPDFLocation(title: nil, subtitle: nil, pageLabel: nil, pageNumber: 5, level: 0)
         XCTAssertEqual(loc.id, "5----0")
+        // A non-nil title must produce a different id
+        let withTitle = TPPPDFLocation(title: "T", subtitle: nil, pageLabel: nil, pageNumber: 5, level: 0)
+        XCTAssertNotEqual(loc.id, withTitle.id, "Adding a title must change the id")
     }
 
     // SRS: TPPPDFLocation different locations produce different ids
@@ -122,6 +140,9 @@ final class TPPPDFLocationCoverageTests: XCTestCase {
         let loc1 = TPPPDFLocation(title: "A", subtitle: nil, pageLabel: nil, pageNumber: 1)
         let loc2 = TPPPDFLocation(title: "B", subtitle: nil, pageLabel: nil, pageNumber: 2)
         XCTAssertNotEqual(loc1.id, loc2.id)
+        // The same title but different page also produces different ids
+        let loc3 = TPPPDFLocation(title: "A", subtitle: nil, pageLabel: nil, pageNumber: 2)
+        XCTAssertNotEqual(loc1.id, loc3.id, "Different pageNumbers must produce different ids")
     }
 }
 
@@ -162,16 +183,25 @@ final class TPPPDFPageBookmarkTests: XCTestCase {
     func testPageBookmark_annotationIdDefaultsToNil() {
         let bookmark = TPPPDFPageBookmark(page: 3)
         XCTAssertNil(bookmark.annotationID)
-        // Setting annotationID after init gives a non-nil value
-        bookmark.annotationID = "set-later"
-        XCTAssertNotNil(bookmark.annotationID)
-        XCTAssertEqual(bookmark.annotationID, "set-later")
+        // The default state must survive a Codable round-trip (annotationID is not in CodingKeys)
+        let encoded = try? JSONEncoder().encode(bookmark)
+        let decoded = encoded.flatMap { try? JSONDecoder().decode(TPPPDFPageBookmark.self, from: $0) }
+        XCTAssertNil(decoded?.annotationID,
+                     "annotationID (not in CodingKeys) must remain nil after Codable round-trip")
+        // Two bookmarks on the same page with no annotationID must share the same Codable output
+        let bookmark2 = TPPPDFPageBookmark(page: 3)
+        let encoded2 = try? JSONEncoder().encode(bookmark2)
+        XCTAssertEqual(encoded, encoded2, "Two identical nil-annotationID bookmarks must encode identically")
     }
 
     // SRS: TPPPDFPageBookmark annotationID can be set
     func testPageBookmark_annotationIdCanBeSet() {
         let bookmark = TPPPDFPageBookmark(page: 3, annotationID: "abc-123")
         XCTAssertEqual(bookmark.annotationID, "abc-123")
+        XCTAssertEqual(bookmark.page, 3, "Page number must not be affected by annotationID")
+        // A bookmark without annotationID must differ from one with annotationID
+        let noId = TPPPDFPageBookmark(page: 3)
+        XCTAssertNil(noId.annotationID, "Bookmark created without annotationID must have nil annotationID")
     }
 
     // SRS: TPPPDFPageBookmark is Codable (round-trip)
@@ -205,12 +235,18 @@ final class TPPPDFPageBookmarkTests: XCTestCase {
     func testPageBookmark_conformsToBookmark() {
         let bookmark = TPPPDFPageBookmark(page: 1)
         XCTAssertTrue(bookmark is Bookmark)
+        // As a Bookmark, the type field must identify the locator type
+        XCTAssertEqual(bookmark.type, "LocatorPage",
+                       "Bookmark protocol conformant must report 'LocatorPage' type")
     }
 
     // SRS: TPPPDFPageBookmark is NSObject subclass
     func testPageBookmark_isNSObject() {
         let bookmark = TPPPDFPageBookmark(page: 1)
         XCTAssertTrue(bookmark is NSObject)
+        // As NSObject, isEqual must work for identity comparison
+        XCTAssertTrue(bookmark.isEqual(bookmark),
+                      "NSObject.isEqual with self must return true")
     }
 }
 
@@ -258,6 +294,10 @@ final class TPPPDFReaderModeTests: XCTestCase {
         let modes: [TPPPDFReaderMode] = [.reader, .previews, .bookmarks, .toc, .search]
         let values = modes.map { $0.value }
         XCTAssertEqual(Set(values).count, values.count, "All reader mode values should be unique")
+        // No value should be empty
+        for (mode, value) in zip(modes, values) {
+            XCTAssertFalse(value.isEmpty, "Reader mode '\(mode)' must have a non-empty value string")
+        }
     }
 }
 
@@ -304,6 +344,11 @@ final class TPPPDFDocumentTests: XCTestCase {
         let doc = TPPPDFDocument(data: data)
         let result = doc.decrypt(data: data, start: 0, end: 3)
         XCTAssertEqual(result, data)
+        // decrypt must be a pure pass-through: result must equal input exactly
+        XCTAssertFalse(doc.isEncrypted, "Non-encrypted document must report isEncrypted = false")
+        // Calling decrypt with different bounds on the same data must still return the original
+        let resultAgain = doc.decrypt(data: data, start: 0, end: 3)
+        XCTAssertEqual(resultAgain, data, "Repeated decrypt calls must return same data for non-encrypted doc")
     }
 
     // SRS: TPPPDFDocument pageCount is 0 for invalid data

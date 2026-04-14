@@ -33,6 +33,9 @@ final class CredentialPrivacyTests: XCTestCase {
 
         let serialized = serialize(metadata)
         assertNoCredentials(in: serialized)
+        // Additionally verify that the safe keys ARE present in the serialized output
+        XCTAssertTrue(serialized.contains("library"),
+                      "Serialized log must still contain the non-PII 'library' key")
     }
 
     func testErrorLogger_metadataKeysNeverIncludeCredentialFields() {
@@ -83,6 +86,9 @@ final class CredentialPrivacyTests: XCTestCase {
         )
         let composed = "\(underlying.localizedDescription) \(underlying.userInfo)"
         assertNoCredentials(in: composed)
+        // The error must still be identifiable without containing PII
+        XCTAssertTrue(composed.contains("401"),
+                      "Error message must contain the HTTP status code for diagnostics")
     }
 
     func testLCPPassphraseError_doesNotEmbedPassphrase() {

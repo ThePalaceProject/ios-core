@@ -27,16 +27,21 @@ final class GeneralCacheTests: XCTestCase {
     func testSet_andGet_returnsValue() {
         cache.set("Hello World", for: "greeting")
         XCTAssertEqual(cache.get(for: "greeting"), "Hello World")
+        XCTAssertNil(cache.get(for: "farewell"), "Unset key must return nil")
     }
 
     func testGet_unknownKey_returnsNil() {
         XCTAssertNil(cache.get(for: "nonexistent"))
+        // Setting a different key must not affect the unknown key
+        cache.set("something", for: "other-key")
+        XCTAssertNil(cache.get(for: "nonexistent"), "Unknown key must remain nil after setting an unrelated key")
     }
 
     func testSet_overwrite_updatesValue() {
         cache.set("Old", for: "key")
         cache.set("New", for: "key")
         XCTAssertEqual(cache.get(for: "key"), "New")
+        XCTAssertNotEqual(cache.get(for: "key"), "Old", "Old value must not be accessible after overwrite")
     }
 
     // MARK: - Remove
@@ -45,6 +50,9 @@ final class GeneralCacheTests: XCTestCase {
         cache.set("Value", for: "key")
         cache.remove(for: "key")
         XCTAssertNil(cache.get(for: "key"))
+        // The cache must still accept new entries after removal
+        cache.set("NewValue", for: "key")
+        XCTAssertEqual(cache.get(for: "key"), "NewValue", "Cache must accept new value after removal")
     }
 
     func testRemove_nonexistentKey_doesNotCrash() {
@@ -72,10 +80,12 @@ final class GeneralCacheTests: XCTestCase {
 
     func testClearMemory_removesMemoryEntries() {
         cache.set("Value", for: "key")
+        cache.set("Another", for: "key2")
         cache.clearMemory()
 
-        // For memoryOnly cache, this should remove the value
-        XCTAssertNil(cache.get(for: "key"))
+        // For memoryOnly cache, this should remove all values
+        XCTAssertNil(cache.get(for: "key"), "clearMemory must remove previously cached values")
+        XCTAssertNil(cache.get(for: "key2"), "clearMemory must remove all entries, not just the first")
     }
 
     // MARK: - Expiration
@@ -136,8 +146,10 @@ final class GeneralCacheTests: XCTestCase {
         bothCache.set("Both", for: "both-key")
 
         XCTAssertEqual(bothCache.get(for: "both-key"), "Both")
+        XCTAssertNil(bothCache.get(for: "missing-key"), "Unset key must return nil in memoryAndDisk mode")
 
         bothCache.clear()
+        XCTAssertNil(bothCache.get(for: "both-key"), "clear() must remove memoryAndDisk entries")
     }
 
     // MARK: - None Mode
@@ -147,6 +159,9 @@ final class GeneralCacheTests: XCTestCase {
         noneCache.set("Ghost", for: "key")
 
         XCTAssertNil(noneCache.get(for: "key"), "None mode should not store values")
+        // A second key must also not be stored
+        noneCache.set("Phantom", for: "key2")
+        XCTAssertNil(noneCache.get(for: "key2"), "None mode must not store any key")
     }
 
     // MARK: - Cache Policy (async)
@@ -195,5 +210,8 @@ final class GeneralCacheTests: XCTestCase {
     func testFileURL_returnsURL() {
         let url = cache.fileURL(for: "some-key")
         XCTAssertFalse(url.absoluteString.isEmpty)
+        // Different keys must produce different file URLs
+        let url2 = cache.fileURL(for: "another-key")
+        XCTAssertNotEqual(url, url2, "Different keys must map to different file URLs")
     }
 }

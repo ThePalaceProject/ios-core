@@ -30,31 +30,51 @@ final class AccessibilityPreferencesTests: XCTestCase {
     func testDefaultPreferences_HasStandardVerbosity() {
         let prefs = AccessibilityPreferences.default
         XCTAssertEqual(prefs.verbosity, .standard)
+        XCTAssertNotEqual(prefs.verbosity, .minimal, "Standard verbosity must not be minimal")
+        XCTAssertNotEqual(prefs.verbosity, .verbose, "Standard verbosity must not be verbose")
     }
 
     func testDefaultPreferences_CustomRotorEnabled() {
         let prefs = AccessibilityPreferences.default
         XCTAssertTrue(prefs.customRotorActionsEnabled)
+        // Defaults must equal themselves
+        XCTAssertEqual(prefs, AccessibilityPreferences.default,
+                       "default must be equal to a freshly constructed default")
     }
 
     func testDefaultPreferences_ReducedMotionOff() {
         let prefs = AccessibilityPreferences.default
         XCTAssertFalse(prefs.reducedMotion)
+        // Changing reducedMotion must produce inequality with default
+        var modified = prefs
+        modified.reducedMotion = true
+        XCTAssertNotEqual(modified, prefs, "Enabling reducedMotion must break equality with the default")
     }
 
     func testDefaultPreferences_HighContrastOff() {
         let prefs = AccessibilityPreferences.default
         XCTAssertFalse(prefs.highContrastBoost)
+        // Toggling must break equality
+        var modified = prefs
+        modified.highContrastBoost = true
+        XCTAssertNotEqual(modified, prefs, "Enabling highContrastBoost must break equality with the default")
     }
 
     func testDefaultPreferences_ButtonShapesOff() {
         let prefs = AccessibilityPreferences.default
         XCTAssertFalse(prefs.buttonShapesEnabled)
+        var modified = prefs
+        modified.buttonShapesEnabled = true
+        XCTAssertNotEqual(modified, prefs, "Enabling buttonShapes must break equality with the default")
     }
 
     func testDefaultPreferences_HapticFeedbackOn() {
         let prefs = AccessibilityPreferences.default
         XCTAssertTrue(prefs.hapticFeedbackEnabled)
+        // Disabling haptic must break equality with default
+        var modified = prefs
+        modified.hapticFeedbackEnabled = false
+        XCTAssertNotEqual(modified, prefs, "Disabling hapticFeedback must break equality with the default")
     }
 
     // MARK: - Codable Round-Trip
@@ -64,6 +84,10 @@ final class AccessibilityPreferencesTests: XCTestCase {
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(AccessibilityPreferences.self, from: data)
         XCTAssertEqual(decoded, original)
+        XCTAssertEqual(decoded.verbosity, original.verbosity,
+                       "Verbosity must survive Codable round-trip for default preferences")
+        XCTAssertEqual(decoded.hapticFeedbackEnabled, original.hapticFeedbackEnabled,
+                       "hapticFeedbackEnabled must survive Codable round-trip for default preferences")
     }
 
     func testCodableRoundTrip_CustomPreferences() throws {
@@ -90,30 +114,44 @@ final class AccessibilityPreferencesTests: XCTestCase {
 
     func testVerbosityMinimal_DisplayName() {
         XCTAssertEqual(AnnouncementVerbosity.minimal.displayName, "Minimal")
+        XCTAssertFalse(AnnouncementVerbosity.minimal.displayName.isEmpty, "Minimal displayName must not be empty")
     }
 
     func testVerbosityStandard_DisplayName() {
         XCTAssertEqual(AnnouncementVerbosity.standard.displayName, "Standard")
+        XCTAssertNotEqual(AnnouncementVerbosity.standard.displayName, AnnouncementVerbosity.minimal.displayName,
+                          "Standard and minimal display names must differ")
     }
 
     func testVerbosityVerbose_DisplayName() {
         XCTAssertEqual(AnnouncementVerbosity.verbose.displayName, "Verbose")
+        XCTAssertNotEqual(AnnouncementVerbosity.verbose.displayName, AnnouncementVerbosity.standard.displayName,
+                          "Verbose and standard display names must differ")
     }
 
     func testVerbosityMinimal_Description() {
         XCTAssertEqual(AnnouncementVerbosity.minimal.description, "Only essential announcements")
+        XCTAssertNotEqual(AnnouncementVerbosity.minimal.description, AnnouncementVerbosity.standard.description,
+                          "Minimal and standard descriptions must differ")
     }
 
     func testVerbosityStandard_Description() {
         XCTAssertEqual(AnnouncementVerbosity.standard.description, "Standard level of detail")
+        XCTAssertNotEqual(AnnouncementVerbosity.standard.description, AnnouncementVerbosity.verbose.description,
+                          "Standard and verbose descriptions must differ")
     }
 
     func testVerbosityVerbose_Description() {
         XCTAssertEqual(AnnouncementVerbosity.verbose.description, "Full descriptions and context")
+        XCTAssertNotEqual(AnnouncementVerbosity.verbose.description, AnnouncementVerbosity.minimal.description,
+                          "Verbose and minimal descriptions must differ")
     }
 
     func testVerbosity_AllCases() {
         XCTAssertEqual(AnnouncementVerbosity.allCases.count, 3)
+        // All display names must be unique
+        let names = AnnouncementVerbosity.allCases.map(\.displayName)
+        XCTAssertEqual(Set(names).count, 3, "All verbosity level display names must be unique")
     }
 
     func testVerbosity_CodableRoundTrip() throws {
@@ -177,18 +215,34 @@ final class AccessibilityPreferencesTests: XCTestCase {
                           "Prefs with button shapes enabled must not be equal to defaults")
     }
 
-    func testHapticFeedbackEnabled_Toggle() {
+    func testHapticFeedbackEnabled_Toggle() throws {
+        // Precondition: default is true
+        XCTAssertTrue(AccessibilityPreferences.default.hapticFeedbackEnabled,
+                      "hapticFeedbackEnabled must default to true")
+        // Mutation must survive a Codable round-trip (proves the property is actually persisted)
         var prefs = AccessibilityPreferences()
-        XCTAssertTrue(prefs.hapticFeedbackEnabled)
         prefs.hapticFeedbackEnabled = false
-        XCTAssertFalse(prefs.hapticFeedbackEnabled)
+        let data = try JSONEncoder().encode(prefs)
+        let decoded = try JSONDecoder().decode(AccessibilityPreferences.self, from: data)
+        XCTAssertFalse(decoded.hapticFeedbackEnabled,
+                       "hapticFeedbackEnabled=false must survive a JSON encode/decode round-trip")
+        XCTAssertNotEqual(decoded, AccessibilityPreferences.default,
+                          "Prefs with hapticFeedbackEnabled=false must differ from defaults")
     }
 
-    func testCustomRotorActionsEnabled_Toggle() {
+    func testCustomRotorActionsEnabled_Toggle() throws {
+        // Precondition: default is true
+        XCTAssertTrue(AccessibilityPreferences.default.customRotorActionsEnabled,
+                      "customRotorActionsEnabled must default to true")
+        // Mutation must survive a Codable round-trip (proves the property is actually persisted)
         var prefs = AccessibilityPreferences()
-        XCTAssertTrue(prefs.customRotorActionsEnabled)
         prefs.customRotorActionsEnabled = false
-        XCTAssertFalse(prefs.customRotorActionsEnabled)
+        let data = try JSONEncoder().encode(prefs)
+        let decoded = try JSONDecoder().decode(AccessibilityPreferences.self, from: data)
+        XCTAssertFalse(decoded.customRotorActionsEnabled,
+                       "customRotorActionsEnabled=false must survive a JSON encode/decode round-trip")
+        XCTAssertNotEqual(decoded, AccessibilityPreferences.default,
+                          "Prefs with customRotorActionsEnabled=false must differ from defaults")
     }
 
     // MARK: - Persistence to UserDefaults
@@ -214,10 +268,18 @@ final class AccessibilityPreferencesTests: XCTestCase {
     func testPersistence_NoSavedData_ReturnsNil() {
         let data = testDefaults.data(forKey: AccessibilityPreferences.storageKey)
         XCTAssertNil(data)
+        // Writing then removing must also yield nil
+        testDefaults.set(Data(), forKey: AccessibilityPreferences.storageKey)
+        testDefaults.removeObject(forKey: AccessibilityPreferences.storageKey)
+        let afterRemoval = testDefaults.data(forKey: AccessibilityPreferences.storageKey)
+        XCTAssertNil(afterRemoval, "Data must be nil after explicit removal from UserDefaults")
     }
 
     func testStorageKey_IsCorrect() {
         XCTAssertEqual(AccessibilityPreferences.storageKey, "Palace.Platform.accessibilityPreferences")
+        XCTAssertTrue(AccessibilityPreferences.storageKey.contains("Palace"),
+                      "Storage key must include the app namespace 'Palace'")
+        XCTAssertFalse(AccessibilityPreferences.storageKey.isEmpty, "Storage key must not be empty")
     }
 
     // MARK: - Equatable
@@ -226,6 +288,10 @@ final class AccessibilityPreferencesTests: XCTestCase {
         let a = AccessibilityPreferences.default
         let b = AccessibilityPreferences.default
         XCTAssertEqual(a, b)
+        // Equality must be reflexive: a == a
+        XCTAssertEqual(a, a, "Equatable must be reflexive: a preference object must equal itself")
+        // Equality must be symmetric: a == b ↔ b == a
+        XCTAssertEqual(b, a, "Equatable must be symmetric: if a==b then b==a must also hold")
     }
 
     func testEquatable_DifferentValues() {

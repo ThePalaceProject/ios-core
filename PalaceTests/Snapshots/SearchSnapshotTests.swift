@@ -22,6 +22,7 @@ final class SearchSnapshotTests: XCTestCase {
             TPPBookMocker.snapshotPDF(),
             TPPBookMocker.snapshotHoldBook()
         ]
+        XCTAssertEqual(books.count, 4, "Search view must be given 4 books for this snapshot")
 
         let view = CatalogSearchView(
             books: books,
@@ -34,8 +35,11 @@ final class SearchSnapshotTests: XCTestCase {
     }
 
     func testCatalogSearchView_empty() {
+        let books: [TPPBook] = []
+        XCTAssertTrue(books.isEmpty, "Empty search view must have no books")
+
         let view = CatalogSearchView(
-            books: [],
+            books: books,
             onBookSelected: { _ in }
         )
         .frame(width: 390, height: 400)
@@ -51,6 +55,7 @@ final class SearchSnapshotTests: XCTestCase {
             TPPBookMocker.snapshotEPUB(),
             TPPBookMocker.snapshotAudiobook()
         ]
+        XCTAssertEqual(books.count, 2, "Grid list view must contain exactly 2 books")
 
         let view = BookListView(
             books: books,
@@ -65,8 +70,11 @@ final class SearchSnapshotTests: XCTestCase {
     }
 
     func testBookListView_loading() {
+        let books: [TPPBook] = []
+        XCTAssertTrue(books.isEmpty, "Loading state must start with no books")
+
         let view = BookListView(
-            books: [],
+            books: books,
             isLoading: .constant(true),
             onSelect: { _ in }
         )

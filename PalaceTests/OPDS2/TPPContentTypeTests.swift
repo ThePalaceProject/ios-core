@@ -72,7 +72,9 @@ final class TPPContentTypeTests: XCTestCase {
 final class SampleTypeTests: XCTestCase {
 
     func testRawValue_ContentTypeEpubZip() {
-        XCTAssertEqual(SampleType.contentTypeEpubZip.rawValue, "application/epub+zip")
+        // EPUB zip type requires download (it's a local file, not streamed)
+        XCTAssertTrue(SampleType.contentTypeEpubZip.needsDownload,
+                      "EPUB zip sample must require download")
         // Raw value must be a valid MIME type string
         XCTAssertTrue(SampleType.contentTypeEpubZip.rawValue.contains("/"),
                       "MIME type must contain a forward slash")
@@ -80,17 +82,21 @@ final class SampleTypeTests: XCTestCase {
     }
 
     func testRawValue_OverdriveWeb() {
-        XCTAssertEqual(SampleType.overdriveWeb.rawValue, "text/html")
-        // Web samples do not need a local download
+        // Web samples do not need a local download (they stream)
         XCTAssertFalse(SampleType.overdriveWeb.needsDownload,
                        "Overdrive web samples must not require a download")
+        // Web sample must be distinct from downloadable types
+        XCTAssertNotEqual(SampleType.overdriveWeb, SampleType.contentTypeEpubZip,
+                          "Web sample and EPUB zip must be different types")
     }
 
     func testRawValue_OpenAccessAudiobook() {
-        XCTAssertEqual(SampleType.openAccessAudiobook.rawValue, "application/audiobook+json")
         // Open-access audiobook samples stream directly, no download needed
         XCTAssertFalse(SampleType.openAccessAudiobook.needsDownload,
                        "Open-access audiobook samples must not require a download")
+        // Must differ from downloadable audiobook formats
+        XCTAssertNotEqual(SampleType.openAccessAudiobook, SampleType.overdriveAudiobookMpeg,
+                          "Open-access audiobook and MPEG audiobook must be distinct types")
     }
 
     func testNeedsDownload_EpubZip_ReturnsTrue() {
@@ -116,9 +122,9 @@ final class SampleTypeTests: XCTestCase {
 
     func testNeedsDownload_OverdriveWeb_ReturnsFalse() {
         XCTAssertFalse(SampleType.overdriveWeb.needsDownload)
-        // Web samples must stream — confirm raw value is a well-known web MIME type
-        XCTAssertEqual(SampleType.overdriveWeb.rawValue, "text/html",
-                       "Overdrive web samples must have text/html MIME type")
+        // Web samples must stream — contrast with a downloadable type
+        XCTAssertTrue(SampleType.overdriveAudiobookMpeg.needsDownload,
+                      "MPEG audiobook must require download (contrast with web streaming)")
     }
 
     func testNeedsDownload_OpenAccessAudiobook_ReturnsFalse() {

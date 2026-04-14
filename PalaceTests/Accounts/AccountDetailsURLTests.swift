@@ -32,43 +32,53 @@ final class AccountDetailsURLTests: XCTestCase {
     // MARK: - setURL Tests
 
     func testSetURL_ForEULA_StoresURL() {
+        XCTAssertNil(sut.getLicenseURL(.eula), "EULA URL must be nil before setting")
         let url = URL(string: "https://example.com/eula")!
         sut.setURL(url, forLicense: .eula)
 
         let retrieved = sut.getLicenseURL(.eula)
         XCTAssertEqual(retrieved, url)
+        XCTAssertNil(sut.getLicenseURL(.privacyPolicy), "Setting EULA must not affect privacyPolicy URL")
     }
 
     func testSetURL_ForPrivacyPolicy_StoresURL() {
+        XCTAssertNil(sut.getLicenseURL(.privacyPolicy), "Privacy URL must be nil before setting")
         let url = URL(string: "https://example.com/privacy")!
         sut.setURL(url, forLicense: .privacyPolicy)
 
         let retrieved = sut.getLicenseURL(.privacyPolicy)
         XCTAssertEqual(retrieved, url)
+        XCTAssertNil(sut.getLicenseURL(.eula), "Setting privacyPolicy must not affect EULA URL")
     }
 
     func testSetURL_ForContentLicenses_StoresURL() {
+        XCTAssertNil(sut.getLicenseURL(.contentLicenses), "Content licenses URL must be nil before setting")
         let url = URL(string: "https://example.com/licenses")!
         sut.setURL(url, forLicense: .contentLicenses)
 
         let retrieved = sut.getLicenseURL(.contentLicenses)
         XCTAssertEqual(retrieved, url)
+        XCTAssertNil(sut.getLicenseURL(.eula), "Setting contentLicenses must not affect EULA URL")
     }
 
     func testSetURL_ForAcknowledgements_StoresURL() {
+        XCTAssertNil(sut.getLicenseURL(.acknowledgements), "Acknowledgements URL must be nil before setting")
         let url = URL(string: "https://example.com/acknowledgements")!
         sut.setURL(url, forLicense: .acknowledgements)
 
         let retrieved = sut.getLicenseURL(.acknowledgements)
         XCTAssertEqual(retrieved, url)
+        XCTAssertNil(sut.getLicenseURL(.annotations), "Setting acknowledgements must not affect annotations URL")
     }
 
     func testSetURL_ForAnnotations_StoresURL() {
+        XCTAssertNil(sut.getLicenseURL(.annotations), "Annotations URL must be nil before setting")
         let url = URL(string: "https://example.com/annotations")!
         sut.setURL(url, forLicense: .annotations)
 
         let retrieved = sut.getLicenseURL(.annotations)
         XCTAssertEqual(retrieved, url)
+        XCTAssertNil(sut.getLicenseURL(.eula), "Setting annotations must not affect EULA URL")
     }
 
     // MARK: - getLicenseURL Tests
@@ -121,6 +131,9 @@ final class AccountDetailsURLTests: XCTestCase {
 
     func testEulaIsAccepted_DefaultIsFalse() {
         XCTAssertFalse(sut.eulaIsAccepted)
+        // The default state must reflect "not yet accepted" for a fresh account
+        XCTAssertFalse(sut.eulaIsAccepted, "EULA acceptance must default to false for a new account")
+        XCTAssertTrue(sut.syncPermissionGranted, "Sync permission must default to true for a new account")
     }
 
     func testEulaIsAccepted_RoundTrips_ThroughUserDefaults() {
@@ -137,6 +150,10 @@ final class AccountDetailsURLTests: XCTestCase {
 
     func testSyncPermissionGranted_DefaultIsTrue() {
         XCTAssertTrue(sut.syncPermissionGranted)
+        // Verify it is actually stored in UserDefaults (not a compile-time constant)
+        let sut2 = makeAccountDetails(uuid: testUUID)
+        XCTAssertTrue(sut2.syncPermissionGranted, "Default sync permission must persist for same UUID")
+        XCTAssertFalse(sut.eulaIsAccepted, "EULA must default to not accepted independent of sync permission")
     }
 
     func testSyncPermissionGranted_ToggleOffThenOn_PersistsViaUserDefaults() {
@@ -162,6 +179,9 @@ final class AccountDetailsURLTests: XCTestCase {
 
     func testUserAboveAgeLimit_DefaultIsFalse() {
         XCTAssertFalse(sut.userAboveAgeLimit)
+        // Verify the default does not depend on EULA or sync state
+        XCTAssertFalse(sut.eulaIsAccepted, "EULA must also default to false")
+        XCTAssertTrue(sut.syncPermissionGranted, "Sync permission must default to true independently of age limit")
     }
 
     func testUserAboveAgeLimit_RoundTrips_ThroughUserDefaults() {

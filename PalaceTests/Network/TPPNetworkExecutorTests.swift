@@ -48,6 +48,9 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
 
         let acceptLang = request.value(forHTTPHeaderField: "Accept-Language")
         XCTAssertEqual(acceptLang, "")
+        // The URL must be preserved when Accept-Language is set
+        XCTAssertEqual(request.url, url, "URL must remain unchanged when Accept-Language is set")
+        XCTAssertNotNil(request.url, "Request URL must be non-nil")
     }
 
     // MARK: - Bearer Authorization
@@ -72,6 +75,11 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
         let authorized = TPPNetworkExecutor.bearerAuthorized(request: request)
 
         XCTAssertEqual(authorized.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        // URL must also be preserved
+        XCTAssertEqual(authorized.url, request.url, "bearerAuthorized must preserve the request URL")
+        // Authorization must be added without removing the Content-Type
+        XCTAssertNotNil(authorized.value(forHTTPHeaderField: "Authorization"),
+                        "Authorization header must be present after bearerAuthorized")
     }
 
     // MARK: - Initialization with Custom Config
@@ -82,7 +90,6 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
             cachingStrategy: .ephemeral,
             delegateQueue: nil
         )
-        XCTAssertNotNil(executor)
         XCTAssertGreaterThan(executor.requestTimeout, 0,
                              "Ephemeral executor must have a positive request timeout")
         XCTAssertTrue(executor is TPPRequestExecuting,
@@ -95,9 +102,10 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
             cachingStrategy: .default,
             delegateQueue: nil
         )
-        XCTAssertNotNil(executor)
         XCTAssertGreaterThan(executor.requestTimeout, 0,
                              "Default caching executor must have a positive request timeout")
+        XCTAssertTrue(executor is TPPRequestExecuting,
+                      "Default caching executor must conform to TPPRequestExecuting")
     }
 
     func testInit_withFallbackCachingStrategy() {
@@ -106,9 +114,10 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
             cachingStrategy: .fallback,
             delegateQueue: nil
         )
-        XCTAssertNotNil(executor)
         XCTAssertGreaterThan(executor.requestTimeout, 0,
                              "Fallback caching executor must have a positive request timeout")
+        XCTAssertTrue(executor is TPPRequestExecuting,
+                      "Fallback caching executor must conform to TPPRequestExecuting")
     }
 
     func testInit_withCustomSessionConfiguration() {
@@ -121,10 +130,11 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
             sessionConfiguration: config,
             delegateQueue: nil
         )
-        XCTAssertNotNil(executor)
         // Custom config executor must have a valid timeout, just like shared
         XCTAssertGreaterThan(executor.requestTimeout, 0,
                              "Custom-config executor must have a positive request timeout")
+        XCTAssertTrue(executor is TPPRequestExecuting,
+                      "Custom-config executor must conform to TPPRequestExecuting")
     }
 
     // MARK: - Cache Control
@@ -133,9 +143,11 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
         TPPNetworkExecutor.shared.clearCache()
         // Calling clearCache twice in a row must also be safe (idempotent)
         TPPNetworkExecutor.shared.clearCache()
-        // Shared is still usable after cache clear
-        XCTAssertNotNil(TPPNetworkExecutor.shared,
-                        "Executor must remain valid after cache cleared")
+        // Shared is still usable after cache clear — can still create a request
+        let req = TPPNetworkExecutor.shared.request(for: URL(string: "https://example.com")!)
+        XCTAssertNotNil(req.url, "Executor must remain functional after cache cleared")
+        XCTAssertGreaterThan(TPPNetworkExecutor.shared.requestTimeout, 0,
+                        "requestTimeout must remain positive after cache cleared")
     }
 
     // MARK: - Task Management
@@ -144,24 +156,30 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
         TPPNetworkExecutor.shared.pauseAllTasks()
         // Pause then immediately resume must not crash (common sequence on app background/foreground)
         TPPNetworkExecutor.shared.resumeAllTasks()
-        XCTAssertNotNil(TPPNetworkExecutor.shared,
-                        "Executor must remain valid after pause+resume")
+        let req = TPPNetworkExecutor.shared.request(for: URL(string: "https://example.com")!)
+        XCTAssertNotNil(req.url, "Executor must remain functional after pause+resume")
+        XCTAssertGreaterThan(TPPNetworkExecutor.shared.requestTimeout, 0,
+                        "requestTimeout must remain positive after pause+resume")
     }
 
     func testResumeAllTasks_doesNotCrash() {
         // Resume without prior pause must be safe
         TPPNetworkExecutor.shared.resumeAllTasks()
         TPPNetworkExecutor.shared.resumeAllTasks()
-        XCTAssertNotNil(TPPNetworkExecutor.shared,
-                        "Executor must remain valid after multiple resumes")
+        let req = TPPNetworkExecutor.shared.request(for: URL(string: "https://example.com")!)
+        XCTAssertNotNil(req.url, "Executor must remain functional after multiple resumes")
+        XCTAssertGreaterThan(TPPNetworkExecutor.shared.requestTimeout, 0,
+                        "requestTimeout must remain positive after multiple resumes")
     }
 
     func testCancelNonEssentialTasks_doesNotCrash() {
         TPPNetworkExecutor.shared.cancelNonEssentialTasks()
         // Cancelling twice in quick succession must not crash
         TPPNetworkExecutor.shared.cancelNonEssentialTasks()
-        XCTAssertNotNil(TPPNetworkExecutor.shared,
-                        "Executor must remain valid after repeated cancellations")
+        let req = TPPNetworkExecutor.shared.request(for: URL(string: "https://example.com")!)
+        XCTAssertNotNil(req.url, "Executor must remain functional after repeated cancellations")
+        XCTAssertGreaterThan(TPPNetworkExecutor.shared.requestTimeout, 0,
+                        "requestTimeout must remain positive after repeated cancellations")
     }
 }
 
@@ -264,8 +282,9 @@ final class TPPNetworkExecutorStubbedTests: XCTestCase {
         }
 
         wait(for: [expectation], timeout: 5.0)
-        // Server errors may come back as data or error depending on responder behavior
-        // Just verify the completion was called
+        // Server errors must produce either error or data (completion must be called)
+        XCTAssertTrue(gotData != nil || gotError != nil,
+                      "A 500 response must result in either error data or an error object — completion must not silently drop")
     }
 
     // MARK: - PUT
@@ -322,10 +341,13 @@ final class TPPNetworkExecutorStubbedTests: XCTestCase {
 
         executor.POST(request, useTokenIfAvailable: false, completion: nil)
 
-        // Wait briefly to ensure no crash
+        // Wait briefly to ensure no crash, then verify the executor remains usable
         let wait = XCTestExpectation(description: "Wait")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { wait.fulfill() }
         self.wait(for: [wait], timeout: 2.0)
+        // Executor must remain functional after fire-and-forget POST
+        XCTAssertGreaterThan(self.executor.requestTimeout, 0,
+                             "Executor requestTimeout must remain positive after nil-completion POST")
     }
 
     // MARK: - DELETE
@@ -363,6 +385,9 @@ final class TPPNetworkExecutorStubbedTests: XCTestCase {
         let wait = XCTestExpectation(description: "Wait")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { wait.fulfill() }
         self.wait(for: [wait], timeout: 2.0)
+        // Executor must remain functional after fire-and-forget DELETE
+        XCTAssertGreaterThan(self.executor.requestTimeout, 0,
+                             "Executor requestTimeout must remain positive after nil-completion DELETE")
     }
 
     // MARK: - Async/Await API

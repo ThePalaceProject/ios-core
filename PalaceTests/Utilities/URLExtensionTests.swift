@@ -119,11 +119,12 @@ final class URLExtensionTests: XCTestCase {
         let url = URL(string: "https://example.com/search?q=swift&page=2&sort=date")!
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
 
-        XCTAssertNotNil(components?.queryItems)
         XCTAssertEqual(components?.queryItems?.count, 3)
-
         let qItem = components?.queryItems?.first { $0.name == "q" }
         XCTAssertEqual(qItem?.value, "swift")
+        // All three parameter names must be present and distinct
+        let names = components?.queryItems?.map(\.name) ?? []
+        XCTAssertTrue(names.contains("page") && names.contains("sort"), "All query parameters must be parsed")
     }
 
     func testURLQueryItems_building() {
@@ -147,8 +148,10 @@ final class URLExtensionTests: XCTestCase {
         let urlString = "https://example.com/search?q=hello%20world"
         let url = URL(string: urlString)
 
-        XCTAssertNotNil(url)
-        XCTAssertTrue(url!.absoluteString.contains("%20"))
+        XCTAssertEqual(url?.scheme, "https", "Scheme must be https")
+        XCTAssertTrue(url?.absoluteString.contains("%20") ?? false, "Percent-encoded space must be preserved")
+        // The raw space must not appear in the absolute string
+        XCTAssertFalse(url?.absoluteString.contains(" ") ?? true, "Raw spaces must not appear in a URL string")
     }
 
     func testURLEncoding_specialCharacters() {
@@ -166,9 +169,11 @@ final class URLValidationTests: XCTestCase {
 
     func testValidHTTPURL() {
         let url = URL(string: "https://example.com")
-        XCTAssertNotNil(url)
         XCTAssertEqual(url?.scheme, "https")
         XCTAssertEqual(url?.host, "example.com")
+        // A valid HTTPS URL must not be a file URL
+        XCTAssertFalse(url?.isFileURL ?? true, "https URL must not be a file URL")
+        XCTAssertNil(url?.port, "Default HTTPS port 443 must not appear explicitly in the URL")
     }
 
     func testInvalidURL_handledByURLInit() {
@@ -198,10 +203,15 @@ final class URLValidationTests: XCTestCase {
     func testEmptyString_returnsNil() {
         let url = URL(string: "")
         XCTAssertNil(url)
-        // Adjacent empty-ish strings should also be nil or benign
-        let justSlash = URL(string: "/")
-        // A bare slash may or may not parse depending on OS version; just shouldn't crash
-        _ = justSlash
+        // A valid string must contrast — scheme must be parseable
+        let validURL = URL(string: "https://example.com")
+        XCTAssertEqual(validURL?.scheme, "https", "A valid HTTPS URL string must parse with scheme 'https'")
+        // A string with only whitespace must also fail or be treated as invalid
+        let whitespaceURL = URL(string: "   ")
+        if whitespaceURL != nil {
+            XCTAssertNotEqual(whitespaceURL?.absoluteString, "https://example.com",
+                              "Whitespace URL must not match a real URL")
+        }
     }
 
     func testURLWithSpaces_handledCorrectly() {
@@ -227,9 +237,11 @@ final class URLValidationTests: XCTestCase {
 
     func testFileURL_alwaysValid() {
         let url = URL(fileURLWithPath: "/any/path/is/valid")
-        XCTAssertNotNil(url)
         XCTAssertTrue(url.isFileURL)
         XCTAssertEqual(url.scheme, "file")
         XCTAssertEqual(url.lastPathComponent, "valid")
+        // File URLs must differ from HTTPS URLs with the same path string
+        let httpsURL = URL(string: "https://example.com/any/path/is/valid")
+        XCTAssertFalse(httpsURL?.isFileURL ?? true, "HTTPS URL must not be a file URL")
     }
 }

@@ -59,6 +59,8 @@ final class MyBooksSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 390, height: 120)
+        XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadSuccessful,
+                       "Book must be in downloadSuccessful state for EPUB cell snapshot")
     }
 
     func testNormalBookCell_downloadedAudiobook() {
@@ -69,6 +71,8 @@ final class MyBooksSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 390, height: 120)
+        XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadSuccessful,
+                       "Book must be in downloadSuccessful state for audiobook cell snapshot")
     }
 
     func testNormalBookCell_downloadNeeded() {
@@ -79,6 +83,8 @@ final class MyBooksSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 390, height: 120)
+        XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadNeeded,
+                       "Book must be in downloadNeeded state for this cell snapshot")
     }
 
     // MARK: - DownloadingBookCell
@@ -91,6 +97,8 @@ final class MyBooksSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 390, height: 120)
+        XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloading,
+                       "Book must be in downloading state for the DownloadingBookCell snapshot")
     }
 
     // MARK: - Empty State
@@ -104,6 +112,8 @@ final class MyBooksSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: emptyView, width: 390, height: 300)
+        XCTAssertFalse(Strings.MyBooksView.emptyViewMessage.isEmpty,
+                       "Empty view message must not be empty")
     }
 
     // MARK: - Button Types
@@ -112,12 +122,16 @@ final class MyBooksSnapshotTests: XCTestCase {
         let book = snapshotEPUB()
         let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book)
         XCTAssertTrue(buttons.contains(.read))
+        XCTAssertFalse(buttons.isEmpty, "downloadSuccessful EPUB must have at least one button")
+        XCTAssertFalse(buttons.contains(.download), "Downloaded EPUB must not show a download button again")
     }
 
     func testButtonTypes_downloadedAudiobook() {
         let book = snapshotAudiobook()
         let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book)
         XCTAssertTrue(buttons.contains(.listen))
+        XCTAssertFalse(buttons.isEmpty, "downloadSuccessful audiobook must have at least one button")
+        XCTAssertFalse(buttons.contains(.download), "Downloaded audiobook must not show a download button again")
     }
 
     // MARK: - Sorting

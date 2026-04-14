@@ -53,6 +53,8 @@ final class OfflineActionTests: XCTestCase {
     func testCustomMaxRetries() {
         let action = OfflineAction(type: .borrow, bookID: "b1", bookTitle: "T", maxRetries: 10)
         XCTAssertEqual(action.maxRetries, 10)
+        XCTAssertNotEqual(action.maxRetries, 3, "Custom maxRetries must differ from the default value of 3")
+        XCTAssertTrue(action.maxRetries > 3, "maxRetries of 10 must be greater than the default of 3")
     }
 
     // MARK: - Retry Count Increment
@@ -73,6 +75,9 @@ final class OfflineActionTests: XCTestCase {
         action.state = .failed
         action.retryCount = 0
         XCTAssertTrue(action.canRetry)
+        // Incrementing to just under maxRetries must still allow retry
+        action.retryCount = 2
+        XCTAssertTrue(action.canRetry, "retryCount < maxRetries must keep canRetry true")
     }
 
     func testCanRetry_FailedWithRetriesExhausted_False() {
@@ -80,6 +85,9 @@ final class OfflineActionTests: XCTestCase {
         action.state = .failed
         action.retryCount = 3
         XCTAssertFalse(action.canRetry)
+        // Verify the boundary: one less must allow retry
+        action.retryCount = 2
+        XCTAssertTrue(action.canRetry, "retryCount one below maxRetries must still allow retry")
     }
 
     func testCanRetry_FailedExceedingMaxRetries_False() {
@@ -87,6 +95,7 @@ final class OfflineActionTests: XCTestCase {
         action.state = .failed
         action.retryCount = 5
         XCTAssertFalse(action.canRetry)
+        XCTAssertGreaterThan(action.retryCount, action.maxRetries, "retryCount exceeds maxRetries in this scenario")
     }
 
     func testCanRetry_PendingState_False() {
@@ -94,6 +103,9 @@ final class OfflineActionTests: XCTestCase {
         action.state = .pending
         action.retryCount = 0
         XCTAssertFalse(action.canRetry, "Pending actions don't need retry")
+        // Even with retries remaining, pending must return false
+        action.retryCount = 1
+        XCTAssertFalse(action.canRetry, "Pending state must never allow retry regardless of retryCount")
     }
 
     func testCanRetry_ProcessingState_False() {
@@ -101,6 +113,9 @@ final class OfflineActionTests: XCTestCase {
         action.state = .processing
         action.retryCount = 0
         XCTAssertFalse(action.canRetry, "Processing actions don't need retry")
+        // Even in-flight, must not be retried
+        action.retryCount = 1
+        XCTAssertFalse(action.canRetry, "Processing state must never allow retry regardless of retryCount")
     }
 
     func testCanRetry_CompletedState_False() {
@@ -108,6 +123,7 @@ final class OfflineActionTests: XCTestCase {
         action.state = .completed
         action.retryCount = 0
         XCTAssertFalse(action.canRetry, "Completed actions don't need retry")
+        XCTAssertEqual(action.state, .completed, "State must remain completed")
     }
 
     func testCanRetry_ZeroMaxRetries_AlwaysFalse() {
@@ -115,6 +131,8 @@ final class OfflineActionTests: XCTestCase {
         action.state = .failed
         action.retryCount = 0
         XCTAssertFalse(action.canRetry)
+        // Even if somehow retryCount goes negative, must remain false
+        XCTAssertEqual(action.maxRetries, 0, "maxRetries must be 0 in this scenario")
     }
 
     // MARK: - Exponential Backoff
@@ -123,24 +141,37 @@ final class OfflineActionTests: XCTestCase {
         var action = OfflineAction(type: .borrow, bookID: "b1", bookTitle: "T")
         action.retryCount = 0
         XCTAssertEqual(action.nextRetryDelay, 1.0, accuracy: 0.001)
+        XCTAssertGreaterThan(action.nextRetryDelay, 0, "First retry delay must be positive")
     }
 
     func testNextRetryDelay_SecondRetry() {
         var action = OfflineAction(type: .borrow, bookID: "b1", bookTitle: "T")
         action.retryCount = 1
         XCTAssertEqual(action.nextRetryDelay, 2.0, accuracy: 0.001)
+        // Must double the first retry delay
+        action.retryCount = 0
+        XCTAssertEqual(action.nextRetryDelay * 2, 2.0, accuracy: 0.001,
+                       "Second retry delay must be exactly double the first")
     }
 
     func testNextRetryDelay_ThirdRetry() {
         var action = OfflineAction(type: .borrow, bookID: "b1", bookTitle: "T")
         action.retryCount = 2
         XCTAssertEqual(action.nextRetryDelay, 4.0, accuracy: 0.001)
+        // Must be double the second retry delay
+        action.retryCount = 1
+        XCTAssertEqual(action.nextRetryDelay * 2, 4.0, accuracy: 0.001,
+                       "Third retry delay must be exactly double the second")
     }
 
     func testNextRetryDelay_FourthRetry() {
         var action = OfflineAction(type: .borrow, bookID: "b1", bookTitle: "T")
         action.retryCount = 3
         XCTAssertEqual(action.nextRetryDelay, 8.0, accuracy: 0.001)
+        // Must be double the third retry delay
+        action.retryCount = 2
+        XCTAssertEqual(action.nextRetryDelay * 2, 8.0, accuracy: 0.001,
+                       "Fourth retry delay must be exactly double the third")
     }
 
     func testNextRetryDelay_GrowsExponentially() {
@@ -210,12 +241,18 @@ final class OfflineActionTests: XCTestCase {
         var copy = action
         copy.retryCount = 5 // Different retry count but same ID
         XCTAssertEqual(action, copy, "Equality is based on ID only")
+        // Changing state must still keep equality since ID is unchanged
+        copy.state = .failed
+        XCTAssertEqual(action, copy, "Equality must be ID-based only, regardless of state changes")
+        XCTAssertEqual(action.id, copy.id, "Both actions must share the same UUID")
     }
 
     func testEquality_DifferentID_NotEqual() {
         let a = OfflineAction(type: .borrow, bookID: "b1", bookTitle: "T")
         let b = OfflineAction(type: .borrow, bookID: "b1", bookTitle: "T")
         XCTAssertNotEqual(a, b, "Different UUIDs should not be equal")
+        // All other fields being equal must not override UUID-based inequality
+        XCTAssertNotEqual(a.id, b.id, "Each OfflineAction must receive a unique UUID at creation")
     }
 
     // MARK: - Display Description
@@ -223,21 +260,30 @@ final class OfflineActionTests: XCTestCase {
     func testDisplayDescription_Borrow() {
         let action = OfflineAction(type: .borrow, bookID: "b1", bookTitle: "Great Gatsby")
         XCTAssertEqual(action.displayDescription, "Borrow \"Great Gatsby\"")
+        XCTAssertTrue(action.displayDescription.contains("Great Gatsby"), "Book title must appear in description")
+        XCTAssertFalse(action.displayDescription.isEmpty, "Display description must not be empty")
     }
 
     func testDisplayDescription_Return() {
         let action = OfflineAction(type: .return, bookID: "b1", bookTitle: "Great Gatsby")
         XCTAssertEqual(action.displayDescription, "Return \"Great Gatsby\"")
+        XCTAssertNotEqual(action.displayDescription,
+                          OfflineAction(type: .borrow, bookID: "b1", bookTitle: "Great Gatsby").displayDescription,
+                          "Return and Borrow must produce different descriptions")
     }
 
     func testDisplayDescription_Hold() {
         let action = OfflineAction(type: .hold, bookID: "b1", bookTitle: "Great Gatsby")
         XCTAssertEqual(action.displayDescription, "Place hold on \"Great Gatsby\"")
+        XCTAssertTrue(action.displayDescription.contains("Great Gatsby"), "Book title must appear in hold description")
     }
 
     func testDisplayDescription_CancelHold() {
         let action = OfflineAction(type: .cancelHold, bookID: "b1", bookTitle: "Great Gatsby")
         XCTAssertEqual(action.displayDescription, "Cancel hold on \"Great Gatsby\"")
+        XCTAssertNotEqual(action.displayDescription,
+                          OfflineAction(type: .hold, bookID: "b1", bookTitle: "Great Gatsby").displayDescription,
+                          "CancelHold and Hold must produce different descriptions")
     }
 
     // MARK: - OfflineActionType

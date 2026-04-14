@@ -408,7 +408,7 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
 
-        // Should not crash
+        // Should not crash and handler state must remain consistent
         await handler.handleDownloadProgress(
             for: book,
             task: task,
@@ -416,17 +416,21 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
             totalBytesWritten: 500,
             totalBytesExpectedToWrite: 1000
         )
+        // After a no-delegate progress call, handler must still classify MIME types correctly
+        XCTAssertNil(handler.delegate, "Delegate must remain nil after no-delegate progress call")
     }
 
     // MARK: - Initialization
 
     func testInit_withDelegate() {
         let handler = BackgroundDownloadHandler(delegate: mockDelegate)
-        XCTAssertNotNil(handler.delegate)
         // The delegate should be the same object we passed in
-        XCTAssertTrue(handler.delegate === mockDelegate)
+        XCTAssertTrue(handler.delegate === mockDelegate,
+                      "Handler must retain the exact delegate instance it was initialized with")
         // A newly initialised handler should detect MIME types correctly
         XCTAssertEqual(handler.detectRightsManagement(from: ContentTypeEpubZip), .none)
+        XCTAssertEqual(handler.detectRightsManagement(from: ContentTypeAdobeAdept), .adobe,
+                       "Adobe Adept content type must be detected as .adobe rights management")
     }
 
     func testInit_withoutDelegate() {

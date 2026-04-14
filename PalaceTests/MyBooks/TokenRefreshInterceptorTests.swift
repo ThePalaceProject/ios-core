@@ -116,7 +116,10 @@ final class TokenRefreshInterceptorTests: XCTestCase {
 
     func testInit_defaultState() {
         let fresh = TokenRefreshInterceptor()
-        XCTAssertNotNil(fresh.reauthenticator)
+        // The default reauthenticator must not be the custom mock
+        XCTAssertFalse(fresh.reauthenticator === mockReauthenticator,
+                       "Default reauthenticator must be different from the injected mock")
+        XCTAssertNil(fresh.delegate, "Fresh interceptor must have nil delegate")
     }
 
     func testInit_withCustomReauthenticator() {
@@ -347,12 +350,18 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         interceptor.delegate = nil
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         interceptor.handleProblem(for: book, problemDocument: nil)
+        // With nil delegate, reauthenticator must NOT have been called
+        XCTAssertFalse(mockReauthenticator.authenticateIfNeededCalled,
+                       "Nil delegate must prevent reauthenticator from being called")
     }
 
     func testHandleBorrowInvalidCredentials_nilDelegate_doesNotCrash() {
         interceptor.delegate = nil
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         interceptor.handleBorrowInvalidCredentials(for: book, error: nil)
+        // With nil delegate, signed-in state must not have changed
+        XCTAssertFalse(mockUserAccount._credentials != nil && mockReauthenticator.authenticateIfNeededCalled,
+                       "Nil delegate path must not trigger authentication flow")
     }
 
     // MARK: - handleDownloadFailure with noActiveLoan + SAML

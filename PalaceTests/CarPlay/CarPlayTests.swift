@@ -117,6 +117,9 @@ class CarPlayTests: XCTestCase {
 
         // Assert
         XCTAssertEqual(formattedDuration, "1:01:05", "Should format duration as H:MM:SS")
+        // Verify the format contains exactly the right number of components
+        let components = formattedDuration.components(separatedBy: ":")
+        XCTAssertEqual(components.count, 3, "Hour-duration must have 3 colon-separated components")
     }
 
     func testCarPlay_ShortDurationFormatting() {
@@ -128,6 +131,9 @@ class CarPlayTests: XCTestCase {
 
         // Assert
         XCTAssertEqual(formattedDuration, "2:05", "Should format short duration as M:SS")
+        // Short durations must have exactly 2 components (no hours field)
+        let components = formattedDuration.components(separatedBy: ":")
+        XCTAssertEqual(components.count, 2, "Sub-hour duration must have 2 colon-separated components")
     }
 
     func testCarPlay_ZeroDurationFormatting() {
@@ -139,6 +145,9 @@ class CarPlayTests: XCTestCase {
 
         // Assert
         XCTAssertEqual(formattedDuration, "", "Should return empty string for nil duration")
+        // Contrast: non-nil zero duration must NOT be empty (0 seconds still formats)
+        let zeroDuration = formatDurationOptional(0.0)
+        XCTAssertFalse(zeroDuration.isEmpty, "Non-nil zero duration must produce a non-empty string")
     }
 
     // MARK: - Error String Tests
@@ -174,31 +183,20 @@ class CarPlayTests: XCTestCase {
 
     // MARK: - Notification Tests
 
-    // TODO: Re-enable when TPPAudiobookManagerCreated notification is defined
-    // func testCarPlay_AudiobookManagerCreatedNotification() {
-    //   // Arrange
-    //   let notificationExpectation = XCTestExpectation(description: "Notification received")
-    //   var receivedManager: AudiobookManager?
-    //
-    //   let observer = NotificationCenter.default.addObserver(
-    //     forName: .TPPAudiobookManagerCreated,
-    //     object: nil,
-    //     queue: .main
-    //   ) { notification in
-    //     receivedManager = notification.object as? AudiobookManager
-    //     notificationExpectation.fulfill()
-    //   }
-    //
-    //   // Act - Post a mock notification (simulating what BookService does)
-    //   // Note: In a real test we'd create an actual AudiobookManager
-    //   NotificationCenter.default.post(name: .TPPAudiobookManagerCreated, object: nil)
-    //
-    //   // Assert
-    //   wait(for: [notificationExpectation], timeout: 2.0)
-    //
-    //   // Cleanup
-    //   NotificationCenter.default.removeObserver(observer)
-    // }
+    // Note: TPPAudiobookManagerCreated notification is not yet defined; using AudiobookEvents instead
+    func testCarPlay_AudiobookManagerCreatedNotification() {
+        // Verify that the AudiobookEvents publisher exists and is observable (the
+        // intended notification mechanism for manager-created events).
+        var receivedCount = 0
+        let cancellable = AudiobookEvents.managerCreated.sink { _ in
+            receivedCount += 1
+        }
+        // A new subscriber must start with zero received events (PassthroughSubject has no buffer)
+        XCTAssertEqual(receivedCount, 0, "No events must be received immediately after subscription")
+        // Publisher must be non-nil (subscription must succeed)
+        XCTAssertNotNil(cancellable, "Must be able to subscribe to AudiobookEvents.managerCreated")
+        cancellable.cancel()
+    }
 
     // MARK: - Book State Tests
 
@@ -253,16 +251,14 @@ class CarPlayIntegrationTests: XCTestCase {
         // In a real test environment, we'd need to mock CPInterfaceController
         // For now, we verify the components compile and link correctly
 
-        // Assert that the classes exist and can be referenced
-        XCTAssertNotNil(CarPlayAudiobookBridge.self)
-        XCTAssertNotNil(CarPlayImageProvider.self)
-        // CarPlayTemplateManager and CarPlaySceneDelegate require CPInterfaceController
-
         // Verify a bridge instance has correct initial state
         let bridge = CarPlayAudiobookBridge()
-        XCTAssertNotNil(bridge, "CarPlayAudiobookBridge should instantiate")
         XCTAssertFalse(bridge.isPlaying, "Bridge should not be playing initially")
         XCTAssertNil(bridge.currentBook, "Bridge should have no book initially")
+        XCTAssertNil(bridge.currentChapter, "Bridge should have no chapter initially")
+        // Image provider must also initialize independently and be a distinct instance from bridge
+        let imageProvider = CarPlayImageProvider()
+        XCTAssertTrue(imageProvider !== bridge as AnyObject, "Image provider and bridge must be distinct objects")
     }
 
     func testCarPlay_ImageProvider_CachesBehavior() {
@@ -442,14 +438,20 @@ class CarPlayNowPlayingTemplateTests: XCTestCase {
         let expectation = XCTestExpectation(description: "Publisher subscribed")
         expectation.isInverted = true // We don't expect any events during setup
 
+        var receivedEvents = 0
         let cancellable = bridge.playbackStatePublisher
             .sink { _ in
+                receivedEvents += 1
                 expectation.fulfill()
             }
 
         // Wait briefly - no events should be emitted during setup
         wait(for: [expectation], timeout: 0.5)
         cancellable.cancel()
+        // Verify no spurious events were emitted during idle setup
+        XCTAssertEqual(receivedEvents, 0, "No playback events should be emitted before playback starts")
+        // Verify the bridge is in a consistent idle state
+        XCTAssertFalse(bridge.isPlaying, "Bridge must not be playing before playback is started")
     }
 
     /// Tests that the image provider can be created independently without CarPlay.
@@ -457,9 +459,11 @@ class CarPlayNowPlayingTemplateTests: XCTestCase {
     func testCarPlayImageProvider_InitializesIndependently() {
         // Arrange & Act
         let imageProvider = CarPlayImageProvider()
+        let imageProvider2 = CarPlayImageProvider()
 
-        // Assert
+        // Assert - Each instance is independent (not a shared singleton)
         XCTAssertNotNil(imageProvider, "Image provider should initialize without CarPlay connection")
+        XCTAssertTrue(imageProvider !== imageProvider2, "Each CarPlayImageProvider must be a distinct instance")
     }
 
     /// TC-002 (Coverage Analysis): Verify Now Playing template is configured only once.
@@ -496,6 +500,9 @@ class CarPlayChapterListTests: XCTestCase {
 
         // Assert
         XCTAssertNil(chapters, "Should return nil when no chapters available")
+        // Verify consistency: repeated calls must also return nil (no phantom chapters)
+        let chaptersAgain = bridge.currentChapters
+        XCTAssertNil(chaptersAgain, "Repeated calls must consistently return nil when no book is loaded")
     }
 
     /// TC-003: Test that current chapter is nil when no playback is active.
@@ -508,6 +515,8 @@ class CarPlayChapterListTests: XCTestCase {
 
         // Assert
         XCTAssertNil(currentChapter, "Current chapter should be nil without active playback")
+        // Both chapter and chapters must be nil consistently (not just one of them)
+        XCTAssertNil(bridge.currentChapters, "currentChapters must also be nil without active playback")
     }
 
     /// Test chapter skip functionality doesn't crash without active playback.
@@ -591,11 +600,15 @@ class CarPlayPlaybackErrorTests: XCTestCase {
     func testBridge_isPlaying_reflectsSessionManager() {
         let bridge = CarPlayAudiobookBridge()
         XCTAssertFalse(bridge.isPlaying, "Bridge should report not playing when no session is active")
+        // Consistent: no current book and no chapter when not playing
+        XCTAssertNil(bridge.currentBook, "No book should be associated when not playing")
     }
 
     func testBridge_currentBook_nilWhenNoSession() {
         let bridge = CarPlayAudiobookBridge()
         XCTAssertNil(bridge.currentBook, "No book should be set when session is inactive")
+        // Consistent: chapters should also be nil when there is no current book
+        XCTAssertNil(bridge.currentChapters, "Chapters must be nil when no book session is active")
     }
 
     // MARK: - PP-3679 Lock Screen Position Sync

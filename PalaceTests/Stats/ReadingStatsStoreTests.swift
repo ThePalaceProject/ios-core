@@ -33,6 +33,7 @@ final class ReadingStatsStoreTests: XCTestCase {
   func testLoadSessionsEmpty() {
     let sessions = store.loadSessions()
     XCTAssertTrue(sessions.isEmpty)
+    XCTAssertEqual(sessions.count, 0, "Empty store must return zero sessions, not nil or partial data")
   }
 
   func testMultipleSessions() {

@@ -15,36 +15,64 @@ final class LogTests: XCTestCase {
 
     func testSubsystem_isCorrectValue() {
         XCTAssertEqual(Log.subsystem, "org.thepalaceproject.palace")
+        XCTAssertTrue(Log.subsystem.contains("thepalaceproject"), "Subsystem must contain the organization identifier")
+        XCTAssertFalse(Log.subsystem.isEmpty, "Log subsystem must not be empty")
     }
 
     func testSubsystem_isNotEmpty() {
         XCTAssertFalse(Log.subsystem.isEmpty, "Log subsystem should not be empty")
+        XCTAssertGreaterThan(Log.subsystem.count, 0, "Subsystem must have at least one character")
+        XCTAssertTrue(Log.subsystem.contains("."), "Subsystem must use reverse-DNS notation with dots")
     }
 
     // MARK: - Log Level Tests
 
     func testDebug_doesNotCrash() {
+        let subsystemBefore = Log.subsystem
         Log.debug("LogTests", "Debug test message")
+        let subsystemAfter = Log.subsystem
+        XCTAssertEqual(subsystemAfter, subsystemBefore, "Log subsystem must remain stable after debug call")
+        XCTAssertEqual(subsystemAfter, "org.thepalaceproject.palace")
     }
 
     func testInfo_doesNotCrash() {
+        let subsystemBefore = Log.subsystem
         Log.info("LogTests", "Info test message")
+        let subsystemAfter = Log.subsystem
+        XCTAssertFalse(subsystemAfter.isEmpty, "Subsystem must remain valid after info call")
+        XCTAssertEqual(subsystemAfter, subsystemBefore, "Info call must not mutate the log subsystem")
     }
 
     func testWarn_doesNotCrash() {
+        let subsystemBefore = Log.subsystem
         Log.warn("LogTests", "Warning test message")
+        let subsystemAfter = Log.subsystem
+        XCTAssertFalse(subsystemAfter.isEmpty, "Subsystem must remain valid after warn call")
+        XCTAssertEqual(subsystemAfter, subsystemBefore, "Warn call must not mutate the log subsystem")
     }
 
     func testError_doesNotCrash() {
+        let subsystemBefore = Log.subsystem
         Log.error("LogTests", "Error test message")
+        let subsystemAfter = Log.subsystem
+        XCTAssertFalse(subsystemAfter.isEmpty, "Subsystem must remain valid after error call")
+        XCTAssertEqual(subsystemAfter, subsystemBefore, "Error call must not mutate the log subsystem")
     }
 
     func testFault_doesNotCrash() {
+        let subsystemBefore = Log.subsystem
         Log.fault("LogTests", "Fault test message")
+        let subsystemAfter = Log.subsystem
+        XCTAssertFalse(subsystemAfter.isEmpty, "Subsystem must remain valid after fault call")
+        XCTAssertEqual(subsystemAfter, subsystemBefore, "Fault call must not mutate the log subsystem")
     }
 
     func testLog_objcCompatibility_doesNotCrash() {
+        let subsystemBefore = Log.subsystem
         Log.log("ObjC compat test message")
+        let subsystemAfter = Log.subsystem
+        XCTAssertFalse(subsystemAfter.isEmpty, "Subsystem must remain valid after ObjC log call")
+        XCTAssertEqual(subsystemAfter, subsystemBefore, "ObjC log call must not mutate the log subsystem")
     }
 
     // MARK: - Error Persistence Tests
@@ -133,6 +161,7 @@ final class LogTests: XCTestCase {
         let logs = await pollForLog(marker: marker)
 
         XCTAssertTrue(logs.contains(marker), "Message should be present in logs")
+        XCTAssertFalse(logs.isEmpty, "Logs must not be empty after logging an error")
         if logs.contains("Logging/SomeFile.swift") {
             XCTAssertFalse(
                 logs.contains("/Users/dev/Projects"),
@@ -149,5 +178,8 @@ final class LogTests: XCTestCase {
 
         XCTAssertFalse(formatted.isEmpty, "Date formatter should produce non-empty output")
         XCTAssertEqual(formatted.count, 19, "Date format 'yyyy-MM-dd HH:mm:ss' should be 19 characters")
+        // The formatted string must contain separators indicative of the expected format
+        XCTAssertTrue(formatted.contains("-"), "Date string must contain '-' separators (yyyy-MM-dd)")
+        XCTAssertTrue(formatted.contains(":"), "Date string must contain ':' separators (HH:mm:ss)")
     }
 }

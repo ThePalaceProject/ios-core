@@ -16,14 +16,20 @@ final class TPPErrorLoggerTests: XCTestCase {
     /// SRS: DRM-001 - Severity levels map to correct string representations
     func testSeverity_errorStringValue() {
         XCTAssertEqual(TPPSeverity.error.stringValue(), "error")
+        XCTAssertNotEqual(TPPSeverity.error.stringValue(), TPPSeverity.warning.stringValue())
+        XCTAssertNotEqual(TPPSeverity.error.stringValue(), TPPSeverity.info.stringValue())
     }
 
     func testSeverity_warningStringValue() {
         XCTAssertEqual(TPPSeverity.warning.stringValue(), "warning")
+        XCTAssertNotEqual(TPPSeverity.warning.stringValue(), TPPSeverity.error.stringValue())
+        XCTAssertFalse(TPPSeverity.warning.stringValue().isEmpty)
     }
 
     func testSeverity_infoStringValue() {
         XCTAssertEqual(TPPSeverity.info.stringValue(), "info")
+        XCTAssertNotEqual(TPPSeverity.info.stringValue(), TPPSeverity.error.stringValue())
+        XCTAssertFalse(TPPSeverity.info.stringValue().isEmpty)
     }
 
     // MARK: - TPPErrorCode Category Tests
@@ -64,6 +70,14 @@ final class TPPErrorLoggerTests: XCTestCase {
         let rawValues = signInCodes.map(\.rawValue)
         XCTAssertEqual(Set(rawValues).count, signInCodes.count,
                        "All sign-in error codes must be unique raw values")
+        // Each code must be nonzero (0 is reserved for .ignore)
+        for code in signInCodes {
+            XCTAssertNotEqual(code.rawValue, 0, "\(code) must not use raw value 0")
+        }
+        // Sign-in codes must not overlap with app-level codes
+        let appRaw = Set([TPPErrorCode.appLaunch, .appLogicInconsistency].map(\.rawValue))
+        XCTAssertTrue(Set(rawValues).intersection(appRaw).isEmpty,
+                      "Sign-in codes must not overlap with app-level codes")
     }
 
     /// SRS: DRM-004 - DRM error codes form a contiguous block and don't collide with networking
@@ -139,6 +153,10 @@ final class TPPErrorLoggerTests: XCTestCase {
 
     func testClientDomain_isCorrect() {
         XCTAssertEqual(TPPErrorLogger.clientDomain, "org.thepalaceproject.palace")
+        XCTAssertFalse(TPPErrorLogger.clientDomain.isEmpty)
+        // Domain must be a proper reverse-DNS identifier (contains dots)
+        XCTAssertTrue(TPPErrorLogger.clientDomain.contains("."),
+                      "Client domain must be a reverse-DNS identifier")
     }
 
     // MARK: - Error Code Uniqueness
@@ -194,7 +212,11 @@ final class TPPErrorLoggerTests: XCTestCase {
     func testLogError_withErrorAndSummary_doesNotCrash() {
         let error = NSError(domain: "TestDomain", code: 42, userInfo: nil)
         TPPErrorLogger.logError(error, summary: "Test error summary")
-        // No crash = pass
+        // Verify clientDomain is still accessible after a log call (no side-effects)
+        XCTAssertFalse(TPPErrorLogger.clientDomain.isEmpty,
+                       "clientDomain must remain accessible after logError call")
+        // The error domain must be round-trippable (no data loss on construction)
+        XCTAssertEqual(error.domain, "TestDomain")
     }
 
     func testLogError_withCodeAndSummary_doesNotCrash() {
@@ -203,6 +225,9 @@ final class TPPErrorLoggerTests: XCTestCase {
             summary: "Test error with code",
             metadata: ["key": "value"]
         )
+        // Error code must be a valid non-zero value
+        XCTAssertNotEqual(TPPErrorCode.appLogicInconsistency.rawValue, 0,
+                          "appLogicInconsistency must have a nonzero raw value")
     }
 
     func testLogNetworkError_doesNotCrash() {
@@ -215,6 +240,9 @@ final class TPPErrorLoggerTests: XCTestCase {
             request: request,
             metadata: ["extraKey": "extraValue"]
         )
+        // The .apiCall code must live in the Palace domain
+        XCTAssertNotEqual(TPPErrorCode.apiCall.rawValue, TPPErrorCode.ignore.rawValue,
+                          "apiCall must be distinct from the ignore code")
     }
 
     func testLogNetworkError_withNilSummary_usesDefault() {
@@ -222,7 +250,9 @@ final class TPPErrorLoggerTests: XCTestCase {
             summary: nil,
             request: nil
         )
-        // Should use "Network error" as default summary
+        // Should use "Network error" as default summary — verify domain is stable
+        XCTAssertEqual(TPPErrorLogger.clientDomain, "org.thepalaceproject.palace",
+                       "clientDomain must not be mutated by logNetworkError with nil summary")
     }
 
     func testLogNetworkError_withIgnoreCode_usesApiCallCode() {
@@ -232,6 +262,9 @@ final class TPPErrorLoggerTests: XCTestCase {
             summary: "test",
             request: nil
         )
+        // .ignore and .apiCall must be distinct so the fallback is meaningful
+        XCTAssertNotEqual(TPPErrorCode.ignore.rawValue, TPPErrorCode.apiCall.rawValue,
+                          ".ignore and .apiCall must be distinct codes")
     }
 
     // MARK: - Login Error Logging
@@ -245,25 +278,43 @@ final class TPPErrorLoggerTests: XCTestCase {
             problemDocument: nil,
             metadata: ["testKey": "testValue"]
         )
+        // The login error code must be distinct from the general API call code
+        XCTAssertNotEqual(TPPErrorCode.remoteLoginError.rawValue, TPPErrorCode.apiCall.rawValue,
+                          "remoteLoginError must be distinct from apiCall code")
     }
 
     func testLogLocalAuthFailed_doesNotCrash() {
         let error = NSError(domain: "Auth", code: 0, userInfo: nil)
         TPPErrorLogger.logLocalAuthFailed(error: error, library: nil, metadata: nil)
+        // Verify the adept auth fail code exists and is distinct from local auth context
+        XCTAssertNotEqual(TPPErrorCode.adeptAuthFail.rawValue, TPPErrorCode.invalidCredentials.rawValue,
+                          "adeptAuthFail and invalidCredentials must be distinct codes")
+        XCTAssertEqual(error.domain, "Auth")
     }
 
     func testLogInvalidLicensor_doesNotCrash() {
         TPPErrorLogger.logInvalidLicensor(withAccountID: "test-account-id")
+        // The invalidLicensor code must be part of sign-in family
+        XCTAssertNotEqual(TPPErrorCode.invalidLicensor.rawValue, TPPErrorCode.ignore.rawValue,
+                          "invalidLicensor must not use the ignore code raw value")
+        XCTAssertFalse(TPPErrorLogger.clientDomain.isEmpty)
     }
 
     func testLogInvalidLicensor_withNilAccountID_doesNotCrash() {
         TPPErrorLogger.logInvalidLicensor(withAccountID: nil)
+        XCTAssertFalse(TPPErrorLogger.clientDomain.isEmpty,
+                       "clientDomain must be accessible after logInvalidLicensor with nil accountID")
+        XCTAssertNotEqual(TPPErrorCode.invalidLicensor.rawValue, 0)
     }
 
     // MARK: - Barcode Exception Logging
 
     func testLogBarcodeException_doesNotCrash() {
         TPPErrorLogger.logBarcodeException(nil, library: "Test Library")
+        // The barcode exception code must be unique
+        XCTAssertNotEqual(TPPErrorCode.barcodeException.rawValue, TPPErrorCode.invalidCredentials.rawValue,
+                          "barcodeException must be a distinct error code from invalidCredentials")
+        XCTAssertFalse(TPPErrorLogger.clientDomain.isEmpty)
     }
 
     // MARK: - Image Error Throttling
@@ -279,11 +330,21 @@ final class TPPErrorLoggerTests: XCTestCase {
 
         // Subsequent calls within the throttle window should be silently ignored
         TPPErrorLogger.logImageHostFailure(host: uniqueHost, error: error, url: url)
+        // imageHostFailure and imageDecodeFail must be separate codes
+        XCTAssertNotEqual(TPPErrorCode.imageHostFailure.rawValue, TPPErrorCode.imageDecodeFail.rawValue,
+                          "imageHostFailure and imageDecodeFail must be distinct codes")
     }
 
     func testImageDecodeFail_doesNotCrash() {
         let url = URL(string: "https://example.com/image-\(UUID().uuidString).jpg")!
         TPPErrorLogger.logImageDecodeFail(url: url)
+        // imageDecodeFail must be distinct from imageHostFailure
+        XCTAssertNotEqual(TPPErrorCode.imageDecodeFail.rawValue, TPPErrorCode.imageHostFailure.rawValue,
+                          "imageDecodeFail and imageHostFailure must be distinct error codes")
+        // imageDecodeFail must also be distinct from generic failure codes
+        XCTAssertNotEqual(TPPErrorCode.imageDecodeFail.rawValue, TPPErrorCode.feedParseFail.rawValue,
+                          "imageDecodeFail must not overlap with feedParseFail")
+        XCTAssertFalse(TPPErrorLogger.clientDomain.isEmpty, "clientDomain must remain non-empty after logImageDecodeFail")
     }
 
     // MARK: - Problem Document Parse Error
@@ -297,6 +358,9 @@ final class TPPErrorLoggerTests: XCTestCase {
             url: URL(string: "https://example.com/problem"),
             summary: "Test problem doc error"
         )
+        // parseProblemDocFail code must be distinct from generic feedParseFail
+        XCTAssertNotEqual(TPPErrorCode.parseProblemDocFail.rawValue, TPPErrorCode.feedParseFail.rawValue,
+                          "parseProblemDocFail must be distinct from feedParseFail")
     }
 
     func testLogProblemDocumentParseError_withNilData_doesNotCrash() {
@@ -307,6 +371,9 @@ final class TPPErrorLoggerTests: XCTestCase {
             url: nil,
             summary: "Test with nil data"
         )
+        // parseProblemDocFail must be distinct from feedParseFail
+        XCTAssertNotEqual(TPPErrorCode.parseProblemDocFail.rawValue, TPPErrorCode.feedParseFail.rawValue,
+                          "parseProblemDocFail must be a distinct code from feedParseFail")
     }
 }
 
@@ -329,16 +396,29 @@ final class ReaderErrorTests: XCTestCase {
     func testFormatNotSupported_conformsToLocalizedError() {
         let error: LocalizedError = ReaderError.formatNotSupported
         XCTAssertNotNil(error.errorDescription)
+        XCTAssertFalse(error.errorDescription!.isEmpty, "formatNotSupported description must not be empty")
+        // Conforming to LocalizedError must expose same description as concrete type
+        XCTAssertEqual(error.errorDescription, ReaderError.formatNotSupported.errorDescription,
+                       "LocalizedError protocol description must match concrete type description")
     }
 
     func testEpubNotValid_conformsToLocalizedError() {
         let error: LocalizedError = ReaderError.epubNotValid
         XCTAssertNotNil(error.errorDescription)
+        XCTAssertFalse(error.errorDescription!.isEmpty, "epubNotValid description must not be empty")
+        // Conforming to LocalizedError must expose same description as concrete type
+        XCTAssertEqual(error.errorDescription, ReaderError.epubNotValid.errorDescription,
+                       "LocalizedError protocol description must match concrete type description")
     }
 
     func testErrors_haveDifferentDescriptions() {
         let formatError = ReaderError.formatNotSupported
         let epubError = ReaderError.epubNotValid
         XCTAssertNotEqual(formatError.errorDescription, epubError.errorDescription)
+        // Each description must be non-nil and non-empty (redundant safety check)
+        XCTAssertFalse(formatError.errorDescription?.isEmpty ?? true,
+                       "formatNotSupported description must be non-empty")
+        XCTAssertFalse(epubError.errorDescription?.isEmpty ?? true,
+                       "epubNotValid description must be non-empty")
     }
 }

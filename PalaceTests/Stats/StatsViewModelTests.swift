@@ -118,6 +118,9 @@ final class StatsViewModelTests: XCTestCase {
 
   func testStreakDisplayTextNoStreak() {
     XCTAssertEqual(viewModel.streakDisplayText, "Start your streak!")
+    XCTAssertFalse(viewModel.streakDisplayText.isEmpty, "Streak display text must not be empty")
+    XCTAssertNotEqual(viewModel.streakDisplayText, viewModel.longestStreakText,
+                      "No-streak and longest-streak texts must be distinct")
   }
 
   func testStreakDisplayTextActive() async {
@@ -133,6 +136,9 @@ final class StatsViewModelTests: XCTestCase {
 
   func testLongestStreakText() {
     XCTAssertEqual(viewModel.longestStreakText, "Best: 0 days")
+    XCTAssertFalse(viewModel.longestStreakText.isEmpty, "Longest streak text must not be empty")
+    XCTAssertTrue(viewModel.longestStreakText.contains("Best:"),
+                  "Longest streak text must contain 'Best:' prefix")
   }
 
   // MARK: - Recent Badges

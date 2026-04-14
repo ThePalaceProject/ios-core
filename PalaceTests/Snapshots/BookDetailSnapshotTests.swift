@@ -40,6 +40,7 @@ final class BookDetailSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 200, height: 280)
+        XCTAssertEqual(book.defaultBookContentType, .epub, "Mock EPUB book must have .epub content type")
     }
 
     func testBookImageView_audiobook_snapshot() {
@@ -49,6 +50,7 @@ final class BookDetailSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 200, height: 280)
+        XCTAssertTrue(book.isAudiobook, "Mock audiobook must be identified as an audiobook")
     }
 
     func testBookImageView_pdf_snapshot() {
@@ -58,6 +60,7 @@ final class BookDetailSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 200, height: 280)
+        XCTAssertEqual(book.defaultBookContentType, .pdf, "Mock PDF book must have .pdf content type")
     }
 
     func testBookImageView_holdBook_snapshot() {
@@ -67,6 +70,7 @@ final class BookDetailSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 200, height: 280)
+        XCTAssertFalse(book.identifier.isEmpty, "Mock hold book must have a non-empty identifier")
     }
 
     func testBookImageView_allTypes_grid() {
@@ -87,6 +91,7 @@ final class BookDetailSnapshotTests: XCTestCase {
         .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertEqual(books.count, 4, "Grid must contain exactly 4 book types")
     }
 
     // MARK: - BookDetailView
@@ -97,6 +102,7 @@ final class BookDetailSnapshotTests: XCTestCase {
             .frame(width: 390, height: 700)
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertFalse(book.title.isEmpty, "EPUB book used in snapshot must have a non-empty title")
     }
 
     func testBookDetailView_audiobook() {
@@ -105,6 +111,7 @@ final class BookDetailSnapshotTests: XCTestCase {
             .frame(width: 390, height: 700)
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertTrue(book.isAudiobook, "Audiobook book used in snapshot must be identified as an audiobook")
     }
 
     func testBookDetailView_pdf() {
@@ -113,6 +120,7 @@ final class BookDetailSnapshotTests: XCTestCase {
             .frame(width: 390, height: 700)
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertEqual(book.defaultBookContentType, .pdf, "PDF book used in snapshot must have .pdf content type")
     }
 
     func testBookDetailView_holdBook() {
@@ -121,6 +129,7 @@ final class BookDetailSnapshotTests: XCTestCase {
             .frame(width: 390, height: 700)
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertFalse(book.title.isEmpty, "Hold book used in snapshot must have a non-empty title")
     }
 
     // MARK: - BookButtonsView
@@ -135,6 +144,7 @@ final class BookDetailSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertTrue(provider.buttonTypes.contains(.get), "canBorrow state must show a Get button")
     }
 
     func testBookButtonsView_downloadSuccessful_epub() {
@@ -147,6 +157,7 @@ final class BookDetailSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertTrue(provider.buttonTypes.contains(.read), "downloadSuccessful EPUB must show a Read button")
     }
 
     func testBookButtonsView_downloadSuccessful_audiobook() {
@@ -159,6 +170,7 @@ final class BookDetailSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertTrue(provider.buttonTypes.contains(.listen), "downloadSuccessful audiobook must show a Listen button")
     }
 
     // MARK: - Button State Logic

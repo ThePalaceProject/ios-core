@@ -31,10 +31,16 @@ final class NavigationCoordinatorTests: XCTestCase {
 
     func testNavigationCoordinator_InitialState_PathIsEmpty() {
         XCTAssertTrue(coordinator.path.isEmpty, "Path should be empty initially")
+        XCTAssertEqual(coordinator.path.count, 0, "Path count must be 0 initially")
+        // After push it must no longer be empty
+        coordinator.push(.bookDetail(BookRoute(id: "test")))
+        XCTAssertFalse(coordinator.path.isEmpty, "Path must be non-empty after a push")
     }
 
     func testNavigationCoordinator_InitialState_NoEPUBSamplePresented() {
         XCTAssertNil(coordinator.presentedEPUBSample, "No EPUB sample should be presented initially")
+        // Path must also be clean (both initial conditions hold simultaneously)
+        XCTAssertTrue(coordinator.path.isEmpty, "Path must be empty alongside no EPUB sample")
     }
 
     // MARK: - Push Tests
@@ -48,6 +54,7 @@ final class NavigationCoordinatorTests: XCTestCase {
 
         // Assert
         XCTAssertEqual(coordinator.path.count, 1, "Path should have 1 item after push")
+        XCTAssertFalse(coordinator.path.isEmpty, "Path must be non-empty after push")
     }
 
     func testNavigationCoordinator_MultiplePushes_AccumulateInPath() {
@@ -58,6 +65,7 @@ final class NavigationCoordinatorTests: XCTestCase {
 
         // Assert
         XCTAssertEqual(coordinator.path.count, 3, "Path should have 3 items after 3 pushes")
+        XCTAssertFalse(coordinator.path.isEmpty, "Path must be non-empty after multiple pushes")
     }
 
     // MARK: - Pop Tests
@@ -163,6 +171,7 @@ final class NavigationCoordinatorTests: XCTestCase {
 
         // Assert - should only have 1 route (no accumulation)
         XCTAssertEqual(coordinator.path.count, 1, "Should not accumulate duplicate audio routes")
+        XCTAssertFalse(coordinator.path.isEmpty, "Path must be non-empty with one audio route")
     }
 
     /// PP-3783: Opening audiobook from book detail must preserve book detail in stack
@@ -206,6 +215,9 @@ final class NavigationCoordinatorTests: XCTestCase {
 
         // Assert
         XCTAssertNil(retrieved, "Non-existent book should return nil")
+        // Verify that a different non-existent ID also returns nil (not just a fixed sentinel)
+        let retrieved2 = coordinator.resolveBook(for: BookRoute(id: "another-missing-book"))
+        XCTAssertNil(retrieved2, "Any non-stored book ID should return nil")
     }
 
     // MARK: - Audio Model Storage Tests
@@ -215,6 +227,9 @@ final class NavigationCoordinatorTests: XCTestCase {
         // But we can test that the storage mechanism works for nil cases
         let retrieved = coordinator.resolveAudioModel(for: BookRoute(id: "non-existent-book"))
         XCTAssertNil(retrieved, "Non-existent audio model should return nil")
+        // Verify consistency: multiple distinct IDs all return nil when nothing is stored
+        let retrieved2 = coordinator.resolveAudioModel(for: BookRoute(id: "another-missing-audio"))
+        XCTAssertNil(retrieved2, "Second non-stored audio route should also return nil")
     }
 }
 
@@ -245,6 +260,11 @@ final class AppRouteTests: XCTestCase {
         let audioRoute = AppRoute.audio(BookRoute(id: "id-1"))
 
         XCTAssertNotEqual(bookRoute, audioRoute, "Different route types should not be equal even with same ID")
+        // Symmetry: inequality must hold in both directions
+        XCTAssertNotEqual(audioRoute, bookRoute, "Inequality must be symmetric")
+        // Same-type routes with the same ID must be equal (controls for the comparison)
+        let bookRoute2 = AppRoute.bookDetail(BookRoute(id: "id-1"))
+        XCTAssertEqual(bookRoute, bookRoute2, "Same type and same ID must be equal")
     }
 
     func testBookRoute_IsHashable() {

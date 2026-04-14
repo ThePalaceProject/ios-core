@@ -98,6 +98,9 @@ class TPPBookContentTypeTests: XCTestCase {
     let types = TPPOPDSAcquisitionPath.supportedTypes()
     XCTAssertTrue(types.contains("application/opds-publication+json"),
                   "supportedTypes() must include application/opds-publication+json for OPDS2 feeds")
+    XCTAssertFalse(types.isEmpty, "supportedTypes() must not be empty")
+    XCTAssertTrue(types.contains("application/epub+zip"),
+                  "supportedTypes() must also include EPUB mime type")
   }
 
   func test_opdsPublicationType_withDirectEpubIndirect_producesEpubPath() {

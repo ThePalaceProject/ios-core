@@ -147,6 +147,10 @@ final class DictionaryExtensionsCoverageTests: XCTestCase {
         let dict = [String: Int]()
         let result = dict.mapKeys { $0.uppercased() }
         XCTAssertTrue(result.isEmpty)
+        // Must also be distinct from a non-empty result
+        let nonEmpty = ["a": 1].mapKeys { $0.uppercased() }
+        XCTAssertFalse(nonEmpty.isEmpty, "Non-empty dict must produce a non-empty result")
+        XCTAssertEqual(nonEmpty["A"], 1, "Key must be transformed to uppercase")
     }
 }
 
@@ -158,24 +162,33 @@ final class ArrayExtensionsCoverageTests: XCTestCase {
     func testSafeSubscript_validIndex() {
         let arr = [10, 20, 30]
         XCTAssertEqual(arr[safe: 1], 20)
+        // First and last elements must also be accessible
+        XCTAssertEqual(arr[safe: 0], 10, "First element must be reachable at index 0")
+        XCTAssertEqual(arr[safe: 2], 30, "Last element must be reachable at the count-1 index")
     }
 
     // SRS: Array safe subscript returns nil for negative index
     func testSafeSubscript_negativeIndex() {
         let arr = [10, 20, 30]
         XCTAssertNil(arr[safe: -1])
+        // Any negative index must be nil, not crash
+        XCTAssertNil(arr[safe: -100], "Large negative index must also return nil")
     }
 
     // SRS: Array safe subscript returns nil for out of bounds index
     func testSafeSubscript_outOfBounds() {
         let arr = [10, 20, 30]
         XCTAssertNil(arr[safe: 5])
+        // The boundary just past the end (index == count) must be nil
+        XCTAssertNil(arr[safe: arr.count], "Index equal to count must be out of bounds")
     }
 
     // SRS: Array safe subscript returns nil for empty array
     func testSafeSubscript_emptyArray() {
         let arr = [Int]()
         XCTAssertNil(arr[safe: 0])
+        // Any index into an empty array must be nil
+        XCTAssertNil(arr[safe: -1], "Negative index into empty array must also return nil")
     }
 
     // SRS: Array safe subscript set modifies value at valid index
@@ -183,6 +196,9 @@ final class ArrayExtensionsCoverageTests: XCTestCase {
         var arr = [10, 20, 30]
         arr[safe: 1] = 99
         XCTAssertEqual(arr[1], 99)
+        // The other elements must be unchanged
+        XCTAssertEqual(arr[0], 10, "Elements at other indices must not be affected")
+        XCTAssertEqual(arr.count, 3, "Array size must not change after a valid set")
     }
 
     // SRS: Array safe subscript set ignores out of bounds index
@@ -190,6 +206,8 @@ final class ArrayExtensionsCoverageTests: XCTestCase {
         var arr = [10, 20, 30]
         arr[safe: 5] = 99
         XCTAssertEqual(arr.count, 3)
+        // All original values must be preserved
+        XCTAssertEqual(arr[0], 10, "Out-of-bounds set must not alter any existing element")
     }
 
     // SRS: Array safe subscript set ignores nil value
@@ -197,6 +215,8 @@ final class ArrayExtensionsCoverageTests: XCTestCase {
         var arr = [10, 20, 30]
         arr[safe: 1] = nil
         XCTAssertEqual(arr[1], 20, "Setting nil should not modify the array")
+        // Count must be unchanged — nil set is a no-op
+        XCTAssertEqual(arr.count, 3, "Setting nil must not change the array size")
     }
 }
 

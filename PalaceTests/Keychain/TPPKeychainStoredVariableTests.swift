@@ -24,6 +24,8 @@ final class TPPKeychainStoredVariableTests: XCTestCase {
     func testInit_setsKey() {
         let variable = TPPKeychainVariable<String>(key: testKey, accountInfoQueue: testQueue)
         XCTAssertEqual(variable.key, testKey)
+        // Initially the keychain must have no value for this fresh key
+        XCTAssertNil(variable.read(), "Fresh keychain variable must return nil before any write")
     }
 
     // MARK: - Read/Write String
@@ -35,6 +37,8 @@ final class TPPKeychainStoredVariableTests: XCTestCase {
         let result = variable.read()
 
         XCTAssertEqual(result, "test-value")
+        XCTAssertNotNil(result, "Written value must be readable back as non-nil")
+        XCTAssertNotEqual(result, "wrong-value", "Read value must match exactly what was written")
     }
 
     func testWrite_nil_clearsValue() {
@@ -55,6 +59,10 @@ final class TPPKeychainStoredVariableTests: XCTestCase {
 
         let result = variable.read()
         XCTAssertNil(result)
+        // Reading a second time must also return nil (no side effects)
+        XCTAssertNil(variable.read(), "Second read of unset key must also return nil")
+
+        TPPKeychain.shared.removeObject(forKey: uniqueKey)
     }
 
     // MARK: - Key Change

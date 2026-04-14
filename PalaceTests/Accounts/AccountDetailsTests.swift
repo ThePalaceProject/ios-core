@@ -18,42 +18,55 @@ final class LoginKeyboardTests: XCTestCase {
     func testInit_WithDefaultString_ReturnsStandard() {
         let keyboard = LoginKeyboard("Default")
         XCTAssertEqual(keyboard, .standard)
+        XCTAssertNotNil(keyboard)
+        XCTAssertNotEqual(keyboard, .email)
     }
 
     func testInit_WithEmailString_ReturnsEmail() {
         let keyboard = LoginKeyboard("Email address")
         XCTAssertEqual(keyboard, .email)
+        XCTAssertNotNil(keyboard)
+        XCTAssertNotEqual(keyboard, .standard)
     }
 
     func testInit_WithNumberPadString_ReturnsNumeric() {
         let keyboard = LoginKeyboard("Number pad")
         XCTAssertEqual(keyboard, .numeric)
+        XCTAssertNotNil(keyboard)
+        XCTAssertNotEqual(keyboard, .standard)
     }
 
     func testInit_WithNoInputString_ReturnsNone() {
         let keyboard = LoginKeyboard("No input")
         XCTAssertEqual(keyboard, LoginKeyboard.none)
+        XCTAssertNotNil(keyboard)
+        XCTAssertNotEqual(keyboard, .standard)
     }
 
     func testInit_WithNilString_ReturnsNil() {
         let keyboard = LoginKeyboard(nil)
         XCTAssertNil(keyboard)
+        // All named strings must still produce non-nil
+        XCTAssertNotNil(LoginKeyboard("Default"))
     }
 
     func testInit_WithInvalidString_ReturnsNil() {
         let keyboard = LoginKeyboard("invalid")
         XCTAssertNil(keyboard)
+        XCTAssertNotNil(LoginKeyboard("Default"), "Only known strings should succeed")
     }
 
     func testInit_WithEmptyString_ReturnsNil() {
         let keyboard = LoginKeyboard("")
         XCTAssertNil(keyboard)
+        XCTAssertNotNil(LoginKeyboard("Default"), "Non-empty known string must succeed")
     }
 
     func testInit_WithCaseSensitiveString_ReturnsNil() {
         // Case-sensitive - "default" != "Default"
         let keyboard = LoginKeyboard("default")
         XCTAssertNil(keyboard)
+        XCTAssertNotNil(LoginKeyboard("Default"), "Exact-case string must succeed")
     }
 }
 
@@ -63,31 +76,38 @@ final class AuthTypeTests: XCTestCase {
 
     func testAuthType_BasicRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.basic.rawValue, "http://opds-spec.org/auth/basic")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://opds-spec.org/auth/basic"), .basic)
     }
 
     func testAuthType_CoppaRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.coppa.rawValue, "http://librarysimplified.org/terms/authentication/gate/coppa")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://librarysimplified.org/terms/authentication/gate/coppa"), .coppa)
     }
 
     func testAuthType_AnonymousRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.anonymous.rawValue, "http://librarysimplified.org/rel/auth/anonymous")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://librarysimplified.org/rel/auth/anonymous"), .anonymous)
     }
 
     func testAuthType_OAuthRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.oauthIntermediary.rawValue, "http://librarysimplified.org/authtype/OAuth-with-intermediary")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://librarysimplified.org/authtype/OAuth-with-intermediary"), .oauthIntermediary)
     }
 
     func testAuthType_SamlRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.saml.rawValue, "http://librarysimplified.org/authtype/SAML-2.0")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://librarysimplified.org/authtype/SAML-2.0"), .saml)
     }
 
     func testAuthType_TokenRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.token.rawValue, "http://thepalaceproject.org/authtype/basic-token")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://thepalaceproject.org/authtype/basic-token"), .token)
     }
 
     func testAuthType_InitFromInvalidString_ReturnsNil() {
         let authType = AccountDetails.AuthType(rawValue: "invalid")
         XCTAssertNil(authType)
+        XCTAssertNotNil(AccountDetails.AuthType(rawValue: "http://opds-spec.org/auth/basic"), "Valid raw value must succeed")
     }
 }
 

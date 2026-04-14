@@ -128,33 +128,50 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     func testCurrentAccount_matchesLibraryAccount() {
         XCTAssertEqual(businessLogic.currentAccount?.uuid, businessLogic.libraryAccount?.uuid)
+        XCTAssertNotNil(businessLogic.currentAccount, "currentAccount must be non-nil when libraryAccount is configured")
     }
 
     // MARK: - Selected Authentication Tests
 
     func testSelectedAuthentication_nilByDefault() {
         XCTAssertNil(businessLogic.selectedAuthentication)
+        // registrationIsPossible depends on selectedAuthentication — before setting it, check indirect effects
+        XCTAssertFalse(businessLogic.isSignedIn(), "No auth selected means not signed in")
     }
 
     func testSelectedAuthentication_canBeSetToBasic() {
-        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
-        XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .basic)
+        let auth = libraryAccountMock.barcodeAuthentication
+        businessLogic.selectedAuthentication = auth
+        // Verify downstream behavior: makeRequest should now be eligible for basic auth
+        let request = businessLogic.makeRequest(for: .signIn, context: "test")
+        XCTAssertNotNil(request, "With basic auth selected, makeRequest must not return nil")
+        XCTAssertTrue(businessLogic.selectedAuthentication?.isBasic == true, "Selected auth must be basic type")
     }
 
     func testSelectedAuthentication_canBeSetToOAuth() {
-        businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
-        XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .oauthIntermediary)
+        let auth = libraryAccountMock.oauthAuthentication
+        businessLogic.selectedAuthentication = auth
+        // With OAuth selected, isOauth should be true and catalogRequiresAuthentication should be true
+        XCTAssertTrue(businessLogic.selectedAuthentication?.isOauth == true, "OAuth auth must report isOauth = true")
+        XCTAssertTrue(businessLogic.selectedAuthentication?.catalogRequiresAuthentication == true,
+                      "OAuth auth must require catalog authentication")
     }
 
     func testSelectedAuthentication_canBeSetToSAML() {
-        businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
-        XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .saml)
+        let auth = libraryAccountMock.samlAuthentication
+        businessLogic.selectedAuthentication = auth
+        // isSamlPossible depends on the library having SAML auth; verify isSaml behavior
+        XCTAssertTrue(businessLogic.selectedAuthentication?.isSaml == true, "SAML auth must report isSaml = true")
+        XCTAssertTrue(businessLogic.isSamlPossible(), "SAML must be possible when a SAML auth is selected")
     }
 
     // MARK: - Sign-In State Tests
 
     func testIsSignedIn_falseWhenNoCredentials() {
         XCTAssertFalse(businessLogic.isSignedIn())
+        // Verify that selecting auth alone is not enough to be signed in
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+        XCTAssertFalse(businessLogic.isSignedIn(), "Selecting auth without credentials must not sign in")
     }
 
     func testIsSignedIn_falseWhenIgnoreSignedInStateTrue() {
@@ -209,6 +226,9 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     func testIsSamlPossible_trueWhenLibrarySupports() {
         XCTAssertTrue(businessLogic.isSamlPossible())
+        // After selecting basic auth, SAML should still be possible based on library config (not selected auth)
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+        XCTAssertTrue(businessLogic.isSamlPossible(), "SAML possibility depends on library, not selected auth type")
     }
 
     // MARK: - Make Request Tests
@@ -364,6 +384,10 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     func testLibrarySupportsBarcodeDisplay_falseWithoutCredentials() {
         XCTAssertFalse(businessLogic.librarySupportsBarcodeDisplay())
+        // Should remain false even after selecting auth (credentials still missing)
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+        XCTAssertFalse(businessLogic.librarySupportsBarcodeDisplay(),
+                       "Barcode display must remain false when no credentials are present")
     }
 
     func testLibrarySupportsBarcodeDisplay_requiresAuthorizationIdentifier() {
@@ -387,14 +411,20 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     func testShouldShowEULALink_basedOnLibraryDetails() {
         // This depends on library configuration
         let result = businessLogic.shouldShowEULALink()
-        // Just verify it returns a bool without crashing
-        XCTAssertNotNil(result)
+        // Result must be a valid Bool (true or false) — both paths are acceptable
+        XCTAssertTrue(result == true || result == false, "shouldShowEULALink must return a valid Bool")
+        // Calling it twice must be consistent (no side-effects)
+        XCTAssertEqual(result, businessLogic.shouldShowEULALink(), "shouldShowEULALink must be deterministic")
     }
 
     // MARK: - Authentication Document Loading Tests
 
     func testIsAuthenticationDocumentLoading_defaultsFalse() {
         XCTAssertFalse(businessLogic.isAuthenticationDocumentLoading)
+        // Verify it is accessible without crashing after sign-in state check
+        let _ = businessLogic.isSignedIn()
+        XCTAssertFalse(businessLogic.isAuthenticationDocumentLoading,
+                       "Loading state must remain false when no document fetch is in progress")
     }
 
     // MARK: - Refresh Auth Tests
@@ -404,6 +434,9 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
         // Without auth definition, should return false
         XCTAssertFalse(needsUI)
+        // Calling a second time must also return false (idempotent when no auth definition)
+        XCTAssertFalse(businessLogic.refreshAuthIfNeeded(usingExistingCredentials: false, completion: nil),
+                       "Second call without auth definition must also return false")
     }
 
     // MARK: - Concurrent Sign-In Prevention Tests
@@ -426,7 +459,9 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     func testCanResetPassword_dependsOnLibraryConfig() {
         // This depends on library having password reset link
         let result = businessLogic.canResetPassword
-        XCTAssertNotNil(result)
+        XCTAssertTrue(result == true || result == false, "canResetPassword must return a valid Bool")
+        // Should be consistent across reads (no side effects)
+        XCTAssertEqual(result, businessLogic.canResetPassword, "canResetPassword must be deterministic")
     }
 
     // MARK: - Sign-Out Cookie Clearing Tests
@@ -700,10 +735,11 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
         // Test that validateCredentials handles nil auth gracefully
         businessLogic.selectedAuthentication = nil
 
-        // Should not crash
         businessLogic.validateCredentials()
 
-        XCTAssertTrue(true, "Completed without crash")
+        // After validating with nil auth, signed-in state must still be false
+        XCTAssertFalse(businessLogic.isSignedIn(), "Validate with nil auth must not result in signed-in state")
+        XCTAssertFalse(businessLogic.isValidatingCredentials, "Validation must have completed (not stuck)")
     }
 }
 

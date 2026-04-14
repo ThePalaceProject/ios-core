@@ -151,14 +151,17 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
     // MARK: - Broadcast Update
 
     func testBroadcastUpdate_postsNotification() {
+        var receivedNotification = false
         let notificationExpectation = expectation(
             forNotification: Notification.Name.TPPMyBooksDownloadCenterDidChange,
-            object: nil
+            object: nil,
+            handler: { _ in receivedNotification = true; return true }
         )
 
         reporter.broadcastUpdate()
 
         wait(for: [notificationExpectation], timeout: 2.0)
+        XCTAssertTrue(receivedNotification, "broadcastUpdate must post TPPMyBooksDownloadCenterDidChange")
     }
 
     func testBroadcastUpdate_throttles_rapidCalls() {
@@ -196,51 +199,63 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
     func testAnnounceDownloadStarted_doesNotCrash() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         reporter.announceDownloadStarted(for: book)
+        // Reporter must still be in a usable state after announcement
+        XCTAssertNotNil(reporter.downloadProgressPublisher, "Publisher must remain valid after announcement")
     }
 
     func testAnnounceDownloadProgress_doesNotCrash() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         reporter.announceDownloadProgress(for: book, progress: 0.5)
+        // Progress value must not corrupt reporter state
+        XCTAssertNotNil(reporter.downloadProgressPublisher, "Publisher must remain valid after progress announcement")
     }
 
     func testAnnounceDownloadCompleted_doesNotCrash() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         reporter.announceDownloadCompleted(for: book)
+        XCTAssertNotNil(reporter.downloadProgressPublisher, "Publisher must remain valid after completion announcement")
     }
 
     func testAnnounceDownloadFailed_doesNotCrash() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         reporter.announceDownloadFailed(for: book)
+        XCTAssertNotNil(reporter.downloadErrorPublisher, "Error publisher must remain valid after failure announcement")
     }
 
     func testAnnounceBorrowStarted_doesNotCrash() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         reporter.announceBorrowStarted(for: book)
+        XCTAssertFalse(book.identifier.isEmpty, "Book used for announcement must have a valid identifier")
     }
 
     func testAnnounceBorrowSucceeded_doesNotCrash() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         reporter.announceBorrowSucceeded(for: book)
+        XCTAssertNotNil(book.title, "Book title must be non-nil when borrow succeeds")
     }
 
     func testAnnounceBorrowFailed_doesNotCrash() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         reporter.announceBorrowFailed(for: book)
+        XCTAssertNotNil(reporter.downloadErrorPublisher, "Error publisher must be valid after borrow-failed announcement")
     }
 
     func testAnnounceReturnStarted_doesNotCrash() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         reporter.announceReturnStarted(for: book)
+        XCTAssertFalse(book.identifier.isEmpty, "Book identifier must be valid for return-started announcement")
     }
 
     func testAnnounceReturnSucceeded_doesNotCrash() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         reporter.announceReturnSucceeded(for: book)
+        XCTAssertNotNil(reporter.downloadProgressPublisher, "Publisher must be valid after return-succeeded announcement")
     }
 
     func testAnnounceReturnFailed_doesNotCrash() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         reporter.announceReturnFailed(for: book)
+        XCTAssertNotNil(reporter.downloadErrorPublisher, "Error publisher must be valid after return-failed announcement")
     }
 
     // MARK: - Notification Sender
@@ -249,14 +264,17 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
         let sender = NSObject()
         reporter.notificationSender = sender
 
+        var receivedSender: AnyObject?
         let notificationExpectation = expectation(
             forNotification: Notification.Name.TPPMyBooksDownloadCenterDidChange,
-            object: sender
+            object: sender,
+            handler: { note in receivedSender = note.object as AnyObject; return true }
         )
 
         reporter.broadcastUpdate()
 
         wait(for: [notificationExpectation], timeout: 2.0)
+        XCTAssertTrue(receivedSender === sender, "Notification must be posted with the configured sender object")
     }
 
     // MARK: - Protocol Conformance

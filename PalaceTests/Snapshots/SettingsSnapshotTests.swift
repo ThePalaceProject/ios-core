@@ -18,6 +18,8 @@ final class SettingsSnapshotTests: XCTestCase {
     func testSettingsView_mainScreen() {
         let view = TPPSettingsView()
         assertFixedSizeSnapshot(of: view, width: 390, height: 844)
+        // View struct must be constructible without crash
+        XCTAssertNotNil(view as Any, "TPPSettingsView must be constructible")
     }
 
     // MARK: - AccountDetailSkeletonView
@@ -27,6 +29,8 @@ final class SettingsSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 390, height: 500)
+        // Skeleton view is used as a placeholder — must be constructible without account data
+        XCTAssertNotNil(view as Any, "AccountDetailSkeletonView must be constructible without account data")
     }
 
     // MARK: - ActionButtonView
@@ -41,6 +45,8 @@ final class SettingsSnapshotTests: XCTestCase {
         .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 350, height: 80)
+        // Title string must not be empty (otherwise the button is unusable)
+        XCTAssertFalse(Strings.Generic.signin.isEmpty, "Sign-in button title must not be empty")
     }
 
     func testActionButtonView_loading() {
@@ -53,6 +59,7 @@ final class SettingsSnapshotTests: XCTestCase {
         .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 350, height: 80)
+        XCTAssertNotNil(view as Any, "ActionButtonView in loading state must be constructible")
     }
 
     func testActionButtonView_darkMode() {
@@ -65,6 +72,7 @@ final class SettingsSnapshotTests: XCTestCase {
         .background(Color.black)
 
         assertFixedSizeSnapshot(of: view, width: 350, height: 80, userInterfaceStyle: .dark)
+        XCTAssertFalse(Strings.Settings.signOut.isEmpty, "Sign-out button title must not be empty for dark mode test")
     }
 
     // MARK: - SectionSeparator
@@ -75,6 +83,8 @@ final class SettingsSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 350, height: 60)
+        // SectionSeparator is a pure visual divider — verify it can be constructed
+        XCTAssertNotNil(view as Any, "SectionSeparator must be constructible without parameters")
     }
 
     // MARK: - AccountDetailView

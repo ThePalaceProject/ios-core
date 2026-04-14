@@ -72,6 +72,9 @@ final class AudiobookTimeEntryTests: XCTestCase {
         let entry1 = AudiobookTimeEntry(id: "1", bookId: "b", libraryId: "l", timeTrackingUrl: url, duringMinute: "m", duration: 10)
         let entry2 = AudiobookTimeEntry(id: "1", bookId: "b", libraryId: "l", timeTrackingUrl: url, duringMinute: "m", duration: 10)
         XCTAssertEqual(entry1, entry2)
+        // Entries with different IDs must not be equal
+        let entry3 = AudiobookTimeEntry(id: "2", bookId: "b", libraryId: "l", timeTrackingUrl: url, duringMinute: "m", duration: 10)
+        XCTAssertNotEqual(entry1, entry3, "Different IDs must produce unequal entries")
     }
 
     // SRS: AudiobookTimeEntry duration capped semantics (max 60 in tracker)
@@ -80,6 +83,10 @@ final class AudiobookTimeEntryTests: XCTestCase {
         let entry = AudiobookTimeEntry(id: "1", bookId: "b", libraryId: "l", timeTrackingUrl: url, duringMinute: "m", duration: 120)
         // The struct itself doesn't cap; the tracker caps to 60 before creating
         XCTAssertEqual(entry.duration, 120)
+        // Contrast: a correctly-created entry uses the exact duration passed in
+        let entry60 = AudiobookTimeEntry(id: "2", bookId: "b", libraryId: "l", timeTrackingUrl: url, duringMinute: "m", duration: 60)
+        XCTAssertEqual(entry60.duration, 60, "Duration of 60 must be stored as-is")
+        XCTAssertNotEqual(entry.duration, entry60.duration, "120 must not equal 60")
     }
 }
 
@@ -113,6 +120,9 @@ final class LatestAudiobookLocationTests: XCTestCase {
         let saved = latestAudiobookLocation
         latestAudiobookLocation = nil
         XCTAssertNil(latestAudiobookLocation)
+        // After setting a value it must be non-nil
+        latestAudiobookLocation = (book: "test-book", location: "chapter:1")
+        XCTAssertNotNil(latestAudiobookLocation, "After assignment value must be non-nil")
         latestAudiobookLocation = saved
     }
 
@@ -130,16 +140,23 @@ final class LatestAudiobookLocationTests: XCTestCase {
         let saved = latestAudiobookLocation
         let expectation = expectation(description: "Concurrent access")
         expectation.expectedFulfillmentCount = 10
+        var completedReads = 0
+        let lock = NSLock()
 
         for i in 0..<10 {
             DispatchQueue.global().async {
                 latestAudiobookLocation = (book: "book-\(i)", location: "loc-\(i)")
-                let _ = latestAudiobookLocation
+                let read = latestAudiobookLocation
+                lock.lock()
+                if read != nil { completedReads += 1 }
+                lock.unlock()
                 expectation.fulfill()
             }
         }
 
         wait(for: [expectation], timeout: 5)
+        // All threads must have read a non-nil value (they each set before reading)
+        XCTAssertGreaterThan(completedReads, 0, "At least one concurrent read must return a non-nil value")
         latestAudiobookLocation = saved
     }
 }
@@ -159,6 +176,11 @@ final class NotificationTokenDataTests: XCTestCase {
     func testTokenData_dataNotNil() {
         let tokenData = NotificationService.TokenData(token: "test")
         XCTAssertNotNil(tokenData.data)
+        // The produced data must be valid JSON (non-empty and parseable)
+        if let data = tokenData.data {
+            XCTAssertGreaterThan(data.count, 0, "Encoded data must not be empty")
+            XCTAssertNoThrow(try JSONSerialization.jsonObject(with: data), "Encoded data must be valid JSON")
+        }
     }
 
     // SRS: TokenData encodes to valid JSON
@@ -252,12 +274,19 @@ final class OPDSParserTests: XCTestCase {
     func testParserError_invalidXML() {
         let error = OPDSParser.ParserError.invalidXML
         XCTAssertEqual(error.errorDescription, "Unable to parse OPDS XML.")
+        // Error description must be non-empty and distinct from other errors
+        XCTAssertFalse(error.errorDescription?.isEmpty ?? true, "Error description must not be empty")
+        XCTAssertNotEqual(error.errorDescription, OPDSParser.ParserError.invalidFeed.errorDescription,
+                          "Different errors must have distinct descriptions")
     }
 
     // SRS: OPDSParser.ParserError invalidFeed has description
     func testParserError_invalidFeed() {
         let error = OPDSParser.ParserError.invalidFeed
         XCTAssertEqual(error.errorDescription, "Invalid or unsupported OPDS feed format.")
+        XCTAssertFalse(error.errorDescription?.isEmpty ?? true, "Error description must not be empty")
+        XCTAssertNotEqual(error.errorDescription, OPDSParser.ParserError.invalidXML.errorDescription,
+                          "invalidFeed description must differ from invalidXML")
     }
 
     // SRS: OPDSParser parseFeed throws for invalid data
@@ -272,6 +301,9 @@ final class OPDSParserTests: XCTestCase {
     func testParseFeed_throwsForNonXML() {
         let parser = OPDSParser()
         let data = "not xml".data(using: .utf8)!
-        XCTAssertThrowsError(try parser.parseFeed(from: data))
+        XCTAssertThrowsError(try parser.parseFeed(from: data)) { error in
+            // Must throw a typed OPDSParser error (not a random Swift error)
+            XCTAssertTrue(error is OPDSParser.ParserError, "Must throw a ParserError for non-XML input")
+        }
     }
 }

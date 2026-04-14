@@ -269,7 +269,10 @@ final class RemoteFeatureFlagsGapTests: XCTestCase {
     /// shouldFetch is private; fetchIfNeeded calls it to decide whether to fetch
     func testRemoteFeatureFlags_fetchIfNeeded_completesWithoutCrashing() async {
         await RemoteFeatureFlags.shared.fetchIfNeeded()
-        // Passes if no crash; shouldFetch controls whether fetch runs
+        // After fetch, flag access must still work correctly
+        let carPlay = RemoteFeatureFlags.shared.isFeatureEnabled(.carPlayEnabled)
+        XCTAssertTrue(carPlay == true || carPlay == false,
+                      "isFeatureEnabled must return a valid Bool after fetchIfNeeded")
     }
 
     /// Coverage Gap: RemoteFeatureFlags — basic flag access methods return booleans

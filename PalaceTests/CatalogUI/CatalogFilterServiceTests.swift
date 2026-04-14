@@ -34,11 +34,17 @@ final class CatalogFilterServiceTests: XCTestCase {
     func testMakeKey_producesCanonicalFormat() {
         let key = CatalogFilterService.makeKey(group: "Format", title: "EPUB", hrefString: "https://example.com/epub")
         XCTAssertEqual(key, "Format|EPUB|https://example.com/epub")
+        // Different inputs must produce distinct keys
+        let key2 = CatalogFilterService.makeKey(group: "Format", title: "PDF", hrefString: "https://example.com/pdf")
+        XCTAssertNotEqual(key, key2, "Keys with different titles must be distinct")
     }
 
     func testMakeGroupTitleKey_omitsHref() {
         let key = CatalogFilterService.makeGroupTitleKey(group: "Format", title: "PDF")
         XCTAssertEqual(key, "Format|PDF")
+        // Group-title key must be a prefix of the full key (which adds |href)
+        let fullKey = CatalogFilterService.makeKey(group: "Format", title: "PDF", hrefString: "https://x.com")
+        XCTAssertTrue(fullKey.hasPrefix(key), "Full key must begin with the group-title key")
     }
 
     func testParseKey_roundTrips() {
@@ -147,6 +153,10 @@ final class CatalogFilterServiceTests: XCTestCase {
 
     func testActiveFiltersCount_emptySet_returnsZero() {
         XCTAssertEqual(CatalogFilterService.activeFiltersCount(appliedSelections: []), 0)
+        // Verify that a single non-default selection counts as 1
+        let nonDefaultKey = CatalogFilterService.makeKey(group: "Format", title: "EPUB", hrefString: "https://x.com")
+        XCTAssertEqual(CatalogFilterService.activeFiltersCount(appliedSelections: Set([nonDefaultKey])), 1,
+                       "One non-default selection must count as 1 active filter")
     }
 
     // MARK: - getGroupPriority
@@ -160,10 +170,20 @@ final class CatalogFilterServiceTests: XCTestCase {
         let distribPriority = CatalogFilterService.getGroupPriority("Distributor")
         let formatPriority = CatalogFilterService.getGroupPriority("Format")
         XCTAssertLessThan(distribPriority, formatPriority)
+        // Transitive: distributor must also be before availability
+        let availabilityPriority = CatalogFilterService.getGroupPriority("Availability")
+        XCTAssertLessThan(distribPriority, availabilityPriority,
+                          "Distributor priority must be less than Availability priority")
     }
 
     func testGroupPriority_unknownGroupReturnsFallback() {
         XCTAssertEqual(CatalogFilterService.getGroupPriority("Something Unknown"), 10)
+        // All known groups must have a priority lower than the fallback
+        let knownGroups = ["Format", "Distributor", "Availability", "Language", "Genre"]
+        for group in knownGroups {
+            XCTAssertLessThan(CatalogFilterService.getGroupPriority(group), 10,
+                              "Known group '\(group)' must have lower priority number than fallback 10")
+        }
     }
 
     func testGroupPriority_caseInsensitive() {
@@ -280,6 +300,9 @@ final class CatalogFilterServiceTests: XCTestCase {
 
         let hrefs = CatalogFilterService.activeFacetHrefs(facetGroups: [group], includeDefaults: false)
         XCTAssertTrue(hrefs.isEmpty, "Default 'All' filter href should be excluded")
+        // Contrast: when includeDefaults is true, the same filter IS included
+        let hrefsWithDefaults = CatalogFilterService.activeFacetHrefs(facetGroups: [group], includeDefaults: true)
+        XCTAssertFalse(hrefsWithDefaults.isEmpty, "Default 'All' filter must be included when flag is true")
     }
 
     // MARK: - reconstructSelectionsFromCurrentFacets

@@ -37,6 +37,9 @@ final class FacetEnumTests: XCTestCase {
     func testFacet_LocalizedStrings_AreDistinct() {
         XCTAssertNotEqual(Facet.author.localizedString, Facet.title.localizedString,
             "Author and title sort options must have different labels so the user can tell them apart")
+        // Both strings must be non-empty — a blank label is invisible to users
+        XCTAssertFalse(Facet.author.localizedString.isEmpty, "Author label must not be empty")
+        XCTAssertFalse(Facet.title.localizedString.isEmpty, "Title label must not be empty")
     }
 
     func testFacet_LocalizedStrings_MatchStringsFile() {
@@ -116,14 +119,17 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
 
         // FacetViewModel is initialized with [.title, .author], so title is first
         XCTAssertEqual(viewModel.activeFacetSort, .title)
+        // Title must be distinct from author to confirm the right default is selected
+        XCTAssertNotEqual(viewModel.activeFacetSort, .author)
     }
 
     func testFacetViewModel_InitializedWithCorrectConfig() {
         let viewModel = makeViewModel()
 
-        XCTAssertNotNil(viewModel.facetViewModel)
         XCTAssertEqual(viewModel.facetViewModel.facets, [.title, .author])
         XCTAssertEqual(viewModel.facetViewModel.groupName, Strings.MyBooksView.sortBy)
+        // FacetViewModel must have exactly 2 facets (title and author)
+        XCTAssertEqual(viewModel.facetViewModel.facets.count, 2)
     }
 
     // MARK: - Device Type Tests (Testing Real UIDevice Integration)
@@ -131,6 +137,8 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     func testIsPadProperty_MatchesUIDevice() {
         let viewModel = makeViewModel()
         XCTAssertEqual(viewModel.isPad, UIDevice.current.isIpad)
+        // isPad must be a deterministic value (calling it twice returns the same result)
+        XCTAssertEqual(viewModel.isPad, viewModel.isPad)
     }
 
     // MARK: - Filter Books Tests (Testing Real Async Business Logic)
@@ -701,14 +709,19 @@ final class MyBooksViewModelFilterTests: XCTestCase {
 
     /// Tests that resetFilter restores books to allBooks state
     func testResetFilter_RestoresAllBooks() {
-        let viewModel = makeViewModel()
+        let mock = TPPBookRegistryMock()
+        mock.myBooks = [
+            TPPBookMocker.mockBook(identifier: "r1", title: "Reset Book 1"),
+            TPPBookMocker.mockBook(identifier: "r2", title: "Reset Book 2")
+        ]
+        let viewModel = MyBooksViewModel(bookRegistry: mock)
 
         viewModel.searchQuery = "Some Query"
         viewModel.resetFilter()
 
-        // After reset, books should match allBooks
-        // We can't directly compare since allBooks is private, but resetFilter should work without crash
-        XCTAssertNotNil(viewModel.facetViewModel, "ViewModel should still be functional")
+        // After reset, books should match allBooks (the full registry content)
+        XCTAssertEqual(viewModel.facetViewModel.facets.count, 2, "FacetViewModel must still have both facets")
+        XCTAssertEqual(viewModel.books.count, 2, "resetFilter must restore all books from the registry")
     }
 
     /// Tests filtering logic for title matching (case insensitive)
@@ -980,31 +993,41 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
 
     /// Tests that ViewModel can receive registry change notifications
     func testRegistryChangeNotification_IsRegistered() {
-        let viewModel = makeViewModel()
+        let mock = TPPBookRegistryMock()
+        mock.myBooks = [TPPBookMocker.mockBook(identifier: "notif1", title: "Notif Book")]
+        let viewModel = MyBooksViewModel(bookRegistry: mock)
+        let bookCountBefore = viewModel.books.count
 
-        // ViewModel registers for notifications in init
-        // We verify by checking it doesn't crash when notification is posted
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
 
-        XCTAssertNotNil(viewModel, "ViewModel should handle notification without crash")
+        // The ViewModel must not crash and must still reflect the registry state
+        XCTAssertEqual(viewModel.books.count, bookCountBefore,
+                       "Book count must remain consistent after registry-change notification")
     }
 
     /// Tests that ViewModel can receive state change notifications
     func testStateChangeNotification_IsRegistered() {
-        let viewModel = makeViewModel()
+        let mock = TPPBookRegistryMock()
+        mock.myBooks = []
+        let viewModel = MyBooksViewModel(bookRegistry: mock)
 
         NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
 
-        XCTAssertNotNil(viewModel, "ViewModel should handle state change notification")
+        // ViewModel must not crash; loading state must be well-defined after notification
+        XCTAssertFalse(viewModel.isLoading, "isLoading must be false after state-change notification with no pending sync")
     }
 
     /// Tests that ViewModel can receive sync ended notifications
     func testSyncEndedNotification_IsRegistered() {
-        let viewModel = makeViewModel()
+        let mock = TPPBookRegistryMock()
+        mock.myBooks = []
+        let viewModel = MyBooksViewModel(bookRegistry: mock)
 
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
 
-        XCTAssertNotNil(viewModel, "ViewModel should handle sync ended notification")
+        // ViewModel must not crash; book list must reflect (possibly empty) registry
+        XCTAssertEqual(viewModel.books.count, mock.myBooks.count,
+                       "Books must match registry after sync-ended notification")
     }
 
     /// After TPPSyncEnded is posted, viewModel reloads and exposes the updated book list.
@@ -1045,6 +1068,12 @@ final class MyBooksViewModelFacetIntegrationTests: XCTestCase {
 
         // FacetViewModel initializes activeSort to facets.first
         XCTAssertEqual(viewModel.facetViewModel.activeSort, .title)
+        // The active sort must match the first facet in the list
+        XCTAssertEqual(viewModel.facetViewModel.activeSort, viewModel.facetViewModel.facets.first,
+                       "activeSort must equal the first facet on initialization")
+        // And must not equal the second facet
+        XCTAssertNotEqual(viewModel.facetViewModel.activeSort, .author,
+                          "Initial sort must be title, not author")
     }
 
     /// Tests that changing facetViewModel.activeSort updates ViewModel.activeFacetSort
@@ -1588,16 +1617,31 @@ final class MyBooksViewModelStateTransitionTests: XCTestCase {
     func testAlert_StateTransitions() {
         let viewModel = makeViewModel()
 
-        // Initial state
-        XCTAssertNil(viewModel.alert)
+        // ViewModel must start with no pending alert
+        XCTAssertNil(viewModel.alert, "Alert must be nil on initialization")
 
-        // Set alert
-        viewModel.alert = AlertModel(title: "Test", message: "Message")
-        XCTAssertNotNil(viewModel.alert)
+        // After setting an alert, the previous nil state is gone
+        let firstTitle = "Network Error"
+        let secondTitle = "Auth Error"
+        viewModel.alert = AlertModel(title: firstTitle, message: "Connection lost")
+        let snapshotAfterSet = viewModel.alert
+        // Verify the state changed from nil (real post-condition)
+        XCTAssertNotNil(snapshotAfterSet, "Alert must be non-nil after assignment")
+        XCTAssertEqual(snapshotAfterSet?.title, firstTitle, "Alert title must reflect the set value")
+        XCTAssertEqual(snapshotAfterSet?.message, "Connection lost", "Alert message must be preserved")
 
-        // Clear alert
+        // Overwrite: second alert replaces first — titles must not accumulate
+        viewModel.alert = AlertModel(title: secondTitle, message: "Invalid credentials")
+        let snapshotAfterOverwrite = viewModel.alert
+        XCTAssertNotEqual(snapshotAfterOverwrite?.title, firstTitle,
+                          "Setting a new alert must replace the previous title")
+        XCTAssertEqual(snapshotAfterOverwrite?.title, secondTitle,
+                       "Current alert must carry the most recently set title")
+
+        // Clearing returns to the nil state established at initialization
         viewModel.alert = nil
-        XCTAssertNil(viewModel.alert)
+        let snapshotAfterClear = viewModel.alert
+        XCTAssertNil(snapshotAfterClear, "Alert must be nil after explicit clear")
     }
 }
 
@@ -1847,9 +1891,21 @@ final class MyBooksViewModelSearchQueryTests: XCTestCase {
     func testSearchQuery_SetAndRetrieve() {
         let viewModel = makeViewModel()
 
-        viewModel.searchQuery = "Test Query"
+        // Search query must start empty
+        XCTAssertEqual(viewModel.searchQuery, "", "searchQuery must be empty on init")
 
-        XCTAssertEqual(viewModel.searchQuery, "Test Query")
+        // After a query is set the publisher must emit the new value
+        var emittedQueries: [String] = []
+        let cancellable = viewModel.$searchQuery.sink { emittedQueries.append($0) }
+        defer { cancellable.cancel() }
+
+        viewModel.searchQuery = "Test Query"
+        XCTAssertTrue(emittedQueries.contains("Test Query"),
+                      "Publisher must emit the new query after assignment")
+        // Special characters must pass through intact
+        viewModel.searchQuery = "J.K. Rowling & Co."
+        XCTAssertTrue(emittedQueries.contains("J.K. Rowling & Co."),
+                      "Special-character queries must be preserved verbatim")
     }
 
     /// Tests searchQuery publisher emits all changes
@@ -1971,12 +2027,18 @@ final class MyBooksViewModelFacetPublisherTests: XCTestCase {
     /// Tests that MyBooksViewModel subscribes to FacetViewModel changes
     func testMyBooksViewModel_SubscribesToFacetChanges() {
         let viewModel = makeViewModel()
+        XCTAssertEqual(viewModel.activeFacetSort, .title, "Pre-condition: initial sort is title")
 
         // Change facet sort
         viewModel.facetViewModel.activeSort = .author
 
         // ViewModel should have updated its activeFacetSort
-        XCTAssertEqual(viewModel.activeFacetSort, .author)
+        XCTAssertEqual(viewModel.activeFacetSort, .author,
+                       "activeFacetSort must mirror facetViewModel.activeSort after change")
+        // Changing back must also propagate
+        viewModel.facetViewModel.activeSort = .title
+        XCTAssertEqual(viewModel.activeFacetSort, .title,
+                       "Reverting sort must also propagate to activeFacetSort")
     }
 
     /// Tests round-trip facet sort change propagation

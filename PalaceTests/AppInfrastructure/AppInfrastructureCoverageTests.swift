@@ -30,12 +30,17 @@ final class AlertModelCoverageTests: XCTestCase {
         let alert1 = AlertModel(title: "A", message: "A")
         let alert2 = AlertModel(title: "A", message: "A")
         XCTAssertNotEqual(alert1.id, alert2.id)
+        // Even a third identical alert must have a unique ID
+        let alert3 = AlertModel(title: "A", message: "A")
+        XCTAssertNotEqual(alert1.id, alert3.id, "Third identical alert must have a unique ID")
     }
 
     // SRS: AlertModel with custom button title
     func testAlertModel_customButtonTitle() {
         let alert = AlertModel(title: "T", message: "M", buttonTitle: "OK")
         XCTAssertEqual(alert.buttonTitle, "OK")
+        XCTAssertEqual(alert.title, "T", "Title must be preserved alongside custom button title")
+        XCTAssertEqual(alert.message, "M", "Message must be preserved alongside custom button title")
     }
 
     // SRS: AlertModel retryable factory creates correct structure
@@ -115,6 +120,9 @@ final class AppTabRouterCoverageTests: XCTestCase {
     func testAppTabRouter_defaultIsCatalog() {
         let router = AppTabRouter()
         XCTAssertEqual(router.selected, .catalog)
+        // Verify that the default selection is not any other tab
+        XCTAssertNotEqual(router.selected, .myBooks, "Default must not be myBooks")
+        XCTAssertNotEqual(router.selected, .holds, "Default must not be holds")
     }
 
     // SRS: AppTabRouter cycling through all tabs preserves the last assignment
@@ -134,6 +142,8 @@ final class AppTabRouterCoverageTests: XCTestCase {
     func testAppTabRouterHub_singletonExists() {
         let hub = AppTabRouterHub.shared
         XCTAssertNotNil(hub)
+        // Singleton must return the same instance on every access
+        XCTAssertTrue(hub === AppTabRouterHub.shared, "AppTabRouterHub.shared must always return the same instance")
     }
 
     // SRS: AppTabRouterHub weak router reference allows an AppTabRouter to be
@@ -166,16 +176,23 @@ final class TPPBookContentTypeExtendedTests: XCTestCase {
     // SRS: TPPBookContentType from nil mime type returns unsupported
     func testFromMimeType_nil() {
         XCTAssertEqual(TPPBookContentType.from(mimeType: nil), .unsupported)
+        XCTAssertNotEqual(TPPBookContentType.from(mimeType: nil), .epub, "Nil mime type must not resolve to epub")
+        XCTAssertNotEqual(TPPBookContentType.from(mimeType: nil), .pdf, "Nil mime type must not resolve to pdf")
     }
 
     // SRS: TPPBookContentType from empty string returns unsupported
     func testFromMimeType_empty() {
         XCTAssertEqual(TPPBookContentType.from(mimeType: ""), .unsupported)
+        XCTAssertNotEqual(TPPBookContentType.from(mimeType: ""), .epub, "Empty mime type must not resolve to epub")
+        XCTAssertNotEqual(TPPBookContentType.from(mimeType: ""), .audiobook, "Empty mime type must not resolve to audiobook")
     }
 
     // SRS: TPPBookContentType from unknown mime type returns unsupported
     func testFromMimeType_unknown() {
         XCTAssertEqual(TPPBookContentType.from(mimeType: "text/html"), .unsupported)
+        XCTAssertEqual(TPPBookContentType.from(mimeType: "image/jpeg"), .unsupported,
+                       "Image mime type must also be unsupported")
+        XCTAssertNotEqual(TPPBookContentType.from(mimeType: "text/html"), .epub, "HTML must not resolve to epub")
     }
 
     // SRS: TPPBookContentType.from(mimeType:) correctly maps known EPUB mime types

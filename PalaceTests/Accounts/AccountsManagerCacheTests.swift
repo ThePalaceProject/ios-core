@@ -40,6 +40,8 @@ final class AccountsManagerCacheTests: XCTestCase {
 
         // Then: should not be stale (within 5 minute threshold)
         XCTAssertFalse(metadata.isStale, "Fresh metadata should not be stale")
+        // Fresh metadata must also not be expired
+        XCTAssertFalse(metadata.isExpired, "Fresh metadata must not be expired either")
     }
 
     func testCatalogCacheMetadata_IsStale_ReturnsTrueAfter5Minutes() {
@@ -47,8 +49,9 @@ final class AccountsManagerCacheTests: XCTestCase {
         let sixMinutesAgo = Date().addingTimeInterval(-360)
         let metadata = CatalogCacheMetadata(timestamp: sixMinutesAgo, hash: "testhash")
 
-        // Then: should be stale
+        // Then: should be stale but not yet expired
         XCTAssertTrue(metadata.isStale, "Metadata older than 5 minutes should be stale")
+        XCTAssertFalse(metadata.isExpired, "Metadata only 6 minutes old must not be expired (24-hour threshold)")
     }
 
     func testCatalogCacheMetadata_IsStale_ReturnsFalseJustUnder5Minutes() {
@@ -56,8 +59,9 @@ final class AccountsManagerCacheTests: XCTestCase {
         let justUnderFiveMinutes = Date().addingTimeInterval(-299)
         let metadata = CatalogCacheMetadata(timestamp: justUnderFiveMinutes, hash: "testhash")
 
-        // Then: should not be stale
+        // Then: should not be stale and not expired
         XCTAssertFalse(metadata.isStale, "Metadata under 5 minutes should not be stale")
+        XCTAssertFalse(metadata.isExpired, "Metadata under 5 minutes must also not be expired")
     }
 
     func testCatalogCacheMetadata_IsExpired_ReturnsFalseWhenRecent() {
@@ -65,8 +69,9 @@ final class AccountsManagerCacheTests: XCTestCase {
         let twelveHoursAgo = Date().addingTimeInterval(-43200)
         let metadata = CatalogCacheMetadata(timestamp: twelveHoursAgo, hash: "testhash")
 
-        // Then: should not be expired (within 24 hour threshold)
+        // Then: should not be expired (within 24 hour threshold) but must be stale
         XCTAssertFalse(metadata.isExpired, "Metadata less than 24 hours old should not be expired")
+        XCTAssertTrue(metadata.isStale, "Metadata 12 hours old must be stale (past 5-minute threshold)")
     }
 
     func testCatalogCacheMetadata_IsExpired_ReturnsTrueAfter24Hours() {
@@ -74,8 +79,9 @@ final class AccountsManagerCacheTests: XCTestCase {
         let twentyFiveHoursAgo = Date().addingTimeInterval(-90000)
         let metadata = CatalogCacheMetadata(timestamp: twentyFiveHoursAgo, hash: "testhash")
 
-        // Then: should be expired
+        // Then: should be both stale and expired
         XCTAssertTrue(metadata.isExpired, "Metadata older than 24 hours should be expired")
+        XCTAssertTrue(metadata.isStale, "Metadata older than 24 hours must also be stale")
     }
 
     func testCatalogCacheMetadata_IsExpired_ReturnsFalseJustUnder24Hours() {
@@ -83,8 +89,9 @@ final class AccountsManagerCacheTests: XCTestCase {
         let justUnder24Hours = Date().addingTimeInterval(-86399)
         let metadata = CatalogCacheMetadata(timestamp: justUnder24Hours, hash: "testhash")
 
-        // Then: should not be expired
+        // Then: should not be expired, but must be stale (past 5-minute threshold)
         XCTAssertFalse(metadata.isExpired, "Metadata under 24 hours should not be expired")
+        XCTAssertTrue(metadata.isStale, "Metadata near 24 hours old must be stale (past 5-minute threshold)")
     }
 
     func testCatalogCacheMetadata_Codable_EncodesAndDecodes() throws {
@@ -122,13 +129,15 @@ final class AccountsManagerCacheTests: XCTestCase {
 
     func testReadCacheMetadata_ReturnsNilWhenNotExists() {
         // Given: no cached metadata
-        let hash = "nonexistent"
+        let hash = "nonexistent-\(UUID().uuidString)"
 
         // When: trying to read
         let metadata = readCacheMetadata(hash: hash)
 
         // Then: should return nil
         XCTAssertNil(metadata)
+        // Also verify data file returns nil (not just metadata)
+        XCTAssertNil(readCachedCatalogData(hash: hash), "Non-existent cache must also return nil data")
     }
 
     // MARK: - Stale-While-Revalidate Behavior Tests

@@ -23,6 +23,9 @@ final class RemoteFeatureFlagsTests: XCTestCase {
         let a = RemoteFeatureFlags.shared
         let b = RemoteFeatureFlags.shared
         XCTAssertTrue(a === b)
+        // Both references must agree on the same CarPlay cached value
+        XCTAssertEqual(a.isCarPlayEnabledCached, b.isCarPlayEnabledCached,
+                       "Both references to shared must return the same cached feature flag values")
     }
 
     // MARK: - Feature Flag Enum
@@ -50,9 +53,13 @@ final class RemoteFeatureFlagsTests: XCTestCase {
             .carPlayEnabled
         ]
 
-        // All flags should have a default value (bool check just ensures no crash)
+        // All flags should have a default value and their raw values must be non-empty
         for flag in flags {
-            _ = flag.defaultValue
+            let defaultValue = flag.defaultValue
+            // Default values are Booleans — verify they're deterministic (calling twice same result)
+            XCTAssertEqual(defaultValue, flag.defaultValue,
+                           "\(flag).defaultValue must be deterministic across calls")
+            XCTAssertFalse(flag.rawValue.isEmpty, "\(flag) must have a non-empty raw value")
         }
     }
 
@@ -60,15 +67,16 @@ final class RemoteFeatureFlagsTests: XCTestCase {
 
     func testIsFeatureEnabled_withoutFirebase_returnsDefault() {
         // Without Firebase initialized, should return the default value
-        let flags = RemoteFeatureFlags.shared
+        let featureFlags = RemoteFeatureFlags.shared
 
-        // These should return defaults without crashing
-        let enhancedLogging = flags.isFeatureEnabled(.enhancedErrorLogging)
-        let downloadRetry = flags.isFeatureEnabled(.downloadRetryEnabled)
+        // In unit tests (no Firebase), isFeatureEnabled must equal the flag's defaultValue
+        let enhancedLogging = featureFlags.isFeatureEnabled(.enhancedErrorLogging)
+        let downloadRetry = featureFlags.isFeatureEnabled(.downloadRetryEnabled)
 
-        // Default values for these flags
-        _ = enhancedLogging  // Just verify no crash
-        _ = downloadRetry
+        XCTAssertEqual(enhancedLogging, RemoteFeatureFlags.FeatureFlag.enhancedErrorLogging.defaultValue,
+                       "Without Firebase, isFeatureEnabled must equal the flag's defaultValue")
+        XCTAssertEqual(downloadRetry, RemoteFeatureFlags.FeatureFlag.downloadRetryEnabled.defaultValue,
+                       "Without Firebase, downloadRetry must equal the flag's defaultValue")
     }
 
     // MARK: - CarPlay
@@ -88,6 +96,9 @@ final class RemoteFeatureFlagsTests: XCTestCase {
     func testGetDeviceInfo_returnsNonEmptyDict() {
         let info = RemoteFeatureFlags.shared.getDeviceInfo()
         XCTAssertFalse(info.isEmpty, "Device info should not be empty")
+        // All keys in the device info dict must be non-empty strings
+        XCTAssertTrue(info.keys.allSatisfy { !$0.isEmpty },
+                      "All device info keys must be non-empty strings")
     }
 
     func testGetDeviceInfo_containsVersionInfo() {
@@ -96,12 +107,22 @@ final class RemoteFeatureFlagsTests: XCTestCase {
         // Should contain some version-related info
         let hasVersion = info.keys.contains(where: { $0.lowercased().contains("version") || $0.lowercased().contains("model") || $0.lowercased().contains("device") })
         XCTAssertTrue(hasVersion, "Device info should contain version/model info")
+        // Device info must be deterministic (calling twice must produce same keys)
+        let info2 = RemoteFeatureFlags.shared.getDeviceInfo()
+        XCTAssertEqual(Set(info.keys), Set(info2.keys),
+                       "getDeviceInfo() must return the same set of keys across calls")
     }
 
     // MARK: - Fetch
 
     func testFetchIfNeeded_doesNotCrash() async {
-        // Without Firebase, should gracefully handle
+        // Without Firebase, should gracefully handle and leave flags in a consistent state
+        let flagsBefore = RemoteFeatureFlags.shared.isFeatureEnabled(.enhancedErrorLogging)
         await RemoteFeatureFlags.shared.fetchIfNeeded()
+        // Flags must remain accessible and return consistent values after fetch
+        let flagsAfter = RemoteFeatureFlags.shared.isFeatureEnabled(.enhancedErrorLogging)
+        // In unit tests (no Firebase), values must be identical before and after the no-op fetch
+        XCTAssertEqual(flagsBefore, flagsAfter,
+                       "fetchIfNeeded() must not change flag values in a test environment without Firebase")
     }
 }

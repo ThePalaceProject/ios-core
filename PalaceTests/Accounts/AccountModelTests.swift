@@ -292,6 +292,9 @@ final class OPDS2SamlIDPTests: XCTestCase {
         let idp = OPDS2SamlIDP(opdsLink: link)
 
         XCTAssertNil(idp?.idpDescription)
+        // The IDP itself should still be constructible even without descriptions
+        XCTAssertNotNil(idp, "IDP without descriptions must still parse successfully")
+        XCTAssertNil(idp?.idpDescription, "Absent descriptions property must produce nil idpDescription")
     }
 }
 

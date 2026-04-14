@@ -28,20 +28,35 @@ class TPPNetworkResponderTests: XCTestCase {
     func testCanRetryReturnsTrueForFreshURL() {
         let url = URL(string: "https://example.com/api/books")!
         XCTAssertTrue(responder.canRetry(url: url))
+        // A different URL must also be retryable (independent tracking)
+        let url2 = URL(string: "https://example.com/api/loans")!
+        XCTAssertTrue(responder.canRetry(url: url2),
+                      "A fresh URL different from the first must also be retryable")
     }
 
     func testCanRetryReturnsFalseAfterMarkRetried() {
         let url = URL(string: "https://example.com/api/books")!
         responder.markRetried(url: url)
         XCTAssertFalse(responder.canRetry(url: url), "URL should not be retryable after marking retried once (maxRetryAttempts=1)")
+        // A different URL must remain retryable (independent tracking)
+        let url2 = URL(string: "https://example.com/api/loans")!
+        XCTAssertTrue(responder.canRetry(url: url2),
+                      "Marking one URL retried must not affect other URLs")
     }
 
     func testCanRetryReturnsFalseForNilURL() {
         XCTAssertFalse(responder.canRetry(url: nil))
+        // nil URL must always return false, even before any markRetried calls
+        XCTAssertFalse(responder.canRetry(url: nil),
+                       "canRetry(url: nil) must consistently return false")
     }
 
     func testMarkRetriedWithNilURLDoesNotCrash() {
         responder.markRetried(url: nil) // Should not crash
+        // After a nil markRetried call, a real URL must still be retryable
+        let url = URL(string: "https://example.com")!
+        XCTAssertTrue(responder.canRetry(url: url),
+                      "markRetried(nil) must not corrupt tracking for real URLs")
     }
 
     func testClearRetryResetsURL() {
@@ -142,10 +157,13 @@ class TPPNetworkResponderTests: XCTestCase {
 
     func testInitWithCredentialsProvider() {
         let r = TPPNetworkResponder(credentialsProvider: nil, useFallbackCaching: true)
-        XCTAssertNotNil(r)
         // Responder with fallback caching must still function for retry tracking
         let url = URL(string: "https://example.com/with-fallback")!
         XCTAssertTrue(r.canRetry(url: url),
                       "Responder with fallback caching must allow retries on fresh URLs")
+        // After marking retried, canRetry must return false (state tracking works with fallback caching)
+        r.markRetried(url: url)
+        XCTAssertFalse(r.canRetry(url: url),
+                       "Responder with fallback caching must track retried URLs")
     }
 }

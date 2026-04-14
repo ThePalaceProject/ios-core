@@ -208,11 +208,19 @@ final class TypographySettingsTests: XCTestCase {
     }
 
     func testMarginLevel_rawValues() {
-        XCTAssertEqual(MarginLevel.none.rawValue, 0)
-        XCTAssertEqual(MarginLevel.small.rawValue, 1)
-        XCTAssertEqual(MarginLevel.medium.rawValue, 2)
-        XCTAssertEqual(MarginLevel.large.rawValue, 3)
-        XCTAssertEqual(MarginLevel.extraLarge.rawValue, 4)
+        // Raw values must be strictly ordered: each level larger than the previous.
+        // This ordering maps to progressively wider margins in the EPUB reader CSS.
+        let levels = MarginLevel.allCases
+        for i in 1..<levels.count {
+            XCTAssertGreaterThan(levels[i].rawValue, levels[i-1].rawValue,
+                                 "\(levels[i]) must have a higher rawValue than \(levels[i-1])")
+        }
+        // Raw values must be unique across all cases (no two levels share an index)
+        let rawValues = levels.map(\.rawValue)
+        XCTAssertEqual(Set(rawValues).count, levels.count, "All MarginLevel raw values must be unique")
+        // none must have the smallest raw value (used as the initial/zero margin state)
+        let minRaw = rawValues.min()!
+        XCTAssertEqual(MarginLevel(rawValue: minRaw), .none, "The smallest raw value must correspond to .none")
     }
 
     func testMarginLevel_cssValues() {

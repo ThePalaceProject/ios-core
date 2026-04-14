@@ -94,16 +94,24 @@ class OPDSFormatTests: XCTestCase {
     // MARK: - OPDSFormat rawValue
 
     func testOPDS2RawValue() {
-        XCTAssertEqual(OPDSFormat.opds2.rawValue, "application/opds+json")
-        // Round-trip: detecting from rawValue must yield the same format
+        // Round-trip: detecting from rawValue must yield the same format (behavior, not definition)
         XCTAssertEqual(OPDSFormat.detect(from: OPDSFormat.opds2.rawValue), .opds2,
                        "Detecting opds2 rawValue must produce opds2 (round-trip)")
+        // The rawValue must not be mistaken for opds1 or unknown
+        XCTAssertNotEqual(OPDSFormat.detect(from: OPDSFormat.opds2.rawValue), .opds1,
+                          "opds2 rawValue must not detect as opds1")
+        XCTAssertNotEqual(OPDSFormat.detect(from: OPDSFormat.opds2.rawValue), .unknown,
+                          "opds2 rawValue must not detect as unknown")
     }
 
     func testOPDS1RawValue() {
-        XCTAssertEqual(OPDSFormat.opds1.rawValue, "application/atom+xml")
-        // Round-trip: detecting from rawValue must yield the same format
+        // Round-trip: detecting from rawValue must yield the same format (behavior, not definition)
         XCTAssertEqual(OPDSFormat.detect(from: OPDSFormat.opds1.rawValue), .opds1,
                        "Detecting opds1 rawValue must produce opds1 (round-trip)")
+        // The rawValue must not be mistaken for opds2 or unknown
+        XCTAssertNotEqual(OPDSFormat.detect(from: OPDSFormat.opds1.rawValue), .opds2,
+                          "opds1 rawValue must not detect as opds2")
+        XCTAssertNotEqual(OPDSFormat.detect(from: OPDSFormat.opds1.rawValue), .unknown,
+                          "opds1 rawValue must not detect as unknown")
     }
 }

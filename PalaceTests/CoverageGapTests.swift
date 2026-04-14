@@ -186,6 +186,9 @@ final class AccountsManagerGapTests: XCTestCase {
     func testAccountsManager_accountByUUID_returnsNilForUnknownUUID() {
         let result = AccountsManager.shared.account("urn:uuid:nonexistent-12345")
         XCTAssertNil(result, "Looking up a nonexistent UUID should return nil")
+        // A different unknown UUID must also return nil (not a cached misfire)
+        let result2 = AccountsManager.shared.account("urn:uuid:also-nonexistent-67890")
+        XCTAssertNil(result2, "Distinct nonexistent UUIDs must both return nil")
     }
 
     /// Coverage Gap: AccountsManager — verify currentAccountId persists
@@ -204,6 +207,9 @@ final class AccountsManagerGapTests: XCTestCase {
     func testAccountsManager_tppAccountUUID_isNotEmpty() {
         let uuid = AccountsManager.shared.tppAccountUUID
         XCTAssertFalse(uuid.isEmpty, "TPP account UUID should not be empty")
+        // UUID must be stable across calls (not regenerated each time)
+        let uuid2 = AccountsManager.shared.tppAccountUUID
+        XCTAssertEqual(uuid, uuid2, "tppAccountUUID must return the same value on repeated calls")
     }
 }
 
@@ -362,6 +368,10 @@ final class MyBooksDownloadCenterAdeptGapTests: XCTestCase {
         // Verify the download progress infrastructure exists and is accessible
         let center = MyBooksDownloadCenter.shared
         XCTAssertNotNil(center, "MyBooksDownloadCenter should be accessible")
+        // A book with no active download should report zero progress
+        let progress = center.downloadProgress(for: "nonexistent-book-id")
+        XCTAssertEqual(progress, 0.0, accuracy: 0.001,
+                       "Progress for unknown book must be 0.0")
     }
 
     /// Coverage Gap: adept download completion — verify state for successful download
@@ -393,8 +403,12 @@ final class AdobeCertificateGapTests: XCTestCase {
         let timestamp: UInt = 1704067200 // Jan 1, 2024 00:00:00 UTC
         let cert = AdobeCertificate(expireson: timestamp)
 
-        XCTAssertNotNil(cert.expirationDate)
         XCTAssertEqual(cert.expirationDate, Date(timeIntervalSince1970: Double(timestamp)))
+        // A different timestamp must produce a different expiration date
+        let otherTimestamp: UInt = 1735689600 // Jan 1, 2025
+        let otherCert = AdobeCertificate(expireson: otherTimestamp)
+        XCTAssertNotEqual(cert.expirationDate, otherCert.expirationDate,
+                          "Different timestamps must produce different expirationDates")
     }
 
     /// Coverage Gap: AdobeCertificate — test expirationDate nil when no timestamp
@@ -402,6 +416,11 @@ final class AdobeCertificateGapTests: XCTestCase {
         let cert = AdobeCertificate(expireson: nil)
         XCTAssertNil(cert.expirationDate,
                      "expirationDate should be nil when expireson is nil")
+        // A cert with a timestamp must have a non-nil expirationDate (contrast)
+        let withTimestamp = AdobeCertificate(expireson: 1704067200)
+        let expDate = withTimestamp.expirationDate
+        XCTAssertEqual(expDate, Date(timeIntervalSince1970: 1704067200),
+                       "expirationDate must equal the Date derived from the expireson timestamp")
     }
 
     /// Coverage Gap: AdobeCertificate — test hasExpired with past date
@@ -411,6 +430,9 @@ final class AdobeCertificateGapTests: XCTestCase {
 
         XCTAssertTrue(cert.hasExpired,
                       "Certificate with past expiration should be expired")
+        // expirationDate must reflect the timestamp
+        XCTAssertEqual(cert.expirationDate, Date(timeIntervalSince1970: Double(pastTimestamp)),
+                       "expirationDate must equal Date(timeIntervalSince1970:) of the timestamp")
     }
 
     /// Coverage Gap: AdobeCertificate — test hasExpired with future date
@@ -420,6 +442,10 @@ final class AdobeCertificateGapTests: XCTestCase {
 
         XCTAssertFalse(cert.hasExpired,
                        "Certificate with future expiration should not be expired")
+        // A past-dated cert must be expired (contrast showing the property works bidirectionally)
+        let pastCert = AdobeCertificate(expireson: 946684800) // Jan 1, 2000
+        XCTAssertTrue(pastCert.hasExpired,
+                      "Certificate with past expiration must be expired (contrast with future)")
     }
 
     /// Coverage Gap: AdobeCertificate — test hasExpired false when no expiration
@@ -428,6 +454,9 @@ final class AdobeCertificateGapTests: XCTestCase {
 
         XCTAssertFalse(cert.hasExpired,
                        "Certificate without expiration should not be considered expired")
+        // expirationDate is nil when expireson is nil
+        XCTAssertNil(cert.expirationDate,
+                     "expirationDate must be nil when expireson is nil")
     }
 
     /// Coverage Gap: AdobeCertificate — test JSON decoding via init(data:)
@@ -437,8 +466,10 @@ final class AdobeCertificateGapTests: XCTestCase {
 
         let cert = AdobeCertificate(data: data)
 
-        XCTAssertNotNil(cert, "Should decode valid JSON data")
         XCTAssertEqual(cert?.expireson, 1704067200)
+        // The decoded expiration date must match the timestamp
+        XCTAssertEqual(cert?.expirationDate, Date(timeIntervalSince1970: 1704067200),
+                       "init(data:) must produce the correct expirationDate from the decoded timestamp")
     }
 
     /// Coverage Gap: AdobeCertificate — test init(data:) with invalid JSON returns nil
@@ -448,6 +479,11 @@ final class AdobeCertificateGapTests: XCTestCase {
         let cert = AdobeCertificate(data: invalidData)
 
         XCTAssertNil(cert, "Should return nil for invalid JSON data")
+        // Contrast: valid JSON must decode successfully and have the right expireson value
+        let validJSON = #"{"expireson": 0}"#
+        let validData = validJSON.data(using: .utf8)!
+        let validExpireson = AdobeCertificate(data: validData)?.expireson
+        XCTAssertEqual(validExpireson, 0, "Valid JSON with expireson=0 must decode to expireson=0")
     }
 }
 

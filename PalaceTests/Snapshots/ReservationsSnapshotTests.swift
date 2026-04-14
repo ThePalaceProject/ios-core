@@ -55,6 +55,9 @@ final class ReservationsSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 390, height: 120)
+        // Verify the model reflects holding state
+        XCTAssertEqual(mockRegistry.state(for: book.identifier), .holding,
+                       "Book must be in holding state for this snapshot")
     }
 
     func testNormalBookCell_downloadSuccessful() {
@@ -65,6 +68,9 @@ final class ReservationsSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 390, height: 120)
+        // Verify the model reflects downloadSuccessful state
+        XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadSuccessful,
+                       "Book must be in downloadSuccessful state for this snapshot")
     }
 
     // MARK: - Empty State
@@ -80,6 +86,9 @@ final class ReservationsSnapshotTests: XCTestCase {
             .background(Color(TPPConfiguration.backgroundColor()))
 
         assertFixedSizeSnapshot(of: emptyView, width: 390, height: 400)
+        // The empty message must be non-trivially long
+        XCTAssertFalse(Strings.HoldsView.emptyMessage.isEmpty,
+                       "HoldsView empty message must not be empty")
     }
 
     // MARK: - Button States
@@ -88,12 +97,16 @@ final class ReservationsSnapshotTests: XCTestCase {
         let book = snapshotHoldBook()
         let buttons = BookButtonState.canHold.buttonTypes(book: book)
         XCTAssertTrue(buttons.contains(.reserve))
+        XCTAssertFalse(buttons.isEmpty, "canHold state must produce at least one button")
+        XCTAssertFalse(buttons.contains(.read), "canHold state must not show a read button")
     }
 
     func testRemoveButton_showsAfterReservation() {
         let book = snapshotHoldBook()
         let buttons = BookButtonState.holding.buttonTypes(book: book)
         XCTAssertTrue(buttons.contains(.manageHold) || buttons.contains(.cancelHold))
+        XCTAssertFalse(buttons.isEmpty, "holding state must produce at least one button")
+        XCTAssertFalse(buttons.contains(.reserve), "holding state must not show a reserve button again")
     }
 
     func testHoldingFrontOfQueue_buttonBehavior() {

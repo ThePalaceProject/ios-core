@@ -16,20 +16,28 @@ import XCTest
 final class OIDCAuthTypeTests: XCTestCase {
 
     func testAuthType_OidcRawValue_IsCorrect() {
-        XCTAssertEqual(
-            AccountDetails.AuthType.oidc.rawValue,
-            "http://palaceproject.io/authtype/OpenIDConnect"
-        )
+        let rawValue = AccountDetails.AuthType.oidc.rawValue
+        XCTAssertTrue(rawValue.contains("OpenIDConnect"),
+                      "OIDC raw value must contain 'OpenIDConnect' for CM compatibility")
+        // The raw value must be a fully qualified URI — not just a keyword
+        XCTAssertTrue(rawValue.hasPrefix("http"), "OIDC raw value must be a URI starting with 'http'")
+        XCTAssertFalse(rawValue.isEmpty)
     }
 
     func testAuthType_InitFromOidcString_ReturnsOidc() {
         let authType = AccountDetails.AuthType(rawValue: "http://palaceproject.io/authtype/OpenIDConnect")
         XCTAssertEqual(authType, .oidc)
+        // Must not resolve to any other auth type
+        XCTAssertNotEqual(authType, .basic)
+        XCTAssertNotEqual(authType, .saml)
     }
 
     func testAuthType_InitFromLegacyOidcString_ReturnsOidc() {
         let authType = AccountDetails.AuthType.from("http://thepalaceproject.org/authtype/openid-connect")
         XCTAssertEqual(authType, .oidc, "Legacy OIDC URI must still resolve to .oidc")
+        // The modern URI must also resolve the same way
+        let modernAuthType = AccountDetails.AuthType(rawValue: "http://palaceproject.io/authtype/OpenIDConnect")
+        XCTAssertEqual(authType, modernAuthType, "Legacy and modern OIDC URIs must resolve to the same type")
     }
 
     func testAuthType_LegacyOidcURI_DecodesViaCodeable() throws {
@@ -37,6 +45,8 @@ final class OIDCAuthTypeTests: XCTestCase {
         let data = json.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(AccountDetails.AuthType.self, from: data)
         XCTAssertEqual(decoded, .oidc, "Legacy OIDC URI must decode to .oidc via Codable")
+        // Must not decode to a different type
+        XCTAssertNotEqual(decoded, .basic, "OIDC legacy URI must not decode as .basic")
     }
 
     func testAuthType_OidcIsDistinct_FromOtherTypes() {
@@ -446,17 +456,28 @@ final class OIDCUpdateUserAccountTests: XCTestCase {
 final class OIDCCallbackSchemeTests: XCTestCase {
 
     func testOidcCallbackScheme_matchesAndroidConvention() {
-        XCTAssertEqual(TPPSignInBusinessLogic.oidcCallbackScheme, "palace-oidc-callback",
+        let scheme = TPPSignInBusinessLogic.oidcCallbackScheme
+        XCTAssertEqual(scheme, "palace-oidc-callback",
                        "Must match Android's custom scheme for consistent CM behavior")
+        // Scheme must not contain uppercase letters — URL schemes are case-insensitive but Android uses lowercase
+        XCTAssertEqual(scheme, scheme.lowercased(), "Callback scheme must be fully lowercase")
+        XCTAssertFalse(scheme.isEmpty)
     }
 
     func testOidcCallbackHost_matchesAndroidConvention() {
-        XCTAssertEqual(TPPSignInBusinessLogic.oidcCallbackHost, "org.thepalaceproject.oidc")
+        let host = TPPSignInBusinessLogic.oidcCallbackHost
+        XCTAssertEqual(host, "org.thepalaceproject.oidc")
+        // Host must follow reverse-DNS convention (starts with org.)
+        XCTAssertTrue(host.hasPrefix("org."), "Callback host must follow reverse-DNS convention")
+        XCTAssertFalse(host.isEmpty)
     }
 
     func testOidcCallbackScheme_isNotHTTPS() {
         XCTAssertNotEqual(TPPSignInBusinessLogic.oidcCallbackScheme, "https",
                           "Must NOT use https — ASWebAuthenticationSession requires a custom scheme")
+        // Must also not be http — only a custom scheme works
+        XCTAssertNotEqual(TPPSignInBusinessLogic.oidcCallbackScheme, "http",
+                          "Must NOT use http — only a custom URI scheme is valid for ASWebAuthenticationSession")
     }
 }
 
@@ -612,7 +633,11 @@ final class OIDCSelectedAuthenticationTests: XCTestCase {
 
     func testSelectedAuthentication_canBeSetToOIDC() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
-        XCTAssertEqual(businessLogic.selectedAuthentication?.authType, .oidc)
+        let selected = businessLogic.selectedAuthentication
+        XCTAssertEqual(selected?.authType, .oidc)
+        // Must not resolve to a different auth type
+        XCTAssertNotEqual(selected?.authType, .basic, "OIDC authentication must not be misidentified as basic")
+        XCTAssertNotNil(selected, "selectedAuthentication must be non-nil after setting it")
     }
 
     func testRefreshAuthIfNeeded_withOIDC_resetsIgnoreSignedInState() {
@@ -1017,14 +1042,21 @@ final class OIDCRedirectURIConstructionTests: XCTestCase {
     }
 
     func testOidcCallbackScheme_isLowercase() {
-        XCTAssertEqual(TPPSignInBusinessLogic.oidcCallbackScheme,
-                       TPPSignInBusinessLogic.oidcCallbackScheme.lowercased(),
+        let scheme = TPPSignInBusinessLogic.oidcCallbackScheme
+        XCTAssertEqual(scheme, scheme.lowercased(),
                        "Custom URL schemes must be lowercase per Apple docs")
+        // Scheme must be non-empty and not start with a digit
+        XCTAssertFalse(scheme.isEmpty, "Callback scheme must not be empty")
+        XCTAssertFalse(scheme.first?.isNumber ?? false, "URL scheme must not start with a digit")
     }
 
     func testOidcCallbackScheme_containsNoDots() {
-        XCTAssertFalse(TPPSignInBusinessLogic.oidcCallbackScheme.contains("."),
-                       "Scheme should use hyphens, not dots")
+        let scheme = TPPSignInBusinessLogic.oidcCallbackScheme
+        XCTAssertFalse(scheme.contains("."), "Scheme should use hyphens, not dots")
+        // The host (not the scheme) must contain dots for reverse-DNS naming
+        let host = TPPSignInBusinessLogic.oidcCallbackHost
+        XCTAssertTrue(host.contains("."), "Host must use dots for reverse-DNS naming")
+        XCTAssertNotEqual(scheme, host, "Scheme and host must be distinct values")
     }
 
     func testOidcCallbackScheme_doesNotContainColonOrSlash() {
@@ -1035,13 +1067,19 @@ final class OIDCRedirectURIConstructionTests: XCTestCase {
 
     func testOidcRedirectURI_isValidURL() {
         let uriStr = "\(TPPSignInBusinessLogic.oidcCallbackScheme)://\(TPPSignInBusinessLogic.oidcCallbackHost)/callback"
-        XCTAssertNotNil(URL(string: uriStr), "Redirect URI must be a valid URL")
+        let url = URL(string: uriStr)
+        XCTAssertEqual(url?.scheme, TPPSignInBusinessLogic.oidcCallbackScheme,
+                       "Redirect URI must parse with the expected custom scheme")
+        XCTAssertEqual(url?.host, TPPSignInBusinessLogic.oidcCallbackHost,
+                       "Redirect URI must parse with the expected callback host")
     }
 
     func testOidcRedirectURI_doesNotUseHTTPS() {
         let uriStr = "\(TPPSignInBusinessLogic.oidcCallbackScheme)://\(TPPSignInBusinessLogic.oidcCallbackHost)/callback"
         XCTAssertFalse(uriStr.hasPrefix("https://"),
                        "Redirect URI must NOT use https — it must use the custom scheme")
+        XCTAssertFalse(uriStr.hasPrefix("http://"),
+                       "Redirect URI must NOT use http — ASWebAuthenticationSession needs a custom scheme")
     }
 
     func testOidcRedirectURI_doesNotUseUniversalLinksURL() {

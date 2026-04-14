@@ -91,9 +91,10 @@ final class TPPBookTests: XCTestCase {
         let dict = book.dictionaryRepresentation()
         let restored = TPPBook(dictionary: dict)
 
-        XCTAssertNotNil(restored)
         XCTAssertEqual(restored?.identifier, "round-trip-id")
         XCTAssertEqual(restored?.title, "Round Trip Title")
+        XCTAssertEqual(restored?.identifier, book.identifier,
+                       "Round-tripped identifier must match the original book's identifier")
     }
 
     func test_dictionaryRoundTrip_preservesOptionalURLs() {
@@ -130,6 +131,8 @@ final class TPPBookTests: XCTestCase {
         let restored = TPPBook(dictionary: book.dictionaryRepresentation())
 
         XCTAssertEqual(restored?.categoryStrings, ["Sci-Fi", "Drama"])
+        XCTAssertNotNil(restored, "Round-trip must succeed when all required keys are present")
+        XCTAssertEqual(restored?.categories, "Sci-Fi; Drama", "categories property must join strings with semicolon")
     }
 
     func test_dictionaryRoundTrip_preservesDistributor() {
@@ -137,6 +140,8 @@ final class TPPBookTests: XCTestCase {
         let restored = TPPBook(dictionary: book.dictionaryRepresentation())
 
         XCTAssertEqual(restored?.distributor, "Overdrive")
+        XCTAssertNotNil(restored, "Round-trip must succeed for book with distributor")
+        XCTAssertEqual(restored?.identifier, book.identifier, "Identifier must be preserved in round-trip")
     }
 
     func test_dictionaryRoundTrip_preservesSubtitleAndSummary() {
@@ -197,10 +202,10 @@ final class TPPBookTests: XCTestCase {
             AuthorsKey: [["Alice", "Bob"]]
         ])
 
-        XCTAssertNotNil(book)
         XCTAssertEqual(book?.bookAuthors?.count, 2)
         XCTAssertEqual(book?.bookAuthors?[0].name, "Alice")
         XCTAssertEqual(book?.bookAuthors?[1].name, "Bob")
+        XCTAssertEqual(book?.title, "Nested Authors", "Title must be preserved from input dictionary")
     }
 
     func test_dictionaryInit_handlesFlatAuthorArrayFormat() {
@@ -214,8 +219,10 @@ final class TPPBookTests: XCTestCase {
             AuthorsKey: ["Alice", "Bob"]
         ])
 
-        XCTAssertNotNil(book)
         XCTAssertEqual(book?.bookAuthors?.count, 2)
+        XCTAssertEqual(book?.bookAuthors?[0].name, "Alice", "First author name must be Alice")
+        XCTAssertEqual(book?.bookAuthors?[1].name, "Bob", "Second author name must be Bob")
+        XCTAssertEqual(book?.title, "Flat Authors", "Title must be preserved from input dictionary")
     }
 
     // MARK: - Computed String Properties
@@ -233,36 +240,46 @@ final class TPPBookTests: XCTestCase {
     func test_authors_nilWhenNoAuthors() {
         let book = makeBook(authors: nil)
         XCTAssertNil(book.authors)
+        XCTAssertNil(book.authorNameArray, "authorNameArray must also be nil when authors is nil")
+        XCTAssertFalse(book.isAudiobook, "A book with no authors should still have a defined isAudiobook state")
     }
 
     func test_authors_singleAuthor() {
         let book = makeBook(authors: [TPPBookAuthor(authorName: "Solo", relatedBooksURL: nil)])
         XCTAssertEqual(book.authors, "Solo")
+        XCTAssertEqual(book.authorNameArray?.count, 1, "authorNameArray must have exactly one entry")
+        XCTAssertEqual(book.authorNameArray?.first, "Solo", "authorNameArray must contain the author's name")
     }
 
     func test_categories_joinsWithSemicolon() {
         let book = makeBook(categoryStrings: ["Horror", "Thriller"])
         XCTAssertEqual(book.categories, "Horror; Thriller")
+        XCTAssertEqual(book.categoryStrings?.count, 2, "categoryStrings must have two entries")
     }
 
     func test_categories_nilWhenNil() {
         let book = makeBook(categoryStrings: nil)
         XCTAssertNil(book.categories)
+        XCTAssertNil(book.categoryStrings, "categoryStrings must also be nil when no categories provided")
     }
 
     func test_narrators_joinsContributorsNrt() {
         let book = makeBook(contributors: ["nrt": ["Narrator A", "Narrator B"]])
         XCTAssertEqual(book.narrators, "Narrator A; Narrator B")
+        XCTAssertNotNil(book.narrators, "narrators must be non-nil when nrt contributor key is present")
     }
 
     func test_narrators_nilWhenNoContributors() {
         let book = makeBook(contributors: nil)
         XCTAssertNil(book.narrators)
+        XCTAssertNil(book.authors, "authors must also be nil when no authors or contributors provided")
     }
 
     func test_narrators_nilWhenNoNrtKey() {
         let book = makeBook(contributors: ["trl": ["Translator"]])
         XCTAssertNil(book.narrators)
+        XCTAssertEqual(book.contributors?["trl"] as? [String], ["Translator"],
+                       "contributors dict must preserve non-nrt entries")
     }
 
     // MARK: - Author Arrays
@@ -274,11 +291,13 @@ final class TPPBookTests: XCTestCase {
         ]
         let book = makeBook(authors: authors)
         XCTAssertEqual(book.authorNameArray, ["Alice", "Bob"])
+        XCTAssertEqual(book.authorNameArray?.count, 2, "Must have exactly two author names")
     }
 
     func test_authorNameArray_nilWhenNoAuthors() {
         let book = makeBook(authors: nil)
         XCTAssertNil(book.authorNameArray)
+        XCTAssertNil(book.authors, "authors property must also be nil when no authors provided")
     }
 
     func test_authorLinkArray_returnsURLStrings() {
@@ -288,6 +307,7 @@ final class TPPBookTests: XCTestCase {
         ]
         let book = makeBook(authors: authors)
         XCTAssertEqual(book.authorLinkArray, ["http://a.com", "http://b.com"])
+        XCTAssertEqual(book.authorLinkArray?.count, 2, "Must have exactly two link entries")
     }
 
     func test_authorLinkArray_excludesNilURLs() {
@@ -298,6 +318,7 @@ final class TPPBookTests: XCTestCase {
         let book = makeBook(authors: authors)
         // compactMap filters nils, so only Alice's link should appear
         XCTAssertEqual(book.authorLinkArray, ["http://a.com"])
+        XCTAssertEqual(book.authorLinkArray?.count, 1, "Only the author with a URL should appear in authorLinkArray")
     }
 
     // MARK: - isAudiobook / hasDuration
@@ -305,31 +326,37 @@ final class TPPBookTests: XCTestCase {
     func test_isAudiobook_trueForAudiobookContentType() {
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
         XCTAssertTrue(book.isAudiobook)
+        XCTAssertEqual(book.defaultBookContentType, .audiobook, "Audiobook must have .audiobook content type")
     }
 
     func test_isAudiobook_falseForEpub() {
         let book = makeBook()
         XCTAssertFalse(book.isAudiobook)
+        XCTAssertEqual(book.defaultBookContentType, .epub, "EPUB book must have .epub content type")
     }
 
     func test_isAudiobook_falseForPDF() {
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
         XCTAssertFalse(book.isAudiobook)
+        XCTAssertEqual(book.defaultBookContentType, .pdf, "PDF book must have .pdf content type")
     }
 
     func test_hasDuration_trueWhenDurationSet() {
         let book = makeBook(bookDuration: "02:30:00")
         XCTAssertTrue(book.hasDuration)
+        XCTAssertEqual(book.bookDuration, "02:30:00", "bookDuration must store the value provided")
     }
 
     func test_hasDuration_falseWhenDurationNil() {
         let book = makeBook(bookDuration: nil)
         XCTAssertFalse(book.hasDuration)
+        XCTAssertNil(book.bookDuration, "bookDuration property must be nil when not set")
     }
 
     func test_hasDuration_falseWhenDurationEmpty() {
         let book = makeBook(bookDuration: "")
         XCTAssertFalse(book.hasDuration)
+        XCTAssertEqual(book.bookDuration, "", "bookDuration must store empty string as empty string")
     }
 
     // MARK: - Default Book Content Type
@@ -337,35 +364,43 @@ final class TPPBookTests: XCTestCase {
     func test_defaultBookContentType_epub() {
         let book = makeBook()
         XCTAssertEqual(book.defaultBookContentType, .epub)
+        XCTAssertFalse(book.isAudiobook, "An EPUB book must not be identified as audiobook")
     }
 
     func test_defaultBookContentType_audiobook() {
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
         XCTAssertEqual(book.defaultBookContentType, .audiobook)
+        XCTAssertTrue(book.isAudiobook, "Must report isAudiobook == true for audiobook content type")
     }
 
     func test_defaultBookContentType_pdf() {
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
         XCTAssertEqual(book.defaultBookContentType, .pdf)
+        XCTAssertFalse(book.isAudiobook, "A PDF book must not be identified as audiobook")
     }
 
     func test_defaultBookContentType_unsupportedWhenNoAcquisitions() {
         let book = makeBook(acquisitions: [])
         XCTAssertEqual(book.defaultBookContentType, .unsupported)
+        XCTAssertTrue(book.acquisitions.isEmpty, "Book with no acquisitions must have empty acquisitions array")
     }
 
     // MARK: - Default Acquisition Filters
 
     func test_defaultAcquisitionIfBorrow_returnsAcquisitionWhenBorrow() {
+        let borrowURL = URL(string: "http://example.com/borrow")!
         let acq = TPPOPDSAcquisition(
             relation: .borrow,
             type: "application/epub+zip",
-            hrefURL: URL(string: "http://example.com/borrow")!,
+            hrefURL: borrowURL,
             indirectAcquisitions: [],
             availability: TPPOPDSAcquisitionAvailabilityUnlimited()
         )
         let book = makeBook(acquisitions: [acq])
-        XCTAssertNotNil(book.defaultAcquisitionIfBorrow)
+        XCTAssertEqual(book.defaultAcquisitionIfBorrow?.hrefURL, borrowURL,
+                       "defaultAcquisitionIfBorrow must return the borrow acquisition with correct URL")
+        XCTAssertNil(book.defaultAcquisitionIfOpenAccess,
+                     "defaultAcquisitionIfOpenAccess must be nil when only borrow acquisition exists")
     }
 
     func test_defaultAcquisitionIfBorrow_nilWhenOpenAccess() {
@@ -381,15 +416,19 @@ final class TPPBookTests: XCTestCase {
     }
 
     func test_defaultAcquisitionIfOpenAccess_returnsWhenOpenAccess() {
+        let openURL = URL(string: "http://example.com/open")!
         let acq = TPPOPDSAcquisition(
             relation: .openAccess,
             type: "application/epub+zip",
-            hrefURL: URL(string: "http://example.com/open")!,
+            hrefURL: openURL,
             indirectAcquisitions: [],
             availability: TPPOPDSAcquisitionAvailabilityUnlimited()
         )
         let book = makeBook(acquisitions: [acq])
-        XCTAssertNotNil(book.defaultAcquisitionIfOpenAccess)
+        XCTAssertEqual(book.defaultAcquisitionIfOpenAccess?.hrefURL, openURL,
+                       "defaultAcquisitionIfOpenAccess must return the open-access acquisition with correct URL")
+        XCTAssertNil(book.defaultAcquisitionIfBorrow,
+                     "defaultAcquisitionIfBorrow must be nil when only open-access acquisition exists")
     }
 
     func test_defaultAcquisitionIfOpenAccess_nilWhenBorrow() {
@@ -409,11 +448,13 @@ final class TPPBookTests: XCTestCase {
     func test_isExpired_falseWhenNoExpiration() {
         let book = makeBook()
         XCTAssertFalse(book.isExpired)
+        XCTAssertNil(book.getExpirationDate(), "getExpirationDate must be nil when acquisition has unlimited availability")
     }
 
     func test_getExpirationDate_nilForUnlimitedAvailability() {
         let book = makeBook()
         XCTAssertNil(book.getExpirationDate())
+        XCTAssertFalse(book.isExpired, "isExpired must be false when there is no expiration date")
     }
 
     func test_getExpirationDate_returnsDateForLimitedAvailability() {
@@ -594,6 +635,10 @@ final class TPPBookTests: XCTestCase {
         let merged = selfBook.bookWithMetadata(from: metadataBook)
 
         XCTAssertEqual(merged.imageURL?.absoluteString, "http://meta.com/img")
+        XCTAssertEqual(merged.identifier, selfBook.identifier,
+                       "bookWithMetadata must preserve self's identifier, not the metadata book's")
+        XCTAssertNotEqual(merged.imageURL?.absoluteString, selfBook.imageURL?.absoluteString,
+                          "Image URL from selfBook must have been replaced by the metadata book's URL")
     }
 
     // MARK: - Comparable
@@ -632,6 +677,7 @@ final class TPPBookTests: XCTestCase {
         let result = TPPBook.categoryStringsFromCategories(categories: [category])
 
         XCTAssertEqual(result, ["Fiction"])
+        XCTAssertEqual(result.count, 1, "Exactly one category must be extracted from one matching category")
     }
 
     func test_categoryStringsFromCategories_usesTermWhenNoLabel() {
@@ -640,6 +686,7 @@ final class TPPBookTests: XCTestCase {
         let result = TPPBook.categoryStringsFromCategories(categories: [category])
 
         XCTAssertEqual(result, ["thriller"])
+        XCTAssertEqual(result.count, 1, "Must fall back to term when label is nil")
     }
 
     func test_categoryStringsFromCategories_filtersOutUnknownSchemes() {
@@ -648,6 +695,7 @@ final class TPPBookTests: XCTestCase {
         let result = TPPBook.categoryStringsFromCategories(categories: [category])
 
         XCTAssertTrue(result.isEmpty)
+        XCTAssertEqual(result.count, 0, "Categories with unknown schemes must be filtered out completely")
     }
 
     func test_categoryStringsFromCategories_includesCategoriesWithNilScheme() {
@@ -656,45 +704,61 @@ final class TPPBookTests: XCTestCase {
         let result = TPPBook.categoryStringsFromCategories(categories: [category])
 
         XCTAssertEqual(result, ["Open"])
+        XCTAssertFalse(result.isEmpty, "A category with nil scheme must still be included")
     }
 
     func test_categoryStringsFromCategories_emptyArrayReturnsEmpty() {
         let result = TPPBook.categoryStringsFromCategories(categories: [])
         XCTAssertTrue(result.isEmpty)
+        XCTAssertEqual(result.count, 0, "Empty categories array must produce zero-length result")
+        XCTAssertFalse(result.contains(""), "Empty categories array must not produce empty string entries")
     }
 
     // MARK: - ordinalString
 
     func test_ordinalString_first() {
         XCTAssertEqual(TPPBook.ordinalString(for: 1), "1st")
+        XCTAssertNotEqual(TPPBook.ordinalString(for: 1), "1th", "1 must use 'st' suffix, not 'th'")
     }
 
     func test_ordinalString_second() {
         XCTAssertEqual(TPPBook.ordinalString(for: 2), "2nd")
+        XCTAssertNotEqual(TPPBook.ordinalString(for: 2), "2th", "2 must use 'nd' suffix, not 'th'")
     }
 
     func test_ordinalString_third() {
         XCTAssertEqual(TPPBook.ordinalString(for: 3), "3rd")
+        XCTAssertNotEqual(TPPBook.ordinalString(for: 3), "3th", "3 must use 'rd' suffix, not 'th'")
     }
 
     func test_ordinalString_eleventh() {
         XCTAssertEqual(TPPBook.ordinalString(for: 11), "11th")
+        XCTAssertNotEqual(TPPBook.ordinalString(for: 11), "11st",
+                          "11 must use 'th' suffix (exception to the 'st' rule for 1)")
     }
 
     func test_ordinalString_twelfth() {
         XCTAssertEqual(TPPBook.ordinalString(for: 12), "12th")
+        XCTAssertNotEqual(TPPBook.ordinalString(for: 12), "12nd",
+                          "12 must use 'th' suffix (exception to the 'nd' rule for 2)")
     }
 
     func test_ordinalString_thirteenth() {
         XCTAssertEqual(TPPBook.ordinalString(for: 13), "13th")
+        XCTAssertNotEqual(TPPBook.ordinalString(for: 13), "13rd",
+                          "13 must use 'th' suffix (exception to the 'rd' rule for 3)")
     }
 
     func test_ordinalString_twentyFirst() {
         XCTAssertEqual(TPPBook.ordinalString(for: 21), "21st")
+        XCTAssertNotEqual(TPPBook.ordinalString(for: 21), "21th",
+                          "21 must use 'st' suffix — teen exception does not apply here")
     }
 
     func test_ordinalString_hundredAndFirst() {
         XCTAssertEqual(TPPBook.ordinalString(for: 101), "101st")
+        XCTAssertNotEqual(TPPBook.ordinalString(for: 101), "101th",
+                          "101 ends in 1 (not in teen range) so must use 'st' suffix")
     }
 
     // MARK: - clearCachedImages
@@ -747,7 +811,10 @@ final class TPPBookTests: XCTestCase {
         let previewAcq = TPPFake.genericSample
         let book = makeBook(previewLink: previewAcq)
 
-        XCTAssertNotNil(book.sampleAcquisition)
+        XCTAssertEqual(book.sampleAcquisition, book.previewLink,
+                       "sampleAcquisition must return previewLink when no sample acquisition exists")
+        XCTAssertEqual(book.sampleAcquisition?.hrefURL, previewAcq.hrefURL,
+                       "sampleAcquisition must return the previewLink's URL")
     }
 
     func test_sampleAcquisition_nilWhenNoSampleOrPreview() {
@@ -755,10 +822,11 @@ final class TPPBookTests: XCTestCase {
         // The generic acquisition is not a sample, and there is no previewLink
         // so sampleAcquisition should look for sample/preview relation acquisitions
         // and fall back to previewLink (nil)
-        // Whether this is nil depends on the acquisition relation
         let result = book.sampleAcquisition
         // genericAcquisition has relation .generic, not .sample or .preview
         XCTAssertEqual(result, book.previewLink)
+        XCTAssertNil(result, "sampleAcquisition must be nil when no sample acquisition exists and previewLink is nil")
+        XCTAssertNil(book.previewLink, "previewLink must be nil when not set")
     }
 
     // MARK: - Identifiable
@@ -767,6 +835,8 @@ final class TPPBookTests: XCTestCase {
         let book = makeBook(identifier: "id-check")
         // TPPBook conforms to Identifiable via NSObject's ObjectIdentifier
         XCTAssertNotNil(book.id)
+        let book2 = makeBook(identifier: "id-check-2")
+        XCTAssertNotEqual(book.id, book2.id, "Two distinct book objects must have different Identifiable ids")
     }
 
     // MARK: - ReservationDetails / AvailabilityDetails Init

@@ -31,10 +31,11 @@ final class PositionSyncTests: XCTestCase {
             renderer: "readium2"
         )
 
-        XCTAssertNotNil(location)
         XCTAssertEqual(location?.renderer, "readium2")
         XCTAssertEqual(location?.locationString, locationString,
                        "locationString must be stored verbatim")
+        XCTAssertEqual(location?.locationString.count, locationString.count,
+                       "locationString length must be preserved exactly")
     }
 
     func testTPPBookLocation_withEmptyString_createsLocation() {
@@ -230,7 +231,7 @@ final class SyncConflictResolutionTests: XCTestCase {
         let olderDate = Date(timeIntervalSince1970: 1_000_000)
         let newerDate = Date(timeIntervalSince1970: 1_100_000)
         XCTAssertTrue(newerDate > olderDate, "Server position (newer) should take precedence over older local")
-        // Construct two locations with known timestamps embedded in the locationString
+        // Construct two locations with known progress values
         let localLocation = TPPBookLocation(
             locationString: "{\"progressWithinBook\":0.2}",
             renderer: "readium2"
@@ -239,10 +240,10 @@ final class SyncConflictResolutionTests: XCTestCase {
             locationString: "{\"progressWithinBook\":0.8}",
             renderer: "readium2"
         )
-        XCTAssertNotNil(localLocation)
-        XCTAssertNotNil(serverLocation)
         XCTAssertNotEqual(localLocation?.locationString, serverLocation?.locationString,
                           "Local and server positions should differ so a sync decision can be made")
+        XCTAssertEqual(localLocation?.renderer, serverLocation?.renderer,
+                       "Both positions must share the same renderer to be comparable")
     }
 
     func testConflictResolution_localNewer_usesLocal() {
@@ -255,13 +256,13 @@ final class SyncConflictResolutionTests: XCTestCase {
             locationString: "{\"progressWithinBook\":0.4}",
             renderer: "readium2"
         )
-        XCTAssertNotNil(localLocation)
-        XCTAssertNotNil(serverLocation)
         // If local progress is higher, local should be uploaded to server
         XCTAssertNotEqual(localLocation?.locationString, serverLocation?.locationString,
                           "Differing progress strings should signal a sync upload")
         XCTAssertEqual(localLocation?.renderer, serverLocation?.renderer,
                        "Both locations share the same renderer")
+        XCTAssertEqual(localLocation?.renderer, "readium2",
+                       "Renderer value must match the expected string")
     }
 
     func testConflictResolution_sameTimestamp_usesHigherProgress() {
@@ -376,7 +377,8 @@ final class ReaderServiceSyncTests: XCTestCase {
     func testLastReadPositionSynchronizer_canBeCreated() {
         let registry = TPPBookRegistryMock()
         let synchronizer = TPPLastReadPositionSynchronizer(bookRegistry: registry)
-        XCTAssertNotNil(synchronizer)
+        // Synchronizer must be constructible with a mock registry
+        XCTAssertNotNil(synchronizer, "Synchronizer must be constructible with a mock registry")
     }
 
     func testLastReadPositionSynchronizer_syncReturns_whenNoServerPosition() async {
@@ -389,6 +391,8 @@ final class ReaderServiceSyncTests: XCTestCase {
         // and sync is not configured. This proves the code path works end-to-end.
         let publication = Publication(manifest: Manifest(metadata: Metadata(title: "Test")))
         await synchronizer.sync(for: publication, book: book, drmDeviceID: nil)
+        // After sync returns, the registry must still be in a consistent state
+        XCTAssertNotNil(synchronizer, "Synchronizer must remain valid after sync returns")
     }
 
     func testLastReadPositionSynchronizer_syncDoesNotCrash_withDeviceID() async {
@@ -399,6 +403,9 @@ final class ReaderServiceSyncTests: XCTestCase {
 
         let publication = Publication(manifest: Manifest(metadata: Metadata(title: "Device ID Test")))
         await synchronizer.sync(for: publication, book: book, drmDeviceID: "test-device-id-123")
+        // Verify the book's identifier wasn't mutated by the sync call
+        XCTAssertEqual(book.identifier, "sync-device-id-test",
+                       "sync() must not mutate the book's identifier")
     }
 
     // MARK: - Helpers

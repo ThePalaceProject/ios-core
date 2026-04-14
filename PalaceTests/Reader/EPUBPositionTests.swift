@@ -21,9 +21,10 @@ final class EPUBPositionTests: XCTestCase {
 
         let location = TPPBookLocation(locationString: locationString, renderer: TPPBookLocation.r3Renderer)
 
-        XCTAssertNotNil(location, "Should create book location with valid data")
         XCTAssertEqual(location?.locationString, locationString)
         XCTAssertEqual(location?.renderer, TPPBookLocation.r3Renderer)
+        XCTAssertEqual(location?.locationString.count, locationString.count,
+                       "locationString must be stored verbatim without truncation")
     }
 
     func testBookLocation_DictionaryRoundTrip() {
@@ -32,14 +33,14 @@ final class EPUBPositionTests: XCTestCase {
     """
 
         let original = TPPBookLocation(locationString: originalLocationString, renderer: TPPBookLocation.r3Renderer)
-        XCTAssertNotNil(original)
 
         let dictionary = original!.dictionaryRepresentation
         let restored = TPPBookLocation(dictionary: dictionary)
 
-        XCTAssertNotNil(restored, "Should restore from dictionary")
         XCTAssertEqual(restored?.locationString, originalLocationString)
         XCTAssertEqual(restored?.renderer, TPPBookLocation.r3Renderer)
+        XCTAssertEqual(restored?.locationString, original?.locationString,
+                       "Round-tripped locationString must match the original exactly")
     }
 
     func testBookLocation_CreationFromDictionary() {
@@ -50,8 +51,9 @@ final class EPUBPositionTests: XCTestCase {
 
         let location = TPPBookLocation(dictionary: dictionary)
 
-        XCTAssertNotNil(location, "Should create from dictionary")
         XCTAssertEqual(location?.renderer, TPPBookLocation.r3Renderer)
+        XCTAssertEqual(location?.locationString, "{\"href\":\"/chapter.xhtml\"}",
+                       "locationString must match the value stored in the dictionary")
     }
 
     func testBookLocation_FailsWithMissingLocationString() {
@@ -110,5 +112,9 @@ final class EPUBPositionTests: XCTestCase {
         let expectedInterval: TimeInterval = 15.0
 
         XCTAssertEqual(TPPLastReadPositionPoster.throttlingInterval, expectedInterval)
+        XCTAssertGreaterThan(TPPLastReadPositionPoster.throttlingInterval, 0,
+                             "Throttling interval must be positive to prevent infinite sync loops")
+        XCTAssertLessThan(TPPLastReadPositionPoster.throttlingInterval, 60,
+                          "Throttling interval must be less than 60s to ensure position is saved frequently enough")
     }
 }

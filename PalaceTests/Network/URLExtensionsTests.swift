@@ -42,6 +42,8 @@ final class URLExtensionsTests: XCTestCase {
         let result = url.replacingScheme(with: "http")
 
         XCTAssertEqual(result.fragment, "section")
+        XCTAssertEqual(result.scheme, "http", "Scheme must be updated to the new value")
+        XCTAssertEqual(result.host, url.host, "Host must be preserved when replacing scheme")
     }
 
     func testReplacingScheme_PreservesPort() {

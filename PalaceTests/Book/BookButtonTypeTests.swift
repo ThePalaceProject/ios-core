@@ -18,6 +18,9 @@ final class BookButtonTypeTests: XCTestCase {
         for type in types {
             XCTAssertFalse(type.rawValue.isEmpty, "\(type) should have non-empty rawValue")
         }
+        // All raw values must be unique (no collisions)
+        let rawValues = types.map(\.rawValue)
+        XCTAssertEqual(Set(rawValues).count, rawValues.count, "All BookButtonType raw values must be unique")
     }
 
     // SRS: BookButtonType title returns localized strings
@@ -26,6 +29,9 @@ final class BookButtonTypeTests: XCTestCase {
         for type in types {
             XCTAssertFalse(type.title.isEmpty, "\(type) should have non-empty title")
         }
+        // Different actions must have different titles (no copy collision)
+        XCTAssertNotEqual(BookButtonType.get.title, BookButtonType.reserve.title,
+                          "get and reserve must have distinct titles")
     }
 
     // SRS: BookButtonType displaysIndicator true for expected types
@@ -50,6 +56,10 @@ final class BookButtonTypeTests: XCTestCase {
         let primaryTypes: [BookButtonType] = [.get, .reserve, .download, .read, .listen, .retry, .returning, .manageHold]
         for type in primaryTypes {
             XCTAssertEqual(type.buttonStyle, .primary, "\(type) should be primary")
+        }
+        // Primary types must report isPrimary = true
+        for type in primaryTypes {
+            XCTAssertTrue(type.isPrimary, "\(type) must have isPrimary = true")
         }
     }
 
@@ -136,13 +146,13 @@ final class ButtonStyleTypeTests: XCTestCase {
 
     // SRS: ButtonStyleType all cases exist
     func testAllCases() {
-        let _: ButtonStyleType = .primary
-        let _: ButtonStyleType = .secondary
-        let _: ButtonStyleType = .tertiary
-        let _: ButtonStyleType = .destructive
         // All four cases are distinct — no two raw values collide
         let allCases: [ButtonStyleType] = [.primary, .secondary, .tertiary, .destructive]
         XCTAssertEqual(allCases.count, 4)
+        // Each case must be inequal to all others
+        XCTAssertNotEqual(ButtonStyleType.primary, ButtonStyleType.secondary)
+        XCTAssertNotEqual(ButtonStyleType.secondary, ButtonStyleType.tertiary)
+        XCTAssertNotEqual(ButtonStyleType.tertiary, ButtonStyleType.destructive)
     }
 
     // SRS: ButtonStyleType equality

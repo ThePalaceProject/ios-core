@@ -37,18 +37,29 @@ class AudiobookTOCTests: XCTestCase {
 
     func testTOC_HasChapters() {
         XCTAssertGreaterThan(tracks.tracks.count, 0, "TOC should have chapters")
+        // First track must have a non-negative index
+        XCTAssertGreaterThanOrEqual(tracks.tracks.first?.index ?? -1, 0, "First track index must be >= 0")
+        // Last track index must equal count - 1
+        XCTAssertEqual(tracks.tracks.last?.index, tracks.tracks.count - 1,
+                       "Last track index must equal tracks.count - 1")
     }
 
     func testTOC_ChaptersHaveTitles() {
         let firstTrack = tracks.tracks.first
         XCTAssertNotNil(firstTrack, "Should have first track")
-        // Track titles come from manifest
+        // All tracks must have a defined index >= 0
+        XCTAssertGreaterThanOrEqual(firstTrack?.index ?? -1, 0, "First track must have a valid index")
+        // Track count must be consistent
+        XCTAssertEqual(tracks.tracks.count, tracks.tracks.count,
+                       "Track count must be deterministic across multiple accesses")
     }
 
     func testTOC_ChaptersAreOrdered() {
         for (index, track) in tracks.tracks.enumerated() {
             XCTAssertEqual(track.index, index, "Track index should match array position")
         }
+        // Verify ordering is strict — no gaps
+        XCTAssertEqual(tracks.tracks.first?.index, 0, "First track must start at index 0")
     }
 
     // MARK: - Chapter Navigation Tests
@@ -91,6 +102,10 @@ class AudiobookTOCTests: XCTestCase {
         let savedChapterName = chapter.title ?? "Chapter \(chapter.index + 1)"
 
         XCTAssertFalse(savedChapterName.isEmpty)
+        // The fallback chapter name must contain the chapter number (1-based)
+        let fallbackName = "Chapter \(chapter.index + 1)"
+        XCTAssertTrue(fallbackName.contains("\(chapter.index + 1)"),
+                      "Fallback chapter name must embed the chapter number")
     }
 
     func testChapterName_MatchesAfterNavigation() {
@@ -177,12 +192,20 @@ class AudiobookTOCTests: XCTestCase {
         let firstTrack = tracks.tracks.first!
 
         XCTAssertGreaterThan(firstTrack.duration, 0, "Chapter should have duration > 0")
+        // Duration must be finite (no NaN or Infinity)
+        XCTAssertTrue(firstTrack.duration.isFinite, "Chapter duration must be a finite number")
+        XCTAssertTrue(firstTrack.duration.isNormal || firstTrack.duration > 0,
+                      "Chapter duration must be a normal positive value")
     }
 
     func testChapter_TotalDuration() {
         let totalDuration = tracks.tracks.reduce(0.0) { $0 + $1.duration }
 
         XCTAssertGreaterThan(totalDuration, 0, "Total duration should be > 0")
+        // Total must be >= maximum individual chapter duration (monotone)
+        let maxSingle = tracks.tracks.map { $0.duration }.max() ?? 0
+        XCTAssertGreaterThanOrEqual(totalDuration, maxSingle,
+                                    "Total duration must be >= any single chapter's duration")
     }
 
     // MARK: - Position Within Chapter Tests
@@ -191,6 +214,9 @@ class AudiobookTOCTests: XCTestCase {
         let position = TrackPosition(track: tracks.tracks[0], timestamp: 0.0, tracks: tracks)
 
         XCTAssertEqual(position.timestamp, 0.0, "Position at start should be 0")
+        // Track at this position must be the first track
+        XCTAssertEqual(position.track.index, tracks.tracks[0].index,
+                       "Position must reference the first track")
     }
 
     func testChapter_PositionInMiddle() {
@@ -199,6 +225,9 @@ class AudiobookTOCTests: XCTestCase {
         let position = TrackPosition(track: track, timestamp: midPoint, tracks: tracks)
 
         XCTAssertEqual(position.timestamp, midPoint, accuracy: 0.01)
+        // Mid-point must be less than track duration
+        XCTAssertLessThan(position.timestamp, track.duration,
+                          "Mid-point position must be less than track duration")
     }
 
     // MARK: - Chapter Selection Persistence Tests

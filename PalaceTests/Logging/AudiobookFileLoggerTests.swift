@@ -78,8 +78,13 @@ final class AudiobookFileLoggerTests: XCTestCase {
     // MARK: - Retrieve Logs
 
     func testRetrieveLog_nonexistentBook_returnsNil() {
-        let log = AudiobookFileLogger.shared.retrieveLog(forBookId: "nonexistent-book-\(UUID().uuidString)")
+        let nonExistentId = "nonexistent-book-\(UUID().uuidString)"
+        let log = AudiobookFileLogger.shared.retrieveLog(forBookId: nonExistentId)
         XCTAssertNil(log)
+        // Retrieving a second unknown id must also return nil (no shared state between IDs)
+        let anotherMissingId = "another-nonexistent-\(UUID().uuidString)"
+        XCTAssertNil(AudiobookFileLogger.shared.retrieveLog(forBookId: anotherMissingId),
+                     "Any unknown book ID must return nil log")
     }
 
     func testRetrieveLogs_multipleBooks() {
@@ -105,7 +110,8 @@ final class AudiobookFileLoggerTests: XCTestCase {
 
     func testRetrieveLogs_emptyBookIds_returnsEmptyDict() {
         let logs = AudiobookFileLogger.shared.retrieveLogs(forBookIds: [])
-        XCTAssertTrue(logs.isEmpty)
+        XCTAssertTrue(logs.isEmpty, "Empty ID list must produce empty result dictionary")
+        XCTAssertEqual(logs.count, 0, "Result must have zero entries for empty input")
     }
 
     // MARK: - Log Content Format

@@ -49,13 +49,18 @@ class NetworkQueueTests: XCTestCase {
     // MARK: - HTTPMethodType
 
     func testHTTPMethodTypeRawValues() {
-        XCTAssertEqual(HTTPMethodType.GET.rawValue, "GET")
-        XCTAssertEqual(HTTPMethodType.POST.rawValue, "POST")
-        XCTAssertEqual(HTTPMethodType.PUT.rawValue, "PUT")
-        XCTAssertEqual(HTTPMethodType.DELETE.rawValue, "DELETE")
-        XCTAssertEqual(HTTPMethodType.HEAD.rawValue, "HEAD")
-        XCTAssertEqual(HTTPMethodType.OPTIONS.rawValue, "OPTIONS")
-        XCTAssertEqual(HTTPMethodType.CONNECT.rawValue, "CONNECT")
+        // Raw values are used verbatim in HTTP requests — verify roundtrip (not just definitions)
+        let methods: [(HTTPMethodType, String)] = [
+            (.GET, "GET"), (.POST, "POST"), (.PUT, "PUT"), (.DELETE, "DELETE"),
+            (.HEAD, "HEAD"), (.OPTIONS, "OPTIONS"), (.CONNECT, "CONNECT")
+        ]
+        for (method, expectedRaw) in methods {
+            XCTAssertEqual(HTTPMethodType(rawValue: expectedRaw), method,
+                           "roundtrip for \(expectedRaw) must produce .\(method)")
+        }
+        // Case sensitivity check: HTTP methods are uppercase-only
+        XCTAssertNil(HTTPMethodType(rawValue: "get"), "Lowercase 'get' must not produce a valid HTTPMethodType")
+        XCTAssertNil(HTTPMethodType(rawValue: "post"), "Lowercase 'post' must not produce a valid HTTPMethodType")
     }
 
     // MARK: - Queue Instance
@@ -63,7 +68,8 @@ class NetworkQueueTests: XCTestCase {
     func testSharedInstanceIsSingleton() {
         let a = NetworkQueue.sharedInstance
         let b = NetworkQueue.sharedInstance
-        XCTAssertTrue(a === b)
+        XCTAssertTrue(a === b, "sharedInstance must return the same object on every access")
+        XCTAssertEqual(ObjectIdentifier(a), ObjectIdentifier(b), "Both references must have identical object identity")
     }
 
     func testObjCSharedReturnsInstance() {
@@ -110,6 +116,8 @@ class NetworkQueueTests: XCTestCase {
             expectation.fulfill()
         }
         waitForExpectations(timeout: 3)
+        // Queue must remain functional after adding a request with headers and body
+        XCTAssertEqual(queue.MaxRetriesInQueue, 5, "MaxRetriesInQueue must be unchanged after addRequest with headers")
     }
 
     // MARK: - Migration
@@ -139,5 +147,9 @@ class NetworkQueueTests: XCTestCase {
             expectation.fulfill()
         }
         waitForExpectations(timeout: 3)
+        // Double migration must not alter the queue's configured constants
+        XCTAssertEqual(queue.MaxRetriesInQueue, 5, "MaxRetriesInQueue must be unchanged after double migrate")
+        XCTAssertTrue(NetworkQueue.StatusCodes.contains(NSURLErrorNotConnectedToInternet),
+                      "StatusCodes must remain valid after double migrate")
     }
 }

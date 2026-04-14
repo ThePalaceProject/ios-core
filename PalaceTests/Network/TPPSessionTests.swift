@@ -14,13 +14,19 @@ final class TPPSessionTests: XCTestCase {
     // MARK: - Shared Instance
 
     func testSharedSession_isNotNil() {
-        XCTAssertNotNil(TPPSession.sharedSession)
+        let session = TPPSession.sharedSession
+        XCTAssertNotNil(session, "sharedSession must not be nil")
+        // Shared session must be able to make upload calls without crashing
+        XCTAssertTrue(session === TPPSession.sharedSession, "sharedSession must return the same instance")
     }
 
     func testSharedSession_isSingleton() {
         let session1 = TPPSession.sharedSession
         let session2 = TPPSession.sharedSession
         XCTAssertTrue(session1 === session2)
+        // The singleton must remain identical across multiple accesses
+        let session3 = TPPSession.sharedSession
+        XCTAssertTrue(session2 === session3, "sharedSession must be the same object on every access")
     }
 
     // MARK: - Upload
@@ -31,14 +37,16 @@ final class TPPSessionTests: XCTestCase {
         request.httpMethod = "POST"
         request.httpBody = nil
 
-        // Just verifying it does not crash with a nil body
         let expectation = XCTestExpectation(description: "Upload callback")
-        TPPSession.sharedSession.upload(with: request) { _, _, _ in
+        var callbackData: Data??
+        TPPSession.sharedSession.upload(with: request) { data, _, _ in
+            callbackData = data
             expectation.fulfill()
         }
 
-        // May fail with network error, that is fine - we just test it does not crash
         wait(for: [expectation], timeout: 10.0)
+        // The callback must have been invoked — callbackData is set (possibly nil on network error)
+        XCTAssertNotNil(callbackData, "Completion handler must be called (even on network error)")
     }
 
     func testUpload_nullHandler_doesNotCrash() {
@@ -50,12 +58,14 @@ final class TPPSessionTests: XCTestCase {
         // Passing nil handler should not crash
         TPPSession.sharedSession.upload(with: request, completionHandler: nil)
 
-        // Give a moment for any async crash
-        let waitExpectation = XCTestExpectation(description: "Wait")
+        // Verify the session is still operational after a nil-handler call
+        let waitExpectation = XCTestExpectation(description: "Session still operational")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             waitExpectation.fulfill()
         }
         wait(for: [waitExpectation], timeout: 2.0)
+        // sharedSession must still be accessible (not nil/crashed)
+        XCTAssertNotNil(TPPSession.sharedSession, "sharedSession must remain accessible after a nil-handler upload")
     }
 
     // MARK: - withURL
@@ -97,13 +107,15 @@ final class TPPSessionTests: XCTestCase {
         let url = URL(string: "https://example.com/api/data")!
 
         let expectation = XCTestExpectation(description: "Completion called")
-        // shouldResetCache = true should trigger cache clearing
+        var completionInvoked = false
         _ = TPPSession.sharedSession.withURL(url, shouldResetCache: true) { _, _, _ in
+            completionInvoked = true
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 10.0)
-        // If we got here without crash, cache clearing worked
+        // The completion handler must have been invoked (cache clearing must not block it)
+        XCTAssertTrue(completionInvoked, "Completion handler must be called after cache reset")
     }
 
     func testWithURL_completionHandler_calledOnError() {
@@ -111,12 +123,14 @@ final class TPPSessionTests: XCTestCase {
         let url = URL(string: "https://definitely-not-a-real-host-12345.invalid/api")!
 
         let expectation = XCTestExpectation(description: "Completion called with error")
+        var receivedError: Error?
         _ = TPPSession.sharedSession.withURL(url, shouldResetCache: false) { data, response, error in
-            // Should get an error for invalid host
-            // The session wraps errors, so either data is nil or error is set
+            receivedError = error
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 15.0)
+        // The error must be non-nil for an invalid host
+        XCTAssertNotNil(receivedError, "An invalid host must produce a non-nil error in the completion handler")
     }
 }

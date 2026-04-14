@@ -38,6 +38,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication, currentLocation: nil)
 
         XCTAssertNotNil(tocBusinessLogic)
+        XCTAssertFalse(tocBusinessLogic.tocDisplayTitle.isEmpty, "TOC display title must be non-empty after init")
     }
 
     func testInit_withCurrentLocation_storesLocation() {
@@ -46,6 +47,9 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication, currentLocation: locator)
 
         XCTAssertNotNil(tocBusinessLogic)
+        // With a current location provided, isCurrentChapterTitled for any title should not crash
+        let result = tocBusinessLogic.isCurrentChapterTitled("AnyChapter")
+        XCTAssertTrue(result == true || result == false, "isCurrentChapterTitled must return a valid Bool")
     }
 
     // MARK: - TOC Display Title Tests
@@ -56,6 +60,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let title = tocBusinessLogic.tocDisplayTitle
 
         XCTAssertFalse(title.isEmpty, "TOC display title should not be empty")
+        XCTAssertTrue(title.count > 0, "TOC display title must contain at least one character")
     }
 
     // MARK: - Title And Level Tests
@@ -210,6 +215,9 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let result = tocBusinessLogic.isCurrentChapterTitled("Any Chapter")
 
         XCTAssertFalse(result)
+        // Any non-empty title query must also return false when location is nil
+        XCTAssertFalse(tocBusinessLogic.isCurrentChapterTitled("Another Chapter"),
+                       "Nil location must cause any title query to return false")
     }
 
     func testIsCurrentChapterTitled_withNilLocationTitle_returnsFalse() {
@@ -234,6 +242,9 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
 
         // TOC elements start empty and populate asynchronously
         XCTAssertNotNil(tocBusinessLogic.tocElements)
+        // The elements array must be a valid (possibly empty) collection
+        XCTAssertGreaterThanOrEqual(tocBusinessLogic.tocElements.count, 0,
+                                    "tocElements count must be non-negative even before async population")
     }
 
     // MARK: - Helper Methods

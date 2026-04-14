@@ -42,6 +42,7 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
             createMockFilter(title: "Non-Fiction")
         ]
         let group = createMockFilterGroup(name: "Category", filters: filters)
+        XCTAssertEqual(group.filters.count, 3, "Group must contain 3 filters for single-group snapshot")
 
         let view = FacetsSelectorView(
             facetGroups: [group],
@@ -68,6 +69,7 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
             createMockFilterGroup(name: "Category", filters: categoryFilters),
             createMockFilterGroup(name: "Sort By", filters: sortFilters)
         ]
+        XCTAssertEqual(groups.count, 2, "Must have 2 groups for multi-group snapshot")
 
         let view = FacetsSelectorView(
             facetGroups: groups,
@@ -87,6 +89,7 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
             createMockFilter(title: "Borrowed")
         ]
         let group = createMockFilterGroup(name: "Availability", filters: filters)
+        XCTAssertEqual(filters.count, 5, "Must have 5 filters for many-filter snapshot")
 
         let view = FacetsSelectorView(
             facetGroups: [group],
@@ -104,6 +107,7 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
             createMockFilter(title: "Non-Fiction")
         ]
         let group = createMockFilterGroup(name: "Category", filters: filters)
+        XCTAssertTrue(filters.contains(where: { $0.active }), "Dark mode snapshot must have at least one active filter")
 
         let view = FacetsSelectorView(
             facetGroups: [group],
@@ -122,6 +126,7 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
             createMockFilter(title: "Non-Fiction")
         ]
         let group = createMockFilterGroup(name: "Category", filters: filters)
+        XCTAssertFalse(filters.contains(where: { $0.active }), "No-active-filter snapshot must have no active filters")
 
         let view = FacetsSelectorView(
             facetGroups: [group],
@@ -139,6 +144,7 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
             createMockFilter(title: "Books", active: true),
             createMockFilter(title: "Audiobooks")
         ]
+        XCTAssertEqual(entryPoints.count, 2, "Two-tab snapshot must have exactly 2 entry points")
 
         let view = EntryPointsSelectorView(
             entryPoints: entryPoints,
@@ -155,6 +161,7 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
             createMockFilter(title: "Books", active: true),
             createMockFilter(title: "Audiobooks")
         ]
+        XCTAssertEqual(entryPoints.count, 3, "Three-tab snapshot must have exactly 3 entry points")
 
         let view = EntryPointsSelectorView(
             entryPoints: entryPoints,
@@ -170,6 +177,7 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
             createMockFilter(title: "Books", active: true),
             createMockFilter(title: "Audiobooks")
         ]
+        XCTAssertTrue(entryPoints.contains(where: { $0.active }), "Dark mode must have at least one active entry point")
 
         let view = EntryPointsSelectorView(
             entryPoints: entryPoints,
@@ -184,8 +192,11 @@ final class FacetsSelectorSnapshotTests: XCTestCase {
     // MARK: - Empty State Tests
 
     func testFacetsSelectorView_emptyGroups() {
+        let emptyGroups: [CatalogFilterGroup] = []
+        XCTAssertTrue(emptyGroups.isEmpty, "Empty-groups snapshot must have zero groups")
+
         let view = FacetsSelectorView(
-            facetGroups: [],
+            facetGroups: emptyGroups,
             onSelect: { _ in }
         )
         .background(Color(UIColor.systemBackground))

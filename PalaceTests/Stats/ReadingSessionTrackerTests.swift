@@ -84,6 +84,7 @@ final class ReadingSessionTrackerTests: XCTestCase {
     tracker.endSession()
 
     XCTAssertFalse(tracker.isTracking)
+    XCTAssertNil(tracker.activeBookID, "activeBookID must be nil when no session was ever started")
   }
 
   func testEndSession_WithoutStartSession_DoesNotRecordSession() {

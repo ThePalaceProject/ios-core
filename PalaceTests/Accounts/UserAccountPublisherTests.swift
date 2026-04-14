@@ -58,6 +58,9 @@ final class UserAccountPublisherTests: XCTestCase {
         publisher.markCredentialsStale()
 
         XCTAssertEqual(publisher.authState, .credentialsStale)
+        // credentialsStale must be distinct from both loggedIn and loggedOut
+        XCTAssertNotEqual(publisher.authState, .loggedIn, "credentialsStale must differ from loggedIn")
+        XCTAssertNotEqual(publisher.authState, .loggedOut, "credentialsStale must differ from loggedOut")
     }
 
     func testMarkCredentialsStale_fromLoggedOut_doesNotChange() {
@@ -66,6 +69,11 @@ final class UserAccountPublisherTests: XCTestCase {
 
         XCTAssertEqual(publisher.authState, .loggedOut,
                        "Cannot mark stale when not logged in")
+        // Only after logging in should marking stale be effective
+        publisher.markLoggedIn()
+        publisher.markCredentialsStale()
+        XCTAssertEqual(publisher.authState, .credentialsStale,
+                       "After logging in, markCredentialsStale must transition to credentialsStale")
     }
 
     // MARK: - signOut
@@ -185,5 +193,10 @@ final class UserAccountPublisherTests: XCTestCase {
         let a = UserAccountPublisher.shared
         let b = UserAccountPublisher.shared
         XCTAssertTrue(a === b)
+        // A third access must also return the same instance
+        let c = UserAccountPublisher.shared
+        XCTAssertTrue(b === c, "sharedSession must remain the same object on every access")
+        // The shared instance must not be a different type
+        XCTAssertNotNil(a, "shared must never be nil")
     }
 }

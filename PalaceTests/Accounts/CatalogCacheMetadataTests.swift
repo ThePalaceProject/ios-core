@@ -20,6 +20,9 @@ final class CatalogCacheMetadataTests: XCTestCase {
         let metadata = CatalogCacheMetadata(timestamp: Date(), hash: "abc123")
 
         XCTAssertFalse(metadata.isStale)
+        // A stale cache (6 minutes old) must have opposite result
+        let staleMetadata = CatalogCacheMetadata(timestamp: Date().addingTimeInterval(-360), hash: "abc123")
+        XCTAssertTrue(staleMetadata.isStale, "Cache older than 5 minutes must be stale")
     }
 
     func testIsStale_WithCacheUnder5Minutes_ReturnsFalse() {
@@ -28,6 +31,9 @@ final class CatalogCacheMetadataTests: XCTestCase {
         let metadata = CatalogCacheMetadata(timestamp: fourMinutesAgo, hash: "abc123")
 
         XCTAssertFalse(metadata.isStale)
+        // hash must not affect staleness
+        let sameAgeOtherHash = CatalogCacheMetadata(timestamp: fourMinutesAgo, hash: "xyz789")
+        XCTAssertFalse(sameAgeOtherHash.isStale, "Hash must not affect staleness calculation")
     }
 
     func testIsStale_WithCacheExactly5Minutes_ReturnsFalse() {
@@ -37,6 +43,8 @@ final class CatalogCacheMetadataTests: XCTestCase {
         let metadata = CatalogCacheMetadata(timestamp: justUnderFiveMinutes, hash: "abc123")
 
         XCTAssertFalse(metadata.isStale)
+        // isExpired must also be false for a 5-minute-old cache
+        XCTAssertFalse(metadata.isExpired, "A 5-minute-old cache must not be expired (24h threshold)")
     }
 
     func testIsStale_WithCacheOver5Minutes_ReturnsTrue() {
@@ -45,6 +53,8 @@ final class CatalogCacheMetadataTests: XCTestCase {
         let metadata = CatalogCacheMetadata(timestamp: sixMinutesAgo, hash: "abc123")
 
         XCTAssertTrue(metadata.isStale)
+        // Stale but not yet expired (only 6 minutes old, threshold is 24h)
+        XCTAssertFalse(metadata.isExpired, "6-minute-old cache must be stale but not yet expired")
     }
 
     func testIsStale_WithCacheJustOver5Minutes_ReturnsTrue() {
@@ -53,6 +63,9 @@ final class CatalogCacheMetadataTests: XCTestCase {
         let metadata = CatalogCacheMetadata(timestamp: justOverFiveMinutes, hash: "abc123")
 
         XCTAssertTrue(metadata.isStale)
+        // Contrast with just-under-5-minutes which must not be stale
+        let justUnder = CatalogCacheMetadata(timestamp: Date().addingTimeInterval(-299), hash: "abc123")
+        XCTAssertFalse(justUnder.isStale, "299s-old cache must not yet be stale")
     }
 
     // MARK: - isExpired Tests
@@ -62,6 +75,8 @@ final class CatalogCacheMetadataTests: XCTestCase {
         let metadata = CatalogCacheMetadata(timestamp: Date(), hash: "abc123")
 
         XCTAssertFalse(metadata.isExpired)
+        // Also not stale yet (fresh cache passes both checks)
+        XCTAssertFalse(metadata.isStale, "A brand-new cache must not be stale")
     }
 
     func testIsExpired_WithCacheUnder24Hours_ReturnsFalse() {
@@ -70,6 +85,8 @@ final class CatalogCacheMetadataTests: XCTestCase {
         let metadata = CatalogCacheMetadata(timestamp: twentyThreeHoursAgo, hash: "abc123")
 
         XCTAssertFalse(metadata.isExpired)
+        // But it is stale (23 hours >> 5 minutes)
+        XCTAssertTrue(metadata.isStale, "23-hour-old cache must be stale even if not expired")
     }
 
     func testIsExpired_WithCacheExactly24Hours_ReturnsFalse() {
@@ -79,6 +96,8 @@ final class CatalogCacheMetadataTests: XCTestCase {
         let metadata = CatalogCacheMetadata(timestamp: justUnder24Hours, hash: "abc123")
 
         XCTAssertFalse(metadata.isExpired)
+        // Must be stale though (86399s >> 300s stale threshold)
+        XCTAssertTrue(metadata.isStale, "Just-under-24h cache must still be stale")
     }
 
     func testIsExpired_WithCacheOver24Hours_ReturnsTrue() {
@@ -87,6 +106,8 @@ final class CatalogCacheMetadataTests: XCTestCase {
         let metadata = CatalogCacheMetadata(timestamp: twentyFiveHoursAgo, hash: "abc123")
 
         XCTAssertTrue(metadata.isExpired)
+        // Must also be stale (expired cache is always stale)
+        XCTAssertTrue(metadata.isStale, "Expired cache must also be stale")
     }
 
     func testIsExpired_WithCacheJustOver24Hours_ReturnsTrue() {
@@ -95,6 +116,9 @@ final class CatalogCacheMetadataTests: XCTestCase {
         let metadata = CatalogCacheMetadata(timestamp: justOverTwentyFourHours, hash: "abc123")
 
         XCTAssertTrue(metadata.isExpired)
+        // Contrast: just-under-24h must not be expired
+        let justUnder = CatalogCacheMetadata(timestamp: Date().addingTimeInterval(-86399), hash: "abc123")
+        XCTAssertFalse(justUnder.isExpired, "86399s-old cache must not yet be expired")
     }
 
     // MARK: - Combined State Tests

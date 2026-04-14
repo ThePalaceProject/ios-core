@@ -79,7 +79,10 @@ final class LCPPDFsTests: XCTestCase {
         let sourceURL = URL(fileURLWithPath: "/path/to/document.lcpdf")
         let tempURL = LCPPDFs.temporaryUrlForPDF(url: sourceURL)
 
-        XCTAssertTrue(tempURL.path.contains("tmp") || tempURL.path.contains("Temp"))
+        XCTAssertTrue(tempURL.path.contains("tmp") || tempURL.path.contains("Temp"),
+                      "Temp PDF URL must be in the system temp directory")
+        XCTAssertTrue(tempURL.lastPathComponent.hasSuffix(".pdf"),
+                      "Temp PDF URL must have .pdf extension")
     }
 
     func testTemporaryUrlForPDF_differentSourcesProduceDifferentURLs() {
@@ -99,6 +102,8 @@ final class LCPPDFsTests: XCTestCase {
         let temp2 = LCPPDFs.temporaryUrlForPDF(url: sourceURL)
 
         XCTAssertEqual(temp1, temp2)
+        XCTAssertTrue(temp1.path.contains("tmp") || temp1.path.contains("Temp"),
+                      "Deterministic URL must still reside in the temp directory")
     }
 
     // MARK: - Delete PDF Content Tests
@@ -107,6 +112,10 @@ final class LCPPDFsTests: XCTestCase {
         let nonExistentURL = URL(fileURLWithPath: "/tmp/nonexistent_\(UUID().uuidString).lcpdf")
 
         XCTAssertNoThrow(try LCPPDFs.deletePdfContent(url: nonExistentURL))
+        // After the call, no temp file should have been created at the derived path
+        let tempURL = LCPPDFs.temporaryUrlForPDF(url: nonExistentURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: tempURL.path),
+                       "Non-existent source must not leave behind any temp file")
     }
 
     func testDeletePdfContent_withExistingFile_removesFile() throws {

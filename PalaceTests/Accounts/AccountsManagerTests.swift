@@ -52,8 +52,11 @@ final class AccountsManagerTests: XCTestCase {
         // Given: The shared AccountsManager
         let manager = AccountsManager.shared
 
-        // Then: It should conform to the protocol
+        // Then: It should conform to the protocol and be able to look up accounts
         XCTAssertTrue(manager is TPPLibraryAccountsProvider)
+        // The protocol requires a tppAccountUUID — verify it's non-empty
+        XCTAssertFalse(manager.tppAccountUUID.isEmpty,
+                       "A TPPLibraryAccountsProvider must expose a non-empty tppAccountUUID")
     }
 
     func testAccountsManager_HasNYPLAccountUUID() {
@@ -130,9 +133,11 @@ final class AccountsManagerTests: XCTestCase {
         // When: Setting via UserDefaults directly (simulating what currentAccountId setter does)
         UserDefaults.standard.set(testAccountId, forKey: currentAccountIdentifierKey)
 
-        // Then: Should be retrievable
+        // Then: Should be retrievable and match exactly
         let retrievedId = UserDefaults.standard.string(forKey: currentAccountIdentifierKey)
         XCTAssertEqual(retrievedId, testAccountId)
+        XCTAssertTrue(retrievedId?.hasPrefix("urn:uuid:") == true,
+                      "Stored account ID must preserve the URN prefix")
     }
 
     // MARK: - Account Switching Notification Tests
@@ -337,11 +342,16 @@ final class AccountsManagerTests: XCTestCase {
     // MARK: - Beta Libraries Toggle Tests
 
     func testUseBetaDidChange_NotificationExists() {
-        // Verify the notification name constant
+        // Verify the notification name constant is stable (its value drives UserDefaults observation)
         XCTAssertEqual(
             Notification.Name.TPPUseBetaDidChange.rawValue,
             "TPPUseBetaDidChange"
         )
+        XCTAssertFalse(Notification.Name.TPPUseBetaDidChange.rawValue.isEmpty,
+                       "TPPUseBetaDidChange notification name must not be empty")
+        XCTAssertNotEqual(Notification.Name.TPPUseBetaDidChange,
+                          Notification.Name.TPPCurrentAccountDidChange,
+                          "Beta and account-change notifications must be distinct names")
     }
 
     func testUseBetaDidChange_PostsNotificationWhenSettingChanges() {
@@ -435,6 +445,9 @@ final class AccountsManagerTests: XCTestCase {
                           "Skipped in unit tests: would fire live network request in background")
         let manager = AccountsManager.shared
         XCTAssertNoThrow(manager.updateAccountSet(completion: nil))
+        // Manager must remain usable after the no-op nil-completion call
+        XCTAssertNotNil(manager.tppAccountUUID,
+                        "Manager must still expose its UUID after updateAccountSet(completion:nil)")
     }
 
     // MARK: - Thread Safety Tests
@@ -500,8 +513,11 @@ final class AccountsManagerTests: XCTestCase {
         let instance1 = AccountsManager.shared
         let instance2 = AccountsManager.shared
 
-        // Then: Should be the same instance
+        // Then: Should be the same instance (referential equality, not just value equality)
         XCTAssertTrue(instance1 === instance2)
+        // Both must agree on the NYPL account UUID — a regression here would break sign-in
+        XCTAssertEqual(instance1.tppAccountUUID, instance2.tppAccountUUID,
+                       "Both references to shared must expose the same tppAccountUUID")
     }
 
     func testSharedInstance_ReturnsSameAsShared() {
@@ -509,8 +525,11 @@ final class AccountsManagerTests: XCTestCase {
         let shared = AccountsManager.shared
         let sharedInstance = AccountsManager.sharedInstance()
 
-        // Then: Should be the same instance
+        // Then: Should be the same instance (ObjC compat bridge must not create a new object)
         XCTAssertTrue(shared === sharedInstance)
+        // Both accessors must agree on the NYPL UUID
+        XCTAssertEqual(shared.tppAccountUUID, sharedInstance.tppAccountUUID,
+                       "shared and sharedInstance() must expose the same tppAccountUUID")
     }
 
     // MARK: - Age Check Tests
@@ -519,8 +538,11 @@ final class AccountsManagerTests: XCTestCase {
         // Given: The shared AccountsManager
         let manager = AccountsManager.shared
 
-        // Then: Should have an age check verifier
+        // Then: Should have an age check verifier that can be queried without crashing
         XCTAssertNotNil(manager.ageCheck)
+        // The same manager accessed twice must return the same ageCheck instance (not create new ones)
+        XCTAssertTrue(manager.ageCheck === AccountsManager.shared.ageCheck,
+                      "ageCheck must be the same instance across multiple accesses to shared")
     }
 
     // MARK: - Notification Integration Tests
@@ -800,8 +822,11 @@ extension AccountsManagerTests {
         // When: Looking up by a non-existent UUID
         let account = manager.account("urn:uuid:non-existent-12345")
 
-        // Then: Should return nil
+        // Then: Should return nil — unknown UUIDs must not produce phantom accounts
         XCTAssertNil(account)
+        // Also verify an empty UUID returns nil (boundary case)
+        XCTAssertNil(manager.account(""),
+                     "Empty UUID must also return nil from account(_:)")
     }
 
     func testAccountsManager_WithEmptyUUID_ReturnsNil() {
@@ -811,8 +836,11 @@ extension AccountsManagerTests {
         // When: Looking up with empty string
         let account = manager.account("")
 
-        // Then: Should return nil
+        // Then: Should return nil — empty string is not a valid account UUID
         XCTAssertNil(account)
+        // Adjacent boundary: a whitespace-only UUID must also be rejected
+        XCTAssertNil(manager.account("   "),
+                     "Whitespace-only UUID must return nil — no phantom account created")
     }
 
     // MARK: - accounts(_ key:) Tests (Coverage Gap)
@@ -833,8 +861,10 @@ extension AccountsManagerTests {
         // When: Getting accounts with a non-existent key
         let accounts = manager.accounts("non-existent-account-set")
 
-        // Then: Should return empty array
+        // Then: Should return empty array — not nil, not a crash, not a default set
         XCTAssertTrue(accounts.isEmpty)
+        XCTAssertEqual(accounts.count, 0,
+                       "accounts(_:) for an unknown key must return an empty array, not a partial set")
     }
 }
 

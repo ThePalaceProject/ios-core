@@ -43,6 +43,8 @@ final class TPPBookmarkDeletionLogTests: XCTestCase {
         let pendingDeletions = deletionLog.pendingDeletions(forBook: testBookId)
         XCTAssertTrue(pendingDeletions.contains(testAnnotationId),
                       "Logged annotation ID should be in pending deletions")
+        // Count must increase: logging adds an entry, not replace
+        XCTAssertEqual(pendingDeletions.count, 1, "One logged deletion must produce exactly one pending entry")
     }
 
     func testLogDeletion_IgnoresEmptyAnnotationId() {
@@ -51,6 +53,10 @@ final class TPPBookmarkDeletionLogTests: XCTestCase {
         let pendingDeletions = deletionLog.pendingDeletions(forBook: testBookId)
         XCTAssertTrue(pendingDeletions.isEmpty,
                       "Empty annotation IDs should be ignored")
+        // Contrast: non-empty ID IS accepted
+        deletionLog.logDeletion(annotationId: testAnnotationId, forBook: testBookId)
+        XCTAssertFalse(deletionLog.pendingDeletions(forBook: testBookId).isEmpty,
+                       "Non-empty annotation ID must be accepted and stored")
     }
 
     func testLogDeletion_MultipleDeletionsForSameBook() {
@@ -124,6 +130,10 @@ final class TPPBookmarkDeletionLogTests: XCTestCase {
         let pendingDeletions = deletionLog.pendingDeletions(forBook: unknownBookId)
         XCTAssertTrue(pendingDeletions.isEmpty,
                       "Unknown book should have no pending deletions")
+        // Contrast: adding a deletion for a known book must not affect unknown book's result
+        deletionLog.logDeletion(annotationId: testAnnotationId, forBook: testBookId)
+        let stillEmpty = deletionLog.pendingDeletions(forBook: unknownBookId)
+        XCTAssertTrue(stillEmpty.isEmpty, "Adding deletion for another book must not affect unknown book")
     }
 
     // MARK: - Ghost Bookmark Regression Tests

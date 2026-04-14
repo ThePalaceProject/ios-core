@@ -26,8 +26,17 @@ final class FacetViewModelTests: XCTestCase {
     // MARK: - Facet Enum Tests
 
     func testFacetRawValues() {
-        XCTAssertEqual(Facet.author.rawValue, "author")
-        XCTAssertEqual(Facet.title.rawValue, "title")
+        // Raw values drive URL query params and UserDefaults keys — wrong values break persistence.
+        // Verify round-trip: a Facet constructed from its raw value must equal the original.
+        XCTAssertEqual(Facet(rawValue: "author"), .author,
+                       "Facet.author must be recoverable from raw value 'author' — used in persistence")
+        XCTAssertEqual(Facet(rawValue: "title"), .title,
+                       "Facet.title must be recoverable from raw value 'title' — used in persistence")
+        // Raw values must be distinct so that UserDefaults can distinguish the two facets
+        XCTAssertNotEqual(Facet.author.localizedString, Facet.title.localizedString,
+                          "Author and Title facets must have distinct localized display strings")
+        XCTAssertNil(Facet(rawValue: "nonexistent"),
+                     "An invalid raw value must return nil, guarding against corrupt UserDefaults")
     }
 
     func testFacetLocalizedStrings() {
@@ -54,6 +63,8 @@ final class FacetViewModelTests: XCTestCase {
         let viewModel = FacetViewModel(groupName: "Library", facets: [.title, .author])
 
         XCTAssertEqual(viewModel.activeSort, .title, "Active sort should default to first facet")
+        XCTAssertEqual(viewModel.facets.first, .title, "First facet in the array must be .title")
+        XCTAssertEqual(viewModel.groupName, "Library", "Group name must be preserved from initializer")
     }
 
     func testInitWithSingleFacet() {
@@ -122,10 +133,13 @@ final class FacetViewModelTests: XCTestCase {
     // MARK: - Account URL Tests
 
     func testCurrentAccountURLWithNilAccount() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
-        viewModel.currentAccount = nil
+        let vm = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        vm.currentAccount = nil
 
-        XCTAssertNil(viewModel.currentAccountURL)
+        // With no account, all account-derived computed properties must be nil
+        XCTAssertNil(vm.currentAccountURL, "currentAccountURL must be nil when currentAccount is nil")
+        XCTAssertNil(vm.logo, "logo must be nil when currentAccount is nil")
+        XCTAssertFalse(vm.showAccountScreen, "showAccountScreen must remain false in the nil-account state")
     }
 
     // MARK: - Show Account Screen Tests
@@ -134,16 +148,27 @@ final class FacetViewModelTests: XCTestCase {
         let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
 
         XCTAssertFalse(viewModel.showAccountScreen)
+        XCTAssertNil(viewModel.currentAccount, "currentAccount must be nil by default (no account injected)")
+        XCTAssertNil(viewModel.currentAccountURL, "currentAccountURL must be nil when no account is set")
     }
 
     func testShowAccountScreenToggle() {
         let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
 
-        viewModel.showAccountScreen = true
-        XCTAssertTrue(viewModel.showAccountScreen)
+        // Track the state before and after toggling
+        let initialState = viewModel.showAccountScreen
+        XCTAssertFalse(initialState, "showAccountScreen must default to false before any interaction")
 
+        viewModel.showAccountScreen = true
+        let afterEnable = viewModel.showAccountScreen
         viewModel.showAccountScreen = false
-        XCTAssertFalse(viewModel.showAccountScreen)
+        let afterDisable = viewModel.showAccountScreen
+
+        // The toggled-on state must differ from initial (false) and toggled-off state
+        XCTAssertTrue(afterEnable, "showAccountScreen must be true after setting to true")
+        XCTAssertFalse(afterDisable, "showAccountScreen must return to false after reset")
+        XCTAssertEqual(viewModel.activeSort, .author,
+                       "Toggling showAccountScreen must not change activeSort")
     }
 
     // MARK: - Logo Tests
@@ -152,9 +177,10 @@ final class FacetViewModelTests: XCTestCase {
         let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
         viewModel.currentAccount = nil
 
-        // Logo may or may not be nil depending on notification timing
-        // Just verify access doesn't crash
-        _ = viewModel.logo
+        // With no account, logo and URL must both be nil
+        XCTAssertNil(viewModel.logo, "logo must be nil when no currentAccount is set")
+        XCTAssertNil(viewModel.currentAccountURL, "currentAccountURL must be nil when no currentAccount is set")
+        XCTAssertNil(viewModel.currentAccount, "currentAccount must remain nil after explicit nil assignment")
     }
 
     // MARK: - Edge Case Tests
@@ -162,13 +188,17 @@ final class FacetViewModelTests: XCTestCase {
     func testChangingSortMultipleTimes() {
         let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
 
-        // Rapidly change sort multiple times
+        // Rapidly change sort multiple times — final value must be the last assignment
         viewModel.activeSort = .title
         viewModel.activeSort = .author
         viewModel.activeSort = .title
-        viewModel.activeSort = .author
+        let finalSort: Facet = .author
+        viewModel.activeSort = finalSort
 
-        XCTAssertEqual(viewModel.activeSort, .author)
+        // Verify the last assignment wins and other state is unaffected
+        XCTAssertEqual(viewModel.activeSort, finalSort)
+        XCTAssertEqual(viewModel.facets.count, 2, "Rapid sort changes must not mutate the facets array")
+        XCTAssertEqual(viewModel.groupName, "Test", "Rapid sort changes must not mutate groupName")
     }
 
     func testSettingSameSortValue() {
@@ -177,9 +207,11 @@ final class FacetViewModelTests: XCTestCase {
         let expectation = XCTestExpectation(description: "activeSort should publish")
         expectation.expectedFulfillmentCount = 1
 
+        var receivedValue: Facet?
         viewModel.$activeSort
             .dropFirst()
-            .sink { _ in
+            .sink { value in
+                receivedValue = value
                 expectation.fulfill()
             }
             .store(in: &cancellables)
@@ -188,6 +220,7 @@ final class FacetViewModelTests: XCTestCase {
         viewModel.activeSort = .title
 
         wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(receivedValue, .title, "Published value must match the assigned value")
     }
 
     func testEmptyGroupName() {
@@ -202,6 +235,9 @@ final class FacetViewModelTests: XCTestCase {
         let viewModel = FacetViewModel(groupName: groupName, facets: [.author, .title])
 
         XCTAssertEqual(viewModel.groupName, groupName)
+        XCTAssertFalse(viewModel.groupName.isEmpty, "Group name with special characters must not be empty")
+        XCTAssertEqual(viewModel.groupName.count, groupName.count,
+                       "Group name with emoji/special chars must preserve all Unicode grapheme clusters")
     }
 
     func testUpdatingFacetsDoesNotChangeActiveSort() {
@@ -212,6 +248,9 @@ final class FacetViewModelTests: XCTestCase {
         viewModel.facets = [.author, .title]
 
         XCTAssertEqual(viewModel.activeSort, .title)
+        XCTAssertEqual(viewModel.facets.count, 2, "Facets array must be updated")
+        XCTAssertNotEqual(viewModel.activeSort, .author,
+                          "Assigning a new facets array must not revert activeSort to the first facet")
     }
 
     // MARK: - Publisher Subscription Tests
@@ -222,18 +261,23 @@ final class FacetViewModelTests: XCTestCase {
         let exp1 = XCTestExpectation(description: "First subscriber")
         let exp2 = XCTestExpectation(description: "Second subscriber")
 
+        var received1: Facet?
+        var received2: Facet?
+
         viewModel.$activeSort
             .dropFirst()
-            .sink { _ in exp1.fulfill() }
+            .sink { value in received1 = value; exp1.fulfill() }
             .store(in: &cancellables)
 
         viewModel.$activeSort
             .dropFirst()
-            .sink { _ in exp2.fulfill() }
+            .sink { value in received2 = value; exp2.fulfill() }
             .store(in: &cancellables)
 
         viewModel.activeSort = .title
 
         wait(for: [exp1, exp2], timeout: 1.0)
+        XCTAssertEqual(received1, .title, "First subscriber must receive the updated sort value")
+        XCTAssertEqual(received2, .title, "Second subscriber must receive the same updated sort value")
     }
 }

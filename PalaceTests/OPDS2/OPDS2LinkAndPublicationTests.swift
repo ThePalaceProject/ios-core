@@ -28,9 +28,10 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
         // which is the most reliable way to get nil from URL(string:).
         let link = OPDS2Link(href: "")
         XCTAssertNil(link.hrefURL)
-        // Verify a valid URL returns non-nil (complement check)
+        // Complement: a valid URL must return non-nil with the correct scheme
         let validLink = OPDS2Link(href: "https://example.com")
-        XCTAssertNotNil(validLink.hrefURL)
+        XCTAssertEqual(validLink.hrefURL?.scheme, "https",
+                       "A valid https href must produce a URL with scheme 'https'")
     }
 
     // MARK: - isAcquisition
@@ -721,6 +722,9 @@ final class OPDS2SupportingTypesTests: XCTestCase {
         let link = OPDS2FacetLink(href: "/active", title: "Active", properties: props)
 
         XCTAssertTrue(link.isActive)
+        XCTAssertEqual(link.properties?.numberOfItems, 42,
+                       "numberOfItems must be preserved in the link's properties")
+        XCTAssertEqual(link.title, "Active", "Title must be preserved from the initializer")
     }
 
     func testFacetLink_IsActive_WithoutProperties_ReturnsFalse() {

@@ -25,6 +25,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 100, height: 120)
+        XCTAssertEqual(mockDocument.pageCount, 10, "Document must have the expected page count")
     }
 
     func testPDFPreviewThumbnail_largerSize() {
@@ -37,6 +38,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 130, height: 160)
+        XCTAssertTrue(size.width > 60, "Larger size must have width greater than the default 60pt thumbnail")
     }
 
     func testPDFPreviewThumbnail_smallSize() {
@@ -49,6 +51,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 58, height: 64)
+        XCTAssertTrue(size.width < 60, "Small size must have width less than the default 60pt thumbnail")
     }
 
     // MARK: - TPPPDFPreviewBar Tests
@@ -61,6 +64,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertEqual(mockDocument.pageCount, 20, "Document must expose its page count for the preview bar")
     }
 
     func testPDFPreviewBar_atMiddlePage() {
@@ -71,6 +75,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertEqual(mockDocument.pageCount, 20, "20-page document must still report pageCount = 20 at the middle page")
     }
 
     func testPDFPreviewBar_atLastPage() {
@@ -81,6 +86,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertTrue(mockDocument.pageCount > 0, "Document must have pages to display the preview bar")
     }
 
     func testPDFPreviewBar_compactWidth() {
@@ -91,6 +97,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
             .background(Color(UIColor.systemBackground))
 
         assertFixedSizeSnapshot(of: view, width: 320, height: 60)
+        XCTAssertEqual(mockDocument.pageCount, 10, "Page count must remain 10 regardless of view width")
     }
 
     // MARK: - TPPPDFNavigation Tests
@@ -107,6 +114,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
         .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertFalse(metadata.isBookmarked(), "Page 5 must not be bookmarked in this test scenario")
     }
 
     func testPDFNavigation_readerMode_bookmarked() {
@@ -121,6 +129,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
         .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertTrue(metadata.isBookmarked(), "Current page must be bookmarked for this test scenario")
     }
 
     func testPDFNavigation_previewsMode() {
@@ -135,6 +144,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
         .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertEqual(metadata.currentPage, 0, "Previews mode must start at the first page in this test")
     }
 
     func testPDFNavigation_tocMode() {
@@ -149,6 +159,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
         .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertTrue(metadata.bookmarks.isEmpty, "TOC mode test uses no bookmarks")
     }
 
     func testPDFNavigation_bookmarksMode() {
@@ -163,6 +174,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
         .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertEqual(metadata.bookmarks.count, 3, "Bookmarks mode must show all 3 bookmarked pages")
     }
 
     func testPDFNavigation_searchMode() {
@@ -177,6 +189,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
         .background(Color(UIColor.systemBackground))
 
         assertMultiDeviceSnapshot(of: view)
+        XCTAssertTrue(metadata.bookmarks.isEmpty, "Search mode test uses no bookmarks")
     }
 
     // MARK: - Dark Mode Tests
@@ -192,6 +205,7 @@ final class PDFViewsSnapshotTests: XCTestCase {
             .environment(\.colorScheme, .dark)
 
         assertFixedSizeSnapshot(of: view, width: 100, height: 120, userInterfaceStyle: .dark)
+        XCTAssertEqual(mockDocument.pageCount, 10, "Dark mode must not change the document page count")
     }
 
     func testPDFPreviewBar_darkMode() {
@@ -203,5 +217,6 @@ final class PDFViewsSnapshotTests: XCTestCase {
             .environment(\.colorScheme, .dark)
 
         assertFixedSizeSnapshot(of: view, width: 390, height: 60, userInterfaceStyle: .dark)
+        XCTAssertEqual(mockDocument.pageCount, 20, "Dark mode must not change the document page count")
     }
 }

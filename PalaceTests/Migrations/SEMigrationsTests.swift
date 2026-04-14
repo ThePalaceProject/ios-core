@@ -18,9 +18,12 @@ final class SEMigrationsTests: XCTestCase {
     func testRunMigrations_doesNotCrash() {
         // Running migrations on a test environment should not crash
         // even if no migrations need to run
+        let versionBefore = TPPSettings.shared.appVersion
         TPPMigrationManager.runMigrations()
-        // If we get here without crashing, the basic migration path is safe
+        // Settings must remain accessible and appVersion must be consistent
         XCTAssertNotNil(TPPSettings.shared, "Settings should still be accessible after migrations")
+        XCTAssertEqual(TPPSettings.shared.appVersion, versionBefore,
+                       "appVersion must be unchanged after migration run in test environment")
     }
 
     func testRunMigrations_withCurrentVersion_doesNotMigrate() {

@@ -177,6 +177,10 @@ final class AudiobookDataManagerModelsTests: XCTestCase {
         let responseData = ResponseData(data: data)
 
         XCTAssertNil(responseData)
+        // Also verify completely malformed binary data returns nil
+        let binaryData = Data([0xFF, 0xFE, 0x00])
+        XCTAssertNil(ResponseData(data: binaryData),
+                     "Binary garbage must also return nil from ResponseData(data:)")
     }
 
     func testResponseDataInit_fromData_emptyResponses() {
@@ -259,6 +263,9 @@ final class AudiobookDataManagerModelsTests: XCTestCase {
         let store = AudiobookDataManagerStore(data: invalidData)
 
         XCTAssertNil(store)
+        // Verify empty data also returns nil (boundary case)
+        XCTAssertNil(AudiobookDataManagerStore(data: Data()),
+                     "Empty data must also return nil from AudiobookDataManagerStore(data:)")
     }
 
     func testAudiobookDataManagerStoreJsonRepresentation() {

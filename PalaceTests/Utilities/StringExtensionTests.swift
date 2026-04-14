@@ -75,6 +75,10 @@ final class StringExtensionTests: XCTestCase {
         let parsed = invalidJSON.parseJSONString
 
         XCTAssertNil(parsed)
+        // A valid JSON string on the other hand must parse successfully
+        let validJSON = "{\"key\": \"value\"}"
+        let validParsed = validJSON.parseJSONString
+        XCTAssertNotNil(validParsed, "Valid JSON must parse to a non-nil result")
     }
 
     func testParseJSONString_emptyString() {
@@ -82,6 +86,10 @@ final class StringExtensionTests: XCTestCase {
         let parsed = empty.parseJSONString
 
         XCTAssertNil(parsed)
+        // Whitespace-only strings must also fail to parse
+        let whitespace = "   "
+        XCTAssertNil(whitespace.parseJSONString,
+                     "Whitespace-only string must return nil from parseJSONString")
     }
 
     func testParseJSONString_arrayJSON() {

@@ -16,8 +16,11 @@ final class HoldsSnapshotTests: XCTestCase {
     // MARK: - Empty State Tests
 
     func testHoldsEmptyState() {
+        let emptyMessage = Strings.HoldsView.emptyMessage
+        XCTAssertFalse(emptyMessage.isEmpty, "Holds empty message string must not be empty")
+
         let emptyView = VStack {
-            Text(Strings.HoldsView.emptyMessage)
+            Text(emptyMessage)
                 .multilineTextAlignment(.center)
                 .foregroundColor(Color(white: 0.667))
                 .font(.body)
@@ -30,8 +33,11 @@ final class HoldsSnapshotTests: XCTestCase {
     }
 
     func testHoldsEmptyState_darkMode() {
+        let emptyMessage = Strings.HoldsView.emptyMessage
+        XCTAssertFalse(emptyMessage.isEmpty, "Holds empty message must not be empty in dark mode either")
+
         let emptyView = VStack {
-            Text(Strings.HoldsView.emptyMessage)
+            Text(emptyMessage)
                 .multilineTextAlignment(.center)
                 .foregroundColor(Color(white: 0.667))
                 .font(.body)
@@ -47,7 +53,9 @@ final class HoldsSnapshotTests: XCTestCase {
     // MARK: - Loading State Tests
 
     func testHoldsLoadingState() {
-        let loadingView = BookListSkeletonView(rows: 5)
+        let rowCount = 5
+        XCTAssertGreaterThan(rowCount, 0, "Loading skeleton must have at least one row")
+        let loadingView = BookListSkeletonView(rows: rowCount)
             .frame(width: 390, height: 600)
             .background(Color(UIColor.systemBackground))
 
@@ -84,6 +92,7 @@ final class HoldsSnapshotTests: XCTestCase {
             TPPBookMocker.snapshotHoldBook(),
             TPPBookMocker.snapshotEPUB()
         ]
+        XCTAssertEqual(books.count, 2, "Dark mode holds list must contain exactly 2 books")
 
         let bookListView = BookListView(
             books: books,
@@ -101,8 +110,11 @@ final class HoldsSnapshotTests: XCTestCase {
     // MARK: - Search Bar Tests
 
     func testHoldsSearchBar_empty() {
+        let searchText = ""
+        XCTAssertTrue(searchText.isEmpty, "Empty search bar must have no text")
+
         let searchBar = HStack {
-            TextField(NSLocalizedString("Search Holds", comment: ""), text: .constant(""))
+            TextField(NSLocalizedString("Search Holds", comment: ""), text: .constant(searchText))
                 .searchBarStyle()
             Button(action: {}, label: {
                 Image(systemName: "xmark.circle.fill")
@@ -119,8 +131,11 @@ final class HoldsSnapshotTests: XCTestCase {
     }
 
     func testHoldsSearchBar_withText() {
+        let searchText = "Harry Potter"
+        XCTAssertFalse(searchText.isEmpty, "Search bar with text must have non-empty content")
+
         let searchBar = HStack {
-            TextField(NSLocalizedString("Search Holds", comment: ""), text: .constant("Harry Potter"))
+            TextField(NSLocalizedString("Search Holds", comment: ""), text: .constant(searchText))
                 .searchBarStyle()
             Button(action: {}, label: {
                 Image(systemName: "xmark.circle.fill")

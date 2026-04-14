@@ -22,22 +22,31 @@ final class BookAvailabilityFormatterTests: XCTestCase {
 
     func test_isDate_moreRecentThan_sameDate_notMoreRecent() {
         let date = "2026-03-30T12:00:00Z"
-        // date + 0 > date => false (not strictly greater)
-        // Actually: date + 0 = date, and > means strictly greater, so this is false
-        // Wait -- let me check: d1.addingTimeInterval(0) > d2 when d1 == d2 => false
         XCTAssertFalse(String.isDate(date, moreRecentThan: date, with: 0))
+        // Symmetry: comparing in both directions must both return false for same date
+        XCTAssertFalse(String.isDate(date, moreRecentThan: date, with: 0),
+                       "Same-date comparison is not strictly more recent in either direction")
+        // But with any positive delay it becomes true
+        XCTAssertTrue(String.isDate(date, moreRecentThan: date, with: 1),
+                      "Positive delay breaks the tie — date+1s > date")
     }
 
     func test_isDate_moreRecentThan_newerDate_isMoreRecent() {
         let newer = "2026-03-31T12:00:00Z"
         let older = "2026-03-30T12:00:00Z"
         XCTAssertTrue(String.isDate(newer, moreRecentThan: older, with: 0))
+        // Asymmetry: reversed comparison must be false
+        XCTAssertFalse(String.isDate(older, moreRecentThan: newer, with: 0),
+                       "Reversed comparison must be false — older is not more recent than newer")
     }
 
     func test_isDate_moreRecentThan_olderDate_notMoreRecent() {
         let older = "2026-03-29T12:00:00Z"
         let newer = "2026-03-30T12:00:00Z"
         XCTAssertFalse(String.isDate(older, moreRecentThan: newer, with: 0))
+        // Opposite direction must be true
+        XCTAssertTrue(String.isDate(newer, moreRecentThan: older, with: 0),
+                      "newer is more recent than older")
     }
 
     func test_isDate_withPositiveDelay_makesOlderDatePassAsNewer() {
@@ -46,6 +55,9 @@ final class BookAvailabilityFormatterTests: XCTestCase {
         // Formula: older + 10 > newer => (older + 10s) > (older + 5s) => true
         XCTAssertTrue(String.isDate(older, moreRecentThan: newer, with: 10),
                       "With sufficient delay, even an older date passes the 'more recent' check")
+        // With exact matching delay the older+delay == newer+0, so still false (not strictly greater)
+        XCTAssertFalse(String.isDate(older, moreRecentThan: newer, with: 5),
+                       "Delay equal to the gap makes them equal — not strictly more recent")
     }
 
     func test_isDate_withInsufficientDelay_olderDateStillFails() {
@@ -54,6 +66,9 @@ final class BookAvailabilityFormatterTests: XCTestCase {
         // Formula: older + 10 > newer => (older + 10s) > (older + 15s) => false
         XCTAssertFalse(String.isDate(older, moreRecentThan: newer, with: 10),
                        "With insufficient delay, an older date still fails")
+        // Sufficient delay flips the result
+        XCTAssertTrue(String.isDate(older, moreRecentThan: newer, with: 20),
+                      "Delay exceeding the gap must make the older date 'more recent'")
     }
 
     func test_isDate_newerDateWithDelay_alwaysPasses() {
@@ -61,6 +76,9 @@ final class BookAvailabilityFormatterTests: XCTestCase {
         let older = "2026-03-30T12:00:00Z"
         // newer + 10 > older => obviously true
         XCTAssertTrue(String.isDate(newer, moreRecentThan: older, with: 10))
+        // Even delay of 0 is sufficient when newer > older
+        XCTAssertTrue(String.isDate(newer, moreRecentThan: older, with: 0),
+                      "A genuinely newer date passes regardless of delay")
     }
 
     func test_isDate_invalidDateStrings_returnsFalse() {
@@ -72,6 +90,9 @@ final class BookAvailabilityFormatterTests: XCTestCase {
     func test_isDate_emptyStrings_returnsFalse() {
         XCTAssertFalse(String.isDate("", moreRecentThan: "2026-03-30T12:00:00Z", with: 0))
         XCTAssertFalse(String.isDate("2026-03-30T12:00:00Z", moreRecentThan: "", with: 0))
+        // Both empty also fails
+        XCTAssertFalse(String.isDate("", moreRecentThan: "", with: 100),
+                       "Empty strings with large delay must still return false")
     }
 
     func test_isDate_sameTimestamp_withSmallDelay_returnsTrue() {
@@ -79,6 +100,9 @@ final class BookAvailabilityFormatterTests: XCTestCase {
         // date + 1 > date => true (strictly greater by 1 second)
         XCTAssertTrue(String.isDate(date, moreRecentThan: date, with: 1),
                       "Same timestamp with positive delay should be considered 'more recent'")
+        // delay of 0 must be false for same timestamp
+        XCTAssertFalse(String.isDate(date, moreRecentThan: date, with: 0),
+                       "Zero delay with same timestamp must not be 'more recent'")
     }
 
     func test_isDate_negativeDelay_makesNewerDateFail() {
@@ -87,6 +111,9 @@ final class BookAvailabilityFormatterTests: XCTestCase {
         // newer + (-5) > older => (newer - 5s) > older => (older - 2s) > older => false
         XCTAssertFalse(String.isDate(newer, moreRecentThan: older, with: -5),
                        "Negative delay makes dates appear older")
+        // But with zero delay the newer is still newer
+        XCTAssertTrue(String.isDate(newer, moreRecentThan: older, with: 0),
+                      "Without negative delay, newer date remains more recent")
     }
 
     // MARK: - Boundary Conditions
@@ -109,6 +136,9 @@ final class BookAvailabilityFormatterTests: XCTestCase {
         let endOfYear = "2025-12-31T23:59:59Z"
         let startOfYear = "2026-01-01T00:00:00Z"
         XCTAssertTrue(String.isDate(startOfYear, moreRecentThan: endOfYear, with: 0))
+        // Reversed: year-end is not more recent than year-start
+        XCTAssertFalse(String.isDate(endOfYear, moreRecentThan: startOfYear, with: 0),
+                       "End of 2025 must not be more recent than start of 2026")
     }
 
     // MARK: - Sync Decision Matrix
@@ -117,10 +147,13 @@ final class BookAvailabilityFormatterTests: XCTestCase {
 
     func test_syncDecision_localNilRemoteNil_noSync() {
         // When both are nil, no operation should happen
-        // This matches: localPosition == nil && remotePosition == nil
-        // remoteLocationIsNewer = false (since localPosition == nil but remotePosition is also nil)
         let remoteIsNewer = (true == false) // localPosition == nil && remotePosition != nil
         XCTAssertFalse(remoteIsNewer)
+        // Verify the logic: nil && nil produces false
+        let localPosition: String? = nil
+        let remotePosition: String? = nil
+        XCTAssertFalse(localPosition == nil && remotePosition != nil,
+                       "Both nil must not trigger sync")
     }
 
     func test_syncDecision_localNilRemoteExists_remoteIsNewer() {
@@ -129,6 +162,10 @@ final class BookAvailabilityFormatterTests: XCTestCase {
         let remotePosition: String? = "2026-03-30T12:00:00Z"
         let remoteIsNewer = localPosition == nil && remotePosition != nil
         XCTAssertTrue(remoteIsNewer)
+        // Sanity: with local filled in, the condition flips
+        let localFilled: String? = "2026-03-30T11:00:00Z"
+        XCTAssertFalse(localFilled == nil && remotePosition != nil,
+                       "Non-nil local must not satisfy the nil-local condition")
     }
 
     func test_syncDecision_localExistsRemoteNil_localIsUsed() {
@@ -137,6 +174,9 @@ final class BookAvailabilityFormatterTests: XCTestCase {
         let remotePosition: String? = nil
         let remoteIsNewer = localPosition == nil && remotePosition != nil
         XCTAssertFalse(remoteIsNewer)
+        // Confirm neither individual sub-condition is true
+        XCTAssertFalse(localPosition == nil, "Local must not be nil in this scenario")
+        XCTAssertFalse(remotePosition != nil, "Remote must be nil in this scenario")
     }
 
     func test_syncDecision_bothExist_remoteNewer_promptsSync() {

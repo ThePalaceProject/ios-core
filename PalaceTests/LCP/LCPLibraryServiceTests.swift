@@ -231,7 +231,6 @@ final class LCPLibraryServiceTests: XCTestCase {
     func testInit_createsInstance() {
         #if LCP
         let service = LCPLibraryService()
-        XCTAssertNotNil(service)
         // Verify the service is properly initialized with expected properties
         XCTAssertEqual(service.licenseExtension, "lcpl",
                        "Service should have lcpl as the license extension")
@@ -247,8 +246,6 @@ final class LCPLibraryServiceTests: XCTestCase {
         let service1 = LCPLibraryService()
         let service2 = LCPLibraryService()
 
-        XCTAssertNotNil(service1)
-        XCTAssertNotNil(service2)
         XCTAssertFalse(service1 === service2)
         // Both should have the same license extension (same configuration)
         XCTAssertEqual(service1.licenseExtension, service2.licenseExtension,
@@ -306,6 +303,8 @@ final class DRMFulfilledPublicationTests: XCTestCase {
         let publication = DRMFulfilledPublication(localURL: url, suggestedFilename: "test.epub")
 
         XCTAssertEqual(publication.localURL, url)
+        XCTAssertEqual(publication.localURL.lastPathComponent, "test.epub",
+                       "localURL.lastPathComponent must match the filename in the path")
     }
 
     func testDRMFulfilledPublication_storesSuggestedFilename() {
@@ -313,6 +312,8 @@ final class DRMFulfilledPublicationTests: XCTestCase {
         let publication = DRMFulfilledPublication(localURL: url, suggestedFilename: "mybook.epub")
 
         XCTAssertEqual(publication.suggestedFilename, "mybook.epub")
+        XCTAssertFalse(publication.suggestedFilename.isEmpty,
+                       "suggestedFilename must not be empty when initialized with a non-empty string")
     }
 
     func testDRMFulfilledPublication_localURLIsCorrect() {
@@ -328,6 +329,9 @@ final class DRMFulfilledPublicationTests: XCTestCase {
         let publication = DRMFulfilledPublication(localURL: url, suggestedFilename: "")
 
         XCTAssertEqual(publication.suggestedFilename, "")
+        // localURL must not be affected by an empty filename
+        XCTAssertEqual(publication.localURL, url,
+                       "localURL must remain unchanged when suggestedFilename is empty")
     }
 
     func testDRMFulfilledPublication_withLongFilename() {
@@ -336,6 +340,8 @@ final class DRMFulfilledPublicationTests: XCTestCase {
         let publication = DRMFulfilledPublication(localURL: url, suggestedFilename: longFilename)
 
         XCTAssertEqual(publication.suggestedFilename, longFilename)
+        XCTAssertEqual(publication.suggestedFilename.count, longFilename.count,
+                       "Long filename must be stored verbatim without truncation")
     }
 
     func testDRMFulfilledPublication_withSpecialCharacters() {
@@ -344,5 +350,7 @@ final class DRMFulfilledPublicationTests: XCTestCase {
         let publication = DRMFulfilledPublication(localURL: url, suggestedFilename: specialFilename)
 
         XCTAssertEqual(publication.suggestedFilename, specialFilename)
+        XCTAssertTrue(publication.suggestedFilename.contains("'"),
+                      "Special characters including apostrophes must be preserved verbatim")
     }
 }
