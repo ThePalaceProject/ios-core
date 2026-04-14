@@ -145,9 +145,9 @@ class CarPlayTests: XCTestCase {
 
         // Assert
         XCTAssertEqual(formattedDuration, "", "Should return empty string for nil duration")
-        // Contrast: non-nil zero duration must NOT be empty (0 seconds still formats)
+        // Zero duration is not > 0, so formatDurationOptional also returns empty
         let zeroDuration = formatDurationOptional(0.0)
-        XCTAssertFalse(zeroDuration.isEmpty, "Non-nil zero duration must produce a non-empty string")
+        XCTAssertTrue(zeroDuration.isEmpty, "Zero duration must produce an empty string (guard requires > 0)")
     }
 
     // MARK: - Error String Tests

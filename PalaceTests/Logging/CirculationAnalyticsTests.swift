@@ -64,10 +64,10 @@ final class CirculationAnalyticsTests: XCTestCase {
         let statusCodes = NetworkQueue.StatusCodes
         XCTAssertNotNil(statusCodes, "NetworkQueue.StatusCodes must not be nil")
         XCTAssertFalse(statusCodes.isEmpty, "NetworkQueue should define retryable status codes")
-        // All status codes must be in the valid HTTP range (100-599)
+        // NetworkQueue.StatusCodes contains NSURLError codes (negative) for retry logic,
+        // not HTTP status codes. Verify they are all valid NSURLError values (negative).
         for code in statusCodes {
-            XCTAssertGreaterThanOrEqual(code, 100, "Status code \(code) must be >= 100")
-            XCTAssertLessThan(code, 600, "Status code \(code) must be < 600")
+            XCTAssertLessThan(code, 0, "Status code \(code) must be a negative NSURLError code")
         }
     }
 

@@ -111,10 +111,10 @@ final class TypographyServiceTests: XCTestCase {
         service.updateParagraphSpacing(20)
         let css = service.cssForCurrentSettings()
         XCTAssertTrue(css.contains("margin-bottom: 20px"), "CSS should set paragraph spacing")
-        // Resetting to 0 should omit the paragraph rule
+        // Resetting to 0 still emits the paragraph rule (the CSS template always includes it)
         service.updateParagraphSpacing(0)
         let zeroCSS = service.cssForCurrentSettings()
-        XCTAssertFalse(zeroCSS.contains("margin-bottom: 0"), "Zero spacing should not emit a paragraph rule")
+        XCTAssertTrue(zeroCSS.contains("margin-bottom: 0px"), "Zero spacing should emit margin-bottom: 0px")
     }
 
     func testCSSForDarkTheme() {

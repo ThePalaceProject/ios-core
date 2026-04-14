@@ -42,17 +42,13 @@ final class FocusIndicationTests: XCTestCase {
         XCTAssertEqual(roundedCanFocus, systemCanFocus,
             "TPPRoundedButton must not change the system's default focus behaviour")
 
-        // Assert — accessibility element flag is set so VoiceOver can reach the button
-        XCTAssertTrue(systemButton.isAccessibilityElement,
-            "UIButton must be an accessibility element by default")
+        // TPPRoundedButton explicitly configures accessibility in its init, so these
+        // properties are reliable even in a headless test environment.
+        // (UIButton(type:.system) does NOT set these without a live accessibility hierarchy.)
         XCTAssertTrue(roundedButton.isAccessibilityElement,
-            "TPPRoundedButton must be an accessibility element")
-
-        // Assert — both buttons carry the .button trait (required for VoiceOver "double-tap to activate" hint)
-        XCTAssertTrue(systemButton.accessibilityTraits.contains(.button),
-            "UIButton must have the .button accessibility trait")
+            "TPPRoundedButton must explicitly set isAccessibilityElement = true")
         XCTAssertTrue(roundedButton.accessibilityTraits.contains(.button),
-            "TPPRoundedButton must have the .button accessibility trait")
+            "TPPRoundedButton must explicitly set .button accessibility trait")
     }
 
     /// AC1.2: Focus visible in light mode - contrast check

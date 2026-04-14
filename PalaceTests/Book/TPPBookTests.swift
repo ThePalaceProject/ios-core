@@ -270,7 +270,7 @@ final class TPPBookTests: XCTestCase {
     }
 
     func test_narrators_nilWhenNoContributors() {
-        let book = makeBook(contributors: nil)
+        let book = makeBook(authors: nil, contributors: nil)
         XCTAssertNil(book.narrators)
         XCTAssertNil(book.authors, "authors must also be nil when no authors or contributors provided")
     }

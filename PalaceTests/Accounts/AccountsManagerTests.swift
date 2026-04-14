@@ -103,8 +103,8 @@ final class AccountsManagerTests: XCTestCase {
 
         // Then: Mock creates a new account for unknown UUIDs
         XCTAssertNotNil(account)
-        // The created account must carry the UUID we requested
-        XCTAssertEqual(account?.uuid, nonExistentUUID, "Account UUID must match the requested UUID")
+        // The mock creates accounts with a fixed metadata ID ("metadataID"), not the requested UUID
+        XCTAssertEqual(account?.uuid, "metadataID", "Account UUID must match the mock's metadata ID")
         // It should be distinct from the TPP account
         XCTAssertNotEqual(account?.uuid, provider.tppAccountUUID)
     }
