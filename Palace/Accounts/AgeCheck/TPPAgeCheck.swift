@@ -25,7 +25,7 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
 @objcMembers final class TPPAgeCheck: NSObject, TPPAgeCheckValidationDelegate, TPPAgeCheckVerifying {
 
     // Members
-    private let serialQueue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier!).ageCheck")
+    private let serialQueue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier ?? "org.thepalaceproject.palace").ageCheck")
     private var handlerList = [((Bool) -> ())]()
     private var isPresenting = false
     private let ageCheckChoiceStorage: TPPAgeCheckChoiceStorage

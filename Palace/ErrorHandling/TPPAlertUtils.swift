@@ -118,8 +118,8 @@ import UIKit
      @return the alert
      */
     class func alert(title: String?, message: String?, style: UIAlertAction.Style) -> UIAlertController {
-        let alertTitle = (title?.count ?? 0) > 0 ? NSLocalizedString(title!, comment: "") : "Alert"
-        let alertMessage = (message?.count ?? 0) > 0 ? NSLocalizedString(message!, comment: "") : ""
+        let alertTitle = title.flatMap({ $0.isEmpty ? nil : NSLocalizedString($0, comment: "") }) ?? "Alert"
+        let alertMessage = message.flatMap({ $0.isEmpty ? nil : NSLocalizedString($0, comment: "") }) ?? ""
         let alertController = UIAlertController.init(
             title: alertTitle,
             message: alertMessage,

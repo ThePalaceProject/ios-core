@@ -198,7 +198,10 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
                               userInfo: [NSLocalizedDescriptionKey: "Request timed out after \(seconds) seconds"])
             }
 
-            let result = try await group.next()!
+            guard let result = try await group.next() else {
+                throw NSError(domain: NSURLErrorDomain, code: NSURLErrorUnknown,
+                              userInfo: [NSLocalizedDescriptionKey: "No result from task group"])
+            }
             group.cancelAll()
             return result
         }

@@ -50,7 +50,13 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
 
     public init(cacheName: String = "GeneralCache", mode: CachingMode = .memoryAndDisk) {
         self.mode = mode
-        let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        guard let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            cacheDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(cacheName, isDirectory: true)
+            try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+            configureCacheLimits()
+            setupMemoryWarningHandler()
+            return
+        }
         cacheDirectory = cachesDir.appendingPathComponent(cacheName, isDirectory: true)
         try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
 
@@ -282,7 +288,7 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
 
     public static func clearAllCaches() {
         let fileManager = FileManager.default
-        let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        guard let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
         do {
             let contents = try fileManager.contentsOfDirectory(at: cachesDir, includingPropertiesForKeys: nil)
             for url in contents {

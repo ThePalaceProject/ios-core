@@ -495,7 +495,7 @@ protocol AccountLogoDelegate: AnyObject {
             }
         }
         authenticationDocumentUrl = publication.links.first(where: { $0.type == "application/vnd.opds.authentication.v1.0+json" })?.href
-        logo = UIImage(named: "LibraryLogoMagic")!
+        logo = UIImage(named: "LibraryLogoMagic") ?? UIImage()
         homePageUrl = publication.links.first(where: { $0.rel == "alternate" })?.href
         logoUrl = publication.thumbnailURL
         self.imageCache = imageCache

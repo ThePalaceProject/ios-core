@@ -45,7 +45,12 @@ public struct CatalogFeed {
         } else {
             // Fallback: parse with an absolute minimal feed
             let fallback = "<feed xmlns=\"http://www.w3.org/2005/Atom\"><id>x</id><title>Catalog</title><updated>2000-01-01T00:00:00Z</updated></feed>"
-            self.opdsFeed = TPPOPDSFeed(xml: TPPXML.xml(withData: fallback.data(using: .utf8)))!
+            guard let fallbackData = fallback.data(using: .utf8),
+                  let fallbackXML = TPPXML.xml(withData: fallbackData),
+                  let fallbackFeed = TPPOPDSFeed(xml: fallbackXML) else {
+                fatalError("Failed to create OPDS feed from static Atom XML literal")
+            }
+            self.opdsFeed = fallbackFeed
         }
 
         let allPubs = opds2Feed.groups?.flatMap { $0.publications ?? [] }

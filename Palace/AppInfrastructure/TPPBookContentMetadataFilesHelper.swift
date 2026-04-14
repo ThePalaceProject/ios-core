@@ -21,7 +21,12 @@ import Foundation
             return nil
         }
 
-        let bundleID = Bundle.main.object(forInfoDictionaryKey: "CFBundleIdentifier") as! String
+        guard let bundleID = Bundle.main.object(forInfoDictionaryKey: "CFBundleIdentifier") as? String else {
+            TPPErrorLogger.logError(withCode: .missingSystemPaths,
+                                    summary: "CFBundleIdentifier missing from Info.plist",
+                                    metadata: ["account": account])
+            return nil
+        }
         var dirURL = URL(fileURLWithPath: paths[0]).appendingPathComponent(bundleID)
 
         if account != AccountsManager.TPPAccountUUIDs[0] {

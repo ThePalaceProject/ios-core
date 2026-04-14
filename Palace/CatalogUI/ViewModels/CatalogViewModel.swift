@@ -123,7 +123,7 @@ final class CatalogViewModel: ObservableObject {
   func forceRefresh() async {
     Log.info(#file, "Force refreshing catalog...")
     
-    repository.invalidateCache(for: topLevelURLProvider() ?? URL(string: "about:blank")!)
+    repository.invalidateCache(for: topLevelURLProvider() ?? URL(string: "about:blank") ?? URL(fileURLWithPath: "/"))
     URLCache.shared.removeAllCachedResponses()
     
     lastLoadedURL = nil

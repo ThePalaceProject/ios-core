@@ -54,11 +54,11 @@ extension TPPConfiguration {
     }
 
     @objc static func iconLogoBlueColor() -> UIColor {
-        UIColor(named: "ColorIconLogoBlue")!
+        UIColor(named: "ColorIconLogoBlue") ?? .systemBlue
     }
 
     @objc static func audiobookIconColor() -> UIColor {
-        UIColor(named: "ColorAudiobookBackground")!
+        UIColor(named: "ColorAudiobookBackground") ?? .systemGray
     }
 
     @objc static func iconLogoGreenColor() -> UIColor {
@@ -71,7 +71,7 @@ extension TPPConfiguration {
 
     @objc static func iconColor() -> UIColor {
         if #available(iOS 13, *) {
-            return UIColor(named: "ColorIcon")!
+            return UIColor(named: "ColorIcon") ?? .black
         } else {
             return .black
         }
@@ -87,7 +87,7 @@ extension TPPConfiguration {
 
     @objc static func compatibleTextColor() -> UIColor {
         if #available(iOS 13, *) {
-            return UIColor(named: "ColorInverseLabel")!
+            return UIColor(named: "ColorInverseLabel") ?? .white
         } else {
             return .white
         }

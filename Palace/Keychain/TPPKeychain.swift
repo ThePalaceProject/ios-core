@@ -57,7 +57,10 @@ import Security
         Log.log("Failed to UPDATE secure values to keychain. This is a known issue when running from the debugger. Error: \(status)")
       }
     } else {
-      let newItemDictionary = queryDictionary.mutableCopy() as! NSMutableDictionary
+      guard let newItemDictionary = queryDictionary.mutableCopy() as? NSMutableDictionary else {
+        Log.log("Failed to copy keychain query dictionary")
+        return
+      }
       newItemDictionary[kSecValueData] = valueData
       newItemDictionary[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlock
       let status = SecItemAdd(newItemDictionary, nil)

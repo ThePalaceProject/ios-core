@@ -98,7 +98,9 @@ class DLNavigator {
     private func callOnce(on name: Notification.Name, block: @escaping (_ notification: Notification) -> Void) {
         var token: NSObjectProtocol?
         token = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { notification in
-            NotificationCenter.default.removeObserver(token!, name: name, object: nil)
+            if let token = token {
+                NotificationCenter.default.removeObserver(token, name: name, object: nil)
+            }
             block(notification)
         }
     }

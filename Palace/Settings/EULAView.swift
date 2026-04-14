@@ -23,13 +23,18 @@ struct EULAView: View {
     @State private var errorMessage: String?
     @Environment(\.dismiss) private var dismiss
 
+    // swiftlint:disable:next force_unwrapping
+    private static let fallbackEULAURL = URL(string: "https://thepalaceproject.org")!
+
     init(account: Account) {
-        eulaURL = account.details?.getLicenseURL(.eula) ?? URL(string: TPPSettings.TPPUserAgreementURLString)!
+        eulaURL = account.details?.getLicenseURL(.eula)
+            ?? URL(string: TPPSettings.TPPUserAgreementURLString)
+            ?? Self.fallbackEULAURL
         title = Strings.Settings.eula
     }
 
     init(nyplURL: Bool = true) {
-        eulaURL = URL(string: TPPSettings.TPPUserAgreementURLString)!
+        eulaURL = URL(string: TPPSettings.TPPUserAgreementURLString) ?? Self.fallbackEULAURL
         title = Strings.Settings.eula
     }
 

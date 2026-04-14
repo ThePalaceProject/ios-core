@@ -56,7 +56,7 @@ extension NSDate {
 
   @objc func utcComponents() -> DateComponents {
     var calendar = Calendar(identifier: .iso8601)
-    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
     return calendar.dateComponents(
       [.era, .year, .month, .day, .hour, .minute, .second, .weekday, .weekdayOrdinal,
        .quarter, .weekOfMonth, .weekOfYear, .yearForWeekOfYear, .nanosecond, .calendar, .timeZone],

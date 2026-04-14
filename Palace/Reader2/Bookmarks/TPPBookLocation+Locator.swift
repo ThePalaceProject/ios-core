@@ -94,7 +94,7 @@ extension TPPBookLocation {
             progression: dict[TPPBookLocation.chapterProgressKey] as? Double,
             totalProgression: dict[TPPBookLocation.bookProgressKey] as? Double,
             position: position,
-            otherLocations: dict[TPPBookLocation.cssSelector] != nil ? [TPPBookLocation.cssSelector: dict[TPPBookLocation.cssSelector]!] : [:]
+            otherLocations: dict[TPPBookLocation.cssSelector].map { [TPPBookLocation.cssSelector: $0] } ?? [:]
         )
 
         return Locator(

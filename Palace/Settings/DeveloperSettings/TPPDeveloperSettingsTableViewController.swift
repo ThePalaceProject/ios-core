@@ -79,7 +79,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     // MARK: - UITableViewDataSource
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        switch Section(rawValue: section)! {
+        guard let sectionType = Section(rawValue: section) else { return 0 }
+        switch sectionType {
         case .librarySettings: return 2
         case .developerTools: return 2
         case .pushNotificationTesting: return 3
@@ -108,7 +109,10 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        switch Section(rawValue: indexPath.section)! {
+        guard let sectionType = Section(rawValue: indexPath.section) else {
+            return UITableViewCell()
+        }
+        switch sectionType {
         case .librarySettings:
             switch indexPath.row {
             case 0: return cellForBetaLibraries()
@@ -157,7 +161,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        switch Section(rawValue: section)! {
+        guard let sectionType = Section(rawValue: section) else { return nil }
+        switch sectionType {
         case .librarySettings:
             return "Library Settings"
         case .libraryRegistryDebugging:
@@ -193,7 +198,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     private func cellForBetaLibraries() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: betaLibraryCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: betaLibraryCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(betaLibraryCellIdentifier)")
+        }
         cell.selectionStyle = .none
         cell.textLabel?.text = "Enable Hidden Libraries"
         cell.accessoryView = createSwitch(isOn: settings.useBetaLibraries, action: #selector(librarySwitchDidChange))
@@ -201,7 +208,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     private func cellForLCPPassphrase() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: lcpPassphraseCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: lcpPassphraseCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(lcpPassphraseCellIdentifier)")
+        }
         cell.selectionStyle = .none
         cell.textLabel?.text = "Enter LCP Passphrase Manually"
         cell.textLabel?.adjustsFontSizeToFitWidth = true
@@ -217,14 +226,18 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     private func cellForClearCache() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: clearCacheCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: clearCacheCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(clearCacheCellIdentifier)")
+        }
         cell.selectionStyle = .none
         cell.textLabel?.text = "Clear Cached Data"
         return cell
     }
 
     private func cellForSendErrorLogs() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: sendErrorLogsCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: sendErrorLogsCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(sendErrorLogsCellIdentifier)")
+        }
         cell.selectionStyle = .default
         cell.textLabel?.text = "Send Error Logs"
 
@@ -244,7 +257,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     private func cellForEmailAudiobookLogs() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: emailLogsCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: emailLogsCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(emailLogsCellIdentifier)")
+        }
         cell.selectionStyle = .default
         cell.textLabel?.text = "Email Audiobook Logs"
         cell.accessoryType = .disclosureIndicator
@@ -257,7 +272,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     private func cellForIncrementalSpeedSlider() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(incrementalSpeedSliderCellIdentifier)")
+        }
         cell.selectionStyle = .none
         cell.textLabel?.text = "Incremental Speed Slider"
         cell.textLabel?.adjustsFontSizeToFitWidth = true
@@ -273,7 +290,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     private func cellForBadgeLogging() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: badgeLoggingCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: badgeLoggingCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(badgeLoggingCellIdentifier)")
+        }
         cell.selectionStyle = .none
         cell.textLabel?.text = "Enable Badge Logging"
         cell.accessoryView = createSwitch(
@@ -297,7 +316,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
     #else
     private func cellForIncrementalSpeedSlider() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(incrementalSpeedSliderCellIdentifier)")
+        }
         cell.selectionStyle = .none
         cell.textLabel?.text = "Incremental Speed Slider"
         cell.textLabel?.adjustsFontSizeToFitWidth = true
