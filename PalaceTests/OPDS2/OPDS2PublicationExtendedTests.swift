@@ -18,30 +18,52 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
 
     func testRelationFromGenericAcquisition() {
         XCTAssertEqual(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition"), .generic)
+        // Must differ from all non-generic relation types
+        XCTAssertNotEqual(TPPOPDSAcquisitionRelation.generic, .borrow)
+        XCTAssertNotEqual(TPPOPDSAcquisitionRelation.generic, .openAccess)
     }
 
     func testRelationFromOpenAccess() {
         XCTAssertEqual(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/open-access"), .openAccess)
+        // open-access and borrow are distinct relations
+        XCTAssertNotEqual(TPPOPDSAcquisitionRelation.openAccess, .borrow)
+        XCTAssertNotEqual(TPPOPDSAcquisitionRelation.openAccess, .generic)
     }
 
     func testRelationFromBorrow() {
         XCTAssertEqual(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/borrow"), .borrow)
+        // borrow must map to the right enum case and not to buy or sample
+        XCTAssertNotEqual(TPPOPDSAcquisitionRelation.borrow, .buy)
+        XCTAssertNotEqual(TPPOPDSAcquisitionRelation.borrow, .sample)
     }
 
     func testRelationFromBuy() {
         XCTAssertEqual(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/buy"), .buy)
+        XCTAssertNotEqual(TPPOPDSAcquisitionRelation.buy, .borrow)
+        XCTAssertNotEqual(TPPOPDSAcquisitionRelation.buy, .openAccess)
     }
 
     func testRelationFromSample() {
         XCTAssertEqual(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/sample"), .sample)
+        // "sample" rel and "preview" rel must both map to .sample
+        XCTAssertEqual(OPDS2BookBridge.relation(from: "preview"), .sample)
+        XCTAssertNotEqual(TPPOPDSAcquisitionRelation.sample, .borrow)
     }
 
     func testRelationFromSubscribe() {
         XCTAssertEqual(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/subscribe"), .subscribe)
+        XCTAssertNotEqual(TPPOPDSAcquisitionRelation.subscribe, .borrow)
+        XCTAssertNotEqual(TPPOPDSAcquisitionRelation.subscribe, .buy)
     }
 
     func testRelationFromPreview() {
         XCTAssertEqual(OPDS2BookBridge.relation(from: "preview"), .sample)
+        // Verify consistency: "preview" and "sample" rel both map to the same enum case
+        XCTAssertEqual(
+            OPDS2BookBridge.relation(from: "preview"),
+            OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/sample"),
+            "preview and sample rels must map to the same relation"
+        )
     }
 
     func testRelationFromNonAcquisitionRel() {
@@ -52,15 +74,24 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
 
     func testRelationFromRevokeRelIsNil() {
         XCTAssertNil(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/revoke"))
+        // Revoke must not map to any acquisition relation
+        XCTAssertNil(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/revoke"),
+                     "Revoke rel must consistently return nil")
     }
 
     func testRelationFromIssuesRelIsNil() {
         XCTAssertNil(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/issues"))
+        // Issues and revoke must both be nil (they are excluded from acquisition relations)
+        XCTAssertNil(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/revoke"),
+                     "Revoke and issues must both return nil")
     }
 
     func testRelationFromUnknownAcquisitionSubtype() {
         // Unknown acquisition subtypes that aren't revoke/issues should map to .generic
         XCTAssertEqual(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/custom"), .generic)
+        // Multiple unknown subtypes must all map to .generic
+        XCTAssertEqual(OPDS2BookBridge.relation(from: "http://opds-spec.org/acquisition/special"), .generic,
+                       "Any unknown acquisition subtype must map to .generic")
     }
 
     // MARK: - convertAvailability Tests
@@ -68,6 +99,8 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
     func testConvertAvailabilityNil() {
         let result = OPDS2BookBridge.convertAvailability(availability: nil, copies: nil, holds: nil)
         XCTAssertTrue(result is TPPOPDSAcquisitionAvailabilityUnlimited)
+        XCTAssertFalse(result is TPPOPDSAcquisitionAvailabilityLimited)
+        XCTAssertFalse(result is TPPOPDSAcquisitionAvailabilityUnavailable)
     }
 
     func testConvertAvailabilityUnavailable() {
@@ -92,6 +125,9 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
 
         let result = OPDS2BookBridge.convertAvailability(availability: avail, copies: nil, holds: nil)
         XCTAssertTrue(result is TPPOPDSAcquisitionAvailabilityUnlimited)
+        // Without copy counts, the resource must be freely available (unlimited)
+        XCTAssertFalse(result is TPPOPDSAcquisitionAvailabilityLimited,
+                       "Available state with no copies must not be Limited")
     }
 
     func testConvertAvailabilityReserved() {
@@ -100,6 +136,9 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
 
         let result = OPDS2BookBridge.convertAvailability(availability: avail, copies: nil, holds: holds)
         XCTAssertTrue(result is TPPOPDSAcquisitionAvailabilityReserved)
+        // The hold position must be preserved
+        let reserved = result as? TPPOPDSAcquisitionAvailabilityReserved
+        XCTAssertEqual(reserved?.holdPosition, 2, "Hold position must be preserved from OPDS2Holds")
     }
 
     func testConvertAvailabilityReservedWithZeroPosition() {

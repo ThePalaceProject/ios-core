@@ -59,7 +59,11 @@ final class TPPKeychainSwiftTests: XCTestCase {
 
   func test_removeObjectForKey_nonexistentKey_doesNotCrash() {
     // Should not throw or crash
-    TPPKeychain.shared.removeObject(forKey: "nonexistent_key_\(UUID().uuidString)")
+    let nonExistentKey = "nonexistent_key_\(UUID().uuidString)"
+    TPPKeychain.shared.removeObject(forKey: nonExistentKey)
+    // After removing a nonexistent key, reading it should still return nil
+    let result = TPPKeychain.shared.object(forKey: nonExistentKey)
+    XCTAssertNil(result, "Reading a nonexistent (just-removed) key should return nil")
   }
 
   // MARK: - Missing Keys
@@ -91,5 +95,8 @@ final class TPPKeychainSwiftTests: XCTestCase {
     }
 
     waitForExpectations(timeout: 10)
+    // After all concurrent writes, the final value should be readable (not corrupted/nil)
+    let finalValue = TPPKeychain.shared.object(forKey: testKey1)
+    XCTAssertNotNil(finalValue, "After concurrent writes, keychain should have a readable value (not corrupted)")
   }
 }

@@ -126,27 +126,55 @@ final class AccessibilityPreferencesTests: XCTestCase {
 
     // MARK: - Boolean Preference Toggles
 
-    func testReducedMotion_Toggle() {
+    func testReducedMotion_WhenEnabled_RoundTripsThroughCodable() throws {
+        // Arrange: start with default (reducedMotion = false)
         var prefs = AccessibilityPreferences()
-        XCTAssertFalse(prefs.reducedMotion)
+        XCTAssertFalse(prefs.reducedMotion, "Precondition: reducedMotion defaults to false")
+
+        // Act: enable reducedMotion and encode/decode
         prefs.reducedMotion = true
-        XCTAssertTrue(prefs.reducedMotion)
-        prefs.reducedMotion = false
-        XCTAssertFalse(prefs.reducedMotion)
+        let data = try JSONEncoder().encode(prefs)
+        let decoded = try JSONDecoder().decode(AccessibilityPreferences.self, from: data)
+
+        // Assert: the mutation survives a codable round-trip
+        XCTAssertTrue(decoded.reducedMotion,
+                      "reducedMotion=true must survive a JSON encode/decode round-trip")
+        XCTAssertNotEqual(decoded, AccessibilityPreferences.default,
+                          "Prefs with reducedMotion=true must differ from the default")
     }
 
-    func testHighContrastBoost_Toggle() {
+    func testHighContrastBoost_WhenEnabled_MakesPrefsUnequalToDefault() throws {
+        // Arrange: start with defaults
         var prefs = AccessibilityPreferences()
-        XCTAssertFalse(prefs.highContrastBoost)
+        XCTAssertFalse(prefs.highContrastBoost, "Precondition: highContrastBoost defaults to false")
+
+        // Act: enable highContrastBoost and encode/decode
         prefs.highContrastBoost = true
-        XCTAssertTrue(prefs.highContrastBoost)
+        let data = try JSONEncoder().encode(prefs)
+        let decoded = try JSONDecoder().decode(AccessibilityPreferences.self, from: data)
+
+        // Assert: the flag survived the round-trip and breaks equality with default
+        XCTAssertTrue(decoded.highContrastBoost,
+                      "highContrastBoost=true must survive JSON encode/decode")
+        XCTAssertNotEqual(decoded, AccessibilityPreferences.default,
+                          "High-contrast prefs must not be equal to defaults")
     }
 
-    func testButtonShapesEnabled_Toggle() {
+    func testButtonShapesEnabled_WhenEnabled_RoundTripsThroughCodable() throws {
+        // Arrange: start with defaults
         var prefs = AccessibilityPreferences()
-        XCTAssertFalse(prefs.buttonShapesEnabled)
+        XCTAssertFalse(prefs.buttonShapesEnabled, "Precondition: buttonShapesEnabled defaults to false")
+
+        // Act: enable button shapes and verify round-trip
         prefs.buttonShapesEnabled = true
-        XCTAssertTrue(prefs.buttonShapesEnabled)
+        let data = try JSONEncoder().encode(prefs)
+        let decoded = try JSONDecoder().decode(AccessibilityPreferences.self, from: data)
+
+        // Assert: flag survived and differs from default
+        XCTAssertTrue(decoded.buttonShapesEnabled,
+                      "buttonShapesEnabled=true must survive JSON encode/decode")
+        XCTAssertNotEqual(decoded, AccessibilityPreferences.default,
+                          "Prefs with button shapes enabled must not be equal to defaults")
     }
 
     func testHapticFeedbackEnabled_Toggle() {

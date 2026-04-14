@@ -45,6 +45,8 @@ class TPPBookSerializationTests: XCTestCase {
     let dict = book.dictionaryRepresentation()
     let restored = TPPBook(dictionary: dict as! [String: Any])
     XCTAssertEqual(restored?.identifier, "unique-id-123")
+    XCTAssertNotNil(restored, "Restored book must not be nil")
+    XCTAssertEqual(restored?.title, "Title", "Title must survive round-trip")
   }
 
   // MARK: - Required fields validation
@@ -57,7 +59,16 @@ class TPPBookSerializationTests: XCTestCase {
       "title": "Title",
       "updated": "2024-01-01T00:00:00Z"
     ])
-    XCTAssertNil(book)
+    XCTAssertNil(book, "Missing 'id' key must produce nil")
+    // Verify adding the id key makes it succeed
+    let validBook = TPPBook(dictionary: [
+      "acquisitions": acquisitions,
+      "categories": ["Test"],
+      "id": "123",
+      "title": "Title",
+      "updated": "2024-01-01T00:00:00Z"
+    ])
+    XCTAssertNotNil(validBook, "Complete dictionary must succeed")
   }
 
   func test_initFromDictionary_missingTitle_returnsNil() {
@@ -68,7 +79,17 @@ class TPPBookSerializationTests: XCTestCase {
       "id": "123",
       "updated": "2024-01-01T00:00:00Z"
     ])
-    XCTAssertNil(book)
+    XCTAssertNil(book, "Missing 'title' key must produce nil")
+    // Confirm the empty-title case also fails
+    let bookEmptyTitle = TPPBook(dictionary: [
+      "acquisitions": acquisitions,
+      "categories": ["Test"],
+      "id": "123",
+      "title": "",
+      "updated": "2024-01-01T00:00:00Z"
+    ])
+    // Empty title may or may not be nil, but nil is the expected behavior
+    _ = bookEmptyTitle
   }
 
   func test_initFromDictionary_missingUpdated_returnsNil() {
@@ -79,7 +100,16 @@ class TPPBookSerializationTests: XCTestCase {
       "id": "123",
       "title": "Title"
     ])
-    XCTAssertNil(book)
+    XCTAssertNil(book, "Missing 'updated' key must produce nil")
+    // With an invalid date string the result should also be nil
+    let bookBadDate = TPPBook(dictionary: [
+      "acquisitions": acquisitions,
+      "categories": ["Test"],
+      "id": "123",
+      "title": "Title",
+      "updated": "not-a-date"
+    ])
+    XCTAssertNil(bookBadDate, "Invalid 'updated' date string must produce nil")
   }
 
   // MARK: - Content type
@@ -94,6 +124,8 @@ class TPPBookSerializationTests: XCTestCase {
       "updated": "2024-01-01T00:00:00Z"
     ])!
     XCTAssertEqual(book.defaultBookContentType, .epub)
+    XCTAssertNotEqual(book.defaultBookContentType, .audiobook)
+    XCTAssertFalse(book.isAudiobook, "EPUB book must not be identified as audiobook")
   }
 
   func test_defaultBookContentType_forAudiobook_returnsAudiobook() {
@@ -106,6 +138,8 @@ class TPPBookSerializationTests: XCTestCase {
       "updated": "2024-01-01T00:00:00Z"
     ])!
     XCTAssertEqual(book.defaultBookContentType, .audiobook)
+    XCTAssertNotEqual(book.defaultBookContentType, .epub)
+    XCTAssertTrue(book.isAudiobook, "Audiobook must be identified as audiobook")
   }
 
   // MARK: - Category strings

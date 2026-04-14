@@ -140,5 +140,6 @@ final class AppHealthViewModelTests: XCTestCase {
         XCTAssertEqual(item.name, "Test")
         XCTAssertEqual(item.value, "100ms")
         XCTAssertEqual(item.category, "Perf")
+        XCTAssertEqual(item.status, .good, "Status must be .good as initialized")
     }
 }

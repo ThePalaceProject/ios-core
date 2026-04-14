@@ -19,6 +19,8 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
     func testHrefURL_ValidURL_ReturnsURL() {
         let link = OPDS2Link(href: "https://example.com/book")
         XCTAssertEqual(link.hrefURL?.absoluteString, "https://example.com/book")
+        // URL must be a valid HTTP URL
+        XCTAssertEqual(link.hrefURL?.scheme, "https", "hrefURL scheme must be https")
     }
 
     func testHrefURL_InvalidURL_ReturnsNil() {
@@ -26,6 +28,9 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
         // which is the most reliable way to get nil from URL(string:).
         let link = OPDS2Link(href: "")
         XCTAssertNil(link.hrefURL)
+        // Verify a valid URL returns non-nil (complement check)
+        let validLink = OPDS2Link(href: "https://example.com")
+        XCTAssertNotNil(validLink.hrefURL)
     }
 
     // MARK: - isAcquisition
@@ -33,21 +38,25 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
     func testIsAcquisition_BorrowRel_ReturnsTrue() {
         let link = OPDS2Link(href: "/borrow", rel: "http://opds-spec.org/acquisition/borrow")
         XCTAssertTrue(link.isAcquisition)
+        XCTAssertTrue(link.isBorrow, "A borrow link must also report isBorrow = true")
     }
 
     func testIsAcquisition_OpenAccessRel_ReturnsTrue() {
         let link = OPDS2Link(href: "/open", rel: "http://opds-spec.org/acquisition/open-access")
         XCTAssertTrue(link.isAcquisition)
+        XCTAssertTrue(link.isOpenAccess, "An open-access link must also report isOpenAccess = true")
     }
 
     func testIsAcquisition_SelfRel_ReturnsFalse() {
         let link = OPDS2Link(href: "/self", rel: "self")
         XCTAssertFalse(link.isAcquisition)
+        XCTAssertFalse(link.isBorrow)
     }
 
     func testIsAcquisition_NilRel_ReturnsFalse() {
         let link = OPDS2Link(href: "/book")
         XCTAssertFalse(link.isAcquisition)
+        XCTAssertFalse(link.isOpenAccess)
     }
 
     // MARK: - isOpenAccess
@@ -55,11 +64,13 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
     func testIsOpenAccess_CorrectRel_ReturnsTrue() {
         let link = OPDS2Link(href: "/open", rel: "http://opds-spec.org/acquisition/open-access")
         XCTAssertTrue(link.isOpenAccess)
+        XCTAssertFalse(link.isBorrow, "An open-access link must not be a borrow link")
     }
 
     func testIsOpenAccess_BorrowRel_ReturnsFalse() {
         let link = OPDS2Link(href: "/borrow", rel: "http://opds-spec.org/acquisition/borrow")
         XCTAssertFalse(link.isOpenAccess)
+        XCTAssertTrue(link.isBorrow, "A borrow-rel link must still be classified as borrow")
     }
 
     // MARK: - isBorrow
@@ -67,11 +78,13 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
     func testIsBorrow_CorrectRel_ReturnsTrue() {
         let link = OPDS2Link(href: "/borrow", rel: "http://opds-spec.org/acquisition/borrow")
         XCTAssertTrue(link.isBorrow)
+        XCTAssertFalse(link.isOpenAccess, "A borrow link must not be classified as open-access")
     }
 
     func testIsBorrow_OpenAccessRel_ReturnsFalse() {
         let link = OPDS2Link(href: "/open", rel: "http://opds-spec.org/acquisition/open-access")
         XCTAssertFalse(link.isBorrow)
+        XCTAssertTrue(link.isOpenAccess, "An open-access link must be classified as open-access")
     }
 
     // MARK: - isSample
@@ -79,16 +92,19 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
     func testIsSample_SampleRel_ReturnsTrue() {
         let link = OPDS2Link(href: "/sample", rel: "http://opds-spec.org/acquisition/sample")
         XCTAssertTrue(link.isSample)
+        XCTAssertFalse(link.isBorrow, "A sample link must not be classified as borrow")
     }
 
     func testIsSample_PreviewRel_ReturnsTrue() {
         let link = OPDS2Link(href: "/preview", rel: "preview")
         XCTAssertTrue(link.isSample)
+        XCTAssertFalse(link.isOpenAccess, "A preview link must not be classified as open-access")
     }
 
     func testIsSample_BorrowRel_ReturnsFalse() {
         let link = OPDS2Link(href: "/borrow", rel: "http://opds-spec.org/acquisition/borrow")
         XCTAssertFalse(link.isSample)
+        XCTAssertTrue(link.isBorrow, "A borrow link must still be isBorrow even when checking isSample")
     }
 
     // MARK: - isImage
@@ -96,21 +112,26 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
     func testIsImage_ImageType_ReturnsTrue() {
         let link = OPDS2Link(href: "/cover.jpg", type: "image/jpeg")
         XCTAssertTrue(link.isImage)
+        XCTAssertFalse(link.isAcquisition, "An image link must not be an acquisition link")
     }
 
     func testIsImage_ThumbnailRel_ReturnsTrue() {
         let link = OPDS2Link(href: "/thumb.png", rel: "http://opds-spec.org/image/thumbnail")
         XCTAssertTrue(link.isImage)
+        XCTAssertFalse(link.isBorrow, "A thumbnail link must not be a borrow link")
     }
 
     func testIsImage_CoverRel_ReturnsTrue() {
         let link = OPDS2Link(href: "/cover.png", rel: "http://opds-spec.org/cover")
         XCTAssertTrue(link.isImage)
+        XCTAssertFalse(link.isOpenAccess, "A cover link must not be an open-access link")
     }
 
     func testIsImage_NonImageType_ReturnsFalse() {
         let link = OPDS2Link(href: "/book.epub", type: "application/epub+zip")
         XCTAssertFalse(link.isImage)
+        XCTAssertTrue(link.isAcquisition || !link.isImage,
+                      "A non-image link must not be classified as an image")
     }
 
     // MARK: - Identifiable
@@ -118,6 +139,11 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
     func testId_ReturnsHref() {
         let link = OPDS2Link(href: "https://example.com/link")
         XCTAssertEqual(link.id, "https://example.com/link")
+        // id must equal href exactly — verify with a different URL
+        let link2 = OPDS2Link(href: "/relative/path")
+        XCTAssertEqual(link2.id, "/relative/path")
+        // Two links with different hrefs must have different ids
+        XCTAssertNotEqual(link.id, link2.id)
     }
 
     // MARK: - Codable Round-Trip
@@ -137,6 +163,7 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
         )
 
         let data = try JSONEncoder().encode(link)
+        XCTAssertFalse(data.isEmpty, "Encoded link data must not be empty")
         let decoded = try JSONDecoder().decode(OPDS2Link.self, from: data)
 
         XCTAssertEqual(link, decoded)
@@ -170,16 +197,24 @@ final class OPDS2AvailabilityTests: XCTestCase {
         let availability = OPDS2Availability(state: "unavailable")
         XCTAssertTrue(availability.isUnavailable)
         XCTAssertFalse(availability.isAvailable)
+        XCTAssertFalse(availability.isReserved)
+        XCTAssertFalse(availability.isReady)
     }
 
     func testIsReserved_ReservedState_ReturnsTrue() {
         let availability = OPDS2Availability(state: "reserved")
         XCTAssertTrue(availability.isReserved)
+        XCTAssertFalse(availability.isAvailable)
+        XCTAssertFalse(availability.isUnavailable)
+        XCTAssertFalse(availability.isReady)
     }
 
     func testIsReady_ReadyState_ReturnsTrue() {
         let availability = OPDS2Availability(state: "ready")
         XCTAssertTrue(availability.isReady)
+        XCTAssertFalse(availability.isAvailable)
+        XCTAssertFalse(availability.isUnavailable)
+        XCTAssertFalse(availability.isReserved)
     }
 }
 
@@ -209,6 +244,8 @@ final class OPDS2LinkArrayTests: XCTestCase {
 
         let result = links.all(rel: .passwordReset)
         XCTAssertTrue(result.isEmpty)
+        // Count must also be zero
+        XCTAssertEqual(result.count, 0)
     }
 
     func testFirstRel_MatchingLink_ReturnsFirst() {
@@ -220,16 +257,22 @@ final class OPDS2LinkArrayTests: XCTestCase {
 
         let result = links.first(rel: .passwordReset)
         XCTAssertEqual(result?.href, "/reset1")
+        // Must NOT be the second password reset link
+        XCTAssertNotEqual(result?.href, "/reset2")
     }
 
     func testFirstRel_NoMatch_ReturnsNil() {
         let links = [OPDS2Link(href: "/self", rel: "self")]
         XCTAssertNil(links.first(rel: .passwordReset))
+        // all() must also be empty for same input
+        XCTAssertTrue(links.all(rel: .passwordReset).isEmpty)
     }
 
     func testFirstRel_EmptyArray_ReturnsNil() {
         let links: [OPDS2Link] = []
         XCTAssertNil(links.first(rel: .passwordReset))
+        // all() must also be empty for empty input
+        XCTAssertTrue(links.all(rel: .passwordReset).isEmpty)
     }
 }
 
@@ -373,6 +416,8 @@ final class OPDS2FullPublicationTests: XCTestCase {
         )
 
         XCTAssertEqual(pub.sampleLink?.href, "/sample")
+        XCTAssertNotNil(pub.sampleLink, "Publication with sample rel must expose a sampleLink")
+        XCTAssertNil(pub.borrowLink, "A sample-only publication must have no borrow link")
     }
 
     func testSampleLink_PreviewRel_ReturnsLink() {
@@ -386,6 +431,8 @@ final class OPDS2FullPublicationTests: XCTestCase {
         )
 
         XCTAssertEqual(pub.sampleLink?.href, "/preview")
+        XCTAssertNotNil(pub.sampleLink, "Publication with preview rel must expose a sampleLink")
+        XCTAssertNil(pub.openAccessLink, "A preview-only publication must have no open-access link")
     }
 
     func testIsAudiobook_AudiobookType_ReturnsTrue() {
@@ -679,5 +726,11 @@ final class OPDS2SupportingTypesTests: XCTestCase {
     func testFacetLink_IsActive_WithoutProperties_ReturnsFalse() {
         let link = OPDS2FacetLink(href: "/inactive", title: "Inactive")
         XCTAssertFalse(link.isActive)
+        // Verify it's also false when properties exist but numberOfItems is nil
+        let propsWithNilCount = OPDS2FacetProperties(numberOfItems: nil)
+        let linkWithNilCount = OPDS2FacetLink(href: "/also-inactive", title: "Also Inactive",
+                                              properties: propsWithNilCount)
+        XCTAssertFalse(linkWithNilCount.isActive,
+                       "FacetLink with nil numberOfItems must not be considered active")
     }
 }

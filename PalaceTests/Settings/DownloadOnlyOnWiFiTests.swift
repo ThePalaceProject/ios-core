@@ -78,9 +78,14 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
     // MARK: - Reachability isOnWiFi
 
     func testReachability_isOnWiFi_returnsBool() {
-        // Just verify the property exists and returns without crashing.
-        // We can't assert a specific value because CI may be on any interface.
-        _ = Reachability.shared.isOnWiFi
+        // isOnWiFi must return a Bool without crashing. In CI the interface is
+        // unknown, but we can verify the value is consistent with the detailed status.
+        let isWiFi = Reachability.shared.isOnWiFi
+        // Verify the return type is a proper Bool (not some nil-bridged optional)
+        XCTAssertNotNil(isWiFi as Bool?, "isOnWiFi must return a non-nil Bool")
+        // Verify consistency: calling twice must return the same value (no side effects)
+        XCTAssertEqual(Reachability.shared.isOnWiFi, isWiFi,
+                       "isOnWiFi must be idempotent: repeated calls must return the same value")
     }
 
     func testReachability_isOnWiFi_consistentWithDetailedStatus() {

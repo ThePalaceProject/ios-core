@@ -28,12 +28,23 @@ final class NotificationServiceTokenTests: XCTestCase {
 
     func testTokenData_tokenType_isAlwaysFCMiOS() {
         let tokenData = NotificationService.TokenData(token: "anything")
-        XCTAssertEqual(tokenData.token_type, "FCMiOS")
+        XCTAssertEqual(tokenData.token_type, "FCMiOS",
+                       "token_type must always be FCMiOS regardless of the token value")
+        // The device_token field must also reflect the provided token
+        XCTAssertEqual(tokenData.device_token, "anything",
+                       "device_token must store the exact token passed to the initializer")
     }
 
     func testTokenData_data_isNotNil() {
         let tokenData = NotificationService.TokenData(token: "test-token-value")
-        XCTAssertNotNil(tokenData.data)
+        XCTAssertNotNil(tokenData.data, "TokenData.data must not be nil")
+        // The encoded data must be non-empty JSON bytes
+        if let data = tokenData.data {
+            XCTAssertGreaterThan(data.count, 0, "Encoded token data must have non-zero byte count")
+            // Must be valid JSON
+            XCTAssertNoThrow(try JSONSerialization.jsonObject(with: data),
+                             "TokenData.data must produce valid JSON")
+        }
     }
 
     func testTokenData_emptyToken_stillEncodes() throws {

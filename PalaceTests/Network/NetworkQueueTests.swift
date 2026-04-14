@@ -31,11 +31,19 @@ class NetworkQueueTests: XCTestCase {
 
     func testStatusCodesContainsSecureConnectionFailed() {
         XCTAssertTrue(NetworkQueue.StatusCodes.contains(NSURLErrorSecureConnectionFailed))
+        // Should also contain the closely related SSL errors
+        XCTAssertTrue(NetworkQueue.StatusCodes.contains(NSURLErrorCannotConnectToHost),
+                      "SSL errors go hand-in-hand with connection failures")
+        XCTAssertFalse(NetworkQueue.StatusCodes.isEmpty,
+                       "StatusCodes must be non-empty to be useful")
     }
 
     func testMaxRetriesInQueueIsFive() {
         let queue = NetworkQueue()
         XCTAssertEqual(queue.MaxRetriesInQueue, 5)
+        XCTAssertGreaterThan(queue.MaxRetriesInQueue, 0, "Retry limit must be positive")
+        XCTAssertLessThanOrEqual(queue.MaxRetriesInQueue, 10,
+                                 "Retry limit should be reasonable (<=10) to avoid excessive retries")
     }
 
     // MARK: - HTTPMethodType
@@ -61,6 +69,9 @@ class NetworkQueueTests: XCTestCase {
     func testObjCSharedReturnsInstance() {
         let instance = NetworkQueue.shared()
         XCTAssertNotNil(instance)
+        // The ObjC @objc factory must return the same singleton as the Swift property
+        XCTAssertTrue(instance === NetworkQueue.sharedInstance,
+                      "ObjC shared() and Swift sharedInstance must be the same object")
     }
 
     // MARK: - Add Request (Integration)
@@ -80,6 +91,9 @@ class NetworkQueueTests: XCTestCase {
             expectation.fulfill()
         }
         waitForExpectations(timeout: 3)
+        // Verify queue is still operable after adding a request
+        XCTAssertNotNil(queue, "Queue should remain functional after addRequest")
+        XCTAssertEqual(queue.MaxRetriesInQueue, 5, "MaxRetriesInQueue unchanged after use")
     }
 
     func testAddRequestWithHeadersDoesNotCrash() {
@@ -109,6 +123,10 @@ class NetworkQueueTests: XCTestCase {
             expectation.fulfill()
         }
         waitForExpectations(timeout: 3)
+        // Queue should remain fully functional post-migration
+        XCTAssertEqual(queue.MaxRetriesInQueue, 5, "MaxRetriesInQueue unchanged after migration")
+        XCTAssertTrue(NetworkQueue.StatusCodes.contains(NSURLErrorNotConnectedToInternet),
+                      "StatusCodes should remain valid after migration")
     }
 
     func testMigrateCanBeCalledMultipleTimes() {

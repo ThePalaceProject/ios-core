@@ -139,6 +139,12 @@ final class TypographyServiceIntegrationTests: XCTestCase {
 
         XCTAssertTrue(css.contains("OpenDyslexic"),
                       "Dyslexia-friendly CSS should include OpenDyslexic font")
+        // Dyslexia preset should use left alignment (not justified)
+        XCTAssertTrue(css.contains("text-align: left"),
+                      "Dyslexia-friendly CSS should use left alignment")
+        // Should have word-spacing for readability
+        XCTAssertTrue(css.contains("word-spacing:"),
+                      "Dyslexia-friendly CSS should include word-spacing")
     }
 
     // MARK: - Justified Alignment Includes Hyphens
@@ -163,6 +169,11 @@ final class TypographyServiceIntegrationTests: XCTestCase {
 
         XCTAssertFalse(css.contains("hyphens"),
                        "Non-justified text should not include hyphen settings")
+        // Center alignment also should not have hyphens
+        service.updateTextAlignment(.center)
+        let centerCSS = service.cssForCurrentSettings()
+        XCTAssertFalse(centerCSS.contains("hyphens"),
+                       "Center alignment should not include hyphen settings")
     }
 
     // MARK: - Paragraph Spacing in CSS
@@ -186,6 +197,11 @@ final class TypographyServiceIntegrationTests: XCTestCase {
 
         XCTAssertFalse(css.contains("p {"),
                        "Should not include paragraph rule when spacing is 0")
+        // Verify that non-zero spacing brings it back
+        service.updateParagraphSpacing(1.0)
+        let cssWithSpacing = service.cssForCurrentSettings()
+        XCTAssertTrue(cssWithSpacing.contains("p {"),
+                      "Should include paragraph rule when spacing is non-zero")
     }
 
     // MARK: - Settings Publisher
@@ -221,9 +237,13 @@ final class TypographyServiceIntegrationTests: XCTestCase {
     func testSettingsPublisher_emitsOnEachChange() {
         service = makeService()
         var emitCount = 0
+        var lastSettings: TypographySettings?
 
         service.settingsPublisher
-            .sink { _ in emitCount += 1 }
+            .sink { settings in
+                emitCount += 1
+                lastSettings = settings
+            }
             .store(in: &cancellables)
 
         service.updateFontFamily("Courier")
@@ -233,6 +253,9 @@ final class TypographyServiceIntegrationTests: XCTestCase {
         service.updateTextAlignment(.center)
 
         XCTAssertEqual(emitCount, 5, "Should emit once per setting change")
+        // Last emitted settings must reflect the final state
+        XCTAssertEqual(lastSettings?.textAlignment, .center,
+                       "Last emitted settings should reflect the final textAlignment change")
     }
 
     // MARK: - Debounced Persistence
@@ -252,6 +275,9 @@ final class TypographyServiceIntegrationTests: XCTestCase {
         // but at least once)
         XCTAssertGreaterThanOrEqual(persistence.saveCallCount, 1,
                                     "Should persist after debounce interval")
+        // The saved settings must match the final in-memory state
+        XCTAssertEqual(persistence.savedSettings?.fontFamily, "Courier",
+                       "Persisted settings must match the last fontFamily set")
     }
 
     func testDebouncedPersistence_savesLatestSettings() async throws {
@@ -266,6 +292,9 @@ final class TypographyServiceIntegrationTests: XCTestCase {
 
         XCTAssertEqual(persistence.savedSettings?.fontFamily, "Georgia",
                        "Should persist the latest font family")
+        // fontSize must remain at the default since we only changed fontFamily
+        XCTAssertEqual(persistence.savedSettings?.fontSize, TypographySettings.default.fontSize,
+                       "Unchanged fontSize must survive rapid fontFamily changes")
     }
 
     // MARK: - Loads Persisted Settings
@@ -288,6 +317,9 @@ final class TypographyServiceIntegrationTests: XCTestCase {
         service = makeService()
 
         XCTAssertEqual(service.settings, .default)
+        // Verify individual fields match the canonical defaults
+        XCTAssertEqual(service.settings.fontSize, TypographySettings.default.fontSize)
+        XCTAssertEqual(service.settings.theme, TypographySettings.default.theme)
     }
 
     // MARK: - Value Clamping on Apply
@@ -322,6 +354,9 @@ final class TypographyServiceIntegrationTests: XCTestCase {
 
         service.updateLineSpacing(0.1) // below min of 1.0
         XCTAssertEqual(service.settings.lineSpacing, 1.0)
+        // Also clamp from above
+        service.updateLineSpacing(1000.0)
+        XCTAssertEqual(service.settings.lineSpacing, TypographySettings.lineSpacingRange.upperBound)
     }
 
     func testUpdateLetterSpacing_clampsToRange() {
@@ -329,6 +364,9 @@ final class TypographyServiceIntegrationTests: XCTestCase {
 
         service.updateLetterSpacing(-5.0)
         XCTAssertEqual(service.settings.letterSpacing, TypographySettings.letterSpacingRange.lowerBound)
+        // Also clamp from above
+        service.updateLetterSpacing(1000.0)
+        XCTAssertEqual(service.settings.letterSpacing, TypographySettings.letterSpacingRange.upperBound)
     }
 
     func testUpdateWordSpacing_clampsToRange() {
@@ -336,6 +374,9 @@ final class TypographyServiceIntegrationTests: XCTestCase {
 
         service.updateWordSpacing(10.0)
         XCTAssertEqual(service.settings.wordSpacing, TypographySettings.wordSpacingRange.upperBound)
+        // Also clamp from below
+        service.updateWordSpacing(-100.0)
+        XCTAssertEqual(service.settings.wordSpacing, TypographySettings.wordSpacingRange.lowerBound)
     }
 
     func testUpdateParagraphSpacing_clampsToRange() {
@@ -343,6 +384,9 @@ final class TypographyServiceIntegrationTests: XCTestCase {
 
         service.updateParagraphSpacing(100.0)
         XCTAssertEqual(service.settings.paragraphSpacing, TypographySettings.paragraphSpacingRange.upperBound)
+        // Also clamp from below
+        service.updateParagraphSpacing(-100.0)
+        XCTAssertEqual(service.settings.paragraphSpacing, TypographySettings.paragraphSpacingRange.lowerBound)
     }
 
     // MARK: - Helpers

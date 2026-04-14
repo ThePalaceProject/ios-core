@@ -70,6 +70,10 @@ final class BookButtonTypeTests: XCTestCase {
     // SRS: BookButtonType buttonStyle destructive for cancelHold
     func testButtonStyle_destructive() {
         XCTAssertEqual(BookButtonType.cancelHold.buttonStyle, .destructive)
+        // Destructive should have a border (visible affordance for dangerous action)
+        XCTAssertTrue(BookButtonType.cancelHold.hasBorder)
+        // Destructive must not be primary
+        XCTAssertFalse(BookButtonType.cancelHold.isPrimary)
     }
 
     // SRS: BookButtonType isPrimary matches buttonStyle
@@ -136,12 +140,17 @@ final class ButtonStyleTypeTests: XCTestCase {
         let _: ButtonStyleType = .secondary
         let _: ButtonStyleType = .tertiary
         let _: ButtonStyleType = .destructive
+        // All four cases are distinct — no two raw values collide
+        let allCases: [ButtonStyleType] = [.primary, .secondary, .tertiary, .destructive]
+        XCTAssertEqual(allCases.count, 4)
     }
 
     // SRS: ButtonStyleType equality
     func testEquality() {
         XCTAssertEqual(ButtonStyleType.primary, ButtonStyleType.primary)
         XCTAssertNotEqual(ButtonStyleType.primary, ButtonStyleType.secondary)
+        XCTAssertNotEqual(ButtonStyleType.secondary, ButtonStyleType.tertiary)
+        XCTAssertNotEqual(ButtonStyleType.tertiary, ButtonStyleType.destructive)
     }
 }
 
@@ -159,6 +168,8 @@ final class BookButtonStateTests: XCTestCase {
     func testEquatable() {
         XCTAssertEqual(BookButtonState.canBorrow, BookButtonState.canBorrow)
         XCTAssertNotEqual(BookButtonState.canBorrow, BookButtonState.canHold)
+        XCTAssertNotEqual(BookButtonState.downloadNeeded, BookButtonState.downloadSuccessful)
+        XCTAssertNotEqual(BookButtonState.downloadInProgress, BookButtonState.downloadFailed)
     }
 
     // SRS: BookButtonState downloadInProgress produces cancel button
@@ -328,11 +339,19 @@ final class BookButtonStateTests: XCTestCase {
     // SRS: BookButtonState stateForAvailability returns nil for nil availability
     func testStateForAvailability_nilAvailability() {
         XCTAssertNil(BookButtonState.stateForAvailability(nil))
+        // Verify this is consistent across multiple calls
+        XCTAssertNil(BookButtonState.stateForAvailability(nil))
+        // Nil availability should not equal any real state
+        let nilResult = BookButtonState.stateForAvailability(nil)
+        XCTAssertNotEqual(nilResult, .canBorrow)
     }
 
     // SRS: BookButtonState stateForAvailability unlimited returns canBorrow
     func testStateForAvailability_unlimited() {
         let availability = TPPOPDSAcquisitionAvailabilityUnlimited()
         XCTAssertEqual(BookButtonState.stateForAvailability(availability), .canBorrow)
+        // Unlimited availability should never map to hold states
+        XCTAssertNotEqual(BookButtonState.stateForAvailability(availability), .canHold)
+        XCTAssertNotEqual(BookButtonState.stateForAvailability(availability), .holding)
     }
 }

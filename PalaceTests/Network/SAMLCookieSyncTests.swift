@@ -96,7 +96,12 @@ final class SAMLCookieSyncTests: XCTestCase {
     func testCookieSync_emptyCookies_doesNotCrash() {
         let cookies: [HTTPCookie] = []
         let shared = HTTPCookieStorage.shared
+        let countBefore = shared.cookies?.count ?? 0
         for c in cookies { shared.setCookie(c) }
+        // Empty sync must not add or remove any cookies
+        let countAfter = shared.cookies?.count ?? 0
+        XCTAssertEqual(countBefore, countAfter,
+                       "Syncing zero cookies must not change shared storage count")
     }
 
     // MARK: - Request Creation with SAML Cookies
@@ -125,10 +130,18 @@ final class SignOutCacheClearingTests: XCTestCase {
     func testClearCache_doesNotCrash() {
         TPPNetworkExecutor.shared.clearCache()
         URLCache.shared.removeAllCachedResponses()
+        // Executor must remain functional after cache is cleared
+        XCTAssertNotNil(TPPNetworkExecutor.shared,
+                        "Executor must remain valid after clearCache")
     }
 
     func testURLCacheShared_clearDoesNotCrash() {
         URLCache.shared.removeAllCachedResponses()
+        // Clearing twice in a row must be safe (idempotent)
+        URLCache.shared.removeAllCachedResponses()
+        // URLCache.shared must still be accessible after clearing
+        XCTAssertNotNil(URLCache.shared,
+                        "URLCache.shared must remain non-nil after removeAllCachedResponses")
     }
 
     func testNetworkExecutorAndSharedCache_areSeparate() {
@@ -137,5 +150,10 @@ final class SignOutCacheClearingTests: XCTestCase {
         // and vice versa. We just verify neither crashes.
         TPPNetworkExecutor.shared.clearCache()
         URLCache.shared.removeAllCachedResponses()
+        // Both must still be accessible after clearing
+        XCTAssertNotNil(TPPNetworkExecutor.shared,
+                        "Executor must remain valid after concurrent cache clears")
+        XCTAssertNotNil(URLCache.shared,
+                        "URLCache.shared must remain valid after concurrent cache clears")
     }
 }

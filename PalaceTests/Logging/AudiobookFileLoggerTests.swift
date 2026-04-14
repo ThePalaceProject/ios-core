@@ -24,7 +24,10 @@ final class AudiobookFileLoggerTests: XCTestCase {
     // MARK: - Shared Instance
 
     func testShared_isNotNil() {
-        XCTAssertNotNil(AudiobookFileLogger.shared)
+        XCTAssertNotNil(AudiobookFileLogger.shared, "AudiobookFileLogger.shared must not be nil")
+        // Singleton identity: accessing shared twice must return the same object
+        XCTAssertTrue(AudiobookFileLogger.shared === AudiobookFileLogger.shared,
+                      "AudiobookFileLogger.shared must always return the same instance")
     }
 
     // MARK: - Logs Directory
@@ -32,6 +35,10 @@ final class AudiobookFileLoggerTests: XCTestCase {
     func testGetLogsDirectoryUrl_returnsURL() {
         let url = AudiobookFileLogger.shared.getLogsDirectoryUrl()
         XCTAssertNotNil(url, "Logs directory URL should not be nil")
+        if let url = url {
+            XCTAssertTrue(url.isFileURL, "Logs directory URL must be a file URL")
+            XCTAssertTrue(url.hasDirectoryPath, "Logs directory URL must reference a directory path")
+        }
     }
 
     func testGetLogsDirectoryUrl_directoryExists() {

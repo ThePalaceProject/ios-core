@@ -180,20 +180,33 @@ final class AccountsManagerCacheTests: XCTestCase {
 
     func testCacheDataAndMetadata_AreWrittenTogether() {
         // Given: catalog data to cache
-        let hash = "integrationtest"
+        let hash = "integrationtest-\(UUID().uuidString.prefix(8))"
         let feedData = loadTestFeedData()
+
+        // Verify nothing is cached yet (precondition)
+        XCTAssertNil(readCachedCatalogData(hash: hash), "Precondition: no data cached before write")
+        XCTAssertNil(readCacheMetadata(hash: hash), "Precondition: no metadata cached before write")
 
         // When: caching the data
         cacheCatalogData(feedData, hash: hash)
 
-        // Then: both data and metadata should exist
-        let data = readCachedCatalogData(hash: hash)
-        let metadata = readCacheMetadata(hash: hash)
+        // Then: both data and metadata must be present
+        guard let data = readCachedCatalogData(hash: hash) else {
+            XCTFail("Catalog data must be written to disk by cacheCatalogData")
+            return
+        }
+        guard let metadata = readCacheMetadata(hash: hash) else {
+            XCTFail("Cache metadata must be written alongside catalog data")
+            return
+        }
 
-        XCTAssertNotNil(data, "Catalog data should be cached")
-        XCTAssertNotNil(metadata, "Cache metadata should be written")
-        XCTAssertEqual(metadata?.hash, hash)
-        XCTAssertFalse(metadata?.isStale ?? true, "Fresh cache should not be stale")
+        // Data integrity: the cached bytes must be parseable as a valid catalog feed
+        XCTAssertNoThrow(try OPDS2CatalogsFeed.fromData(data),
+                         "Cached catalog data must parse as a valid OPDS2CatalogsFeed")
+        // Metadata integrity
+        XCTAssertEqual(metadata.hash, hash, "Cached metadata hash must match the key used during write")
+        XCTAssertFalse(metadata.isStale, "Freshly written cache must not be considered stale")
+        XCTAssertFalse(metadata.isExpired, "Freshly written cache must not be considered expired")
     }
 
     func testCacheExpiry_OldCacheIsNotUsed() {

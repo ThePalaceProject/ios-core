@@ -71,7 +71,11 @@ final class AccountModelTests: XCTestCase {
         let publication = makePublication(links: [helpLink])
         let account = Account(publication: publication, imageCache: mockImageCache)
 
-        XCTAssertNotNil(account.supportEmail)
+        // Verify the email is extracted correctly from the mailto: href
+        XCTAssertEqual(account.supportEmail?.rawValue, "support@example.com",
+                       "supportEmail should strip the 'mailto:' prefix and return the address")
+        XCTAssertTrue(account.hasSupportOption,
+                      "hasSupportOption should be true when a support email is present")
     }
 
     func testAccount_InitFromPublication_SetsSupportURL() {
@@ -107,11 +111,20 @@ final class AccountModelTests: XCTestCase {
         XCTAssertEqual(account.homePageUrl, "https://example.com/home")
     }
 
-    func testAccount_InitFromPublication_DefaultLogo_IsNotNil() {
+    func testAccount_InitFromPublication_DefaultLogo_IsPlaceholder() {
+        // Arrange: a publication with no image links (no remote logo URL)
         let publication = makePublication()
         let account = Account(publication: publication, imageCache: mockImageCache)
 
-        XCTAssertNotNil(account.logo)
+        // Act: the logo should be the placeholder, which is always non-nil
+        let logo = account.logo
+
+        // Assert: logo is the placeholder asset (non-nil, non-cached-image size)
+        XCTAssertNotNil(logo, "Account without a remote logo should fall back to the placeholder image")
+        XCTAssertNil(account.logoUrl, "Account without an image link should have a nil logoUrl")
+        // The placeholder is used, so the mock cache should not have been written to
+        XCTAssertNil(mockImageCache.get(for: account.uuid),
+                     "No cached logo should exist for an account with no remote logo")
     }
 
     func testAccount_InitFromPublication_DetailsAreNil() {
@@ -211,12 +224,20 @@ final class AccountModelTests: XCTestCase {
 
 final class OPDS2SamlIDPTests: XCTestCase {
 
-    func testInit_WithValidLink_CreatesInstance() {
-        let link = OPDS2Link(href: "https://idp.example.com/login")
+    func testInit_WithValidLink_MapsURLCorrectly() {
+        // Arrange: a well-formed IDP login href
+        let expectedURLString = "https://idp.example.com/login"
+        let link = OPDS2Link(href: expectedURLString)
+
+        // Act
         let idp = OPDS2SamlIDP(opdsLink: link)
 
-        XCTAssertNotNil(idp)
-        XCTAssertEqual(idp?.url.absoluteString, "https://idp.example.com/login")
+        // Assert: the IDP is created AND its url property matches the original href exactly
+        XCTAssertNotNil(idp, "OPDS2SamlIDP should be created from a valid https href")
+        XCTAssertEqual(idp?.url.absoluteString, expectedURLString,
+                       "IDP url must preserve the href from the OPDS2Link")
+        XCTAssertEqual(idp?.url.scheme, "https",
+                       "IDP url scheme should be https for a secure login endpoint")
     }
 
     func testInit_WithInvalidHref_ReturnsNil() {

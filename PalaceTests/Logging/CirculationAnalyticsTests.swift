@@ -62,8 +62,13 @@ final class CirculationAnalyticsTests: XCTestCase {
     func testNetworkQueueStatusCodesExist() {
         // Verify that NetworkQueue.StatusCodes is accessible (used by handleFailure)
         let statusCodes = NetworkQueue.StatusCodes
-        XCTAssertNotNil(statusCodes)
+        XCTAssertNotNil(statusCodes, "NetworkQueue.StatusCodes must not be nil")
         XCTAssertFalse(statusCodes.isEmpty, "NetworkQueue should define retryable status codes")
+        // All status codes must be in the valid HTTP range (100-599)
+        for code in statusCodes {
+            XCTAssertGreaterThanOrEqual(code, 100, "Status code \(code) must be >= 100")
+            XCTAssertLessThan(code, 600, "Status code \(code) must be < 600")
+        }
     }
 
     // MARK: - Helpers

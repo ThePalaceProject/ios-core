@@ -53,24 +53,36 @@ final class TypographyServiceTests: XCTestCase {
     func testCSSContainsBackgroundColor() {
         let css = service.cssForCurrentSettings()
         XCTAssertTrue(css.contains("background-color:"), "CSS should set background color")
+        // For the default light theme the background should be white (#FFFFFF)
+        XCTAssertTrue(css.contains("#FFFFFF") || css.contains("rgb(255"),
+                      "Default light theme CSS should specify a white background")
     }
 
     func testCSSContainsFontSize() {
         service.updateFontSize(24)
         let css = service.cssForCurrentSettings()
         XCTAssertTrue(css.contains("24px"), "CSS should contain the font size")
+        // Changing font size again must update the CSS
+        service.updateFontSize(18)
+        let updatedCSS = service.cssForCurrentSettings()
+        XCTAssertTrue(updatedCSS.contains("18px"), "CSS should reflect the new font size")
+        XCTAssertFalse(updatedCSS.contains("24px"), "Old font size should not appear in updated CSS")
     }
 
     func testCSSContainsLineSpacing() {
         service.updateLineSpacing(1.8)
         let css = service.cssForCurrentSettings()
         XCTAssertTrue(css.contains("1.80"), "CSS should contain line-height value")
+        // Line-height property name must also be present
+        XCTAssertTrue(css.contains("line-height:"), "CSS must include line-height property")
     }
 
     func testCSSContainsTextAlignment() {
         service.updateTextAlignment(.justified)
         let css = service.cssForCurrentSettings()
         XCTAssertTrue(css.contains("text-align: justify"), "CSS should contain justified alignment")
+        // Justified alignment must also enable hyphens
+        XCTAssertTrue(css.contains("hyphens"), "Justified text CSS should enable hyphens")
     }
 
     func testCSSContainsLetterSpacing() {
@@ -99,12 +111,18 @@ final class TypographyServiceTests: XCTestCase {
         service.updateParagraphSpacing(20)
         let css = service.cssForCurrentSettings()
         XCTAssertTrue(css.contains("margin-bottom: 20px"), "CSS should set paragraph spacing")
+        // Resetting to 0 should omit the paragraph rule
+        service.updateParagraphSpacing(0)
+        let zeroCSS = service.cssForCurrentSettings()
+        XCTAssertFalse(zeroCSS.contains("margin-bottom: 0"), "Zero spacing should not emit a paragraph rule")
     }
 
     func testCSSForDarkTheme() {
         service.updateTheme(.night)
         let css = service.cssForCurrentSettings()
         XCTAssertTrue(css.contains("#000000"), "Night theme should have black background")
+        // Text color in night theme should be white or near-white
+        XCTAssertTrue(css.contains("color:"), "Night theme CSS must specify a text color")
     }
 
     func testCSSForSepiaTheme() {
@@ -119,12 +137,15 @@ final class TypographyServiceTests: XCTestCase {
         service.updateTextAlignment(.justified)
         let css = service.cssForCurrentSettings()
         XCTAssertTrue(css.contains("-webkit-hyphens: auto"), "Justified text should enable hyphens")
+        XCTAssertTrue(css.contains("hyphens: auto"), "Justified text should also set the non-webkit hyphens property")
     }
 
     func testCSSDisablesHyphensForLeftAligned() {
         service.updateTextAlignment(.left)
         let css = service.cssForCurrentSettings()
         XCTAssertTrue(css.contains("-webkit-hyphens: none"), "Left-aligned text should disable hyphens")
+        // Non-webkit hyphens property should also be disabled
+        XCTAssertTrue(css.contains("hyphens: none"), "Non-webkit hyphens must also be disabled for left alignment")
     }
 
     func testCSSForArbitrarySettings() {
@@ -172,31 +193,54 @@ final class TypographyServiceTests: XCTestCase {
     func testUpdateMarginLevel() {
         service.updateMarginLevel(.extraWide)
         XCTAssertEqual(service.currentSettings.marginLevel, .extraWide)
+        // Preset identifier should be cleared on custom change
+        XCTAssertNil(service.currentSettings.presetIdentifier, "Custom margin change should clear preset")
+        // CSS should reflect the new margin
+        let css = service.cssForCurrentSettings()
+        XCTAssertTrue(css.contains("margin"), "CSS must contain margin after level change")
     }
 
     func testUpdateParagraphSpacing() {
         service.updateParagraphSpacing(25)
         XCTAssertEqual(service.currentSettings.paragraphSpacing, 25)
+        // CSS must include the new paragraph spacing
+        let css = service.cssForCurrentSettings()
+        XCTAssertTrue(css.contains("25px") || css.contains("25.0"),
+                      "CSS should contain the updated paragraph spacing value")
     }
 
     func testUpdateTextAlignment() {
         service.updateTextAlignment(.justified)
         XCTAssertEqual(service.currentSettings.textAlignment, .justified)
+        // Justified text must enable hyphenation in CSS
+        let css = service.cssForCurrentSettings()
+        XCTAssertTrue(css.contains("justify"), "CSS must contain 'justify' for justified alignment")
     }
 
     func testUpdateWordSpacingClampsToRange() {
         service.updateWordSpacing(100)
         XCTAssertEqual(service.currentSettings.wordSpacing, TypographySettings.maxWordSpacing)
+        // Verify below-min is also clamped
+        service.updateWordSpacing(-100)
+        XCTAssertEqual(service.currentSettings.wordSpacing, TypographySettings.minWordSpacing)
     }
 
     func testUpdateLetterSpacingClampsToRange() {
         service.updateLetterSpacing(-10)
         XCTAssertEqual(service.currentSettings.letterSpacing, TypographySettings.minLetterSpacing)
+        // Verify above-max is also clamped
+        service.updateLetterSpacing(1000)
+        XCTAssertEqual(service.currentSettings.letterSpacing, TypographySettings.maxLetterSpacing)
     }
 
     func testUpdateTheme() {
         service.updateTheme(.solarized)
         XCTAssertEqual(service.currentSettings.theme, .solarized)
+        // Preset identifier should be cleared on custom change
+        XCTAssertNil(service.currentSettings.presetIdentifier, "Custom theme change should clear preset")
+        // CSS must change to reflect the solarized theme
+        let css = service.cssForCurrentSettings()
+        XCTAssertTrue(css.contains("background-color:"), "CSS must set background-color for theme")
     }
 
     // MARK: - Preset Application
@@ -247,6 +291,9 @@ final class TypographyServiceTests: XCTestCase {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
             let reloaded = TypographyService(userDefaults: self.testDefaults)
             XCTAssertEqual(reloaded.currentSettings.fontSize, 28, "Font size should be persisted")
+            // Other default settings should also be preserved on reload
+            XCTAssertEqual(reloaded.currentSettings.fontFamily, .georgia,
+                           "Default fontFamily should be preserved alongside the changed fontSize")
             expectation.fulfill()
         }
 
@@ -290,5 +337,9 @@ final class TypographyServiceTests: XCTestCase {
         )
         service.updateSettings(custom)
         XCTAssertEqual(service.currentSettings, custom)
+        // Verify each field individually so that a regression is clearly identified
+        XCTAssertEqual(service.currentSettings.fontFamily, .timesNewRoman)
+        XCTAssertEqual(service.currentSettings.fontSize, 30)
+        XCTAssertEqual(service.currentSettings.theme, .solarized)
     }
 }

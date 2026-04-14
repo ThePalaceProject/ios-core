@@ -264,6 +264,11 @@ final class OPDS2FeedTests: XCTestCase {
         let feed = try OPDS2Feed.from(data: data)
 
         XCTAssertNotNil(feed.metadata.modified)
+        // The parsed date must fall in January 2026
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: feed.metadata.modified!)
+        XCTAssertEqual(components.year, 2026, "Parsed year must be 2026")
+        XCTAssertEqual(components.month, 1, "Parsed month must be January")
+        XCTAssertEqual(components.day, 15, "Parsed day must be 15")
     }
 
     func testParseDateWithoutFractionalSeconds() throws {
@@ -281,6 +286,16 @@ final class OPDS2FeedTests: XCTestCase {
         let feed = try OPDS2Feed.from(data: data)
 
         XCTAssertNotNil(feed.metadata.modified)
+        // Dates with and without fractional seconds must parse to the same instant
+        let jsonWithMillis = """
+    {"metadata": {"title": "Test", "modified": "2026-01-15T10:30:45.000Z"}, "links": []}
+    """
+        let feedWithMillis = try OPDS2Feed.from(data: jsonWithMillis.data(using: .utf8)!)
+        let t1 = feed.metadata.modified?.timeIntervalSince1970 ?? 0
+        let t2 = feedWithMillis.metadata.modified?.timeIntervalSince1970 ?? 0
+        XCTAssertEqual(t1, t2, accuracy: 1.0,
+            "Dates with and without fractional seconds must parse to the same instant"
+        )
     }
 
     // MARK: - Format Detection
@@ -316,5 +331,16 @@ final class OPDS2FeedTests: XCTestCase {
         let feed2 = try OPDS2Feed.from(data: data)
 
         XCTAssertEqual(feed1, feed2)
+        // Reflexive: a feed must equal itself
+        XCTAssertEqual(feed1, feed1)
+        // A feed parsed from different JSON must not equal this one
+        let differentJSON = """
+    {
+      "metadata": {"title": "Different"},
+      "links": [{"href": "/other", "rel": "self"}]
+    }
+    """
+        let differentFeed = try OPDS2Feed.from(data: Data(differentJSON.utf8))
+        XCTAssertNotEqual(feed1, differentFeed, "Feeds with different titles must not be equal")
     }
 }

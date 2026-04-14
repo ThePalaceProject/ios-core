@@ -277,12 +277,15 @@ final class AppRouteTests: XCTestCase {
 final class SceneDelegateTests: XCTestCase {
 
     func testSceneDelegate_HasMainSceneConnected_InitiallyFalse() {
-        // The static property should be false initially (before any scene connects)
-        // This test verifies the property exists and is accessible
+        // The static property should be false in a test environment where no real
+        // UIScene has connected. Verify it is a proper Bool (not nil-bridged) and
+        // is idempotent across multiple reads.
         let hasConnected = SceneDelegate.hasMainSceneConnected
 
-        // In test environment, this should be false since no real scene is connected
-        // (Note: If tests run after app launch, this might be true)
-        XCTAssertNotNil(hasConnected as Bool?, "hasMainSceneConnected should be accessible")
+        XCTAssertFalse(hasConnected,
+                       "hasMainSceneConnected must be false in the test environment (no real scene)")
+        // Idempotent: reading a second time must return the same value
+        XCTAssertEqual(SceneDelegate.hasMainSceneConnected, hasConnected,
+                       "hasMainSceneConnected must return a consistent value across reads")
     }
 }

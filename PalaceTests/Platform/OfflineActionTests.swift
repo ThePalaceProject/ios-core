@@ -29,16 +29,25 @@ final class OfflineActionTests: XCTestCase {
         let action = OfflineAction(type: .return, bookID: "b2", bookTitle: "Return Book")
         XCTAssertEqual(action.type, .return)
         XCTAssertEqual(action.bookID, "b2")
+        XCTAssertEqual(action.bookTitle, "Return Book")
+        XCTAssertEqual(action.state, .pending, "Newly created return action must start in pending state")
+        XCTAssertEqual(action.retryCount, 0, "Newly created action must start with zero retries")
     }
 
     func testHoldAction_Creation() {
         let action = OfflineAction(type: .hold, bookID: "b3", bookTitle: "Hold Book")
         XCTAssertEqual(action.type, .hold)
+        XCTAssertEqual(action.bookID, "b3")
+        XCTAssertEqual(action.bookTitle, "Hold Book")
+        XCTAssertEqual(action.state, .pending, "Newly created hold action must start in pending state")
     }
 
     func testCancelHoldAction_Creation() {
         let action = OfflineAction(type: .cancelHold, bookID: "b4", bookTitle: "Cancel Book")
         XCTAssertEqual(action.type, .cancelHold)
+        XCTAssertEqual(action.bookID, "b4")
+        XCTAssertEqual(action.bookTitle, "Cancel Book")
+        XCTAssertEqual(action.state, .pending, "Newly created cancelHold action must start in pending state")
     }
 
     func testCustomMaxRetries() {

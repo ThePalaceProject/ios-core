@@ -8,54 +8,88 @@ class TPPBookContentTypeTests: XCTestCase {
   func test_from_epubZipMimeType_returnsEpub() {
     let result = TPPBookContentType.from(mimeType: "application/epub+zip")
     XCTAssertEqual(result, .epub)
+    XCTAssertNotEqual(result, .audiobook)
+    XCTAssertNotEqual(result, .pdf)
+    XCTAssertNotEqual(result, .unsupported)
   }
 
   func test_from_octetStreamMimeType_returnsEpub() {
     let result = TPPBookContentType.from(mimeType: "application/octet-stream")
     XCTAssertEqual(result, .epub)
+    // octet-stream is treated as epub, not as unsupported or audiobook
+    XCTAssertNotEqual(result, .unsupported)
+    XCTAssertNotEqual(result, .audiobook)
   }
 
   func test_from_pdfMimeType_returnsPdf() {
     let result = TPPBookContentType.from(mimeType: "application/pdf")
     XCTAssertEqual(result, .pdf)
+    XCTAssertNotEqual(result, .epub)
+    XCTAssertNotEqual(result, .audiobook)
   }
 
   func test_from_audiobookJsonMimeType_returnsAudiobook() {
     let result = TPPBookContentType.from(mimeType: "application/audiobook+json")
     XCTAssertEqual(result, .audiobook)
+    XCTAssertNotEqual(result, .epub)
+    XCTAssertNotEqual(result, .pdf)
   }
 
   func test_from_nilMimeType_returnsUnsupported() {
     let result = TPPBookContentType.from(mimeType: nil)
     XCTAssertEqual(result, .unsupported)
+    // Nil mime type must not produce epub, audiobook, or pdf
+    XCTAssertNotEqual(result, .epub)
+    XCTAssertNotEqual(result, .audiobook)
   }
 
   func test_from_unknownMimeType_returnsUnsupported() {
     let result = TPPBookContentType.from(mimeType: "video/mp4")
     XCTAssertEqual(result, .unsupported)
+    // Unrelated MIME types should all map to unsupported
+    XCTAssertEqual(TPPBookContentType.from(mimeType: "text/html"), .unsupported)
+    XCTAssertEqual(TPPBookContentType.from(mimeType: "image/jpeg"), .unsupported)
   }
 
   func test_from_emptyMimeType_returnsUnsupported() {
     let result = TPPBookContentType.from(mimeType: "")
     XCTAssertEqual(result, .unsupported)
+    XCTAssertNotEqual(result, .epub)
+    XCTAssertNotEqual(result, .audiobook)
   }
 
   // MARK: - TPPBookContentTypeConverter
 
   func test_converter_epub_returnsEpub() {
-    XCTAssertEqual(TPPBookContentTypeConverter.stringValue(of: .epub), "Epub")
+    let value = TPPBookContentTypeConverter.stringValue(of: .epub)
+    XCTAssertEqual(value, "Epub")
+    XCTAssertFalse(value.isEmpty)
+    XCTAssertNotEqual(value, TPPBookContentTypeConverter.stringValue(of: .audiobook))
   }
 
   func test_converter_audiobook_returnsAudioBook() {
-    XCTAssertEqual(TPPBookContentTypeConverter.stringValue(of: .audiobook), "AudioBook")
+    let value = TPPBookContentTypeConverter.stringValue(of: .audiobook)
+    XCTAssertEqual(value, "AudioBook")
+    XCTAssertFalse(value.isEmpty)
+    XCTAssertNotEqual(value, TPPBookContentTypeConverter.stringValue(of: .epub))
   }
 
   func test_converter_pdf_returnsPDF() {
-    XCTAssertEqual(TPPBookContentTypeConverter.stringValue(of: .pdf), "PDF")
+    let value = TPPBookContentTypeConverter.stringValue(of: .pdf)
+    XCTAssertEqual(value, "PDF")
+    XCTAssertFalse(value.isEmpty)
+    XCTAssertNotEqual(value, TPPBookContentTypeConverter.stringValue(of: .epub))
   }
 
   func test_converter_unsupported_returnsUnsupported() {
-    XCTAssertEqual(TPPBookContentTypeConverter.stringValue(of: .unsupported), "Unsupported")
+    let value = TPPBookContentTypeConverter.stringValue(of: .unsupported)
+    XCTAssertEqual(value, "Unsupported")
+    XCTAssertFalse(value.isEmpty)
+    // All four converter outputs must be distinct
+    let allValues = [TPPBookContentType.epub, .audiobook, .pdf, .unsupported].map {
+      TPPBookContentTypeConverter.stringValue(of: $0)
+    }
+    XCTAssertEqual(Set(allValues).count, 4, "Each content type must have a unique string value")
   }
 
   // MARK: - OPDS Publication type (OPDS2 feeds)

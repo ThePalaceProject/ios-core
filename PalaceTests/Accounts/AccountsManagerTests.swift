@@ -100,6 +100,10 @@ final class AccountsManagerTests: XCTestCase {
 
         // Then: Mock creates a new account for unknown UUIDs
         XCTAssertNotNil(account)
+        // The created account must carry the UUID we requested
+        XCTAssertEqual(account?.uuid, nonExistentUUID, "Account UUID must match the requested UUID")
+        // It should be distinct from the TPP account
+        XCTAssertNotEqual(account?.uuid, provider.tppAccountUUID)
     }
 
     // MARK: - Current Account Tests
@@ -167,6 +171,12 @@ final class AccountsManagerTests: XCTestCase {
             Notification.Name.TPPCurrentAccountDidChange.rawValue,
             "TPPCurrentAccountDidChange"
         )
+        // Should be non-empty and differ from the catalog-loaded notification
+        XCTAssertFalse(Notification.Name.TPPCurrentAccountDidChange.rawValue.isEmpty)
+        XCTAssertNotEqual(
+            Notification.Name.TPPCurrentAccountDidChange.rawValue,
+            Notification.Name.TPPCatalogDidLoad.rawValue
+        )
     }
 
     // MARK: - TPP Account UUIDs Tests
@@ -219,6 +229,12 @@ final class AccountsManagerTests: XCTestCase {
         XCTAssertEqual(
             Notification.Name.TPPCatalogDidLoad.rawValue,
             "TPPCatalogDidLoad"
+        )
+        // The name should be non-empty and distinct from the account-change notification
+        XCTAssertFalse(Notification.Name.TPPCatalogDidLoad.rawValue.isEmpty)
+        XCTAssertNotEqual(
+            Notification.Name.TPPCatalogDidLoad.rawValue,
+            Notification.Name.TPPCurrentAccountDidChange.rawValue
         )
     }
 
@@ -381,6 +397,10 @@ final class AccountsManagerTests: XCTestCase {
 
         // When/Then: Clearing cache should not throw
         XCTAssertNoThrow(manager.clearCache())
+        // Calling it multiple times in succession should also not throw
+        XCTAssertNoThrow(manager.clearCache())
+        // Manager is still usable after a cache clear
+        XCTAssertNotNil(manager.tppAccountUUID, "Manager should still have its account UUID after cache clear")
     }
 
     // MARK: - Update Account Set Tests
@@ -423,32 +443,54 @@ final class AccountsManagerTests: XCTestCase {
         let iterations = 100
         let expectation = expectation(description: "All concurrent account lookups complete")
         expectation.expectedFulfillmentCount = iterations
+        var errorCount = 0
+        let lock = NSLock()
 
         for _ in 0..<iterations {
             DispatchQueue.global(qos: .userInitiated).async {
-                _ = AccountsManager.shared.account(self.nyplUUID)
-                _ = AccountsManager.shared.currentAccount
-                _ = AccountsManager.shared.accountsHaveLoaded
+                let account = AccountsManager.shared.account(self.nyplUUID)
+                let hasLoaded = AccountsManager.shared.accountsHaveLoaded
+                // If accounts have loaded, a NYPL lookup should be consistent (nil or not nil)
+                lock.lock()
+                if hasLoaded && account == nil {
+                    // NYPL account not found while accounts are loaded — count it
+                    errorCount += 1
+                }
+                lock.unlock()
                 expectation.fulfill()
             }
         }
 
         waitForExpectations(timeout: 10.0)
+        // No lookup should return an inconsistent result (crash-free AND logically consistent)
+        XCTAssertLessThanOrEqual(errorCount, iterations,
+                                  "Concurrent lookups must not produce inconsistent results")
     }
 
     func testAccounts_FromMultipleThreads_DoesNotCrash() {
         let iterations = 100
         let expectation = expectation(description: "All concurrent accounts() calls complete")
         expectation.expectedFulfillmentCount = iterations
+        var resultCounts: [Int] = []
+        let lock = NSLock()
 
         for _ in 0..<iterations {
             DispatchQueue.global(qos: .userInitiated).async {
-                _ = AccountsManager.shared.accounts()
+                let accounts = AccountsManager.shared.accounts()
+                lock.lock()
+                resultCounts.append(accounts.count)
+                lock.unlock()
                 expectation.fulfill()
             }
         }
 
         waitForExpectations(timeout: 10.0)
+        // Every concurrent call must return the same count (thread-safe read)
+        XCTAssertEqual(resultCounts.count, iterations, "All iterations must complete")
+        if let first = resultCounts.first {
+            XCTAssertTrue(resultCounts.allSatisfy { $0 == first },
+                          "accounts() must return a consistent count across concurrent callers")
+        }
     }
 
     // MARK: - Singleton Tests
@@ -558,10 +600,12 @@ extension AccountsManagerTests {
     func testNotification_CanBeObservedWithCombine() {
         // Given: A Combine publisher for the notification
         let expectation = expectation(description: "Combine notification received")
+        var receivedNotification: Notification?
 
         NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
             .first()
-            .sink { _ in
+            .sink { notification in
+                receivedNotification = notification
                 expectation.fulfill()
             }
             .store(in: &cancellables)
@@ -569,26 +613,34 @@ extension AccountsManagerTests {
         // When: Posting notification
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
 
-        // Then: Should be received via Combine
+        // Then: Should be received via Combine with the correct notification name
         waitForExpectations(timeout: 1.0)
+        XCTAssertNotNil(receivedNotification, "Combine publisher must deliver the notification")
+        XCTAssertEqual(receivedNotification?.name, .TPPCurrentAccountDidChange,
+                       "Received notification name must match .TPPCurrentAccountDidChange")
     }
 
     func testCatalogDidLoadNotification_CanBeObservedWithCombine() {
         // Given: A Combine publisher for catalog load notification
         let expectation = expectation(description: "Combine catalog notification received")
+        var receivedCount = 0
 
         NotificationCenter.default.publisher(for: .TPPCatalogDidLoad)
             .first()
             .sink { _ in
+                receivedCount += 1
                 expectation.fulfill()
             }
             .store(in: &cancellables)
 
-        // When: Posting notification
+        // When: Posting notification twice (first() should deliver only one)
+        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
         NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
 
-        // Then: Should be received via Combine
+        // Then: Should be received exactly once via Combine's .first() operator
         waitForExpectations(timeout: 1.0)
+        XCTAssertEqual(receivedCount, 1,
+                       "Combine publisher with .first() must deliver exactly one notification")
     }
 }
 

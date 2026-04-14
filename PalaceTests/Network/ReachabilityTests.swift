@@ -25,9 +25,13 @@ final class ReachabilityTests: XCTestCase {
     // MARK: - Connection Check (non-asserting — CI may have variable connectivity)
 
     func testIsConnectedToNetwork_returnsBool() {
-        // Just verify the method returns without crashing.
+        // Verify the method returns without crashing.
         // We cannot assert a specific value because CI runners may or may not have network.
-        _ = Reachability.shared.isConnectedToNetwork()
+        let connected = Reachability.shared.isConnectedToNetwork()
+        // Result must be Bool (compile-time checked), and must match the isConnected property
+        let connectedProperty = Reachability.shared.isConnected
+        XCTAssertEqual(connected, connectedProperty,
+                       "isConnectedToNetwork() and isConnected must agree")
     }
 
     // MARK: - Detailed Status
@@ -53,7 +57,11 @@ final class ReachabilityTests: XCTestCase {
     // MARK: - isConnected Property
 
     func testIsConnected_property_returnsBool() {
-        // Just verify it returns without crashing
-        _ = Reachability.shared.isConnected
+        // Verify it returns without crashing and is consistent across back-to-back reads
+        let first = Reachability.shared.isConnected
+        let second = Reachability.shared.isConnected
+        // Connectivity can't flip in the microsecond between two reads
+        XCTAssertEqual(first, second,
+                       "isConnected should be stable across immediate sequential reads")
     }
 }

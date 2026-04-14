@@ -121,61 +121,91 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
     func testDetectRightsManagement_adobeAdept() {
         let result = handler.detectRightsManagement(from: ContentTypeAdobeAdept)
         XCTAssertEqual(result, .adobe)
+        // Should differ from LCP and from no-DRM
+        XCTAssertNotEqual(result, .lcp)
+        XCTAssertNotEqual(result, .none)
     }
 
     func testDetectRightsManagement_readiumLCP() {
         let result = handler.detectRightsManagement(from: ContentTypeReadiumLCP)
         XCTAssertEqual(result, .lcp)
+        XCTAssertNotEqual(result, .adobe)
+        XCTAssertNotEqual(result, .none)
     }
 
     func testDetectRightsManagement_epubZip() {
         let result = handler.detectRightsManagement(from: ContentTypeEpubZip)
         XCTAssertEqual(result, .none)
+        // Open-access EPUBs need no DRM treatment
+        XCTAssertNotEqual(result, .adobe)
+        XCTAssertNotEqual(result, .lcp)
     }
 
     func testDetectRightsManagement_bearerToken() {
         let result = handler.detectRightsManagement(from: ContentTypeBearerToken)
         XCTAssertEqual(result, .simplifiedBearerTokenJSON)
+        XCTAssertNotEqual(result, .adobe)
+        XCTAssertNotEqual(result, .unknown)
     }
 
     func testDetectRightsManagement_unknownType() {
         let result = handler.detectRightsManagement(from: "application/x-unknown-drm")
         XCTAssertEqual(result, .unknown)
+        // Unknown type must not be treated as a known DRM type
+        XCTAssertNotEqual(result, .adobe)
+        XCTAssertNotEqual(result, .lcp)
+        XCTAssertNotEqual(result, .none)
     }
 
     // MARK: - OPDS Entry MIME Type Detection
 
     func testIsOPDSEntryMimeType_applicationXml() {
         XCTAssertTrue(handler.isOPDSEntryMimeType("application/xml"))
+        // Non-OPDS type should return false
+        XCTAssertFalse(handler.isOPDSEntryMimeType("application/json"))
     }
 
     func testIsOPDSEntryMimeType_textXml() {
         XCTAssertTrue(handler.isOPDSEntryMimeType("text/xml"))
+        // HTML is not an OPDS type
+        XCTAssertFalse(handler.isOPDSEntryMimeType("text/html"))
     }
 
     func testIsOPDSEntryMimeType_atomXml() {
         XCTAssertTrue(handler.isOPDSEntryMimeType("application/atom+xml"))
+        // EPUB is not an OPDS entry MIME type
+        XCTAssertFalse(handler.isOPDSEntryMimeType("application/epub+zip"))
     }
 
     func testIsOPDSEntryMimeType_opdsCatalog() {
         XCTAssertTrue(handler.isOPDSEntryMimeType("application/opds-catalog+xml"))
+        // Plain JSON is not an OPDS MIME type
+        XCTAssertFalse(handler.isOPDSEntryMimeType("application/json"))
     }
 
     func testIsOPDSEntryMimeType_caseInsensitive() {
         XCTAssertTrue(handler.isOPDSEntryMimeType("APPLICATION/XML"))
         XCTAssertTrue(handler.isOPDSEntryMimeType("Text/XML"))
+        // Case-insensitive matching should not accidentally accept non-XML types
+        XCTAssertFalse(handler.isOPDSEntryMimeType("APPLICATION/JSON"))
     }
 
     func testIsOPDSEntryMimeType_epub_returnsFalse() {
         XCTAssertFalse(handler.isOPDSEntryMimeType("application/epub+zip"))
+        // Regular XML-based types should still be true
+        XCTAssertTrue(handler.isOPDSEntryMimeType("application/xml"))
     }
 
     func testIsOPDSEntryMimeType_json_returnsFalse() {
         XCTAssertFalse(handler.isOPDSEntryMimeType("application/json"))
+        // application/atom+xml should still be an OPDS type
+        XCTAssertTrue(handler.isOPDSEntryMimeType("application/atom+xml"))
     }
 
     func testIsOPDSEntryMimeType_html_returnsFalse() {
         XCTAssertFalse(handler.isOPDSEntryMimeType("text/html"))
+        // text/xml should still be true while text/html is false
+        XCTAssertTrue(handler.isOPDSEntryMimeType("text/xml"))
     }
 
     // MARK: - File Validation
@@ -393,10 +423,18 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
     func testInit_withDelegate() {
         let handler = BackgroundDownloadHandler(delegate: mockDelegate)
         XCTAssertNotNil(handler.delegate)
+        // The delegate should be the same object we passed in
+        XCTAssertTrue(handler.delegate === mockDelegate)
+        // A newly initialised handler should detect MIME types correctly
+        XCTAssertEqual(handler.detectRightsManagement(from: ContentTypeEpubZip), .none)
     }
 
     func testInit_withoutDelegate() {
         let handler = BackgroundDownloadHandler()
         XCTAssertNil(handler.delegate)
+        // Handler without a delegate should still be able to classify MIME types
+        XCTAssertEqual(handler.detectRightsManagement(from: ContentTypeAdobeAdept), .adobe)
+        // OPDS MIME detection should also work without a delegate
+        XCTAssertTrue(handler.isOPDSEntryMimeType("application/xml"))
     }
 }

@@ -89,5 +89,11 @@ final class SAMLHelperTests: XCTestCase {
         // In production, logIn would crash if businessLogic is nil.
         // This test documents that businessLogic must be set before calling logIn.
         XCTAssertNil(helper.businessLogic)
+        // A second fresh helper must also have nil businessLogic (no shared state)
+        let helper2 = TPPSAMLHelper()
+        XCTAssertNil(helper2.businessLogic,
+                     "Each TPPSAMLHelper instance must start with nil businessLogic")
+        XCTAssertFalse(helper === helper2,
+                       "Two TPPSAMLHelper instances must be distinct objects")
     }
 }

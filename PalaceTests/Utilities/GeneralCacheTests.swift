@@ -49,6 +49,12 @@ final class GeneralCacheTests: XCTestCase {
 
     func testRemove_nonexistentKey_doesNotCrash() {
         cache.remove(for: "nonexistent")
+        // After removing a non-existent key, cache should remain empty
+        XCTAssertNil(cache.get(for: "nonexistent"), "Non-existent key should still return nil after remove")
+        // Other keys should be unaffected
+        cache.set("existing", for: "real-key")
+        cache.remove(for: "nonexistent")
+        XCTAssertEqual(cache.get(for: "real-key"), "existing", "Real key should survive removal of non-existent key")
     }
 
     // MARK: - Clear
@@ -76,6 +82,10 @@ final class GeneralCacheTests: XCTestCase {
 
     func testSet_withExpiration_isAvailableBeforeExpiry() {
         cache.set("Temporary", for: "key", expiresIn: 60)
+        XCTAssertEqual(cache.get(for: "key"), "Temporary")
+        // A different key should still be nil
+        XCTAssertNil(cache.get(for: "other-key"))
+        // The value should be consistent across reads before expiry
         XCTAssertEqual(cache.get(for: "key"), "Temporary")
     }
 

@@ -59,6 +59,9 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let parser = OPDSParser()
 
         XCTAssertThrowsError(try parser.parseFeed(from: data))
+        // Plain text (not JSON or XML) must also throw
+        XCTAssertThrowsError(try parser.parseFeed(from: "not a feed".data(using: .utf8)!),
+                             "Plain text must throw a parsing error")
     }
 
     // MARK: - CatalogFeed OPDS2 Init
@@ -76,6 +79,11 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let feed = CatalogFeed(opds2Feed: opds2)
 
         XCTAssertEqual(feed.entries.count, 3)
+        // Every mapped entry must have a non-empty title and identifier
+        for entry in feed.entries {
+            XCTAssertFalse(entry.title.isEmpty, "Each mapped entry must have a non-empty title")
+            XCTAssertFalse(entry.id.isEmpty, "Each mapped entry must have a non-empty identifier")
+        }
     }
 
     func testCatalogFeed_opds2Init_createsShellOpdsFeed() throws {
@@ -84,6 +92,9 @@ final class OPDS2CatalogWiringTests: XCTestCase {
 
         // Shell feed exists for backward compat
         XCTAssertNotNil(feed.opdsFeed)
+        // The shell feed must carry the same title as the OPDS2 feed
+        XCTAssertEqual(feed.opdsFeed.title, "Test",
+                       "Shell OPDS feed must carry the same title as the OPDS2 source")
     }
 
     // MARK: - CatalogViewModel.mapFeed with OPDS 2
@@ -118,6 +129,12 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let mapped = CatalogViewModel.mapFeed(feed)
 
         XCTAssertNotNil(mapped.lanes.first?.moreURL)
+        // The moreURL must be a valid absolute URL
+        if let moreURL = mapped.lanes.first?.moreURL {
+            XCTAssertNotNil(URL(string: moreURL.absoluteString),
+                            "Lane moreURL must be a valid URL")
+            XCTAssertFalse(moreURL.absoluteString.isEmpty, "Lane moreURL must not be an empty string")
+        }
     }
 
     func testMapFeed_opds2Publication_producesUngroupedBooks() throws {

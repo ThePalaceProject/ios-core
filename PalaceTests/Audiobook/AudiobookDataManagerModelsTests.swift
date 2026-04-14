@@ -150,15 +150,24 @@ final class AudiobookDataManagerModelsTests: XCTestCase {
     """
         let data = json.data(using: .utf8)!
 
-        let responseData = ResponseData(data: data)
+        guard let responseData = ResponseData(data: data) else {
+            XCTFail("ResponseData must parse valid JSON without returning nil")
+            return
+        }
 
-        XCTAssertNotNil(responseData)
-        XCTAssertEqual(responseData?.responses.count, 2)
-        XCTAssertEqual(responseData?.responses[0].status, 200)
-        XCTAssertEqual(responseData?.responses[0].message, "OK")
-        XCTAssertEqual(responseData?.responses[0].id, "entry-1")
-        XCTAssertEqual(responseData?.responses[1].status, 201)
-        XCTAssertEqual(responseData?.responses[1].id, "entry-2")
+        // Verify both entries were decoded with correct field mapping
+        XCTAssertEqual(responseData.responses.count, 2,
+                       "Two response entries in JSON must produce two ResponseEntry objects")
+        XCTAssertEqual(responseData.responses[0].status, 200,
+                       "First entry status must decode from JSON 'status' field")
+        XCTAssertEqual(responseData.responses[0].message, "OK",
+                       "First entry message must decode from JSON 'message' field")
+        XCTAssertEqual(responseData.responses[0].id, "entry-1",
+                       "First entry id must decode from JSON 'id' field")
+        XCTAssertEqual(responseData.responses[1].status, 201,
+                       "Second entry status must decode correctly")
+        XCTAssertEqual(responseData.responses[1].id, "entry-2",
+                       "Second entry id must decode correctly")
     }
 
     func testResponseDataInit_fromData_invalidJson_returnsNil() {
@@ -176,10 +185,17 @@ final class AudiobookDataManagerModelsTests: XCTestCase {
     """
         let data = json.data(using: .utf8)!
 
-        let responseData = ResponseData(data: data)
+        guard let responseData = ResponseData(data: data) else {
+            XCTFail("ResponseData must parse a valid JSON object with empty responses array")
+            return
+        }
 
-        XCTAssertNotNil(responseData)
-        XCTAssertEqual(responseData?.responses.count, 0)
+        // Empty array is valid JSON — decode should succeed but produce zero entries
+        XCTAssertEqual(responseData.responses.count, 0,
+                       "Empty responses array in JSON must decode as an empty Swift array")
+        // Ensure it's distinct from a nil/failed parse
+        XCTAssertTrue(responseData.responses.isEmpty,
+                      "An empty JSON responses array should produce an empty Swift collection")
     }
 
     // ResponseData.init(data:) and ResponseData.init(responses:) must produce
@@ -221,12 +237,20 @@ final class AudiobookDataManagerModelsTests: XCTestCase {
 
         let jsonData = originalStore.jsonRepresentation!
 
-        let decodedStore = AudiobookDataManagerStore(data: jsonData)
+        guard let decodedStore = AudiobookDataManagerStore(data: jsonData) else {
+            XCTFail("AudiobookDataManagerStore must decode from valid JSON data produced by jsonRepresentation")
+            return
+        }
 
-        XCTAssertNotNil(decodedStore)
-        XCTAssertEqual(decodedStore?.urls.count, 1)
-        XCTAssertEqual(decodedStore?.queue.count, 1)
-        XCTAssertEqual(decodedStore?.queue.first?.id, "entry-123")
+        // Verify the decoded store has the same contents as the original
+        XCTAssertEqual(decodedStore.urls.count, 1,
+                       "Decoded store must preserve the URL entries from the original")
+        XCTAssertEqual(decodedStore.queue.count, 1,
+                       "Decoded store must preserve the queue entries from the original")
+        XCTAssertEqual(decodedStore.queue.first?.id, "entry-123",
+                       "Decoded queue entry must preserve the original ID")
+        XCTAssertEqual(decodedStore.queue.first?.bookId, entry.bookId,
+                       "Decoded queue entry must preserve the book ID")
     }
 
     func testAudiobookDataManagerStoreInit_fromData_invalidJson_returnsNil() {

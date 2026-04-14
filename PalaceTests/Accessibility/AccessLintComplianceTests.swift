@@ -210,7 +210,16 @@ final class AccessLintComplianceTests: XCTestCase {
     func testStatusAnnouncement_errorOccurred_passesThrough() {
         let input = "Network connection lost."
         let output = Strings.StatusAnnouncements.errorOccurred(input)
+
+        // The message should pass through unchanged so VoiceOver reads the exact error text
         XCTAssertEqual(output, input, "errorOccurred should pass through the message as-is")
+        XCTAssertFalse(output.isEmpty, "errorOccurred must never produce an empty announcement")
+        XCTAssertTrue(output.contains("Network"), "errorOccurred must preserve the original wording")
+
+        // Edge case: empty input should produce empty output (or at least not crash)
+        let emptyOutput = Strings.StatusAnnouncements.errorOccurred("")
+        XCTAssertTrue(emptyOutput.isEmpty || emptyOutput == "",
+                      "errorOccurred with empty string should not add extraneous content")
     }
 
     /// StatusAnnouncements.actionFailed combines title and message clearly.

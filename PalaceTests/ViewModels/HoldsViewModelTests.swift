@@ -105,11 +105,22 @@ final class HoldsViewModelTests: XCTestCase {
     // MARK: - Filter Tests
 
     func testFilterBooksWithEmptyQueryReturnsAll() async {
+        // Pre-populate registry with two books
+        let book1 = TPPBookMocker.snapshotReservedBook(identifier: "empty-query-1", title: "Alpha")
+        let book2 = TPPBookMocker.snapshotReservedBook(identifier: "empty-query-2", title: "Beta")
+        mockRegistry.addBook(book1, state: .holding)
+        mockRegistry.addBook(book2, state: .holding)
+
         let viewModel = createViewModel()
 
         await viewModel.filterBooks(query: "")
 
-        XCTAssertEqual(viewModel.visibleBooks, viewModel.visibleBooks)
+        // Empty query must return ALL books, not a subset
+        XCTAssertEqual(viewModel.visibleBooks.count, 2, "Empty query should return all held books")
+        // Verify both books are present
+        let ids = viewModel.visibleBooks.map { $0.identifier }
+        XCTAssertTrue(ids.contains("empty-query-1"))
+        XCTAssertTrue(ids.contains("empty-query-2"))
     }
 
     func testFilterBooksWithQuery() async {
@@ -177,8 +188,10 @@ final class HoldsViewModelTests: XCTestCase {
         // Call reloadData directly - no waiting
         viewModel.reloadData()
 
-        // The ViewModel should have processed the held books
-        XCTAssertNotNil(viewModel)
+        // The ViewModel should have processed the held books — verify actual data, not just non-nil
+        XCTAssertFalse(viewModel.visibleBooks.isEmpty, "visibleBooks should contain the pre-populated book")
+        XCTAssertEqual(viewModel.visibleBooks.count, 1)
+        XCTAssertEqual(viewModel.visibleBooks.first?.identifier, "test-1")
     }
 
     func testReloadData_HandlesMultipleBooks() {

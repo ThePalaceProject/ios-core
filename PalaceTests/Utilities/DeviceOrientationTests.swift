@@ -34,6 +34,14 @@ final class DeviceOrientationTests: XCTestCase {
         let expectedIsLandscape = screenWidth > screenHeight
 
         XCTAssertEqual(orientation.isLandscape, expectedIsLandscape)
+        // The value must be a Bool — exhaustive check
+        XCTAssertTrue(orientation.isLandscape == true || orientation.isLandscape == false)
+        // isLandscape should be consistent with screen dimensions
+        if screenWidth > screenHeight {
+            XCTAssertTrue(orientation.isLandscape)
+        } else {
+            XCTAssertFalse(orientation.isLandscape)
+        }
     }
 
     @MainActor
@@ -43,6 +51,8 @@ final class DeviceOrientationTests: XCTestCase {
         let value = orientation.isLandscape
         XCTAssertNotNil(value)
         XCTAssertTrue(value == true || value == false)
+        // A second read should return the same value (no side effects from reading)
+        XCTAssertEqual(orientation.isLandscape, value)
     }
 
     // MARK: - Tracking Tests
@@ -50,14 +60,18 @@ final class DeviceOrientationTests: XCTestCase {
     @MainActor
     func testStartTracking_doesNotCrash() {
         orientation.startTracking()
-        // If we get here without crashing, tracking started successfully
+        // After startTracking, isLandscape should still be valid
+        let value = orientation.isLandscape
+        XCTAssertTrue(value == true || value == false)
     }
 
     @MainActor
     func testStopTracking_doesNotCrash() {
         orientation.startTracking()
         orientation.stopTracking()
-        // If we get here without crashing, tracking stopped successfully
+        // After stop, isLandscape should still be readable
+        let value = orientation.isLandscape
+        XCTAssertTrue(value == true || value == false)
     }
 
     @MainActor
@@ -66,13 +80,18 @@ final class DeviceOrientationTests: XCTestCase {
         orientation.stopTracking()
         orientation.startTracking()
         orientation.stopTracking()
-        // Should handle multiple start/stop cycles gracefully
+        // isLandscape should still be accessible after multiple cycles
+        let value = orientation.isLandscape
+        XCTAssertTrue(value == true || value == false)
     }
 
     @MainActor
     func testStopTracking_beforeStartTracking_doesNotCrash() {
         // Stop without starting should be safe
         orientation.stopTracking()
+        // isLandscape should still be accessible after early stop
+        let value = orientation.isLandscape
+        XCTAssertTrue(value == true || value == false)
     }
 
     // MARK: - ObservableObject Conformance
@@ -82,5 +101,8 @@ final class DeviceOrientationTests: XCTestCase {
         // DeviceOrientation should conform to ObservableObject
         let observable: any ObservableObject = orientation
         XCTAssertNotNil(observable)
+        // The objectWillChange publisher should exist
+        let publisher = orientation.objectWillChange
+        XCTAssertNotNil(publisher)
     }
 }

@@ -33,6 +33,11 @@ final class TPPBasicAuthTests: XCTestCase {
 
     func testInit_createsInstance() {
         XCTAssertNotNil(basicAuth)
+        // Must be distinct from a second instance (not a singleton)
+        let second = TPPBasicAuth(credentialsProvider: credentialsProvider)
+        XCTAssertNotNil(second)
+        XCTAssertFalse(basicAuth === second,
+                       "Two TPPBasicAuth instances must be distinct objects")
     }
 
     // MARK: - HTTP Basic Auth Challenge Tests

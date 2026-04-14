@@ -135,7 +135,7 @@ class AudiobookTOCTests: XCTestCase {
     // MARK: - TOC Screen Tests
 
     func testTOC_ContentsAndBookmarksTabs() {
-        enum TOCTab {
+        enum TOCTab: CaseIterable {
             case contents
             case bookmarks
         }
@@ -143,6 +143,10 @@ class AudiobookTOCTests: XCTestCase {
         let availableTabs: [TOCTab] = [.contents, .bookmarks]
 
         XCTAssertEqual(availableTabs.count, 2, "Should have Contents and Bookmarks tabs")
+        XCTAssertEqual(availableTabs.count, TOCTab.allCases.count,
+                       "Available tabs array must include all defined tab cases")
+        XCTAssertTrue(availableTabs.contains(.contents), "Contents tab must be present")
+        XCTAssertTrue(availableTabs.contains(.bookmarks), "Bookmarks tab must be present")
     }
 
     func testTOC_SwitchToBookmarks() {
@@ -151,7 +155,9 @@ class AudiobookTOCTests: XCTestCase {
         // Switch to Bookmarks
         activeTab = "Bookmarks"
 
-        XCTAssertEqual(activeTab, "Bookmarks")
+        XCTAssertEqual(activeTab, "Bookmarks", "Active tab must update to Bookmarks after switch")
+        XCTAssertNotEqual(activeTab, "Contents", "Active tab must no longer be Contents after switching to Bookmarks")
+        XCTAssertFalse(activeTab.isEmpty, "Active tab name must not be empty")
     }
 
     func testTOC_SwitchToChapters() {
@@ -160,7 +166,9 @@ class AudiobookTOCTests: XCTestCase {
         // Switch back to Chapters
         activeTab = "Contents"
 
-        XCTAssertEqual(activeTab, "Contents")
+        XCTAssertEqual(activeTab, "Contents", "Active tab must update to Contents after switch")
+        XCTAssertNotEqual(activeTab, "Bookmarks", "Active tab must no longer be Bookmarks after switching to Contents")
+        XCTAssertFalse(activeTab.isEmpty, "Active tab name must not be empty")
     }
 
     // MARK: - Chapter Duration Tests

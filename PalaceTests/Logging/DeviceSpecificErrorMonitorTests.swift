@@ -73,6 +73,9 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
         let error = NSError(domain: "TestDomain", code: 1, userInfo: nil)
         // Should not crash even without Firebase initialized
         DeviceSpecificErrorMonitor.shared.logError(error, context: "Unit test")
+        // Verify the shared instance is still valid after logging (no teardown side-effects)
+        XCTAssertNotNil(DeviceSpecificErrorMonitor.shared,
+                        "Shared instance must remain valid after logError call")
     }
 
     func testLogError_withMetadata_doesNotCrash() {
@@ -82,6 +85,10 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
             context: "Unit test with metadata",
             metadata: ["test_key": "test_value"]
         )
+        // Verify that the monitor can still report device info after logging
+        let info = DeviceSpecificErrorMonitor.shared.getDeviceInfo()
+        XCTAssertFalse(info.isEmpty,
+                       "Device info must remain accessible after logError with metadata call")
     }
 
     func testLogNetworkFailure_doesNotCrash() {
@@ -93,6 +100,10 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
             error: error,
             context: "Unit test network failure"
         )
+        // Verify the device ID is stable after a network failure log (no state corruption)
+        let deviceID = DeviceSpecificErrorMonitor.shared.getDeviceID()
+        XCTAssertFalse(deviceID.isEmpty,
+                       "Device ID must remain non-empty after logNetworkFailure call")
     }
 
     // MARK: - Enhanced Logging Status

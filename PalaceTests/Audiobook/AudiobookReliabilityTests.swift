@@ -320,10 +320,17 @@ final class AudiobookStorageLocationTests: XCTestCase {
 
         // When
         let appSupportURLs = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+        let appSupportURL = appSupportURLs.first
 
-        // Then
-        XCTAssertFalse(appSupportURLs.isEmpty)
-        XCTAssertTrue(appSupportURLs.first != nil)
+        // Then — directory must exist and be a directory (not a file)
+        XCTAssertFalse(appSupportURLs.isEmpty, "Application support directories list must not be empty")
+        XCTAssertNotNil(appSupportURL, "Must have at least one application support directory URL")
+        if let url = appSupportURL {
+            var isDir: ObjCBool = false
+            let exists = fileManager.fileExists(atPath: url.path, isDirectory: &isDir)
+            XCTAssertTrue(exists, "Application support directory must exist on disk")
+            XCTAssertTrue(isDir.boolValue, "Application support URL must point to a directory, not a file")
+        }
     }
 
     func testAudiobooksDirectoryPath() {
@@ -337,9 +344,14 @@ final class AudiobookStorageLocationTests: XCTestCase {
         // When
         let expectedPath = appSupport.appendingPathComponent("Audiobooks/Downloads", isDirectory: true)
 
-        // Then
-        XCTAssertTrue(expectedPath.path.contains("Library/Application Support"))
-        XCTAssertTrue(expectedPath.path.hasSuffix("Audiobooks/Downloads"))
+        // Then — verify path structure and that it is buildable (not a dead path reference)
+        XCTAssertTrue(expectedPath.path.contains("Library/Application Support"),
+                      "Audiobooks/Downloads path must reside in Library/Application Support")
+        XCTAssertTrue(expectedPath.path.hasSuffix("Audiobooks/Downloads"),
+                      "Path must end with Audiobooks/Downloads")
+        XCTAssertTrue(expectedPath.hasDirectoryPath,
+                      "URL must be marked as a directory path")
+        XCTAssertFalse(expectedPath.path.isEmpty, "Resulting path must not be empty")
     }
 
     func testOverdriveDirectoryPath() {

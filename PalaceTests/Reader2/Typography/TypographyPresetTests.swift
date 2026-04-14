@@ -53,16 +53,30 @@ final class TypographyPresetTests: XCTestCase {
         let ids = TypographyPreset.allPresets.map { $0.id }
         let uniqueIds = Set(ids)
         XCTAssertEqual(ids.count, uniqueIds.count, "All preset IDs should be unique")
+        // Each ID must be non-empty and contain no whitespace
+        for id in ids {
+            XCTAssertFalse(id.isEmpty, "Preset IDs must not be empty")
+            XCTAssertFalse(id.contains(" "), "Preset IDs must not contain spaces")
+        }
     }
 
     func testPresetsHaveUniqueNames() {
         let names = TypographyPreset.allPresets.map { $0.name }
         let uniqueNames = Set(names)
         XCTAssertEqual(names.count, uniqueNames.count, "All preset names should be unique")
+        // Each name must be non-empty
+        for name in names {
+            XCTAssertFalse(name.isEmpty, "Preset names must not be empty")
+        }
     }
 
     func testPresetCount() {
         XCTAssertEqual(TypographyPreset.allPresets.count, 6, "Should have 6 built-in presets")
+        // Every preset must have a non-empty id and name
+        for preset in TypographyPreset.allPresets {
+            XCTAssertFalse(preset.id.isEmpty, "Preset ID must not be empty")
+            XCTAssertFalse(preset.name.isEmpty, "Preset name must not be empty")
+        }
     }
 
     func testPresetLookupById() {
@@ -75,6 +89,9 @@ final class TypographyPresetTests: XCTestCase {
 
     func testPresetLookupByInvalidId() {
         XCTAssertNil(TypographyPreset.preset(for: "nonexistent"))
+        // Various edge-case invalid IDs must all return nil
+        XCTAssertNil(TypographyPreset.preset(for: ""), "Empty string should not match any preset")
+        XCTAssertNil(TypographyPreset.preset(for: "CLASSIC"), "Lookup must be case-sensitive")
     }
 
     // MARK: - Individual Preset Configurations
@@ -136,6 +153,7 @@ final class TypographyPresetTests: XCTestCase {
         for preset in TypographyPreset.allPresets {
             let settings = preset.typographySettings
             let data = try JSONEncoder().encode(settings)
+            XCTAssertFalse(data.isEmpty, "Encoded data for preset \(preset.name) must not be empty")
             let decoded = try JSONDecoder().decode(TypographySettings.self, from: data)
             XCTAssertEqual(settings, decoded, "Preset \(preset.name) settings should survive encode/decode")
         }
@@ -146,21 +164,29 @@ final class TypographyPresetTests: XCTestCase {
     func testClassicCSSContainsGeorgia() {
         let css = service.css(for: TypographyPreset.classic.typographySettings)
         XCTAssertTrue(css.contains("Georgia"))
+        // Classic preset uses justified alignment
+        XCTAssertTrue(css.contains("justify"), "Classic preset CSS should use justified alignment")
     }
 
     func testModernCSSContainsSFPro() {
         let css = service.css(for: TypographyPreset.modern.typographySettings)
         XCTAssertTrue(css.contains("-apple-system") || css.contains("SF Pro"))
+        // Modern uses left alignment
+        XCTAssertTrue(css.contains("text-align: left"), "Modern preset CSS should use left alignment")
     }
 
     func testDyslexiaCSSContainsOpenDyslexic() {
         let css = service.css(for: TypographyPreset.dyslexiaFriendly.typographySettings)
         XCTAssertTrue(css.contains("OpenDyslexic"))
+        // Dyslexia preset must use left alignment
+        XCTAssertTrue(css.contains("text-align: left"), "Dyslexia-friendly CSS must use left alignment")
     }
 
     func testNightReaderCSSHasBlackBackground() {
         let css = service.css(for: TypographyPreset.nightReader.typographySettings)
         XCTAssertTrue(css.contains("#000000"), "Night Reader should have black background")
+        // Night reader should have white or near-white text
+        XCTAssertTrue(css.contains("color:"), "Night Reader CSS must specify text color")
     }
 
     // MARK: - Font Size Ranges

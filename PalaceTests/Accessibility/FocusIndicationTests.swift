@@ -190,30 +190,37 @@ final class FocusIndicationTests: XCTestCase {
         let menuButton = UIBarButtonItem(title: "Menu", style: .plain, target: nil, action: nil)
         menuButton.accessibilityLabel = "Open Reader Menu"
 
-        // Act — set items in the intended reading order
+        // Act — set items in the intended reading order, then snapshot the labels for assertion
         toolbar.items = [backButton, titleItem, menuButton]
+        let labelOrder = toolbar.items?.compactMap { $0.accessibilityLabel } ?? []
 
         // Assert — item count and positional labels are preserved
         XCTAssertEqual(toolbar.items?.count, 3,
             "Toolbar must contain exactly three items")
-        XCTAssertEqual(toolbar.items?[0].accessibilityLabel, "Go Back",
-            "First item must be the back button (leftmost in reading order)")
-        XCTAssertEqual(toolbar.items?[2].accessibilityLabel, "Open Reader Menu",
-            "Third item must be the menu button (rightmost in reading order)")
+        XCTAssertEqual(labelOrder.first, "Go Back",
+            "First label in reading order must be the back button")
+        XCTAssertEqual(labelOrder.last, "Open Reader Menu",
+            "Last label in reading order must be the menu button")
 
-        // Act — reverse items to simulate an ordering regression
+        // Act — reverse items to simulate an ordering regression, snapshot new label order
         toolbar.items = [menuButton, titleItem, backButton]
+        let reversedLabelOrder = toolbar.items?.compactMap { $0.accessibilityLabel } ?? []
 
         // Assert — first-element label now differs from expected "Go Back"
-        XCTAssertNotEqual(toolbar.items?[0].accessibilityLabel, "Go Back",
+        XCTAssertNotEqual(reversedLabelOrder.first, "Go Back",
             "Reversed toolbar must not present the back button first — ordering regression detected")
-        XCTAssertEqual(toolbar.items?[0].accessibilityLabel, "Open Reader Menu",
+        XCTAssertEqual(reversedLabelOrder.first, "Open Reader Menu",
             "After reversal the menu button should be first")
 
-        // Restore correct order and verify recovery
+        // Verify ordering changed — the two label arrays must differ
+        XCTAssertNotEqual(labelOrder, reversedLabelOrder,
+            "Reversing toolbar items must produce a different accessibility label order")
+
+        // Restore correct order and snapshot again
         toolbar.items = [backButton, titleItem, menuButton]
-        XCTAssertEqual(toolbar.items?[0].accessibilityLabel, "Go Back",
-            "Restoring original order must put the back button first again")
+        let restoredLabelOrder = toolbar.items?.compactMap { $0.accessibilityLabel } ?? []
+        XCTAssertEqual(restoredLabelOrder, labelOrder,
+            "Restoring original order must reproduce the original label sequence")
     }
 
     // MARK: - Helpers

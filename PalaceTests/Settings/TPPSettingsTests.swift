@@ -114,8 +114,8 @@ final class TPPSettingsTests: XCTestCase {
     func testCustomMainFeedURL_defaultIsNil() {
         // Custom URL should be nil by default in test environment
         let url = TPPSettings.shared.customMainFeedURL
-        // Just verify it doesn't crash
-        _ = url
+        // In a clean test environment, no custom feed URL should be set
+        XCTAssertNil(url, "customMainFeedURL must be nil by default in a clean test environment")
     }
 
     func testCustomLibraryRegistryServer_canBeSet() {

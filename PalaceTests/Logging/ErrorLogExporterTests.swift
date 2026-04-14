@@ -66,7 +66,10 @@ final class ErrorLogExporterTests: XCTestCase {
     func testErrorLogExporter_sharedInstance_isNotNil() async {
         // Access the shared instance — this validates it can be created
         let exporter = ErrorLogExporter.shared
-        XCTAssertNotNil(exporter)
+        XCTAssertNotNil(exporter, "ErrorLogExporter.shared must not be nil")
+        // Singleton identity: repeated access must return the same object
+        XCTAssertTrue(ErrorLogExporter.shared === exporter,
+                      "ErrorLogExporter.shared must return the same instance on every access")
     }
 
     // MARK: - Patron ID in Device Info Tests (PP-3651)

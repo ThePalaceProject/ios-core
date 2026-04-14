@@ -14,6 +14,10 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
 
     func testShared_isNotNil() {
         XCTAssertNotNil(TPPNetworkExecutor.shared)
+        // Shared must be a singleton — two accesses return the same object
+        let a = TPPNetworkExecutor.shared
+        let b = TPPNetworkExecutor.shared
+        XCTAssertTrue(a === b, "TPPNetworkExecutor.shared must be a singleton")
     }
 
     // MARK: - Request Creation
@@ -32,6 +36,10 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
 
         // The request should have some standard headers
         XCTAssertNotNil(request.url)
+        XCTAssertEqual(request.url, url, "URL must be preserved exactly")
+        // Accept-Language is explicitly set to empty string to prevent iOS default
+        let acceptLang = request.value(forHTTPHeaderField: "Accept-Language")
+        XCTAssertEqual(acceptLang, "", "Accept-Language should be empty string per Palace convention")
     }
 
     func testRequest_forURL_setsAcceptLanguageEmpty() {
@@ -75,6 +83,10 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
             delegateQueue: nil
         )
         XCTAssertNotNil(executor)
+        XCTAssertGreaterThan(executor.requestTimeout, 0,
+                             "Ephemeral executor must have a positive request timeout")
+        XCTAssertTrue(executor is TPPRequestExecuting,
+                      "Executor must conform to TPPRequestExecuting")
     }
 
     func testInit_withDefaultCachingStrategy() {
@@ -84,6 +96,8 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
             delegateQueue: nil
         )
         XCTAssertNotNil(executor)
+        XCTAssertGreaterThan(executor.requestTimeout, 0,
+                             "Default caching executor must have a positive request timeout")
     }
 
     func testInit_withFallbackCachingStrategy() {
@@ -93,6 +107,8 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
             delegateQueue: nil
         )
         XCTAssertNotNil(executor)
+        XCTAssertGreaterThan(executor.requestTimeout, 0,
+                             "Fallback caching executor must have a positive request timeout")
     }
 
     func testInit_withCustomSessionConfiguration() {
@@ -106,30 +122,46 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
             delegateQueue: nil
         )
         XCTAssertNotNil(executor)
+        // Custom config executor must have a valid timeout, just like shared
+        XCTAssertGreaterThan(executor.requestTimeout, 0,
+                             "Custom-config executor must have a positive request timeout")
     }
 
     // MARK: - Cache Control
 
     func testClearCache_doesNotCrash() {
         TPPNetworkExecutor.shared.clearCache()
-        // Should not crash
+        // Calling clearCache twice in a row must also be safe (idempotent)
+        TPPNetworkExecutor.shared.clearCache()
+        // Shared is still usable after cache clear
+        XCTAssertNotNil(TPPNetworkExecutor.shared,
+                        "Executor must remain valid after cache cleared")
     }
 
     // MARK: - Task Management
 
     func testPauseAllTasks_doesNotCrash() {
         TPPNetworkExecutor.shared.pauseAllTasks()
-        // Should not crash
+        // Pause then immediately resume must not crash (common sequence on app background/foreground)
+        TPPNetworkExecutor.shared.resumeAllTasks()
+        XCTAssertNotNil(TPPNetworkExecutor.shared,
+                        "Executor must remain valid after pause+resume")
     }
 
     func testResumeAllTasks_doesNotCrash() {
+        // Resume without prior pause must be safe
         TPPNetworkExecutor.shared.resumeAllTasks()
-        // Should not crash
+        TPPNetworkExecutor.shared.resumeAllTasks()
+        XCTAssertNotNil(TPPNetworkExecutor.shared,
+                        "Executor must remain valid after multiple resumes")
     }
 
     func testCancelNonEssentialTasks_doesNotCrash() {
         TPPNetworkExecutor.shared.cancelNonEssentialTasks()
-        // Should not crash
+        // Cancelling twice in quick succession must not crash
+        TPPNetworkExecutor.shared.cancelNonEssentialTasks()
+        XCTAssertNotNil(TPPNetworkExecutor.shared,
+                        "Executor must remain valid after repeated cancellations")
     }
 }
 

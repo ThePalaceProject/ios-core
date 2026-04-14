@@ -14,6 +14,9 @@ final class RemoteFeatureFlagsTests: XCTestCase {
 
     func testShared_isNotNil() {
         XCTAssertNotNil(RemoteFeatureFlags.shared)
+        // Singleton identity: accessing shared twice must return the same object
+        XCTAssertTrue(RemoteFeatureFlags.shared === RemoteFeatureFlags.shared,
+                      "RemoteFeatureFlags.shared must always return the same instance")
     }
 
     func testShared_returnsSameInstance() {
@@ -71,9 +74,13 @@ final class RemoteFeatureFlagsTests: XCTestCase {
     // MARK: - CarPlay
 
     func testIsCarPlayEnabledCached_returnsBool() {
-        // Should not crash and should return a bool
+        // Should not crash, return a real Bool, and be idempotent
         let enabled = RemoteFeatureFlags.shared.isCarPlayEnabledCached
-        XCTAssertNotNil(enabled)
+        XCTAssertNotNil(enabled as Bool?, "isCarPlayEnabledCached must return a non-nil Bool")
+        // Without Firebase in tests, the cached value must equal the feature flag default
+        let defaultValue = RemoteFeatureFlags.FeatureFlag.carPlayEnabled.defaultValue
+        XCTAssertEqual(enabled, defaultValue,
+                       "In a test environment without Firebase, isCarPlayEnabledCached must equal the default value")
     }
 
     // MARK: - Device Info

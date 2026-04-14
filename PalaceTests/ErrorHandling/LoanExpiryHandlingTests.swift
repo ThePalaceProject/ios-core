@@ -72,15 +72,26 @@ final class ExpiredLoanStringsTests: XCTestCase {
 
     func testExpiredLoanTitle_isNonEmpty() {
         XCTAssertFalse(Strings.ExpiredLoan.title.isEmpty)
+        // Title must not be a raw key (i.e. actual localized text was loaded)
+        XCTAssertFalse(Strings.ExpiredLoan.title.hasPrefix("ExpiredLoan"),
+                       "Title must not fall back to the localization key itself")
     }
 
     func testExpiredLoanMessage_isNonEmpty() {
         XCTAssertFalse(Strings.ExpiredLoan.message.isEmpty)
+        // Message should be distinct from the title
+        XCTAssertNotEqual(Strings.ExpiredLoan.message, Strings.ExpiredLoan.title,
+                          "message and title must be different strings")
     }
 
     func testExpiredLoanMessageWithDate_containsFormatSpecifier() {
         XCTAssertTrue(Strings.ExpiredLoan.messageWithDate.contains("%@"),
                       "messageWithDate must contain a %@ format specifier for the end date")
+        // Only one date placeholder is expected
+        let placeholders = Strings.ExpiredLoan.messageWithDate
+            .components(separatedBy: "%@").count - 1
+        XCTAssertEqual(placeholders, 1,
+                       "messageWithDate should have exactly one %@ placeholder, found \(placeholders)")
     }
 
     func testExpiredLoanMessageWithDate_formatsDateCorrectly() {

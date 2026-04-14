@@ -59,9 +59,14 @@ final class ReadingSessionTrackerTests: XCTestCase {
     tracker.recordPageTurn()
     tracker.recordPageTurn()
 
-    // We can't inspect pageCount directly, but it'll be reflected in the
-    // recorded session when endSession is called.
-    XCTAssertTrue(tracker.isTracking)
+    // Page count is internal, but we can verify:
+    // 1. The session remains active throughout the page turns.
+    // 2. The correct book is still being tracked.
+    // 3. Recording page turns during an active session does not crash.
+    XCTAssertTrue(tracker.isTracking,
+                  "Tracker must remain active while recording page turns")
+    XCTAssertEqual(tracker.activeBookID, "book-1",
+                   "Active book ID must not change when recording page turns")
   }
 
   // MARK: - endSession
@@ -182,11 +187,13 @@ final class ReadingSessionTrackerTests: XCTestCase {
   // MARK: - isTracking and activeBookID
 
   func testIsTracking_FalseInitially() {
-    XCTAssertFalse(tracker.isTracking)
+    XCTAssertFalse(tracker.isTracking, "Tracker must not be active before any session is started")
+    XCTAssertNil(tracker.activeBookID, "No book ID must be set before any session is started")
   }
 
   func testActiveBookID_NilInitially() {
-    XCTAssertNil(tracker.activeBookID)
+    XCTAssertNil(tracker.activeBookID, "activeBookID must be nil before any session is started")
+    XCTAssertFalse(tracker.isTracking, "isTracking must be false when no book ID is active")
   }
 }
 

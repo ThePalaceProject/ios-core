@@ -39,19 +39,35 @@ final class TypographySettingsViewModelTests: XCTestCase {
 
     func testInitialStateMatchesService() {
         XCTAssertEqual(viewModel.currentSettings, service.currentSettings)
+        // The initial font size and line spacing must also match
+        XCTAssertEqual(viewModel.currentSettings.fontSize, service.currentSettings.fontSize,
+                       "Initial fontSize must match the service")
+        XCTAssertEqual(viewModel.currentSettings.lineSpacing, service.currentSettings.lineSpacing,
+                       "Initial lineSpacing must match the service")
     }
 
     func testInitialPresetIsClassic() {
         XCTAssertNotNil(viewModel.selectedPreset)
         XCTAssertEqual(viewModel.selectedPreset?.id, "classic")
+        // The selected preset must also be in the list of all available presets
+        let allPresetIds = TypographyPreset.allPresets.map(\.id)
+        XCTAssertTrue(allPresetIds.contains("classic"), "classic must be a valid preset id")
     }
 
     func testAvailableFontsNotEmpty() {
         XCTAssertFalse(viewModel.availableFonts.isEmpty)
+        // Every font in the list must have a non-empty display name
+        for font in viewModel.availableFonts {
+            XCTAssertFalse(font.displayName.isEmpty,
+                           "Every available font must have a non-empty display name")
+        }
     }
 
     func testPreviewTextNotEmpty() {
         XCTAssertFalse(viewModel.previewText.isEmpty)
+        // Preview text must be at least a few characters to be meaningful
+        XCTAssertGreaterThanOrEqual(viewModel.previewText.count, 5,
+                                    "Preview text must have at least 5 characters to be readable")
     }
 
     // MARK: - Preset Selection
@@ -100,6 +116,9 @@ final class TypographySettingsViewModelTests: XCTestCase {
         viewModel.selectPreset(.dense)
         flushRunLoop()
         XCTAssertEqual(viewModel.fontSize, TypographyPreset.dense.settings.fontSize)
+        // Dense preset should have a smaller font than classic
+        XCTAssertLessThan(viewModel.fontSize, TypographyPreset.classic.settings.fontSize,
+                          "Dense preset should have smaller font size than Classic")
     }
 
     // MARK: - Line Spacing
@@ -117,6 +136,10 @@ final class TypographySettingsViewModelTests: XCTestCase {
         viewModel.marginLevel = .extraWide
         flushRunLoop()
         XCTAssertEqual(viewModel.currentSettings.marginLevel, .extraWide)
+        // Custom change must clear any active preset
+        XCTAssertNil(viewModel.selectedPreset, "Custom margin change must clear the active preset")
+        // Service must reflect the same change
+        XCTAssertEqual(service.currentSettings.marginLevel, .extraWide)
     }
 
     // MARK: - Paragraph Spacing
@@ -125,6 +148,10 @@ final class TypographySettingsViewModelTests: XCTestCase {
         viewModel.paragraphSpacing = 20
         flushRunLoop()
         XCTAssertEqual(viewModel.currentSettings.paragraphSpacing, 20)
+        // Service must also reflect the change
+        XCTAssertEqual(service.currentSettings.paragraphSpacing, 20)
+        // Preset must be cleared since it's a custom override
+        XCTAssertNil(viewModel.selectedPreset)
     }
 
     // MARK: - Text Alignment
@@ -133,12 +160,18 @@ final class TypographySettingsViewModelTests: XCTestCase {
         viewModel.updateTextAlignment(.justified)
         flushRunLoop()
         XCTAssertEqual(viewModel.textAlignment, .justified)
+        // Service must match the ViewModel
+        XCTAssertEqual(service.currentSettings.textAlignment, .justified)
+        // Preset must be cleared since it's a custom override
+        XCTAssertNil(viewModel.selectedPreset)
     }
 
     func testAlignmentGetterMatchesSettings() {
         viewModel.selectPreset(.classic) // justified
         flushRunLoop()
         XCTAssertEqual(viewModel.textAlignment, .justified)
+        // Getter must always be consistent with the underlying settings
+        XCTAssertEqual(viewModel.textAlignment, viewModel.currentSettings.textAlignment)
     }
 
     // MARK: - Word Spacing
@@ -147,6 +180,8 @@ final class TypographySettingsViewModelTests: XCTestCase {
         viewModel.wordSpacing = 3.0
         flushRunLoop()
         XCTAssertEqual(viewModel.currentSettings.wordSpacing, 3.0)
+        XCTAssertEqual(service.currentSettings.wordSpacing, 3.0)
+        XCTAssertNil(viewModel.selectedPreset)
     }
 
     // MARK: - Letter Spacing
@@ -155,6 +190,8 @@ final class TypographySettingsViewModelTests: XCTestCase {
         viewModel.letterSpacing = 1.0
         flushRunLoop()
         XCTAssertEqual(viewModel.currentSettings.letterSpacing, 1.0)
+        XCTAssertEqual(service.currentSettings.letterSpacing, 1.0)
+        XCTAssertNil(viewModel.selectedPreset)
     }
 
     // MARK: - Font Family
@@ -172,6 +209,9 @@ final class TypographySettingsViewModelTests: XCTestCase {
         viewModel.theme = .dark
         flushRunLoop()
         XCTAssertEqual(viewModel.currentSettings.theme, .dark)
+        XCTAssertEqual(service.currentSettings.theme, .dark)
+        // Dark theme should be classified as dark by isDark
+        XCTAssertTrue(viewModel.currentSettings.theme.isDark)
     }
 
     // MARK: - Reset
@@ -204,6 +244,10 @@ final class TypographySettingsViewModelTests: XCTestCase {
         viewModel.selectPreset(.classic)
         flushRunLoop()
         XCTAssertFalse(viewModel.hasCustomOverrides)
+        // Applying any other preset also has no overrides immediately after
+        viewModel.selectPreset(.modern)
+        flushRunLoop()
+        XCTAssertFalse(viewModel.hasCustomOverrides, "A freshly-applied preset should have no overrides")
     }
 
     func testHasCustomOverridesIsTrueAfterChange() {
@@ -212,18 +256,25 @@ final class TypographySettingsViewModelTests: XCTestCase {
         viewModel.fontSize = 30
         flushRunLoop()
         XCTAssertTrue(viewModel.hasCustomOverrides)
+        // The preset must be nil since a custom override cleared it
+        XCTAssertNil(viewModel.selectedPreset, "A custom override must clear the selected preset")
     }
 
     func testHasCustomOverridesIsTrueWithNoPreset() {
         viewModel.fontFamily = .avenir
         flushRunLoop()
         XCTAssertTrue(viewModel.hasCustomOverrides)
+        // No preset should be selected when a custom font family is applied
+        XCTAssertNil(viewModel.selectedPreset, "Custom font change must not keep a preset selected")
     }
 
     // MARK: - Preview CSS
 
     func testPreviewCSSNotEmpty() {
         XCTAssertFalse(viewModel.previewCSS.isEmpty)
+        // CSS must contain at minimum a body selector, font-family, and font-size
+        XCTAssertTrue(viewModel.previewCSS.contains("body {"), "Preview CSS must contain body selector")
+        XCTAssertTrue(viewModel.previewCSS.contains("font-family"), "Preview CSS must include font-family")
     }
 
     func testPreviewCSSChangesWithSettings() {
@@ -232,6 +283,8 @@ final class TypographySettingsViewModelTests: XCTestCase {
         flushRunLoop()
         let cssAfter = viewModel.previewCSS
         XCTAssertNotEqual(cssBefore, cssAfter, "CSS should change when theme changes")
+        // Night theme must include a dark background color
+        XCTAssertTrue(cssAfter.contains("#000000"), "Night theme CSS must have black background")
     }
 
     // MARK: - Service Synchronization
@@ -244,6 +297,9 @@ final class TypographySettingsViewModelTests: XCTestCase {
             .prefix(1)
             .sink { settings in
                 XCTAssertEqual(settings.fontFamily, .timesNewRoman)
+                // The font size must remain unchanged — only fontFamily changed
+                XCTAssertEqual(settings.fontSize, TypographyPreset.classic.settings.fontSize,
+                               "Only fontFamily should change; fontSize must remain at classic value")
                 expectation.fulfill()
             }
             .store(in: &cancellables)

@@ -71,6 +71,12 @@ final class AppTabRouterGapTests: XCTestCase {
         XCTAssertNotNil(hub, "AppTabRouterHub.shared singleton should exist")
         XCTAssertTrue(hub === AppTabRouterHub.shared,
                       "AppTabRouterHub.shared should return same instance")
+        // Verify hub can accept a router assignment without crashing
+        let router = AppTabRouter()
+        hub.router = router
+        XCTAssertNotNil(hub.router, "Hub should hold the assigned router")
+        // Cleanup
+        hub.router = nil
     }
 }
 
@@ -160,6 +166,11 @@ final class TPPBadgeImageGapTests: XCTestCase {
         let audiobook = TPPContentBadgeImageView.TPPBadgeImage.audiobook
 
         XCTAssertEqual(audiobook.assetName(), "AudiobookBadge")
+        // Asset name should be non-empty
+        XCTAssertFalse(audiobook.assetName().isEmpty, "AudiobookBadge asset name should not be empty")
+        // Asset name should be deterministic across calls
+        XCTAssertEqual(audiobook.assetName(), audiobook.assetName(),
+                       "AudiobookBadge asset name should be consistent across calls")
     }
 
     /// Coverage Gap: TPPContentBadgeImageView — initialising with .audiobook badge

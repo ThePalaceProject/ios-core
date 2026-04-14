@@ -81,6 +81,9 @@ class TPPNetworkResponderTests: XCTestCase {
         }, taskID: 42)
         // Verify storage by triggering session invalidation which calls all pending completions
         XCTAssertFalse(stored, "Completion should not be called until session event")
+        // Adding a second completion for a different task must not trigger the first
+        responder.addCompletion({ _ in }, taskID: 99)
+        XCTAssertFalse(stored, "Adding another task must not prematurely call existing completions")
     }
 
     func testUpdateCompletionIdTransfersInfo() {
@@ -91,8 +94,13 @@ class TPPNetworkResponderTests: XCTestCase {
         responder.updateCompletionId(10, newId: 20)
         // After update, old ID's completion should be available at new ID
         // We can't directly verify this without triggering the delegate,
-        // but we verify no crash occurs
-        XCTAssertFalse(completionCalled)
+        // but we verify no crash occurs and no premature call happened
+        XCTAssertFalse(completionCalled,
+                       "updateCompletionId must not fire the completion — it only remaps the key")
+        // Calling updateCompletionId again (same IDs) must not crash either
+        responder.updateCompletionId(20, newId: 30)
+        XCTAssertFalse(completionCalled,
+                       "Repeated updateCompletionId calls must not trigger the completion")
     }
 
     // MARK: - Session Invalidation
@@ -126,10 +134,18 @@ class TPPNetworkResponderTests: XCTestCase {
         let r = TPPNetworkResponder()
         // Should not crash and should be usable
         XCTAssertNotNil(r)
+        // A fresh responder must be able to retry any URL (no prior history)
+        let url = URL(string: "https://example.com/fresh")!
+        XCTAssertTrue(r.canRetry(url: url),
+                      "Freshly initialized responder must allow retries on any URL")
     }
 
     func testInitWithCredentialsProvider() {
         let r = TPPNetworkResponder(credentialsProvider: nil, useFallbackCaching: true)
         XCTAssertNotNil(r)
+        // Responder with fallback caching must still function for retry tracking
+        let url = URL(string: "https://example.com/with-fallback")!
+        XCTAssertTrue(r.canRetry(url: url),
+                      "Responder with fallback caching must allow retries on fresh URLs")
     }
 }

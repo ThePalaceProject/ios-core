@@ -15,39 +15,68 @@ final class TypographySettingsTests: XCTestCase {
     // MARK: - Default Initialization
 
     func testDefault_fontFamily() {
-        XCTAssertEqual(TypographySettings.default.fontFamily, "Georgia")
+        let defaults = TypographySettings.default
+        XCTAssertEqual(defaults.fontFamily, "Georgia")
+        // The default must be within the legal clamped range
+        let clamped = defaults.clamped()
+        XCTAssertEqual(clamped.fontFamily, defaults.fontFamily,
+                       "Default fontFamily must survive clamping unchanged")
     }
 
     func testDefault_fontSize() {
-        XCTAssertEqual(TypographySettings.default.fontSize, 16.0, accuracy: 0.01)
+        let defaults = TypographySettings.default
+        XCTAssertEqual(defaults.fontSize, 16.0, accuracy: 0.01)
+        XCTAssertGreaterThanOrEqual(defaults.fontSize, TypographySettings.fontSizeRange.lowerBound,
+                                    "Default fontSize must be >= minimum")
+        XCTAssertLessThanOrEqual(defaults.fontSize, TypographySettings.fontSizeRange.upperBound,
+                                  "Default fontSize must be <= maximum")
     }
 
     func testDefault_lineSpacing() {
-        XCTAssertEqual(TypographySettings.default.lineSpacing, 1.5, accuracy: 0.01)
+        let defaults = TypographySettings.default
+        XCTAssertEqual(defaults.lineSpacing, 1.5, accuracy: 0.01)
+        XCTAssertGreaterThanOrEqual(defaults.lineSpacing, TypographySettings.lineSpacingRange.lowerBound)
+        XCTAssertLessThanOrEqual(defaults.lineSpacing, TypographySettings.lineSpacingRange.upperBound)
     }
 
     func testDefault_margins() {
-        XCTAssertEqual(TypographySettings.default.margins, .medium)
+        let defaults = TypographySettings.default
+        XCTAssertEqual(defaults.margins, .medium)
+        // Medium must not be the extremes
+        XCTAssertNotEqual(defaults.margins, .none)
+        XCTAssertNotEqual(defaults.margins, .extraLarge)
     }
 
     func testDefault_textAlignment() {
-        XCTAssertEqual(TypographySettings.default.textAlignment, .left)
+        let defaults = TypographySettings.default
+        XCTAssertEqual(defaults.textAlignment, .left)
+        // Verify the default CSS value is what EPUB readers expect
+        XCTAssertEqual(defaults.textAlignment.cssValue, "left")
     }
 
     func testDefault_letterSpacing() {
-        XCTAssertEqual(TypographySettings.default.letterSpacing, 0.0, accuracy: 0.01)
+        let defaults = TypographySettings.default
+        XCTAssertEqual(defaults.letterSpacing, 0.0, accuracy: 0.01)
+        XCTAssertGreaterThanOrEqual(defaults.letterSpacing, TypographySettings.letterSpacingRange.lowerBound)
     }
 
     func testDefault_wordSpacing() {
-        XCTAssertEqual(TypographySettings.default.wordSpacing, 0.0, accuracy: 0.01)
+        let defaults = TypographySettings.default
+        XCTAssertEqual(defaults.wordSpacing, 0.0, accuracy: 0.01)
+        XCTAssertGreaterThanOrEqual(defaults.wordSpacing, TypographySettings.wordSpacingRange.lowerBound)
     }
 
     func testDefault_paragraphSpacing() {
-        XCTAssertEqual(TypographySettings.default.paragraphSpacing, 0.0, accuracy: 0.01)
+        let defaults = TypographySettings.default
+        XCTAssertEqual(defaults.paragraphSpacing, 0.0, accuracy: 0.01)
+        XCTAssertGreaterThanOrEqual(defaults.paragraphSpacing, TypographySettings.paragraphSpacingRange.lowerBound)
     }
 
     func testDefault_theme() {
-        XCTAssertEqual(TypographySettings.default.theme, .light)
+        let defaults = TypographySettings.default
+        XCTAssertEqual(defaults.theme, .light)
+        // Light theme must not be classified as dark
+        XCTAssertFalse(defaults.theme.isDark, "Default theme must be a light theme")
     }
 
     // MARK: - Codable Round-Trip
@@ -55,6 +84,7 @@ final class TypographySettingsTests: XCTestCase {
     func testCodable_roundTrip_defaultSettings() throws {
         let original = TypographySettings.default
         let data = try JSONEncoder().encode(original)
+        XCTAssertFalse(data.isEmpty, "Encoded default settings must not produce empty data")
         let decoded = try JSONDecoder().decode(TypographySettings.self, from: data)
         XCTAssertEqual(decoded, original)
     }
@@ -74,6 +104,9 @@ final class TypographySettingsTests: XCTestCase {
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(TypographySettings.self, from: data)
         XCTAssertEqual(decoded, original)
+        // Spot-check specific fields after round-trip
+        XCTAssertEqual(decoded.fontSize, 24.0)
+        XCTAssertEqual(decoded.theme, .dark)
     }
 
     func testCodable_roundTrip_dyslexiaFriendlyPreset() throws {
@@ -81,6 +114,9 @@ final class TypographySettingsTests: XCTestCase {
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(TypographySettings.self, from: data)
         XCTAssertEqual(decoded, original)
+        // OpenDyslexic font must survive the round-trip
+        XCTAssertEqual(decoded.fontFamily, "OpenDyslexic",
+                       "fontFamily must survive encode/decode for dyslexia preset")
     }
 
     // MARK: - Value Ranges (Clamping)
@@ -90,6 +126,8 @@ final class TypographySettingsTests: XCTestCase {
         settings.fontSize = 5.0
         let clamped = settings.clamped()
         XCTAssertEqual(clamped.fontSize, TypographySettings.fontSizeRange.lowerBound)
+        // Other fields must not be affected by font size clamping
+        XCTAssertEqual(clamped.theme, settings.theme)
     }
 
     func testClamped_fontSizeAboveMaximum() {
@@ -97,6 +135,8 @@ final class TypographySettingsTests: XCTestCase {
         settings.fontSize = 100.0
         let clamped = settings.clamped()
         XCTAssertEqual(clamped.fontSize, TypographySettings.fontSizeRange.upperBound)
+        // Other fields must not be affected by font size clamping
+        XCTAssertEqual(clamped.fontFamily, settings.fontFamily)
     }
 
     func testClamped_lineSpacingBelowMinimum() {
@@ -104,6 +144,8 @@ final class TypographySettingsTests: XCTestCase {
         settings.lineSpacing = 0.5
         let clamped = settings.clamped()
         XCTAssertEqual(clamped.lineSpacing, TypographySettings.lineSpacingRange.lowerBound)
+        // fontSize must be unchanged by lineSpacing clamping
+        XCTAssertEqual(clamped.fontSize, settings.fontSize)
     }
 
     func testClamped_lineSpacingAboveMaximum() {
@@ -111,6 +153,8 @@ final class TypographySettingsTests: XCTestCase {
         settings.lineSpacing = 5.0
         let clamped = settings.clamped()
         XCTAssertEqual(clamped.lineSpacing, TypographySettings.lineSpacingRange.upperBound)
+        // Other fields must not be affected
+        XCTAssertEqual(clamped.fontSize, settings.fontSize)
     }
 
     func testClamped_letterSpacingBelowMinimum() {
@@ -118,6 +162,10 @@ final class TypographySettingsTests: XCTestCase {
         settings.letterSpacing = -1.0
         let clamped = settings.clamped()
         XCTAssertEqual(clamped.letterSpacing, TypographySettings.letterSpacingRange.lowerBound)
+        // Verify that clamping is an idempotent operation
+        let doubly = clamped.clamped()
+        XCTAssertEqual(doubly.letterSpacing, clamped.letterSpacing,
+                       "Clamping an already-clamped value must be idempotent")
     }
 
     func testClamped_wordSpacingAboveMaximum() {
@@ -125,6 +173,8 @@ final class TypographySettingsTests: XCTestCase {
         settings.wordSpacing = 5.0
         let clamped = settings.clamped()
         XCTAssertEqual(clamped.wordSpacing, TypographySettings.wordSpacingRange.upperBound)
+        // Verify that letterSpacing is unaffected
+        XCTAssertEqual(clamped.letterSpacing, settings.letterSpacing)
     }
 
     func testClamped_paragraphSpacingAboveMaximum() {
@@ -132,6 +182,8 @@ final class TypographySettingsTests: XCTestCase {
         settings.paragraphSpacing = 10.0
         let clamped = settings.clamped()
         XCTAssertEqual(clamped.paragraphSpacing, TypographySettings.paragraphSpacingRange.upperBound)
+        // Verify clamping does not affect wordSpacing
+        XCTAssertEqual(clamped.wordSpacing, settings.wordSpacing)
     }
 
     func testClamped_withinRange_unchanged() {
@@ -139,12 +191,20 @@ final class TypographySettingsTests: XCTestCase {
         let clamped = settings.clamped()
         XCTAssertEqual(clamped, settings,
                        "Default settings are within range and should not change")
+        // Applying clamped() again must be idempotent
+        XCTAssertEqual(clamped.clamped(), clamped, "Clamping already-valid settings must be idempotent")
     }
 
     // MARK: - MarginLevel Enum
 
     func testMarginLevel_allCases() {
         XCTAssertEqual(MarginLevel.allCases.count, 5)
+        // Verify all cases have distinct raw values (no duplicates)
+        let rawValues = MarginLevel.allCases.map(\.rawValue)
+        XCTAssertEqual(Set(rawValues).count, 5, "All MarginLevel raw values must be unique")
+        // Verify all cases have distinct CSS values
+        let cssValues = MarginLevel.allCases.map(\.cssValue)
+        XCTAssertEqual(Set(cssValues).count, 5, "All MarginLevel CSS values must be unique")
     }
 
     func testMarginLevel_rawValues() {
@@ -166,6 +226,7 @@ final class TypographySettingsTests: XCTestCase {
     func testMarginLevel_codableRoundTrip() throws {
         for level in MarginLevel.allCases {
             let data = try JSONEncoder().encode(level)
+            XCTAssertFalse(data.isEmpty, "Encoded data for MarginLevel.\(level) must not be empty")
             let decoded = try JSONDecoder().decode(MarginLevel.self, from: data)
             XCTAssertEqual(decoded, level)
         }
@@ -175,6 +236,11 @@ final class TypographySettingsTests: XCTestCase {
 
     func testTextAlignmentOption_allCases() {
         XCTAssertEqual(TextAlignmentOption.allCases.count, 4)
+        // Verify all cases have distinct CSS values so EPUB readers get unambiguous styling
+        let cssValues = TextAlignmentOption.allCases.map(\.cssValue)
+        XCTAssertEqual(Set(cssValues).count, 4, "All TextAlignmentOption CSS values must be unique")
+        // Justified must produce "justify" for CSS standard compatibility
+        XCTAssertEqual(TextAlignmentOption.justified.cssValue, "justify")
     }
 
     func testTextAlignmentOption_cssValues() {
@@ -187,6 +253,7 @@ final class TypographySettingsTests: XCTestCase {
     func testTextAlignmentOption_codableRoundTrip() throws {
         for alignment in TextAlignmentOption.allCases {
             let data = try JSONEncoder().encode(alignment)
+            XCTAssertFalse(data.isEmpty, "Encoded data for TextAlignmentOption.\(alignment) must not be empty")
             let decoded = try JSONDecoder().decode(TextAlignmentOption.self, from: data)
             XCTAssertEqual(decoded, alignment)
         }
@@ -198,18 +265,30 @@ final class TypographySettingsTests: XCTestCase {
         let a = TypographySettings.default
         let b = TypographySettings.default
         XCTAssertEqual(a, b)
+        // Reflexive: a must equal itself
+        XCTAssertEqual(a, a)
+        // Symmetric: if a == b then b == a
+        XCTAssertEqual(b, a)
     }
 
     func testEquality_differentSettingsAreNotEqual() {
         var modified = TypographySettings.default
         modified.fontSize = 24.0
         XCTAssertNotEqual(TypographySettings.default, modified)
+        // Restoring the original value makes them equal again
+        modified.fontSize = TypographySettings.default.fontSize
+        XCTAssertEqual(TypographySettings.default, modified,
+                       "Restoring fontSize to default should make settings equal again")
     }
 
     func testEquality_differentThemeMeansNotEqual() {
         var modified = TypographySettings.default
         modified.theme = .dark
         XCTAssertNotEqual(TypographySettings.default, modified)
+        // Each available theme produces a distinct settings inequality
+        modified.theme = .sepia
+        XCTAssertNotEqual(TypographySettings.default, modified,
+                          "Sepia theme must also differ from the default light theme")
     }
 
     // MARK: - Copy-on-Write (Value Semantics)
@@ -242,28 +321,37 @@ final class TypographySettingsTests: XCTestCase {
     // MARK: - Dyslexia-Friendly Preset
 
     func testDyslexiaFriendly_usesOpenDyslexicFont() {
-        XCTAssertEqual(TypographySettings.dyslexiaFriendly.fontFamily, "OpenDyslexic")
+        let preset = TypographySettings.dyslexiaFriendly
+        XCTAssertEqual(preset.fontFamily, "OpenDyslexic")
+        // The font family must survive clamping
+        XCTAssertEqual(preset.clamped().fontFamily, "OpenDyslexic")
     }
 
     func testDyslexiaFriendly_hasLargerFontSize() {
-        XCTAssertGreaterThan(
-            TypographySettings.dyslexiaFriendly.fontSize,
-            TypographySettings.default.fontSize
-        )
+        let preset = TypographySettings.dyslexiaFriendly
+        XCTAssertGreaterThan(preset.fontSize, TypographySettings.default.fontSize)
+        // Must still be within the allowed range
+        XCTAssertLessThanOrEqual(preset.fontSize, TypographySettings.fontSizeRange.upperBound)
     }
 
     func testDyslexiaFriendly_hasWiderLineSpacing() {
-        XCTAssertGreaterThan(
-            TypographySettings.dyslexiaFriendly.lineSpacing,
-            TypographySettings.default.lineSpacing
-        )
+        let preset = TypographySettings.dyslexiaFriendly
+        XCTAssertGreaterThan(preset.lineSpacing, TypographySettings.default.lineSpacing)
+        // Must still be within the allowed range
+        XCTAssertLessThanOrEqual(preset.lineSpacing, TypographySettings.lineSpacingRange.upperBound)
     }
 
     func testDyslexiaFriendly_hasPositiveLetterSpacing() {
-        XCTAssertGreaterThan(TypographySettings.dyslexiaFriendly.letterSpacing, 0.0)
+        let preset = TypographySettings.dyslexiaFriendly
+        XCTAssertGreaterThan(preset.letterSpacing, 0.0)
+        // Must still be within the allowed range
+        XCTAssertLessThanOrEqual(preset.letterSpacing, TypographySettings.letterSpacingRange.upperBound)
     }
 
     func testDyslexiaFriendly_hasPositiveWordSpacing() {
-        XCTAssertGreaterThan(TypographySettings.dyslexiaFriendly.wordSpacing, 0.0)
+        let preset = TypographySettings.dyslexiaFriendly
+        XCTAssertGreaterThan(preset.wordSpacing, 0.0)
+        // Must still be within the allowed range
+        XCTAssertLessThanOrEqual(preset.wordSpacing, TypographySettings.wordSpacingRange.upperBound)
     }
 }

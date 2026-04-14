@@ -135,10 +135,20 @@ final class LCPLibraryServiceTests: XCTestCase {
     func testFulfill_withNonExistentFile_callsCompletionWithError() {
         #if LCP
         let service = LCPLibraryService()
-        let nonExistentURL = URL(fileURLWithPath: "/tmp/nonexistent.lcpl")
+        let nonExistentURL = URL(fileURLWithPath: "/tmp/nonexistent_\(UUID().uuidString).lcpl")
+        let exp = XCTestExpectation(description: "Completion called for nonexistent file")
+        var receivedLocalURL: URL?
+        var receivedError: Error?
 
-        // Just verify the method can be called without crashing
-        _ = service.fulfill(nonExistentURL, progress: { _ in }, completion: { _, _ in })
+        _ = service.fulfill(nonExistentURL, progress: { _ in }, completion: { localURL, error in
+            receivedLocalURL = localURL
+            receivedError = error
+            exp.fulfill()
+        })
+
+        wait(for: [exp], timeout: 3.0)
+        XCTAssertNil(receivedLocalURL, "Should not return a URL for nonexistent file")
+        XCTAssertNotNil(receivedError, "Should return an error for nonexistent file")
         #else
         XCTAssertTrue(true, "LCP not enabled - test skipped")
         #endif
@@ -147,10 +157,22 @@ final class LCPLibraryServiceTests: XCTestCase {
     func testFulfill_reportsProgress() {
         #if LCP
         let service = LCPLibraryService()
-        let invalidURL = URL(fileURLWithPath: "/tmp/invalid.lcpl")
+        let invalidURL = URL(fileURLWithPath: "/tmp/invalid_\(UUID().uuidString).lcpl")
+        var progressValues: [Double] = []
+        let exp = XCTestExpectation(description: "Fulfill completes")
 
-        // Just verify the method can be called without crashing
-        _ = service.fulfill(invalidURL, progress: { _ in }, completion: { _, _ in })
+        _ = service.fulfill(invalidURL, progress: { p in
+            progressValues.append(p)
+        }, completion: { _, _ in
+            exp.fulfill()
+        })
+
+        wait(for: [exp], timeout: 3.0)
+        // Progress values should be in [0, 1] range if any were received
+        for p in progressValues {
+            XCTAssertGreaterThanOrEqual(p, 0.0, "Progress should be >= 0")
+            XCTAssertLessThanOrEqual(p, 1.0, "Progress should be <= 1")
+        }
         #else
         XCTAssertTrue(true, "LCP not enabled - test skipped")
         #endif
@@ -210,6 +232,11 @@ final class LCPLibraryServiceTests: XCTestCase {
         #if LCP
         let service = LCPLibraryService()
         XCTAssertNotNil(service)
+        // Verify the service is properly initialized with expected properties
+        XCTAssertEqual(service.licenseExtension, "lcpl",
+                       "Service should have lcpl as the license extension")
+        XCTAssertNotNil(service.contentProtection,
+                        "Service should have content protection after init")
         #else
         XCTAssertTrue(true, "LCP not enabled - test skipped")
         #endif
@@ -223,6 +250,13 @@ final class LCPLibraryServiceTests: XCTestCase {
         XCTAssertNotNil(service1)
         XCTAssertNotNil(service2)
         XCTAssertFalse(service1 === service2)
+        // Both should have the same license extension (same configuration)
+        XCTAssertEqual(service1.licenseExtension, service2.licenseExtension,
+                       "Independent instances should have same license extension")
+        // Both should be able to evaluate fulfillability independently
+        let testURL = URL(fileURLWithPath: "/tmp/test.lcpl")
+        XCTAssertEqual(service1.canFulfill(testURL), service2.canFulfill(testURL),
+                       "Independent instances should agree on fulfillability")
         #else
         XCTAssertTrue(true, "LCP not enabled - test skipped")
         #endif

@@ -115,8 +115,11 @@ final class TPPReaderSettingsTests: XCTestCase {
 
         settings.changeAppearance(appearanceIndex: 1) // Sepia or Dark
 
-        // Colors should change
+        // Colors should change and remain valid
         XCTAssertNotNil(settings.backgroundColor)
+        XCTAssertNotEqual(settings.backgroundColor, initialBackground,
+                          "Background color should change when appearance index changes")
+        XCTAssertNotNil(settings.textColor, "Text color must be set for the new appearance")
     }
 
     // MARK: - Font Family Tests
@@ -206,6 +209,11 @@ final class TPPReaderSettingsTests: XCTestCase {
     func testLoadPreferences_returnsPreferences() {
         let preferences = TPPReaderSettings.loadPreferences()
         XCTAssertNotNil(preferences)
+        // Calling it twice must return consistent values
+        let preferences2 = TPPReaderSettings.loadPreferences()
+        XCTAssertNotNil(preferences2)
+        XCTAssertEqual(preferences.theme, preferences2.theme,
+                       "loadPreferences() must return the same theme on repeated calls")
     }
 }
 
@@ -216,16 +224,27 @@ final class TPPReaderPreferencesLoadTests: XCTestCase {
     func testTPPReaderPreferencesLoad_returnsValidPreferences() {
         let preferences = TPPReaderPreferencesLoad()
         XCTAssertNotNil(preferences)
+        // publisherStyles must always be disabled by default for consistency
+        XCTAssertEqual(preferences.publisherStyles, false)
+        // A theme must always be set
+        XCTAssertNotNil(preferences.theme)
     }
 
     func testTPPReaderPreferencesLoad_disablesPublisherStyles() {
         let preferences = TPPReaderPreferencesLoad()
         XCTAssertEqual(preferences.publisherStyles, false)
+        // Multiple calls must return the same value
+        let preferences2 = TPPReaderPreferencesLoad()
+        XCTAssertEqual(preferences2.publisherStyles, false,
+                       "publisherStyles must consistently be false")
     }
 
     func testTPPReaderPreferencesLoad_setsDefaultTheme() {
         let preferences = TPPReaderPreferencesLoad()
         XCTAssertNotNil(preferences.theme)
+        // The theme object must have a defined value (not nil)
+        let theme = preferences.theme
+        XCTAssertNotNil(theme, "Theme must be set on every TPPReaderPreferencesLoad call")
     }
 }
 
@@ -240,14 +259,22 @@ final class TPPReaderAppearanceTests: XCTestCase {
 
     func testWhiteOnBlack_hasCorrectPropertyIndex() {
         let appearance = TPPReaderAppearance.whiteOnBlack
-        // Index depends on implementation
         XCTAssertNotNil(appearance.propertyIndex)
+        // Must differ from the default (blackOnWhite = 0) and from sepia
+        XCTAssertNotEqual(appearance.propertyIndex, TPPReaderAppearance.blackOnWhite.propertyIndex,
+                          "whiteOnBlack must have a different index than blackOnWhite")
+        XCTAssertNotEqual(appearance.propertyIndex, TPPReaderAppearance.blackOnSepia.propertyIndex,
+                          "whiteOnBlack must have a different index than blackOnSepia")
     }
 
     func testBlackOnSepia_hasCorrectPropertyIndex() {
         let appearance = TPPReaderAppearance.blackOnSepia
-        // Index depends on implementation
         XCTAssertNotNil(appearance.propertyIndex)
+        // Must differ from default (blackOnWhite = 0) and from dark
+        XCTAssertNotEqual(appearance.propertyIndex, TPPReaderAppearance.blackOnWhite.propertyIndex,
+                          "blackOnSepia must have a different index than blackOnWhite")
+        XCTAssertNotEqual(appearance.propertyIndex, TPPReaderAppearance.whiteOnBlack.propertyIndex,
+                          "blackOnSepia must have a different index than whiteOnBlack")
     }
 
     func testAssociatedColors_blackOnWhite_hasLightBackground() {
@@ -274,15 +301,30 @@ final class TPPReaderFontTests: XCTestCase {
     func testSansSerif_hasPropertyIndex() {
         let font = TPPReaderFont.sansSerif
         XCTAssertNotNil(font.propertyIndex)
+        // Must differ from the default (original = 0), serif, and dyslexic
+        XCTAssertNotEqual(font.propertyIndex, TPPReaderFont.original.propertyIndex,
+                          "sansSerif must differ from original")
+        XCTAssertNotEqual(font.propertyIndex, TPPReaderFont.serif.propertyIndex,
+                          "sansSerif must differ from serif")
     }
 
     func testSerif_hasPropertyIndex() {
         let font = TPPReaderFont.serif
         XCTAssertNotNil(font.propertyIndex)
+        XCTAssertNotEqual(font.propertyIndex, TPPReaderFont.original.propertyIndex,
+                          "serif must differ from original")
+        XCTAssertNotEqual(font.propertyIndex, TPPReaderFont.sansSerif.propertyIndex,
+                          "serif must differ from sansSerif")
     }
 
     func testDyslexic_hasPropertyIndex() {
         let font = TPPReaderFont.dyslexic
         XCTAssertNotNil(font.propertyIndex)
+        XCTAssertNotEqual(font.propertyIndex, TPPReaderFont.original.propertyIndex,
+                          "dyslexic must differ from original")
+        XCTAssertNotEqual(font.propertyIndex, TPPReaderFont.sansSerif.propertyIndex,
+                          "dyslexic must differ from sansSerif")
+        XCTAssertNotEqual(font.propertyIndex, TPPReaderFont.serif.propertyIndex,
+                          "dyslexic must differ from serif")
     }
 }

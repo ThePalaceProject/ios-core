@@ -169,6 +169,10 @@ final class PerformanceReportTests: XCTestCase {
     func testReport_EmptyMonitor_ZeroMeasurements() async {
         let monitor = PerformanceMonitor()
         let report = await monitor.generateReport()
-        XCTAssertEqual(report.totalMeasurements, 0)
+        XCTAssertEqual(report.totalMeasurements, 0, "Fresh monitor must report zero total measurements")
+        XCTAssertTrue(report.metricsByCategory.isEmpty,
+                      "Fresh monitor must have no metrics by category")
+        XCTAssertTrue(report.summary.contains("0"),
+                      "Report summary for an empty monitor must reference the zero measurement count")
     }
 }

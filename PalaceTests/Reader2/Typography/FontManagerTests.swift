@@ -14,6 +14,10 @@ final class FontManagerTests: XCTestCase {
 
     func testSharedInstanceExists() {
         XCTAssertNotNil(FontManager.shared)
+        // Singleton must be the same instance on repeated access
+        let instance1 = FontManager.shared
+        let instance2 = FontManager.shared
+        XCTAssertTrue(instance1 === instance2, "FontManager.shared must return the same instance each time")
     }
 
     // MARK: - Font Registration
@@ -22,11 +26,16 @@ final class FontManagerTests: XCTestCase {
         // Should not throw or crash even if called multiple times
         FontManager.shared.registerCustomFonts()
         FontManager.shared.registerCustomFonts()
+        // Singleton must remain the same instance after repeated registration calls
+        XCTAssertNotNil(FontManager.shared, "FontManager.shared must still be non-nil after registerCustomFonts()")
     }
 
     func testRegisterNonexistentFontReturnsFalse() {
         let result = FontManager.shared.registerFont(named: "NonExistentFont12345", extension: "ttf")
         XCTAssertFalse(result, "Registering a nonexistent font should return false")
+        // Also false for other missing extensions
+        XCTAssertFalse(FontManager.shared.registerFont(named: "NonExistentFont12345", extension: "otf"),
+                       "Registering a nonexistent font with .otf should also return false")
     }
 
     // MARK: - Font Availability
@@ -41,6 +50,9 @@ final class FontManagerTests: XCTestCase {
 
     func testNonExistentFontIsNotAvailable() {
         XCTAssertFalse(FontManager.shared.isFontAvailable("TotallyFakeFont12345"))
+        // Multiple obviously-fake names must all be unavailable
+        XCTAssertFalse(FontManager.shared.isFontAvailable("NonExistentFont_XYZZY"))
+        XCTAssertFalse(FontManager.shared.isFontAvailable(""))
     }
 
     func testFamilyAvailabilityForSystemFonts() {
@@ -64,6 +76,9 @@ final class FontManagerTests: XCTestCase {
             XCTAssertFalse(family.cssValue.isEmpty,
                           "Font family \(family.displayName) should have a CSS value")
         }
+        // CSS values should be unique across all font families
+        let cssValues = TPPFontFamily.allCases.map(\.cssValue)
+        XCTAssertEqual(Set(cssValues).count, cssValues.count, "All font CSS values must be unique")
     }
 
     func testAllFontFamiliesHaveDisplayName() {
@@ -71,20 +86,32 @@ final class FontManagerTests: XCTestCase {
             XCTAssertFalse(family.displayName.isEmpty,
                           "Font family \(family.rawValue) should have a display name")
         }
+        // Display names should be unique across all font families
+        let names = TPPFontFamily.allCases.map(\.displayName)
+        XCTAssertEqual(Set(names).count, names.count, "All font display names must be unique")
     }
 
     func testAllFontFamiliesHavePreviewText() {
         for family in TPPFontFamily.allCases {
             XCTAssertFalse(family.previewText.isEmpty,
                           "Font family \(family.displayName) should have preview text")
+            // Preview text must be at least a few characters
+            XCTAssertGreaterThanOrEqual(family.previewText.count, 3,
+                                        "Preview text for \(family.displayName) must be at least 3 characters")
         }
     }
 
     func testAllFontFamiliesHaveCategory() {
+        let validCategories: Set<FontCategory> = [.serif, .sansSerif, .accessibility]
         for family in TPPFontFamily.allCases {
-            // Just verify the property doesn't crash
-            _ = family.category
+            let category = family.category
+            XCTAssertTrue(validCategories.contains(category),
+                          "\(family.displayName) category '\(category)' must be one of the known categories")
         }
+        // All categories must be represented across the full font family list
+        let usedCategories = Set(TPPFontFamily.allCases.map(\.category))
+        XCTAssertTrue(usedCategories.contains(.serif), "At least one serif family must exist")
+        XCTAssertTrue(usedCategories.contains(.sansSerif), "At least one sans-serif family must exist")
     }
 
     func testFontFamilyCategorization() {
@@ -118,14 +145,25 @@ final class FontManagerTests: XCTestCase {
             let font = family.uiFont(size: 16)
             XCTAssertNotNil(font, "Should create a UIFont for \(family.displayName)")
             // Even if the exact font isn't available, uiFont falls back to system font
+            // The returned font must have the requested point size
+            XCTAssertEqual(font.pointSize, 16, "uiFont must have pointSize == 16 for \(family.displayName)")
         }
     }
 
     func testSwiftUIFontCreation() {
         for family in TPPFontFamily.allCases {
-            // Just verify this doesn't crash
-            _ = family.swiftUIFont(size: 16)
+            // SwiftUI font must be created without crashing
+            let font = family.swiftUIFont(size: 16)
+            // The returned Font value is a value type — just verifying the call doesn't crash
+            // and can be assigned is sufficient proof that it works
+            _ = font
         }
+        // Verify that different sizes produce the API correctly for a known family
+        let small = TPPFontFamily.georgia.swiftUIFont(size: 12)
+        let large = TPPFontFamily.georgia.swiftUIFont(size: 24)
+        // Both calls must complete — if the API crashes on any size it would fail here
+        _ = small
+        _ = large
     }
 
     // MARK: - TPPFontFamily Codable
@@ -133,6 +171,7 @@ final class FontManagerTests: XCTestCase {
     func testFontFamilyIsCodable() throws {
         for family in TPPFontFamily.allCases {
             let data = try JSONEncoder().encode(family)
+            XCTAssertFalse(data.isEmpty, "Encoded data for \(family.displayName) must not be empty")
             let decoded = try JSONDecoder().decode(TPPFontFamily.self, from: data)
             XCTAssertEqual(family, decoded, "\(family.displayName) should survive encode/decode")
         }
@@ -143,5 +182,8 @@ final class FontManagerTests: XCTestCase {
     func testOpenDyslexicCSSContainsFontName() {
         let css = TPPFontFamily.openDyslexic.cssValue
         XCTAssertTrue(css.contains("OpenDyslexic"), "OpenDyslexic CSS should reference the font name")
+        // OpenDyslexic must be in the accessibility category
+        XCTAssertEqual(TPPFontFamily.openDyslexic.category, .accessibility,
+                       "OpenDyslexic must be categorized as an accessibility font")
     }
 }

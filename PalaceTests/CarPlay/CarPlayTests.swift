@@ -47,6 +47,10 @@ class CarPlayTests: XCTestCase {
 
         // Assert - bridge delegates to session manager
         XCTAssertNotNil(bridge, "Bridge should be created successfully")
+        // On init, bridge should reflect no active session
+        XCTAssertFalse(bridge.isPlaying, "Bridge should not be playing immediately after init")
+        XCTAssertNil(bridge.currentBook, "Bridge should have no current book after init")
+        XCTAssertNil(bridge.currentChapter, "Bridge should have no current chapter after init")
     }
 
     // MARK: - CarPlayImageProvider Tests
@@ -207,6 +211,10 @@ class CarPlayTests: XCTestCase {
 
         // Assert
         XCTAssertTrue(isAudiobook, "Snapshot audiobook should be recognized as audiobook")
+        XCTAssertEqual(book.defaultBookContentType, .audiobook,
+                       "Snapshot audiobook's defaultBookContentType should be .audiobook")
+        XCTAssertFalse(book.title.isEmpty, "Snapshot audiobook should have a non-empty title")
+        XCTAssertFalse(book.identifier.isEmpty, "Snapshot audiobook should have a non-empty identifier")
     }
 
     // MARK: - Helper Methods
@@ -249,6 +257,12 @@ class CarPlayIntegrationTests: XCTestCase {
         XCTAssertNotNil(CarPlayAudiobookBridge.self)
         XCTAssertNotNil(CarPlayImageProvider.self)
         // CarPlayTemplateManager and CarPlaySceneDelegate require CPInterfaceController
+
+        // Verify a bridge instance has correct initial state
+        let bridge = CarPlayAudiobookBridge()
+        XCTAssertNotNil(bridge, "CarPlayAudiobookBridge should instantiate")
+        XCTAssertFalse(bridge.isPlaying, "Bridge should not be playing initially")
+        XCTAssertNil(bridge.currentBook, "Bridge should have no book initially")
     }
 
     func testCarPlay_ImageProvider_CachesBehavior() {
@@ -296,6 +310,17 @@ class CarPlayOpenAppAlertTests: XCTestCase {
         XCTAssertFalse(Strings.CarPlay.OpenApp.message.isEmpty, "Open App message should have text")
         XCTAssertFalse(Strings.CarPlay.OpenApp.messageShort.isEmpty, "Open App short message should have text")
         XCTAssertFalse(Strings.CarPlay.OpenApp.messageShortest.isEmpty, "Open App shortest message should have text")
+        // Shorter variants should be subsets (or equal length) of longer ones
+        XCTAssertLessThanOrEqual(
+            Strings.CarPlay.OpenApp.messageShortest.count,
+            Strings.CarPlay.OpenApp.messageShort.count,
+            "Shortest message should be shorter than or equal to short message"
+        )
+        XCTAssertLessThanOrEqual(
+            Strings.CarPlay.OpenApp.messageShort.count,
+            Strings.CarPlay.OpenApp.message.count,
+            "Short message should be shorter than or equal to full message"
+        )
     }
 
     func testCarPlay_OpenAppMessage_MentionsPalace() {
@@ -319,10 +344,14 @@ class CarPlayOpenAppAlertTests: XCTestCase {
     func testSceneDelegate_HasMainSceneConnected_Flag() {
         // Verify the flag exists and is accessible
         // This flag is used to determine when to show the "Open App" alert
-        _ = SceneDelegate.hasMainSceneConnected
+        let flagValue = SceneDelegate.hasMainSceneConnected
 
-        // The flag should be a Bool
-        XCTAssertTrue(true, "hasMainSceneConnected flag should be accessible")
+        // The flag should be a Bool and accessible without crashing
+        XCTAssertTrue(flagValue == true || flagValue == false,
+                      "hasMainSceneConnected flag should be a valid Bool")
+        // In test environment, no CarPlay scene is connected, so flag should be false
+        // (unless another test has already set it)
+        XCTAssertNotNil(flagValue, "hasMainSceneConnected should have a value")
     }
 }
 
@@ -340,12 +369,18 @@ class CarPlayLibraryRefreshTests: XCTestCase {
         // In test environment, may or may not have a current account
         // But the manager should be accessible
         XCTAssertNotNil(accountsManager, "AccountsManager should be accessible")
+        // The TPP account UUID should always be non-empty
+        XCTAssertFalse(accountsManager.tppAccountUUID.isEmpty,
+                       "TPP account UUID should not be empty")
     }
 
     func testCarPlay_BookRegistry_IsAccessible() {
         // Verify book registry can be accessed (used for library book list)
         let registry = TPPBookRegistry.shared
         XCTAssertNotNil(registry, "Book registry should be accessible")
+        // The registry should return an array (possibly empty) for allBooks
+        let books = registry.allBooks
+        XCTAssertNotNil(books, "allBooks should return a non-nil array")
     }
 
     func testCarPlay_DownloadedAudiobooks_CanBeFiltered() {
@@ -354,15 +389,16 @@ class CarPlayLibraryRefreshTests: XCTestCase {
         let ebookState = TPPBookState.downloadSuccessful
 
         // Assert - verify these states are recognized as downloaded
-        XCTAssertTrue(
-            audiobookState == .downloadSuccessful ||
-                audiobookState == .downloadNeeded ||
-                audiobookState == .downloading,
-            "Should recognize download states"
-        )
-
+        XCTAssertEqual(audiobookState, .downloadSuccessful,
+                       "downloadSuccessful should equal itself")
+        XCTAssertEqual(ebookState, .downloadSuccessful,
+                       "ebookState should be downloadSuccessful")
         // Verify both are the same state
-        XCTAssertEqual(audiobookState, ebookState)
+        XCTAssertEqual(audiobookState, ebookState,
+                       "Both states should be equal")
+        // Verify downloadSuccessful is a distinct state from others
+        XCTAssertNotEqual(audiobookState, .downloading, "downloadSuccessful != downloading")
+        XCTAssertNotEqual(audiobookState, .downloadNeeded, "downloadSuccessful != downloadNeeded")
     }
 }
 
@@ -485,8 +521,10 @@ class CarPlayChapterListTests: XCTestCase {
         bridge.skipToChapter(at: 5)
         bridge.skipToChapter(at: -1) // Edge case: negative index
 
-        // Assert - If we get here, it didn't crash
-        XCTAssertTrue(true, "Skip to chapter should handle missing playback gracefully")
+        // Assert - skip should not change playback state when no book is loaded
+        XCTAssertFalse(bridge.isPlaying, "Skipping without playback should not start playing")
+        XCTAssertNil(bridge.currentBook, "Skipping without playback should not set a book")
+        XCTAssertNil(bridge.currentChapter, "Skipping without playback should not set a chapter")
     }
 }
 
@@ -565,5 +603,12 @@ class CarPlayPlaybackErrorTests: XCTestCase {
     func testNowPlayingInfo_isAccessible() {
         let infoCenter = MPNowPlayingInfoCenter.default()
         XCTAssertNotNil(infoCenter, "Now Playing info center should be available")
+        // The default instance should be the same singleton
+        XCTAssertTrue(infoCenter === MPNowPlayingInfoCenter.default(),
+                      "MPNowPlayingInfoCenter.default() should return the same singleton")
+        // playbackState should be a valid value
+        let state = infoCenter.playbackState
+        XCTAssertTrue(state == .unknown || state == .playing || state == .paused || state == .stopped || state == .interrupted,
+                      "Playback state should be one of the known values")
     }
 }

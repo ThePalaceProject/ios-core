@@ -116,30 +116,46 @@ final class UserAccountPublisherTests: XCTestCase {
 
     func testDidSignOutPublisher_emitsOnSignOut() {
         let expectation = expectation(description: "signed out")
+        var signOutEventCount = 0
 
         publisher.didSignOutPublisher
-            .sink { expectation.fulfill() }
+            .sink {
+                signOutEventCount += 1
+                expectation.fulfill()
+            }
             .store(in: &cancellables)
 
         publisher.markLoggedIn()
         publisher.signOut()
 
         wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(signOutEventCount, 1,
+                       "didSignOutPublisher must emit exactly once per signOut() call")
+        XCTAssertEqual(publisher.authState, .loggedOut,
+                       "Auth state must be .loggedOut after the sign-out publisher fires")
     }
 
     // MARK: - Publisher: credentialsStalePublisher
 
     func testCredentialsStalePublisher_emitsWhenStale() {
         let expectation = expectation(description: "credentials stale")
+        var staleEventCount = 0
 
         publisher.credentialsStalePublisher
-            .sink { expectation.fulfill() }
+            .sink {
+                staleEventCount += 1
+                expectation.fulfill()
+            }
             .store(in: &cancellables)
 
         publisher.markLoggedIn()
         publisher.markCredentialsStale()
 
         wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(staleEventCount, 1,
+                       "credentialsStalePublisher must emit exactly once after markCredentialsStale()")
+        XCTAssertEqual(publisher.authState, .credentialsStale,
+                       "Auth state must be .credentialsStale after the publisher fires")
     }
 
     // MARK: - Publisher: authStateDidChangePublisher

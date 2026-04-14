@@ -22,6 +22,10 @@ final class FloatTPPAdditionsCoverageTests: XCTestCase {
         let a: Float = 1.0
         let b: Float = 1.0
         XCTAssertTrue(a =~= b)
+        // Symmetry: a =~= b implies b =~= a
+        XCTAssertTrue(b =~= a)
+        // Reflexivity: a =~= a
+        XCTAssertTrue(a =~= a)
     }
 
     // SRS: Float approximate equality returns true for nearly equal values
@@ -29,6 +33,8 @@ final class FloatTPPAdditionsCoverageTests: XCTestCase {
         let a: Float = 1.0
         let b: Float = 1.0 + Float.ulpOfOne / 2
         XCTAssertTrue(a =~= b)
+        // Symmetry holds for near-equal values too
+        XCTAssertTrue(b =~= a)
     }
 
     // SRS: Float approximate equality returns false for different values
@@ -36,24 +42,35 @@ final class FloatTPPAdditionsCoverageTests: XCTestCase {
         let a: Float = 1.0
         let b: Float = 2.0
         XCTAssertFalse(a =~= b)
+        // Symmetry: if a is not ~= b, b is not ~= a
+        XCTAssertFalse(b =~= a)
+        // Large difference should also be not approximately equal
+        XCTAssertFalse(a =~= 100.0)
     }
 
     // SRS: Float approximate equality returns false for nil
     func testFloatApproxEqual_nilValue() {
         let a: Float = 1.0
         XCTAssertFalse(a =~= nil)
+        // Zero is not approximately equal to nil
+        XCTAssertFalse((0.0 as Float) =~= nil)
     }
 
     // SRS: Float roundTo formats correctly
     func testFloatRoundTo_formatsCorrectly() {
         let value: Float = 75.5
         XCTAssertEqual(value.roundTo(decimalPlaces: 1), "75.5%")
+        // Should include percent sign
+        XCTAssertTrue(value.roundTo(decimalPlaces: 1).hasSuffix("%"))
     }
 
     // SRS: Float roundTo with zero decimal places
     func testFloatRoundTo_zeroDecimalPlaces() {
         let value: Float = 99.7
         XCTAssertEqual(value.roundTo(decimalPlaces: 0), "100%")
+        // Exactly 50.0 with 0 decimal places
+        XCTAssertEqual((50.0 as Float).roundTo(decimalPlaces: 0), "50%")
+        XCTAssertTrue(value.roundTo(decimalPlaces: 0).hasSuffix("%"))
     }
 }
 
@@ -64,31 +81,43 @@ final class IntExtensionsCoverageTests: XCTestCase {
     // SRS: Int ordinal returns "1st" for 1
     func testOrdinal_first() {
         XCTAssertEqual(1.ordinal(), "1st")
+        XCTAssertTrue(1.ordinal().hasSuffix("st"))
+        XCTAssertFalse(1.ordinal().isEmpty)
     }
 
     // SRS: Int ordinal returns "2nd" for 2
     func testOrdinal_second() {
         XCTAssertEqual(2.ordinal(), "2nd")
+        XCTAssertTrue(2.ordinal().hasSuffix("nd"))
     }
 
     // SRS: Int ordinal returns "3rd" for 3
     func testOrdinal_third() {
         XCTAssertEqual(3.ordinal(), "3rd")
+        XCTAssertTrue(3.ordinal().hasSuffix("rd"))
     }
 
     // SRS: Int ordinal returns "4th" for 4
     func testOrdinal_fourth() {
         XCTAssertEqual(4.ordinal(), "4th")
+        XCTAssertTrue(4.ordinal().hasSuffix("th"))
+        // 5th, 6th, etc. should also use "th"
+        XCTAssertEqual(5.ordinal(), "5th")
     }
 
     // SRS: Int ordinal returns "11th" for 11
     func testOrdinal_eleventh() {
         XCTAssertEqual(11.ordinal(), "11th")
+        // 12th and 13th are also "th" exceptions
+        XCTAssertEqual(12.ordinal(), "12th")
+        XCTAssertEqual(13.ordinal(), "13th")
     }
 
     // SRS: Int ordinal returns "21st" for 21
     func testOrdinal_twentyFirst() {
         XCTAssertEqual(21.ordinal(), "21st")
+        XCTAssertEqual(22.ordinal(), "22nd")
+        XCTAssertEqual(23.ordinal(), "23rd")
     }
 }
 
@@ -181,6 +210,8 @@ final class StringExtensionsCoverageTests: XCTestCase {
         let date2 = "2024-01-15T10:00:05Z"
         // date1 + 10 seconds > date2 (which is 5 seconds later)
         XCTAssertTrue(String.isDate(date1, moreRecentThan: date2, with: 10))
+        // Insufficient delay — date1 + 3s is not > date2 (5s later)
+        XCTAssertFalse(String.isDate(date1, moreRecentThan: date2, with: 3))
     }
 
     // SRS: String.isDate returns false when date1 + delay < date2
@@ -189,11 +220,16 @@ final class StringExtensionsCoverageTests: XCTestCase {
         let date2 = "2024-01-15T10:00:30Z"
         // date1 + 10 seconds < date2 (which is 30 seconds later)
         XCTAssertFalse(String.isDate(date1, moreRecentThan: date2, with: 10))
+        // With large enough delay it should pass
+        XCTAssertTrue(String.isDate(date1, moreRecentThan: date2, with: 31))
     }
 
     // SRS: String.isDate returns false for invalid date strings
     func testIsDate_invalidDateStrings() {
         XCTAssertFalse(String.isDate("not-a-date", moreRecentThan: "also-not", with: 0))
+        // One valid, one invalid
+        XCTAssertFalse(String.isDate("not-a-date", moreRecentThan: "2024-01-15T10:00:00Z", with: 0))
+        XCTAssertFalse(String.isDate("2024-01-15T10:00:00Z", moreRecentThan: "not-a-date", with: 0))
     }
 
     // SRS: String.isDate with zero delay compares directly
@@ -202,6 +238,8 @@ final class StringExtensionsCoverageTests: XCTestCase {
         let later = "2024-01-15T10:00:01Z"
         XCTAssertFalse(String.isDate(earlier, moreRecentThan: later, with: 0))
         XCTAssertTrue(String.isDate(later, moreRecentThan: earlier, with: 0))
+        // Equal timestamps with zero delay are NOT more recent (strictly greater)
+        XCTAssertFalse(String.isDate(earlier, moreRecentThan: earlier, with: 0))
     }
 }
 
@@ -216,6 +254,9 @@ final class DataBase64CoverageTests: XCTestCase {
         let data = Data([0x3E, 0x3E, 0x3E])
         let result = data.base64EncodedStringUrlSafe()
         XCTAssertFalse(result.contains("+"), "URL-safe base64 should not contain +")
+        // The replacement character should be "-"
+        XCTAssertTrue(result.contains("-"), "URL-safe base64 should use '-' instead of '+'")
+        XCTAssertFalse(result.isEmpty)
     }
 
     // SRS: Data URL-safe base64 replaces / with _
@@ -225,6 +266,7 @@ final class DataBase64CoverageTests: XCTestCase {
         let result = data.base64EncodedStringUrlSafe()
         XCTAssertFalse(result.contains("/"), "URL-safe base64 should not contain /")
         XCTAssertTrue(result.contains("_"))
+        XCTAssertFalse(result.contains("+"), "Should also not contain + sign")
     }
 
     // SRS: Data URL-safe base64 removes newlines
@@ -233,12 +275,17 @@ final class DataBase64CoverageTests: XCTestCase {
         let data = Data(repeating: 0xFF, count: 100)
         let result = data.base64EncodedStringUrlSafe()
         XCTAssertFalse(result.contains("\n"))
+        XCTAssertFalse(result.contains("\r"))
+        XCTAssertFalse(result.isEmpty)
     }
 
     // SRS: Data URL-safe base64 empty data
     func testBase64UrlSafe_emptyData() {
         let data = Data()
         XCTAssertEqual(data.base64EncodedStringUrlSafe(), "")
+        // Single byte produces 4-character base64
+        let singleByte = Data([0x00])
+        XCTAssertEqual(singleByte.base64EncodedStringUrlSafe().count, 4)
     }
 }
 
@@ -253,6 +300,8 @@ final class URLExtensionsCoverageTests: XCTestCase {
         XCTAssertEqual(result.scheme, "https")
         XCTAssertEqual(result.host, "example.com")
         XCTAssertEqual(result.path, "/path")
+        // Original URL scheme should be unchanged
+        XCTAssertEqual(url.scheme, "http", "Original URL must not be mutated")
     }
 
     // SRS: URL replacingScheme preserves query parameters
@@ -260,6 +309,9 @@ final class URLExtensionsCoverageTests: XCTestCase {
         let url = URL(string: "http://example.com/path?key=value")!
         let result = url.replacingScheme(with: "https")
         XCTAssertEqual(result.query, "key=value")
+        // Host and path should also be preserved
+        XCTAssertEqual(result.host, "example.com")
+        XCTAssertEqual(result.path, "/path")
     }
 
     // SRS: URL replacingScheme to custom scheme
@@ -267,6 +319,8 @@ final class URLExtensionsCoverageTests: XCTestCase {
         let url = URL(string: "https://example.com")!
         let result = url.replacingScheme(with: "palace")
         XCTAssertEqual(result.scheme, "palace")
+        // Host must be preserved when only scheme changes
+        XCTAssertEqual(result.host, "example.com")
     }
 }
 
@@ -279,6 +333,9 @@ final class URLResponseNYPLCoverageTests: XCTestCase {
         let url = URL(string: "https://example.com")!
         let response = HTTPURLResponse(url: url, mimeType: "application/problem+json", expectedContentLength: 0, textEncodingName: nil)
         XCTAssertTrue(response.isProblemDocument())
+        // Regular JSON should not be a problem document
+        let regularResponse = HTTPURLResponse(url: url, mimeType: "application/json", expectedContentLength: 0, textEncodingName: nil)
+        XCTAssertFalse(regularResponse.isProblemDocument())
     }
 
     // SRS: URLResponse isProblemDocument for application/api-problem+json
@@ -286,6 +343,9 @@ final class URLResponseNYPLCoverageTests: XCTestCase {
         let url = URL(string: "https://example.com")!
         let response = HTTPURLResponse(url: url, mimeType: "application/api-problem+json", expectedContentLength: 0, textEncodingName: nil)
         XCTAssertTrue(response.isProblemDocument())
+        // Both problem MIME types should be recognized
+        let standardProblem = HTTPURLResponse(url: url, mimeType: "application/problem+json", expectedContentLength: 0, textEncodingName: nil)
+        XCTAssertTrue(standardProblem.isProblemDocument())
     }
 
     // SRS: URLResponse isProblemDocument false for regular JSON
@@ -293,6 +353,9 @@ final class URLResponseNYPLCoverageTests: XCTestCase {
         let url = URL(string: "https://example.com")!
         let response = HTTPURLResponse(url: url, mimeType: "application/json", expectedContentLength: 0, textEncodingName: nil)
         XCTAssertFalse(response.isProblemDocument())
+        // Also false for HTML
+        let htmlResponse = HTTPURLResponse(url: url, mimeType: "text/html", expectedContentLength: 0, textEncodingName: nil)
+        XCTAssertFalse(htmlResponse.isProblemDocument())
     }
 
     // SRS: HTTPURLResponse isSuccess for 200
@@ -300,6 +363,7 @@ final class URLResponseNYPLCoverageTests: XCTestCase {
         let url = URL(string: "https://example.com")!
         let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
         XCTAssertTrue(response.isSuccess())
+        XCTAssertEqual(response.statusCode, 200)
     }
 
     // SRS: HTTPURLResponse isSuccess for 204
@@ -307,6 +371,9 @@ final class URLResponseNYPLCoverageTests: XCTestCase {
         let url = URL(string: "https://example.com")!
         let response = HTTPURLResponse(url: url, statusCode: 204, httpVersion: nil, headerFields: nil)!
         XCTAssertTrue(response.isSuccess())
+        // 201 Created is also a success
+        let created = HTTPURLResponse(url: url, statusCode: 201, httpVersion: nil, headerFields: nil)!
+        XCTAssertTrue(created.isSuccess())
     }
 
     // SRS: HTTPURLResponse isSuccess false for 404
@@ -314,6 +381,9 @@ final class URLResponseNYPLCoverageTests: XCTestCase {
         let url = URL(string: "https://example.com")!
         let response = HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)!
         XCTAssertFalse(response.isSuccess())
+        // 400 Bad Request is also not a success
+        let badRequest = HTTPURLResponse(url: url, statusCode: 400, httpVersion: nil, headerFields: nil)!
+        XCTAssertFalse(badRequest.isSuccess())
     }
 
     // SRS: HTTPURLResponse isSuccess false for 500
@@ -321,6 +391,9 @@ final class URLResponseNYPLCoverageTests: XCTestCase {
         let url = URL(string: "https://example.com")!
         let response = HTTPURLResponse(url: url, statusCode: 500, httpVersion: nil, headerFields: nil)!
         XCTAssertFalse(response.isSuccess())
+        // 503 Service Unavailable is also not a success
+        let unavailable = HTTPURLResponse(url: url, statusCode: 503, httpVersion: nil, headerFields: nil)!
+        XCTAssertFalse(unavailable.isSuccess())
     }
 
     // SRS: HTTPURLResponse isSuccess false for 301
@@ -328,6 +401,9 @@ final class URLResponseNYPLCoverageTests: XCTestCase {
         let url = URL(string: "https://example.com")!
         let response = HTTPURLResponse(url: url, statusCode: 301, httpVersion: nil, headerFields: nil)!
         XCTAssertFalse(response.isSuccess())
+        // 302 Found is also a redirect, not success
+        let redirect302 = HTTPURLResponse(url: url, statusCode: 302, httpVersion: nil, headerFields: nil)!
+        XCTAssertFalse(redirect302.isSuccess())
     }
 }
 
@@ -343,6 +419,8 @@ final class DateExtensionsCoverageTests: XCTestCase {
         components.day = 15
         let date = Calendar(identifier: .gregorian).date(from: components)!
         XCTAssertEqual(date.monthDayYearString, "March 15, 2024")
+        XCTAssertTrue(date.monthDayYearString.contains("2024"))
+        XCTAssertTrue(date.monthDayYearString.contains("March"))
     }
 
     // SRS: Date timeUntil returns days for future date
@@ -351,6 +429,7 @@ final class DateExtensionsCoverageTests: XCTestCase {
         let result = future.timeUntil()
         XCTAssertTrue(result.value >= 2 && result.value <= 3)
         XCTAssertEqual(result.unit, "days")
+        XCTAssertGreaterThan(result.value, 0)
     }
 
     // SRS: Date timeUntil returns singular day
@@ -359,6 +438,8 @@ final class DateExtensionsCoverageTests: XCTestCase {
         let result = future.timeUntil()
         XCTAssertEqual(result.value, 1)
         XCTAssertEqual(result.unit, "day")
+        // Singular, not plural
+        XCTAssertNotEqual(result.unit, "days")
     }
 
     // SRS: Date timeUntil returns hours for less than a day
@@ -367,6 +448,7 @@ final class DateExtensionsCoverageTests: XCTestCase {
         let result = future.timeUntil()
         XCTAssertTrue(result.value >= 2 && result.value <= 3)
         XCTAssertTrue(result.unit == "hours")
+        XCTAssertGreaterThan(result.value, 0)
     }
 
     // SRS: Date timeUntil returns expired for past date
@@ -375,6 +457,9 @@ final class DateExtensionsCoverageTests: XCTestCase {
         let result = past.timeUntil()
         XCTAssertEqual(result.unit, "expired")
         XCTAssertEqual(result.value, 0)
+        // Expired unit should not be "days" or "hours"
+        XCTAssertNotEqual(result.unit, "days")
+        XCTAssertNotEqual(result.unit, "hours")
     }
 }
 
@@ -386,6 +471,8 @@ final class StringMD5Tests: XCTestCase {
     func testMD5_knownInput() {
         let hash = "hello".md5hex()
         XCTAssertEqual(hash, "5d41402abc4b2a76b9719d911017c592")
+        XCTAssertEqual(hash.count, 32)
+        XCTAssertTrue(hash.allSatisfy { $0.isHexDigit })
     }
 
     // SRS: String md5 produces different hashes for different inputs
@@ -393,18 +480,25 @@ final class StringMD5Tests: XCTestCase {
         let hash1 = "abc".md5hex()
         let hash2 = "def".md5hex()
         XCTAssertNotEqual(hash1, hash2)
+        // Both should be valid 32-char hashes
+        XCTAssertEqual(hash1.count, 32)
+        XCTAssertEqual(hash2.count, 32)
     }
 
     // SRS: String md5 returns Data of correct length
     func testMD5_dataLength() {
         let data = "test".md5()
         XCTAssertEqual(data.count, 16) // MD5 is 128 bits = 16 bytes
+        // Data should not be empty
+        XCTAssertFalse(data.isEmpty)
     }
 
     // SRS: String md5hex returns 32-character hex string
     func testMD5Hex_length() {
         let hex = "test".md5hex()
         XCTAssertEqual(hex.count, 32)
+        // Should be lowercase hex
+        XCTAssertEqual(hex, hex.lowercased())
     }
 
     // SRS: NSString md5String works
@@ -412,12 +506,15 @@ final class StringMD5Tests: XCTestCase {
         let nsString: NSString = "hello"
         let result = nsString.md5String()
         XCTAssertEqual(result as String, "5d41402abc4b2a76b9719d911017c592")
+        // Swift String md5 and NSString md5 should agree
+        XCTAssertEqual(result as String, "hello".md5hex())
     }
 
     // SRS: String md5 empty string
     func testMD5_emptyString() {
         let hash = "".md5hex()
         XCTAssertEqual(hash, "d41d8cd98f00b204e9800998ecf8427e")
+        XCTAssertEqual(hash.count, 32)
     }
 }
 
@@ -429,18 +526,28 @@ final class UIColorExtensionsTests: XCTestCase {
     func testDefaultLabelColor_returnsColor() {
         let color = UIColor.defaultLabelColor()
         XCTAssertNotNil(color)
+        // Should be a usable color — can extract RGBA without crash
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        let success = color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertTrue(success, "defaultLabelColor should be RGBA-extractable")
     }
 
     // SRS: UIColor hexString formats correctly
     func testHexString_red() {
         let color = UIColor(red: 1, green: 0, blue: 0, alpha: 1)
         XCTAssertEqual(color.hexString, "#FF0000")
+        // Hex string must start with '#'
+        XCTAssertTrue(color.hexString.hasPrefix("#"))
+        XCTAssertEqual(color.hexString.count, 7)
     }
 
     // SRS: UIColor hexString for white
     func testHexString_white() {
         let color = UIColor(red: 1, green: 1, blue: 1, alpha: 1)
         XCTAssertEqual(color.hexString, "#FFFFFF")
+        // White and black should be different
+        let black = UIColor(red: 0, green: 0, blue: 0, alpha: 1)
+        XCTAssertNotEqual(color.hexString, black.hexString)
     }
 
     // SRS: UIColor init from hex string
@@ -451,17 +558,23 @@ final class UIColorExtensionsTests: XCTestCase {
         XCTAssertEqual(r, 1.0, accuracy: 0.01)
         XCTAssertEqual(g, 0.0, accuracy: 0.01)
         XCTAssertEqual(b, 0.0, accuracy: 0.01)
+        XCTAssertEqual(a, 1.0, accuracy: 0.01, "Alpha should be fully opaque")
     }
 
     // SRS: UIColor isLight for white
     func testIsLight_white() {
         let color = UIColor(red: 1, green: 1, blue: 1, alpha: 1)
         XCTAssertTrue(color.isLight)
+        // Light colors should not be confused with dark
+        let black = UIColor(red: 0, green: 0, blue: 0, alpha: 1)
+        XCTAssertNotEqual(color.isLight, black.isLight)
     }
 
     // SRS: UIColor isLight false for black
     func testIsLight_black() {
         let color = UIColor(red: 0, green: 0, blue: 0, alpha: 1)
         XCTAssertFalse(color.isLight)
+        // Black hex string should be "#000000"
+        XCTAssertEqual(color.hexString, "#000000")
     }
 }

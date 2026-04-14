@@ -215,6 +215,11 @@ final class NetworkTimeoutTests: XCTestCase {
 
         XCTAssertEqual(config.timeoutIntervalForRequest, 30)
         XCTAssertEqual(config.timeoutIntervalForResource, 60)
+        // Resource timeout must be >= request timeout (otherwise a single slow request
+        // could exceed the resource budget even though the request itself is within limit)
+        XCTAssertGreaterThanOrEqual(config.timeoutIntervalForResource,
+                                    config.timeoutIntervalForRequest,
+                                    "Resource timeout must be >= per-request timeout")
     }
 
     func testRequest_hasCorrectTimeout() {
@@ -222,6 +227,9 @@ final class NetworkTimeoutTests: XCTestCase {
         request.timeoutInterval = 15
 
         XCTAssertEqual(request.timeoutInterval, 15)
+        XCTAssertGreaterThan(request.timeoutInterval, 0, "Timeout must be positive")
+        // Verify the URL survived mutation
+        XCTAssertEqual(request.url?.absoluteString, "https://example.com")
     }
 
     func testDefaultTimeout_isReasonable() {
@@ -229,6 +237,9 @@ final class NetworkTimeoutTests: XCTestCase {
 
         // Default timeout should be > 0
         XCTAssertGreaterThan(request.timeoutInterval, 0)
+        // Sanity-check: default must be under an unreasonably large ceiling
+        XCTAssertLessThanOrEqual(request.timeoutInterval, 3600,
+                                 "Default timeout should not exceed one hour")
     }
 }
 
@@ -237,9 +248,13 @@ final class NetworkTimeoutTests: XCTestCase {
 final class NetworkOfflineDetectionTests: XCTestCase {
 
     func testNetworkReachability_hasSharedInstance() {
-        // Verify the reachability service exists
+        // Verify the reachability service exists and is a singleton
         let reachability = Reachability.shared
         XCTAssertNotNil(reachability)
+        // Two accesses must return the same object
+        let second = Reachability.shared
+        XCTAssertTrue(reachability === second,
+                      "Reachability.shared must be a singleton")
     }
 
     func testURLError_offlineErrorCodes() {

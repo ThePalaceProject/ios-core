@@ -99,17 +99,27 @@ final class AccountDetailViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.isPINHidden)
     }
 
-    func testShowBarcodeToggle() async {
+    func testShowBarcode_WhenEnabled_TriggerObjectWillChange() async {
         guard let libraryID = AccountsManager.shared.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        XCTAssertFalse(viewModel.showBarcode, "Precondition: showBarcode defaults to false")
 
-        XCTAssertFalse(viewModel.showBarcode)
+        // Capture how many times objectWillChange fires when showBarcode is toggled
+        var changeCount = 0
+        let cancellable = viewModel.objectWillChange.sink { changeCount += 1 }
+        defer { _ = cancellable }
+
+        // Act: enable showBarcode
         viewModel.showBarcode = true
-        XCTAssertTrue(viewModel.showBarcode)
+
+        // Assert: the @Published property fired a change notification AND the value updated
+        XCTAssertTrue(viewModel.showBarcode, "showBarcode should be true after assignment")
+        XCTAssertGreaterThan(changeCount, 0,
+                             "Setting showBarcode must fire objectWillChange so SwiftUI re-renders")
     }
 
     // MARK: - canSignIn Tests
@@ -235,6 +245,10 @@ final class AccountDetailViewModelTests: XCTestCase {
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
 
         XCTAssertNotNil(viewModel.businessLogic)
+        // businessLogic must be tied to the correct library account
+        XCTAssertEqual(viewModel.businessLogic.libraryAccountID, libraryID)
+        // Accessing selectedAuthentication must not crash
+        _ = viewModel.businessLogic.selectedAuthentication
     }
 
     func testCredentialFields_AreIndependent() async {
@@ -279,13 +293,19 @@ final class AccountDetailViewModelTests: XCTestCase {
         }
 
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        var changeCount = 0
+        let cancellable = viewModel.objectWillChange.sink { changeCount += 1 }
+        defer { _ = cancellable }
 
-        // Set first alert
+        // Show first alert
         viewModel.alertTitle = "First Alert"
         viewModel.alertMessage = "First Message"
         viewModel.showingAlert = true
+        let changeCountAfterFirst = changeCount
 
-        XCTAssertTrue(viewModel.showingAlert)
+        // Verify first alert state
+        XCTAssertTrue(viewModel.showingAlert, "showingAlert should be true after the first alert is shown")
+        XCTAssertGreaterThan(changeCountAfterFirst, 0, "objectWillChange must fire when alert state changes")
 
         // Dismiss and show second alert
         viewModel.showingAlert = false
@@ -293,9 +313,15 @@ final class AccountDetailViewModelTests: XCTestCase {
         viewModel.alertMessage = "Second Message"
         viewModel.showingAlert = true
 
-        XCTAssertEqual(viewModel.alertTitle, "Second Alert")
-        XCTAssertEqual(viewModel.alertMessage, "Second Message")
-        XCTAssertTrue(viewModel.showingAlert)
+        // Verify second alert replaced first
+        XCTAssertEqual(viewModel.alertTitle, "Second Alert",
+                       "alertTitle must update to the second alert's title")
+        XCTAssertEqual(viewModel.alertMessage, "Second Message",
+                       "alertMessage must update to the second alert's message")
+        XCTAssertTrue(viewModel.showingAlert,
+                      "showingAlert must be true after the second alert is shown")
+        XCTAssertGreaterThan(changeCount, changeCountAfterFirst,
+                             "objectWillChange must fire additional times for the second alert cycle")
     }
 
     // MARK: - Validation Tests
@@ -314,8 +340,14 @@ final class AccountDetailViewModelTests: XCTestCase {
         // The actual validation depends on business logic implementation
         let canSignIn = viewModel.canSignIn
 
-        // This validates the property is accessible and returns a boolean
-        XCTAssertNotNil(canSignIn)
+        // canSignIn is a Bool — it always has a value; what matters is that whitespace does not count as valid input
+        if viewModel.businessLogic.selectedAuthentication?.isOauth != true &&
+            viewModel.businessLogic.selectedAuthentication?.isSaml != true {
+            XCTAssertFalse(canSignIn, "Whitespace-only username should prevent sign-in for basic auth")
+        }
+        // Credentials stored verbatim — any trimming happens inside business logic
+        XCTAssertEqual(viewModel.usernameText, "   ", "usernameText should retain the raw whitespace value")
+        XCTAssertEqual(viewModel.pinText, "1234")
     }
 
     func testCanSignIn_WithSpecialCharacters() async {

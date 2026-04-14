@@ -138,15 +138,24 @@ final class AppTabRouterCoverageTests: XCTestCase {
 
     // SRS: AppTabRouterHub weak router reference allows an AppTabRouter to be
     // injected, read back, and released without the hub retaining it.
+    // Verifies that the hub does NOT extend the router's lifetime (weak reference).
     func testAppTabRouterHub_weakRouterReference() {
         let hub = AppTabRouterHub.shared
 
-        var router: AppTabRouter? = AppTabRouter()
-        hub.router = router
-        XCTAssertNotNil(hub.router, "Hub should hold the router while it is alive")
-
-        router = nil
-        XCTAssertNil(hub.router, "Hub's weak reference should be nil once the router is deallocated")
+        // Use an inner scope to guarantee the router is released when the scope exits
+        var routerIdentity: ObjectIdentifier?
+        autoreleasepool {
+            let router = AppTabRouter()
+            routerIdentity = ObjectIdentifier(router)
+            hub.router = router
+            // Router is alive inside this scope — hub.router should be non-nil
+            let hubRouterIdentity = hub.router.map { ObjectIdentifier($0) }
+            XCTAssertEqual(hubRouterIdentity, routerIdentity,
+                           "Hub must vend back the same router instance that was assigned")
+        }
+        // `router` local var is out of scope; autoreleasepool drained — hub's weak ref must be nil
+        XCTAssertNil(hub.router,
+                     "Hub's weak reference must be nil once the only strong reference is released")
     }
 }
 

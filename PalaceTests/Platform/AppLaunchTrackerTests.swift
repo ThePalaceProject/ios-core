@@ -32,7 +32,9 @@ final class AppLaunchTrackerTests: XCTestCase {
     func testRecordProcessStart() async {
         await tracker.recordMilestone(.processStart)
         let milestones = await tracker.recordedMilestones
-        XCTAssertNotNil(milestones[.processStart])
+        XCTAssertNotNil(milestones[.processStart], "processStart milestone must be recorded")
+        XCTAssertEqual(milestones.count, 1, "Only processStart must be in the milestone map after a single record call")
+        XCTAssertNil(milestones[.didFinishLaunching], "didFinishLaunching must not be present when only processStart was recorded")
     }
 
     func testRecordAllMilestones() async {

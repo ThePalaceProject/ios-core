@@ -143,12 +143,18 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         }
 
         // Get the href from the first TOC element
-        let firstHref = tocBusinessLogic.tocElements[0].link.href
+        let firstElement = tocBusinessLogic.tocElements[0]
+        let firstHref = firstElement.link.href
         let title = tocBusinessLogic.title(for: firstHref)
 
-        // Either title exists or is nil (depending on whether title or href is used)
-        // The method should at least not crash
-        XCTAssertTrue(true)
+        // The title for a known TOC href must be non-nil and non-empty
+        XCTAssertNotNil(title, "title(for:) should return a value for an href present in the TOC")
+        XCTAssertFalse(title?.isEmpty ?? true, "Returned title should not be an empty string")
+        // The returned title must match the link's own title (as recorded in the TOC)
+        if let linkTitle = firstElement.link.title {
+            XCTAssertEqual(title, linkTitle,
+                           "title(for:) should return the title stored in the TOC link")
+        }
     }
 
     // MARK: - Is Current Chapter Tests

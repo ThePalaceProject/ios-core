@@ -65,34 +65,57 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     func testInitialization_setsCorrectLibraryAccountID() {
         XCTAssertEqual(businessLogic.libraryAccountID, libraryAccountMock.tppAccountUUID)
+        XCTAssertFalse(businessLogic.libraryAccountID.isEmpty,
+                       "Library account ID must not be empty")
     }
 
     func testInitialization_setsUIDelegate() {
         XCTAssertNotNil(businessLogic.uiDelegate)
+        // Must be the same instance passed in constructor
+        XCTAssertTrue(businessLogic.uiDelegate === uiDelegate,
+                      "uiDelegate must be the exact instance injected at init")
     }
 
     func testInitialization_defaultsNotLoggingInAfterSignUp() {
         XCTAssertFalse(businessLogic.isLoggingInAfterSignUp)
+        // Mutually consistent: not signing up implies not validating either
+        XCTAssertFalse(businessLogic.isValidatingCredentials,
+                       "A fresh instance must not be validating credentials")
     }
 
     func testInitialization_defaultsNotValidatingCredentials() {
         XCTAssertFalse(businessLogic.isValidatingCredentials)
+        // Not validating implies not in the sign-up path
+        XCTAssertFalse(businessLogic.isLoggingInAfterSignUp,
+                       "A fresh instance must not be in the sign-up path")
     }
 
     func testInitialization_defaultsIgnoreSignedInStateToFalse() {
         XCTAssertFalse(businessLogic.ignoreSignedInState)
+        // With ignoreSignedInState false, isSignedIn reflects actual credential state
+        XCTAssertFalse(businessLogic.isSignedIn(),
+                       "A freshly created business logic with no credentials must not appear signed in")
     }
 
     func testInitialization_authTokenNilByDefault() {
         XCTAssertNil(businessLogic.authToken)
+        // No token means no OAuth-based credentials
+        XCTAssertFalse(businessLogic.userAccount.hasAuthToken(),
+                       "No auth token should be set on a fresh business logic")
     }
 
     func testInitialization_patronNilByDefault() {
         XCTAssertNil(businessLogic.patron)
+        // No patron info is consistent with no credentials
+        XCTAssertFalse(businessLogic.userAccount.hasCredentials(),
+                       "No credentials should be set on a fresh business logic")
     }
 
     func testInitialization_cookiesNilByDefault() {
         XCTAssertNil(businessLogic.cookies)
+        // No cookies is consistent with not having SAML credentials
+        XCTAssertNil(businessLogic.userAccount.cookies,
+                     "No cookies should be set on a fresh user account")
     }
 
     // MARK: - Library Account Tests

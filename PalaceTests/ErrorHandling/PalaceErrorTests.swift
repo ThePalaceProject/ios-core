@@ -101,11 +101,24 @@ final class PalaceErrorCategoryTests: XCTestCase {
     func testRecoverySuggestion_networkErrors_provideGuidance() {
         let error = PalaceError.network(.noConnection)
         XCTAssertNotNil(error.recoverySuggestion, "Network errors should have recovery suggestions")
+        XCTAssertFalse(error.recoverySuggestion!.isEmpty,
+                       "Recovery suggestion must not be empty")
+        // Also verify a second network error has a suggestion (not just noConnection)
+        let timeoutError = PalaceError.network(.timeout)
+        XCTAssertNotNil(timeoutError.recoverySuggestion,
+                        "Timeout errors should also have recovery suggestions")
     }
 
     func testRecoverySuggestion_downloadInsufficientSpace() {
         let error = PalaceError.download(.insufficientSpace)
         XCTAssertNotNil(error.recoverySuggestion)
+        XCTAssertFalse(error.recoverySuggestion!.isEmpty,
+                       "Insufficient space recovery suggestion must not be empty")
+        // The suggestion should direct the user toward freeing storage
+        let suggestion = error.recoverySuggestion!.lowercased()
+        XCTAssertTrue(suggestion.contains("space") || suggestion.contains("storage") ||
+                      suggestion.contains("free") || suggestion.contains("delete"),
+                      "Insufficient space suggestion should mention storage: '\(suggestion)'")
     }
 
     // MARK: - NSError Conversion
@@ -160,6 +173,13 @@ final class PalaceErrorCategoryTests: XCTestCase {
         let error: Error = PalaceError.network(.noConnection)
         XCTAssertNotNil(error.localizedDescription)
         XCTAssertFalse(error.localizedDescription.isEmpty)
+        // LocalizedDescription must not be the raw enum name (i.e. proper localization)
+        XCTAssertFalse(error.localizedDescription.contains("PalaceError"),
+                       "LocalizedDescription must not expose internal type names")
+        // Should be different from a different error
+        let otherError: Error = PalaceError.network(.timeout)
+        XCTAssertNotEqual(error.localizedDescription, otherError.localizedDescription,
+                          "Different errors must have different localizedDescriptions")
     }
 
     // MARK: - Storage Errors

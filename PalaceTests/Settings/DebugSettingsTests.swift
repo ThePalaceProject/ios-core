@@ -47,6 +47,7 @@ final class DebugSettingsTests: XCTestCase {
         let doc = DebugSettings.SimulatedBorrowError.holdLimitReached.problemDocument
         XCTAssertNotNil(doc)
         XCTAssertEqual(doc?.type, TPPProblemDocument.TypePatronHoldLimit)
+        XCTAssertEqual(doc?.status, 403, "Hold limit error must carry HTTP 403 status")
     }
 
     // SRS: SimulatedBorrowError.credentialsSuspended has problem document
@@ -109,13 +110,21 @@ final class DebugSettingsTests: XCTestCase {
         XCTAssertFalse(settings.isBadgeLoggingEnabled)
     }
 
-    // SRS: isBadgeLoggingEnabled can be toggled
-    func testBadgeLogging_canBeToggled() {
+    // SRS: isBadgeLoggingEnabled persists correctly through resetAll
+    func testBadgeLogging_enabledStateIsResetByResetAll() {
+        // Arrange: enable badge logging
         settings.isBadgeLoggingEnabled = true
-        XCTAssertTrue(settings.isBadgeLoggingEnabled)
+        let beforeReset = settings.isBadgeLoggingEnabled
+        XCTAssertTrue(beforeReset, "Precondition: badge logging should be enabled before reset")
 
-        settings.isBadgeLoggingEnabled = false
-        XCTAssertFalse(settings.isBadgeLoggingEnabled)
+        // Act: reset all settings
+        settings.resetAll()
+        let afterReset = settings.isBadgeLoggingEnabled
+
+        // Assert: resetAll must restore the default (false) regardless of previous state
+        XCTAssertFalse(afterReset, "resetAll must restore isBadgeLoggingEnabled to its default false value")
+        XCTAssertNotEqual(beforeReset, afterReset,
+                          "isBadgeLoggingEnabled value must change after resetAll")
     }
 
     // MARK: - Test Holds Configuration

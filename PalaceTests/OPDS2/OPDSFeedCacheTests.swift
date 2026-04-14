@@ -49,6 +49,10 @@ final class OPDSFeedCacheTests: XCTestCase {
         let cached = await sut.get(for: url)
 
         XCTAssertNil(cached)
+        // A second distinct URL that was never cached must also return nil
+        let url2 = URL(string: "https://example.com/another-nonexistent")!
+        let cached2 = await sut.get(for: url2)
+        XCTAssertNil(cached2, "Any URL that was never cached must return nil")
     }
 
     func testRemove() async throws {
@@ -61,6 +65,11 @@ final class OPDSFeedCacheTests: XCTestCase {
         let cached = await sut.get(for: url)
 
         XCTAssertNil(cached)
+        // Removing an entry that was never added must also not crash
+        let neverCachedURL = URL(string: "https://example.com/never-cached")!
+        await sut.remove(for: neverCachedURL)
+        let neverCached = await sut.get(for: neverCachedURL)
+        XCTAssertNil(neverCached, "Removing a URL that was never cached must leave the cache returning nil")
     }
 
     func testClear() async throws {
@@ -159,6 +168,12 @@ final class OPDSFeedCacheTests: XCTestCase {
         // With 5 second max age, this should not be returned
         let cached = await sut.get(for: url)
         XCTAssertNil(cached, "Expired entries should not be returned")
+        // A fresh entry at a different URL must still be returned
+        let freshURL = URL(string: "https://example.com/fresh")!
+        let freshEntry = OPDSCacheEntry(feed: makeFeed(title: "Fresh"))
+        await sut.set(freshEntry, for: freshURL)
+        let freshCached = await sut.get(for: freshURL)
+        XCTAssertNotNil(freshCached, "A fresh entry must still be returned even when an expired one exists")
     }
 
     // MARK: - Stale-While-Revalidate
@@ -224,6 +239,9 @@ final class OPDSFeedCacheTests: XCTestCase {
         let headers = await sut.conditionalHeaders(for: url)
 
         XCTAssertTrue(headers.isEmpty)
+        // If-None-Match and If-Modified-Since must both be absent
+        XCTAssertNil(headers["If-None-Match"], "If-None-Match must be absent when no entry is cached")
+        XCTAssertNil(headers["If-Modified-Since"], "If-Modified-Since must be absent when no entry is cached")
     }
 
     // MARK: - Stats

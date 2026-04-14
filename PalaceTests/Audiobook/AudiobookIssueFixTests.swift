@@ -396,20 +396,23 @@ final class ReturnFlowTests: XCTestCase {
     func testRetryTracker_limitsRetries() {
         let operationId = "test-return-\(UUID().uuidString)"
 
-        // Record multiple retries
+        // Exhaust retries by recording until the tracker stops allowing them
+        var allowedCount = 0
         for _ in 0..<10 {
             if UserRetryTracker.shared.canRetry(operationId: operationId) {
+                allowedCount += 1
                 UserRetryTracker.shared.recordRetry(operationId: operationId)
             }
         }
 
         // After enough retries, should be blocked
-        // (default limit is 5 in UserRetryTracker)
         let canStillRetry = UserRetryTracker.shared.canRetry(operationId: operationId)
 
-        // Just verify the tracker doesn't crash and eventually limits
-        // The exact limit may vary, but it should not be infinite
-        XCTAssertNotNil(canStillRetry, "Retry tracker should return a definitive answer")
+        // The tracker must eventually block retries (not infinite), and the total
+        // allowed must be less than the 10 attempts we tried.
+        XCTAssertFalse(canStillRetry, "Retry tracker must block further retries after limit is reached")
+        XCTAssertLessThan(allowedCount, 10, "Tracker must not allow unlimited retries")
+        XCTAssertGreaterThan(allowedCount, 0, "Tracker must allow at least one retry before blocking")
     }
 }
 

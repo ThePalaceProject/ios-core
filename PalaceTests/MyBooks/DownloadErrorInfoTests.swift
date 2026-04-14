@@ -46,5 +46,9 @@ final class DownloadErrorInfoTests: XCTestCase {
             retryAction: nil
         )
         XCTAssertNil(info.retryAction)
+        // Other fields should still be correctly stored
+        XCTAssertEqual(info.bookId, "book-789")
+        XCTAssertEqual(info.title, "Error")
+        XCTAssertEqual(info.message, "Msg")
     }
 }

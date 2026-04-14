@@ -139,17 +139,25 @@ final class AccountDetailsURLTests: XCTestCase {
         XCTAssertTrue(sut.syncPermissionGranted)
     }
 
-    func testSyncPermissionGranted_ToggleOffThenOn_RestoresDefault() {
-        // Arrange: sync is granted by default
-        XCTAssertTrue(sut.syncPermissionGranted)
+    func testSyncPermissionGranted_ToggleOffThenOn_PersistsViaUserDefaults() {
+        // Arrange: sync is granted by default — confirm initial state
+        XCTAssertTrue(sut.syncPermissionGranted, "Precondition: syncPermissionGranted defaults to true")
 
-        // Act: disable, then re-enable sync
+        // Act: disable sync and create a second AccountDetails over the same UUID
         sut.syncPermissionGranted = false
-        XCTAssertFalse(sut.syncPermissionGranted, "Sync should be disabled after setting false")
-        sut.syncPermissionGranted = true
+        let sut2 = makeAccountDetails(uuid: testUUID)
 
-        // Assert: restored to true
-        XCTAssertTrue(sut.syncPermissionGranted, "Sync should be re-enabled after setting true")
+        // Assert: the revocation survived object recreation via UserDefaults
+        XCTAssertFalse(sut2.syncPermissionGranted,
+                       "Disabling sync must persist across AccountDetails re-creation")
+
+        // Act: re-enable sync via the second instance
+        sut2.syncPermissionGranted = true
+        let sut3 = makeAccountDetails(uuid: testUUID)
+
+        // Assert: re-enabling also persists
+        XCTAssertTrue(sut3.syncPermissionGranted,
+                      "Re-enabling sync must also persist across AccountDetails re-creation")
     }
 
     func testUserAboveAgeLimit_DefaultIsFalse() {

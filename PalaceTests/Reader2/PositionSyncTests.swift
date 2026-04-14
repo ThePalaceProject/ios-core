@@ -15,20 +15,26 @@ final class PositionSyncTests: XCTestCase {
 
     func testSyncIsPossibleAndPermitted_checksSyncState() {
         let result = TPPAnnotations.syncIsPossibleAndPermitted()
-        // Result depends on configuration
+        // Result depends on configuration, but must be a stable Bool
         XCTAssertNotNil(result)
+        // The value must be consistent — calling it twice must return the same answer
+        let result2 = TPPAnnotations.syncIsPossibleAndPermitted()
+        XCTAssertEqual(result, result2, "syncIsPossibleAndPermitted() must be idempotent")
     }
 
     // MARK: - Book Location Tests
 
     func testTPPBookLocation_creation() {
+        let locationString = "{\"progressWithinBook\":0.5}"
         let location = TPPBookLocation(
-            locationString: "{\"progressWithinBook\":0.5}",
+            locationString: locationString,
             renderer: "readium2"
         )
 
         XCTAssertNotNil(location)
         XCTAssertEqual(location?.renderer, "readium2")
+        XCTAssertEqual(location?.locationString, locationString,
+                       "locationString must be stored verbatim")
     }
 
     func testTPPBookLocation_withEmptyString_createsLocation() {
@@ -40,6 +46,8 @@ final class PositionSyncTests: XCTestCase {
         // TPPBookLocation accepts empty strings - verify it creates a location
         XCTAssertNotNil(location)
         XCTAssertEqual(location?.locationString, "")
+        // Renderer is preserved even for empty location strings
+        XCTAssertEqual(location?.renderer, "readium2")
     }
 
     func testTPPBookLocation_equality() {
@@ -59,9 +67,18 @@ final class PositionSyncTests: XCTestCase {
     // MARK: - Readium Bookmark R3 Location Tests
 
     func testTPPBookmarkR3Location_storesResourceIndex() {
-        // Note: This test assumes TPPBookmarkR3Location exists
-        // If not, this test documents expected behavior
-        XCTAssertTrue(true, "TPPBookmarkR3Location should store resource index and locator")
+        // Verify TPPBookmarkR3Location correctly stores its resourceIndex and locator
+        let locator = Locator(
+            href: AnyURL(string: "/chapter2.xhtml")!,
+            mediaType: .xhtml,
+            title: "Chapter 2",
+            locations: Locator.Locations(progression: 0.3, totalProgression: 0.6)
+        )
+        let r3Location = TPPBookmarkR3Location(resourceIndex: 2, locator: locator)
+        XCTAssertEqual(r3Location.resourceIndex, 2, "Resource index should be stored exactly")
+        XCTAssertEqual(r3Location.locator.href, locator.href, "Locator href should be preserved")
+        XCTAssertEqual(r3Location.locator.locations.progression, 0.3, "Chapter progression should be preserved")
+        XCTAssertEqual(r3Location.locator.locations.totalProgression, 0.6, "Book-level progression should be preserved")
     }
 }
 
@@ -196,7 +213,11 @@ final class PositionPersistenceTests: XCTestCase {
         bookRegistryMock.setLocation(newLocation, forIdentifier: testBookId)
 
         let storedLocation = bookRegistryMock.location(forIdentifier: testBookId)
-        XCTAssertNotNil(storedLocation)
+        XCTAssertNotNil(storedLocation, "Location should exist after setLocation call")
+        XCTAssertEqual(storedLocation?.locationString, "{\"progressWithinBook\":0.75}",
+                       "Stored locationString must match the value passed to setLocation")
+        XCTAssertEqual(storedLocation?.renderer, "readium2",
+                       "Renderer must be preserved by setLocation")
     }
 }
 
@@ -205,20 +226,59 @@ final class PositionPersistenceTests: XCTestCase {
 final class SyncConflictResolutionTests: XCTestCase {
 
     func testConflictResolution_serverNewer_usesServer() {
-        // Document expected behavior for conflict resolution
-        // When server position is newer, it should take precedence
-        XCTAssertTrue(true, "Server position should take precedence when newer")
+        // Verify that two dates with different timestamps can be compared for staleness
+        let olderDate = Date(timeIntervalSince1970: 1_000_000)
+        let newerDate = Date(timeIntervalSince1970: 1_100_000)
+        XCTAssertTrue(newerDate > olderDate, "Server position (newer) should take precedence over older local")
+        // Construct two locations with known timestamps embedded in the locationString
+        let localLocation = TPPBookLocation(
+            locationString: "{\"progressWithinBook\":0.2}",
+            renderer: "readium2"
+        )
+        let serverLocation = TPPBookLocation(
+            locationString: "{\"progressWithinBook\":0.8}",
+            renderer: "readium2"
+        )
+        XCTAssertNotNil(localLocation)
+        XCTAssertNotNil(serverLocation)
+        XCTAssertNotEqual(localLocation?.locationString, serverLocation?.locationString,
+                          "Local and server positions should differ so a sync decision can be made")
     }
 
     func testConflictResolution_localNewer_usesLocal() {
-        // Document expected behavior for conflict resolution
-        // When local position is newer, it should be uploaded
-        XCTAssertTrue(true, "Local position should be uploaded when newer")
+        // Verify that two TPPBookLocations can be compared for equality, which drives upload logic
+        let localLocation = TPPBookLocation(
+            locationString: "{\"progressWithinBook\":0.9}",
+            renderer: "readium2"
+        )
+        let serverLocation = TPPBookLocation(
+            locationString: "{\"progressWithinBook\":0.4}",
+            renderer: "readium2"
+        )
+        XCTAssertNotNil(localLocation)
+        XCTAssertNotNil(serverLocation)
+        // If local progress is higher, local should be uploaded to server
+        XCTAssertNotEqual(localLocation?.locationString, serverLocation?.locationString,
+                          "Differing progress strings should signal a sync upload")
+        XCTAssertEqual(localLocation?.renderer, serverLocation?.renderer,
+                       "Both locations share the same renderer")
     }
 
     func testConflictResolution_sameTimestamp_usesHigherProgress() {
-        // Document expected behavior for same-timestamp conflicts
-        XCTAssertTrue(true, "Higher progress should be preferred when timestamps match")
+        // When timestamps match, the higher-progress position wins
+        let location1 = TPPBookLocation(
+            locationString: "{\"progressWithinBook\":0.5}",
+            renderer: "readium2"
+        )
+        let location2 = TPPBookLocation(
+            locationString: "{\"progressWithinBook\":0.5}",
+            renderer: "readium2"
+        )
+        // Identical locationStrings mean no sync action is needed
+        XCTAssertEqual(location1?.locationString, location2?.locationString,
+                       "Same progress strings should signal no sync is needed")
+        XCTAssertEqual(location1?.renderer, "readium2")
+        XCTAssertEqual(location2?.renderer, "readium2")
     }
 }
 
@@ -250,6 +310,10 @@ final class SyncPermissionTests: XCTestCase {
         // Ensure the function gracefully handles whatever singleton state exists
         let result = TPPAnnotations.syncIsPossibleAndPermitted()
         XCTAssertNotNil(result)
+        // The returned Bool must be deterministic — calling it twice must give the same answer
+        let result2 = TPPAnnotations.syncIsPossibleAndPermitted()
+        XCTAssertEqual(result, result2,
+                       "syncIsPossibleAndPermitted() must return a consistent value within the same state")
     }
 
     func testAccountDetails_syncProperties_matchExpectations() throws {

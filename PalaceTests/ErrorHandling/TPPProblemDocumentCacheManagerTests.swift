@@ -34,6 +34,16 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
 
     func testCacheSize_isFive() {
         XCTAssertEqual(TPPProblemDocumentCacheManager.CACHE_SIZE, 5)
+        XCTAssertGreaterThan(TPPProblemDocumentCacheManager.CACHE_SIZE, 0,
+                             "Cache size must be positive")
+        // Fresh instance should accept at least CACHE_SIZE documents without eviction errors
+        let key = "cache-size-test-\(UUID().uuidString)"
+        for i in 0..<TPPProblemDocumentCacheManager.CACHE_SIZE {
+            let doc = TPPProblemDocument.fromDictionary(["title": "Doc \(i)"])
+            cacheManager.cacheProblemDocument(doc, key: key)
+        }
+        XCTAssertNotNil(cacheManager.getLastCachedDoc(key),
+                        "Last document must be retrievable after filling up to CACHE_SIZE")
     }
 
     // MARK: - Basic Cache/Retrieve
@@ -52,8 +62,12 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
     }
 
     func testGetLastCachedDoc_unknownKey_returnsNil() {
-        let result = cacheManager.getLastCachedDoc("nonexistent-key-\(UUID().uuidString)")
+        let key = "nonexistent-key-\(UUID().uuidString)"
+        let result = cacheManager.getLastCachedDoc(key)
         XCTAssertNil(result)
+        // Querying an unknown key twice must consistently return nil (no side effects)
+        let secondResult = cacheManager.getLastCachedDoc(key)
+        XCTAssertNil(secondResult, "Repeated queries for an unknown key must always return nil")
     }
 
     // MARK: - Multiple Documents Per Key
@@ -92,8 +106,12 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
     }
 
     func testClearCachedDoc_nonexistentKey_doesNotCrash() {
+        let key = "nonexistent-key-\(UUID().uuidString)"
         // Should not crash
-        cacheManager.clearCachedDoc("nonexistent-key-\(UUID().uuidString)")
+        cacheManager.clearCachedDoc(key)
+        // After clearing a non-existent key, retrieving it must still return nil
+        XCTAssertNil(cacheManager.getLastCachedDoc(key),
+                     "Clearing a non-existent key must leave it as nil")
     }
 
     // MARK: - LRU Behavior

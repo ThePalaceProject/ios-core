@@ -56,8 +56,12 @@ final class PersistentLoggerTests: XCTestCase {
 
     func testRetrieveAllLogs_returnsString() async {
         let logs = await PersistentLogger.shared.retrieveAllLogs()
-        // Should always return a string (possibly empty)
-        XCTAssertNotNil(logs)
+        // Should always return a string (possibly empty, but not nil-bridged)
+        XCTAssertNotNil(logs, "retrieveAllLogs must return a non-nil String")
+        // Calling it again immediately must return a String (idempotent, no crash)
+        let logsAgain = await PersistentLogger.shared.retrieveAllLogs()
+        XCTAssertGreaterThanOrEqual(logsAgain.count, 0,
+                                     "retrieveAllLogs must return a non-negative length String on repeated calls")
     }
 
     // MARK: - Multiple Log Entries

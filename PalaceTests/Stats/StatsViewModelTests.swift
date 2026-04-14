@@ -71,7 +71,13 @@ final class StatsViewModelTests: XCTestCase {
 
     await viewModel.load()
 
-    XCTAssertFalse(viewModel.chartData.isEmpty)
+    XCTAssertFalse(viewModel.chartData.isEmpty,
+                   "chartData must have at least one data point after a session is recorded")
+    // Each chart data point must have a valid (non-negative) reading minutes value
+    for point in viewModel.chartData {
+      XCTAssertGreaterThanOrEqual(point.value, 0,
+                                   "Chart data point value must be non-negative")
+    }
   }
 
   // MARK: - Time Period Filtering

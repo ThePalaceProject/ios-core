@@ -41,6 +41,9 @@ final class TPPBookAuthorTests: XCTestCase {
         let author = TPPBookAuthor(authorName: "Test", relatedBooksURL: nil)
 
         XCTAssertTrue(author is NSObject)
+        XCTAssertTrue(author.isKind(of: NSObject.self))
+        // NSObject description should not crash and should be non-empty
+        XCTAssertFalse(author.description.isEmpty)
     }
 
     // MARK: - Equality / Property Matching Tests
@@ -57,5 +60,9 @@ final class TPPBookAuthorTests: XCTestCase {
         let a = TPPBookAuthor(authorName: "Alice", relatedBooksURL: nil)
         let b = TPPBookAuthor(authorName: "Bob", relatedBooksURL: nil)
         XCTAssertNotEqual(a.name, b.name)
+        XCTAssertNil(a.relatedBooksURL)
+        XCTAssertNil(b.relatedBooksURL)
+        // Both have no URL even though names differ
+        XCTAssertEqual(a.relatedBooksURL, b.relatedBooksURL)
     }
 }

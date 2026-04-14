@@ -61,12 +61,20 @@ final class BadgesViewModelTests: XCTestCase {
   }
 
   func testInitialState_IsNotLoading() {
-    XCTAssertFalse(viewModel.isLoading)
+    XCTAssertFalse(viewModel.isLoading, "ViewModel must not be in a loading state before load() is called")
+    // Verify consistency: no badges loaded either means the state is truly "not loaded yet"
+    XCTAssertTrue(viewModel.earnedBadges.isEmpty,
+                  "earnedBadges must be empty when isLoading is false and load() has not been called")
   }
 
   func testInitialState_NoSelectedBadge() {
-    XCTAssertNil(viewModel.selectedBadge)
-    XCTAssertFalse(viewModel.showBadgeDetail)
+    XCTAssertNil(viewModel.selectedBadge, "No badge must be selected before selectBadge() is called")
+    XCTAssertFalse(viewModel.showBadgeDetail,
+                   "Badge detail sheet must be hidden when no badge is selected")
+    // Verify consistency: selecting nil and then clearing leaves state unchanged
+    let initialNewlyEarned = viewModel.newlyEarnedBadgeIDs
+    XCTAssertTrue(initialNewlyEarned.isEmpty,
+                  "newlyEarnedBadgeIDs must be empty in initial state")
   }
 
   // MARK: - Load

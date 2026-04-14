@@ -63,7 +63,9 @@ final class ReadingStatsStoreTests: XCTestCase {
 
   func testLoadStreakDefault() {
     let streak = store.loadStreak()
-    XCTAssertEqual(streak.currentStreakDays, 0)
+    XCTAssertEqual(streak.currentStreakDays, 0, "Default streak must have zero current days")
+    XCTAssertEqual(streak.longestStreakDays, 0, "Default streak must have zero longest days")
+    XCTAssertTrue(streak.activeDates.isEmpty, "Default streak must have no active dates")
   }
 
   // MARK: - Completions
@@ -114,7 +116,13 @@ final class ReadingStatsStoreTests: XCTestCase {
     // A new store should set version 1
     _ = ReadingStatsStore(defaults: defaults)
     let version = defaults.integer(forKey: "palace.stats.schemaVersion")
-    XCTAssertEqual(version, 1)
+    XCTAssertEqual(version, 1, "Initial migration must write schema version 1")
+    XCTAssertGreaterThan(version, 0, "Schema version must be positive (not the default 0 from a missing key)")
+    // Creating a second store on the same defaults must not downgrade the version
+    _ = ReadingStatsStore(defaults: defaults)
+    let versionAfterSecondInit = defaults.integer(forKey: "palace.stats.schemaVersion")
+    XCTAssertEqual(versionAfterSecondInit, version,
+                   "Re-initializing the store must not change the schema version")
   }
 
   // MARK: - Helpers

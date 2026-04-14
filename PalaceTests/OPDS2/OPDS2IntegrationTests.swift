@@ -53,6 +53,9 @@ final class OPDS2IntegrationTests: XCTestCase {
 
     func testGroupCount() {
         XCTAssertEqual(feed.groups?.count, 3)
+        // A grouped feed must also report isGroupedFeed == true and have no top-level publications
+        XCTAssertTrue(feed.isGroupedFeed, "Feed with groups must report isGroupedFeed == true")
+        XCTAssertNil(feed.publications, "A grouped feed must not also have top-level publications")
     }
 
     func testNewAndNotableGroup() {
@@ -225,11 +228,17 @@ final class OPDS2IntegrationTests: XCTestCase {
         let data = try! Data(contentsOf: url!)
 
         XCTAssertEqual(OPDSFormat.detect(from: data), .opds2)
+        // The same data must not be detected as XML or unknown
+        XCTAssertNotEqual(OPDSFormat.detect(from: data), .opds1, "JSON fixture must not be detected as OPDS1")
+        XCTAssertNotEqual(OPDSFormat.detect(from: data), .unknown, "JSON fixture must not be detected as unknown")
     }
 
     func testFormatDetection_XML() {
         let xmlData = "<?xml version=\"1.0\"?><feed></feed>".data(using: .utf8)!
         XCTAssertEqual(OPDSFormat.detect(from: xmlData), .opds1)
+        // XML must not be detected as JSON or unknown
+        XCTAssertNotEqual(OPDSFormat.detect(from: xmlData), .opds2, "XML must not be detected as OPDS2")
+        XCTAssertNotEqual(OPDSFormat.detect(from: xmlData), .unknown, "XML must not be detected as unknown")
     }
 
     func testFormatDetection_contentType() {

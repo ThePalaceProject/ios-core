@@ -103,11 +103,23 @@ final class AccountSwitchCleanupTests: XCTestCase {
     func testSharedAccount_WithSpecificUUID_DoesNotCrash() {
         let account = TPPUserAccount.sharedAccount(libraryUUID: "urn:uuid:test-library")
         XCTAssertNotNil(account)
+        // Retrieving the same UUID twice returns equivalent accounts
+        let accountAgain = TPPUserAccount.sharedAccount(libraryUUID: "urn:uuid:test-library")
+        XCTAssertNotNil(accountAgain)
+        // A different UUID should still produce a non-nil account
+        let otherAccount = TPPUserAccount.sharedAccount(libraryUUID: "urn:uuid:other-library")
+        XCTAssertNotNil(otherAccount)
     }
 
     func testSharedAccount_WithNilUUID_DoesNotCrash() {
         let account = TPPUserAccount.sharedAccount(libraryUUID: nil)
         XCTAssertNotNil(account)
+        // Repeated nil-UUID calls all return non-nil accounts
+        let account2 = TPPUserAccount.sharedAccount(libraryUUID: nil)
+        XCTAssertNotNil(account2)
+        // A specific UUID after a nil-UUID call also works
+        let namedAccount = TPPUserAccount.sharedAccount(libraryUUID: "urn:uuid:after-nil")
+        XCTAssertNotNil(namedAccount)
     }
 
     func testSharedAccount_SwitchingUUIDs_DoesNotCrash() {
@@ -143,13 +155,19 @@ final class AccountSwitchCleanupTests: XCTestCase {
         )
 
         let book = TPPBookMocker.mockBook(identifier: "cache-test", title: "Cache Test", authors: "Author")
+        let book2 = TPPBookMocker.mockBook(identifier: "cache-test-2", title: "Cache Test 2", authors: "Author 2")
         _ = cache.model(for: book)
-        XCTAssertEqual(cache.count, 1)
+        _ = cache.model(for: book2)
+        XCTAssertEqual(cache.count, 2, "Both books should be cached before account change")
 
         // Simulate account change notification
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
 
         // NotificationCenter delivers synchronously to all observers on the posting thread.
         // No sleep needed — any cache-clear triggered by the notification is already done.
+        XCTAssertEqual(cache.count, 0, "Cache should be cleared after account change")
+        // A new model can be populated after the clear
+        _ = cache.model(for: book)
+        XCTAssertEqual(cache.count, 1, "Cache should accept new entries after account-change clear")
     }
 }

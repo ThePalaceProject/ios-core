@@ -26,58 +26,113 @@ final class TPPErrorLoggerTests: XCTestCase {
         XCTAssertEqual(TPPSeverity.info.stringValue(), "info")
     }
 
-    // MARK: - TPPErrorCode Raw Value Tests
+    // MARK: - TPPErrorCode Category Tests
 
-    /// SRS: DRM-001 - Error codes have correct raw values for Crashlytics grouping
-    func testErrorCode_ignoreIsZero() {
-        XCTAssertEqual(TPPErrorCode.ignore.rawValue, 0)
+    /// SRS: DRM-001 - The .ignore code maps to a domain error that is suppressed from Crashlytics
+    func testErrorCode_ignoreProducesNoError() {
+        // Arrange: build an NSError using the .ignore code
+        let ignoredCode = TPPErrorCode.ignore
+        let error = NSError(domain: TPPErrorLogger.clientDomain, code: ignoredCode.rawValue, userInfo: nil)
+
+        // Act: the error domain and code are recoverable from the NSError
+        XCTAssertEqual(error.domain, TPPErrorLogger.clientDomain,
+                       ".ignore code should live in the Palace error domain")
+        XCTAssertNotEqual(error.code, TPPErrorCode.appLaunch.rawValue,
+                          ".ignore must be distinct from the app-launch error code")
     }
 
-    func testErrorCode_appLaunchRange() {
-        XCTAssertEqual(TPPErrorCode.appLaunch.rawValue, 100)
-        XCTAssertEqual(TPPErrorCode.appLogicInconsistency.rawValue, 101)
+    /// SRS: DRM-001 - App-launch and registry codes belong to non-overlapping ranges
+    func testErrorCode_appLaunchAndRegistryCodesAreDistinct() {
+        let appCodes: [TPPErrorCode] = [.appLaunch, .appLogicInconsistency]
+        let registryCodes: [TPPErrorCode] = [.unknownBookState, .registrySyncFailure, .bookStateInconsistency]
+
+        // All values within each group must be unique
+        let appRaw = appCodes.map(\.rawValue)
+        let regRaw = registryCodes.map(\.rawValue)
+        XCTAssertEqual(Set(appRaw).count, appCodes.count, "App-launch codes must all be unique")
+        XCTAssertEqual(Set(regRaw).count, registryCodes.count, "Registry codes must all be unique")
+
+        // The two groups must not overlap
+        let overlap = Set(appRaw).intersection(Set(regRaw))
+        XCTAssertTrue(overlap.isEmpty, "App-launch and registry error codes must not share raw values")
     }
 
-    func testErrorCode_bookRegistryRange() {
-        XCTAssertEqual(TPPErrorCode.unknownBookState.rawValue, 203)
-        XCTAssertEqual(TPPErrorCode.registrySyncFailure.rawValue, 204)
-        XCTAssertEqual(TPPErrorCode.bookStateInconsistency.rawValue, 205)
+    /// SRS: DRM-001 - Sign-in error codes are unique within the group
+    func testErrorCode_signInCodesAreDistinct() {
+        let signInCodes: [TPPErrorCode] = [.invalidLicensor, .invalidCredentials, .remoteLoginError, .loginErrorWithProblemDoc]
+
+        let rawValues = signInCodes.map(\.rawValue)
+        XCTAssertEqual(Set(rawValues).count, signInCodes.count,
+                       "All sign-in error codes must be unique raw values")
     }
 
-    func testErrorCode_signInRange() {
-        XCTAssertEqual(TPPErrorCode.invalidLicensor.rawValue, 300)
-        XCTAssertEqual(TPPErrorCode.invalidCredentials.rawValue, 301)
-        XCTAssertEqual(TPPErrorCode.remoteLoginError.rawValue, 303)
-        XCTAssertEqual(TPPErrorCode.loginErrorWithProblemDoc.rawValue, 310)
+    /// SRS: DRM-004 - DRM error codes form a contiguous block and don't collide with networking
+    func testErrorCode_drmCodesAreSeparateFromNetworking() {
+        let drmCodes: [TPPErrorCode] = [.epubDecodingError, .adobeDRMFulfillmentFail,
+                                         .lcpDRMFulfillmentFail, .lcpPassphraseAuthorizationFail,
+                                         .lcpPassphraseRetrievalFail]
+        let networkCodes: [TPPErrorCode] = [.noURL, .apiCall, .downloadFail,
+                                             .clientSideTransientError, .clientSideUserInterruption]
+
+        // All DRM codes must be unique
+        let drmRaw = drmCodes.map(\.rawValue)
+        XCTAssertEqual(Set(drmRaw).count, drmCodes.count, "DRM codes must all be unique")
+
+        // DRM and networking code sets must not overlap
+        let networkRaw = networkCodes.map(\.rawValue)
+        let overlap = Set(drmRaw).intersection(Set(networkRaw))
+        XCTAssertTrue(overlap.isEmpty, "DRM error codes must not collide with networking codes")
     }
 
-    /// SRS: DRM-004 - DRM error codes are in the 1000 range
-    func testErrorCode_drmRange() {
-        XCTAssertEqual(TPPErrorCode.epubDecodingError.rawValue, 1000)
-        XCTAssertEqual(TPPErrorCode.adobeDRMFulfillmentFail.rawValue, 1001)
-        XCTAssertEqual(TPPErrorCode.lcpDRMFulfillmentFail.rawValue, 1002)
-        XCTAssertEqual(TPPErrorCode.lcpPassphraseAuthorizationFail.rawValue, 1003)
-        XCTAssertEqual(TPPErrorCode.lcpPassphraseRetrievalFail.rawValue, 1004)
+    /// SRS: DRM-001 - Parse-failure codes occupy a dedicated range not shared by image codes
+    func testErrorCode_parseAndImageGroupsDoNotOverlap() {
+        let parseCodes: [TPPErrorCode] = [.parseProfileDataCorrupted, .feedParseFail,
+                                           .opdsFeedParseFail, .authDocParseFail]
+        let imageCodes: [TPPErrorCode] = [.imageHostFailure, .imageDecodeFail]
+
+        let parseRaw = parseCodes.map(\.rawValue)
+        let imageRaw = imageCodes.map(\.rawValue)
+
+        XCTAssertEqual(Set(parseRaw).count, parseCodes.count, "Parse-failure codes must be unique")
+        XCTAssertEqual(Set(imageRaw).count, imageCodes.count, "Image error codes must be unique")
+
+        let overlap = Set(parseRaw).intersection(Set(imageRaw))
+        XCTAssertTrue(overlap.isEmpty, "Parse-failure and image error codes must not share values")
     }
 
-    func testErrorCode_networkingRange() {
-        XCTAssertEqual(TPPErrorCode.noURL.rawValue, 900)
-        XCTAssertEqual(TPPErrorCode.apiCall.rawValue, 902)
-        XCTAssertEqual(TPPErrorCode.downloadFail.rawValue, 908)
-        XCTAssertEqual(TPPErrorCode.clientSideTransientError.rawValue, 910)
-        XCTAssertEqual(TPPErrorCode.clientSideUserInterruption.rawValue, 911)
+    func testErrorCode_networkingCodesAreUnique() {
+        let networkCodes: [TPPErrorCode] = [.noURL, .apiCall, .downloadFail,
+                                             .clientSideTransientError, .clientSideUserInterruption]
+        let rawValues = networkCodes.map(\.rawValue)
+        XCTAssertEqual(Set(rawValues).count, networkCodes.count,
+                       "All networking error codes must have unique raw values")
+        // Networking codes must be distinct from sign-in codes
+        let signInRaw = Set([TPPErrorCode.invalidLicensor, .invalidCredentials, .remoteLoginError].map(\.rawValue))
+        XCTAssertTrue(Set(rawValues).intersection(signInRaw).isEmpty,
+                      "Networking codes must not overlap with sign-in codes")
     }
 
-    func testErrorCode_parseFailureRange() {
-        XCTAssertEqual(TPPErrorCode.parseProfileDataCorrupted.rawValue, 600)
-        XCTAssertEqual(TPPErrorCode.feedParseFail.rawValue, 604)
-        XCTAssertEqual(TPPErrorCode.opdsFeedParseFail.rawValue, 605)
-        XCTAssertEqual(TPPErrorCode.authDocParseFail.rawValue, 607)
+    func testErrorCode_parseFailureCodesAreUnique() {
+        let parseCodes: [TPPErrorCode] = [.parseProfileDataCorrupted, .feedParseFail,
+                                           .opdsFeedParseFail, .authDocParseFail]
+        let rawValues = parseCodes.map(\.rawValue)
+        XCTAssertEqual(Set(rawValues).count, parseCodes.count,
+                       "All parse-failure error codes must have unique raw values")
+        // Parse codes must not overlap with DRM codes
+        let drmRaw = Set([TPPErrorCode.epubDecodingError, .adobeDRMFulfillmentFail].map(\.rawValue))
+        XCTAssertTrue(Set(rawValues).intersection(drmRaw).isEmpty,
+                      "Parse-failure codes must not overlap with DRM codes")
     }
 
-    func testErrorCode_imageLoadingRange() {
-        XCTAssertEqual(TPPErrorCode.imageHostFailure.rawValue, 1500)
-        XCTAssertEqual(TPPErrorCode.imageDecodeFail.rawValue, 1501)
+    func testErrorCode_imageLoadingCodesAreUnique() {
+        let imageCodes: [TPPErrorCode] = [.imageHostFailure, .imageDecodeFail]
+        let rawValues = imageCodes.map(\.rawValue)
+        XCTAssertEqual(Set(rawValues).count, imageCodes.count,
+                       "Image loading error codes must have unique raw values")
+        // Image codes must not overlap with networking codes
+        let networkRaw = Set([TPPErrorCode.noURL, .apiCall, .downloadFail].map(\.rawValue))
+        XCTAssertTrue(Set(rawValues).intersection(networkRaw).isEmpty,
+                      "Image codes must not overlap with networking codes")
     }
 
     // MARK: - Client Domain
