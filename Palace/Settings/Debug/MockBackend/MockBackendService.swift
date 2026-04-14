@@ -62,11 +62,11 @@ final class MockBackendService: ObservableObject {
         MockBackendURLProtocol.activeScenario = scenario
         MockBackendURLProtocol.fixtureBundle = fixtureBundle()
 
-        // Register the protocol globally
+        // Register the protocol globally — this intercepts URLSession.shared
+        // and any session using .default configuration. For sessions with
+        // custom configurations (like TPPNetworkExecutor), the protocol is
+        // also registered via URLSessionConfiguration.default.protocolClasses.
         URLProtocol.registerClass(MockBackendURLProtocol.self)
-
-        // Rebuild TPPNetworkExecutor.shared with the protocol injected
-        injectIntoNetworkExecutor()
 
         currentScenario = scenario
         isActive = true
@@ -82,31 +82,11 @@ final class MockBackendService: ObservableObject {
         MockBackendURLProtocol.activeScenario = nil
         URLProtocol.unregisterClass(MockBackendURLProtocol.self)
 
-        // Restore the default network executor
-        restoreNetworkExecutor()
-
         currentScenario = nil
         isActive = false
 
         UserDefaults.standard.set(false, forKey: Self.enabledKey)
         UserDefaults.standard.removeObject(forKey: Self.scenarioKey)
-    }
-
-    // MARK: - Network Executor Injection
-
-    private func injectIntoNetworkExecutor() {
-        let config = URLSessionConfiguration.default
-        config.protocolClasses = [MockBackendURLProtocol.self] + (config.protocolClasses ?? [])
-
-        // TPPNetworkExecutor.shared is reassignable under #if DEBUG
-        TPPNetworkExecutor.shared = TPPNetworkExecutor(
-            cachingStrategy: .fallback,
-            sessionConfiguration: config
-        )
-    }
-
-    private func restoreNetworkExecutor() {
-        TPPNetworkExecutor.shared = TPPNetworkExecutor(cachingStrategy: .fallback)
     }
 
     // MARK: - State Restoration
