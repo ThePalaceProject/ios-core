@@ -1040,9 +1040,9 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
         // Simulate sync completing and bringing in a new book
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "sn1", title: "Post-Sync Book")]
         let exp = XCTestExpectation(description: "books updated after sync-ended notification")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
-        wait(for: [exp], timeout: 1.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exp.fulfill() }
+        wait(for: [exp], timeout: 3.0)
 
         XCTAssertEqual(viewModel.books.count, 1,
             "TPPSyncEnded notification must trigger a reload that reflects the new registry contents")

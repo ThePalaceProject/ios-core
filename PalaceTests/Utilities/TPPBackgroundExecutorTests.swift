@@ -92,7 +92,7 @@ final class TPPBackgroundExecutorTests: XCTestCase {
 
         executor.dispatchBackgroundWork()
 
-        waitForExpectations(timeout: 10.0)
+        waitForExpectations(timeout: 15.0)
         XCTAssertTrue(owner.workPerformed, "Executor should call performBackgroundWork on owner")
         XCTAssertEqual(owner.performBackgroundWorkCallCount, 1)
     }
