@@ -43,12 +43,15 @@ final class MockBackendService: ObservableObject {
     // MARK: - Scenario Management
 
     func loadScenarios(from bundle: Bundle = .main) {
-        availableScenarios = MockScenario.loadAll(from: bundle)
+        // Use embedded Swift scenarios (always available, no bundle required)
+        availableScenarios = MockScenario.embeddedScenarios
 
-        // If no bundle-embedded scenarios found, try loading from file system
-        // (useful during development before fixtures are bundled)
-        if availableScenarios.isEmpty {
-            availableScenarios = loadScenariosFromDisk()
+        // Also try loading from bundle/disk for custom scenarios
+        let bundleScenarios = MockScenario.loadAll(from: bundle)
+        if !bundleScenarios.isEmpty {
+            let embeddedIds = Set(availableScenarios.map(\.id))
+            let custom = bundleScenarios.filter { !embeddedIds.contains($0.id) }
+            availableScenarios.append(contentsOf: custom)
         }
 
         Log.info(#file, "MockBackend: loaded \(availableScenarios.count) scenarios")

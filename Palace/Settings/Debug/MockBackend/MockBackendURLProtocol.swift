@@ -107,6 +107,9 @@ final class MockBackendURLProtocol: URLProtocol {
         let possibleExtensions = ["json", "xml", "atom"]
         var data: Data?
 
+        // Priority 0: embedded fixtures (always available, no bundle needed)
+        data = EmbeddedFixtures.data(for: name)
+
         // Priority 1: direct file system path (set by tests)
         if let dirPath = Self.fixtureDirectoryPath {
             for ext in possibleExtensions {
