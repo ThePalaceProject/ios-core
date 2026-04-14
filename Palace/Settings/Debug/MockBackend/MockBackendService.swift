@@ -65,11 +65,14 @@ final class MockBackendService: ObservableObject {
         MockBackendURLProtocol.activeScenario = scenario
         MockBackendURLProtocol.fixtureBundle = fixtureBundle()
 
-        // Register the protocol globally — this intercepts URLSession.shared
-        // and any session using .default configuration. For sessions with
-        // custom configurations (like TPPNetworkExecutor), the protocol is
-        // also registered via URLSessionConfiguration.default.protocolClasses.
+        // Register globally for URLSession.shared
         URLProtocol.registerClass(MockBackendURLProtocol.self)
+
+        // Swizzle URLSessionConfiguration to inject the protocol into ALL
+        // sessions — including TPPNetworkExecutor's custom session that was
+        // created before activation. This is the same approach used by
+        // OHHTTPStubs and other HTTP mocking frameworks.
+        URLSessionConfiguration.mockBackend_swizzleProtocolClasses()
 
         currentScenario = scenario
         isActive = true
@@ -84,6 +87,7 @@ final class MockBackendService: ObservableObject {
 
         MockBackendURLProtocol.activeScenario = nil
         URLProtocol.unregisterClass(MockBackendURLProtocol.self)
+        URLSessionConfiguration.mockBackend_unswizzleProtocolClasses()
 
         currentScenario = nil
         isActive = false

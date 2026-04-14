@@ -435,6 +435,7 @@
 		MOCKBK01BL004 /* MockBackendPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOCKBK01FR004 /* MockBackendPickerView.swift */; };
 		MOCKBK01BL005 /* EmbeddedScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOCKBK01FR005 /* EmbeddedScenarios.swift */; };
 		MOCKBK01BL006 /* EmbeddedFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOCKBK01FR006 /* EmbeddedFixtures.swift */; };
+		MOCKBK01BL007 /* URLSessionConfiguration+MockBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOCKBK01FR007 /* URLSessionConfiguration+MockBackend.swift */; };
 		681FBB4C5C3E2B2A10DAD273 /* CatalogViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DF25F6BFF39ECDAF39E3E3 /* CatalogViewModelTests.swift */; };
 		68AE152553DC4596F31D8842 /* NYPLXMLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151A1BCD2A3E9E836B277A8C /* NYPLXMLTests.swift */; };
 		68B4EB5D20D6EDBEA0D18156 /* AppInfrastructureCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 262879F496344EE8F262446A /* AppInfrastructureCoverageTests.swift */; };
@@ -2317,6 +2318,7 @@
 		MOCKBK01FR004 /* MockBackendPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockBackendPickerView.swift; path = Debug/MockBackend/MockBackendPickerView.swift; sourceTree = "<group>"; };
 		MOCKBK01FR005 /* EmbeddedScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EmbeddedScenarios.swift; path = Debug/MockBackend/EmbeddedScenarios.swift; sourceTree = "<group>"; };
 		MOCKBK01FR006 /* EmbeddedFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EmbeddedFixtures.swift; path = Debug/MockBackend/EmbeddedFixtures.swift; sourceTree = "<group>"; };
+		MOCKBK01FR007 /* URLSessionConfiguration+MockBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "URLSessionConfiguration+MockBackend.swift"; path = "Debug/MockBackend/URLSessionConfiguration+MockBackend.swift"; sourceTree = "<group>"; };
 		BF99D1F39D634C56A70BFE75 /* AudiobookReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookReliabilityTests.swift; sourceTree = "<group>"; };
 		BKTST00012F27000000FR01 /* TPPBookLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookLocationTests.swift; sourceTree = "<group>"; };
 		BKTST00012F27000000FR02 /* TPPBookContentTypeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookContentTypeTests.swift; sourceTree = "<group>"; };
@@ -4079,6 +4081,7 @@
 				MOCKBK01FR004 /* MockBackendPickerView.swift */,
 				MOCKBK01FR005 /* EmbeddedScenarios.swift */,
 				MOCKBK01FR006 /* EmbeddedFixtures.swift */,
+				MOCKBK01FR007 /* URLSessionConfiguration+MockBackend.swift */,
 			);
 			name = Debug;
 			sourceTree = "<group>";
@@ -6928,6 +6931,7 @@
 				MOCKBK01BL004 /* MockBackendPickerView.swift in Sources */,
 				MOCKBK01BL005 /* EmbeddedScenarios.swift in Sources */,
 				MOCKBK01BL006 /* EmbeddedFixtures.swift in Sources */,
+				MOCKBK01BL007 /* URLSessionConfiguration+MockBackend.swift in Sources */,
 				E512240C2DDFC41D00D034A4 /* UIViewController+Extensions.swift in Sources */,
 				E5FD62162BFD30F600DD4B94 /* LoadingViewController.swift in Sources */,
 				E50543892E5F98B9007CCFAB /* CatalogLoadingViewController.swift in Sources */,
