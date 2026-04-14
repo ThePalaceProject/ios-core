@@ -104,6 +104,17 @@ scripts/               # Build, test, release automation
 
 **When replacing fluff tests:** Replace 1:1 with a test that exercises real logic in the same class. The new test should use mocks, test an edge case, or verify a state transition — something that could actually fail if the code regresses.
 
+**Mutation verification — every test must survive this question:**
+> "If I flip a conditional, negate a return value, or change `+=` to `-=` in the production code this test covers, does the test fail?"
+
+If the answer is no, the test is fluff regardless of assertion count. Run mutation testing on changed files:
+```bash
+python3 scripts/palace_mutate.py --file Palace/Path/ChangedFile.swift --tests PalaceTests/Path/ --dry-run
+# Then without --dry-run to verify tests catch the mutants
+```
+
+A test that doesn't kill any mutants should be rewritten to test the actual behavior path, not just surface properties.
+
 ## pbxproj
 
 Two build phases (two targets) — new source files need entries in both Sources sections.
