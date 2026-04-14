@@ -1,0 +1,33 @@
+{
+  "id": "loan_limit",
+  "displayName": "Loan Limit Reached",
+  "description": "User has too many active loans. Browsing works but borrowing returns 403.",
+  "routes": [
+    {
+      "pathPattern": ".*/libraries.*",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/opds+json"
+    },
+    {
+      "pathPattern": ".*/authentication_document",
+      "fixtureName": "auth_document",
+      "statusCode": 200,
+      "contentType": "application/vnd.opds.authentication+json"
+    },
+    {
+      "pathPattern": ".*/borrow",
+      "method": "POST",
+      "fixtureName": "problem_documents",
+      "fixtureKey": "loan_limit_reached",
+      "statusCode": 403,
+      "contentType": "application/problem+json"
+    },
+    {
+      "pathPattern": ".*",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/opds+json"
+    }
+  ]
+}

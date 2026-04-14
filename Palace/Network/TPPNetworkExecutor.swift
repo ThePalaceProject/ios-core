@@ -184,7 +184,11 @@ private final class ActiveTasksStore {
         urlSession.finishTasksAndInvalidate()
     }
 
+    #if DEBUG
+    @objc static var shared = TPPNetworkExecutor(cachingStrategy: .fallback)
+    #else
     @objc static let shared = TPPNetworkExecutor(cachingStrategy: .fallback)
+    #endif
 
     /// Number of underlying token-refresh attempts that have taken the
     /// single-flight slot since process start (or last reset). Concurrent
