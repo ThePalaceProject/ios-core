@@ -10,11 +10,13 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case libraryRegistryDebugging
         case dataManagement
         case developerTools
+        case pushNotificationTesting
         case featurePreviews
         case badgeTesting
         case errorSimulation
     }
 
+    private let fcmTokenCellIdentifier = "fcmTokenCell"
     private let betaLibraryCellIdentifier = "betaLibraryCell"
     private let lcpPassphraseCellIdentifier = "lcpPassphraseCell"
     private let clearCacheCellIdentifier = "clearCacheCell"
@@ -76,6 +78,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         switch Section(rawValue: section)! {
         case .librarySettings: return 2
         case .developerTools: return 2
+        case .pushNotificationTesting: return 3
         case .featurePreviews: return 1
         case .badgeTesting:
             #if DEBUG
@@ -110,6 +113,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             switch indexPath.row {
             case 0: return cellForSendErrorLogs()
             default: return cellForEmailAudiobookLogs()
+            }
+        case .pushNotificationTesting:
+            switch indexPath.row {
+            case 0: return cellForFCMToken()
+            case 1: return cellForTestHoldNotification()
+            default: return cellForTestLoanExpiryNotification()
             }
         case .featurePreviews:
             return cellForIncrementalSpeedSlider()
@@ -146,6 +155,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             return "Data Management"
         case .developerTools:
             return "Developer Tools"
+        case .pushNotificationTesting:
+            return "Push Notification Testing"
         case .featurePreviews:
             return "Feature Previews"
         case .badgeTesting:
@@ -292,6 +303,190 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
     #endif
 
+    private func cellForFCMToken() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: fcmTokenCellIdentifier)
+        cell.selectionStyle = .default
+        cell.textLabel?.text = "FCM Token"
+        cell.detailTextLabel?.text = "Loading..."
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.detailTextLabel?.numberOfLines = 1
+        cell.detailTextLabel?.lineBreakMode = .byTruncatingMiddle
+        cell.accessoryType = .none
+
+        Task {
+            let token = await NotificationService.shared.currentFCMToken()
+            await MainActor.run {
+                cell.detailTextLabel?.text = token ?? "No token"
+            }
+        }
+        return cell
+    }
+
+    private func copyFCMToken() {
+        Task {
+            let token = await NotificationService.shared.currentFCMToken()
+            await MainActor.run {
+                if let token {
+                    UIPasteboard.general.string = token
+                    let alert = TPPAlertUtils.alert(
+                        title: "FCM Token Copied",
+                        message: "Token copied to clipboard.\n\n\(token.prefix(20))...\(token.suffix(20))"
+                    )
+                    self.present(alert, animated: true)
+                } else {
+                    let alert = TPPAlertUtils.alert(
+                        title: "No FCM Token",
+                        message: "Push notifications may not be configured. Check that notification permissions are granted."
+                    )
+                    self.present(alert, animated: true)
+                }
+            }
+        }
+    }
+
+    private func cellForTestHoldNotification() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "testHoldNotificationCell")
+        cell.selectionStyle = .default
+        cell.textLabel?.text = "Send Hold Available"
+        cell.detailTextLabel?.text = "Schedules a test notification with delay"
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+
+    private func cellForTestLoanExpiryNotification() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "testLoanExpiryCell")
+        cell.selectionStyle = .default
+        cell.textLabel?.text = "Send Loan Expiry Warning"
+        cell.detailTextLabel?.text = "Schedules a test notification with delay"
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+
+    /// Test notification types matching the Circulation Manager's real payload format.
+    /// See: circulation/src/palace/manager/celery/tasks/notifications.py
+    enum TestNotificationType {
+        case holdAvailable
+        case loanExpiry
+
+        var title: String {
+            switch self {
+            case .holdAvailable: return "Your hold is available!"
+            case .loanExpiry: return "Only 3 days left on your loan!"
+            }
+        }
+
+        var body: String {
+            switch self {
+            case .holdAvailable: return "Your hold on \"Test Book\" is available at Test Library!"
+            case .loanExpiry: return "Your loan for \"Test Book\" at Test Library is expiring soon"
+            }
+        }
+
+        var categoryIdentifier: String {
+            switch self {
+            case .holdAvailable: return HoldNotificationCategoryIdentifier
+            case .loanExpiry: return "NYPLLoanExpiryNotificationCategory"
+            }
+        }
+
+        /// Matches the real CM backend payload structure.
+        /// Key field is `event_type` (NOT `type` — that's the identifier type).
+        var userInfo: [String: String] {
+            switch self {
+            case .holdAvailable:
+                return [
+                    "event_type": "HoldAvailable",
+                    "library": "test",
+                    "type": "ISBN",
+                    "identifier": "urn:isbn:0000000000000",
+                ]
+            case .loanExpiry:
+                return [
+                    "event_type": "LoanExpiry",
+                    "library": "test",
+                    "type": "ISBN",
+                    "identifier": "urn:isbn:0000000000000",
+                    "days_to_expiry": "3",
+                ]
+            }
+        }
+    }
+
+    private func scheduleTestNotification(type: TestNotificationType) {
+        let alert = UIAlertController(
+            title: "Schedule \(type.title)",
+            message: "Choose a delay. Background the app before the notification fires to test tap-to-navigate.",
+            preferredStyle: .actionSheet
+        )
+
+        for delay in [5, 10, 15, 30] {
+            alert.addAction(UIAlertAction(title: "\(delay) seconds", style: .default) { [weak self] _ in
+                self?.fireTestNotification(type: type, delay: TimeInterval(delay))
+            })
+        }
+
+        alert.addAction(UIAlertAction(title: "Immediately", style: .default) { [weak self] _ in
+            self?.fireTestNotification(type: type, delay: 1)
+        })
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = tableView
+            let row = type.categoryIdentifier == HoldNotificationCategoryIdentifier ? 1 : 2
+            popover.sourceRect = tableView.rectForRow(at: IndexPath(row: row, section: Section.pushNotificationTesting.rawValue))
+        }
+
+        present(alert, animated: true)
+    }
+
+    private func fireTestNotification(type: TestNotificationType, delay: TimeInterval) {
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { [weak self] settings in
+            guard settings.authorizationStatus == .authorized else {
+                DispatchQueue.main.async {
+                    let alert = TPPAlertUtils.alert(
+                        title: "Notifications Disabled",
+                        message: "Enable notifications in Settings → Palace to test push notifications."
+                    )
+                    self?.present(alert, animated: true)
+                }
+                return
+            }
+
+            let content = UNMutableNotificationContent()
+            content.title = type.title
+            content.body = type.body
+            content.sound = .default
+            content.categoryIdentifier = type.categoryIdentifier
+            content.userInfo = type.userInfo
+
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+            let request = UNNotificationRequest(
+                identifier: "palace-test-\(type.categoryIdentifier)-\(Date().timeIntervalSince1970)",
+                content: content,
+                trigger: trigger
+            )
+
+            center.add(request) { error in
+                DispatchQueue.main.async {
+                    if let error {
+                        let alert = TPPAlertUtils.alert(title: "Error", message: error.localizedDescription)
+                        self?.present(alert, animated: true)
+                    } else {
+                        let alert = TPPAlertUtils.alert(
+                            title: "Notification Scheduled",
+                            message: "Firing in \(Int(delay))s. Background the app now to test tap-to-navigate."
+                        )
+                        self?.present(alert, animated: true)
+                    }
+                }
+            }
+        }
+    }
+
     private func cellForErrorSimulation() -> UITableViewCell {
         let currentError = DebugSettings.shared.simulatedBorrowError
 
@@ -391,6 +586,13 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 sendErrorLogs()
             default:
                 emailAudiobookLogs()
+            }
+
+        case .pushNotificationTesting:
+            switch indexPath.row {
+            case 0: copyFCMToken()
+            case 1: scheduleTestNotification(type: .holdAvailable)
+            default: scheduleTestNotification(type: .loanExpiry)
             }
 
         case .badgeTesting:
