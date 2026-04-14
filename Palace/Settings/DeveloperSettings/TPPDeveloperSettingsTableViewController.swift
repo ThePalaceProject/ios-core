@@ -1,4 +1,5 @@
 import MessageUI
+import SwiftUI
 
 @objcMembers
 class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, MFMailComposeViewControllerDelegate {
@@ -14,6 +15,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case featurePreviews
         case badgeTesting
         case errorSimulation
+        #if DEBUG
+        case mockBackend
+        #endif
     }
 
     private let fcmTokenCellIdentifier = "fcmTokenCell"
@@ -92,6 +96,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             #else
             return 2  // Simulate Borrow Error + Simulate Sync Failure (available in TestFlight for QA)
             #endif
+        #if DEBUG
+        case .mockBackend: return 1
+        #endif
         default: return 1
         }
     }
@@ -142,6 +149,10 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 return UITableViewCell()
                 #endif
             }
+        #if DEBUG
+        case .mockBackend:
+            return cellForMockBackend()
+        #endif
         }
     }
 
@@ -167,6 +178,10 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             #endif
         case .errorSimulation:
             return "Error Simulation (Testing)"
+        #if DEBUG
+        case .mockBackend:
+            return "Mock Backend"
+        #endif
         }
     }
 
@@ -497,6 +512,25 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     #if DEBUG
+    private func cellForMockBackend() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "mockBackendCell")
+        cell.selectionStyle = .default
+        cell.accessoryType = .disclosureIndicator
+
+        let service = MockBackendService.shared
+        if service.isActive, let scenario = service.currentScenario {
+            cell.textLabel?.text = "Mock Backend: \(scenario.displayName)"
+            cell.textLabel?.textColor = .systemGreen
+            cell.detailTextLabel?.text = "Active — \(scenario.routes.count) routes"
+        } else {
+            cell.textLabel?.text = "Mock Backend"
+            cell.textLabel?.textColor = .label
+            cell.detailTextLabel?.text = "Tap to configure"
+        }
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        return cell
+    }
+
     private func cellForPreviewErrorDetails() -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: "previewErrorDetailsCell")
         cell.selectionStyle = .default
@@ -597,10 +631,23 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 #endif
             }
 
+        #if DEBUG
+        case .mockBackend:
+            showMockBackendPicker()
+        #endif
+
         default:
             break
         }
     }
+
+    #if DEBUG
+    private func showMockBackendPicker() {
+        let hostingController = UIHostingController(rootView: MockBackendPickerView())
+        hostingController.title = "Mock Backend"
+        navigationController?.pushViewController(hostingController, animated: true)
+    }
+    #endif
 
     #if DEBUG
     private func showTestHoldsPicker() {

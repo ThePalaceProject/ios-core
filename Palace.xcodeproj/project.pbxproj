@@ -429,6 +429,10 @@
 		65C9C378EE67A7B2D1D12B08 /* MyBooksDownloadCenterProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 420E95312BFA6C62C6CA835D /* MyBooksDownloadCenterProtocol.swift */; };
 		66AE9D42FA4F53E26C31747C /* ReadingStreak.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A6CA6654994D77041AE0F79 /* ReadingStreak.swift */; };
 		676F638471BA390A373B329B /* DebugSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEF1F7C70AC93BF8E2F22148 /* DebugSettings.swift */; };
+		MOCKBK01BL001 /* MockScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOCKBK01FR001 /* MockScenario.swift */; };
+		MOCKBK01BL002 /* MockBackendURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOCKBK01FR002 /* MockBackendURLProtocol.swift */; };
+		MOCKBK01BL003 /* MockBackendService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOCKBK01FR003 /* MockBackendService.swift */; };
+		MOCKBK01BL004 /* MockBackendPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOCKBK01FR004 /* MockBackendPickerView.swift */; };
 		681FBB4C5C3E2B2A10DAD273 /* CatalogViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DF25F6BFF39ECDAF39E3E3 /* CatalogViewModelTests.swift */; };
 		68AE152553DC4596F31D8842 /* NYPLXMLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151A1BCD2A3E9E836B277A8C /* NYPLXMLTests.swift */; };
 		68B4EB5D20D6EDBEA0D18156 /* AppInfrastructureCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 262879F496344EE8F262446A /* AppInfrastructureCoverageTests.swift */; };
@@ -2303,6 +2307,10 @@
 		BDC90738317B9A2A4331572D /* TPPSessionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPSessionTests.swift; sourceTree = "<group>"; };
 		BE020244923A658A8CB9EE39 /* AuthFlowSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlowSecurityTests.swift; sourceTree = "<group>"; };
 		BEF1F7C70AC93BF8E2F22148 /* DebugSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugSettings.swift; path = Debug/DebugSettings.swift; sourceTree = "<group>"; };
+		MOCKBK01FR001 /* MockScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockScenario.swift; path = Debug/MockBackend/MockScenario.swift; sourceTree = "<group>"; };
+		MOCKBK01FR002 /* MockBackendURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockBackendURLProtocol.swift; path = Debug/MockBackend/MockBackendURLProtocol.swift; sourceTree = "<group>"; };
+		MOCKBK01FR003 /* MockBackendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockBackendService.swift; path = Debug/MockBackend/MockBackendService.swift; sourceTree = "<group>"; };
+		MOCKBK01FR004 /* MockBackendPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockBackendPickerView.swift; path = Debug/MockBackend/MockBackendPickerView.swift; sourceTree = "<group>"; };
 		BF99D1F39D634C56A70BFE75 /* AudiobookReliabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookReliabilityTests.swift; sourceTree = "<group>"; };
 		BKTST00012F27000000FR01 /* TPPBookLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookLocationTests.swift; sourceTree = "<group>"; };
 		BKTST00012F27000000FR02 /* TPPBookContentTypeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookContentTypeTests.swift; sourceTree = "<group>"; };
@@ -4057,6 +4065,10 @@
 			isa = PBXGroup;
 			children = (
 				BEF1F7C70AC93BF8E2F22148 /* DebugSettings.swift */,
+				MOCKBK01FR001 /* MockScenario.swift */,
+				MOCKBK01FR002 /* MockBackendURLProtocol.swift */,
+				MOCKBK01FR003 /* MockBackendService.swift */,
+				MOCKBK01FR004 /* MockBackendPickerView.swift */,
 			);
 			name = Debug;
 			sourceTree = "<group>";
@@ -6896,6 +6908,10 @@
 				E7E89399284A1EB800C7A4F3 /* TPPPDFPreviewBar.swift in Sources */,
 				5DD5674522B303DF001F0C83 /* TPPDeveloperSettingsTableViewController.swift in Sources */,
 				676F638471BA390A373B329B /* DebugSettings.swift in Sources */,
+				MOCKBK01BL001 /* MockScenario.swift in Sources */,
+				MOCKBK01BL002 /* MockBackendURLProtocol.swift in Sources */,
+				MOCKBK01BL003 /* MockBackendService.swift in Sources */,
+				MOCKBK01BL004 /* MockBackendPickerView.swift in Sources */,
 				E512240C2DDFC41D00D034A4 /* UIViewController+Extensions.swift in Sources */,
 				E5FD62162BFD30F600DD4B94 /* LoadingViewController.swift in Sources */,
 				E50543892E5F98B9007CCFAB /* CatalogLoadingViewController.swift in Sources */,
