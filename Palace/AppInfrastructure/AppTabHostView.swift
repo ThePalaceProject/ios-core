@@ -60,7 +60,10 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
         }
         .tint(Color.accentColor)
-        .onAppear { AppTabRouterHub.shared.router = router }
+        .onAppear {
+            AppTabRouterHub.shared.router = router
+            AppTabRouterHub.shared.applyPending()
+        }
         .onChange(of: router.selected) { newTab in
             // Respect reduce motion accessibility setting
             if UIAccessibility.isReduceMotionEnabled {
