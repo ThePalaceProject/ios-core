@@ -364,23 +364,21 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
 
-    /// Test notification types matching the Circulation Manager's real payload format.
-    /// See: circulation/src/palace/manager/celery/tasks/notifications.py
     enum TestNotificationType {
         case holdAvailable
         case loanExpiry
 
         var title: String {
             switch self {
-            case .holdAvailable: return "Your hold is available!"
-            case .loanExpiry: return "Only 3 days left on your loan!"
+            case .holdAvailable: return "Your hold is ready"
+            case .loanExpiry: return "Loan expiring soon"
             }
         }
 
         var body: String {
             switch self {
-            case .holdAvailable: return "Your hold on \"Test Book\" is available at Test Library!"
-            case .loanExpiry: return "Your loan for \"Test Book\" at Test Library is expiring soon"
+            case .holdAvailable: return "The title you reserved is available for checkout."
+            case .loanExpiry: return "Your loan expires in 3 days. Return or renew to keep reading."
             }
         }
 
@@ -391,25 +389,10 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         }
 
-        /// Matches the real CM backend payload structure.
-        /// Key field is `event_type` (NOT `type` — that's the identifier type).
         var userInfo: [String: String] {
             switch self {
-            case .holdAvailable:
-                return [
-                    "event_type": "HoldAvailable",
-                    "library": "test",
-                    "type": "ISBN",
-                    "identifier": "urn:isbn:0000000000000",
-                ]
-            case .loanExpiry:
-                return [
-                    "event_type": "LoanExpiry",
-                    "library": "test",
-                    "type": "ISBN",
-                    "identifier": "urn:isbn:0000000000000",
-                    "days_to_expiry": "3",
-                ]
+            case .holdAvailable: return ["type": "hold_available"]
+            case .loanExpiry: return ["type": "loan_expiry"]
             }
         }
     }
