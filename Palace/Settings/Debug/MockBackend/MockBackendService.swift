@@ -65,6 +65,14 @@ final class MockBackendService: ObservableObject {
         MockBackendURLProtocol.activeScenario = scenario
         MockBackendURLProtocol.fixtureBundle = fixtureBundle()
 
+        // Scope mock interception to the current library's host so other
+        // libraries aren't affected when the user switches accounts.
+        if let catalogUrlString = AccountsManager.shared.currentAccount?.catalogUrl,
+           let catalogURL = URL(string: catalogUrlString) {
+            MockBackendURLProtocol.scopedHost = catalogURL.host
+            Log.info(#file, "MockBackend: scoped to host '\(catalogURL.host ?? "unknown")'")
+        }
+
         // Register globally for URLSession.shared
         URLProtocol.registerClass(MockBackendURLProtocol.self)
 
@@ -87,6 +95,7 @@ final class MockBackendService: ObservableObject {
         Log.info(#file, "MockBackend: deactivating")
 
         MockBackendURLProtocol.activeScenario = nil
+        MockBackendURLProtocol.scopedHost = nil
         URLProtocol.unregisterClass(MockBackendURLProtocol.self)
         URLSessionConfiguration.mockBackend_unswizzleProtocolClasses()
 

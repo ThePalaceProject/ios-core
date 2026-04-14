@@ -244,8 +244,22 @@ final class BookDetailViewModel: ObservableObject {
 
         // Subscribe to download errors so we can present them via SwiftUI .alert
         // instead of UIKit (which can fail when a SwiftUI sheet is topmost).
+        // Filter by error kind so borrow errors only show when the user initiated
+        // a borrow (Get), and download errors only show for downloads/retries.
         downloadCenter.downloadErrorPublisher
             .filter { [weak self] in $0.bookId == self?.book.identifier }
+            .filter { [weak self] errorInfo in
+                guard let self else { return true }
+                switch errorInfo.kind {
+                case .borrow:
+                    return self.processingButtons.contains(.get) || self.bookState == .unregistered
+                case .download:
+                    return self.processingButtons.contains(.download) || self.processingButtons.contains(.retry)
+                        || self.bookState == .downloading || self.bookState == .downloadFailed || self.bookState == .downloadNeeded
+                case .general:
+                    return true
+                }
+            }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] errorInfo in
                 if let retryAction = errorInfo.retryAction {

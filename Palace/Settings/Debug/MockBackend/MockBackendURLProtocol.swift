@@ -18,6 +18,11 @@ final class MockBackendURLProtocol: URLProtocol {
     /// The active scenario. When nil, this protocol does not intercept.
     static var activeScenario: MockScenario?
 
+    /// Host to scope interception to. When set, only requests to this host
+    /// are considered for mocking — requests to other hosts pass through.
+    /// Set automatically from the current library's catalog URL on activation.
+    static var scopedHost: String?
+
     /// Bundle containing fixture files. Override for test bundles.
     static var fixtureBundle: Bundle = .main
 
@@ -32,12 +37,25 @@ final class MockBackendURLProtocol: URLProtocol {
 
     override class func canInit(with request: URLRequest) -> Bool {
         // Only intercept when a scenario is active
-        guard activeScenario != nil else { return false }
+        guard let scenario = activeScenario else { return false }
         // Don't intercept our own marked requests (prevent infinite recursion)
         guard URLProtocol.property(forKey: "MockBackendHandled", in: request) == nil else {
             return false
         }
-        return true
+        // Only intercept requests to the scoped library host (if set).
+        // This prevents the mock from interfering with other libraries
+        // when the user switches accounts.
+        if let host = scopedHost, request.url?.host != host {
+            return false
+        }
+        // Only intercept requests that match an explicit route.
+        // Unmatched requests pass through to the real server so the
+        // catalog, cover images, and other non-mocked endpoints work normally.
+        let matched = scenario.routes.contains { $0.matches(request) }
+        if !matched, let url = request.url?.absoluteString {
+            Log.debug(#file, "MockBackend: pass-through (no route matched) \(request.httpMethod ?? "?") \(url)")
+        }
+        return matched
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest {

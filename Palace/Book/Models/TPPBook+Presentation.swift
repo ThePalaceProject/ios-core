@@ -34,7 +34,7 @@ extension TPPBook {
         // the generic keys risks returning a small thumbnail that was cached from a list/lane
         // view, which would appear pixelated at larger display sizes.
         let sizeKey: String? = displayHeight.map { "\(identifier)_\(Int($0))pt" }
-        let lookupKeys: [String] = sizeKey != nil ? [sizeKey!] : [simpleKey, coverKey]
+        let lookupKeys: [String] = if let sizeKey { [sizeKey] } else { [simpleKey, coverKey] }
 
         if let img = lookupKeys.lazy.compactMap({ [weak self] in
           self?.imageCache.get(for: $0) }).first {

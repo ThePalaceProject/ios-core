@@ -241,9 +241,23 @@ class BookCellModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Subscribe to download errors so the half sheet can present them via SwiftUI .alert
+        // Subscribe to download errors so the half sheet can present them via SwiftUI .alert.
+        // Filter by error kind: borrow errors only show for unregistered books (user tapped Get),
+        // download errors only for books in download-related states.
         downloadCenter.downloadErrorPublisher
             .filter { [weak self] in $0.bookId == self?.book.identifier }
+            .filter { [weak self] errorInfo in
+                guard let self else { return true }
+                switch errorInfo.kind {
+                case .borrow:
+                    return self.registryState == .unregistered || self.registryState == .holding
+                case .download:
+                    return self.registryState == .downloading || self.registryState == .downloadFailed
+                        || self.registryState == .downloadNeeded
+                case .general:
+                    return true
+                }
+            }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] errorInfo in
                 guard let self else { return }

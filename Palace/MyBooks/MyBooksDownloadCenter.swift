@@ -275,7 +275,7 @@ import OverdriveProcessor
         case TPPProblemDocument.TypeLoanAlreadyExists:
             let alertMessage = DisplayStrings.loanAlreadyExistsAlertMessage
             runOnMainAsync {
-                self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage))
+                self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, kind: .borrow))
             }
 
         case TPPProblemDocument.TypeInvalidCredentials:
@@ -346,7 +346,7 @@ import OverdriveProcessor
         }()
 
         runOnMainAsync {
-            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, retryAction: retryAction))
+            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, kind: .borrow, retryAction: retryAction))
         }
     }
 
@@ -363,7 +363,7 @@ import OverdriveProcessor
         }()
 
         runOnMainAsync {
-            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.borrowFailed, message: formattedMessage, retryAction: retryAction))
+            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.borrowFailed, message: formattedMessage, kind: .borrow, retryAction: retryAction))
         }
     }
 
@@ -2384,7 +2384,7 @@ extension MyBooksDownloadCenter {
 
         // Publish error and announce via VoiceOver (PP-3673)
         runOnMainAsync {
-            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.downloadFailed, message: finalMessage, retryAction: retryAction))
+            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.downloadFailed, message: finalMessage, kind: .download, retryAction: retryAction))
         }
 
         broadcastUpdate()
@@ -2421,7 +2421,7 @@ extension MyBooksDownloadCenter {
 
         // Publish error and announce via VoiceOver (PP-3673)
         runOnMainAsync {
-            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.downloadFailed, message: finalMessage, retryAction: retryAction))
+            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.downloadFailed, message: finalMessage, kind: .download, retryAction: retryAction))
         }
     }
 
