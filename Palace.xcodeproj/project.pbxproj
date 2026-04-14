@@ -1450,6 +1450,7 @@
 		NEWTST002CONFIGTEST0001 /* TPPConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST001CONFIGTEST0001 /* TPPConfigurationTests.swift */; };
 		NEWTST004KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST003KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift */; };
 		KCHAVAIL00BUILD000000001 /* KeychainAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = KCHAVAIL00FILEREF000001 /* KeychainAvailability.swift */; };
+		APICONTRACT01BUILD00001 /* APIContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = APICONTRACT01FILEREF001 /* APIContractTests.swift */; };
 		NEWTST006OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST005OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift */; };
 		NEWTST008PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST007PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift */; };
 		NEWTST010XMLSWFTEST0001 /* TPPXMLSwiftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST009XMLSWFTEST0001 /* TPPXMLSwiftTests.swift */; };
@@ -2260,6 +2261,7 @@
 		C5FEA90508D9A3EEE2D86046 /* TPPKeychainManagerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPKeychainManagerTests.swift; sourceTree = "<group>"; };
 		C604731596250F23B780D317 /* OfflineQueueService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineQueueService.swift; sourceTree = "<group>"; };
 		C61A8F5FC897F582128D45B7 /* NetworkClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkClientTests.swift; sourceTree = "<group>"; };
+		APICONTRACT01FILEREF001 /* APIContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIContractTests.swift; sourceTree = "<group>"; };
 		C71662BC50D2A8BFAFD5C37A /* AudiobookTimeEntryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookTimeEntryTests.swift; sourceTree = "<group>"; };
 		C72E88998C74489891046AA2 /* TPPBookmarkDeletionLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TPPBookmarkDeletionLogTests.swift; path = Bookmarks/TPPBookmarkDeletionLogTests.swift; sourceTree = "<group>"; };
 		C7A10001AAAA000000000001 /* BookActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookActionHandler.swift; sourceTree = "<group>"; };
@@ -2809,6 +2811,7 @@
 			isa = PBXGroup;
 			children = (
 				C61A8F5FC897F582128D45B7 /* NetworkClientTests.swift */,
+				APICONTRACT01FILEREF001 /* APIContractTests.swift */,
 				A325872EF1D517D66C0FA15F /* TokenResponseTests.swift */,
 				1A81964771D1CB9A93ED2EA6 /* TokenRefreshTests.swift */,
 				38D1A95DE8674E6D83B5A8CA /* TPPNetworkExecutorTests.swift */,
@@ -6034,6 +6037,7 @@
 				NEWTST002CONFIGTEST0001 /* TPPConfigurationTests.swift in Sources */,
 				NEWTST004KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift in Sources */,
 				KCHAVAIL00BUILD000000001 /* KeychainAvailability.swift in Sources */,
+				APICONTRACT01BUILD00001 /* APIContractTests.swift in Sources */,
 				NEWTST006OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift in Sources */,
 				NEWTST008PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift in Sources */,
 				NEWTST010XMLSWFTEST0001 /* TPPXMLSwiftTests.swift in Sources */,
