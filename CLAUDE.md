@@ -80,6 +80,30 @@ scripts/               # Build, test, release automation
 - Test mocks: centralized in `PalaceTests/Mocks/`, use `TPPBookMocker` for book factories
 - Test HTTP stubbing: `HTTPStubURLProtocol` + `URLSession.stubbedSession()`
 
+## TDD & Test Quality — MANDATORY
+
+**All production code changes require tests written FIRST (TDD):**
+1. Write a failing test that describes the desired behavior
+2. Write the minimum production code to make it pass
+3. Refactor both test and production code
+4. Never commit production code without a corresponding test
+
+**Test quality rules — every test must:**
+- **Test behavior, not implementation.** Assert what the code DOES, not how it's structured. `XCTAssertEqual(cart.total, 15.99)` is good. `XCTAssertTrue(viewModel.showSearchSheet)` after just setting it is fluff.
+- **Have meaningful setup.** If the test body is just `let x = Foo(); XCTAssertNotNil(x)`, it's not a test. Tests need Arrange → Act → Assert with a real Act step.
+- **Use mocks/stubs for dependencies.** Never hit real singletons (.shared), network, keychain, or UserDefaults. Inject via protocol.
+- **Test edge cases, not happy paths only.** Empty arrays, nil values, concurrent access, error responses, expired tokens, malformed data.
+- **Name tests as behavior specs.** `testBorrow_WhenNotSignedIn_ShowsAuthPrompt` not `testBorrowButton`.
+
+**Banned test patterns (these are fluff):**
+- Setting a property then asserting it was set (`vm.x = 5; XCTAssertEqual(vm.x, 5)`)
+- Asserting enum raw values (`XCTAssertEqual(Facet.title.rawValue, "title")`)
+- Asserting a constructor returns non-nil (`XCTAssertNotNil(MyClass())`)
+- Toggling a bool and checking it toggled
+- Asserting default/initial state with no action taken
+
+**When replacing fluff tests:** Replace 1:1 with a test that exercises real logic in the same class. The new test should use mocks, test an edge case, or verify a state transition — something that could actually fail if the code regresses.
+
 ## pbxproj
 
 Two build phases (two targets) — new source files need entries in both Sources sections.
