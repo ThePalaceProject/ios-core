@@ -115,6 +115,17 @@ python3 scripts/palace_mutate.py --file Palace/Path/ChangedFile.swift --tests Pa
 
 A test that doesn't kill any mutants should be rewritten to test the actual behavior path, not just surface properties.
 
+**Tautology tests are forbidden:**
+- `XCTAssertTrue(x == true || x == false)` — always passes, tests nothing
+- `XCTAssertNotNil(Singleton.shared)` — tests Swift's static let, not your code
+- `XCTAssertTrue(x is SomeType)` — tests the compiler's type system
+- `XCTAssertEqual(x, x)` — self-referential, always passes
+- Any test where the assertion is mathematically guaranteed to pass
+
+**Coverage-only tests are banned.** Do not write tests whose sole purpose is to execute a line of code for coverage numbers. If a line of code has no testable behavior (e.g., a fire-and-forget analytics call, an empty delegate method), leave it uncovered. Honest 35% coverage with tests that catch bugs is better than 50% coverage with tautologies that catch nothing.
+
+**Critical path tests must be air-tight.** For sign-in, borrow, download, DRM fulfillment, and payment flows: every branch must have a test, every error path must be exercised, and every test must kill at least one mutant. These paths handle user money and access — fluff is not acceptable here.
+
 ## pbxproj
 
 Two build phases (two targets) — new source files need entries in both Sources sections.
