@@ -132,7 +132,7 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
         // explicit syncValues and produces an extra unexpected POST.
         let drain = expectation(description: "drain initial sync")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { drain.fulfill() }
-        wait(for: [drain], timeout: 1.0)
+        wait(for: [drain], timeout: 3.0)
         mockNetworkExecutor.reset()
         testStoreURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_timetracker")
     }
@@ -323,7 +323,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         // before each test (see AudiobookDataManagerNetworkSyncTests.setUp).
         let drain = expectation(description: "drain initial sync")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { drain.fulfill() }
-        wait(for: [drain], timeout: 1.0)
+        wait(for: [drain], timeout: 3.0)
         mockNetworkExecutor.reset()
     }
 
