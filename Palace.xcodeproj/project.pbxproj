@@ -1488,6 +1488,8 @@
 		FFF27FB1D19EC2A0B2827B32 /* TPPOPDSGroupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23421B886CD7122945915B93 /* TPPOPDSGroupTests.swift */; };
 		INTG0001B7A00000000001 /* SearchFlowIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INTG0001B7A00000000002 /* SearchFlowIntegrationTests.swift */; };
 		INTG0001B7A00000000003 /* AccountSwitchIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INTG0001B7A00000000004 /* AccountSwitchIntegrationTests.swift */; };
+		MOCKINTG01BLD00000001 /* MockBackendIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOCKINTG01FREF0000001 /* MockBackendIntegrationTests.swift */; };
+		MOCKINTG01BLD00000002 /* MockBackendTestHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOCKINTG01FREF0000002 /* MockBackendTestHelper.swift */; };
 		INTG0001B7A00000000005 /* BookStateIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INTG0001B7A00000000006 /* BookStateIntegrationTests.swift */; };
 		INTG0001B7A00000000007 /* CatalogLoadIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INTG0001B7A00000000008 /* CatalogLoadIntegrationTests.swift */; };
 		KCHAVAIL00BUILD000000001 /* KeychainAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = KCHAVAIL00FILEREF000001 /* KeychainAvailability.swift */; };
@@ -2706,6 +2708,8 @@
 		FFFD104EE843356CD66327E6 /* CrossFormatMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossFormatMappingTests.swift; sourceTree = "<group>"; };
 		INTG0001B7A00000000002 /* SearchFlowIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchFlowIntegrationTests.swift; sourceTree = "<group>"; };
 		INTG0001B7A00000000004 /* AccountSwitchIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSwitchIntegrationTests.swift; sourceTree = "<group>"; };
+		MOCKINTG01FREF0000001 /* MockBackendIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockBackendIntegrationTests.swift; sourceTree = "<group>"; };
+		MOCKINTG01FREF0000002 /* MockBackendTestHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockBackendTestHelper.swift; sourceTree = "<group>"; };
 		INTG0001B7A00000000006 /* BookStateIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookStateIntegrationTests.swift; sourceTree = "<group>"; };
 		INTG0001B7A00000000008 /* CatalogLoadIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogLoadIntegrationTests.swift; sourceTree = "<group>"; };
 		KCHAVAIL00FILEREF000001 /* KeychainAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainAvailability.swift; sourceTree = "<group>"; };
@@ -5323,6 +5327,8 @@
 			children = (
 				INTG0001B7A00000000002 /* SearchFlowIntegrationTests.swift */,
 				INTG0001B7A00000000004 /* AccountSwitchIntegrationTests.swift */,
+				MOCKINTG01FREF0000001 /* MockBackendIntegrationTests.swift */,
+				MOCKINTG01FREF0000002 /* MockBackendTestHelper.swift */,
 				INTG0001B7A00000000006 /* BookStateIntegrationTests.swift */,
 				INTG0001B7A00000000008 /* CatalogLoadIntegrationTests.swift */,
 			);
@@ -6035,6 +6041,8 @@
 				E18A0DC8C00A41B8841DBBE7 /* TPPBookRegistryIntegrationTests.swift in Sources */,
 				INTG0001B7A00000000001 /* SearchFlowIntegrationTests.swift in Sources */,
 				INTG0001B7A00000000003 /* AccountSwitchIntegrationTests.swift in Sources */,
+				MOCKINTG01BLD00000001 /* MockBackendIntegrationTests.swift in Sources */,
+				MOCKINTG01BLD00000002 /* MockBackendTestHelper.swift in Sources */,
 				INTG0001B7A00000000005 /* BookStateIntegrationTests.swift in Sources */,
 				INTG0001B7A00000000007 /* CatalogLoadIntegrationTests.swift in Sources */,
 				7C412CCF4234E353860E7FAD /* KeyboardNavigationHandlerTests.swift in Sources */,

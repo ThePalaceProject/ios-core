@@ -21,6 +21,10 @@ final class MockBackendURLProtocol: URLProtocol {
     /// Bundle containing fixture files. Override for test bundles.
     static var fixtureBundle: Bundle = .main
 
+    /// Direct file system path to fixtures directory. When set, bypasses bundle lookup.
+    /// Set this in tests where fixtures aren't bundled.
+    static var fixtureDirectoryPath: String?
+
     /// Request counter for diagnostics.
     private static var requestCount = 0
 
@@ -99,25 +103,36 @@ final class MockBackendURLProtocol: URLProtocol {
     // MARK: - Fixture Loading
 
     private func loadFixture(route: MockRoute) -> Data? {
-        let bundle = Self.fixtureBundle
-
-        // Try multiple locations for the fixture file
         let name = route.fixtureName
         let possibleExtensions = ["json", "xml", "atom"]
-
         var data: Data?
 
-        for ext in possibleExtensions {
-            if let url = bundle.url(forResource: name, withExtension: ext, subdirectory: "Fixtures/API") ??
-                         bundle.url(forResource: name, withExtension: ext) {
-                data = try? Data(contentsOf: url)
-                if data != nil { break }
+        // Priority 1: direct file system path (set by tests)
+        if let dirPath = Self.fixtureDirectoryPath {
+            for ext in possibleExtensions {
+                let path = "\(dirPath)/\(name).\(ext)"
+                if let d = FileManager.default.contents(atPath: path) {
+                    data = d
+                    break
+                }
             }
         }
 
-        // Fallback: try loading from file system path relative to bundle
+        // Priority 2: bundle resource lookup (runtime debug menu)
         if data == nil {
-            let basePath = bundle.bundlePath
+            let bundle = Self.fixtureBundle
+            for ext in possibleExtensions {
+                if let url = bundle.url(forResource: name, withExtension: ext, subdirectory: "Fixtures/API") ??
+                             bundle.url(forResource: name, withExtension: ext) {
+                    data = try? Data(contentsOf: url)
+                    if data != nil { break }
+                }
+            }
+        }
+
+        // Priority 3: fallback to bundle base path
+        if data == nil {
+            let basePath = Self.fixtureBundle.bundlePath
             for ext in possibleExtensions {
                 let path = "\(basePath)/Fixtures/API/\(name).\(ext)"
                 if let d = FileManager.default.contents(atPath: path) {
