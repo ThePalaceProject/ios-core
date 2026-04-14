@@ -109,6 +109,22 @@ import OverdriveProcessor
         if let injected = urlSession {
             self.session = injected
         } else {
+            #if DEBUG
+            // When mock backend is active, use a default (non-background) session
+            // so MockBackendURLProtocol can intercept download requests.
+            // Background sessions don't support custom URLProtocol classes.
+            if MockBackendURLProtocol.activeScenario != nil {
+                let configuration = URLSessionConfiguration.default
+                self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+            } else {
+                let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
+                let configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
+                configuration.isDiscretionary = false
+                configuration.waitsForConnectivity = false
+                configuration.allowsConstrainedNetworkAccess = true
+                self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+            }
+            #else
             let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
             let configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
             configuration.isDiscretionary = false
@@ -117,11 +133,34 @@ import OverdriveProcessor
                 configuration.allowsConstrainedNetworkAccess = true
             }
             self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+            #endif
         }
 
         // Setup intelligent download management
         setupNetworkMonitoring()
     }
+
+    #if DEBUG
+    /// Recreate the download session to pick up mock backend protocol changes.
+    /// Background sessions don't support URLProtocol, so when the mock is active
+    /// we use a default session instead.
+    func recreateSessionForMockBackend() {
+        session.invalidateAndCancel()
+        if MockBackendURLProtocol.activeScenario != nil {
+            let configuration = URLSessionConfiguration.default
+            session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+            Log.info(#file, "MyBooksDownloadCenter: switched to default session for mock backend")
+        } else {
+            let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
+            let configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
+            configuration.isDiscretionary = false
+            configuration.waitsForConnectivity = false
+            configuration.allowsConstrainedNetworkAccess = true
+            session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+            Log.info(#file, "MyBooksDownloadCenter: restored background session")
+        }
+    }
+    #endif
 
     deinit {
         session?.invalidateAndCancel()

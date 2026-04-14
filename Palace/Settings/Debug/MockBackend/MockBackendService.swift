@@ -71,10 +71,9 @@ final class MockBackendService: ObservableObject {
         // Swizzle URLSessionConfiguration so new sessions get the protocol
         URLSessionConfiguration.mockBackend_swizzleProtocolClasses()
 
-        // Recreate TPPNetworkExecutor's internal session so it picks up
-        // the swizzled protocol classes. This is the only way to intercept
-        // requests from an already-created URLSession.
+        // Recreate sessions so they pick up the mock protocol
         TPPNetworkExecutor.shared.recreateSession()
+        MyBooksDownloadCenter.shared.recreateSessionForMockBackend()
 
         currentScenario = scenario
         isActive = true
@@ -91,8 +90,9 @@ final class MockBackendService: ObservableObject {
         URLProtocol.unregisterClass(MockBackendURLProtocol.self)
         URLSessionConfiguration.mockBackend_unswizzleProtocolClasses()
 
-        // Recreate session to remove the mock protocol
+        // Recreate sessions to remove the mock protocol
         TPPNetworkExecutor.shared.recreateSession()
+        MyBooksDownloadCenter.shared.recreateSessionForMockBackend()
 
         currentScenario = nil
         isActive = false
