@@ -68,11 +68,13 @@ final class MockBackendService: ObservableObject {
         // Register globally for URLSession.shared
         URLProtocol.registerClass(MockBackendURLProtocol.self)
 
-        // Swizzle URLSessionConfiguration to inject the protocol into ALL
-        // sessions — including TPPNetworkExecutor's custom session that was
-        // created before activation. This is the same approach used by
-        // OHHTTPStubs and other HTTP mocking frameworks.
+        // Swizzle URLSessionConfiguration so new sessions get the protocol
         URLSessionConfiguration.mockBackend_swizzleProtocolClasses()
+
+        // Recreate TPPNetworkExecutor's internal session so it picks up
+        // the swizzled protocol classes. This is the only way to intercept
+        // requests from an already-created URLSession.
+        TPPNetworkExecutor.shared.recreateSession()
 
         currentScenario = scenario
         isActive = true
@@ -88,6 +90,9 @@ final class MockBackendService: ObservableObject {
         MockBackendURLProtocol.activeScenario = nil
         URLProtocol.unregisterClass(MockBackendURLProtocol.self)
         URLSessionConfiguration.mockBackend_unswizzleProtocolClasses()
+
+        // Recreate session to remove the mock protocol
+        TPPNetworkExecutor.shared.recreateSession()
 
         currentScenario = nil
         isActive = false
