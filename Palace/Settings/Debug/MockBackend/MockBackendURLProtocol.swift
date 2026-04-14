@@ -183,9 +183,16 @@ final class MockBackendURLProtocol: URLProtocol {
             return
         }
 
+        // Deliver response and data synchronously, then finish on next runloop
+        // tick. This ensures the URLSession delegate processes didReceive(data:)
+        // before didCompleteWithError: fires — otherwise TPPNetworkResponder's
+        // progressData may be empty when it tries to parse the problem document.
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
-        client?.urlProtocolDidFinishLoading(self)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
     }
 
     private func deliverError(_ error: Error) {
