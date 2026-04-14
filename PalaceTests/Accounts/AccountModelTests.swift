@@ -275,34 +275,61 @@ final class OPDS2SamlIDPTests: XCTestCase {
 }
 
 // MARK: - TPPSignedInStateProvider Tests
+// These tests use TPPUserAccountMock (which extends TPPUserAccount) to verify
+// that the real TPPSignedInStateProvider conformance on TPPUserAccount reflects
+// actual credential state rather than a private stub.
 
 final class TPPSignedInStateProviderTests: XCTestCase {
 
-    func testProtocol_CanBeConformedTo() {
-        let mock = MockSignedInStateProvider(signedIn: true)
-        XCTAssertTrue(mock.isSignedIn())
+    private var mockAccount: TPPUserAccountMock!
+
+    override func setUp() {
+        super.setUp()
+        TPPUserAccountMock.resetShared()
+        mockAccount = TPPUserAccountMock()
+        mockAccount.removeAll()
     }
 
-    func testProtocol_SignedIn_ReturnsTrue() {
-        let mock = MockSignedInStateProvider(signedIn: true)
-        XCTAssertTrue(mock.isSignedIn())
+    override func tearDown() {
+        mockAccount.removeAll()
+        mockAccount = nil
+        TPPUserAccountMock.resetShared()
+        super.tearDown()
     }
 
-    func testProtocol_NotSignedIn_ReturnsFalse() {
-        let mock = MockSignedInStateProvider(signedIn: false)
-        XCTAssertFalse(mock.isSignedIn())
-    }
-}
+    func testIsSignedIn_WhenCredentialsPresent_ReturnsTrue() {
+        // Arrange: set a bearer-token credential on the account
+        mockAccount.setAuthToken("bearer-token-123", barcode: "12345", pin: nil, expirationDate: nil)
 
-private class MockSignedInStateProvider: NSObject, TPPSignedInStateProvider {
-    private let signedIn: Bool
+        // Act
+        let result = mockAccount.isSignedIn()
 
-    init(signedIn: Bool) {
-        self.signedIn = signedIn
-        super.init()
+        // Assert: the real TPPSignedInStateProvider implementation returns true
+        // because hasCredentials() sees the token credential
+        XCTAssertTrue(result, "isSignedIn() should return true when credentials are present")
     }
 
-    func isSignedIn() -> Bool {
-        return signedIn
+    func testIsSignedIn_WhenNoCredentials_ReturnsFalse() {
+        // Arrange: ensure no credentials (removeAll was called in setUp)
+        XCTAssertFalse(mockAccount.hasCredentials(), "Precondition: no credentials set")
+
+        // Act
+        let result = mockAccount.isSignedIn()
+
+        // Assert: empty credentials -> not signed in
+        XCTAssertFalse(result, "isSignedIn() should return false when no credentials are present")
+    }
+
+    func testIsSignedIn_AfterRemoveAll_ReturnsFalse() {
+        // Arrange: set credentials, then clear them
+        mockAccount.setAuthToken("tok", barcode: "bar", pin: "pin", expirationDate: nil)
+        XCTAssertTrue(mockAccount.isSignedIn(), "Precondition: signed in before removeAll")
+
+        // Act
+        mockAccount.removeAll()
+
+        // Assert: signed-out state is reflected through isSignedIn()
+        XCTAssertFalse(mockAccount.isSignedIn(),
+                       "isSignedIn() should return false after removeAll clears credentials")
     }
 }

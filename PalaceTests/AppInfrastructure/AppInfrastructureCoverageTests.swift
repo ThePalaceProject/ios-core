@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import Combine
 @testable import Palace
 
 // MARK: - AlertModel Tests
@@ -95,11 +96,19 @@ final class ImageCacheTypeTests: XCTestCase {
 @MainActor
 final class AppTabRouterCoverageTests: XCTestCase {
 
-    // SRS: AppTab has all four cases
-    func testAppTab_allCases() {
-        let tabs: [AppTab] = [.catalog, .myBooks, .holds, .settings]
-        let set = Set(tabs)
-        XCTAssertEqual(set.count, 4)
+    // SRS: AppTabRouter publishes changes — verify that assigning a different
+    // tab fires the @Published willChange event (real reactive behavior).
+    func testAppTabRouter_publishesSelectionChanges() {
+        let router = AppTabRouter()
+        var changeCount = 0
+        let cancellable = router.objectWillChange.sink { changeCount += 1 }
+        defer { _ = cancellable }
+
+        router.selected = .myBooks
+        router.selected = .holds
+
+        XCTAssertEqual(changeCount, 2, "objectWillChange should fire once per tab change")
+        XCTAssertEqual(router.selected, .holds)
     }
 
     // SRS: AppTabRouter default selection is catalog
@@ -108,11 +117,17 @@ final class AppTabRouterCoverageTests: XCTestCase {
         XCTAssertEqual(router.selected, .catalog)
     }
 
-    // SRS: AppTabRouter selected can be changed
-    func testAppTabRouter_canChangeTab() {
+    // SRS: AppTabRouter cycling through all tabs preserves the last assignment
+    func testAppTabRouter_sequentialTabChangesPreserveLastValue() {
         let router = AppTabRouter()
-        router.selected = .holds
-        XCTAssertEqual(router.selected, .holds)
+        let tabs: [AppTab] = [.myBooks, .holds, .settings, .catalog]
+
+        for tab in tabs {
+            router.selected = tab
+        }
+
+        XCTAssertEqual(router.selected, tabs.last,
+                       "After sequential changes, selected should equal the last tab assigned")
     }
 
     // SRS: AppTabRouterHub singleton exists
@@ -121,11 +136,17 @@ final class AppTabRouterCoverageTests: XCTestCase {
         XCTAssertNotNil(hub)
     }
 
-    // SRS: AppTabRouterHub router is initially nil
-    func testAppTabRouterHub_routerInitiallyNil() {
-        // Hub's router is weak, so unless someone sets it, it's nil
-        // This tests the initial state
-        XCTAssertNotNil(AppTabRouterHub.shared)
+    // SRS: AppTabRouterHub weak router reference allows an AppTabRouter to be
+    // injected, read back, and released without the hub retaining it.
+    func testAppTabRouterHub_weakRouterReference() {
+        let hub = AppTabRouterHub.shared
+
+        var router: AppTabRouter? = AppTabRouter()
+        hub.router = router
+        XCTAssertNotNil(hub.router, "Hub should hold the router while it is alive")
+
+        router = nil
+        XCTAssertNil(hub.router, "Hub's weak reference should be nil once the router is deallocated")
     }
 }
 
@@ -148,12 +169,22 @@ final class TPPBookContentTypeExtendedTests: XCTestCase {
         XCTAssertEqual(TPPBookContentType.from(mimeType: "text/html"), .unsupported)
     }
 
-    // SRS: TPPBookContentType raw values
-    func testRawValues() {
-        XCTAssertEqual(TPPBookContentType.epub.rawValue, 0)
-        XCTAssertEqual(TPPBookContentType.audiobook.rawValue, 1)
-        XCTAssertEqual(TPPBookContentType.pdf.rawValue, 2)
-        XCTAssertEqual(TPPBookContentType.unsupported.rawValue, 3)
+    // SRS: TPPBookContentType.from(mimeType:) correctly maps known EPUB mime types
+    func testFromMimeType_epubAndPdfMappedCorrectly() {
+        // Arrange: known mime types defined in the production constants
+        let epubMime = "application/epub+zip"
+        let pdfMime  = "application/pdf"
+        let octetMime = "application/octet-stream"
+
+        // Act
+        let epubResult   = TPPBookContentType.from(mimeType: epubMime)
+        let pdfResult    = TPPBookContentType.from(mimeType: pdfMime)
+        let octetResult  = TPPBookContentType.from(mimeType: octetMime)
+
+        // Assert: exercises the real dispatch logic in from(mimeType:)
+        XCTAssertEqual(epubResult,  .epub,  "application/epub+zip should resolve to .epub")
+        XCTAssertEqual(pdfResult,   .pdf,   "application/pdf should resolve to .pdf")
+        XCTAssertEqual(octetResult, .epub,  "application/octet-stream should resolve to .epub (open-access fallback)")
     }
 }
 
@@ -170,13 +201,22 @@ final class URLRequestExtensionsCoverageTests: XCTestCase {
         XCTAssertTrue(userAgent!.contains("iOS"))
     }
 
-    // SRS: URLRequest init without custom user agent has no custom header
-    func testURLRequest_noCustomUserAgent() {
+    // SRS: URLRequest with applyingCustomUserAgent: false must not set a
+    // User-Agent header — verifies the flag is actually respected.
+    func testURLRequest_noCustomUserAgent_doesNotSetUserAgentHeader() {
         let url = URL(string: "https://example.com")!
-        let request = URLRequest(url: url, applyingCustomUserAgent: false)
-        // Without applying custom UA, the default User-Agent may or may not be set
-        // The key point is that the custom one wasn't applied
-        XCTAssertEqual(request.url, url)
+
+        // Arrange: a plain request with no pre-existing headers
+        let withAgent    = URLRequest(url: url, applyingCustomUserAgent: true)
+        let withoutAgent = URLRequest(url: url, applyingCustomUserAgent: false)
+
+        // Act: compare the User-Agent header presence between the two paths
+        let agentHeader    = withAgent.value(forHTTPHeaderField: "User-Agent")
+        let noAgentHeader  = withoutAgent.value(forHTTPHeaderField: "User-Agent")
+
+        // Assert
+        XCTAssertNotNil(agentHeader,   "Request with applyingCustomUserAgent:true should have a User-Agent header")
+        XCTAssertNil(noAgentHeader,    "Request with applyingCustomUserAgent:false must not set a User-Agent header")
     }
 
     // SRS: URLRequest applyCustomUserAgent mutates request

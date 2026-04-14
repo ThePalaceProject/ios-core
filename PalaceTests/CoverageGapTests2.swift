@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import Combine
 @testable import Palace
 
 // MARK: - 1. AppTabRouterGapTests
@@ -15,49 +16,52 @@ import XCTest
 @MainActor
 final class AppTabRouterGapTests: XCTestCase {
 
-    /// Coverage Gap: AppTab enum — verify hashability and all cases exist
-    func testAppTab_allCasesExistAndAreHashable() {
-        let catalog: AppTab = .catalog
-        let myBooks: AppTab = .myBooks
-        let holds: AppTab = .holds
-        let settings: AppTab = .settings
-
-        var set = Set<AppTab>()
-        set.insert(catalog)
-        set.insert(myBooks)
-        set.insert(holds)
-        set.insert(settings)
-
-        XCTAssertEqual(set.count, 4, "All four AppTab cases should be distinct and hashable")
-        XCTAssertTrue(set.contains(.catalog))
-        XCTAssertTrue(set.contains(.myBooks))
-        XCTAssertTrue(set.contains(.holds))
-        XCTAssertTrue(set.contains(.settings))
-    }
-
-    /// Coverage Gap: AppTabRouter — verify default selected is .catalog
-    func testAppTabRouter_defaultSelected_isCatalog() {
+    /// AppTabRouter publishes a change event for every tab switch — confirms
+    /// the router's Combine publisher is wired correctly so SwiftUI views
+    /// redraw when the selected tab changes.
+    func testAppTabRouter_tabSwitchPublishesChangeEvent() {
         let router = AppTabRouter()
-
-        XCTAssertEqual(router.selected, .catalog,
-                       "AppTabRouter default selected tab should be .catalog")
-    }
-
-    /// Coverage Gap: AppTabRouter — verify selected can be changed
-    func testAppTabRouter_selected_canBeChanged() {
-        let router = AppTabRouter()
+        var receivedValues: [AppTab] = []
+        let cancellable = router.$selected.dropFirst().sink { receivedValues.append($0) }
+        defer { _ = cancellable }
 
         router.selected = .myBooks
-        XCTAssertEqual(router.selected, .myBooks)
-
         router.selected = .holds
-        XCTAssertEqual(router.selected, .holds)
 
-        router.selected = .settings
-        XCTAssertEqual(router.selected, .settings)
+        XCTAssertEqual(receivedValues, [.myBooks, .holds],
+                       "Each tab assignment must publish the new value via $selected")
+    }
 
-        router.selected = .catalog
+    /// AppTabRouter starts at .catalog. Switching to a different tab and back
+    /// must result in objectWillChange firing both times — verifying round-trip
+    /// navigation emits the correct number of change events.
+    func testAppTabRouter_roundTripToDefaultEmitsTwoChangeEvents() {
+        let router = AppTabRouter()
+        var changeCount = 0
+        let cancellable = router.objectWillChange.sink { changeCount += 1 }
+        defer { _ = cancellable }
+
+        router.selected = .settings   // change 1
+        router.selected = .catalog    // change 2 (back to default)
+
+        XCTAssertEqual(changeCount, 2, "Switching away and back should produce exactly two change events")
         XCTAssertEqual(router.selected, .catalog)
+    }
+
+    /// AppTabRouterHub returns to default state (no registered router) after
+    /// the injected router is released — confirms the weak reference semantics.
+    func testAppTabRouterHub_registeredRouterIsWeaklyHeld() {
+        let hub = AppTabRouterHub.shared
+        // Reset any previous router assignment
+        hub.router = nil
+
+        var router: AppTabRouter? = AppTabRouter()
+        hub.router = router
+        XCTAssertNotNil(hub.router)
+
+        router = nil
+        XCTAssertNil(hub.router,
+                     "Hub's router reference is weak; it must become nil when the router is deallocated")
     }
 
     /// Coverage Gap: AppTabRouterHub — verify shared singleton exists
@@ -158,14 +162,14 @@ final class TPPBadgeImageGapTests: XCTestCase {
         XCTAssertEqual(audiobook.assetName(), "AudiobookBadge")
     }
 
-    /// Coverage Gap: TPPBadgeImage — all badge cases are enumerable
-    func testTPPBadgeImage_allCases_areEnumerable() {
-        // TPPBadgeImage is Int-backed; we enumerate known cases without calling .ebook.assetName()
-        let audiobook: TPPContentBadgeImageView.TPPBadgeImage = .audiobook
-        let _: TPPContentBadgeImageView.TPPBadgeImage = .ebook
+    /// Coverage Gap: TPPContentBadgeImageView — initialising with .audiobook badge
+    /// must succeed and produce a non-nil view with the correct background color.
+    func testTPPBadgeImageView_audiobook_initSucceeds() {
+        let view = TPPContentBadgeImageView(badgeImage: .audiobook)
 
-        XCTAssertEqual(audiobook.rawValue, 0)
-        XCTAssertEqual(TPPContentBadgeImageView.TPPBadgeImage.ebook.rawValue, 1)
+        XCTAssertNotNil(view, "TPPContentBadgeImageView should initialise with .audiobook without crashing")
+        XCTAssertEqual(view.backgroundColor, TPPConfiguration.audiobookIconColor(),
+                       "Badge view background should match the audiobookIconColor configuration")
     }
 }
 
@@ -203,15 +207,21 @@ final class DebugSettingsGapTests: XCTestCase {
         XCTAssertTrue(settings.isTestHoldsEnabled)
     }
 
-    /// Coverage Gap: DebugSettings — isBadgeLoggingEnabled can be toggled
-    func testDebugSettings_isBadgeLoggingEnabled_canBeToggled() {
+    /// Coverage Gap: DebugSettings — resetAll clears isBadgeLoggingEnabled
+    /// even when it was explicitly set to true before the reset call.
+    func testDebugSettings_resetAll_clearsBadgeLogging() {
         let settings = DebugSettings.shared
 
+        // Arrange: put settings into a known dirty state
         settings.isBadgeLoggingEnabled = true
-        XCTAssertTrue(settings.isBadgeLoggingEnabled)
+        XCTAssertTrue(settings.isBadgeLoggingEnabled, "Pre-condition: badge logging should be enabled before reset")
 
-        settings.isBadgeLoggingEnabled = false
-        XCTAssertFalse(settings.isBadgeLoggingEnabled)
+        // Act
+        settings.resetAll()
+
+        // Assert: resetAll must clear it
+        XCTAssertFalse(settings.isBadgeLoggingEnabled,
+                       "resetAll() must set isBadgeLoggingEnabled back to false")
     }
 
     /// Coverage Gap: DebugSettings resetAll — clears all state

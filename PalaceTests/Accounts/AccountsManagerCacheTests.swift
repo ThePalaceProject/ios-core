@@ -221,10 +221,28 @@ final class AccountsManagerCacheTests: XCTestCase {
 
     // MARK: - Notification Tests
 
-    func testNotification_TPPCatalogDidLoad_ConstantExists() {
-        // Verify the notification constant exists and has expected name
-        let notificationName = Notification.Name.TPPCatalogDidLoad
-        XCTAssertEqual(notificationName.rawValue, "TPPCatalogDidLoad")
+    func testNotification_TPPCatalogDidLoad_IsDeliveredToObserver() {
+        // Arrange: register an observer for the catalog-did-load notification
+        let expectation = XCTestExpectation(description: "TPPCatalogDidLoad observer fires")
+        var receivedNotification: Notification?
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: .TPPCatalogDidLoad,
+            object: nil,
+            queue: nil
+        ) { notification in
+            receivedNotification = notification
+            expectation.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        // Act: post the notification
+        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+
+        // Assert: the observer fired and the received notification has the correct name
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(receivedNotification?.name, .TPPCatalogDidLoad,
+                       "Observer should receive a notification with the .TPPCatalogDidLoad name")
     }
 
     // MARK: - Test Helpers

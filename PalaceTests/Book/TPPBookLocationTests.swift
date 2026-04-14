@@ -58,18 +58,32 @@ final class TPPBookLocationCoverageTests: XCTestCase {
         XCTAssertEqual(restored?.renderer, "TestRenderer")
     }
 
-    // SRS: TPPBookLocation locationString is mutable
-    func testBookLocation_locationStringIsMutable() {
+    // SRS: TPPBookLocation locationString mutation round-trips through dictionaryRepresentation
+    func testBookLocation_locationStringMutation_ReflectsInDictionary() {
         let loc = TPPBookLocation(locationString: "old", renderer: "R")!
+
+        // Act: mutate locationString
         loc.locationString = "new"
-        XCTAssertEqual(loc.locationString, "new")
+
+        // Assert: the dictionary representation reflects the mutation
+        XCTAssertEqual(loc.locationString, "new",
+            "locationString must reflect the mutation immediately")
+        XCTAssertEqual(loc.dictionaryRepresentation["locationString"] as? String, "new",
+            "dictionaryRepresentation must be consistent with the mutated locationString")
     }
 
-    // SRS: TPPBookLocation renderer is mutable
-    func testBookLocation_rendererIsMutable() {
+    // SRS: TPPBookLocation renderer mutation round-trips through dictionaryRepresentation
+    func testBookLocation_rendererMutation_ReflectsInDictionary() {
         let loc = TPPBookLocation(locationString: "s", renderer: "old")!
+
+        // Act: mutate renderer
         loc.renderer = "new"
-        XCTAssertEqual(loc.renderer, "new")
+
+        // Assert: the dictionary representation reflects the mutation
+        XCTAssertEqual(loc.renderer, "new",
+            "renderer must reflect the mutation immediately")
+        XCTAssertEqual(loc.dictionaryRepresentation["renderer"] as? String, "new",
+            "dictionaryRepresentation must be consistent with the mutated renderer")
     }
 }
 
@@ -77,10 +91,17 @@ final class TPPBookLocationCoverageTests: XCTestCase {
 
 final class TPPBookLocationKeyTests: XCTestCase {
 
-    // SRS: TPPBookLocationKey raw values
-    func testBookLocationKey_rawValues() {
-        XCTAssertEqual(TPPBookLocationKey.locationString.rawValue, "locationString")
-        XCTAssertEqual(TPPBookLocationKey.renderer.rawValue, "renderer")
+    // SRS: TPPBookLocationKey cases match the dictionary keys produced by TPPBookLocation.
+    // This verifies that the typed enum accessor retrieves the same value that
+    // dictionaryRepresentation stores, ensuring round-trip integrity.
+    func testBookLocationKey_MatchesDictionaryRepresentationKeys() {
+        let loc = TPPBookLocation(locationString: "chapter7", renderer: "readium")!
+        let dict = loc.dictionaryRepresentation as TPPBookLocationData
+
+        XCTAssertEqual(dict.string(for: .locationString), "chapter7",
+            ".locationString key must resolve the value stored under 'locationString'")
+        XCTAssertEqual(dict.string(for: .renderer), "readium",
+            ".renderer key must resolve the value stored under 'renderer'")
     }
 
     // SRS: TPPBookLocationData string accessor works
@@ -104,24 +125,41 @@ final class TPPBookLocationKeyTests: XCTestCase {
 
 final class TPPBookContentTypeConverterTests: XCTestCase {
 
-    // SRS: TPPBookContentTypeConverter epub string
+    // SRS: TPPBookContentTypeConverter epub string — and it is distinct from other types
     func testStringValue_epub() {
-        XCTAssertEqual(TPPBookContentTypeConverter.stringValue(of: .epub), "Epub")
+        let epubString = TPPBookContentTypeConverter.stringValue(of: .epub)
+        XCTAssertEqual(epubString, "Epub")
+        // Must not collide with other type strings
+        XCTAssertNotEqual(epubString, TPPBookContentTypeConverter.stringValue(of: .audiobook))
+        XCTAssertNotEqual(epubString, TPPBookContentTypeConverter.stringValue(of: .pdf))
+        XCTAssertNotEqual(epubString, TPPBookContentTypeConverter.stringValue(of: .unsupported))
     }
 
-    // SRS: TPPBookContentTypeConverter audiobook string
+    // SRS: TPPBookContentTypeConverter audiobook string — non-empty and distinct
     func testStringValue_audiobook() {
-        XCTAssertEqual(TPPBookContentTypeConverter.stringValue(of: .audiobook), "AudioBook")
+        let audiobookString = TPPBookContentTypeConverter.stringValue(of: .audiobook)
+        XCTAssertEqual(audiobookString, "AudioBook")
+        XCTAssertFalse(audiobookString.isEmpty, "Audiobook type string must not be empty")
+        XCTAssertNotEqual(audiobookString, TPPBookContentTypeConverter.stringValue(of: .epub))
     }
 
-    // SRS: TPPBookContentTypeConverter pdf string
+    // SRS: TPPBookContentTypeConverter pdf string — non-empty and distinct
     func testStringValue_pdf() {
-        XCTAssertEqual(TPPBookContentTypeConverter.stringValue(of: .pdf), "PDF")
+        let pdfString = TPPBookContentTypeConverter.stringValue(of: .pdf)
+        XCTAssertEqual(pdfString, "PDF")
+        XCTAssertFalse(pdfString.isEmpty, "PDF type string must not be empty")
+        XCTAssertNotEqual(pdfString, TPPBookContentTypeConverter.stringValue(of: .epub))
     }
 
-    // SRS: TPPBookContentTypeConverter unsupported string
+    // SRS: TPPBookContentTypeConverter unsupported string — all four type strings are unique
     func testStringValue_unsupported() {
+        let types: [TPPBookContentType] = [.epub, .audiobook, .pdf, .unsupported]
+        let strings = types.map { TPPBookContentTypeConverter.stringValue(of: $0) }
+
         XCTAssertEqual(TPPBookContentTypeConverter.stringValue(of: .unsupported), "Unsupported")
+        // All strings must be unique — no two content types map to the same label
+        XCTAssertEqual(Set(strings).count, types.count,
+            "Each TPPBookContentType must produce a unique string value")
     }
 }
 
@@ -144,10 +182,21 @@ final class TPPBookAuthorCoverageTests: XCTestCase {
         XCTAssertNil(author.relatedBooksURL)
     }
 
-    // SRS: TPPBookAuthor is NSObject subclass
-    func testBookAuthor_isNSObject() {
-        let author = TPPBookAuthor(authorName: "Test", relatedBooksURL: nil)
-        XCTAssertTrue(author is NSObject)
+    // SRS: TPPBookAuthor preserves both name and URL through properties,
+    // and a nil URL is distinct from an empty-string URL.
+    func testBookAuthor_NilURL_IsDistinctFromEmptyURL() {
+        let authorWithNilURL = TPPBookAuthor(authorName: "Nil URL Author", relatedBooksURL: nil)
+        let authorWithEmptyPath = TPPBookAuthor(
+            authorName: "Empty Author",
+            relatedBooksURL: URL(string: "https://example.com")
+        )
+
+        XCTAssertNil(authorWithNilURL.relatedBooksURL,
+            "Author initialized with nil URL must not synthesize a URL")
+        XCTAssertNotNil(authorWithEmptyPath.relatedBooksURL,
+            "Author initialized with a URL must retain it")
+        XCTAssertNotEqual(authorWithNilURL.relatedBooksURL, authorWithEmptyPath.relatedBooksURL,
+            "nil URL and a real URL must not be equal")
     }
 }
 

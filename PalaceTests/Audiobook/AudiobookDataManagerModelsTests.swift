@@ -18,11 +18,17 @@ final class AudiobookDataManagerModelsTests: XCTestCase {
 
     // MARK: - LibraryBook Tests
 
-    func testLibraryBookInit_directInit() {
-        let libraryBook = LibraryBook(bookId: "book-1", libraryId: "lib-1")
+    // LibraryBook.init(time:) extracts bookId and libraryId from a time entry —
+    // verify that both initializer paths produce an equal result, confirming the
+    // convenience init is a transparent alias for the direct init.
+    func testLibraryBookInit_directAndFromTimeEntryAreEqual() {
+        let timeEntry = createTestTimeEntry()
 
-        XCTAssertEqual(libraryBook.bookId, "book-1")
-        XCTAssertEqual(libraryBook.libraryId, "lib-1")
+        let fromDirect = LibraryBook(bookId: timeEntry.bookId, libraryId: timeEntry.libraryId)
+        let fromEntry  = LibraryBook(time: timeEntry)
+
+        XCTAssertEqual(fromDirect, fromEntry,
+                       "Direct init and time-entry init with the same IDs must produce equal LibraryBooks")
     }
 
     func testLibraryBookInit_fromTimeEntry() {
@@ -65,14 +71,27 @@ final class AudiobookDataManagerModelsTests: XCTestCase {
 
     // MARK: - RequestData Tests
 
-    func testRequestDataInit_direct() {
-        let timeEntry = RequestData.TimeEntry(id: "e1", duringMinute: "2024-01-01T00:00Z", secondsPlayed: 30)
-        let requestData = RequestData(libraryId: "lib", bookId: "book", timeEntries: [timeEntry])
+    // RequestData.init(libraryBook:timeEntries:) maps AudiobookTimeEntry.duration
+    // to RequestData.TimeEntry.secondsPlayed. Verify the mapping is correct by
+    // comparing the two inits — each AudiobookTimeEntry with duration N must
+    // produce a TimeEntry with secondsPlayed == N.
+    func testRequestDataInit_timeEntryDurationMapsToSecondsPlayed() {
+        let libraryBook = LibraryBook(bookId: "book-x", libraryId: "lib-x")
+        let audioEntry  = AudiobookTimeEntry(
+            id: "e1",
+            bookId: "book-x",
+            libraryId: "lib-x",
+            timeTrackingUrl: URL(string: "https://api.example.com/track")!,
+            duringMinute: "2024-01-01T00:00Z",
+            duration: 75
+        )
 
-        XCTAssertEqual(requestData.libraryId, "lib")
-        XCTAssertEqual(requestData.bookId, "book")
+        let requestData = RequestData(libraryBook: libraryBook, timeEntries: [audioEntry])
+
         XCTAssertEqual(requestData.timeEntries.count, 1)
-        XCTAssertEqual(requestData.timeEntries[0].secondsPlayed, 30)
+        XCTAssertEqual(requestData.timeEntries[0].secondsPlayed, 75,
+                       "AudiobookTimeEntry.duration must map to RequestData.TimeEntry.secondsPlayed")
+        XCTAssertEqual(requestData.timeEntries[0].id, "e1")
     }
 
     func testRequestDataInit_fromLibraryBookAndEntries() {
@@ -163,14 +182,24 @@ final class AudiobookDataManagerModelsTests: XCTestCase {
         XCTAssertEqual(responseData?.responses.count, 0)
     }
 
-    func testResponseDataInit_direct() {
-        let entries = [
-            ResponseData.ResponseEntry(status: 200, message: "Success", id: "id-1")
-        ]
-        let responseData = ResponseData(responses: entries)
+    // ResponseData.init(data:) and ResponseData.init(responses:) must produce
+    // identical structures — verifying the JSON path and the direct path agree.
+    func testResponseDataInit_jsonAndDirectProduceSameResult() {
+        let json = """
+    {"responses": [{"status": 200, "message": "OK", "id": "id-99"}]}
+    """
+        let data = json.data(using: .utf8)!
 
-        XCTAssertEqual(responseData.responses.count, 1)
-        XCTAssertEqual(responseData.responses[0].status, 200)
+        let fromJson   = ResponseData(data: data)
+        let fromDirect = ResponseData(responses: [
+            ResponseData.ResponseEntry(status: 200, message: "OK", id: "id-99")
+        ])
+
+        XCTAssertNotNil(fromJson)
+        XCTAssertEqual(fromJson?.responses.count, fromDirect.responses.count)
+        XCTAssertEqual(fromJson?.responses[0].status, fromDirect.responses[0].status)
+        XCTAssertEqual(fromJson?.responses[0].id,     fromDirect.responses[0].id)
+        XCTAssertEqual(fromJson?.responses[0].message, fromDirect.responses[0].message)
     }
 
     // MARK: - AudiobookDataManagerStore Tests

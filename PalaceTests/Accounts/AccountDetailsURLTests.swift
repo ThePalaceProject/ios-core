@@ -123,38 +123,125 @@ final class AccountDetailsURLTests: XCTestCase {
         XCTAssertFalse(sut.eulaIsAccepted)
     }
 
-    func testEulaIsAccepted_CanBeSetToTrue() {
+    func testEulaIsAccepted_RoundTrips_ThroughUserDefaults() {
+        // Arrange: confirm initial state
+        XCTAssertFalse(sut.eulaIsAccepted)
+
+        // Act: accept EULA, then create a fresh AccountDetails over the same UUID
         sut.eulaIsAccepted = true
-        XCTAssertTrue(sut.eulaIsAccepted)
+        let sut2 = makeAccountDetails(uuid: testUUID)
+
+        // Assert: the persisted value survives object re-creation
+        XCTAssertTrue(sut2.eulaIsAccepted, "EULA acceptance should persist in UserDefaults")
     }
 
     func testSyncPermissionGranted_DefaultIsTrue() {
         XCTAssertTrue(sut.syncPermissionGranted)
     }
 
-    func testSyncPermissionGranted_CanBeSetToFalse() {
+    func testSyncPermissionGranted_ToggleOffThenOn_RestoresDefault() {
+        // Arrange: sync is granted by default
+        XCTAssertTrue(sut.syncPermissionGranted)
+
+        // Act: disable, then re-enable sync
         sut.syncPermissionGranted = false
-        XCTAssertFalse(sut.syncPermissionGranted)
+        XCTAssertFalse(sut.syncPermissionGranted, "Sync should be disabled after setting false")
+        sut.syncPermissionGranted = true
+
+        // Assert: restored to true
+        XCTAssertTrue(sut.syncPermissionGranted, "Sync should be re-enabled after setting true")
     }
 
     func testUserAboveAgeLimit_DefaultIsFalse() {
         XCTAssertFalse(sut.userAboveAgeLimit)
     }
 
-    func testUserAboveAgeLimit_CanBeSetToTrue() {
+    func testUserAboveAgeLimit_RoundTrips_ThroughUserDefaults() {
+        // Arrange: confirm initial state
+        XCTAssertFalse(sut.userAboveAgeLimit)
+
+        // Act: mark user above age limit, then re-create over same UUID
         sut.userAboveAgeLimit = true
-        XCTAssertTrue(sut.userAboveAgeLimit)
+        let sut2 = makeAccountDetails(uuid: testUUID)
+
+        // Assert: persisted value survives object re-creation
+        XCTAssertTrue(sut2.userAboveAgeLimit, "Age limit flag should persist in UserDefaults")
     }
 
-    func testDebugDescription_ContainsSyncInfo() {
-        XCTAssertTrue(sut.debugDescription.contains("supportsSimplyESync"))
-        XCTAssertTrue(sut.debugDescription.contains("supportsReservations"))
+    func testDebugDescription_ReflectsSupportsSimplyESync_WhenUserProfileUrlPresent() {
+        // Arrange: create AccountDetails whose auth document includes a user-profile link
+        let uuid = "test-debug-desc-\(UUID().uuidString)"
+        defer { UserDefaults.standard.removeObject(forKey: uuid) }
+
+        let json: [String: Any] = [
+            "id": uuid,
+            "title": "Sync Library",
+            "authentication": [
+                [
+                    "type": "http://opds-spec.org/auth/basic",
+                    "inputs": [
+                        "login": ["keyboard": "Default"],
+                        "password": ["keyboard": "Default"]
+                    ],
+                    "labels": ["login": "Barcode", "password": "PIN"]
+                ]
+            ],
+            "links": [
+                ["href": "https://example.com/profile", "rel": "http://librarysimplified.org/terms/rel/user-profile"]
+            ],
+            "features": ["enabled": [], "disabled": []]
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        let doc = try! OPDS2AuthenticationDocument.fromData(data)
+        let details = AccountDetails(authenticationDocument: doc, uuid: uuid)
+
+        // Act
+        let description = details.debugDescription
+
+        // Assert: supportsSimplyESync=true because userProfileUrl was present
+        XCTAssertTrue(description.contains("supportsSimplyESync=true"),
+                      "debugDescription should reflect supportsSimplyESync=true when user-profile link is set")
     }
 
     // MARK: - AccountDetails defaultAuth Tests
 
-    func testDefaultAuth_WithSingleAuth_ReturnsThatAuth() {
-        XCTAssertNotNil(sut.auths.isEmpty == false ? sut.defaultAuth : nil)
+    func testDefaultAuth_WithOAuthAndBasic_PrefersBasicOverOAuth() {
+        // Arrange: create AccountDetails with both OAuth and basic auth
+        let uuid = "test-defaultauth-\(UUID().uuidString)"
+        defer { UserDefaults.standard.removeObject(forKey: uuid) }
+
+        let json: [String: Any] = [
+            "id": uuid,
+            "title": "Multi-Auth Library",
+            "authentication": [
+                [
+                    "type": "http://librarysimplified.org/authtype/OAuth-with-intermediary",
+                    "links": [["href": "https://example.com/oauth", "rel": "authenticate"]],
+                    "labels": ["login": "Username", "password": "Password"]
+                ],
+                [
+                    "type": "http://opds-spec.org/auth/basic",
+                    "inputs": [
+                        "login": ["keyboard": "Default"],
+                        "password": ["keyboard": "Default"]
+                    ],
+                    "labels": ["login": "Barcode", "password": "PIN"]
+                ]
+            ],
+            "features": ["enabled": [], "disabled": []]
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        let doc = try! OPDS2AuthenticationDocument.fromData(data)
+        let details = AccountDetails(authenticationDocument: doc, uuid: uuid)
+
+        // Act
+        let defaultAuth = details.defaultAuth
+
+        // Assert: defaultAuth picks the non-OAuth (basic) method first
+        XCTAssertNotNil(defaultAuth, "defaultAuth should not be nil when auths are present")
+        XCTAssertFalse(defaultAuth!.catalogRequiresAuthentication,
+                       "defaultAuth should prefer basic over OAuth (which requires catalog auth)")
+        XCTAssertTrue(defaultAuth!.isBasic, "defaultAuth should be the basic auth method")
     }
 
     // MARK: - Helpers

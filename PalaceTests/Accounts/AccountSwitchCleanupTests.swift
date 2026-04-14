@@ -12,9 +12,14 @@ final class AccountSwitchCleanupTests: XCTestCase {
 
     // MARK: - cancelNonEssentialTasks
 
-    func testCancelNonEssentialTasks_WithNoActiveTasks_DoesNotCrash() {
+    func testCancelNonEssentialTasks_WithNoActiveTasks_ExecutorRemainsUsable() {
+        // Arrange
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
+        HTTPStubURLProtocol.register { _ in
+            HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data("ok".utf8))
+        }
+        defer { HTTPStubURLProtocol.reset() }
 
         let executor = TPPNetworkExecutor(
             credentialsProvider: nil,
@@ -23,12 +28,26 @@ final class AccountSwitchCleanupTests: XCTestCase {
             delegateQueue: nil
         )
 
-        executor.cancelNonEssentialTasks()
+        // Act: cancel with no tasks in flight
+        XCTAssertNoThrow(executor.cancelNonEssentialTasks())
+
+        // Assert: executor still accepts new requests after the cancel
+        let expectation = XCTestExpectation(description: "GET completes after cancel-with-no-tasks")
+        executor.GET(URL(string: "https://example.com/ping")!) { (_: NYPLResult<Data>) in
+            // Any result (200 or error) proves the executor is still functional
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 3.0)
     }
 
-    func testCancelNonEssentialTasks_CalledMultipleTimes_DoesNotCrash() {
+    func testCancelNonEssentialTasks_CalledMultipleTimes_ExecutorIdempotent() {
+        // Arrange
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
+        HTTPStubURLProtocol.register { _ in
+            HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data("ok".utf8))
+        }
+        defer { HTTPStubURLProtocol.reset() }
 
         let executor = TPPNetworkExecutor(
             credentialsProvider: nil,
@@ -37,14 +56,27 @@ final class AccountSwitchCleanupTests: XCTestCase {
             delegateQueue: nil
         )
 
-        executor.cancelNonEssentialTasks()
-        executor.cancelNonEssentialTasks()
-        executor.cancelNonEssentialTasks()
+        // Act: three consecutive cancels with no tasks
+        XCTAssertNoThrow(executor.cancelNonEssentialTasks())
+        XCTAssertNoThrow(executor.cancelNonEssentialTasks())
+        XCTAssertNoThrow(executor.cancelNonEssentialTasks())
+
+        // Assert: executor still accepts new requests after repeated cancels
+        let expectation = XCTestExpectation(description: "GET completes after repeated cancels")
+        executor.GET(URL(string: "https://example.com/ping")!) { (_: NYPLResult<Data>) in
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 3.0)
     }
 
-    func testPauseAllTasks_AfterCancel_DoesNotCrash() {
+    func testPauseAllTasks_AfterCancel_ResumeAcceptsNewRequests() {
+        // Arrange
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
+        HTTPStubURLProtocol.register { _ in
+            HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data("ok".utf8))
+        }
+        defer { HTTPStubURLProtocol.reset() }
 
         let executor = TPPNetworkExecutor(
             credentialsProvider: nil,
@@ -53,9 +85,17 @@ final class AccountSwitchCleanupTests: XCTestCase {
             delegateQueue: nil
         )
 
-        executor.cancelNonEssentialTasks()
-        executor.pauseAllTasks()
-        executor.resumeAllTasks()
+        // Act: simulate account-switch lifecycle — cancel, pause, then resume
+        XCTAssertNoThrow(executor.cancelNonEssentialTasks())
+        XCTAssertNoThrow(executor.pauseAllTasks())
+        XCTAssertNoThrow(executor.resumeAllTasks())
+
+        // Assert: executor accepts new work after the full pause/resume cycle
+        let expectation = XCTestExpectation(description: "GET completes after pause/resume cycle")
+        executor.GET(URL(string: "https://example.com/ping")!) { (_: NYPLResult<Data>) in
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 3.0)
     }
 
     // MARK: - TPPUserAccount with specific libraryUUID

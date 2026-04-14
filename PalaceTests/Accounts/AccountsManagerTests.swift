@@ -104,21 +104,19 @@ final class AccountsManagerTests: XCTestCase {
 
     // MARK: - Current Account Tests
 
-    func testCurrentAccountId_WhenNotSet_ReturnsNil() {
-        // Given: No account has been set
+    func testCurrentAccountId_AfterExplicitClear_ReturnsNilFromDefaults() {
+        // Arrange: Write a known value, then clear it
+        UserDefaults.standard.set("urn:uuid:temp-value", forKey: currentAccountIdentifierKey)
+        XCTAssertEqual(UserDefaults.standard.string(forKey: currentAccountIdentifierKey),
+                       "urn:uuid:temp-value", "Precondition: value was written")
+
+        // Act: clear the key (simulates what setUp does)
         UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey)
 
-        // When: Checking the current account ID
-        let manager = AccountsManager.shared
-
-        // Note: currentAccountId may have been set by app initialization
-        // We verify the UserDefaults key works correctly
+        // Assert: the key is gone — not a non-empty string
         let storedValue = UserDefaults.standard.string(forKey: currentAccountIdentifierKey)
-
-        // Then: If nothing set, it should be nil
-        // (This is an integration test - actual value depends on app state)
-        XCTAssertTrue(storedValue == nil || storedValue?.isEmpty == false,
-                      "Stored account ID should be nil or a valid string")
+        XCTAssertNil(storedValue,
+                     "currentAccountId should be nil after the key is explicitly removed from UserDefaults")
     }
 
     func testCurrentAccountId_PersistsToUserDefaults() {
@@ -195,19 +193,23 @@ final class AccountsManagerTests: XCTestCase {
 
     // MARK: - Accounts Loaded State Tests
 
-    func testAccountsHaveLoaded_WhenEmpty_ReturnsFalse() {
-        // This tests the property behavior
-        // Note: In practice, AccountsManager.shared loads accounts on init
-        // So this is a logical verification of what accountsHaveLoaded checks
-
-        // Given: An AccountsManager instance
+    func testAccountsHaveLoaded_IsConsistentWithAccountsQuery() {
+        // Arrange: get both properties in a single coherent snapshot
         let manager = AccountsManager.shared
 
-        // Then: The property should return a boolean indicating load state
-        // (Either true if accounts loaded, or false if not)
-        let loaded = manager.accountsHaveLoaded
-        XCTAssertTrue(loaded == true || loaded == false,
-                      "accountsHaveLoaded should return a valid boolean")
+        // Act: read accountsHaveLoaded and the accounts list together
+        let hasLoaded = manager.accountsHaveLoaded
+        let accountList = manager.accounts(nil)
+
+        // Assert: accountsHaveLoaded must agree with whether accounts() is non-empty.
+        // If loaded → list is non-empty; if not loaded → list is empty.
+        if hasLoaded {
+            XCTAssertFalse(accountList.isEmpty,
+                           "accountsHaveLoaded=true must be consistent with a non-empty accounts() result")
+        } else {
+            XCTAssertTrue(accountList.isEmpty,
+                          "accountsHaveLoaded=false must be consistent with an empty accounts() result")
+        }
     }
 
     // MARK: - Catalog Loading Notification Tests
