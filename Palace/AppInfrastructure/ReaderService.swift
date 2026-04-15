@@ -186,8 +186,8 @@ final class ReaderService {
         // Samples don't need sync since they have no persisted position.
         if !forSample {
             let synchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
-            let drmDeviceID = TPPUserAccount.sharedAccount().deviceID
-            await synchronizer.sync(for: publication, book: book, drmDeviceID: drmDeviceID)
+            let deviceID = AnnotationDevice.currentID()
+            await synchronizer.sync(for: publication, book: book, drmDeviceID: deviceID)
         }
 
         // Re-read location after sync — it may have been updated if user chose "Move"

@@ -96,7 +96,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         bookmarksBusinessLogic = TPPReaderBookmarksBusinessLogic(
             book: book,
             r2Publication: publication,
-            drmDeviceID: TPPUserAccount.sharedAccount().deviceID,
+            drmDeviceID: AnnotationDevice.currentID(),
             bookRegistryProvider: bookRegistry,
             currentLibraryAccountProvider: accountsManager)
 
