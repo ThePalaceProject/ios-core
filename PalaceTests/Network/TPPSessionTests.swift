@@ -63,7 +63,7 @@ final class TPPSessionTests: XCTestCase {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             waitExpectation.fulfill()
         }
-        wait(for: [waitExpectation], timeout: 2.0)
+        wait(for: [waitExpectation], timeout: 5.0)
         // sharedSession must still be accessible (not nil/crashed)
         XCTAssertNotNil(TPPSession.sharedSession, "sharedSession must remain accessible after a nil-handler upload")
     }

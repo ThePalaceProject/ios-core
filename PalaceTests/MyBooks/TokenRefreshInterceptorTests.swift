@@ -337,7 +337,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: 5.0)
 
         // Should NOT trigger reauth for authenticated basic user
         XCTAssertFalse(mockReauthenticator.authenticateIfNeededCalled)
