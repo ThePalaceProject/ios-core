@@ -39,6 +39,11 @@ extension TPPConfiguration {
         customUrl()?.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
     }
 
+    /// Converts a base registry URL to the crawlable endpoint URL.
+    static func crawlableURL(from baseURL: URL) -> URL {
+        LibraryRegistryCrawler.crawlableURL(from: baseURL)
+    }
+
     @objc static func mainColor() -> UIColor {
         UIColor.defaultLabelColor()
     }
