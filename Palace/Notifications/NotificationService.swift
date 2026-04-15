@@ -220,9 +220,18 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
     // MARK: - Messaging Delegate
 
-    /// Notofies that the token is updated
+    /// Notifies that the token is updated.
+    /// Logs the token with a grep-able marker for automated test tooling.
     public func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        if let token = fcmToken {
+            Log.info(#file, "[FCM_TOKEN_REGISTERED] \(token)")
+        }
         updateToken()
+    }
+
+    /// Returns the current FCM token, if available.
+    func currentFCMToken() async -> String? {
+        try? await Messaging.messaging().token()
     }
 
     // MARK: - Notification Center Delegate Methods
@@ -269,7 +278,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                     return
                 }
 
-                AppTabRouterHub.shared.router?.selected = .holds
+                AppTabRouterHub.shared.navigate(to: .holds)
                 Log.info(#file, "[Notification] Navigated to Holds tab")
                 completionHandler()
             }
@@ -313,15 +322,45 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
     // MARK: - Notification Classification
 
+    /// Event types sent by the Circulation Manager backend.
+    /// See: circulation/src/palace/manager/celery/tasks/notifications.py
+    enum NotificationEventType: String {
+        case holdAvailable = "HoldAvailable"
+        case holdRemoved = "HoldRemoved"
+        case loanExpiry = "LoanExpiry"
+        case loanRemoved = "LoanRemoved"
+
+        var isHoldRelated: Bool {
+            switch self {
+            case .holdAvailable, .holdRemoved: return true
+            case .loanExpiry, .loanRemoved: return false
+            }
+        }
+    }
+
+    /// Parses the event type from a push notification's userInfo.
+    ///
+    /// The CM backend sends `event_type` (e.g. "HoldAvailable", "LoanExpiry").
+    /// Note: `userInfo["type"]` is the book's identifier type (e.g. "ISBN"),
+    /// NOT the notification type — do not use it for routing.
+    private func eventType(from userInfo: [AnyHashable: Any]) -> NotificationEventType? {
+        guard let rawType = userInfo["event_type"] as? String else { return nil }
+        return NotificationEventType(rawValue: rawType)
+    }
+
     /// Determines if a notification is related to holds/reservations.
-    /// Checks notification type, title, and body for hold-related keywords.
+    ///
+    /// Checks the `event_type` field from the CM backend payload first,
+    /// then falls back to keyword matching on the notification text for
+    /// local test notifications or non-standard payloads.
     private func isHoldRelatedNotification(_ userInfo: [AnyHashable: Any]) -> Bool {
-        // Check explicit type field from push payload
-        if let type = userInfo["type"] as? String {
-            return type.lowercased().contains("hold") || type.lowercased().contains("reservation")
+        // Primary: check the CM backend's event_type field
+        if let event = eventType(from: userInfo) {
+            return event.isHoldRelated
         }
 
-        // Check APS alert content for hold-related keywords
+        // Fallback: keyword match on notification text (covers local test
+        // notifications and any non-standard push payloads)
         if let aps = userInfo["aps"] as? [String: Any],
            let alert = aps["alert"] as? [String: Any] {
             let title = (alert["title"] as? String)?.lowercased() ?? ""
@@ -330,7 +369,12 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             return keywords.contains { title.contains($0) || body.contains($0) }
         }
 
-        // Default to hold-related to ensure proper navigation
+        // For local notifications with our test userInfo format
+        if let type = userInfo["event_type"] as? String {
+            return type.lowercased().contains("hold")
+        }
+
+        // Default: assume hold-related to ensure navigation on unknown payloads
         return true
     }
 
