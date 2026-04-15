@@ -3,6 +3,7 @@ import UIKit
 public protocol ImageCacheType {
     func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?)
     func get(for key: String) -> UIImage?
+    func getAsync(for key: String) async -> UIImage?
     func remove(for key: String)
     func clear()
 }
@@ -172,9 +173,12 @@ public final class ImageCache: ImageCacheType {
             return img
         }
 
-        // Skip disk I/O on main thread to prevent hangs
-        // Callers should use async fetch paths which will eventually populate memory cache
+        // Skip disk I/O on main thread to prevent hangs.
+        // Schedule a background promotion so the NEXT synchronous call hits
+        // the memory cache. This bridges the gap between "disk has it" and
+        // "memory has it" without blocking the UI thread.
         if Thread.isMainThread {
+            scheduleMemoryPromotion(for: key)
             return nil
         }
 
@@ -187,6 +191,65 @@ public final class ImageCache: ImageCacheType {
         let cost = imageCost(img)
         memoryImages.setObject(img, forKey: key as NSString, cost: cost)
         return img
+    }
+
+    /// Async version: checks memory first (instant), then promotes from disk
+    /// on the processing queue. Use this in async contexts (registry, view model)
+    /// to get disk-cached images without blocking any thread.
+    public func getAsync(for key: String) async -> UIImage? {
+        if let img = memoryImages.object(forKey: key as NSString) {
+            return img
+        }
+        return await withCheckedContinuation { continuation in
+            processingQueue.addOperation { [weak self] in
+                guard let self else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                // Double-check memory (another task may have promoted it)
+                if let img = self.memoryImages.object(forKey: key as NSString) {
+                    continuation.resume(returning: img)
+                    return
+                }
+                guard let data = self.dataCache.get(for: key) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                guard let img = UIImage(data: data) else {
+                    self.remove(for: key)
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let cost = self.imageCost(img)
+                self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
+                continuation.resume(returning: img)
+            }
+        }
+    }
+
+    /// Batch warm-up: promotes multiple disk-cached images into the memory
+    /// cache concurrently. Call before displaying a screen full of covers.
+    public func warmMemoryCache(for keys: [String]) async {
+        await withTaskGroup(of: Void.self) { group in
+            for key in keys {
+                group.addTask { [weak self] in
+                    _ = await self?.getAsync(for: key)
+                }
+            }
+        }
+    }
+
+    /// Schedules a background disk→memory promotion for a key.
+    /// Called when get() is invoked on the main thread and misses the memory cache.
+    private func scheduleMemoryPromotion(for key: String) {
+        processingQueue.addOperation { [weak self] in
+            guard let self else { return }
+            if self.memoryImages.object(forKey: key as NSString) != nil { return }
+            guard let data = self.dataCache.get(for: key) else { return }
+            guard let img = UIImage(data: data) else { return }
+            let cost = self.imageCost(img)
+            self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
+        }
     }
 
     public func remove(for key: String) {
