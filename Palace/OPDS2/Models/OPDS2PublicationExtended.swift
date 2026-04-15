@@ -317,12 +317,12 @@ struct OPDS2FullPublication: Codable, Equatable, Sendable, Identifiable {
 
     public var thumbnailURL: URL? {
         images?.first { $0.rel?.contains("thumbnail") == true }?.hrefURL ??
-            images?.first { $0.width != nil && $0.width! < 200 }?.hrefURL
+            images?.first { ($0.width ?? 0) < 200 && $0.width != nil }?.hrefURL
     }
 
     public var coverURL: URL? {
         images?.first { $0.rel?.contains("cover") == true }?.hrefURL ??
-            images?.first { $0.width != nil && $0.width! >= 200 }?.hrefURL
+            images?.first { ($0.width ?? 0) >= 200 }?.hrefURL
     }
 
     // MARK: - Acquisition Links

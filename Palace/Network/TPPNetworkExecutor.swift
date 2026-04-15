@@ -122,7 +122,11 @@ private final class ActiveTasksStore {
 }
 
 @objc class TPPNetworkExecutor: NSObject {
+    #if DEBUG
+    private var urlSession: URLSession
+    #else
     private let urlSession: URLSession
+    #endif
     private let tokenCoordinator = TokenRefreshCoordinator()
     private let activeTasksStore = ActiveTasksStore()
 
@@ -183,6 +187,22 @@ private final class ActiveTasksStore {
     deinit {
         urlSession.finishTasksAndInvalidate()
     }
+
+    #if DEBUG
+    /// Recreate the internal URLSession so it picks up any newly registered
+    /// URLProtocol classes (e.g., MockBackendURLProtocol). Called by
+    /// MockBackendService when activating/deactivating the mock backend.
+    func recreateSession() {
+        urlSession.finishTasksAndInvalidate()
+        let config = TPPCaching.makeURLSessionConfiguration(
+            caching: .fallback,
+            requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
+        urlSession = URLSession(configuration: config,
+                                delegate: responder,
+                                delegateQueue: nil)
+        Log.info(#file, "TPPNetworkExecutor: session recreated for mock backend")
+    }
+    #endif
 
     @objc static let shared = TPPNetworkExecutor(cachingStrategy: .fallback)
 
