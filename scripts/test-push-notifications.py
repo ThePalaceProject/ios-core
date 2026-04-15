@@ -233,65 +233,46 @@ def send_notification(access_token, fcm_token, title, body, data=None):
 
 
 def test_hold_available(access_token, fcm_token):
-    """NT1: Send a hold-available push notification.
-
-    Payload matches CM backend: circulation/src/palace/manager/celery/tasks/notifications.py
-    """
+    """NT1: Send a hold-available push notification."""
     print("\n--- NT1: Hold Available Notification ---")
     return send_notification(
         access_token,
         fcm_token,
-        title="Your hold is available!",
-        body='Your hold on "Test Book Title" is available at A1QA Test Library!',
+        title="Your hold is ready",
+        body="The title you reserved, 'Test Book Title', is available for checkout.",
         data={
-            "event_type": "HoldAvailable",
+            "type": "hold_available",
             "library": "a1qa",
-            "type": "ISBN",
-            "identifier": "urn:isbn:0000000000000",
-            "loans_endpoint": "https://gorgon.staging.palaceproject.io/a1qa/loans",
         },
     )
 
 
 def test_loan_expiry(access_token, fcm_token):
-    """NT2: Send a loan-expiry warning notification.
-
-    Payload matches CM backend: circulation/src/palace/manager/celery/tasks/notifications.py
-    """
+    """NT2: Send a loan-expiry warning notification."""
     print("\n--- NT2: Loan Expiry Warning ---")
     return send_notification(
         access_token,
         fcm_token,
-        title="Only 3 days left on your loan!",
-        body='Your loan for "Test Book Title" at A1QA Test Library is expiring soon',
+        title="Loan expiring soon",
+        body="Your loan of 'Test Book Title' expires in 3 days. Return or renew to keep reading.",
         data={
-            "event_type": "LoanExpiry",
+            "type": "loan_expiry",
             "library": "a1qa",
-            "type": "ISBN",
-            "identifier": "urn:isbn:0000000000000",
-            "loans_endpoint": "https://gorgon.staging.palaceproject.io/a1qa/loans",
-            "days_to_expiry": "3",
         },
     )
 
 
 def test_deeplink(access_token, fcm_token):
-    """NT3: Send a notification that should deep-link to Holds tab.
-
-    Uses HoldAvailable event_type — app should navigate to Holds tab on tap.
-    """
+    """NT3: Send a notification that should deep-link to Holds tab."""
     print("\n--- NT3: Deep-link to Holds Tab ---")
     return send_notification(
         access_token,
         fcm_token,
-        title="Your hold is available!",
-        body='Your hold on "Test Book Title" is available at A1QA Test Library!',
+        title="A reserved title is available",
+        body="Tap to view your available holds.",
         data={
-            "event_type": "HoldAvailable",
+            "type": "hold_available",
             "library": "a1qa",
-            "type": "ISBN",
-            "identifier": "urn:isbn:0000000000000",
-            "loans_endpoint": "https://gorgon.staging.palaceproject.io/a1qa/loans",
         },
     )
 
