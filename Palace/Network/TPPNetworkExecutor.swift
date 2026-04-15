@@ -233,7 +233,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     @discardableResult
     func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
         let accountId = accountsManager.currentAccountId
-        let userAccount = TPPUserAccount.sharedAccount(libraryUUID: accountId)
+        let userAccount = accountId.flatMap { AccountsManager.shared.userAccount(for: $0) } ?? AccountsManager.shared.currentUserAccount
 
         // SAML auth uses cookies, not tokens - proceed directly
         if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
@@ -284,11 +284,12 @@ extension TPPNetworkExecutor {
         var urlRequest = URLRequest(url: url,
                                     cachePolicy: urlSession.configuration.requestCachePolicy)
         urlRequest.applyCustomUserAgent()
-        // Use atomic snapshot to prevent TOCTOU races during account switches.
+        // Use per-account instance to prevent TOCTOU races during account switches.
         // Without this, another thread could change libraryUUID between
         // sharedAccount() and the property reads, causing cross-account
         // credential leaks.
-        let snapshot = TPPUserAccount.credentialSnapshot(for: accountId ?? accountsManager.currentAccountId)
+        let resolvedId = accountId ?? accountsManager.currentAccountId ?? ""
+        let snapshot = AccountsManager.shared.userAccount(for: resolvedId).credentialSnapshot()
 
         // SAML auth uses cookies, not tokens — make sure they are installed in
         // the shared cookie storage before the request goes out. Removing this
@@ -314,7 +315,7 @@ extension TPPNetworkExecutor {
 extension TPPNetworkExecutor {
     @objc class func bearerAuthorized(request: URLRequest) -> URLRequest {
         var request = request
-        let snapshot = TPPUserAccount.credentialSnapshot(for: AccountsManager.shared.currentAccountId)
+        let snapshot = AccountsManager.shared.currentUserAccount.credentialSnapshot()
 
         if let authToken = snapshot.authToken, !authToken.isEmpty {
             let tokenPrefix = String(authToken.prefix(8))
@@ -475,11 +476,11 @@ extension TPPNetworkExecutor {
                 return
             }
 
-            // Use atomic snapshot to prevent TOCTOU races: without this,
+            // Use per-account instance to prevent TOCTOU races: without this,
             // another thread could switch libraryUUID between sharedAccount()
             // and the .username/.pin reads, sending Account B's credentials
             // to Account A's token endpoint.
-            let snapshot = TPPUserAccount.credentialSnapshot(for: capturedAccountId)
+            let snapshot = AccountsManager.shared.userAccount(for: capturedAccountId ?? AccountsManager.shared.currentAccountId ?? "").credentialSnapshot()
             guard let username = snapshot.barcode,
                   let password = snapshot.pin,
                   let tokenURL = snapshot.authDefinition?.tokenURL else {
@@ -544,7 +545,7 @@ extension TPPNetworkExecutor {
                         if let nsError = error as? NSError, nsError.code == 401 {
                             Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? "current")")
                             await MainActor.run {
-                                TPPUserAccount.sharedAccount(libraryUUID: capturedAccountId).markCredentialsStale()
+                                AccountsManager.shared.userAccount(for: capturedAccountId ?? AccountsManager.shared.currentAccountId ?? "").markCredentialsStale()
                                 if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
                                     SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
                                 }
@@ -569,15 +570,14 @@ extension TPPNetworkExecutor {
 
             switch result {
             case .success(let tokenResponse):
-                TPPUserAccount.sharedAccount().atomicUpdate(for: accountId) { account in
-                    account.setAuthToken(
-                        tokenResponse.accessToken,
-                        barcode: username,
-                        pin: password,
-                        expirationDate: tokenResponse.expirationDate
-                    )
-                    account.markLoggedIn()
-                }
+                let targetAccount = AccountsManager.shared.userAccount(for: accountId ?? AccountsManager.shared.currentAccountId ?? "")
+                targetAccount.setAuthToken(
+                    tokenResponse.accessToken,
+                    barcode: username,
+                    pin: password,
+                    expirationDate: tokenResponse.expirationDate
+                )
+                targetAccount.markLoggedIn()
                 completion(.success(tokenResponse))
             case .failure(let error):
                 completion(.failure(error))

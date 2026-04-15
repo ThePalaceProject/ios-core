@@ -660,7 +660,7 @@ struct BookDetailView: View {
     }
 
     private func handleButtonAction(_ buttonType: BookButtonType) {
-        let account = TPPUserAccount.sharedAccount()
+        let account = AccountsManager.shared.currentUserAccount
         let needsAuth = account.needsAuth && !account.hasCredentials()
 
         switch buttonType {

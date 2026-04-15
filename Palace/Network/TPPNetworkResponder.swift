@@ -324,7 +324,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
             logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
 
             if httpResponse.statusCode == 401 {
-                let snap = TPPUserAccount.credentialSnapshot(for: AccountsManager.shared.currentAccountId)
+                let snap = AccountsManager.shared.currentUserAccount.credentialSnapshot()
                 if (snap.authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
                     tokenRefreshAttempts += 1
                     return handleExpiredTokenIfNeeded(for: httpResponse, with: task)
@@ -383,7 +383,7 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
     // between sending the request and receiving the 401, the wrong account's
     // credentials would be checked/marked stale.
     let accountId = AccountsManager.shared.currentAccountId
-    let snapshot = TPPUserAccount.credentialSnapshot(for: accountId)
+    let snapshot = AccountsManager.shared.currentUserAccount.credentialSnapshot()
 
     guard snapshot.hasCredentials else {
         return false
@@ -401,9 +401,7 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
         }
 
         // Mark credentials as stale - preserves Adobe DRM activation
-        TPPUserAccount.sharedAccount(libraryUUID: accountId).atomicUpdate(for: accountId) { account in
-            account.markCredentialsStale()
-        }
+        AccountsManager.shared.userAccount(for: accountId ?? "").markCredentialsStale()
 
         if authDef?.isSaml == true {
             Log.info(#file, "Server returned 401 for SAML - credentials marked stale, will trigger re-auth flow")
@@ -518,12 +516,12 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
                     task: URLSessionTask,
                     didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        let credsProvider = credentialsProvider ?? TPPUserAccount.sharedAccount()
+        let credsProvider = credentialsProvider ?? AccountsManager.shared.currentUserAccount
         let authChallenger = TPPBasicAuth(credentialsProvider: credsProvider)
         authChallenger.handleChallenge(challenge, completion: completionHandler)
     }
 
-    func refreshToken(userAccount: TPPUserAccount = TPPUserAccount.sharedAccount()) async throws {
+    func refreshToken(userAccount: TPPUserAccount = AccountsManager.shared.currentUserAccount) async throws {
         guard let tokenURL = userAccount.authDefinition?.tokenURL,
               let username = userAccount.username,
               let password = userAccount.pin

@@ -132,9 +132,17 @@ cmd_evidence() {
     test 2>&1 || true)
 
   # Parse test results
+  # Sum all "Executed N tests" lines to get the total across all test bundles
+  # (PalaceTests.xctest + TenPrintCoverTests.xctest, etc.)
+  # Using the top-level "All tests" summary which includes the grand total.
   local pass_count fail_count
-  pass_count=$(echo "$test_output" | grep -o 'Executed [0-9]* test' | tail -1 | grep -o '[0-9]*' || echo "0")
-  fail_count=$(echo "$test_output" | grep -o 'with [0-9]* failure' | tail -1 | grep -o '[0-9]*' || echo "0")
+  pass_count=$(echo "$test_output" | grep 'Executed [0-9]* test' | grep 'All tests' | head -1 | grep -o 'Executed [0-9]*' | grep -o '[0-9]*' || echo "0")
+  fail_count=$(echo "$test_output" | grep 'with [0-9]* failure' | grep 'All tests' | head -1 | grep -o '[0-9]* failure' | grep -o '[0-9]*' || echo "0")
+  # Fallback: if "All tests" line not found, sum across all bundles
+  if [ "$pass_count" = "0" ]; then
+    pass_count=$(echo "$test_output" | grep -o 'Executed [0-9]* test' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+    fail_count=$(echo "$test_output" | grep -o 'with [0-9]* failure' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+  fi
   local build_ok="false"
   echo "$test_output" | grep -q "BUILD SUCCEEDED\|TEST.*SUCCEEDED" && build_ok="true"
 
@@ -248,17 +256,126 @@ cmd_close() {
   echo "Changeset $cs_id closed as success."
 }
 
+cmd_gate_check() {
+  local cs_id="$1"
+  local min_tests="${2:-100}"  # Default minimum: 100 tests must pass
+
+  # Fetch changeset with gate status
+  local result
+  result=$(api GET "/api/projects/${PROJECT_ID}/changesets/${cs_id}")
+
+  local all_passed=true
+  local gate_summary=""
+  local has_evidence=false
+
+  # Check gate statuses from pipeline.gates and evidence from /evidence endpoint
+  local evidence_result
+  evidence_result=$(api GET "/api/projects/${PROJECT_ID}/changesets/${cs_id}/evidence" 2>/dev/null)
+
+  # Write responses to temp files to avoid quoting issues
+  local tmp_cs=$(mktemp) tmp_ev=$(mktemp)
+  echo "$result" > "$tmp_cs"
+  echo "$evidence_result" > "$tmp_ev"
+
+  local gate_info
+  gate_info=$(python3 - "$tmp_cs" "$tmp_ev" <<'PYEOF'
+import sys, json, re
+
+with open(sys.argv[1]) as f:
+    changeset = json.load(f)
+with open(sys.argv[2]) as f:
+    evidence_list = json.load(f)
+
+# Gates are in pipeline.gates
+pipeline = changeset.get("pipeline", {})
+gates = pipeline.get("gates", [])
+
+for g in gates:
+    print(f"GATE:{g['gate_id']}:{g['status']}")
+
+# Find unit_test evidence with pass/fail counts
+for e in (evidence_list if isinstance(evidence_list, list) else []):
+    if e.get("type") == "unit_test":
+        summary = e.get("summary", "")
+        m = re.search(r"(\d+)\s+tests?\s+pass", summary)
+        f = re.search(r"(\d+)\s+failure", summary)
+        pass_count = int(m.group(1)) if m else 0
+        fail_count = int(f.group(1)) if f else 0
+        print(f"TESTS:{pass_count}:{fail_count}")
+
+print(f"STATUS:{changeset.get('status', 'unknown')}")
+PYEOF
+)
+  rm -f "$tmp_cs" "$tmp_ev"
+
+  echo "=== ForgeOS Gate Check: $cs_id ==="
+
+  # Parse gate statuses
+  local failed_gates=""
+  while IFS= read -r line; do
+    case "$line" in
+      GATE:*)
+        local gate_id=$(echo "$line" | cut -d: -f2)
+        local gate_status=$(echo "$line" | cut -d: -f3)
+        if [ "$gate_status" = "passed" ]; then
+          echo "  [PASS] $gate_id"
+        else
+          echo "  [FAIL] $gate_id ($gate_status)"
+          failed_gates="$failed_gates $gate_id"
+          all_passed=false
+        fi
+        ;;
+      TESTS:*)
+        local test_pass=$(echo "$line" | cut -d: -f2)
+        local test_fail=$(echo "$line" | cut -d: -f3)
+        echo "  Tests: $test_pass passed, $test_fail failed (minimum: $min_tests)"
+        has_evidence=true
+        if [ "$test_pass" -lt "$min_tests" ]; then
+          echo "  [FAIL] Test count $test_pass is below minimum threshold of $min_tests"
+          all_passed=false
+        fi
+        if [ "$test_fail" -gt 0 ]; then
+          echo "  [FAIL] $test_fail test failures"
+          all_passed=false
+        fi
+        ;;
+    esac
+  done <<< "$gate_info"
+
+  if [ "$has_evidence" = "false" ]; then
+    echo "  [FAIL] No test evidence submitted"
+    all_passed=false
+  fi
+
+  echo ""
+  if [ "$all_passed" = "false" ]; then
+    echo "BLOCKED: Gates not satisfied. Run 'evidence' and 'promote' first."
+    return 1
+  else
+    echo "CLEAR: All gates passed. PR creation allowed."
+    return 0
+  fi
+}
+
 # Main dispatch
 case "${1:-help}" in
-  start)    cmd_start "$2" "$3" "$4" ;;
-  evidence) cmd_evidence "$2" ;;
-  promote)  cmd_promote "$2" ;;
-  close)    cmd_close "$2" ;;
+  start)      cmd_start "$2" "$3" "$4" ;;
+  evidence)   cmd_evidence "$2" ;;
+  promote)    cmd_promote "$2" ;;
+  close)      cmd_close "$2" ;;
+  gate-check) cmd_gate_check "$2" "${3:-100}" ;;
   *)
     echo "Usage:"
     echo "  $0 start <initiative_id> <branch> <description>"
     echo "  $0 evidence <changeset_id>"
     echo "  $0 promote <changeset_id>"
     echo "  $0 close <changeset_id>"
+    echo "  $0 gate-check <changeset_id> [min_tests]"
+    echo ""
+    echo "gate-check exits 0 if all gates pass, 1 if blocked."
+    echo "Use it as a precondition in any workflow (PR creation, deploy, etc)."
+    echo ""
+    echo "Environment:"
+    echo "  FORGEOS_MIN_TESTS  -- minimum passing tests for gate-check (default: 100)"
     ;;
 esac

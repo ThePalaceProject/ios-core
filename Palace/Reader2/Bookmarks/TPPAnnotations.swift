@@ -150,7 +150,7 @@ protocol AnnotationsManager {
 
         // Format bookmark for submission to server according to spec
         let bookmark = TPPBookmarkSpec(time: NSDate(),
-                                       device: AnnotationDevice.currentID(),
+                                       device: AccountsManager.shared.currentUserAccount.deviceID ?? "",
                                        motivation: motivation,
                                        bookID: bookID,
                                        selectorValue: selectorValue)
@@ -194,7 +194,7 @@ protocol AnnotationsManager {
 
         let spec = TPPBookmarkSpec(
             time: NSDate(),
-            device: AnnotationDevice.currentID(),
+            device: AccountsManager.shared.currentUserAccount.deviceID ?? "",
             motivation: .bookmark,
             bookID: bookID,
             selectorValue: selectorValue
@@ -540,7 +540,7 @@ protocol AnnotationsManager {
     }
 
     static func syncIsPossibleAndPermitted(accountsManager: AccountsManager = .shared) -> Bool {
-        let account = TPPUserAccount.sharedAccount()
+        let account = AccountsManager.shared.currentUserAccount
         let acct = accountsManager.currentAccount
         let hasCreds = account.hasCredentials()
         let supportsSync = acct?.details?.supportsSimplyESync == true

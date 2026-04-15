@@ -1,0 +1,47 @@
+# Return a loan early. Covers C6.
+scenario:
+  id: return-loan
+  name: "Return a Loan Early"
+  description: "Verify a user can return a borrowed book before the loan expires."
+  tags: [tier1, ios, critical_path, BOOK-005]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: ensure_borrowed_book
+      description: "Navigate to My Books and find a borrowed book"
+      goal: >
+        Launch the Palace app. Tap the "My Books" tab. If the list is empty,
+        go to Catalog, borrow a book first, then return to My Books. Confirm
+        at least one borrowed book is visible.
+      checkpoint: borrowed_book_visible
+      max_iterations: 20
+
+    - id: open_book_detail
+      description: "Open the borrowed book's detail"
+      goal: >
+        Tap on the borrowed book in My Books to open its detail screen.
+        Confirm the detail screen shows the book title and a "Return" button
+        or a menu that includes "Return".
+      checkpoint: return_button_visible
+      max_iterations: 10
+
+    - id: return_book
+      description: "Return the book"
+      goal: >
+        Tap the "Return" button. If a confirmation dialog appears ("Return Loan"
+        or similar), confirm it. Wait for the action to complete. The book
+        should be removed and the view should navigate back or show the book
+        as returned. No error alerts should appear.
+      checkpoint: book_returned
+      max_iterations: 15
+
+    - id: verify_removed
+      description: "Verify the book is no longer in My Books"
+      goal: >
+        Navigate to My Books tab. Confirm the returned book is no longer in
+        the list. If it was the only book, the empty state should appear.
+      checkpoint: book_removed_from_my_books
+      max_iterations: 10

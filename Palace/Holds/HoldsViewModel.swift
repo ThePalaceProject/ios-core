@@ -136,8 +136,8 @@ final class HoldsViewModel: ObservableObject {
     }
 
     func refresh() {
-        if TPPUserAccount.sharedAccount().needsAuth {
-            if TPPUserAccount.sharedAccount().hasCredentials() {
+        if AccountsManager.shared.currentUserAccount.needsAuth {
+            if AccountsManager.shared.currentUserAccount.hasCredentials() {
                 (bookRegistry as? TPPBookRegistry)?.sync()
             } else {
                 SignInModalPresenter.presentSignInModalForCurrentAccount {

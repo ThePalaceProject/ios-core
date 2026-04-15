@@ -56,7 +56,7 @@ enum CarPlayAuthHelper {
             return true
         }
 
-        return TPPUserAccount.sharedAccount().hasCredentials()
+        return AccountsManager.shared.currentUserAccount.hasCredentials()
     }
 }
 

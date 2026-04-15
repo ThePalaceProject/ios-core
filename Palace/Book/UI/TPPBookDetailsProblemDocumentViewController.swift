@@ -178,7 +178,7 @@
         alert.addAction(UIAlertAction.init(title: "Cancel", style: .cancel, handler: nil))
         alert.addAction(UIAlertAction.init(title: "Send email", style: .default, handler: { (_) in
             let labelText = self.label?.attributedText?.string ?? ""
-            let patronID = TPPUserAccount.sharedAccount().authorizationIdentifier ?? "n/a"
+            let patronID = AccountsManager.shared.currentUserAccount.authorizationIdentifier ?? "n/a"
             let body = """
         \(labelText)\n\
         DeviceModel:\n\(UIDevice.current.model)\n\n

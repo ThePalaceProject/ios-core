@@ -55,7 +55,7 @@ import OverdriveProcessor
     @MainActor private var pendingBroadcast: DispatchWorkItem?
 
     init(
-        userAccount: TPPUserAccount = TPPUserAccount.sharedAccount(),
+        userAccount: TPPUserAccount = AccountsManager.shared.currentUserAccount,
         reauthenticator: Reauthenticator = TPPReauthenticator(),
         bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
         accountsManager: AccountsManager = .shared,
@@ -1090,6 +1090,16 @@ extension MyBooksDownloadCenter {
                                         completion?()
                                     }
                                 }
+                            }
+                        } else {
+                            // Unhandled error type from server. Previously this fell
+                            // through silently with no user feedback. Log the error
+                            // and show a failure alert so the user knows it didn't work.
+                            let detail = error?["detail"] as? String ?? errorType
+                            Log.error(#file, "Unhandled revoke error type: \(errorType), detail: \(detail)")
+                            runOnMainAsync {
+                                self.announceReturnFailed(for: book)
+                                completion?()
                             }
                         }
                     } else {
