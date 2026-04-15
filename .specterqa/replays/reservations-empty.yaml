@@ -1,5 +1,5 @@
 replay:
-  name: reservations-empty
+  name: holds-empty
   bundle_id: org.thepalaceproject.palace
   device_id: 31CF5C43-DD55-4889-B3B2-9A6810B4E98F
   recorded_at: '2026-04-06T12:49:12'
@@ -17,12 +17,12 @@ replay:
     - Title
   - action: tap
     element_index: 19
-    element_label: Reservations
+    element_label: Holds
     x: 244.0
     y: 786.0
     expect_elements:
     - Switch Library
-    - Reservations
+    - Holds
   - action: tap
     element_index: 6
     element_label: Catalog

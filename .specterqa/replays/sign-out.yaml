@@ -26,7 +26,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: tap
@@ -52,7 +52,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: tap
@@ -89,7 +89,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     - gearshape.fill
     screenshot_threshold: 5.0
@@ -112,7 +112,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     screenshot_threshold: 5.0
   - action: tap
     element_index: 4

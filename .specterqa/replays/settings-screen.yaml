@@ -1,74 +1,47 @@
 replay:
   name: settings-screen
   bundle_id: org.thepalaceproject.palace
-  device_id: booted
-  recorded_at: '2026-04-08T15:39:36'
+  device_id: 31CF5C43-DD55-4889-B3B2-9A6810B4E98F
+  recorded_at: '2026-04-15T15:15:23'
   steps:
   - action: tap
-    element_index: 1
-    element_label: Switch Library
-    x: 32.0
-    y: 69.0
-    expect_elements:
-    - A1QA Test Library
-    - Add Library
-    - Cancel
-    screenshot_threshold: 5.0
-  - action: tap
-    element_index: 2
-    element_label: Add Library
-    x: 195.0
-    y: 716.5
-    expect_elements:
-    - Switch Library
-    - Palace Bookshelf
-    - Search Catalog
-    - tab.bar.label
-    - Catalog
-    - My Books
-    - Reservations
-    - Settings
-    screenshot_threshold: 5.0
-  - action: tap
-    element_index: 1
-    element_label: Switch Library
-    x: 32.0
-    y: 69.0
-    expect_elements:
-    - A1QA Test Library
-    - Palace Bookshelf
-    - Add Library
-    - Cancel
-    screenshot_threshold: 5.0
-  - action: tap
-    element_index: 1
-    element_label: A1QA Test Library
-    x: 195.0
-    y: 601.8333333333334
-    expect_elements:
-    - Switch Library
-    - A1QA Test Library
-    - Search Catalog
-    - tab.bar.label
-    - Catalog
-    - My Books
-    - Reservations
-    - Settings
-    screenshot_threshold: 5.0
-  - action: tap
-    element_index: 58
+    element_index: 61
     element_label: Settings
+    element_identifier: ''
     x: 341.5
     y: 786.0
     expect_elements:
     - Settings
     - Libraries
+    - Manage Libraries
+    - Libraries
+    - Downloads
+    - Download Only on Wi-Fi
+    - When enabled, books and audiobooks will only download over Wi-Fi. Downloads
+      will be blocked on cellular data.
+    - About and legal
     - About App
     - Privacy Policy
     - User Agreement
     - Software Licenses
     - Testing
-    - Palace version 3.0.0 (453)
-    - tab.bar.label
+    - Testing
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 58
+    element_label: Catalog
+    element_identifier: ''
+    x: 49.0
+    y: 786.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Catalog
+    - Search
     - Catalog
+    - All
+    - Ebooks
+    - Audiobooks
+    - Unlimited Listens ODL Feed
     screenshot_threshold: 5.0

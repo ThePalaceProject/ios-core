@@ -45,7 +45,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     - gearshape.fill
     screenshot_threshold: 5.0
@@ -69,7 +69,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: tap
@@ -92,7 +92,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: type
@@ -111,7 +111,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: tap
@@ -134,7 +134,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: type
@@ -154,7 +154,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     screenshot_threshold: 5.0
   - action: tap
     element_index: 6
@@ -177,7 +177,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     screenshot_threshold: 5.0
   - action: tap
     element_index: 14
@@ -754,7 +754,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: tap
@@ -934,7 +934,7 @@ replay:
     screenshot_threshold: 5.0
   - action: tap
     element_index: 60
-    element_label: Reservations
+    element_label: Holds
     element_identifier: ''
     x: 244.0
     y: 786.0
@@ -942,7 +942,7 @@ replay:
     - Switch Library
     - MyLibraryIcon
     - A1QA Test Library
-    - Search Reservations
+    - Search Holds
     - Search
     - MySQL Cookbook, Paul DuBois, You are 2nd in line. 1 copy in use.
     - Unread
@@ -1025,7 +1025,7 @@ replay:
     - Switch Library
     - MyLibraryIcon
     - A1QA Test Library
-    - Search Reservations
+    - Search Holds
     - Search
     - MySQL Cookbook, Paul DuBois, You are 2nd in line. 1 copy in use.
     - Unread

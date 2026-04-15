@@ -43,7 +43,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     - gearshape.fill
     screenshot_threshold: 5.0
@@ -65,7 +65,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     - gearshape.fill
     screenshot_threshold: 5.0
@@ -87,7 +87,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     - gearshape.fill
     screenshot_threshold: 5.0
@@ -106,7 +106,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     - gearshape.fill
     screenshot_threshold: 5.0
@@ -128,7 +128,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     - gearshape.fill
     screenshot_threshold: 5.0
@@ -147,7 +147,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     - gearshape.fill
     screenshot_threshold: 5.0
@@ -166,7 +166,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     - gearshape.fill
     screenshot_threshold: 5.0

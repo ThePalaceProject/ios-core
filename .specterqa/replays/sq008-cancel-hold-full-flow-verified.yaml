@@ -6,7 +6,7 @@ replay:
   steps:
   - action: tap
     element_index: 59
-    element_label: Reservations
+    element_label: Holds
     element_identifier: ''
     x: 244.0
     y: 786.0
@@ -14,7 +14,7 @@ replay:
     - Switch Library
     - MyLibraryIcon
     - A1QA Test Library
-    - Search Reservations
+    - Search Holds
     - Search
     - MySQL Cookbook, Paul DuBois, You are 2nd in line. 1 copy in use.
     - Unread

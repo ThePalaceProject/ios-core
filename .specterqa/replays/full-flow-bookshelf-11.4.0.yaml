@@ -23,7 +23,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: tap
@@ -63,7 +63,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: tap
@@ -242,7 +242,7 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: tap
@@ -528,12 +528,12 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: tap
     element_index: 14
-    element_label: Reservations
+    element_label: Holds
     element_identifier: ''
     x: 244.0
     y: 786.0
@@ -541,14 +541,14 @@ replay:
     - Switch Library
     - MyLibraryIcon
     - Palace Bookshelf
-    - Search Reservations
+    - Search Holds
     - Search
     - When you reserve a book from the catalog, it will show up here. Look here from
       time to time to see if your book is available to download.
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0
   - action: tap

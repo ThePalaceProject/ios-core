@@ -11,7 +11,7 @@ replay:
     y: 786.0
   - action: tap
     element_index: 11
-    element_label: Reservations
+    element_label: Holds
     x: 244.0
     y: 786.0
   - action: tap

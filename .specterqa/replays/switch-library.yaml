@@ -26,6 +26,6 @@ replay:
     - tab.bar.label
     - Catalog
     - My Books
-    - Reservations
+    - Holds
     - Settings
     screenshot_threshold: 5.0

@@ -189,12 +189,12 @@ final class HoldsViewModelTests: XCTestCase {
 
         let searchDescription = viewModel.openSearchDescription
 
-        XCTAssertEqual(searchDescription.humanReadableDescription, "Search Reservations")
+        XCTAssertEqual(searchDescription.humanReadableDescription, "Search Holds")
         // Must not be empty — the UI uses this for search field placeholder text
         XCTAssertFalse(searchDescription.humanReadableDescription?.isEmpty ?? true,
                        "humanReadableDescription must not be empty")
-        XCTAssertTrue(searchDescription.humanReadableDescription?.lowercased().contains("reserv") ?? false,
-                      "humanReadableDescription must reference reservations, not a generic search label")
+        XCTAssertTrue(searchDescription.humanReadableDescription?.lowercased().contains("hold") ?? false,
+                      "humanReadableDescription must reference holds, not a generic search label")
     }
 
     // MARK: - ReloadData Tests (Testing Real Business Logic with Mock)
