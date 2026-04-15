@@ -154,7 +154,7 @@ class UserAccountAuthHelper: NSObject {
 
     static func needsAuth(authDefinition: AccountDetails.Authentication?) -> Bool {
         let authType = authDefinition?.authType ?? .none
-        return authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token
+        return authType == .basic || authType == .oauthIntermediary || authType == .saml || authType == .token || authType == .oidc
     }
 
     static func needsAgeCheck(authDefinition: AccountDetails.Authentication?) -> Bool {

@@ -414,6 +414,7 @@
 		5E4064C5CBD03E83CFF01CB0 /* PlatformTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545D0B43631D0433B5E9C100 /* PlatformTab.swift */; };
 		5F8040C84B5543ED9B1FEACE /* ReachabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38A8C636411D4F9DBB12A1CE /* ReachabilityTests.swift */; };
 		6021615DC1CCCE566261E7B5 /* TPPPerAccountIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A5818A6D6FBED89690BA3F /* TPPPerAccountIsolationTests.swift */; };
+		D30AD084B4614EFA9C708928 /* TPPCredentialIsolationE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B16FBDE7626549B79736A665 /* TPPCredentialIsolationE2ETests.swift */; };
 		607C5492BCD1F00E3156DDE6 /* DownloadOnlyOnWiFiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78529336066D2340C7B0FCE0 /* DownloadOnlyOnWiFiTests.swift */; };
 		612FD8DA16387F71EB3CA398 /* HoldsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ADE8A45C4B4AAE67143A272 /* HoldsViewModelTests.swift */; };
 		61757D3F95012F8F4340FABB /* TPPAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6C56509A03466E0531DBC27 /* TPPAccountAuthState.swift */; };
@@ -714,6 +715,7 @@
 		8E487777D9FBC42EE44B84B6 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60385D9D3FD8ED6E19C7608D /* AppContainer.swift */; };
 		8F0F91D96D8F6EA8F3588475 /* FontManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFA10178BD2885EBF24673F3 /* FontManager.swift */; };
 		8F33160CFC0FC38329D8A903 /* OPDSFeedServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CFCFF5C7BF41D65666565EC /* OPDSFeedServiceTests.swift */; };
+		DEB55C527CC64B0BAACAD072 /* OPDSFeedMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42A18057E6441D9B4142F50 /* OPDSFeedMigrationTests.swift */; };
 		8F5EDCB0BC0B1F81D0E4A5D8 /* TPPSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 956423D17BA2AF6709AC2C98 /* TPPSession.swift */; };
 		8FEA3128261D4E97B9C0C3C6 /* ErrorDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FF8D2CE6E794892B5C8C6FD /* ErrorDetailViewController.swift */; };
 		90D15E4351B29CA45A97893F /* AudiobookTimeEntryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71662BC50D2A8BFAFD5C37A /* AudiobookTimeEntryTests.swift */; };
@@ -803,6 +805,7 @@
 		AGNT0B5100000003NET001 /* TPPNetworkResponderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGNT0B5100000004NET001 /* TPPNetworkResponderTests.swift */; };
 		AGNT0B5100000005NET001 /* NetworkQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGNT0B5100000006NET001 /* NetworkQueueTests.swift */; };
 		AGNT0B5100000007NET001 /* TokenRequestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGNT0B5100000008NET001 /* TokenRequestTests.swift */; };
+		D20C7AC21C7E40368F44EC00 /* SignInModalSAMLOIDCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9308AC13830467FB0C7F3F7 /* SignInModalSAMLOIDCTests.swift */; };
 		ANNOT002T260955EF008E1DC3 /* TPPAnnotationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ANNOT001T260955EF008E1DC3 /* TPPAnnotationsTests.swift */; };
 		APPCON0001PALACE00001 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = APPCON0001FILEREF001 /* AppContainer.swift */; };
 		APPCON0002SIMPLYE0001 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = APPCON0001FILEREF001 /* AppContainer.swift */; };
@@ -1993,6 +1996,7 @@
 		6C7A26344806FE3471C298DF /* PositionSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PositionSyncTests.swift; sourceTree = "<group>"; };
 		6CFC130078A169AED6A9B47B /* PalaceCheckPropertyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalaceCheckPropertyTests.swift; sourceTree = "<group>"; };
 		6CFCFF5C7BF41D65666565EC /* OPDSFeedServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OPDSFeedServiceTests.swift; sourceTree = "<group>"; };
+		A42A18057E6441D9B4142F50 /* OPDSFeedMigrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OPDSFeedMigrationTests.swift; sourceTree = "<group>"; };
 		6DB8CC29A8C5DFB84187D498 /* NSURLRequest+NYPLURLRequestAdditions.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "NSURLRequest+NYPLURLRequestAdditions.swift"; sourceTree = "<group>"; };
 		6DEA83D0B2D2A423B42AB1D4 /* TPPNull.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPNull.swift; sourceTree = "<group>"; };
 		6DF4B6BD211B2BF0AEA436A7 /* NotificationSyncThrottleTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationSyncThrottleTests.swift; sourceTree = "<group>"; };
@@ -2135,6 +2139,7 @@
 		74D09C16D15567198A0A9194 /* StatsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsViewModelTests.swift; sourceTree = "<group>"; };
 		75305888F6A941DDA9EEE592 /* RDServicesStubs.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RDServicesStubs.m; sourceTree = "<group>"; };
 		75A5818A6D6FBED89690BA3F /* TPPPerAccountIsolationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPPerAccountIsolationTests.swift; sourceTree = "<group>"; };
+		B16FBDE7626549B79736A665 /* TPPCredentialIsolationE2ETests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPCredentialIsolationE2ETests.swift; sourceTree = "<group>"; };
 		75D9F7D6121602ED239491CF /* TPPOPDSAcquisitionPath.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPOPDSAcquisitionPath.swift; sourceTree = "<group>"; };
 		7751F6315B6633F398F0B808 /* StringExtensionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StringExtensionTests.swift; sourceTree = "<group>"; };
 		77C1C5F7FE43056D96C9DE5C /* LCPSessionOrphaningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LCPSessionOrphaningTests.swift; sourceTree = "<group>"; };
@@ -2258,6 +2263,7 @@
 		AGNT0B5100000004NET001 /* TPPNetworkResponderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPNetworkResponderTests.swift; sourceTree = "<group>"; };
 		AGNT0B5100000006NET001 /* NetworkQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkQueueTests.swift; sourceTree = "<group>"; };
 		AGNT0B5100000008NET001 /* TokenRequestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenRequestTests.swift; sourceTree = "<group>"; };
+		D9308AC13830467FB0C7F3F7 /* SignInModalSAMLOIDCTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SignInModalSAMLOIDCTests.swift; sourceTree = "<group>"; };
 		ANNOT001T260955EF008E1DC3 /* TPPAnnotationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TPPAnnotationsTests.swift; path = Bookmarks/TPPAnnotationsTests.swift; sourceTree = "<group>"; };
 		APPCON0001FILEREF001 /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		B2024455DC09E38D5FA3CE21 /* CirculationAnalyticsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CirculationAnalyticsTests.swift; sourceTree = "<group>"; };
@@ -2972,6 +2978,7 @@
 				4CD86C00D774B74F80D5B713 /* OPDS2FeedParsingTests.swift */,
 				F6BA53D1C399ABE2186FD429 /* OPDS2AuthenticationDocumentTests.swift */,
 				6CFCFF5C7BF41D65666565EC /* OPDSFeedServiceTests.swift */,
+				A42A18057E6441D9B4142F50 /* OPDSFeedMigrationTests.swift */,
 				E358F2BF99213E34F1B052ED /* OPDS2BookBridgeTests.swift */,
 				5F621ADC8194996EB5B5562F /* OPDS2CatalogWiringTests.swift */,
 				C9E38281988A9921BB4B8297 /* OPDS2IntegrationTests.swift */,
@@ -3277,6 +3284,7 @@
 				BB5171A2D51228EEF05D37CA /* AccountDetailsTests.swift */,
 				A3332DED915E45913181C82D /* UserAccountPublisherTests.swift */,
 				75A5818A6D6FBED89690BA3F /* TPPPerAccountIsolationTests.swift */,
+				B16FBDE7626549B79736A665 /* TPPCredentialIsolationE2ETests.swift */,
 			);
 			path = Accounts;
 			sourceTree = "<group>";
@@ -4483,6 +4491,7 @@
 			isa = PBXGroup;
 			children = (
 				AGNT0B5100000008NET001 /* TokenRequestTests.swift */,
+				D9308AC13830467FB0C7F3F7 /* SignInModalSAMLOIDCTests.swift */,
 			);
 			path = SignInLogic;
 			sourceTree = "<group>";
@@ -4508,6 +4517,17 @@
 				PLAYBOOTTEST0001FILEREF /* PlaybackBootstrapperTests.swift */,
 			);
 			path = Audiobooks;
+			sourceTree = "<group>";
+		};
+		B276B087059115995C1F90B8 /* Fuzz */ = {
+			isa = PBXGroup;
+			children = (
+				9E49448110C43EB199A09AD3 /* FuzzCorpus.swift */,
+				7BFD7CCC67838590BD9E203D /* FuzzRunner.swift */,
+				1FFBDD2A1333CAF4E0F850AB /* ParserFuzzTests.swift */,
+				F6990140C2393E885A89B739 /* Corpus */,
+			);
+			path = Fuzz;
 			sourceTree = "<group>";
 		};
 		B276B087059115995C1F90B8 /* Fuzz */ = {
@@ -5941,6 +5961,7 @@
 				E5A09A812F0D72D000CC23EA /* URLResponseAuthenticationTests.swift in Sources */,
 				E5A09A522F0D6F1A00CC23EA /* EpubSampleFactoryTests.swift in Sources */,
 				8F33160CFC0FC38329D8A903 /* OPDSFeedServiceTests.swift in Sources */,
+				DEB55C527CC64B0BAACAD072 /* OPDSFeedMigrationTests.swift in Sources */,
 				AAB502EE6AB7156C9D7D5C19 /* NetworkRetryTests.swift in Sources */,
 				0A1FCB9CD93544E798E77B52 /* DefaultCatalogAPITests.swift in Sources */,
 				83E697CE284149F399B8DDD5 /* NetworkClientMock.swift in Sources */,
@@ -6026,6 +6047,7 @@
 				AGNT0B5100000003NET001 /* TPPNetworkResponderTests.swift in Sources */,
 				AGNT0B5100000005NET001 /* NetworkQueueTests.swift in Sources */,
 				AGNT0B5100000007NET001 /* TokenRequestTests.swift in Sources */,
+				D20C7AC21C7E40368F44EC00 /* SignInModalSAMLOIDCTests.swift in Sources */,
 				B11A01BF0000000000000001 /* StringExtensionsTests.swift in Sources */,
 				B11A02BF0000000000000001 /* TPPBookCoverRegistryTests.swift in Sources */,
 				BKTST00012F27000000BF02 /* TPPBookContentTypeTests.swift in Sources */,
@@ -6118,6 +6140,7 @@
 				FC5C80424EE10131FA0087F2 /* TPPSAMLSignInTests.swift in Sources */,
 				A467B678AF1566E5745403E0 /* TPPSignInOIDCTests.swift in Sources */,
 				6021615DC1CCCE566261E7B5 /* TPPPerAccountIsolationTests.swift in Sources */,
+				D30AD084B4614EFA9C708928 /* TPPCredentialIsolationE2ETests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

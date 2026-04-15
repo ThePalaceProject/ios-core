@@ -44,6 +44,11 @@ final class BookDetailViewModel: ObservableObject {
     /// that would otherwise execute immediately without a second confirmation step.
     @Published var confirmationAlert: AlertModel?
 
+    /// SQ-008: Alert surfaced by the HalfSheetProvider protocol so that
+    /// cancel-hold and return confirmations render ON the half-sheet
+    /// (not behind it on the parent BookCell).
+    @Published var showAlert: AlertModel?
+
     @Published var relatedBooksByLane: [String: BookLane] = [:]
     @Published var isLoadingRelatedBooks = false
 
@@ -343,33 +348,38 @@ final class BookDetailViewModel: ObservableObject {
 
         isLoadingRelatedBooks = true
 
-        TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: AccountsManager.shared.currentUserAccount.hasAdobeToken()) { [weak self] feed, _ in
+        Task { [weak self] in
             guard let self else { return }
+            do {
+                let feed = try await OPDSFeedService.shared.fetchFeed(from: url, useToken: AccountsManager.shared.currentUserAccount.hasAdobeToken())
 
-            DispatchQueue.main.async {
-                // Verify we're still on the same book (user might have navigated away)
-                guard self.book.identifier == currentBookId else {
-                    self.isLoadingRelatedBooks = false
-                    return
-                }
+                await MainActor.run {
+                    guard self.book.identifier == currentBookId else {
+                        self.isLoadingRelatedBooks = false
+                        return
+                    }
 
-                if feed?.type == .acquisitionGrouped {
-                    var groupTitleToBooks: [String: [TPPBook]] = [:]
-                    var groupTitleToMoreURL: [String: URL?] = [:]
-                    if let entries = feed?.entries as? [TPPOPDSEntry] {
-                        for entry in entries {
-                            guard let group = entry.groupAttributes else { continue }
-                            let groupTitle = group.title ?? ""
-                            if let b = CatalogViewModel.makeBook(from: entry) {
-                                groupTitleToBooks[groupTitle, default: []].append(b)
-                                if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+                    if feed.type == .acquisitionGrouped {
+                        var groupTitleToBooks: [String: [TPPBook]] = [:]
+                        var groupTitleToMoreURL: [String: URL?] = [:]
+                        if let entries = feed.entries as? [TPPOPDSEntry] {
+                            for entry in entries {
+                                guard let group = entry.groupAttributes else { continue }
+                                let groupTitle = group.title ?? ""
+                                if let b = CatalogViewModel.makeBook(from: entry) {
+                                    groupTitleToBooks[groupTitle, default: []].append(b)
+                                    if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+                                }
                             }
                         }
+                        self.createRelatedBooksCells(groupedBooks: groupTitleToBooks, moreURLs: groupTitleToMoreURL)
+                    } else {
+                        self.isLoadingRelatedBooks = false
                     }
-                    self.createRelatedBooksCells(groupedBooks: groupTitleToBooks, moreURLs: groupTitleToMoreURL)
-                } else {
-                    self.isLoadingRelatedBooks = false
                 }
+            } catch {
+                Log.warn(#file, "Failed to fetch related books: \(error.localizedDescription)")
+                await MainActor.run { self.isLoadingRelatedBooks = false }
             }
         }
     }

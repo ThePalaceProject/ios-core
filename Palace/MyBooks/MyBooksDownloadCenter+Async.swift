@@ -259,6 +259,34 @@ extension MyBooksDownloadCenter {
             return false
         }
 
+        // SQ-007: A borrow failure cannot be a credentials problem if the user
+        // already has an active loan for this book. The download flow's
+        // auto-re-borrow path (`processRegularDownload` line 559) re-fetches
+        // the borrow URL whenever the registry's copy still has a `.borrow`
+        // primary acquisition — even for already-borrowed books. The server
+        // responds with 401 (loan-already-exists / cannot-issue-loan) which
+        // the network responder codes as `invalidCredentials`. Without this
+        // gate the user gets a "Sign in" modal showing their *signed-in*
+        // account view (Sign out button visible, no input fields), trapping
+        // them. The reauth modal makes no sense here — credentials are valid;
+        // the borrow simply isn't needed.
+        let registeredState = self.bookRegistry.state(for: book.identifier)
+        let alreadyHasLoan: Bool = {
+            switch registeredState {
+            case .downloadNeeded, .downloading, .downloadSuccessful,
+                 .downloadFailed, .holding, .SAMLStarted, .used, .returning:
+                return true
+            case .unregistered, .unsupported:
+                return false
+            @unknown default:
+                return false
+            }
+        }()
+        if alreadyHasLoan && hasCredentials {
+            Log.warn(#file, "[SQ-007] Borrow auth-error suppressed for '\(book.title)' — book is already in registry with state \(registeredState) and credentials are present. Treating as benign auto-re-borrow failure, not a credentials problem.")
+            return false
+        }
+
         // Circuit breaker: Don't re-auth if we already tried for this book
         guard !Self.hasBorrowReauthBeenAttempted(for: book.identifier) else {
             Log.warn(#file, "Borrow re-auth already attempted for '\(book.title)' - showing error instead")

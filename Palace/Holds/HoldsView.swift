@@ -190,7 +190,7 @@ struct HoldsView: View {
             ImageProviders.MyBooksView.search
         }
         .accessibilityIdentifier(AccessibilityID.Holds.searchButton)
-        .accessibilityLabel(NSLocalizedString("Search Reservations", comment: ""))
+        .accessibilityLabel(NSLocalizedString("Search Holds", comment: ""))
     }
 
     private func presentBookDetail(_ book: TPPBook) {
@@ -200,7 +200,7 @@ struct HoldsView: View {
 
     private var searchBar: some View {
         HStack {
-            TextField(NSLocalizedString("Search Reservations", comment: ""), text: $model.searchQuery)
+            TextField(NSLocalizedString("Search Holds", comment: ""), text: $model.searchQuery)
                 .searchBarStyle()
                 .accessibilityIdentifier(AccessibilityID.Holds.searchField)
                 .onChange(of: model.searchQuery) { query in
@@ -233,7 +233,7 @@ struct HoldsView: View {
         let holdsRoot = HoldsView()
 
         let hosting = UIHostingController(rootView: holdsRoot)
-        hosting.title = NSLocalizedString("Reservations", comment: "Nav title for Holds")
+        hosting.title = NSLocalizedString("Holds", comment: "Nav title for Holds")
         hosting.tabBarItem.image = UIImage(named: "Holds")
 
         return hosting
