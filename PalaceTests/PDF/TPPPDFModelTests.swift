@@ -191,14 +191,13 @@ final class TPPPDFPageBookmarkTests: XCTestCase {
         // Two bookmarks on the same page with no annotationID must share the same Codable output
         let bookmark2 = TPPPDFPageBookmark(page: 3)
         let encoded2 = try? JSONEncoder().encode(bookmark2)
-        // Compare as dictionaries — JSONEncoder doesn't guarantee key order
-        if let d1 = encoded.flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }),
-           let d2 = encoded2.flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) {
-            XCTAssertEqual(d1["@type"] as? String, d2["@type"] as? String, "type must match")
-            XCTAssertEqual(d1["page"] as? Int, d2["page"] as? Int, "page must match")
-        } else {
-            XCTFail("Could not decode bookmark JSON")
-        }
+        // Compare decoded values — JSONEncoder doesn't guarantee key order
+        let d1 = encoded.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
+        let d2 = encoded2.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
+        XCTAssertNotNil(d1, "First bookmark must encode to valid JSON")
+        XCTAssertNotNil(d2, "Second bookmark must encode to valid JSON")
+        XCTAssertEqual(d1?["@type"] as? String, d2?["@type"] as? String, "type must match")
+        XCTAssertEqual(d1?["page"] as? Int, d2?["page"] as? Int, "page must match")
     }
 
     // SRS: TPPPDFPageBookmark annotationID can be set
