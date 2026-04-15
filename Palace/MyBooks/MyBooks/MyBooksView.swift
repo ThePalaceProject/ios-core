@@ -65,6 +65,8 @@ struct MyBooksView: View {
             account?.logoDelegate = logoObserver
             account?.loadLogo()
             currentAccountUUID = account?.uuid ?? ""
+            // Background refresh on appear — sync silently, UI updates via notifications
+            model.refreshInBackground()
         }
         .onDisappear {
             model.isVisible = false
@@ -133,6 +135,7 @@ struct MyBooksView: View {
                 .accessibilityIdentifier(AccessibilityID.MyBooks.gridView)
                 .scrollIndicators(.visible)
                 .refreshable { model.reloadData() }
+                .animation(.easeInOut(duration: 0.3), value: model.books.count)
                 .scrollDismissesKeyboard(.interactively)
                 .simultaneousGesture(DragGesture().onChanged { _ in
                     if model.showSearchSheet {

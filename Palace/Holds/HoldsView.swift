@@ -48,6 +48,10 @@ struct HoldsView: View {
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
+                    model.refreshInBackground()
+                }
+                .onDisappear {
+                    model.isVisible = false
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
                     let account = AccountsManager.shared.currentAccount
@@ -134,6 +138,7 @@ struct HoldsView: View {
                 .refreshable { model.refresh() }
                 .dismissKeyboardOnTap()
                 .accessibilityIdentifier(AccessibilityID.Holds.scrollView)
+                .animation(.easeInOut(duration: 0.3), value: model.visibleBooks.count)
             }
         }
     }

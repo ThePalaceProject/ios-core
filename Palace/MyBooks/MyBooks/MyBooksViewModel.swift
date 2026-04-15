@@ -135,6 +135,18 @@ enum Group: Int {
         }
     }
 
+    /// Silent background refresh on appear — syncs without showing loading
+    /// spinner if we already have cached books to display. The UI updates
+    /// smoothly via registry notification → loadData() when sync completes.
+    func refreshInBackground() {
+        guard !isLoading else { return }
+        guard AccountsManager.shared.currentUserAccount.hasCredentials() else { return }
+        // Only do a silent sync if we already have books displayed —
+        // if empty, the user sees the empty state and can pull to refresh
+        guard !books.isEmpty else { return }
+        bookRegistry.sync(completion: nil)
+    }
+
     @MainActor
     func filterBooks(query: String) async {
         if query.isEmpty {

@@ -35,6 +35,7 @@ final class HoldsViewModel: ObservableObject {
     @Published var showSearchSheet: Bool = false
     @Published var searchQuery: String = ""
     @Published var visibleBooks: [TPPBook] = []
+    var isVisible: Bool = false
     private var cancellables = Set<AnyCancellable>()
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
@@ -86,6 +87,12 @@ final class HoldsViewModel: ObservableObject {
 
     private func handleSyncFailure(_ notification: Notification) {
         isLoading = false
+        // Don't show error banner if we already have holds displayed —
+        // the cached data is still useful, no need to alarm the user
+        guard visibleBooks.isEmpty else {
+            Log.debug(#file, "Sync failed but holds are cached — suppressing error banner")
+            return
+        }
         if let errorDoc = notification.userInfo?[TPPBookRegistry.syncFailureErrorDocumentKey] as? [AnyHashable: Any],
            let detail = (errorDoc["detail"] as? String) ?? (errorDoc["title"] as? String),
            !detail.isEmpty {
@@ -147,6 +154,16 @@ final class HoldsViewModel: ObservableObject {
         } else {
             (bookRegistry as? TPPBookRegistry)?.load()
         }
+    }
+
+    /// Silent background refresh on appear — syncs without disrupting
+    /// the current display if we already have holds to show.
+    func refreshInBackground() {
+        isVisible = true
+        guard !isLoading else { return }
+        guard AccountsManager.shared.currentUserAccount.hasCredentials() else { return }
+        guard !visibleBooks.isEmpty else { return }
+        (bookRegistry as? TPPBookRegistry)?.sync()
     }
 
     func loadAccount(_ account: Account) {
