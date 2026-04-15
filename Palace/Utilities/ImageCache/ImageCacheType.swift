@@ -34,24 +34,24 @@ public final class ImageCache: ImageCacheType {
         let cacheMemoryMB: Int
         let maxConcurrentProcessing: Int
 
-        // PP-4020: Reduced cache limits to prevent 800MB+ CG raster data accumulation.
-        // Cover art doesn't need 1024px — 512px is sharp enough for any phone display.
-        // Count limits reduced from 100/150/200 to 50/75/100 since each decoded image
-        // at 512px RGBA is ~1MB, keeping total decoded pixels under 100MB.
+        // PP-4020: Cover art in catalog lanes displays at ~100pt (300px @3x).
+        // 300px max keeps covers sharp while minimizing CG raster data VM.
+        // Each 300x300 RGBA decoded = ~360KB. With evictDecodedImages() called
+        // on filter switches, peak decoded memory stays under 20MB.
         if deviceMemoryMB < 2048 {
-            cacheMemoryMB = 20
-            memoryImages.countLimit = 50
-            maxDimension = 384
+            cacheMemoryMB = 10
+            memoryImages.countLimit = 30
+            maxDimension = 200
             maxConcurrentProcessing = 2
         } else if deviceMemoryMB < 4096 {
-            cacheMemoryMB = 30
-            memoryImages.countLimit = 75
-            maxDimension = 512
+            cacheMemoryMB = 15
+            memoryImages.countLimit = 40
+            maxDimension = 300
             maxConcurrentProcessing = 3
         } else {
-            cacheMemoryMB = 50
-            memoryImages.countLimit = 100
-            maxDimension = 512
+            cacheMemoryMB = 20
+            memoryImages.countLimit = 50
+            maxDimension = 300
             maxConcurrentProcessing = 4
         }
 
@@ -197,6 +197,15 @@ public final class ImageCache: ImageCacheType {
     public func clear() {
         memoryImages.removeAllObjects()
         dataCache.clear()
+    }
+
+    /// Evict all decoded in-memory images without touching the compressed disk
+    /// cache. Call this when the catalog view switches filters (All/Ebooks/
+    /// Audiobooks) or when a library switch occurs — the visible covers are
+    /// about to change entirely, so holding decoded pixels from the previous
+    /// view wastes CG raster data VM.
+    public func evictDecodedImages() {
+        memoryImages.removeAllObjects()
     }
 
     private func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage? {

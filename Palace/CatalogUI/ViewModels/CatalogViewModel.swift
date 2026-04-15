@@ -153,6 +153,11 @@ final class CatalogViewModel: ObservableObject {
     isOptimisticLoading = true
     errorMessage = nil
 
+    // Evict decoded cover images — the visible covers are about to change
+    // entirely, so holding decoded pixels from the previous filter wastes
+    // CG raster data VM. The compressed JPEG disk cache is preserved.
+    ImageCache.shared.evictDecodedImages()
+
     updateFacetGroupsOptimistically(selectedFacet: facet)
 
     do {
