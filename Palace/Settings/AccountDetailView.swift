@@ -32,6 +32,7 @@ struct AccountDetailView: View {
 
     var body: some View {
         contentView
+            .navigationTitle(DisplayStrings.account)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .tabBar)
             .toolbarBackground(Color(UIColor.systemBackground), for: .tabBar)
@@ -82,6 +83,7 @@ struct AccountDetailView: View {
             signInMessageSection
             SectionSeparator()
             signInButtonSection
+            registrationLinkIfAvailable
             reportIssueLinkIfAvailable
             Spacer()
         }

@@ -64,6 +64,10 @@ class SignInModalPresenter: NSObject {
             Log.debug(#file, "Sign-in modal already presented — suppressing duplicate")
             return
         }
+        guard !AccountsManager.shared.isAccountSwitching else {
+            Log.debug(#file, "Account switch in progress — suppressing sign-in modal (F-032)")
+            return
+        }
         isPresenting = true
 
         let view = SignInModalView(

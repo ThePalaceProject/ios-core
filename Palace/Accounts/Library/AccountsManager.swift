@@ -82,6 +82,10 @@ struct CatalogCacheMetadata: Codable {
 
     let tppAccountUUID = AccountsManager.TPPAccountUUIDs[0]
 
+    /// True during an account switch — suppresses sign-in modal presentation
+    /// to prevent the intermittent login prompt (F-032).
+    private(set) var isAccountSwitching = false
+
     let ageCheck: TPPAgeCheckVerifying
     private let settings: TPPSettings
     private let networkExecutor: TPPNetworkExecutor
@@ -145,6 +149,7 @@ struct CatalogCacheMetadata: Codable {
 
             if previousAccountId != newAccountId, previousAccountId != nil {
                 Log.info(#file, "🔄 Account switch detected - cleaning up active content")
+                isAccountSwitching = true
                 cleanupActiveContentBeforeAccountSwitch(from: previousAccountId, to: newAccountId)
                 // Evict decoded cover images — the new library has different covers.
                 // Keeps compressed JPEG cache on disk for fast re-decode if user switches back.
@@ -154,6 +159,7 @@ struct CatalogCacheMetadata: Codable {
             self.currentAccount?.hasUpdatedToken = false
             currentAccountId = newValue?.uuid
             TPPErrorLogger.setUserID(self.currentUserAccount.barcode)
+            isAccountSwitching = false
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         }
     }
