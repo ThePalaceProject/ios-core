@@ -1534,6 +1534,23 @@
 		SETVM004T260955EF008E1DC3 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SETVM003T260955EF008E1DC3 /* SettingsViewModel.swift */; };
 		UAAS00010001SIMPLYE001 /* UserAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = UAAS00010000FILEREF01 /* UserAccountAuthState.swift */; };
 		UAAS00010002PALACE0001 /* UserAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = UAAS00010000FILEREF01 /* UserAccountAuthState.swift */; };
+		CRWL0001BPAL00000001 /* CrawlState.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0001FREF00000001 /* CrawlState.swift */; };
+		CRWL0001BNDR00000001 /* CrawlState.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0001FREF00000001 /* CrawlState.swift */; };
+		CRWL0002BPAL00000001 /* CrawlableFeedAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0002FREF00000001 /* CrawlableFeedAnalysis.swift */; };
+		CRWL0002BNDR00000001 /* CrawlableFeedAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0002FREF00000001 /* CrawlableFeedAnalysis.swift */; };
+		CRWL0003BPAL00000001 /* LibraryCatalogMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0003FREF00000001 /* LibraryCatalogMerger.swift */; };
+		CRWL0003BNDR00000001 /* LibraryCatalogMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0003FREF00000001 /* LibraryCatalogMerger.swift */; };
+		CRWL0004BPAL00000001 /* LibraryRegistryCrawler.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0004FREF00000001 /* LibraryRegistryCrawler.swift */; };
+		CRWL0004BNDR00000001 /* LibraryRegistryCrawler.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0004FREF00000001 /* LibraryRegistryCrawler.swift */; };
+		CRWL0005BPAL00000001 /* CatalogPreloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0005FREF00000001 /* CatalogPreloader.swift */; };
+		CRWL0005BNDR00000001 /* CatalogPreloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0005FREF00000001 /* CatalogPreloader.swift */; };
+		CRWL0006BTST00000001 /* CrawlStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0006FREF00000001 /* CrawlStateTests.swift */; };
+		CRWL0007BTST00000001 /* CrawlableFeedAnalysisTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0007FREF00000001 /* CrawlableFeedAnalysisTests.swift */; };
+		CRWL0008BTST00000001 /* LibraryCatalogMergerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0008FREF00000001 /* LibraryCatalogMergerTests.swift */; };
+		CRWL0009BTST00000001 /* LibraryRegistryCrawlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0009FREF00000001 /* LibraryRegistryCrawlerTests.swift */; };
+		CRWL0010BTST00000001 /* CatalogPreloaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0010FREF00000001 /* CatalogPreloaderTests.swift */; };
+		CRWL0011BTST00000001 /* LiveCrawlableParsingTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0011FREF00000001 /* LiveCrawlableParsingTest.swift */; };
+		CRWL0012BTST00000001 /* CrawlerFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0012FREF00000001 /* CrawlerFallbackTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2751,6 +2768,18 @@
 		SETVM001T260955EF008E1DC3 /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
 		SETVM003T260955EF008E1DC3 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
 		UAAS00010000FILEREF01 /* UserAccountAuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAccountAuthState.swift; sourceTree = "<group>"; };
+		CRWL0001FREF00000001 /* CrawlState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrawlState.swift; sourceTree = "<group>"; };
+		CRWL0002FREF00000001 /* CrawlableFeedAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrawlableFeedAnalysis.swift; sourceTree = "<group>"; };
+		CRWL0003FREF00000001 /* LibraryCatalogMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCatalogMerger.swift; sourceTree = "<group>"; };
+		CRWL0004FREF00000001 /* LibraryRegistryCrawler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryRegistryCrawler.swift; sourceTree = "<group>"; };
+		CRWL0005FREF00000001 /* CatalogPreloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogPreloader.swift; sourceTree = "<group>"; };
+		CRWL0006FREF00000001 /* CrawlStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrawlStateTests.swift; sourceTree = "<group>"; };
+		CRWL0007FREF00000001 /* CrawlableFeedAnalysisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrawlableFeedAnalysisTests.swift; sourceTree = "<group>"; };
+		CRWL0008FREF00000001 /* LibraryCatalogMergerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCatalogMergerTests.swift; sourceTree = "<group>"; };
+		CRWL0009FREF00000001 /* LibraryRegistryCrawlerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryRegistryCrawlerTests.swift; sourceTree = "<group>"; };
+		CRWL0010FREF00000001 /* CatalogPreloaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogPreloaderTests.swift; sourceTree = "<group>"; };
+		CRWL0011FREF00000001 /* LiveCrawlableParsingTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCrawlableParsingTest.swift; sourceTree = "<group>"; };
+		CRWL0012FREF00000001 /* CrawlerFallbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrawlerFallbackTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -3922,6 +3951,11 @@
 				E733E4AF2AFD7A3500D5052A /* Account+profileDocument.swift */,
 				03F94CCE1DD627AA00CE8F4F /* Accounts.json */,
 				03F94CD01DD6288C00CE8F4F /* AccountsManager.swift */,
+				CRWL0005FREF00000001 /* CatalogPreloader.swift */,
+				CRWL0002FREF00000001 /* CrawlableFeedAnalysis.swift */,
+				CRWL0001FREF00000001 /* CrawlState.swift */,
+				CRWL0003FREF00000001 /* LibraryCatalogMerger.swift */,
+				CRWL0004FREF00000001 /* LibraryRegistryCrawler.swift */,
 			);
 			path = Library;
 			sourceTree = "<group>";
@@ -4462,6 +4496,7 @@
 				46E73CE2D76D4616118002BC /* NYPLOPDSLinkTests.swift */,
 				151A1BCD2A3E9E836B277A8C /* NYPLXMLTests.swift */,
 				B358508756ABDE24E48382EA /* Notifications */,
+				CRWL0000GRP000000001 /* Crawl */,
 				31CC0A3CFA3E9E20C65B5C01 /* PlaybackRateTests.swift */,
 				2B4957B4E19C7F111E30417E /* TPPKeychainTests.swift */,
 			);
@@ -4586,6 +4621,21 @@
 				6DF4B6BD211B2BF0AEA436A7 /* NotificationSyncThrottleTests.swift */,
 			);
 			path = Notifications;
+			sourceTree = "<group>";
+		};
+		CRWL0000GRP000000001 /* Crawl */ = {
+			isa = PBXGroup;
+			children = (
+				CRWL0010FREF00000001 /* CatalogPreloaderTests.swift */,
+				CRWL0007FREF00000001 /* CrawlableFeedAnalysisTests.swift */,
+				CRWL0006FREF00000001 /* CrawlStateTests.swift */,
+				CRWL0008FREF00000001 /* LibraryCatalogMergerTests.swift */,
+				CRWL0009FREF00000001 /* LibraryRegistryCrawlerTests.swift */,
+				CRWL0011FREF00000001 /* LiveCrawlableParsingTest.swift */,
+				CRWL0012FREF00000001 /* CrawlerFallbackTests.swift */,
+			);
+			name = Crawl;
+			path = Crawl;
 			sourceTree = "<group>";
 		};
 		B3BOOKGRP001F260300000001 /* Book */ = {
@@ -6170,6 +6220,14 @@
 				A467B678AF1566E5745403E0 /* TPPSignInOIDCTests.swift in Sources */,
 				6021615DC1CCCE566261E7B5 /* TPPPerAccountIsolationTests.swift in Sources */,
 				D30AD084B4614EFA9C708928 /* TPPCredentialIsolationE2ETests.swift in Sources */,
+				059C1DFA5BF79EEE154645E3 /* LCPSessionOrphaningTests.swift in Sources */,				EC75FDA52C9B331548ED96A1 /* URLResponseNYPLTests.swift in Sources */,				FC5C80424EE10131FA0087F2 /* TPPSAMLSignInTests.swift in Sources */,				A467B678AF1566E5745403E0 /* TPPSignInOIDCTests.swift in Sources */,
+				CRWL0006BTST00000001 /* CrawlStateTests.swift in Sources */,
+				CRWL0007BTST00000001 /* CrawlableFeedAnalysisTests.swift in Sources */,
+				CRWL0008BTST00000001 /* LibraryCatalogMergerTests.swift in Sources */,
+				CRWL0009BTST00000001 /* LibraryRegistryCrawlerTests.swift in Sources */,
+				CRWL0010BTST00000001 /* CatalogPreloaderTests.swift in Sources */,
+				CRWL0011BTST00000001 /* LiveCrawlableParsingTest.swift in Sources */,
+				CRWL0012BTST00000001 /* CrawlerFallbackTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -6663,6 +6721,11 @@
 				4DE364F5D585D79C2FCFF132 /* TPPBook+Accessibility.swift in Sources */,
 				D5C512E422949D363A5AD13C /* TPPObjCExceptionCatcher.m in Sources */,
 				C4F88ED5F0206FAAF93DB27C /* TPPProcessInfo.swift in Sources */,
+				CRWL0001BNDR00000001 /* CrawlState.swift in Sources */,
+				CRWL0002BNDR00000001 /* CrawlableFeedAnalysis.swift in Sources */,
+				CRWL0003BNDR00000001 /* LibraryCatalogMerger.swift in Sources */,
+				CRWL0004BNDR00000001 /* LibraryRegistryCrawler.swift in Sources */,
+				CRWL0005BNDR00000001 /* CatalogPreloader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -7172,6 +7235,11 @@
 				D987D93E00D55416261ED333 /* TPPBook+Accessibility.swift in Sources */,
 				2F1D7D501EBB74D0A990E167 /* TPPObjCExceptionCatcher.m in Sources */,
 				7D14A1DFDD362D25525D21FE /* TPPProcessInfo.swift in Sources */,
+				CRWL0001BPAL00000001 /* CrawlState.swift in Sources */,
+				CRWL0002BPAL00000001 /* CrawlableFeedAnalysis.swift in Sources */,
+				CRWL0003BPAL00000001 /* LibraryCatalogMerger.swift in Sources */,
+				CRWL0004BPAL00000001 /* LibraryRegistryCrawler.swift in Sources */,
+				CRWL0005BPAL00000001 /* CatalogPreloader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

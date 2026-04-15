@@ -9,20 +9,35 @@ struct CatalogCacheMetadata: Codable {
     let timestamp: Date
     let hash: String
 
-    /// Cache is stale after 5 minutes (should refresh in background)
-    private static let staleTTL: TimeInterval = 300
+    /// Default stale TTL: 6 hours (half the server's typical Cache-Control
+    /// max-age of 12hr). Overridden dynamically by `staleTTL(serverMaxAge:)`.
+    private static let defaultStaleTTL: TimeInterval = 21600
 
     /// Cache expires after 24 hours (must not be used)
     private static let maxAge: TimeInterval = 86400
 
-    /// Returns true if cache is stale (older than 5 minutes)
-    /// Stale data can still be used, but should trigger background refresh
+    /// Returns the stale TTL, dynamically adjusted from the server's
+    /// Cache-Control max-age if available. Uses half the server's value
+    /// with a floor of 5 minutes and a ceiling of 12 hours.
+    static func staleTTL(serverMaxAge: TimeInterval?) -> TimeInterval {
+        guard let serverMax = serverMaxAge, serverMax > 0 else {
+            return defaultStaleTTL
+        }
+        let half = serverMax / 2
+        return min(max(half, 300), 43200) // clamp to [5min, 12hr]
+    }
+
+    /// Returns true if cache is stale given the server's max-age hint.
+    func isStale(serverMaxAge: TimeInterval?) -> Bool {
+        Date().timeIntervalSince(timestamp) > Self.staleTTL(serverMaxAge: serverMaxAge)
+    }
+
+    /// Returns true if cache is stale using the default TTL (no server hint).
     var isStale: Bool {
-        Date().timeIntervalSince(timestamp) > Self.staleTTL
+        isStale(serverMaxAge: nil)
     }
 
     /// Returns true if cache is expired (older than 24 hours)
-    /// Expired data should not be used at all
     var isExpired: Bool {
         Date().timeIntervalSince(timestamp) > Self.maxAge
     }
@@ -73,6 +88,8 @@ struct CatalogCacheMetadata: Codable {
     private var accountSet: String
     private var accountSets = [String: [Account]]()
     private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
+
+    private let catalogPreloader = CatalogPreloader()
 
     // Per‐catalog in‐flight tracking:
     private var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
@@ -309,8 +326,68 @@ struct CatalogCacheMetadata: Codable {
         fetchFromNetwork(targetUrl: targetUrl, hash: hash)
     }
 
-    /// Fetches catalog data from network (used for initial load when no cache)
+    /// Fetches catalog data using the first-page fast path:
+    /// 1. Fetch first page (~35KB, ~260ms) → display immediately
+    /// 2. Paginate remaining pages in background → update cache when done
+    /// Falls back to a direct GET if even the first page fails.
     private func fetchFromNetwork(targetUrl: URL, hash: String) {
+        Task(priority: .userInitiated) { [weak self] in
+            guard let self = self else { return }
+            Log.debug(#file, "Fetching catalogs via first-page fast path for hash \(hash)")
+
+            let crawler = LibraryRegistryCrawler(fetcher: URLSessionCrawlerFetcher(), hash: hash)
+
+            // Step 1: Fetch first page for immediate display
+            let firstPageResult = await crawler.crawlFirstPage(baseURL: targetUrl)
+
+            switch firstPageResult {
+            case .success(let firstPageData):
+                // Display first page immediately
+                self.cacheAccountsCatalogData(firstPageData, hash: hash)
+                self.loadAccountSetsAndAuthDoc(fromCatalogData: firstPageData, key: hash) { success in
+                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                    self.callAndClearLoadingHandlers(for: hash, success)
+                }
+
+                // Step 2: Paginate remaining pages in background
+                Task(priority: .utility) { [weak self] in
+                    guard let self = self else { return }
+                    guard let firstPage = try? OPDS2CatalogsFeed.fromData(firstPageData),
+                          firstPage.nextPageURL != nil else {
+                        // Only one page — already displayed everything
+                        self.triggerCatalogPreload()
+                        return
+                    }
+
+                    Log.debug(#file, "Crawling remaining pages in background for hash \(hash)")
+                    let remainingResult = await crawler.crawlRemainingPages(
+                        firstPage: firstPage,
+                        baseURL: targetUrl,
+                        existingPublications: firstPage.catalogs,
+                        feedMetadata: firstPage.metadata
+                    )
+
+                    if case .success(let fullData) = remainingResult {
+                        self.cacheAccountsCatalogData(fullData, hash: hash)
+                        self.loadAccountSetsAndAuthDoc(fromCatalogData: fullData, key: hash) { _ in
+                            NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                        }
+                    }
+                    self.triggerCatalogPreload()
+                }
+
+            case .noChanges:
+                self.callAndClearLoadingHandlers(for: hash, true)
+
+            case .failure:
+                Log.info(#file, "First page crawl failed, falling back to direct GET")
+                self.fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
+            }
+        }
+    }
+
+    /// Fallback direct GET when crawler fails on first launch.
+    private func fallbackFetchFromNetwork(targetUrl: URL, hash: String) {
         networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
             guard let self = self else { return }
             switch result {
@@ -320,10 +397,8 @@ struct CatalogCacheMetadata: Codable {
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     self.callAndClearLoadingHandlers(for: hash, success)
                 }
-
             case .failure(let error, _):
                 Log.error(#file, "Failed to load catalogs from network: \(error.localizedDescription)")
-                // fallback to disk (even expired data is better than nothing for network failure)
                 if let data = self.readCachedAccountsCatalogData(hash: hash) {
                     Log.info(#file, "Using cached catalog data as fallback after network failure")
                     self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
@@ -338,28 +413,81 @@ struct CatalogCacheMetadata: Codable {
         }
     }
 
-    /// Refreshes catalog data in background without blocking the UI
+    /// Refreshes catalog data in background using the incremental crawler.
+    /// Falls back to a direct GET if the crawlable endpoint fails.
     private func refreshInBackground(targetUrl: URL, hash: String) {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            Log.debug(#file, "Starting background refresh for catalog hash \(hash)")
+        Task(priority: .utility) { [weak self] in
+            guard let self = self else { return }
+            Log.debug(#file, "Starting background refresh (crawl) for catalog hash \(hash)")
 
-            self?.networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
-                guard let self = self else { return }
-
-                switch result {
-                case .success(let data, _):
-                    Log.info(#file, "Background refresh successful for hash \(hash)")
-                    self.cacheAccountsCatalogData(data, hash: hash)
-                    self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { _ in
-                        // Notify UI that fresh data is available
-                        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
-                    }
-
-                case .failure(let error, _):
-                    Log.debug(#file, "Background refresh failed for hash \(hash): \(error.localizedDescription). Using cached data.")
-                // Silent failure - we already have cached data displayed
-                }
+            // Parse existing cached publications for merge
+            let existingPubs: [OPDS2Publication]
+            let existingMetadata: OPDS2CatalogsFeed.Metadata?
+            if let cachedData = self.readCachedAccountsCatalogData(hash: hash),
+               let feed = try? OPDS2CatalogsFeed.fromData(cachedData) {
+                existingPubs = feed.catalogs
+                existingMetadata = feed.metadata
+            } else {
+                existingPubs = []
+                existingMetadata = nil
             }
+
+            let crawler = LibraryRegistryCrawler(fetcher: URLSessionCrawlerFetcher(), hash: hash)
+            let result = await crawler.crawl(
+                baseURL: targetUrl,
+                existingPublications: existingPubs,
+                feedMetadata: existingMetadata
+            )
+
+            switch result {
+            case .success(let data):
+                Log.info(#file, "Background crawl successful for hash \(hash)")
+                self.cacheAccountsCatalogData(data, hash: hash)
+                self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { [weak self] _ in
+                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                    // Preload catalogs for active accounts
+                    self?.triggerCatalogPreload()
+                }
+
+            case .noChanges:
+                Log.debug(#file, "Background crawl found no changes for hash \(hash)")
+                // Still preload catalogs — they may not be cached yet
+                self.triggerCatalogPreload()
+
+            case .failure(let error):
+                Log.debug(#file, "Background crawl failed for hash \(hash): \(error.localizedDescription)")
+                // Fallback: try direct GET (old behavior)
+                self.fallbackDirectRefresh(targetUrl: targetUrl, hash: hash)
+            }
+        }
+    }
+
+    /// Fallback to direct GET when crawlable endpoint fails.
+    private func fallbackDirectRefresh(targetUrl: URL, hash: String) {
+        networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .success(let data, _):
+                Log.info(#file, "Fallback direct refresh successful for hash \(hash)")
+                self.cacheAccountsCatalogData(data, hash: hash)
+                self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { _ in
+                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                }
+            case .failure(let error, _):
+                Log.debug(#file, "Fallback direct refresh also failed for hash \(hash): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Triggers catalog feed preloading for active accounts.
+    private func triggerCatalogPreload() {
+        Task(priority: .utility) { [weak self] in
+            guard let self = self else { return }
+            await self.catalogPreloader.preloadCatalogs(
+                currentAccount: self.currentAccount,
+                recentAccountUUIDs: self.settings.settingsAccountIdsList,
+                accountProvider: { self.account($0) }
+            )
         }
     }
 
@@ -426,7 +554,22 @@ struct CatalogCacheMetadata: Codable {
             // No metadata means we should refresh
             return true
         }
-        return metadata.isStale
+        // Use server's Cache-Control max-age if available from crawl state
+        let serverMaxAge = readCrawlState(hash: hash)?.serverMaxAge
+        return metadata.isStale(serverMaxAge: serverMaxAge)
+    }
+
+    /// Reads crawl state for the given hash (used for dynamic TTL adjustment)
+    private func readCrawlState(hash: String) -> CrawlState? {
+        guard let appSupport = try? FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ) else { return nil }
+        let url = appSupport.appendingPathComponent("crawl_state_\(hash).json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(CrawlState.self, from: data)
     }
 
     // MARK: – Parsing & notifying
@@ -444,11 +587,17 @@ struct CatalogCacheMetadata: Codable {
 
             // Carry over authenticationDocument (and thus details) from old
             // accounts so a background refresh doesn't nil-out details while
-            // the user is actively using the app.
+            // the user is actively using the app. Also invalidate logo cache
+            // entries when the thumbnail URL has changed.
             for newAccount in newAccounts {
-                if let old = oldAccounts.first(where: { $0.uuid == newAccount.uuid }),
-                   let authDoc = old.authenticationDocument {
-                    newAccount.authenticationDocument = authDoc
+                if let old = oldAccounts.first(where: { $0.uuid == newAccount.uuid }) {
+                    if let authDoc = old.authenticationDocument {
+                        newAccount.authenticationDocument = authDoc
+                    }
+                    // Evict cached logo if the thumbnail URL changed
+                    if old.logoUrl != newAccount.logoUrl {
+                        ImageCache.shared.remove(for: newAccount.uuid)
+                    }
                 }
             }
 
@@ -511,17 +660,35 @@ struct CatalogCacheMetadata: Codable {
         }
     }
 
-    /// Clears all local catalog and authentication caches
+    /// Clears all local catalog, crawl state, and authentication caches
     func clearCache() {
         // network cache
         networkExecutor.clearCache()
-        // file caches
-        let keys = ["library_list_", "accounts_catalog_", "authentication_document_"]
+        // file caches — delete all files matching known prefixes
+        let prefixes = [
+            "library_list_",
+            "accounts_catalog_",
+            "accounts_catalog_metadata_",
+            "authentication_document_",
+            "crawl_state_",
+        ]
         let fm = FileManager.default
-        if let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false) {
-            for key in keys {
-                let url = appSupport.appendingPathComponent("\(key).json")
-                try? fm.removeItem(at: url)
+        guard let appSupport = try? fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ) else { return }
+
+        guard let files = try? fm.contentsOfDirectory(
+            at: appSupport,
+            includingPropertiesForKeys: nil
+        ) else { return }
+
+        for file in files {
+            let name = file.lastPathComponent
+            if prefixes.contains(where: { name.hasPrefix($0) }) {
+                try? fm.removeItem(at: file)
             }
         }
     }

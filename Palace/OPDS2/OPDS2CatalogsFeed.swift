@@ -12,11 +12,25 @@ struct OPDS2CatalogsFeed: Codable {
     struct Metadata: Codable {
         let adobe_vendor_id: String?
         let title: String
+        /// Total number of items across all pages (from crawlable endpoint)
+        let numberOfItems: Int?
+
+        init(adobe_vendor_id: String?, title: String, numberOfItems: Int? = nil) {
+            self.adobe_vendor_id = adobe_vendor_id
+            self.title = title
+            self.numberOfItems = numberOfItems
+        }
     }
 
     let catalogs: [OPDS2Publication]
     let links: [OPDS2Link]
     let metadata: Metadata
+    let facets: [OPDS2FacetGroup]?
+
+    /// URL for the next page of results (pagination)
+    var nextPageURL: URL? {
+        links.first { $0.rel == "next" }?.hrefURL
+    }
 
     static func fromData(_ data: Data) throws -> OPDS2CatalogsFeed {
         enum DateError: String, Error {
