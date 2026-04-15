@@ -102,9 +102,10 @@ struct TPPSettingsView: View {
             .navigationBarItems(trailing: navButton)
             .id(librariesRefreshToken)
 
-        Section(header: Text(DisplayStrings.libraries)) {
+        Section(header: Text(DisplayStrings.libraries).accessibilityHidden(true)) {
             row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
                 .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
+                .accessibilityLabel("Manage Libraries")
         }
     }
 
@@ -114,6 +115,7 @@ struct TPPSettingsView: View {
                 Toggle(DisplayStrings.downloadOnlyOnWiFi, isOn: $downloadOnlyOnWiFi)
                     .tint(.green)
                     .accessibilityIdentifier(AccessibilityID.Settings.downloadOnlyOnWiFiToggle)
+                    .accessibilityLabel(DisplayStrings.downloadOnlyOnWiFi)
                 Text(DisplayStrings.downloadOnlyOnWiFiDescription)
                     .font(.footnote)
                     .foregroundColor(.secondary)
@@ -193,7 +195,7 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var developerSettingsSection: some View {
         if TPPSettings.shared.customMainFeedURL == nil && showDeveloperSettings {
-            Section(header: Text(DisplayStrings.developerSettings), footer: versionInfo) {
+            Section(header: Text(DisplayStrings.developerSettings).accessibilityHidden(true), footer: versionInfo) {
                 let viewController = TPPDeveloperSettingsTableViewController()
 
                 let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
