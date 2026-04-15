@@ -1,0 +1,55 @@
+{
+  "hold_available": {
+    "event_type": "HoldAvailable",
+    "type": "ISBN",
+    "identifier": "978-0-123456-78-9",
+    "library": "NYPL",
+    "loans_endpoint": "https://circulation.librarysimplified.org/NYPL/loans",
+    "aps": {
+      "alert": {
+        "title": "Your hold is available!",
+        "body": "\"The Great Gatsby\" at New York Public Library is ready to borrow."
+      }
+    }
+  },
+  "hold_removed": {
+    "event_type": "HoldRemoved",
+    "type": "ISBN",
+    "identifier": "978-0-987654-32-1",
+    "library": "NYPL",
+    "loans_endpoint": "https://circulation.librarysimplified.org/NYPL/loans",
+    "aps": {
+      "alert": {
+        "title": "Hold removed",
+        "body": "Your hold for \"1984\" has been removed."
+      }
+    }
+  },
+  "loan_expiry": {
+    "event_type": "LoanExpiry",
+    "type": "ISBN",
+    "identifier": "978-0-111222-33-4",
+    "library": "BPL",
+    "loans_endpoint": "https://circulation.librarysimplified.org/BPL/loans",
+    "days_to_expiry": "3",
+    "aps": {
+      "alert": {
+        "title": "Only 3 days left on your loan!",
+        "body": "Your loan for \"Animal Farm\" at Brooklyn Public Library is expiring soon"
+      }
+    }
+  },
+  "loan_removed": {
+    "event_type": "LoanRemoved",
+    "type": "ISBN",
+    "identifier": "978-0-444555-66-7",
+    "library": "NYPL",
+    "loans_endpoint": "https://circulation.librarysimplified.org/NYPL/loans",
+    "aps": {
+      "alert": {
+        "title": "Loan removed",
+        "body": "Your loan for \"Brave New World\" has been removed from your shelf."
+      }
+    }
+  }
+}

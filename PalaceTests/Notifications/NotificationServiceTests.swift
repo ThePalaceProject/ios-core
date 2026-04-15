@@ -63,22 +63,23 @@ final class NotificationServiceTests: XCTestCase {
     // Since isHoldRelatedNotification is private, we test the logic inline.
     // This mirrors the implementation to ensure the classification rules are correct.
 
-    func testHoldClassificationWithExplicitHoldType() {
-        let userInfo: [AnyHashable: Any] = ["type": "hold_available"]
+    func testHoldClassificationWithExplicitHoldEventType() {
+        // CM backend sends event_type (not type) for notification routing
+        let userInfo: [AnyHashable: Any] = ["event_type": "HoldAvailable"]
         XCTAssertTrue(classifyAsHoldRelated(userInfo),
-                       "Notification with 'hold' in type should be hold-related")
+                       "HoldAvailable event_type should be classified as hold-related")
     }
 
-    func testHoldClassificationWithReservationType() {
-        let userInfo: [AnyHashable: Any] = ["type": "reservation_ready"]
+    func testHoldClassificationWithHoldRemovedEventType() {
+        let userInfo: [AnyHashable: Any] = ["event_type": "HoldRemoved"]
         XCTAssertTrue(classifyAsHoldRelated(userInfo),
-                       "Notification with 'reservation' in type should be hold-related")
+                       "HoldRemoved event_type should be classified as hold-related")
     }
 
-    func testHoldClassificationWithNonHoldType() {
-        let userInfo: [AnyHashable: Any] = ["type": "loan_expiring"]
+    func testHoldClassificationWithLoanExpiryEventType() {
+        let userInfo: [AnyHashable: Any] = ["event_type": "LoanExpiry"]
         XCTAssertFalse(classifyAsHoldRelated(userInfo),
-                        "Notification with 'loan_expiring' type should not be hold-related")
+                        "LoanExpiry event_type should NOT be hold-related")
     }
 
     func testHoldClassificationWithAPSAlertContainingAvailableKeyword() {
@@ -123,10 +124,14 @@ final class NotificationServiceTests: XCTestCase {
                        "Empty userInfo should default to hold-related for safe navigation")
     }
 
-    func testHoldClassificationCaseInsensitive() {
-        let userInfo: [AnyHashable: Any] = ["type": "HOLD_NOTIFICATION"]
+    func testHoldClassificationFallback_WhenEventTypeNotInEnum() {
+        // If CM sends a new event type not yet in our enum, falls back to APS keyword matching
+        let userInfo: [AnyHashable: Any] = [
+            "event_type": "SomeNewHoldType",
+            "aps": ["alert": ["title": "Hold Update", "body": "Your hold status changed"]]
+        ]
         XCTAssertTrue(classifyAsHoldRelated(userInfo),
-                       "Classification should be case-insensitive")
+                       "Unknown event_type with 'hold' in APS text should still be classified as hold-related")
     }
 
     func testHoldClassificationWithReservationInBody() {
@@ -209,18 +214,30 @@ final class NotificationServiceTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Mirrors the private isHoldRelatedNotification logic for testing
+    /// Mirrors the private isHoldRelatedNotification logic for testing.
+    ///
+    /// This must stay in sync with the production code in NotificationService.
+    /// Primary path: parse event_type via NotificationEventType enum.
+    /// Fallback: keyword match on APS alert text.
     private func classifyAsHoldRelated(_ userInfo: [AnyHashable: Any]) -> Bool {
-        if let type = userInfo["type"] as? String {
-            return type.lowercased().contains("hold") || type.lowercased().contains("reservation")
+        // Primary: CM backend's event_type field (matches production code)
+        if let rawType = userInfo["event_type"] as? String,
+           let event = NotificationService.NotificationEventType(rawValue: rawType) {
+            return event.isHoldRelated
         }
 
+        // Fallback: keyword match on APS alert text
         if let aps = userInfo["aps"] as? [String: Any],
            let alert = aps["alert"] as? [String: Any] {
             let title = (alert["title"] as? String)?.lowercased() ?? ""
             let body = (alert["body"] as? String)?.lowercased() ?? ""
             let keywords = ["available", "ready", "hold", "reservation"]
             return keywords.contains { title.contains($0) || body.contains($0) }
+        }
+
+        // Legacy fallback: check event_type as raw string
+        if let type = userInfo["event_type"] as? String {
+            return type.lowercased().contains("hold")
         }
 
         return true
