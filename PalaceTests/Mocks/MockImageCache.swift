@@ -30,6 +30,10 @@ public final class MockImageCache: ImageCacheType {
         return store[key]
     }
 
+    public func getAsync(for key: String) async -> UIImage? {
+        return get(for: key)
+    }
+
     public func remove(for key: String) {
         store.removeValue(forKey: key)
         expirations.removeValue(forKey: key)
