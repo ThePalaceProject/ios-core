@@ -364,8 +364,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         // Legacy non-scene setup (fallback)
-        window = UIWindow()
-        configureWindow(window!)
+        let newWindow = UIWindow()
+        window = newWindow
+        configureWindow(newWindow)
     }
 
     /// Configures an existing window with the app's root view controller

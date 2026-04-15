@@ -24,7 +24,7 @@ class TPPLastReadPositionPoster {
     // Internal state management
     private var lastReadPositionUploadDate: Date
     private var queuedReadPosition: Locator?
-    private let serialQueue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier!).lastReadPositionPoster", qos: .utility)
+    private let serialQueue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier ?? "org.thepalaceproject.palace").lastReadPositionPoster", qos: .utility)
 
     init(book: TPPBook,
          publication: Publication,

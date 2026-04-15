@@ -105,7 +105,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     }
 
     var epubNavigator: EPUBNavigatorViewController {
-        self.navigator as! EPUBNavigatorViewController
+        guard let epub = self.navigator as? EPUBNavigatorViewController else {
+            fatalError("TPPEPUBViewController.navigator must be an EPUBNavigatorViewController")
+        }
+        return epub
     }
 
     override func willMove(toParent parent: UIViewController?) {

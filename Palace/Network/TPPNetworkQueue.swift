@@ -44,7 +44,7 @@ final class NetworkQueue: NSObject {
                               NSURLErrorSecureConnectionFailed]
     let MaxRetriesInQueue = 5
 
-    let serialQueue = DispatchQueue(label: Bundle.main.bundleIdentifier!
+    let serialQueue = DispatchQueue(label: (Bundle.main.bundleIdentifier ?? "org.thepalaceproject.palace")
                                         + "."
                                         + String(describing: NetworkQueue.self))
 
@@ -89,8 +89,8 @@ final class NetworkQueue: NSObject {
             let dateCreated = NSKeyedArchiver.archivedData(withRootObject: Date())
 
             let headerData: Data?
-            if headers != nil {
-                headerData = NSKeyedArchiver.archivedData(withRootObject: headers!)
+            if let headers = headers {
+                headerData = NSKeyedArchiver.archivedData(withRootObject: headers)
             } else {
                 headerData = nil
             }

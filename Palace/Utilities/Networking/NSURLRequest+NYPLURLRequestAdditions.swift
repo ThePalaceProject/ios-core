@@ -39,20 +39,20 @@ extension NSURLRequest {
     let body = NSMutableData()
 
     for case let param as String in params.allKeys {
-      body.append("--\(boundaryConstant)\r\n".data(using: .utf8)!)
-      body.append("Content-Disposition: form-data; name=\"\(param)\"\r\n\r\n".data(using: .utf8)!)
-      body.append("\(params[param] ?? "")\r\n".data(using: .utf8)!)
+      body.append("--\(boundaryConstant)\r\n".data(using: .utf8) ?? Data())
+      body.append("Content-Disposition: form-data; name=\"\(param)\"\r\n\r\n".data(using: .utf8) ?? Data())
+      body.append("\(params[param] ?? "")\r\n".data(using: .utf8) ?? Data())
     }
 
     if let image = image, let imageData = image.jpegData(compressionQuality: 0.7) {
-      body.append("--\(boundaryConstant)\r\n".data(using: .utf8)!)
-      body.append("Content-Disposition: form-data; name=\"\(fileParamConstant)\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
-      body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+      body.append("--\(boundaryConstant)\r\n".data(using: .utf8) ?? Data())
+      body.append("Content-Disposition: form-data; name=\"\(fileParamConstant)\"; filename=\"image.jpg\"\r\n".data(using: .utf8) ?? Data())
+      body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8) ?? Data())
       body.append(imageData)
-      body.append("\r\n".data(using: .utf8)!)
+      body.append("\r\n".data(using: .utf8) ?? Data())
     }
 
-    body.append("--\(boundaryConstant)--\r\n".data(using: .utf8)!)
+    body.append("--\(boundaryConstant)--\r\n".data(using: .utf8) ?? Data())
 
     request.httpBody = body as Data
     request.setValue("\(body.length)", forHTTPHeaderField: "Content-Length")

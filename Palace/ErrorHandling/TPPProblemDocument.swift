@@ -209,7 +209,7 @@ import Foundation
     }
 
     @objc var stringValue: String {
-        return "\(title == nil ? "" : title! + ": ")\(detail ?? "")"
+        return "\(title.map { $0 + ": " } ?? "")\(detail ?? "")"
     }
 
     // MARK: - Auth Error Categories

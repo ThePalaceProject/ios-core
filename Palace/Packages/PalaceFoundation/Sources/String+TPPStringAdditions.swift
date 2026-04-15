@@ -30,7 +30,7 @@ extension String {
 
   /// Returns the SHA-256 hash of the string as a lowercase hex string.
   public func sha256() -> String {
-    let data = self.data(using: .utf8)!
+    let data = self.data(using: .utf8) ?? Data()
     var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
     data.withUnsafeBytes {
       _ = CC_SHA256($0.baseAddress, CC_LONG(data.count), &hash)

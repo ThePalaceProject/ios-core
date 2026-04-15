@@ -15,20 +15,23 @@ class TPPPDFTextExtractor {
     // depending on the software used, it can contain one-two letters only.
     func extractText(page: CGPDFPage) -> [String] {
         let stream = CGPDFContentStreamCreateWithPage(page)
-        let operatorTable = CGPDFOperatorTableCreate()
+        guard let operatorTable = CGPDFOperatorTableCreate() else {
+            CGPDFContentStreamRelease(stream)
+            return textBlocks
+        }
         // Documentation:
         // https://developer.apple.com/documentation/coregraphics/1454118-cgpdfoperatortablesetcallback
         // PDF operators:
         // https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.3.pdf
         // "TJ" operator: an array of blocks (strings, numbers, etc)
-        CGPDFOperatorTableSetCallback(operatorTable!, "TJ") { scanner, context in
+        CGPDFOperatorTableSetCallback(operatorTable, "TJ") { scanner, context in
             guard let context = context else { return }
             let extractor = Unmanaged<TPPPDFTextExtractor>.fromOpaque(context).takeUnretainedValue()
             extractor.handleArray(scanner: scanner)
         }
         // String operators
         for op in ["Tj", "\"", "'"] {
-            CGPDFOperatorTableSetCallback(operatorTable!, op) { scanner, context in
+            CGPDFOperatorTableSetCallback(operatorTable, op) { scanner, context in
                 guard let context = context else { return }
                 let extractor = Unmanaged<TPPPDFTextExtractor>.fromOpaque(context).takeUnretainedValue()
                 extractor.handleString(scanner: scanner)
@@ -39,7 +42,7 @@ class TPPPDFTextExtractor {
 
         // Release resources
         CGPDFScannerRelease(scanner)
-        CGPDFOperatorTableRelease(operatorTable!)
+        CGPDFOperatorTableRelease(operatorTable)
         CGPDFContentStreamRelease(stream)
 
         return textBlocks

@@ -180,7 +180,9 @@ actor PersistentLogger {
     // MARK: - Helpers
 
     private func getLogsDirectory() -> URL {
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        guard let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return FileManager.default.temporaryDirectory.appendingPathComponent("Logs")
+        }
         return documentsDirectory.appendingPathComponent("Logs")
     }
 }

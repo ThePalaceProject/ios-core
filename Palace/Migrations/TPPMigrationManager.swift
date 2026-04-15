@@ -15,7 +15,11 @@ class TPPMigrationManager: NSObject {
 
     @objc static func migrate(settings: TPPSettings = .shared) {
         // Fetch target version
-        let targetVersion = Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String
+        guard let infoDictionary = Bundle.main.infoDictionary,
+              let targetVersion = infoDictionary["CFBundleShortVersionString"] as? String else {
+            Log.error(#file, "Unable to read CFBundleShortVersionString from Info.plist")
+            return
+        }
 
         runMigrations()
         performPostUpdateTasksIfNeeded()

@@ -106,7 +106,10 @@ extension TPPMigrationManager {
         Log.info(#file, "Running 3.3.0 migration")
 
         // Cache locations are changing for catalogs, so we'll simply remove anything at the old locations
-        let applicationSupportUrl = try! FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        guard let applicationSupportUrl = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) else {
+            Log.error(#file, "Could not obtain Application Support directory")
+            return
+        }
         let origBetaUrl = applicationSupportUrl.appendingPathComponent("library_list_beta.json")
         let origProdUrl = applicationSupportUrl.appendingPathComponent("library_list_prod.json")
         try? FileManager.default.removeItem(at: origBetaUrl)

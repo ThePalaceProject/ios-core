@@ -23,7 +23,7 @@ struct PerformanceStatistics: Sendable {
         let sorted = durations.sorted()
         self.count = sorted.count
 
-        guard !sorted.isEmpty else {
+        guard let first = sorted.first, let last = sorted.last else {
             self.min = 0
             self.max = 0
             self.mean = 0
@@ -32,9 +32,8 @@ struct PerformanceStatistics: Sendable {
             self.p99 = 0
             return
         }
-
-        self.min = sorted.first!
-        self.max = sorted.last!
+        self.min = first
+        self.max = last
         self.mean = sorted.reduce(0, +) / Double(sorted.count)
         self.p50 = Self.percentile(sorted, 0.50)
         self.p95 = Self.percentile(sorted, 0.95)

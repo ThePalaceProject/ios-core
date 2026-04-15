@@ -64,7 +64,10 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
     /// Uses default storyboard.
     static func newInstance() -> TPPReaderPositionsVC {
         let storyboard = UIStoryboard(name: "TPPReaderPositions", bundle: nil)
-        return storyboard.instantiateViewController(withIdentifier: "TPPReaderPositionsVC") as! TPPReaderPositionsVC
+        guard let vc = storyboard.instantiateViewController(withIdentifier: "TPPReaderPositionsVC") as? TPPReaderPositionsVC else {
+            fatalError("Could not instantiate TPPReaderPositionsVC from storyboard")
+        }
+        return vc
     }
 
     @objc func didSelectSegment(_ segmentedControl: UISegmentedControl) {

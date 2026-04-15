@@ -141,7 +141,8 @@ private enum StorageKey: String {
                 // Slow path: compute the suffix once, then append it to each raw value.
                 // This is one allocation for the suffix + one allocation per key,
                 // down from two allocations per key (rawValue + interpolated result).
-                let suffix = "_\(uuid!)"
+                guard let uuid = uuid else { return }
+                let suffix = "_\(uuid)"
                 _authorizationIdentifier.key = StorageKey.authorizationIdentifier.rawValue + suffix
                 _adobeToken.key            = StorageKey.adobeToken.rawValue + suffix
                 _licensor.key              = StorageKey.licensor.rawValue + suffix

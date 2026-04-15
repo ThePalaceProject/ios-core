@@ -132,9 +132,12 @@ struct TPPSettingsView: View {
         }
     }
 
+    // swiftlint:disable:next force_unwrapping
+    private static let fallbackURL = URL(string: "https://thepalaceproject.org")!
+
     @ViewBuilder private var aboutRow: some View {
         let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPAboutPalaceURLString)!,
+            URL: URL(string: TPPSettings.TPPAboutPalaceURLString) ?? Self.fallbackURL,
             title: Strings.Settings.aboutApp,
             failureMessage: Strings.Error.loadFailedError
         )
@@ -148,7 +151,7 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var privacyRow: some View {
         let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPPrivacyPolicyURLString)!,
+            URL: URL(string: TPPSettings.TPPPrivacyPolicyURLString) ?? Self.fallbackURL,
             title: Strings.Settings.privacyPolicy,
             failureMessage: Strings.Error.loadFailedError
         )
@@ -162,7 +165,7 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var userAgreementRow: some View {
         let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPUserAgreementURLString)!,
+            URL: URL(string: TPPSettings.TPPUserAgreementURLString) ?? Self.fallbackURL,
             title: Strings.Settings.eula,
             failureMessage: Strings.Error.loadFailedError
         )
@@ -176,7 +179,7 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var softwareLicenseRow: some View {
         let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPSoftwareLicensesURLString)!,
+            URL: URL(string: TPPSettings.TPPSoftwareLicensesURLString) ?? Self.fallbackURL,
             title: Strings.Settings.softwareLicenses,
             failureMessage: Strings.Error.loadFailedError
         )
