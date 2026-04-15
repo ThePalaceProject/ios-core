@@ -39,6 +39,19 @@ enum Group: Int {
     private let settings: TPPSettings
     private var allBooks: [TPPBook] = []
 
+    /// Tracks whether the My Books tab is currently visible. When false,
+    /// notification-driven reloads are deferred until the tab reappears,
+    /// avoiding unnecessary sort + diff work while the user is on another tab.
+    var isVisible: Bool = false {
+        didSet {
+            if isVisible && needsReloadOnAppear {
+                needsReloadOnAppear = false
+                loadData()
+            }
+        }
+    }
+    private var needsReloadOnAppear = false
+
     // MARK: - Initialization
     init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
         self.bookRegistry = bookRegistry
@@ -208,7 +221,14 @@ enum Group: Int {
             .merge(with: syncEnd)
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.loadData()
+                guard let self else { return }
+                if self.isVisible {
+                    self.loadData()
+                } else {
+                    // Defer reload until the tab becomes visible again.
+                    // Avoids sorting + diffing the book list while offscreen.
+                    self.needsReloadOnAppear = true
+                }
             }
             .store(in: &observers)
     }

@@ -208,6 +208,34 @@ struct OPDS2FacetGroup: Codable, Equatable, Sendable, Identifiable {
 
 struct OPDS2FacetGroupMetadata: Codable, Equatable, Sendable {
     let title: String
+    /// Facet group type URI (e.g. "http://palaceproject.io/terms/rel/sort")
+    /// Encoded as `@type` in the JSON response from the registry.
+    let type: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case title
+        case type
+        case atType = "@type"
+    }
+
+    init(title: String, type: String? = nil) {
+        self.title = title
+        self.type = type
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decode(String.self, forKey: .title)
+        // Try "type" first, then "@type"
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+            ?? container.decodeIfPresent(String.self, forKey: .atType)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(type, forKey: .type)
+    }
 }
 
 struct OPDS2FacetLink: Codable, Equatable, Sendable, Identifiable {
