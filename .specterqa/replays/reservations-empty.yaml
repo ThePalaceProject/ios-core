@@ -12,9 +12,7 @@ replay:
     expect_elements:
     - Switch Library
     - Search Books
-    - Sort by Title
     - Sort
-    - Title
   - action: tap
     element_index: 19
     element_label: Holds

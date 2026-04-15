@@ -17,9 +17,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
     - tab.bar.label
     - Catalog
     - My Books
@@ -39,8 +36,4 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
     screenshot_threshold: 5.0

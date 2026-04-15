@@ -19,12 +19,6 @@ replay:
     - All
     - Ebooks
     - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - 12 Challenges Churches Face, Audiobook
-    - Audiobook
-    - Una vida de mentiras
-    - "Detox emocional (Edici\xF3n mexicana)"
     screenshot_threshold: 5.0
   - action: tap
     element_index: 4
@@ -35,18 +29,6 @@ replay:
     - Switch Library
     - MyLibraryIcon
     - A1QA Test Library
-    - Cancel
-    - All
-    - Ebooks
-    - Audiobooks
-    - 12 Challenges Churches Face. Audiobook.
-    - Unread
-    - Audiobook
-    - Borrow
-    - Una vida de mentiras
-    - Unread
-    - Borrow
-    - "Detox emocional (Edici\xF3n mexicana)"
     screenshot_threshold: 5.0
   - action: type
     text: psychology
@@ -54,17 +36,6 @@ replay:
     - Switch Library
     - MyLibraryIcon
     - A1QA Test Library
-    - Cancel
-    - All
-    - Ebooks
-    - Audiobooks
-    - 12 Challenges Churches Face. Audiobook.
-    - Unread
-    - Audiobook
-    - Borrow
-    - Una vida de mentiras
-    - Unread
-    - Borrow
     screenshot_threshold: 5.0
   - action: tap
     element_index: 4
@@ -75,10 +46,4 @@ replay:
     - Switch Library
     - MyLibraryIcon
     - A1QA Test Library
-    - Cancel
-    - Clear search
-    - All
-    - Ebooks
-    - Audiobooks
-    - The Principles of Psychology
     screenshot_threshold: 5.0

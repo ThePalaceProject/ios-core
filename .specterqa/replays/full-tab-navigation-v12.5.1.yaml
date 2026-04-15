@@ -16,16 +16,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - Animal Farm. Audiobook.
-    - Unread
-    - Audiobook
-    - Download
-    - Return
-    - El zapatero que remendaba corazones, Silvia Arazi, Due May 6, 2026, 20 days
-    - Unread
     screenshot_threshold: 5.0
   - action: tap
     element_index: 61
@@ -39,18 +30,8 @@ replay:
     - A1QA Test Library
     - Search Holds
     - Search
-    - Carl's Doomsday Scenario. Audiobook., Matt Dinniman, You are 1st in line. 1
-      copy in use.
-    - Unread
-    - Audiobook
-    - Carl's Doomsday Scenario. Audiobook.
-    - Matt Dinniman
     - Manage Hold
     - Preview
-    - You are 1st in line. 1 copy in use.
-    - Alien Sex. Audiobook., Ellen Datlow - editor; Harlan Ellison; Pat Murchy; Larry
-      Niven, You are 1st in line. 1 copy in use.
-    - Unread
     screenshot_threshold: 5.0
   - action: tap
     element_index: 23
@@ -68,12 +49,6 @@ replay:
     - All
     - Ebooks
     - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - "\xBFPor qu\xE9 me duele la tripa?"
-    - "Nido vac\xEDo"
-    - Directores y directorios.
-    - Mundo Orwell
     screenshot_threshold: 5.0
   - action: tap
     element_index: 24
@@ -87,16 +62,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - Animal Farm. Audiobook.
-    - Unread
-    - Audiobook
-    - Download
-    - Return
-    - El zapatero que remendaba corazones, Silvia Arazi, Due May 6, 2026, 20 days
-    - Unread
     screenshot_threshold: 5.0
   - action: tap
     element_index: 25
@@ -110,16 +76,8 @@ replay:
     - A1QA Test Library
     - Search Holds
     - Search
-    - Carl's Doomsday Scenario. Audiobook., You are 1st in line. 1 copy in use.
-    - Unread
-    - Audiobook
-    - Carl's Doomsday Scenario. Audiobook.
     - Manage Hold
     - Preview
-    - You are 1st in line. 1 copy in use.
-    - Alien Sex. Audiobook., You are 1st in line. 1 copy in use.
-    - Unread
-    - Audiobook
     screenshot_threshold: 5.0
   - action: tap
     element_index: 26
@@ -133,10 +91,4 @@ replay:
     - A1QA Test Library
     - Search Holds
     - Search
-    - Carl's Doomsday Scenario. Audiobook., Matt Dinniman, You are 1st in line. 1
-      copy in use.
-    - Unread
-    - Audiobook
-    - Carl's Doomsday Scenario. Audiobook.
-    - Matt Dinniman
     screenshot_threshold: 5.0

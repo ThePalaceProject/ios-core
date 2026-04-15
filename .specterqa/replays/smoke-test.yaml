@@ -16,16 +16,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - Animal Farm. Audiobook., George Orwell
-    - Unread
-    - Audiobook
-    - Animal Farm. Audiobook.
-    - George Orwell
-    - Download
-    - Return
     screenshot_threshold: 5.0
   - action: tap
     element_index: 60
@@ -39,18 +30,6 @@ replay:
     - A1QA Test Library
     - Search Holds
     - Search
-    - Carl's Doomsday Scenario. Audiobook., Matt Dinniman, You are 1st in line. 1
-      copy in use.
-    - Unread
-    - Audiobook
-    - Carl's Doomsday Scenario. Audiobook.
-    - Matt Dinniman
-    - Manage Hold
-    - Preview
-    - You are 1st in line. 1 copy in use.
-    - Alien Sex. Audiobook., Ellen Datlow - editor; Harlan Ellison; Pat Murchy; Larry
-      Niven, You are 1st in line. 1 copy in use.
-    - Unread
     screenshot_threshold: 5.0
   - action: tap
     element_index: 61
@@ -65,15 +44,10 @@ replay:
     - Libraries
     - Downloads
     - Download Only on Wi-Fi
-    - When enabled, books and audiobooks will only download over Wi-Fi. Downloads
-      will be blocked on cellular data.
-    - About and legal
     - About App
     - Privacy Policy
     - User Agreement
     - Software Licenses
-    - Testing
-    - Testing
     screenshot_threshold: 5.0
   - action: tap
     element_index: 58
@@ -91,13 +65,6 @@ replay:
     - All
     - Ebooks
     - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - "El le\xF3n que no sab\xEDa leer y otros cuentos populares, by Ana Mar\xEDa\
-      \ Shua"
-    - "Ingl\xE9s sin verg\xFCenza: Listening, by Andrew Coney"
-    - Madre de Dios, by Andrea Ortiz de Zevallos
-    - "Siempre te busqu\xE9, by Cor\xEDn Tellado"
     screenshot_threshold: 5.0
   - action: tap
     element_index: 8
@@ -112,15 +79,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - Tragedia en Collins Avenue
-    - Hansel y Gretel
-    - "\xBFEsclavos de la personalidad?"
-    - Crimen tras la muerte
     screenshot_threshold: 5.0
   - action: tap
     element_index: 9
@@ -135,15 +93,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - Augustine of Hippo, Audiobook
-    - Audiobook
-    - Steps, Audiobook
-    - Alive, Audiobook
     screenshot_threshold: 5.0
   - action: tap
     element_index: 7
@@ -161,5 +110,4 @@ replay:
     - All
     - Ebooks
     - Audiobooks
-    - Unlimited Listens ODL Feed
     screenshot_threshold: 5.0

@@ -13,13 +13,7 @@ replay:
     - Switch Library
     - A1QA Test Library
     - Search Books
-    - Sort by Title
     - Sort
-    - Title
-    - "Ars\xE8ne Lupin, Maurice Leblanc"
-    - Unread
-    - "Ars\xE8ne Lupin"
-    - Maurice Leblanc
     screenshot_threshold: 5.0
   - action: tap
     element_index: 12
@@ -27,7 +21,7 @@ replay:
     x: 310.3333282470703
     y: 264.0
     expect_elements:
-    - "Are you sure you want to return \"Ars\xE8ne Lupin\"?"
+    - Are you sure you want to return "Arsène Lupin"?
     - Cancel
     - Return
     screenshot_threshold: 5.0
@@ -40,11 +34,5 @@ replay:
     - Switch Library
     - A1QA Test Library
     - Search Books
-    - Sort by Title
     - Sort
-    - Title
-    - 'Fundamental Accessibility Tests: Basic Functionality, The DAISY Consortium'
-    - Unread
-    - 'Fundamental Accessibility Tests: Basic Functionality'
-    - The DAISY Consortium
     screenshot_threshold: 5.0

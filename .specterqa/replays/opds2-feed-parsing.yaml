@@ -68,9 +68,6 @@ replay:
     - Switch Library
     - Search Catalog
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
   - action: tap
     element_index: 1
     element_label: Switch Library

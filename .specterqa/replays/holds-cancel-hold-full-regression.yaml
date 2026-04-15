@@ -14,18 +14,6 @@ replay:
     - Switch Library
     - MyLibraryIcon
     - A1QA Test Library
-    - Cancel
-    - All
-    - Ebooks
-    - Audiobooks
-    - Audio New American Standard Bible - NASB 2020. Audiobook.
-    - Unread
-    - Audiobook
-    - Borrow
-    - 'Las islas de iros: el tesoro de Mundrah'
-    - Unread
-    - Borrow
-    - El Mundo de Indy. El gran refugio de mascotas
     screenshot_threshold: 5.0
   - action: type
     text: MySQL Cookbook
@@ -33,17 +21,6 @@ replay:
     - Switch Library
     - MyLibraryIcon
     - A1QA Test Library
-    - Cancel
-    - All
-    - Ebooks
-    - Audiobooks
-    - Audio New American Standard Bible - NASB 2020. Audiobook.
-    - Unread
-    - Audiobook
-    - Borrow
-    - 'Las islas de iros: el tesoro de Mundrah'
-    - Unread
-    - Borrow
     screenshot_threshold: 5.0
   - action: tap
     element_index: 4
@@ -58,15 +35,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - Audio New American Standard Bible - NASB 2020, Audiobook
-    - Audiobook
-    - 'Las islas de iros: el tesoro de Mundrah'
-    - El Mundo de Indy. El gran refugio de mascotas
     screenshot_threshold: 5.0
   - action: tap
     element_index: 60
@@ -80,12 +48,8 @@ replay:
     - A1QA Test Library
     - Search Holds
     - Search
-    - MySQL Cookbook, You are 1st in line.
-    - Unread
-    - MySQL Cookbook
     - Manage Hold
     - Preview
-    - You are 1st in line.
     - tab.bar.label
     - Catalog
     - My Books

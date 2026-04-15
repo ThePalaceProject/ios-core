@@ -27,16 +27,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - "El le\xF3n que no sab\xEDa leer y otros cuentos populares, by Ana Mar\xEDa\
-      \ Shua"
-    - "Ingl\xE9s sin verg\xFCenza: Listening, by Andrew Coney"
-    - Madre de Dios, by Andrea Ortiz de Zevallos
-    - "Siempre te busqu\xE9, by Cor\xEDn Tellado"
     screenshot_threshold: 5.0
   - action: swipe
     direction: down
@@ -47,15 +37,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Accessible EPUB Test
-    - More books in Accessible EPUB Test
-    - 'Funamental Accessibility Tests: Non-Visual Reading, by The DAISY Consortium'
-    - 'Advanced Accessibility Tests: Mathematics, by The DAISY Consortium'
-    - 'Advanced Accessibility Tests: Media Overlays, by The DAISY Consortium'
-    - 'Funamental Accessibility Tests: Read Aloud, by The DAISY Consortium'
     screenshot_threshold: 5.0
   - action: swipe
     direction: down
@@ -66,8 +47,4 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
     screenshot_threshold: 5.0

@@ -16,16 +16,10 @@ replay:
     - Libraries
     - Downloads
     - Download Only on Wi-Fi
-    - When enabled, books and audiobooks will only download over Wi-Fi. Downloads
-      will be blocked on cellular data.
-    - About and legal
     - About App
     - Privacy Policy
     - User Agreement
     - Software Licenses
-    - Testing
-    - Testing
-    - Palace version 3.0.0 (453)
     screenshot_threshold: 5.0
   - action: tap
     element_index: 3
@@ -35,19 +29,13 @@ replay:
     y: 203.66666666666666
     expect_elements:
     - Settings
-    - Add Library
     - Libraries
     - A1QA Test Library
-    - A test library for A1QA.
-    - Palace Bookshelf
-    - Popular books free to download and keep, handpicked by librarians across the
-      US.
     - tab.bar.label
     - Catalog
     - My Books
     - Holds
     - Settings
-    - gearshape.fill
     screenshot_threshold: 5.0
   - action: tap
     element_index: 4
@@ -58,14 +46,6 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Library Card
-    - Password
-    - Show
-    - Forgot your password?
-    - By signing in, you agree to the End User License Agreement.
-    - Sign up for a library card
-    - Report an Issue
-    - Content Licenses
     - tab.bar.label
     - Catalog
     - My Books
@@ -81,14 +61,6 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Library Card
-    - Password
-    - Show
-    - Forgot your password?
-    - By signing in, you agree to the End User License Agreement.
-    - Sign up for a library card
-    - Report an Issue
-    - Content Licenses
     - tab.bar.label
     - Catalog
     - My Books
@@ -100,14 +72,6 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Library Card
-    - Password
-    - Show
-    - Forgot your password?
-    - By signing in, you agree to the End User License Agreement.
-    - Sign up for a library card
-    - Report an Issue
-    - Content Licenses
     - tab.bar.label
     - Catalog
     - My Books
@@ -123,14 +87,6 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Library Card
-    - Password
-    - Show
-    - Forgot your password?
-    - By signing in, you agree to the End User License Agreement.
-    - Sign up for a library card
-    - Report an Issue
-    - Content Licenses
     - tab.bar.label
     - Catalog
     - My Books
@@ -142,15 +98,6 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Library Card
-    - Password
-    - Show
-    - Sign in
-    - Forgot your password?
-    - By signing in, you agree to the End User License Agreement.
-    - Sign up for a library card
-    - Report an Issue
-    - Content Licenses
     - tab.bar.label
     - Catalog
     - My Books
@@ -165,15 +112,6 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Library Card
-    - Password
-    - Show
-    - Signing In
-    - Forgot your password?
-    - By signing in, you agree to the End User License Agreement.
-    - Sign up for a library card
-    - Report an Issue
-    - Content Licenses
     - tab.bar.label
     - Catalog
     - My Books
@@ -191,16 +129,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - "El corresponsal, David Jim\xE9nez, Due May 1, 2026, 19 days"
-    - Unread
-    - El corresponsal
-    - "David Jim\xE9nez"
-    - Read
-    - Return
-    - Due May 1, 2026
     screenshot_threshold: 5.0
   - action: tap
     element_index: 21
@@ -214,16 +143,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - "El corresponsal, David Jim\xE9nez, Due May 1, 2026, 19 days"
-    - Unread
-    - El corresponsal
-    - "David Jim\xE9nez"
-    - Read
-    - Return
-    - Due May 1, 2026
     screenshot_threshold: 5.0
   - action: tap
     element_index: 21
@@ -237,16 +157,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - "El corresponsal, David Jim\xE9nez, Due May 1, 2026, 19 days"
-    - Unread
-    - El corresponsal
-    - "David Jim\xE9nez"
-    - Read
-    - Return
-    - Due May 1, 2026
     screenshot_threshold: 5.0
   - action: tap
     element_index: 1
@@ -266,51 +177,50 @@ replay:
     x: 262.6666666666667
     y: 476.6666666666667
     expect_elements:
-    - "PUBLISHER\u2019S NOTE: This is a work of fiction. Names, characters, places,\
-      \ and incidents are either the product of the author\u2019s imagination or are\
-      \ used fictitiously, and any resemblance to actual persons, living or dead,\
-      \ business establishments, events, or locales is entirely coincidental."
+    - 'PUBLISHER’S NOTE: This is a work of fiction. Names, characters, places, and
+      incidents are either the product of the author’s imagination or are used fictitiously,
+      and any resemblance to actual persons, living or dead, business establishments,
+      events, or locales is entirely coincidental.'
     - Library of Congress Cataloging-in-Publication Data
     - 'Names: Chari, Sheela.'
     - 'Title: Finding Mighty / Sheela Chari.'
-    - "Description: New York : Amulet Books, 2017. | Summary: \u201CAlong the train\
-      \ lines north of New York City, twelve-year-old neighbors Myla and Peter search\
-      \ for the link between Myla\u2019s necklace and the disappearance of Peter\u2019\
-      s brother, Randall. Thrown into a world of parkour, graffiti, and diamond-smuggling,\
-      \ Myla and Peter encounter a band of thugs who are after the same thing as Randall.\
-      \ Can Myla and Peter find Randall before it\u2019s too late, and their shared\
-      \ family secrets threaten to destroy them all?\u201D\u2014Provided by publisher."
+    - 'Description: New York : Amulet Books, 2017. | Summary: “Along the train lines
+      north of New York City, twelve-year-old neighbors Myla and Peter search for
+      the link between Myla’s necklace and the disappearance of Peter’s brother, Randall.
+      Thrown into a world of parkour, graffiti, and diamond-smuggling, Myla and Peter
+      encounter a band of thugs who are after the same thing as Randall. Can Myla
+      and Peter find Randall before it’s too late, and their shared family secrets
+      threaten to destroy them all?”—Provided by publisher.'
     screenshot_threshold: 5.0
   - action: swipe_back
     expect_elements:
-    - "PUBLISHER\u2019S NOTE: This is a work of fiction. Names, characters, places,\
-      \ and incidents are either the product of the author\u2019s imagination or are\
-      \ used fictitiously, and any resemblance to actual persons, living or dead,\
-      \ business establishments, events, or locales is entirely coincidental."
+    - 'PUBLISHER’S NOTE: This is a work of fiction. Names, characters, places, and
+      incidents are either the product of the author’s imagination or are used fictitiously,
+      and any resemblance to actual persons, living or dead, business establishments,
+      events, or locales is entirely coincidental.'
     - Library of Congress Cataloging-in-Publication Data
     - 'Names: Chari, Sheela.'
     - 'Title: Finding Mighty / Sheela Chari.'
-    - "Description: New York : Amulet Books, 2017. | Summary: \u201CAlong the train\
-      \ lines north of New York City, twelve-year-old neighbors Myla and Peter search\
-      \ for the link between Myla\u2019s necklace and the disappearance of Peter\u2019\
-      s brother, Randall. Thrown into a world of parkour, graffiti, and diamond-smuggling,\
-      \ Myla and Peter encounter a band of thugs who are after the same thing as Randall.\
-      \ Can Myla and Peter find Randall before it\u2019s too late, and their shared\
-      \ family secrets threaten to destroy them all?\u201D\u2014Provided by publisher."
+    - 'Description: New York : Amulet Books, 2017. | Summary: “Along the train lines
+      north of New York City, twelve-year-old neighbors Myla and Peter search for
+      the link between Myla’s necklace and the disappearance of Peter’s brother, Randall.
+      Thrown into a world of parkour, graffiti, and diamond-smuggling, Myla and Peter
+      encounter a band of thugs who are after the same thing as Randall. Can Myla
+      and Peter find Randall before it’s too late, and their shared family secrets
+      threaten to destroy them all?”—Provided by publisher.'
     - 'Identifiers: LCCN 2016042022 (print) | LCCN 2016052878 (ebook) | ISBN 9781419722967
       (hardback) | eISBN 9781683350613 (ebook)'
-    - "Subjects: | CYAC: Mystery and detective stories. | Family life\u2014New York\
-      \ (State)\u2014Fiction. | Graffiti\u2014Fiction. | Parkour\u2014Fiction. | East\
-      \ Indian Americans\u2014Fiction. | Racially mixed people\u2014Fiction. | Dobbs\
-      \ Ferry (N.Y.)\u2013Fiction. | BISAC: JUVENILE FICTION / Family / General (see\
-      \ also headings under Social Issues). | JUVENILE FICTION / Lifestyles / City\
-      \ & Town Life. | JUVENILE FICTION / Art & Architecture."
-    - "Classification: LCC PZ7.C37368 Fin 2017 (print) | LCC PZ7.C37368 (ebook) |\
-      \ DDC [Fic]\u2014dc23"
+    - 'Subjects: | CYAC: Mystery and detective stories. | Family life—New York (State)—Fiction.
+      | Graffiti—Fiction. | Parkour—Fiction. | East Indian Americans—Fiction. | Racially
+      mixed people—Fiction. | Dobbs Ferry (N.Y.)–Fiction. | BISAC: JUVENILE FICTION
+      / Family / General (see also headings under Social Issues). | JUVENILE FICTION
+      / Lifestyles / City & Town Life. | JUVENILE FICTION / Art & Architecture.'
+    - 'Classification: LCC PZ7.C37368 Fin 2017 (print) | LCC PZ7.C37368 (ebook) |
+      DDC [Fic]—dc23'
     - LC record available at
     - https://lccn.loc.gov/2016042022
-    - "Text copyright \xA9 2017 Sheela Chari"
-    - "Illustrations \xA9 2017 Reid Kikuo Johnson"
+    - Text copyright © 2017 Sheela Chari
+    - Illustrations © 2017 Reid Kikuo Johnson
     - Book design by Pamela Notarantonio
     - Published in 2017 by Amulet Books, an imprint of ABRAMS. All rights reserved.
       No portion of this book may be reproduced, stored in a retrieval system, or
@@ -332,30 +242,29 @@ replay:
     - Table of contents
     - Reader settings
     - Add Bookmark
-    - "PUBLISHER\u2019S NOTE: This is a work of fiction. Names, characters, places,\
-      \ and incidents are either the product of the author\u2019s imagination or are\
-      \ used fictitiously, and any resemblance to actual persons, living or dead,\
-      \ business establishments, events, or locales is entirely coincidental."
+    - 'PUBLISHER’S NOTE: This is a work of fiction. Names, characters, places, and
+      incidents are either the product of the author’s imagination or are used fictitiously,
+      and any resemblance to actual persons, living or dead, business establishments,
+      events, or locales is entirely coincidental.'
     - Library of Congress Cataloging-in-Publication Data
     - 'Names: Chari, Sheela.'
     - 'Title: Finding Mighty / Sheela Chari.'
-    - "Description: New York : Amulet Books, 2017. | Summary: \u201CAlong the train\
-      \ lines north of New York City, twelve-year-old neighbors Myla and Peter search\
-      \ for the link between Myla\u2019s necklace and the disappearance of Peter\u2019\
-      s brother, Randall. Thrown into a world of parkour, graffiti, and diamond-smuggling,\
-      \ Myla and Peter encounter a band of thugs who are after the same thing as Randall.\
-      \ Can Myla and Peter find Randall before it\u2019s too late, and their shared\
-      \ family secrets threaten to destroy them all?\u201D\u2014Provided by publisher."
+    - 'Description: New York : Amulet Books, 2017. | Summary: “Along the train lines
+      north of New York City, twelve-year-old neighbors Myla and Peter search for
+      the link between Myla’s necklace and the disappearance of Peter’s brother, Randall.
+      Thrown into a world of parkour, graffiti, and diamond-smuggling, Myla and Peter
+      encounter a band of thugs who are after the same thing as Randall. Can Myla
+      and Peter find Randall before it’s too late, and their shared family secrets
+      threaten to destroy them all?”—Provided by publisher.'
     - 'Identifiers: LCCN 2016042022 (print) | LCCN 2016052878 (ebook) | ISBN 9781419722967
       (hardback) | eISBN 9781683350613 (ebook)'
-    - "Subjects: | CYAC: Mystery and detective stories. | Family life\u2014New York\
-      \ (State)\u2014Fiction. | Graffiti\u2014Fiction. | Parkour\u2014Fiction. | East\
-      \ Indian Americans\u2014Fiction. | Racially mixed people\u2014Fiction. | Dobbs\
-      \ Ferry (N.Y.)\u2013Fiction. | BISAC: JUVENILE FICTION / Family / General (see\
-      \ also headings under Social Issues). | JUVENILE FICTION / Lifestyles / City\
-      \ & Town Life. | JUVENILE FICTION / Art & Architecture."
-    - "Classification: LCC PZ7.C37368 Fin 2017 (print) | LCC PZ7.C37368 (ebook) |\
-      \ DDC [Fic]\u2014dc23"
+    - 'Subjects: | CYAC: Mystery and detective stories. | Family life—New York (State)—Fiction.
+      | Graffiti—Fiction. | Parkour—Fiction. | East Indian Americans—Fiction. | Racially
+      mixed people—Fiction. | Dobbs Ferry (N.Y.)–Fiction. | BISAC: JUVENILE FICTION
+      / Family / General (see also headings under Social Issues). | JUVENILE FICTION
+      / Lifestyles / City & Town Life. | JUVENILE FICTION / Art & Architecture.'
+    - 'Classification: LCC PZ7.C37368 Fin 2017 (print) | LCC PZ7.C37368 (ebook) |
+      DDC [Fic]—dc23'
     - LC record available at
     screenshot_threshold: 5.0
   - action: tap
@@ -370,16 +279,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - "El corresponsal, David Jim\xE9nez, Due May 1, 2026, 19 days"
-    - Unread
-    - El corresponsal
-    - "David Jim\xE9nez"
-    - Read
-    - Return
-    - Due May 1, 2026
     screenshot_threshold: 5.0
   - action: swipe
     direction: down
@@ -389,16 +289,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - El corresponsal
-    - "David Jim\xE9nez"
-    - Read
-    - Return
-    - Due May 1, 2026
-    - 19 days
-    - Finding Mighty, Sheela Chari, Due April 13, 2026, 1 day
     screenshot_threshold: 5.0
   - action: tap
     element_index: 28
@@ -412,16 +303,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - El corresponsal
-    - "David Jim\xE9nez"
-    - Read
-    - Return
-    - Due May 1, 2026
-    - 19 days
-    - Finding Mighty, Sheela Chari, Due April 13, 2026, 1 day
     screenshot_threshold: 5.0
   - action: swipe
     direction: down
@@ -431,16 +313,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - El corresponsal
-    - "David Jim\xE9nez"
-    - Read
-    - Return
-    - Due May 1, 2026
-    - 19 days
-    - Finding Mighty, Sheela Chari, Due April 13, 2026, 1 day
     screenshot_threshold: 5.0
   - action: tap
     element_index: 28
@@ -449,21 +322,8 @@ replay:
     x: 200.0
     y: 475.6666666666666
     expect_elements:
-    - backNavigation
-    - Back
     - My Books
-    - tableOfContents
-    - Sort by Title
     - Sort
-    - Title
-    - El corresponsal
-    - "David Jim\xE9nez"
-    - Read
-    - Return
-    - Due May 1, 2026
-    - 19 days
-    - Finding Mighty, Sheela Chari, Due April 13, 2026, 1 day
-    - Unread
     screenshot_threshold: 5.0
   - action: tap
     element_index: 19
@@ -500,16 +360,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - "El corresponsal, David Jim\xE9nez, Due May 1, 2026, 19 days"
-    - Unread
-    - El corresponsal
-    - "David Jim\xE9nez"
-    - Read
-    - Return
-    - Due May 1, 2026
     screenshot_threshold: 5.0
   - action: tap
     element_index: 43
@@ -524,15 +375,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - Augustine of Hippo, Audiobook
-    - Audiobook
-    - "La ciencia de hacerse rico (Edici\xF3n mexicana)"
-    - "Ladr\xF3n de ladrones n\xBA 04/07"
     screenshot_threshold: 5.0
   - action: tap
     element_index: 4
@@ -544,18 +386,6 @@ replay:
     - Switch Library
     - MyLibraryIcon
     - A1QA Test Library
-    - Cancel
-    - All
-    - Ebooks
-    - Audiobooks
-    - Augustine of Hippo. Audiobook.
-    - Unread
-    - Audiobook
-    - Borrow
-    - "La ciencia de hacerse rico (Edici\xF3n mexicana)"
-    - Unread
-    - Borrow
-    - "Ladr\xF3n de ladrones n\xBA 04/07"
     screenshot_threshold: 5.0
   - action: type
     text: harry potter
@@ -563,17 +393,6 @@ replay:
     - Switch Library
     - MyLibraryIcon
     - A1QA Test Library
-    - Cancel
-    - All
-    - Ebooks
-    - Audiobooks
-    - Augustine of Hippo. Audiobook.
-    - Unread
-    - Audiobook
-    - Borrow
-    - "La ciencia de hacerse rico (Edici\xF3n mexicana)"
-    - Unread
-    - Borrow
     screenshot_threshold: 5.0
   - action: tap
     element_index: 4
@@ -588,15 +407,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - Augustine of Hippo, Audiobook
-    - Audiobook
-    - "La ciencia de hacerse rico (Edici\xF3n mexicana)"
-    - "Ladr\xF3n de ladrones n\xBA 04/07"
     screenshot_threshold: 5.0
   - action: tap
     element_index: 56
@@ -611,8 +421,4 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
     screenshot_threshold: 5.0

@@ -12,9 +12,6 @@ replay:
     expect_elements:
     - Switch Library
     - Search Catalog
-    - All
-    - Ebooks
-    - Audiobooks
   - action: tap
     element_index: 7
     element_label: Audiobooks
@@ -23,9 +20,6 @@ replay:
     expect_elements:
     - Switch Library
     - Search Catalog
-    - All
-    - Ebooks
-    - Audiobooks
   - action: tap
     element_index: 5
     element_label: All

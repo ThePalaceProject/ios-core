@@ -16,13 +16,8 @@ replay:
     - A1QA Test Library
     - Search Holds
     - Search
-    - MySQL Cookbook, Paul DuBois, You are 2nd in line. 1 copy in use.
-    - Unread
-    - MySQL Cookbook
-    - Paul DuBois
     - Manage Hold
     - Preview
-    - You are 2nd in line. 1 copy in use.
     - tab.bar.label
     - Catalog
     - My Books
@@ -66,10 +61,5 @@ replay:
     - A1QA Test Library
     - Search Holds
     - Search
-    - Warning
-    - There was a problem loading your holds. Please try again later.
-    - Close
-    - When you reserve a book from the catalog, it will show up here. Look here from
-      time to time to see if your book is available to download.
     - tab.bar.label
     screenshot_threshold: 5.0

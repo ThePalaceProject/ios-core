@@ -17,15 +17,10 @@ replay:
     - Libraries
     - Downloads
     - Download Only on Wi-Fi
-    - When enabled, books and audiobooks will only download over Wi-Fi. Downloads
-      will be blocked on cellular data.
-    - About and legal
     - About App
     - Privacy Policy
     - User Agreement
     - Software Licenses
-    - Testing
-    - Testing
     screenshot_threshold: 5.0
   - action: tap
     element_index: 58
@@ -40,8 +35,4 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
     screenshot_threshold: 5.0

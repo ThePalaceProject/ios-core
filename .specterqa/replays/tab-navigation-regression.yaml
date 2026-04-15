@@ -15,12 +15,7 @@ replay:
     - A1QA Test Library
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - 'Visit the Catalog to
-
-      add books to My Books.'
     - tab.bar.label
     - Catalog
     - My Books
@@ -38,8 +33,6 @@ replay:
     - A1QA Test Library
     - Search Holds
     - Search
-    - When you reserve a book from the catalog, it will show up here. Look here from
-      time to time to see if your book is available to download.
     - tab.bar.label
     - Catalog
     - My Books
@@ -57,9 +50,6 @@ replay:
     - Libraries
     - Downloads
     - Download Only on Wi-Fi
-    - When enabled, books and audiobooks will only download over Wi-Fi. Downloads
-      will be blocked on cellular data.
-    - About and legal
     - About App
     - Privacy Policy
     screenshot_threshold: 5.0

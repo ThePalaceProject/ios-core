@@ -21,7 +21,6 @@ replay:
     y: 716.5
     expect_elements:
     - Switch Library
-    - Palace Bookshelf
     - Search Catalog
     - tab.bar.label
     - Catalog

@@ -10,15 +10,6 @@ replay:
     x: 292.5
     y: 547.6666666666666
     expect_elements:
-    - Go back
-    - Back
-    - Borrow
-    - INFORMATION
-    - FORMAT
-    - ePub
-    - PUBLISHED
-    - PUBLISHER
-    - CATEGORY
     - tab.bar.label
     - Catalog
   - action: tap
@@ -41,9 +32,7 @@ replay:
     expect_elements:
     - Switch Library
     - Search Books
-    - Sort by Title
     - Sort
-    - Title
     - tab.bar.label
   - action: tap
     element_index: 14

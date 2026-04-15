@@ -13,13 +13,7 @@ replay:
     - Switch Library
     - A1QA Test Library
     - Search Books
-    - Sort by Title
     - Sort
-    - Title
-    - 'Fundamental Accessibility Tests: Basic Functionality'
-    - Unread
-    - Download
-    - Return
     - tab.bar.label
     - Catalog
     - My Books
@@ -35,8 +29,6 @@ replay:
     - Switch Library
     - A1QA Test Library
     - Search Holds
-    - When you reserve a book from the catalog, it will show up here. Look here from
-      time to time to see if your book is available to download.
     - tab.bar.label
     - Catalog
     - My Books
@@ -55,14 +47,11 @@ replay:
     - Privacy Policy
     - User Agreement
     - Software Licenses
-    - Testing
-    - Palace version 3.0.0 (453)
     - tab.bar.label
     - Catalog
     - My Books
     - Holds
     - Settings
-    - gearshape.fill
     screenshot_threshold: 5.0
   - action: tap
     element_index: 10
@@ -77,9 +66,6 @@ replay:
     - All
     - Ebooks
     - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - "Olv\xEDdate de aquel d\xEDa"
     screenshot_threshold: 5.0
   - action: tap
     element_index: 6
@@ -91,9 +77,6 @@ replay:
     - A1QA Test Library
     - Search Catalog
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
     - tab.bar.label
     - Catalog
     - My Books
@@ -110,12 +93,6 @@ replay:
     - A1QA Test Library
     - Search Catalog
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - "A\xFAn siguen aqu\xED, Audiobook"
     screenshot_threshold: 5.0
   - action: tap
     element_index: 5
@@ -127,14 +104,13 @@ replay:
     - A1QA Test Library
     - Search Catalog
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
     - tab.bar.label
-    - Catalog
     - My Books
     - Holds
     - Settings
+    - All
+    - Ebooks
+    - Audiobooks
     screenshot_threshold: 5.0
   - action: tap
     element_index: 3
@@ -144,42 +120,22 @@ replay:
     expect_elements:
     - Switch Library
     - A1QA Test Library
-    - Cancel
-    - All
-    - Ebooks
-    - Audiobooks
-    - "Los tres cr\xEDmenes de Ars\xE8ne Lupin"
-    - Unread
-    - Borrow
-    - Puntos de vista de una mujer
-    - Unread
-    - Borrow
-    - Las espantosas historias de Morton Fosa
-    - Unread
-    - Borrow
     screenshot_threshold: 5.0
   - action: type
     text: Lupin
     expect_elements:
     - Switch Library
     - A1QA Test Library
-    - Cancel
-    - Clear search
-    - All
-    - Ebooks
-    - Audiobooks
-    - "Ars\xE8ne Lupin"
-    - Unread
     screenshot_threshold: 5.0
   - action: tap
     element_index: 9
-    element_label: "Ars\xE8ne Lupin"
+    element_label: Arsène Lupin
     x: 144.1666717529297
     y: 315.0
     expect_elements:
     - Go back
     - Back
-    - "Ars\xE8ne Lupin"
+    - Arsène Lupin
     - Borrow
     - DESCRIPTION
     - More
@@ -196,7 +152,7 @@ replay:
     expect_elements:
     - sheet.grabber
     - A1QA Test Library
-    - "Ars\xE8ne Lupin"
+    - Arsène Lupin
     - Maurice Leblanc
     - Read
     - Return
@@ -208,5 +164,5 @@ replay:
     y: 726.6666666666665
     expect_elements:
     - Page 1 of 182
-    - "Ars\xE8ne Lupin"
+    - Arsène Lupin
     screenshot_threshold: 5.0

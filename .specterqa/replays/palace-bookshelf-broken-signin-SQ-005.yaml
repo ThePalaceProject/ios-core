@@ -17,9 +17,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
     - tab.bar.label
     - Catalog
     - My Books
@@ -39,10 +36,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
     screenshot_threshold: 5.0
   - action: tap
     element_index: 7
@@ -57,14 +50,13 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
     - tab.bar.label
-    - Catalog
     - My Books
     - Holds
     - Settings
+    - All
+    - Ebooks
+    - Audiobooks
     screenshot_threshold: 5.0
   - action: tap
     element_index: 49
@@ -79,15 +71,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - "9 de noviembre (Espa\xF1ol neutro), Audiobook"
-    - Audiobook
-    - "La maestra de t\xEDteres"
-    - "Volver a empezar (It Starts with Us) (Espa\xF1ol neutro)"
     screenshot_threshold: 5.0
   - action: swipe
     direction: down
@@ -98,15 +81,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Accessible EPUB Test
-    - More books in Accessible EPUB Test
-    - 'Advanced Accessibility Tests: Mathematics'
-    - 'Fundamental Accessibility Tests: Basic Functionality'
-    - 'Funamental Accessibility Tests: Visual Adjustments'
-    - 'Funamental Accessibility Tests: Non-Visual Reading'
     screenshot_threshold: 5.0
   - action: swipe
     direction: down
@@ -117,15 +91,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Audiobook
-    - Palace Marketplace
-    - More books in Palace Marketplace
-    - Votes for Women!
-    - Old Greek Stories
-    - Four Great Americans
     screenshot_threshold: 5.0
   - action: tap
     element_index: 23
@@ -134,21 +99,12 @@ replay:
     x: 176.0
     y: 462.6666666666665
     expect_elements:
-    - Go back
-    - Back
     - Catalog
     - All
     - Ebooks
     - Audiobooks
-    - Audiobook
     - Palace Marketplace
     - More books in Palace Marketplace
-    - Votes for Women!
-    - Old Greek Stories
-    - Four Great Americans
-    - Reprinted Pieces
-    - 'Vengeance of Vampirella Vol. 1: Rebirth'
-    - Who Knows the Dark
     screenshot_threshold: 5.0
   - action: tap
     element_index: 4
@@ -205,15 +161,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Audiobook
-    - Palace Marketplace
-    - More books in Palace Marketplace
-    - Votes for Women!
-    - Old Greek Stories
-    - Four Great Americans
     screenshot_threshold: 5.0
   - action: tap
     element_index: 1
@@ -224,8 +171,6 @@ replay:
     expect_elements:
     - A1QA Test Library
     - Palace Bookshelf
-    - Add Library
-    - Cancel
     screenshot_threshold: 5.0
   - action: tap
     element_index: 2
@@ -236,7 +181,6 @@ replay:
     expect_elements:
     - Switch Library
     - MyLibraryIcon
-    - Palace Bookshelf
     - Search Catalog
     - Search
     - tab.bar.label

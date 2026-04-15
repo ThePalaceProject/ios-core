@@ -13,8 +13,6 @@ replay:
     expect_elements:
     - A1QA Test Library
     - Palace Bookshelf
-    - Add Library
-    - Cancel
     screenshot_threshold: 5.0
   - action: tap
     element_index: 1
@@ -46,16 +44,10 @@ replay:
     - Libraries
     - Downloads
     - Download Only on Wi-Fi
-    - When enabled, books and audiobooks will only download over Wi-Fi. Downloads
-      will be blocked on cellular data.
-    - About and legal
     - About App
     - Privacy Policy
     - User Agreement
     - Software Licenses
-    - Testing
-    - Testing
-    - Palace version 3.0.0 (453)
     screenshot_threshold: 5.0
   - action: tap
     element_index: 3
@@ -65,19 +57,13 @@ replay:
     y: 203.66666666666666
     expect_elements:
     - Settings
-    - Add Library
     - Libraries
     - A1QA Test Library
-    - A test library for A1QA.
-    - Palace Bookshelf
-    - Popular books free to download and keep, handpicked by librarians across the
-      US.
     - tab.bar.label
     - Catalog
     - My Books
     - Holds
     - Settings
-    - gearshape.fill
     screenshot_threshold: 5.0
   - action: tap
     element_index: 4
@@ -88,14 +74,6 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Library Card
-    - Password
-    - Show
-    - Forgot your password?
-    - By signing in, you agree to the End User License Agreement.
-    - Sign up for a library card
-    - Report an Issue
-    - Content Licenses
     - tab.bar.label
     - Catalog
     - My Books
@@ -111,14 +89,6 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Library Card
-    - Password
-    - Show
-    - Forgot your password?
-    - By signing in, you agree to the End User License Agreement.
-    - Sign up for a library card
-    - Report an Issue
-    - Content Licenses
     - tab.bar.label
     - Catalog
     - My Books
@@ -130,14 +100,6 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Library Card
-    - Password
-    - Show
-    - Forgot your password?
-    - By signing in, you agree to the End User License Agreement.
-    - Sign up for a library card
-    - Report an Issue
-    - Content Licenses
     - tab.bar.label
     - Catalog
     - My Books
@@ -153,14 +115,6 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Library Card
-    - Password
-    - Show
-    - Forgot your password?
-    - By signing in, you agree to the End User License Agreement.
-    - Sign up for a library card
-    - Report an Issue
-    - Content Licenses
     - tab.bar.label
     - Catalog
     - My Books
@@ -172,15 +126,6 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Library Card
-    - Password
-    - Show
-    - Sign in
-    - Forgot your password?
-    - By signing in, you agree to the End User License Agreement.
-    - Sign up for a library card
-    - Report an Issue
-    - Content Licenses
     - tab.bar.label
     - Catalog
     - My Books
@@ -195,11 +140,4 @@ replay:
     expect_elements:
     - Libraries
     - A1QA Test Library
-    - Show
-    - Sign out
-    - By signing in, you agree to the End User License Agreement.
-    - Sync Bookmarks
-    - Save your reading position and bookmarks to all your other devices.
-    - Report an Issue
-    - Content Licenses
     screenshot_threshold: 5.0

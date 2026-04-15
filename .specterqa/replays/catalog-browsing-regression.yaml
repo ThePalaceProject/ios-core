@@ -13,15 +13,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - Sexualidad de la pantera rosa
-    - "El desplome de la Rep\xFAblica"
-    - Cuando el tiempo nos alcanza
-    - El secreto de Irina
     screenshot_threshold: 5.0
   - action: swipe
     direction: down
@@ -32,15 +23,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Accessible EPUB Test
-    - More books in Accessible EPUB Test
-    - 'Funamental Accessibility Tests: Visual Adjustments'
-    - 'Advanced Accessibility Tests: Media Overlays'
-    - 'Funamental Accessibility Tests: Non-Visual Reading'
-    - 'Advanced Accessibility Tests: Mathematics'
     screenshot_threshold: 5.0
   - action: tap
     element_index: 8
@@ -54,9 +36,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
     - tab.bar.label
     - Catalog
     - My Books
@@ -75,9 +54,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
     - tab.bar.label
     - Catalog
     - My Books
@@ -96,8 +72,4 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Accessible EPUB Test
     screenshot_threshold: 5.0

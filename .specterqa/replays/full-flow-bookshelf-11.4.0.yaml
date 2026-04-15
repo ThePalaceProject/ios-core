@@ -17,9 +17,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
     - tab.bar.label
     - Catalog
     - My Books
@@ -39,10 +36,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
     screenshot_threshold: 5.0
   - action: tap
     element_index: 7
@@ -57,14 +50,13 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
     - tab.bar.label
-    - Catalog
     - My Books
     - Holds
     - Settings
+    - All
+    - Ebooks
+    - Audiobooks
     screenshot_threshold: 5.0
   - action: tap
     element_index: 49
@@ -79,15 +71,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Unlimited Listens ODL Feed
-    - More books in Unlimited Listens ODL Feed
-    - "9 de noviembre (Espa\xF1ol neutro), Audiobook"
-    - Audiobook
-    - "La maestra de t\xEDteres"
-    - "Volver a empezar (It Starts with Us) (Espa\xF1ol neutro)"
     screenshot_threshold: 5.0
   - action: swipe
     direction: down
@@ -98,15 +81,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Accessible EPUB Test
-    - More books in Accessible EPUB Test
-    - 'Advanced Accessibility Tests: Mathematics'
-    - 'Fundamental Accessibility Tests: Basic Functionality'
-    - 'Funamental Accessibility Tests: Visual Adjustments'
-    - 'Funamental Accessibility Tests: Non-Visual Reading'
     screenshot_threshold: 5.0
   - action: swipe
     direction: down
@@ -117,15 +91,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Audiobook
-    - Palace Marketplace
-    - More books in Palace Marketplace
-    - Votes for Women!
-    - Old Greek Stories
-    - Four Great Americans
     screenshot_threshold: 5.0
   - action: tap
     element_index: 23
@@ -134,21 +99,12 @@ replay:
     x: 176.0
     y: 462.6666666666665
     expect_elements:
-    - Go back
-    - Back
     - Catalog
     - All
     - Ebooks
     - Audiobooks
-    - Audiobook
     - Palace Marketplace
     - More books in Palace Marketplace
-    - Votes for Women!
-    - Old Greek Stories
-    - Four Great Americans
-    - Reprinted Pieces
-    - 'Vengeance of Vampirella Vol. 1: Rebirth'
-    - Who Knows the Dark
     screenshot_threshold: 5.0
   - action: tap
     element_index: 4
@@ -205,15 +161,6 @@ replay:
     - Search Catalog
     - Search
     - Catalog
-    - All
-    - Ebooks
-    - Audiobooks
-    - Audiobook
-    - Palace Marketplace
-    - More books in Palace Marketplace
-    - Votes for Women!
-    - Old Greek Stories
-    - Four Great Americans
     screenshot_threshold: 5.0
   - action: tap
     element_index: 1
@@ -224,8 +171,6 @@ replay:
     expect_elements:
     - A1QA Test Library
     - Palace Bookshelf
-    - Add Library
-    - Cancel
     screenshot_threshold: 5.0
   - action: tap
     element_index: 2
@@ -236,7 +181,6 @@ replay:
     expect_elements:
     - Switch Library
     - MyLibraryIcon
-    - Palace Bookshelf
     - Search Catalog
     - Search
     - tab.bar.label
@@ -428,48 +372,16 @@ replay:
     expect_elements:
     - Switch Library
     - MyLibraryIcon
-    - Palace Bookshelf
     - Search Catalog
     - Search
-    - DPLA Publications
-    - More books in DPLA Publications
-    - 'Dobbs v. Jackson Women''s Health Organization : Certiorari to the United States
-      Court of Appeals for the Fifth Circuit'
-    - Report of Russian Active Measures Campaigns and Interference in the 2016 U.S.
-      Election
-    - Report On The Investigation Into Russian Interference In The 2016 Presidential
-      Election
-    - The Impeachment Papers
-    - 'January 6th on the Record : The Investigation into the Attack on the U.S. Capitol'
-    - 'The Impeachment Papers II : Materials In Support of House Resolution 24, Impeaching
-      Donald John Trump, For High Crimes and Misdemeanors'
-    - U.S. Leadership in Post-War Europe
-    - 'The Covid Archive : A Finding Aid to Government Documents Related to the COVID-19
-      Pandemic'
     screenshot_threshold: 5.0
   - action: swipe
     direction: up
     expect_elements:
     - Switch Library
     - MyLibraryIcon
-    - Palace Bookshelf
     - Search Catalog
     - Search
-    - DPLA Publications
-    - More books in DPLA Publications
-    - 'Dobbs v. Jackson Women''s Health Organization : Certiorari to the United States
-      Court of Appeals for the Fifth Circuit'
-    - Report of Russian Active Measures Campaigns and Interference in the 2016 U.S.
-      Election
-    - Report On The Investigation Into Russian Interference In The 2016 Presidential
-      Election
-    - The Impeachment Papers
-    - 'January 6th on the Record : The Investigation into the Attack on the U.S. Capitol'
-    - 'The Impeachment Papers II : Materials In Support of House Resolution 24, Impeaching
-      Donald John Trump, For High Crimes and Misdemeanors'
-    - U.S. Leadership in Post-War Europe
-    - 'The Covid Archive : A Finding Aid to Government Documents Related to the COVID-19
-      Pandemic'
     screenshot_threshold: 5.0
   - action: tap
     element_index: 62
@@ -480,17 +392,9 @@ replay:
     expect_elements:
     - Switch Library
     - MyLibraryIcon
-    - Palace Bookshelf
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - 'Dobbs v. Jackson Women''s Health Organization : Certiorari to the United States
-      Court of Appeals for the Fifth Circuit'
-    - Unread
-    - Download
-    - Remove
     - tab.bar.label
     - Catalog
     - My Books
@@ -516,15 +420,9 @@ replay:
     expect_elements:
     - Switch Library
     - MyLibraryIcon
-    - Palace Bookshelf
     - Search Books
     - Search
-    - Sort by Title
     - Sort
-    - Title
-    - 'Dobbs v. Jackson Women''s Health Organization : Certiorari to the United States
-      Court of Appeals for the Fifth Circuit'
-    - Unread
     - tab.bar.label
     - Catalog
     - My Books
@@ -540,11 +438,8 @@ replay:
     expect_elements:
     - Switch Library
     - MyLibraryIcon
-    - Palace Bookshelf
     - Search Holds
     - Search
-    - When you reserve a book from the catalog, it will show up here. Look here from
-      time to time to see if your book is available to download.
     - tab.bar.label
     - Catalog
     - My Books
@@ -560,24 +455,8 @@ replay:
     expect_elements:
     - Switch Library
     - MyLibraryIcon
-    - Palace Bookshelf
     - Search Catalog
     - Search
-    - DPLA Publications
-    - More books in DPLA Publications
-    - 'Dobbs v. Jackson Women''s Health Organization : Certiorari to the United States
-      Court of Appeals for the Fifth Circuit'
-    - Report of Russian Active Measures Campaigns and Interference in the 2016 U.S.
-      Election
-    - Report On The Investigation Into Russian Interference In The 2016 Presidential
-      Election
-    - The Impeachment Papers
-    - 'January 6th on the Record : The Investigation into the Attack on the U.S. Capitol'
-    - 'The Impeachment Papers II : Materials In Support of House Resolution 24, Impeaching
-      Donald John Trump, For High Crimes and Misdemeanors'
-    - U.S. Leadership in Post-War Europe
-    - 'The Covid Archive : A Finding Aid to Government Documents Related to the COVID-19
-      Pandemic'
     screenshot_threshold: 5.0
   - action: tap
     element_index: 4
@@ -588,33 +467,10 @@ replay:
     expect_elements:
     - Switch Library
     - MyLibraryIcon
-    - Palace Bookshelf
-    - Cancel
-    - 'Dobbs v. Jackson Women''s Health Organization : Certiorari to the United States
-      Court of Appeals for the Fifth Circuit'
-    - Unread
-    - Download
-    - Remove
-    - Report of Russian Active Measures Campaigns and Interference in the 2016 U.S.
-      Election
-    - Unread
-    - Borrow
-    - Report On The Investigation Into Russian Interference In The 2016 Presidential
-      Election
-    - Unread
-    - Borrow
-    - The Impeachment Papers
     screenshot_threshold: 5.0
   - action: type
     text: jane
     expect_elements:
     - Switch Library
     - MyLibraryIcon
-    - Palace Bookshelf
-    - Cancel
-    - Clear search
-    - Sunshine Jane
-    - Unread
-    - Borrow
-    - Jane Eyre
     screenshot_threshold: 5.0

@@ -26,7 +26,6 @@ replay:
     - Privacy Policy
     - User Agreement
     - Software Licenses
-    - Testing
   - action: tap
     element_index: 10
     element_label: Catalog

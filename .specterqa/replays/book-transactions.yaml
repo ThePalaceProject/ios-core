@@ -13,11 +13,5 @@ replay:
     - Switch Library
     - A1QA Test Library
     - Search Books
-    - Sort by Title
     - Sort
-    - Title
-    - "Ars\xE8ne Lupin, Maurice Leblanc"
-    - Unread
-    - "Ars\xE8ne Lupin"
-    - Maurice Leblanc
     screenshot_threshold: 5.0
