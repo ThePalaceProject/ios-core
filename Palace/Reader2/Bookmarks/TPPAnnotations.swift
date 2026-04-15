@@ -6,6 +6,25 @@ public struct AnnotationResponse {
     var timeStamp: String?
 }
 
+/// Provides a stable device identifier for annotation sync.
+///
+/// Prefers the Adobe DRM device ID (set during device activation) for
+/// backwards compatibility with existing annotations. Falls back to the
+/// Firebase-managed device ID (persisted in UserDefaults) so that
+/// non-DRM users still get working cross-device sync detection.
+///
+/// - Important: Prior to this fix, non-Adobe-DRM users sent an empty
+///   string, which made cross-device sync prompts impossible because
+///   both devices appeared to be the same device.
+enum AnnotationDevice {
+    static func currentID() -> String {
+        if let adobeID = TPPUserAccount.sharedAccount().deviceID, !adobeID.isEmpty {
+            return adobeID
+        }
+        return "urn:uuid:\(FirebaseManager.shared.deviceID)"
+    }
+}
+
 protocol AnnotationsManager {
     var syncIsPossibleAndPermitted: Bool { get }
     func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ response: AnnotationResponse?) -> Void)?)
@@ -131,7 +150,7 @@ protocol AnnotationsManager {
 
         // Format bookmark for submission to server according to spec
         let bookmark = TPPBookmarkSpec(time: NSDate(),
-                                       device: TPPUserAccount.sharedAccount().deviceID ?? "",
+                                       device: AnnotationDevice.currentID(),
                                        motivation: motivation,
                                        bookID: bookID,
                                        selectorValue: selectorValue)
@@ -175,7 +194,7 @@ protocol AnnotationsManager {
 
         let spec = TPPBookmarkSpec(
             time: NSDate(),
-            device: TPPUserAccount.sharedAccount().deviceID ?? "",
+            device: AnnotationDevice.currentID(),
             motivation: .bookmark,
             bookID: bookID,
             selectorValue: selectorValue
