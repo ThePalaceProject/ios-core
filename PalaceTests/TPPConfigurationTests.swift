@@ -115,14 +115,6 @@ final class TPPConfigurationTests: XCTestCase {
     XCTAssertEqual(height, 100, "Expected default bookmark row height of 100")
   }
 
-  // MARK: - URL Methods
-
-  func test_minimumVersionURL_returnsValidURL() {
-    let url = TPPConfiguration.minimumVersionURL()
-    XCTAssertNotNil(url, "minimumVersionURL should return a non-nil URL")
-    XCTAssertTrue(url?.absoluteString.contains("minimum-version") == true)
-  }
-
   // MARK: - Navigation Bar Appearance
 
   func test_defaultAppearance_returnsConfiguredAppearance() {

@@ -9,10 +9,6 @@ import UIKit
     return TPPSettings.shared.accountMainFeedURL
   }
 
-  @objc static func minimumVersionURL() -> URL? {
-    return URL(string: "http://www.librarysimplified.org/simplye-client/minimum-version")
-  }
-
   @objc static func accentColor() -> UIColor {
     return UIColor(red: 0.0/255.0, green: 144.0/255.0, blue: 196.0/255.0, alpha: 1.0)
   }

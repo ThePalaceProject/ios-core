@@ -117,3 +117,4 @@ scripts/sim-test/
 # Backup pbxproj variants
 *.pbxproj.swift-only
 *.pbxproj.bak
+ios-core-cm-monitor

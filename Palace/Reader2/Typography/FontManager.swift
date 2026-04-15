@@ -109,8 +109,6 @@ final class FontManager {
     // MARK: - Logging
 
     private func logFontWarning(_ message: String) {
-        #if DEBUG
-        print("[FontManager] \(message)")
-        #endif
+        Log.debug(#file, "[FontManager] \(message)")
     }
 }
