@@ -34,7 +34,7 @@ extension TPPBook {
         // the generic keys risks returning a small thumbnail that was cached from a list/lane
         // view, which would appear pixelated at larger display sizes.
         let sizeKey: String? = displayHeight.map { "\(identifier)_\(Int($0))pt" }
-        let lookupKeys: [String] = sizeKey != nil ? [sizeKey!] : [simpleKey, coverKey]
+        let lookupKeys: [String] = if let sizeKey { [sizeKey, simpleKey] } else { [simpleKey] }
 
         if let img = lookupKeys.lazy.compactMap({ [weak self] in
           self?.imageCache.get(for: $0) }).first {
@@ -57,8 +57,10 @@ extension TPPBook {
                 await MainActor.run {
                     self.coverImage = final
                     if let img = final {
-                        self.imageCache.set(img, for: self.identifier)
-                        self.imageCache.set(img, for: sizeKey ?? coverKey)
+                        // Cache under the most specific key only — avoids storing the
+                        // same decoded image 2-3 times and bloating CG raster data.
+                        let cacheKey = sizeKey ?? self.identifier
+                        self.imageCache.set(img, for: cacheKey)
                         self.updateDominantColor(using: img)
                     }
                     self.isCoverLoading = false
@@ -75,8 +77,8 @@ extension TPPBook {
                     DispatchQueue.main.async {
                         self.coverImage = final
                         if let img = final {
+                            // Single cache key — no duplicate storage
                             self.imageCache.set(img, for: self.identifier)
-                            self.imageCache.set(img, for: coverKey)
                             self.updateDominantColor(using: img)
                         }
                         self.isCoverLoading = false

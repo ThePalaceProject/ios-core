@@ -34,20 +34,24 @@ public final class ImageCache: ImageCacheType {
         let cacheMemoryMB: Int
         let maxConcurrentProcessing: Int
 
+        // PP-4020: Reduced cache limits to prevent 800MB+ CG raster data accumulation.
+        // Cover art doesn't need 1024px — 512px is sharp enough for any phone display.
+        // Count limits reduced from 100/150/200 to 50/75/100 since each decoded image
+        // at 512px RGBA is ~1MB, keeping total decoded pixels under 100MB.
         if deviceMemoryMB < 2048 {
-            cacheMemoryMB = 25
-            memoryImages.countLimit = 100
-            maxDimension = 512
+            cacheMemoryMB = 20
+            memoryImages.countLimit = 50
+            maxDimension = 384
             maxConcurrentProcessing = 2
         } else if deviceMemoryMB < 4096 {
-            cacheMemoryMB = 40
-            memoryImages.countLimit = 150
-            maxDimension = 768
+            cacheMemoryMB = 30
+            memoryImages.countLimit = 75
+            maxDimension = 512
             maxConcurrentProcessing = 3
         } else {
-            cacheMemoryMB = 60
-            memoryImages.countLimit = 200
-            maxDimension = 1024
+            cacheMemoryMB = 50
+            memoryImages.countLimit = 100
+            maxDimension = 512
             maxConcurrentProcessing = 4
         }
 
