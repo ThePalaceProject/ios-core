@@ -70,8 +70,8 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
         let itemCountLimit: Int
 
         // PP-4020: Reduced limits — GeneralCache backs ImageCache's compressed JPEG
-        // store. The old limits (50-150 MB, 200-600 items) allowed too much data
-        // to accumulate when combined with the decoded UIImage NSCache layer.
+        // store. Combined with the decoded UIImage NSCache layer, old limits allowed
+        // too much data to accumulate (50 MB ImageIO in footprint).
         if deviceMemoryMB < 2048 {
             cacheMemoryMB = 20
             itemCountLimit = 100
