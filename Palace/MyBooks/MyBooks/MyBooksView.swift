@@ -59,11 +59,15 @@ struct MyBooksView: View {
             }
         }
         .onAppear {
+            model.isVisible = true
             model.showSearchSheet = false
             let account = accountsManager.currentAccount
             account?.logoDelegate = logoObserver
             account?.loadLogo()
             currentAccountUUID = account?.uuid ?? ""
+        }
+        .onDisappear {
+            model.isVisible = false
         }
         .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
             let account = accountsManager.currentAccount
