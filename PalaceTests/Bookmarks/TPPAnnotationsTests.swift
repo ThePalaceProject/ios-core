@@ -1397,3 +1397,48 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         XCTAssertEqual(url.lastPathComponent, "annotations")
     }
 }
+
+// MARK: - AnnotationDevice.currentID() Tests
+
+/// Tests for F-079 fix: annotation device ID must never be empty.
+/// Prior to this fix, non-Adobe-DRM users sent device="" which broke
+/// cross-device sync detection (the "sync to furthest position?" prompt).
+///
+/// Discovery: PP-4020 regression sprint — API-level sync test revealed
+/// 23 annotations on the server with empty device IDs, all from non-DRM
+/// devices. Cross-referenced TPPAnnotations.swift and found the fallback
+/// to TPPUserAccount.deviceID (Adobe-only) with ?? "" default.
+class AnnotationDeviceIDTests: XCTestCase {
+
+    func testAnnotationDeviceID_WhenNoAdobeDRM_ReturnsFirebaseDeviceID() {
+        // Non-Adobe-DRM users have nil deviceID on TPPUserAccount.
+        // The function must still return a non-empty urn:uuid: identifier
+        // from FirebaseManager so cross-device sync detection works.
+        let deviceID = AnnotationDevice.currentID()
+
+        XCTAssertFalse(deviceID.isEmpty,
+                       "Device ID must never be empty — empty strings break cross-device sync detection")
+        XCTAssertTrue(deviceID.hasPrefix("urn:uuid:"),
+                      "Device ID must use urn:uuid: format to match W3C Annotation convention. Got: \(deviceID)")
+    }
+
+    func testAnnotationDeviceID_IsStableAcrossCalls() {
+        // The device ID must be the same value every time — if it changed
+        // between calls, the sync comparison would never match "same device"
+        let first = AnnotationDevice.currentID()
+        let second = AnnotationDevice.currentID()
+
+        XCTAssertEqual(first, second,
+                       "Device ID must be stable across calls — unstable IDs break same-device detection")
+    }
+
+    func testAnnotationDeviceID_MatchesFirebaseManagerFormat() {
+        // Verify the returned ID contains the FirebaseManager UUID
+        // (since we're in a test environment without Adobe DRM)
+        let deviceID = AnnotationDevice.currentID()
+        let firebaseID = FirebaseManager.shared.deviceID
+
+        XCTAssertTrue(deviceID.contains(firebaseID),
+                      "Without Adobe DRM, annotation device ID should contain the Firebase device UUID")
+    }
+}
