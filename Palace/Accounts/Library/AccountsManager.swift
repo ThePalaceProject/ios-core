@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
@@ -84,7 +85,13 @@ struct CatalogCacheMetadata: Codable {
 
     /// True during an account switch — suppresses sign-in modal presentation
     /// to prevent the intermittent login prompt (F-032).
-    private(set) var isAccountSwitching = false
+    /// Atomic via OSAllocatedUnfairLock to prevent read/write races between
+    /// the main thread (account switch) and background threads (401 handlers).
+    private let _isAccountSwitching = OSAllocatedUnfairLock(initialState: false)
+    var isAccountSwitching: Bool {
+        get { _isAccountSwitching.withLock { $0 } }
+        set { _isAccountSwitching.withLock { $0 = newValue } }
+    }
 
     let ageCheck: TPPAgeCheckVerifying
     private let settings: TPPSettings
