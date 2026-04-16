@@ -123,22 +123,19 @@ print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))
 
 cmd_evidence() {
   local cs_id="$1"
+  local base_branch
+  base_branch=$(detect_base_branch)
 
-  # Run tests and capture output
+  # --- 1. Unit Tests ---
   echo "Running tests..."
   local test_output
   test_output=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
     -destination 'id=DF4A2A27-9888-429D-A749-2E157A049A37' \
     test 2>&1 || true)
 
-  # Parse test results
-  # Sum all "Executed N tests" lines to get the total across all test bundles
-  # (PalaceTests.xctest + TenPrintCoverTests.xctest, etc.)
-  # Using the top-level "All tests" summary which includes the grand total.
   local pass_count fail_count
   pass_count=$(echo "$test_output" | grep 'Executed [0-9]* test' | grep 'All tests' | head -1 | grep -o 'Executed [0-9]*' | grep -o '[0-9]*' || echo "0")
   fail_count=$(echo "$test_output" | grep 'with [0-9]* failure' | grep 'All tests' | head -1 | grep -o '[0-9]* failure' | grep -o '[0-9]*' || echo "0")
-  # Fallback: if "All tests" line not found, sum across all bundles
   if [ "$pass_count" = "0" ]; then
     pass_count=$(echo "$test_output" | grep -o 'Executed [0-9]* test' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
     fail_count=$(echo "$test_output" | grep -o 'with [0-9]* failure' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
@@ -146,12 +143,10 @@ cmd_evidence() {
   local build_ok="false"
   echo "$test_output" | grep -q "BUILD SUCCEEDED\|TEST.*SUCCEEDED" && build_ok="true"
 
-  # Get error/warning counts from build
   local errors warnings
   errors=$(echo "$test_output" | grep -c "error:" || echo "0")
   warnings=$(echo "$test_output" | grep -c "warning:" || echo "0")
 
-  # Submit unit_test evidence
   echo "Submitting unit_test evidence (pass: $pass_count, fail: $fail_count)..."
   api POST "/api/projects/${PROJECT_ID}/changesets/${cs_id}/evidence" "{
     \"type\": \"unit_test\",
@@ -161,17 +156,105 @@ cmd_evidence() {
     \"framework\": \"XCTest\"
   }" > /dev/null
 
-  # Submit lint evidence
-  echo "Submitting lint evidence (errors: $errors, warnings: $warnings)..."
+  # --- 2. Lint (build + test quality) ---
+  local lint_violations=0
+  if [ -f scripts/lint-test-quality.py ]; then
+    lint_violations=$(python3 scripts/lint-test-quality.py 2>&1 | grep -o 'Total: [0-9]*' | grep -o '[0-9]*' || echo "0")
+  fi
+  echo "Submitting lint evidence (errors: $errors, warnings: $warnings, test-quality: $lint_violations violations)..."
   api POST "/api/projects/${PROJECT_ID}/changesets/${cs_id}/evidence" "{
     \"type\": \"lint\",
-    \"summary\": \"Build ${build_ok}. ${errors} errors, ${warnings} warnings.\",
+    \"summary\": \"Build ${build_ok}. ${errors} errors, ${warnings} warnings. Test quality: ${lint_violations} violations.\",
     \"warning_count\": ${warnings},
     \"error_count\": ${errors},
-    \"tool\": \"xcodebuild\"
+    \"tool\": \"xcodebuild + lint-test-quality.py\"
   }" > /dev/null
 
-  echo "Evidence submitted."
+  # --- 3. Coverage ---
+  local coverage_pct="unknown"
+  local xcresult
+  xcresult=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -newer /tmp/.forgeos-evidence-start 2>/dev/null | head -1)
+  if [ -n "$xcresult" ] && [ -f scripts/coverage-report.py ]; then
+    coverage_pct=$(python3 scripts/coverage-report.py "$xcresult" 2>/dev/null | grep -o '"coverage": [0-9.]*' | grep -o '[0-9.]*' || echo "unknown")
+  fi
+  echo "Submitting coverage evidence (${coverage_pct}%)..."
+  api POST "/api/projects/${PROJECT_ID}/changesets/${cs_id}/evidence" "{
+    \"type\": \"coverage\",
+    \"summary\": \"Line coverage: ${coverage_pct}%. Floor: 46%. Enforced per-module via coverage-floors.json.\"
+  }" > /dev/null
+
+  # --- 4. Mutation testing (changed production files only) ---
+  local changed_swift
+  changed_swift=$(git diff --name-only "$base_branch"...HEAD -- '*.swift' 2>/dev/null | grep -v 'Tests/' | grep -v 'Mocks/' || true)
+  local total_killed=0 total_mutations=0
+  if [ -f scripts/palace_mutate.py ] && [ -n "$changed_swift" ]; then
+    echo "Running mutation testing on changed files..."
+    while IFS= read -r swift_file; do
+      [ -z "$swift_file" ] && continue
+      [ ! -f "$swift_file" ] && continue
+      local module
+      module=$(echo "$swift_file" | sed 's|Palace/||' | cut -d/ -f1)
+      local test_dir="PalaceTests/$module"
+      [ ! -d "$test_dir" ] && test_dir="PalaceTests/"
+
+      local mut_output
+      mut_output=$(python3 scripts/palace_mutate.py \
+        --file "$swift_file" --tests "$test_dir" \
+        --max-mutations 10 2>&1 || true)
+
+      local killed total
+      killed=$(echo "$mut_output" | grep -o 'killed: [0-9]*' | grep -o '[0-9]*' || echo "0")
+      total=$(echo "$mut_output" | grep -o 'total: [0-9]*' | grep -o '[0-9]*' || echo "0")
+      total_killed=$((total_killed + killed))
+      total_mutations=$((total_mutations + total))
+    done <<< "$changed_swift"
+
+    local kill_rate=0
+    if [ "$total_mutations" -gt 0 ]; then
+      kill_rate=$((total_killed * 100 / total_mutations))
+    fi
+    echo "Submitting mutation evidence ($total_killed/$total_mutations killed, ${kill_rate}%)..."
+    api POST "/api/projects/${PROJECT_ID}/changesets/${cs_id}/evidence" "{
+      \"type\": \"benchmark\",
+      \"summary\": \"Mutation testing: ${total_killed}/${total_mutations} killed (${kill_rate}%). Threshold: 50%.\"
+    }" > /dev/null
+  else
+    echo "Skipping mutation testing (no changed production Swift files)."
+  fi
+
+  # --- 5. Accessibility check (if UI files changed) ---
+  local changed_ui
+  changed_ui=$(echo "$changed_swift" | grep -E 'UI/|View|Cell|Controller' || true)
+  if [ -n "$changed_ui" ]; then
+    local a11y_issues=0
+    while IFS= read -r ui_file; do
+      [ -z "$ui_file" ] && continue
+      [ ! -f "$ui_file" ] && continue
+      local has_button has_a11y
+      has_button=$(grep -c 'UIButton\|Button(' "$ui_file" 2>/dev/null || echo "0")
+      has_a11y=$(grep -c 'accessibilityIdentifier\|accessibilityLabel\|isAccessibilityElement' "$ui_file" 2>/dev/null || echo "0")
+      if [ "$has_button" -gt 0 ] && [ "$has_a11y" -eq 0 ]; then
+        a11y_issues=$((a11y_issues + 1))
+      fi
+    done <<< "$changed_ui"
+    echo "Submitting a11y evidence ($a11y_issues issues)..."
+    api POST "/api/projects/${PROJECT_ID}/changesets/${cs_id}/evidence" "{
+      \"type\": \"a11y_audit\",
+      \"summary\": \"Accessibility: ${a11y_issues} UI files missing a11y annotations. Changed UI files: $(echo "$changed_ui" | wc -l | tr -d ' ').\"
+    }" > /dev/null
+  fi
+
+  echo ""
+  echo "Evidence collection complete:"
+  echo "  unit_test:  $pass_count pass / $fail_count fail"
+  echo "  lint:       $errors errors, $warnings warnings, $lint_violations test-quality violations"
+  echo "  coverage:   ${coverage_pct}%"
+  if [ "$total_mutations" -gt 0 ]; then
+    echo "  mutation:   $total_killed/$total_mutations killed (${kill_rate}%)"
+  fi
+  if [ -n "$changed_ui" ]; then
+    echo "  a11y:       $a11y_issues issues in $(echo "$changed_ui" | wc -l | tr -d ' ') UI files"
+  fi
 }
 
 cmd_promote() {
