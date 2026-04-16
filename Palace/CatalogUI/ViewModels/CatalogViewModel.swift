@@ -110,6 +110,16 @@ final class CatalogViewModel: ObservableObject {
         let booksCount = mapped.lanes.reduce(0) { $0 + $1.books.count }
         Log.info(#file, "[PERF] Catalog load: fetch=\(Int((t1-t0)*1000))ms, map=\(Int((t2-t1)*1000))ms, render=\(Int((t3-t2)*1000))ms, total=\(Int((t3-t0)*1000))ms (\(lanesCount) lanes, \(booksCount) books)")
 
+        // Seed the entry point cache so switching back to "All" is instant.
+        // The initial load URL often differs from the "All" entry point href
+        // (e.g., /groups vs /groups?entrypoint=All), so cache under both.
+        await MainActor.run {
+          self.entryPointCache[url] = mapped
+          if let activeEP = mapped.entryPoints.first(where: { $0.active }), let epHref = activeEP.href {
+            self.entryPointCache[epHref] = mapped
+          }
+        }
+
         guard !Task.isCancelled else { return }
 
         // Warm the memory cache from disk AFTER the UI is already showing.
@@ -229,16 +239,22 @@ final class CatalogViewModel: ObservableObject {
   func applyEntryPoint(_ facet: CatalogFilter) async {
     guard let href = facet.href else { return }
 
-    // Cache the current entry point results before switching away
+    // Cache the current entry point results before switching away.
+    // Store under both lastLoadedURL and the active entry point's href,
+    // since the initial "All" load URL differs from the entry point href.
+    let currentState = MappedCatalog(
+      title: title,
+      entries: entries,
+      lanes: lanes,
+      ungroupedBooks: ungroupedBooks,
+      facetGroups: facetGroups,
+      entryPoints: entryPoints
+    )
     if let currentURL = lastLoadedURL ?? topLevelURLProvider() {
-      entryPointCache[currentURL] = MappedCatalog(
-        title: title,
-        entries: entries,
-        lanes: lanes,
-        ungroupedBooks: ungroupedBooks,
-        facetGroups: facetGroups,
-        entryPoints: entryPoints
-      )
+      entryPointCache[currentURL] = currentState
+    }
+    if let activeEP = entryPoints.first(where: { $0.active }), let epHref = activeEP.href {
+      entryPointCache[epHref] = currentState
     }
 
     storePreviousState()
@@ -270,12 +286,7 @@ final class CatalogViewModel: ObservableObject {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
         let mapped = Self.mapFeed(feed)
 
-        // Warm memory cache before UI update (same as applyFacet)
-        let keys = mapped.lanes.prefix(3).flatMap { $0.books }.prefix(30).map(\.identifier)
-        if !keys.isEmpty {
-          await ImageCache.shared.warmMemoryCache(for: Array(keys))
-        }
-
+        // Update UI immediately, warm cache in background
         self.lanes = mapped.lanes
         self.ungroupedBooks = mapped.ungroupedBooks
         self.facetGroups = mapped.facetGroups
@@ -284,6 +295,12 @@ final class CatalogViewModel: ObservableObject {
 
         // Cache this result
         entryPointCache[href] = mapped
+
+        // Warm image cache after UI update (non-blocking)
+        let keys = mapped.lanes.prefix(3).flatMap { $0.books }.prefix(30).map(\.identifier)
+        if !keys.isEmpty {
+          Task { await ImageCache.shared.warmMemoryCache(for: Array(keys)) }
+        }
       }
       isOptimisticLoading = false
 
