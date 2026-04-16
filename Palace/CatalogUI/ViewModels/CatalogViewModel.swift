@@ -66,11 +66,13 @@ final class CatalogViewModel: ObservableObject {
     
     currentLoadTask = Task { [weak self] in
       guard let self, !Task.isCancelled else { return }
-      
+
       do {
+        let t0 = CFAbsoluteTimeGetCurrent()
+
         guard let feed = try await self.repository.loadTopLevelCatalog(at: url) else {
           guard !Task.isCancelled else { return }
-          await MainActor.run { 
+          await MainActor.run {
             if !Task.isCancelled {
               self.errorMessage = "Failed to load catalog"
               self.isLoading = false
@@ -79,12 +81,14 @@ final class CatalogViewModel: ObservableObject {
           return
         }
 
+        let t1 = CFAbsoluteTimeGetCurrent()
         guard !Task.isCancelled else { return }
-        
+
         let mapped = await Task.detached(priority: .userInitiated) { () -> MappedCatalog in
           return await Self.mapFeed(feed)
         }.value
 
+        let t2 = CFAbsoluteTimeGetCurrent()
         guard !Task.isCancelled else { return }
 
         // Show content immediately — don't block on image cache warming.
@@ -101,6 +105,11 @@ final class CatalogViewModel: ObservableObject {
           self.isLoading = false
         }
 
+        let t3 = CFAbsoluteTimeGetCurrent()
+        let lanesCount = mapped.lanes.count
+        let booksCount = mapped.lanes.reduce(0) { $0 + $1.books.count }
+        Log.info(#file, "[PERF] Catalog load: fetch=\(Int((t1-t0)*1000))ms, map=\(Int((t2-t1)*1000))ms, render=\(Int((t3-t2)*1000))ms, total=\(Int((t3-t0)*1000))ms (\(lanesCount) lanes, \(booksCount) books)")
+
         guard !Task.isCancelled else { return }
 
         // Warm the memory cache from disk AFTER the UI is already showing.
@@ -110,6 +119,8 @@ final class CatalogViewModel: ObservableObject {
         let visibleKeys = mapped.lanes.prefix(3).flatMap { $0.books }.prefix(30).map(\.identifier)
         if !visibleKeys.isEmpty {
           await ImageCache.shared.warmMemoryCache(for: Array(visibleKeys))
+          let t4 = CFAbsoluteTimeGetCurrent()
+          Log.info(#file, "[PERF] Image cache warm=\(Int((t4-t3)*1000))ms (post-render, non-blocking)")
         }
 
         // Prefetch thumbnails for visible lanes (network fetch for uncached)
