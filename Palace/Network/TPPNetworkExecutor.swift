@@ -303,6 +303,12 @@ extension TPPNetworkExecutor {
     func request(for url: URL, useTokenIfAvailable: Bool = true, accountId: String?) -> URLRequest {
         var urlRequest = URLRequest(url: url,
                                     cachePolicy: urlSession.configuration.requestCachePolicy)
+        // Don't optimistically try HTTP/3 (QUIC) on first contact with each host.
+        // Some library servers advertise h3 but have broken QUIC — iOS retries
+        // twice (~260ms wasted) before falling back to h2. With this flag off,
+        // first requests use h2; the session upgrades to h3 automatically on
+        // subsequent requests if the server confirms working QUIC via Alt-Svc.
+        urlRequest.assumesHTTP3Capable = false
         urlRequest.applyCustomUserAgent()
         // Use per-account instance to prevent TOCTOU races during account switches.
         // Without this, another thread could change libraryUUID between
@@ -502,9 +508,9 @@ extension TPPNetworkExecutor {
             // to Account A's token endpoint.
             let snapshot = AccountsManager.shared.userAccount(for: capturedAccountId ?? AccountsManager.shared.currentAccountId ?? "").credentialSnapshot()
             guard let username = snapshot.barcode, !username.isEmpty,
-                  let password = snapshot.pin, !password.isEmpty,
+                  let password = snapshot.pin,
                   let tokenURL = snapshot.authDefinition?.tokenURL else {
-                Log.error(#file, "Cannot refresh token: missing or empty credentials or tokenURL for account \(capturedAccountId ?? "nil")")
+                Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
                 await self.tokenCoordinator.setRefreshing(false)
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"])
                 completion?(NYPLResult.failure(error, nil))
@@ -583,10 +589,12 @@ extension TPPNetworkExecutor {
     }
 
     func executeTokenRefresh(username: String, password: String, tokenURL: URL, accountId: String? = nil, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
-        guard !username.isEmpty, !password.isEmpty else {
-            Log.error(#file, "Cannot request token with empty credentials")
+        guard !username.isEmpty else {
+            // Note: empty password is valid for pinless libraries (PP-4045).
+            // Only guard against empty username.
+            Log.error(#file, "Cannot request token with empty username")
             let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue,
-                                userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"])
+                                userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty username"])
             completion(.failure(error))
             return
         }

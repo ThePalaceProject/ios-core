@@ -66,6 +66,16 @@ extension URLRequest {
 }
 
 extension URLRequest {
+    /// Creates a request with HTTP/3 optimistic attempts disabled.
+    /// Prevents ~260ms wasted on broken-QUIC servers per request.
+    /// The session still upgrades to h3 automatically via Alt-Svc
+    /// after the first successful h2 response from a capable host.
+    static func withoutHTTP3Assumption(url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.assumesHTTP3Capable = false
+        return request
+    }
+
     @discardableResult mutating func applyCustomUserAgent() -> URLRequest {
         let customUserAgent = cachedUserAgent()
         if let existing = value(forHTTPHeaderField: "User-Agent") {
