@@ -81,6 +81,8 @@ struct CatalogLaneRowView: View {
                     onMoreTapped(title, more)
                 }
                 .font(.footnote)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
                 .accessibilityLabel(String(format: Strings.Generic.moreBooksInLane, title))
             }
         }

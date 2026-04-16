@@ -56,6 +56,8 @@ private extension CatalogView {
         ToolbarItem(placement: .navigationBarLeading) {
             Button(action: { showAccountDialog = true }, label: {
                 ImageProviders.MyBooksView.myLibraryIcon
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             })
             .accessibilityIdentifier(AccessibilityID.Catalog.accountButton)
             .accessibilityLabel(Strings.Generic.switchLibrary)
@@ -66,11 +68,14 @@ private extension CatalogView {
             if showSearch {
                 Button(action: { dismissSearch() }, label: {
                     Text(Strings.Generic.cancel)
+                        .frame(minHeight: 44)
                 })
                 .accessibilityIdentifier(AccessibilityID.Search.cancelButton)
             } else {
                 Button(action: { presentSearch() }, label: {
                     ImageProviders.MyBooksView.search
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 })
                 .accessibilityIdentifier(AccessibilityID.Catalog.searchButton)
                 .accessibilityLabel(Strings.Generic.searchCatalog)

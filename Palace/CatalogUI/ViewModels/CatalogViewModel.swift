@@ -23,7 +23,11 @@ final class CatalogViewModel: ObservableObject {
   private var previousUngroupedBooks: [TPPBook] = []
   private var previousFacetGroups: [CatalogFilterGroup] = []
   private var previousEntryPoints: [CatalogFilter] = []
-  
+
+  /// Cache of previously loaded entry point results keyed by URL.
+  /// Switching between All/Ebooks/Audiobooks reuses cached data instead of re-fetching.
+  private var entryPointCache: [URL: MappedCatalog] = [:]
+
   // MARK: - Public accessors for search
   var searchRepository: CatalogRepositoryProtocol { repository }
   var searchBaseURL: () -> URL? { topLevelURLProvider }
@@ -146,21 +150,23 @@ final class CatalogViewModel: ObservableObject {
   @MainActor
   func forceRefresh() async {
     Log.info(#file, "Force refreshing catalog...")
-    
+
     repository.invalidateCache(for: topLevelURLProvider() ?? URL(string: "about:blank") ?? URL(fileURLWithPath: "/"))
     URLCache.shared.removeAllCachedResponses()
-    
+
     lastLoadedURL = nil
+    entryPointCache.removeAll()
     lanes.removeAll()
     ungroupedBooks.removeAll()
     errorMessage = nil
-    
+
     await load()
   }
 
   func refresh() async {
     guard let url = topLevelURLProvider() else { return }
     (repository as? CatalogRepository)?.invalidateCache(for: url)
+    entryPointCache.removeAll()
     lanes.removeAll()
     ungroupedBooks.removeAll()
     entryPoints.removeAll()
@@ -207,9 +213,22 @@ final class CatalogViewModel: ObservableObject {
   }
 
   /// Applies an entry point (e.g., Ebooks/Audiobooks) with optimistic loading.
+  /// Uses an in-memory cache so switching back to a previously visited entry point is instant.
   @MainActor
   func applyEntryPoint(_ facet: CatalogFilter) async {
     guard let href = facet.href else { return }
+
+    // Cache the current entry point results before switching away
+    if let currentURL = lastLoadedURL ?? topLevelURLProvider() {
+      entryPointCache[currentURL] = MappedCatalog(
+        title: title,
+        entries: entries,
+        lanes: lanes,
+        ungroupedBooks: ungroupedBooks,
+        facetGroups: facetGroups,
+        entryPoints: entryPoints
+      )
+    }
 
     storePreviousState()
 
@@ -218,6 +237,19 @@ final class CatalogViewModel: ObservableObject {
     errorMessage = nil
 
     updateEntryPointsOptimistically(selectedEntryPoint: facet)
+
+    // Check cache first — instant switch for previously visited entry points
+    if let cached = entryPointCache[href] {
+      self.lanes = cached.lanes
+      self.ungroupedBooks = cached.ungroupedBooks
+      self.facetGroups = cached.facetGroups
+      self.entryPoints = cached.entryPoints
+      self.lastLoadedURL = href
+      isOptimisticLoading = false
+      isContentReloading = false
+      triggerScrollToTop()
+      return
+    }
 
     lanes.removeAll()
     ungroupedBooks.removeAll()
@@ -237,6 +269,10 @@ final class CatalogViewModel: ObservableObject {
         self.ungroupedBooks = mapped.ungroupedBooks
         self.facetGroups = mapped.facetGroups
         self.entryPoints = mapped.entryPoints
+        self.lastLoadedURL = href
+
+        // Cache this result
+        entryPointCache[href] = mapped
       }
       isOptimisticLoading = false
 
