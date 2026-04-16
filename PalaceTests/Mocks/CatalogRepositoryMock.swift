@@ -164,6 +164,9 @@ final class CatalogRepositoryTestMock: CatalogRepositoryProtocol {
         lastInvalidatedURL = url
     }
 
+    var cachedFeedResult: CatalogFeed?
+    func cachedFeed(for url: URL) -> CatalogFeed? { cachedFeedResult }
+
     // MARK: - Test Helpers
 
     /// Resets all tracking state
