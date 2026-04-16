@@ -195,6 +195,10 @@ final class TPPSAMLFlowTests: XCTestCase {
 
         XCTAssertTrue(mockPresenter.dismissCalled,
                       "Presenter must be dismissed even when redirect handler returns error")
+        XCTAssertTrue(mockContext.reportErrorCalled,
+                      "Error must be reported to context after dismiss")
+        XCTAssertEqual((mockContext.reportedError as? NSError)?.code, 401)
+        XCTAssertEqual(mockContext.reportedErrorTitle, "Auth Failed")
     }
 
     // MARK: - Helpers

@@ -11,6 +11,7 @@ protocol SAMLAuthContext: AnyObject {
     var savedCookies: [HTTPCookie] { get }
     func handleSAMLRedirect(url: URL, cookies: [HTTPCookie],
                             completion: @escaping (Error?, String?, String?) -> Void)
+    func reportError(_ error: Error, title: String, message: String)
 }
 
 /// What TPPSAMLHelper needs to present the SAML WebView.
@@ -103,8 +104,12 @@ class TPPSAMLHelper {
 
             context.handleSAMLRedirect(url: url, cookies: cookies) { error, errorTitle, errorMessage in
                 self.presenter?.dismissSAMLWebView(animated: true) {
-                    // Error reporting is handled by the context (TPPSignInBusinessLogic)
-                    // which will call its uiDelegate if needed.
+                    // Report error after dismiss completes (if any).
+                    // In the legacy path, context is LegacySAMLAuthContext which
+                    // delegates error reporting to businessLogic.uiDelegate.
+                    if let error = error, let errorTitle = errorTitle, let errorMessage = errorMessage {
+                        context.reportError(error, title: errorTitle, message: errorMessage)
+                    }
                 }
             }
         }
@@ -140,7 +145,10 @@ private class LegacySAMLAuthContext: SAMLAuthContext {
     }
 
     var urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider {
-        businessLogic!.urlSettingsProvider
+        guard let businessLogic = businessLogic else {
+            preconditionFailure("LegacySAMLAuthContext accessed after businessLogic was deallocated")
+        }
+        return businessLogic.urlSettingsProvider
     }
 
     var savedCookies: [HTTPCookie] {
@@ -154,14 +162,22 @@ private class LegacySAMLAuthContext: SAMLAuthContext {
 
         let redirectNotification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: url, userInfo: nil)
         businessLogic.handleRedirectURL(redirectNotification) { error, errorTitle, errorMessage in
-            DispatchQueue.main.async {
-                businessLogic.uiDelegate?.dismiss(animated: true) {
-                    if let error = error, let errorTitle = errorTitle, let errorMessage = errorMessage {
-                        businessLogic.uiDelegate?.businessLogic(businessLogic, didEncounterValidationError: error, userFriendlyErrorTitle: errorTitle, andMessage: errorMessage)
-                    }
-                }
-                completion(error, errorTitle, errorMessage)
-            }
+            // NOTE: Dismiss is NOT called here — that's the presenter's
+            // responsibility (called by TPPSAMLHelper.logIn's completion).
+            // Error reporting is deferred to after dismiss completes.
+            completion(error, errorTitle, errorMessage)
+        }
+    }
+
+    func reportError(_ error: Error, title: String, message: String) {
+        guard let businessLogic = businessLogic else { return }
+        DispatchQueue.main.async {
+            businessLogic.uiDelegate?.businessLogic(
+                businessLogic,
+                didEncounterValidationError: error,
+                userFriendlyErrorTitle: title,
+                andMessage: message
+            )
         }
     }
 }

@@ -38,4 +38,18 @@ class MockSAMLAuthContext: SAMLAuthContext {
         handleRedirectCookies = cookies
         completion(handleRedirectError, handleRedirectErrorTitle, handleRedirectErrorMessage)
     }
+
+    // MARK: - Error Reporting
+
+    var reportErrorCalled = false
+    var reportedError: Error?
+    var reportedErrorTitle: String?
+    var reportedErrorMessage: String?
+
+    func reportError(_ error: Error, title: String, message: String) {
+        reportErrorCalled = true
+        reportedError = error
+        reportedErrorTitle = title
+        reportedErrorMessage = message
+    }
 }

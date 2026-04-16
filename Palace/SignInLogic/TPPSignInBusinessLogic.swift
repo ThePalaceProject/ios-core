@@ -130,6 +130,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     @objc let urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider
 
     /// Cookies used to authenticate. Only required for the SAML flow.
+    /// TODO: Phase 5 follow-up — migrate callers to read from samlHelper.cookies,
+    /// then remove this property. Currently both businessLogic.cookies and
+    /// samlHelper.cookies are set by the legacy bridge during SAML login.
     @objc var cookies: [HTTPCookie]?
 
     /// Performs initiation rites for SAML sign-in.
@@ -152,6 +155,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// This overrides the sign-in state logic to behave as if the user isn't
     /// authenticated. This is useful if we already have credentials, but
     /// the session expired (e.g. SAML flow).
+    /// TODO: Remove once credentialsStale state machine is proven in production.
+    /// isSignedIn() now checks both this flag AND userAccount.authState == .credentialsStale.
+    /// Both are set/reset in tandem (refreshAuth sets both, updateUserAccount resets both).
     var ignoreSignedInState: Bool = false
 
     /// This is `true` during the process of validating credentials.
