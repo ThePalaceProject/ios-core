@@ -91,8 +91,20 @@ final class CatalogViewModel: ObservableObject {
         let t2 = CFAbsoluteTimeGetCurrent()
         guard !Task.isCancelled else { return }
 
-        // Show content immediately — don't block on image cache warming.
-        // BookImageView handles its own async loading with skeleton placeholders.
+        // Warm the image cache for the first visible lane BEFORE rendering.
+        // Only warm ~7 books (first lane) to keep this fast (<20ms).
+        // Catalog lanes display at 150pt — BookImageView looks up "{id}_150pt".
+        let laneDisplayHeight = 150
+        let firstLaneBooks = mapped.lanes.first?.books.prefix(7) ?? []
+        let allKeys = firstLaneBooks.flatMap {
+          ["\($0.identifier)_\(laneDisplayHeight)pt", $0.identifier]
+        }
+        if !allKeys.isEmpty {
+          await ImageCache.shared.warmMemoryCache(for: Array(allKeys))
+        }
+
+        guard !Task.isCancelled else { return }
+
         await MainActor.run {
           guard !Task.isCancelled else { return }
           self.title = mapped.title
@@ -147,15 +159,16 @@ final class CatalogViewModel: ObservableObject {
 
         guard !Task.isCancelled else { return }
 
-        // Warm the memory cache from disk AFTER the UI is already showing.
-        // Returning users get instant covers once promotion finishes;
-        // new users see skeleton → cover transitions (same as before but
-        // content appears sooner because we don't block on this).
-        let visibleKeys = mapped.lanes.prefix(3).flatMap { $0.books }.prefix(30).map(\.identifier)
-        if !visibleKeys.isEmpty {
-          await ImageCache.shared.warmMemoryCache(for: Array(visibleKeys))
-          let t4 = CFAbsoluteTimeGetCurrent()
-          Log.info(#file, "[PERF] Image cache warm=\(Int((t4-t3)*1000))ms (post-render, non-blocking)")
+        let t4 = CFAbsoluteTimeGetCurrent()
+        Log.info(#file, "[PERF] Image cache warm=\(Int((t4-t3)*1000))ms (\(allKeys.count) keys, pre-render)")
+
+        // Warm remaining visible lanes (2nd, 3rd) in background post-render
+        let remainingBooks = mapped.lanes.dropFirst().prefix(2).flatMap { $0.books }.prefix(20)
+        if !remainingBooks.isEmpty {
+          let bgKeys = remainingBooks.flatMap {
+            ["\($0.identifier)_\(laneDisplayHeight)pt", $0.identifier]
+          }
+          Task { await ImageCache.shared.warmMemoryCache(for: Array(bgKeys)) }
         }
 
         // Prefetch thumbnails for visible lanes (network fetch for uncached)

@@ -10,9 +10,15 @@ struct BookImageView: View {
 
     @State private var showSkeleton: Bool = true
 
-    /// Check if cover is already loaded (skip skeleton entirely)
+    /// Check if cover is already available — either on the book object (previously fetched)
+    /// or in the memory image cache (promoted from disk by warmMemoryCache).
     private var hasPreloadedCover: Bool {
-        book.coverImage != nil || book.thumbnailImage != nil
+        if book.coverImage != nil || book.thumbnailImage != nil { return true }
+        // Check the in-memory image cache for the display-height-specific key.
+        // This catches covers warmed by CatalogViewModel before the view appears.
+        let sizedKey = "\(book.identifier)_\(Int(height))pt"
+        if ImageCache.shared.get(for: sizedKey) != nil { return true }
+        return ImageCache.shared.get(for: book.identifier) != nil
     }
 
     var body: some View {
