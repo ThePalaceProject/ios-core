@@ -456,8 +456,8 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
         let expectation = XCTestExpectation(description: "Refresh completes")
 
         HTTPStubURLProtocol.register { _ in
-            // Empty password may not be caught before network I/O
-            return HTTPStubURLProtocol.StubbedResponse(statusCode: 501, headers: nil, body: Data())
+            XCTFail("Should not reach the network with empty password")
+            return nil
         }
 
         let tokenURL = URL(string: "https://example.com/token")!
@@ -467,10 +467,9 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
             tokenURL: tokenURL
         ) { result in
             switch result {
-            case .failure:
-                // Accept any failure — empty password may return "Server returned status 501"
-                // or an empty credentials guard error
-                break
+            case .failure(let error):
+                XCTAssertTrue(error.localizedDescription.contains("empty") || error.localizedDescription.contains("credentials"),
+                              "Should fail with empty credentials error, got: \(error.localizedDescription)")
             case .success:
                 XCTFail("Expected failure for empty password")
             }
@@ -999,7 +998,6 @@ final class TokenRefreshIntegrationTests: XCTestCase {
 
         wait(for: [expectation], timeout: 15.0)
 
-        XCTExpectFailure("Empty password guard not yet implemented in TokenRequest")
         XCTAssertFalse(networkCallMade,
                        "Empty password must be caught before any network I/O")
     }
