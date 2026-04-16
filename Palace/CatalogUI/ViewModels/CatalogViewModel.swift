@@ -133,8 +133,8 @@ final class CatalogViewModel: ObservableObject {
         }
 
         // Preload inactive entry points (Ebooks, Audiobooks) in the background.
-        // The repository caches these feeds in memory, so the first tap on any
-        // filter tab is instant instead of waiting for a network round-trip.
+        // Populates both the repository memory cache AND the ViewModel entry point
+        // cache, so the first tap on any filter is instant (no network, no mapping).
         let inactiveEntryPoints = mapped.entryPoints.filter { !$0.active }
         if !inactiveEntryPoints.isEmpty {
           Task.detached(priority: .utility) { [weak self] in
@@ -144,9 +144,11 @@ final class CatalogViewModel: ObservableObject {
                 guard let epURL = ep.href else { continue }
                 group.addTask {
                   do {
-                    // This populates repository.memoryCache — subsequent
-                    // loadTopLevelCatalog calls return the cached feed instantly.
-                    _ = try await self.repository.loadTopLevelCatalog(at: epURL)
+                    guard let feed = try await self.repository.loadTopLevelCatalog(at: epURL) else { return }
+                    let epMapped = Self.mapFeed(feed)
+                    await MainActor.run {
+                      self.entryPointCache[epURL] = epMapped
+                    }
                     Log.info(#file, "[PERF] Preloaded entry point '\(ep.title)'")
                   } catch {
                     // Non-critical — user will fetch on first tap instead
@@ -296,25 +298,26 @@ final class CatalogViewModel: ObservableObject {
     }
 
     storePreviousState()
-
-    isContentReloading = true
-    isOptimisticLoading = true
     errorMessage = nil
-
-    updateEntryPointsOptimistically(selectedEntryPoint: facet)
 
     // Check cache first — instant switch for previously visited entry points
     if let cached = entryPointCache[href] {
       self.lanes = cached.lanes
       self.ungroupedBooks = cached.ungroupedBooks
       self.facetGroups = cached.facetGroups
-      self.entryPoints = cached.entryPoints
+      // Use the cached entry points but with the correct active state
+      self.entryPoints = cached.entryPoints.map { ep in
+        CatalogFilter(id: ep.id, title: ep.title, href: ep.href, active: ep.href == href)
+      }
       self.lastLoadedURL = href
-      isOptimisticLoading = false
-      isContentReloading = false
       triggerScrollToTop()
       return
     }
+
+    isContentReloading = true
+    isOptimisticLoading = true
+
+    updateEntryPointsOptimistically(selectedEntryPoint: facet)
 
     lanes.removeAll()
     ungroupedBooks.removeAll()
