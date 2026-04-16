@@ -171,8 +171,25 @@ final class CatalogViewModel: ObservableObject {
     guard let href = facet.href else { return }
     guard let currentContent = state.content else { return }
 
-    // Optimistically update facet selection, show content at 0.6 opacity
     let optimisticSelectors = currentContent.selectors.withSelectedFacet(facet)
+
+    // Try synchronous cache check — instant swap, no opacity fade
+    if let cachedFeed = repository.cachedFeed(for: href) {
+      let mapped = Self.mapFeed(cachedFeed)
+      let newContent = mapped.toCatalogContent()
+      state = .loaded(CatalogContent(
+        title: newContent.title,
+        feed: newContent.feed,
+        selectors: CatalogSelectors(
+          entryPoints: newContent.selectors.entryPoints,
+          facetGroups: optimisticSelectors.facetGroups
+        )
+      ))
+      scrollGeneration &+= 1
+      return
+    }
+
+    // Cache miss — show current content at 0.6 opacity while fetching
     let optimisticContent = CatalogContent(
       title: currentContent.title,
       feed: currentContent.feed,
