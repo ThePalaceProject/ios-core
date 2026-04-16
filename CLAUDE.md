@@ -2,6 +2,46 @@
 
 Library reading app supporting EPUB, PDF, and audiobooks with multiple DRM systems.
 
+## Mandatory Verification — READ FIRST
+
+Every session that produces code changes MUST follow this workflow. No exceptions.
+
+### 1. ForgeOS governance (every session)
+```bash
+# Session start — initialize project
+forge_init  # project: proj_87884c17
+forge_propose_changeset  # BEFORE coding — read required evidence to shape implementation
+
+# During work — collect evidence as milestones hit
+scripts/forgeos-session.sh evidence <changeset_id>
+
+# Before PR — ALL gates must be promoted
+scripts/forgeos-session.sh promote <changeset_id>
+forge_release_check  # must return can_release: true
+```
+
+### 2. Pre-PR verification (every PR)
+```bash
+# Full verification battery — build, tests, lint, coverage, mutation, a11y
+scripts/verify-pr.sh                     # All checks
+scripts/verify-pr.sh --quick             # Skip mutation (faster)
+scripts/verify-pr.sh --report /tmp/v.json  # JSON report for tracking
+```
+
+### 3. Enforcement hooks (automatic — you WILL be blocked)
+- **git commit**: blocked unless ForgeOS changeset exists for current branch
+- **git push**: blocked unless ForgeOS gates pass
+- **gh pr create**: blocked unless ForgeOS gates pass
+
+### 4. Testing posture
+Full testing capabilities, confidence matrix, and gaps documented in:
+**`docs/Testing/TESTING_POSTURE.md`** — read before writing tests for unfamiliar areas.
+
+### 5. Before every PR
+- Run mutation testing: `python3 scripts/palace_mutate.py --file <changed>.swift --tests PalaceTests/`
+- ForgeOS gate-check passes
+- Target branch: `develop` (never `main` directly)
+
 ## Build & Test
 
 ```bash
