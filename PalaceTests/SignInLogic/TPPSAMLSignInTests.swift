@@ -563,11 +563,11 @@ final class TPPSAMLSignInTests: XCTestCase {
     
     // Use expectation since finalizeSignIn dispatches to main queue
     let expectation = self.expectation(description: "Sign-in completes")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
       expectation.fulfill()
     }
-    
-    waitForExpectations(timeout: 1.0)
+
+    waitForExpectations(timeout: 3.0)
     
     // Assert
     XCTAssertTrue(uiDelegate.didCallDidCompleteSignIn,

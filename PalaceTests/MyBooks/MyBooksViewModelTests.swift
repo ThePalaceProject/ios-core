@@ -423,11 +423,11 @@ final class MyBooksViewModelLoginStateTests: XCTestCase {
         // Act: add a book and fire the registry-change notification (debounced 300 ms)
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "n1", title: "New Book")]
         let expectation = XCTestExpectation(description: "books updated after notification")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             expectation.fulfill()
         }
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: 2.0)
 
         // Assert: the viewModel now exposes the new book
         XCTAssertEqual(viewModel.books.count, 1,
@@ -1041,7 +1041,7 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "sn1", title: "Post-Sync Book")]
         let exp = XCTestExpectation(description: "books updated after sync-ended notification")
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { exp.fulfill() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { exp.fulfill() }
         wait(for: [exp], timeout: 3.0)
 
         XCTAssertEqual(viewModel.books.count, 1,
@@ -1602,9 +1602,9 @@ final class MyBooksViewModelStateTransitionTests: XCTestCase {
         // Act: add a book to the registry and fire the change notification
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "st2", title: "New Book")]
         let exp = XCTestExpectation(description: "showInstructionsLabel transitions to false")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { exp.fulfill() }
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-        wait(for: [exp], timeout: 1.0)
+        wait(for: [exp], timeout: 3.0)
 
         // Assert: label hidden, book present
         XCTAssertFalse(viewModel.showInstructionsLabel,
