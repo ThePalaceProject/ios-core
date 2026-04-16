@@ -1551,6 +1551,7 @@
 		CRWL0010BTST00000001 /* CatalogPreloaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0010FREF00000001 /* CatalogPreloaderTests.swift */; };
 		CRWL0011BTST00000001 /* LiveCrawlableParsingTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0011FREF00000001 /* LiveCrawlableParsingTest.swift */; };
 		CRWL0012BTST00000001 /* CrawlerFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0012FREF00000001 /* CrawlerFallbackTests.swift */; };
+		CRWL0013BTST00000001 /* CrossDeviceBookmarkSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRWL0013FREF00000001 /* CrossDeviceBookmarkSyncTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2767,6 +2768,7 @@
 		CRWL0010FREF00000001 /* CatalogPreloaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogPreloaderTests.swift; sourceTree = "<group>"; };
 		CRWL0011FREF00000001 /* LiveCrawlableParsingTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCrawlableParsingTest.swift; sourceTree = "<group>"; };
 		CRWL0012FREF00000001 /* CrawlerFallbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrawlerFallbackTests.swift; sourceTree = "<group>"; };
+		CRWL0013FREF00000001 /* CrossDeviceBookmarkSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossDeviceBookmarkSyncTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -4607,6 +4609,7 @@
 				CRWL0009FREF00000001 /* LibraryRegistryCrawlerTests.swift */,
 				CRWL0011FREF00000001 /* LiveCrawlableParsingTest.swift */,
 				CRWL0012FREF00000001 /* CrawlerFallbackTests.swift */,
+				CRWL0013FREF00000001 /* CrossDeviceBookmarkSyncTests.swift */,
 			);
 			name = Crawl;
 			path = Crawl;
@@ -6202,6 +6205,7 @@
 				CRWL0010BTST00000001 /* CatalogPreloaderTests.swift in Sources */,
 				CRWL0011BTST00000001 /* LiveCrawlableParsingTest.swift in Sources */,
 				CRWL0012BTST00000001 /* CrawlerFallbackTests.swift in Sources */,
+				CRWL0013BTST00000001 /* CrossDeviceBookmarkSyncTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
