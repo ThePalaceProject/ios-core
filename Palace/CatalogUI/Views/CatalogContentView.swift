@@ -129,6 +129,6 @@ struct CatalogLoadingView: View {
                 CatalogLaneSkeletonView()
             }
         }
-        .padding(.vertical, 0)
+        .padding(.vertical, 17)
     }
 }

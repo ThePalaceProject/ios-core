@@ -21,6 +21,17 @@ final class CatalogViewModel: ObservableObject {
   var searchRepository: CatalogRepositoryProtocol { repository }
   var searchBaseURL: () -> URL? { topLevelURLProvider }
 
+  // MARK: - Entry Point View Retention
+
+  /// All loaded entry point feeds, keyed by URL. The view renders all of
+  /// them in a ZStack and shows only the active one. This keeps SwiftUI
+  /// views (and their loaded cover images) alive across entry point switches.
+  @Published private(set) var loadedFeeds: [URL: CatalogContent] = [:]
+
+  /// The currently active entry point URL. The view uses this to determine
+  /// which feed in loadedFeeds to display.
+  @Published private(set) var activeEntryPointURL: URL?
+
   // MARK: - Internal State
   private var lastLoadedURL: URL?
   private var currentLoadTask: Task<Void, Never>?
@@ -40,8 +51,12 @@ final class CatalogViewModel: ObservableObject {
   func load() async {
     guard let url = topLevelURLProvider() else { return }
 
-    // Skip if already loaded for this URL
-    if case .loaded = state, url == lastLoadedURL { return }
+    // Skip if content is already showing. This prevents reloading when
+    // navigating back from book detail or when the view reappears.
+    // lastLoadedURL may differ from the top-level URL if the user switched
+    // entry points (e.g., /groups/ vs /groups/?entrypoint=Ebooks).
+    if case .loaded = state { return }
+    if case .applyingFacet = state { return }
 
     state = .loading
     currentLoadTask?.cancel()
@@ -83,11 +98,20 @@ final class CatalogViewModel: ObservableObject {
         let content = mapped.toCatalogContent()
         self.state = .loaded(content)
         self.lastLoadedURL = url
+        // Store under both the top-level URL and the active entry point href,
+        // since /groups/ and /groups/?entrypoint=All are different URLs for
+        // the same content. Without this, returning to "All" misses the view cache.
+        self.loadedFeeds[url] = content
+        if let activeEP = content.selectors.entryPoints.first(where: { $0.active }),
+           let epHref = activeEP.href, epHref != url {
+          self.loadedFeeds[epHref] = content
+        }
+        self.activeEntryPointURL = url
 
         let t3 = CFAbsoluteTimeGetCurrent()
         let lanesCount = mapped.lanes.count
         let booksCount = mapped.lanes.reduce(0) { $0 + $1.books.count }
-        Log.info(#file, "[PERF] Catalog load: fetch=\(Int((t1-t0)*1000))ms, map=\(Int((t2-t1)*1000))ms, render=\(Int((t3-t2)*1000))ms, total=\(Int((t3-t0)*1000))ms (\(lanesCount) lanes, \(booksCount) books)")
+        Log.warn(#file, "[PERF] Catalog load: fetch=\(Int((t1-t0)*1000))ms, map=\(Int((t2-t1)*1000))ms, render=\(Int((t3-t2)*1000))ms, total=\(Int((t3-t0)*1000))ms (\(lanesCount) lanes, \(booksCount) books)")
 
         // Warm remaining visible lanes in background post-render
         let remainingBooks = mapped.lanes.dropFirst().prefix(2).flatMap { $0.books }.prefix(20)
@@ -129,7 +153,7 @@ final class CatalogViewModel: ObservableObject {
                 group.addTask {
                   do {
                     _ = try await self.repository.loadTopLevelCatalog(at: epURL)
-                    Log.info(#file, "[PERF] Preloaded entry point '\(ep.title)'")
+                    Log.warn(#file, "[PERF] Preloaded entry point '\(ep.title)'")
                   } catch { }
                 }
               }
@@ -153,6 +177,8 @@ final class CatalogViewModel: ObservableObject {
     repository.invalidateCache(for: topLevelURLProvider() ?? URL(fileURLWithPath: "/"))
     URLCache.shared.removeAllCachedResponses()
     lastLoadedURL = nil
+    loadedFeeds.removeAll()
+    activeEntryPointURL = nil
     state = .loading
     await load()
   }
@@ -161,6 +187,8 @@ final class CatalogViewModel: ObservableObject {
     guard let url = topLevelURLProvider() else { return }
     (repository as? CatalogRepository)?.invalidateCache(for: url)
     lastLoadedURL = nil
+    loadedFeeds.removeAll()
+    activeEntryPointURL = nil
     currentLoadTask?.cancel()
     state = .loading
     await load()
@@ -170,6 +198,7 @@ final class CatalogViewModel: ObservableObject {
   func applyFacet(_ facet: CatalogFilter) async {
     guard let href = facet.href else { return }
     guard let currentContent = state.content else { return }
+    let t0 = CFAbsoluteTimeGetCurrent()
 
     let optimisticSelectors = currentContent.selectors.withSelectedFacet(facet)
 
@@ -186,6 +215,7 @@ final class CatalogViewModel: ObservableObject {
         )
       ))
       scrollGeneration &+= 1
+      Log.warn(#file, "[PERF] applyFacet '\(facet.title)': cache HIT \(Int((CFAbsoluteTimeGetCurrent()-t0)*1000))ms")
       return
     }
 
@@ -205,6 +235,7 @@ final class CatalogViewModel: ObservableObject {
       } else {
         state = .loaded(currentContent)
       }
+      Log.warn(#file, "[PERF] applyFacet '\(facet.title)': cache MISS \(Int((CFAbsoluteTimeGetCurrent()-t0)*1000))ms")
     } catch {
       state = .loaded(CatalogContent(
         title: currentContent.title,
@@ -219,6 +250,7 @@ final class CatalogViewModel: ObservableObject {
   func applyEntryPoint(_ facet: CatalogFilter) async {
     guard let href = facet.href else { return }
     guard let currentContent = state.content else { return }
+    let t0 = CFAbsoluteTimeGetCurrent()
 
     let previousContent = currentContent
     currentLoadTask?.cancel()
@@ -226,20 +258,43 @@ final class CatalogViewModel: ObservableObject {
     // Optimistically update entry point selection
     let optimisticSelectors = currentContent.selectors.withSelectedEntryPoint(facet)
 
-    // Try synchronous cache check — instant swap, no skeleton
-    if let cachedFeed = repository.cachedFeed(for: href) {
-      let mapped = Self.mapFeed(cachedFeed)
-      let newContent = mapped.toCatalogContent()
-      state = .loaded(CatalogContent(
-        title: newContent.title,
-        feed: newContent.feed,
+    // Store current content before switching
+    if let currentURL = activeEntryPointURL ?? lastLoadedURL {
+      loadedFeeds[currentURL] = currentContent
+    }
+
+    // Check if we already have this feed's views alive
+    if let existing = loadedFeeds[href] {
+      let updated = CatalogContent(
+        title: existing.title,
+        feed: existing.feed,
         selectors: CatalogSelectors(
           entryPoints: optimisticSelectors.entryPoints,
-          facetGroups: newContent.selectors.facetGroups
+          facetGroups: existing.selectors.facetGroups
         )
-      ))
+      )
+      state = .loaded(updated)
+      loadedFeeds[href] = updated
+      activeEntryPointURL = href
       lastLoadedURL = href
       scrollGeneration &+= 1
+      Log.warn(#file, "[PERF] applyEntryPoint '\(facet.title)': view cache HIT \(Int((CFAbsoluteTimeGetCurrent()-t0)*1000))ms")
+      return
+    }
+
+    // Try repository cache — feed data exists but views need creation
+    if let cachedFeed = repository.cachedFeed(for: href) {
+      let base = Self.mapFeed(cachedFeed).toCatalogContent()
+      let newContent = CatalogContent(
+        title: base.title, feed: base.feed,
+        selectors: CatalogSelectors(entryPoints: optimisticSelectors.entryPoints, facetGroups: base.selectors.facetGroups)
+      )
+      state = .loaded(newContent)
+      loadedFeeds[href] = newContent
+      activeEntryPointURL = href
+      lastLoadedURL = href
+      scrollGeneration &+= 1
+      Log.warn(#file, "[PERF] applyEntryPoint '\(facet.title)': repo cache HIT \(Int((CFAbsoluteTimeGetCurrent()-t0)*1000))ms")
       return
     }
 
@@ -248,18 +303,17 @@ final class CatalogViewModel: ObservableObject {
 
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
-        let mapped = Self.mapFeed(feed)
-        let newContent = mapped.toCatalogContent()
-        state = .loaded(CatalogContent(
-          title: newContent.title,
-          feed: newContent.feed,
-          selectors: CatalogSelectors(
-            entryPoints: optimisticSelectors.entryPoints,
-            facetGroups: newContent.selectors.facetGroups
-          )
-        ))
+        let base = Self.mapFeed(feed).toCatalogContent()
+        let newContent = CatalogContent(
+          title: base.title, feed: base.feed,
+          selectors: CatalogSelectors(entryPoints: optimisticSelectors.entryPoints, facetGroups: base.selectors.facetGroups)
+        )
+        state = .loaded(newContent)
+        loadedFeeds[href] = newContent
+        activeEntryPointURL = href
         lastLoadedURL = href
         scrollGeneration &+= 1
+        Log.warn(#file, "[PERF] applyEntryPoint '\(facet.title)': network fetch \(Int((CFAbsoluteTimeGetCurrent()-t0)*1000))ms")
       } else {
         state = .loaded(previousContent)
       }

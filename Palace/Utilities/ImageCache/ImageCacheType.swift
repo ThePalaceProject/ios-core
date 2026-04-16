@@ -35,23 +35,24 @@ public final class ImageCache: ImageCacheType {
         let cacheMemoryMB: Int
         let maxConcurrentProcessing: Int
 
-        // PP-4020: Cover art in catalog lanes displays at ~100pt (300px @3x).
-        // 300px max keeps covers sharp while minimizing CG raster data VM.
-        // Each 300x300 RGBA decoded = ~360KB. With evictDecodedImages() called
-        // on filter switches, peak decoded memory stays under 20MB.
+        // Cover art in catalog lanes displays at ~100pt (300px @3x).
+        // Each 300x300 RGBA decoded = ~360KB. A typical catalog has 15 lanes
+        // × 7 visible books = ~105 covers across All/Ebooks/Audiobooks.
+        // The NSCache must hold enough to avoid re-fetching on entry point
+        // switches. Memory is reclaimed on library switch via evictAllDecodedImages().
         if deviceMemoryMB < 2048 {
-            cacheMemoryMB = 10
-            memoryImages.countLimit = 30
+            cacheMemoryMB = 15
+            memoryImages.countLimit = 60
             maxDimension = 200
             maxConcurrentProcessing = 2
         } else if deviceMemoryMB < 4096 {
-            cacheMemoryMB = 15
-            memoryImages.countLimit = 40
+            cacheMemoryMB = 25
+            memoryImages.countLimit = 100
             maxDimension = 300
             maxConcurrentProcessing = 3
         } else {
-            cacheMemoryMB = 20
-            memoryImages.countLimit = 50
+            cacheMemoryMB = 40
+            memoryImages.countLimit = 150
             maxDimension = 300
             maxConcurrentProcessing = 4
         }
@@ -269,6 +270,14 @@ public final class ImageCache: ImageCacheType {
     /// view wastes CG raster data VM.
     public func evictDecodedImages() {
         memoryImages.removeAllObjects()
+    }
+
+    /// Full eviction: clears NSCache AND tells TPPBook objects to release
+    /// their decoded UIImage references. Call only on library switch — NOT
+    /// on facet/entry point changes where the same books may reappear.
+    public func evictAllDecodedImages() {
+        memoryImages.removeAllObjects()
+        NotificationCenter.default.post(name: .TPPImageCacheDidEvict, object: nil)
     }
 
     private func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage? {

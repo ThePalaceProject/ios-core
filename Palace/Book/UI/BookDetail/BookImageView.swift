@@ -10,15 +10,8 @@ struct BookImageView: View {
 
     @State private var showSkeleton: Bool = true
 
-    /// Check if cover is already available — either on the book object (previously fetched)
-    /// or in the memory image cache (promoted from disk by warmMemoryCache).
     private var hasPreloadedCover: Bool {
-        if book.coverImage != nil || book.thumbnailImage != nil { return true }
-        // Check the in-memory image cache for the display-height-specific key.
-        // This catches covers warmed by CatalogViewModel before the view appears.
-        let sizedKey = "\(book.identifier)_\(Int(height))pt"
-        if ImageCache.shared.get(for: sizedKey) != nil { return true }
-        return ImageCache.shared.get(for: book.identifier) != nil
+        book.coverImage != nil || book.thumbnailImage != nil
     }
 
     var body: some View {
@@ -52,14 +45,12 @@ struct BookImageView: View {
         .accessibilityElement(children: treatImageAsDecorativeInLists ? .ignore : .combine)
         .frame(width: width, height: height)
         .onAppear {
-            // Suppress skeleton immediately if something is already available to show
             if hasPreloadedCover {
                 showSkeleton = false
             }
-            // Always fetch at the correct display size. The registry checks the size-specific
-            // cache key first, so this is instant when the right resolution is cached.
-            // Without this, a small thumbnail loaded earlier (e.g. catalog lane) would be
-            // displayed at full size, causing pixelation on large screens.
+            // fetchCoverImage checks memory cache (instant), then disk cache
+            // (async), then network. Covers survive entry point switches via
+            // the async disk→memory promotion path.
             book.fetchCoverImage(forDisplayHeight: height)
         }
         .onChange(of: book.coverImage) { newImage in

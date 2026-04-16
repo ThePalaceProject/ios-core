@@ -153,7 +153,7 @@ struct CatalogCacheMetadata: Codable {
                 cleanupActiveContentBeforeAccountSwitch(from: previousAccountId, to: newAccountId)
                 // Evict decoded cover images — the new library has different covers.
                 // Keeps compressed JPEG cache on disk for fast re-decode if user switches back.
-                ImageCache.shared.evictDecodedImages()
+                ImageCache.shared.evictAllDecodedImages()
             }
 
             self.currentAccount?.hasUpdatedToken = false

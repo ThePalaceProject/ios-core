@@ -99,7 +99,7 @@ private struct LaneSkeletonView: View {
                 ForEach(0..<6, id: \.self) { _ in
                     Rectangle()
                         .fill(Color.gray.opacity(0.25))
-                        .frame(width: 120, height: 150)
+                        .frame(width: 100, height: 150)
                         .opacity(pulse ? 0.6 : 1.0)
                         .padding(.vertical)
                 }

@@ -1,24 +1,30 @@
 import SwiftUI
 
+/// Skeleton placeholder matching the exact layout of CatalogLaneRowView.
+///
+/// Measured from live element positions (SpecterQA):
+/// - Title: 26pt height, left-aligned at x=12
+/// - Books: 100×150pt, 12pt spacing, starts 12pt from left edge
+/// - VStack spacing between title and books: 5pt
+/// - Vertical padding around book scroller: inherits from .padding(.vertical)
 struct CatalogLaneSkeletonView: View {
-    var titleWidth: CGFloat = 160
-    var itemSize: CGSize = CGSize(width: 120, height: 180)
-    var itemCount: Int = 8
+    var itemCount: Int = 6
     @State private var pulse: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 5) {
             Rectangle()
                 .fill(Color.gray.opacity(0.25))
-                .frame(width: titleWidth, height: 16)
+                .frame(width: 200, height: 26)
                 .opacity(pulse ? 0.6 : 1.0)
+                .padding(.horizontal, 12)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 12) {
+                HStack(spacing: 12) {
                     ForEach(0..<itemCount, id: \.self) { _ in
                         Rectangle()
                             .fill(Color.gray.opacity(0.25))
-                            .frame(width: itemSize.width, height: itemSize.height)
+                            .frame(width: 100, height: 150)
                             .opacity(pulse ? 0.6 : 1.0)
                     }
                 }

@@ -53,23 +53,18 @@ private func cachedUserAgent() -> String {
 extension URLRequest {
     init(url: URL, applyingCustomUserAgent: Bool) {
         self.init(url: url)
+        // Disable optimistic HTTP/3 on all Palace requests. Some library
+        // servers advertise h3 but have broken QUIC — iOS retries twice
+        // (~260ms wasted) before falling back to h2. The session still
+        // upgrades to h3 via Alt-Svc after the first successful h2 response.
+        self.assumesHTTP3Capable = false
 
         if applyingCustomUserAgent {
-            let customUserAgent = cachedUserAgent()
-            if let existing = self.value(forHTTPHeaderField: "User-Agent") {
-                self.setValue("\(existing) \(customUserAgent)", forHTTPHeaderField: "User-Agent")
-            } else {
-                self.setValue(customUserAgent, forHTTPHeaderField: "User-Agent")
-            }
+            self.applyCustomUserAgent()
         }
     }
-}
 
-extension URLRequest {
     /// Creates a request with HTTP/3 optimistic attempts disabled.
-    /// Prevents ~260ms wasted on broken-QUIC servers per request.
-    /// The session still upgrades to h3 automatically via Alt-Svc
-    /// after the first successful h2 response from a capable host.
     static func withoutHTTP3Assumption(url: URL) -> URLRequest {
         var request = URLRequest(url: url)
         request.assumesHTTP3Capable = false
@@ -77,6 +72,7 @@ extension URLRequest {
     }
 
     @discardableResult mutating func applyCustomUserAgent() -> URLRequest {
+        assumesHTTP3Capable = false
         let customUserAgent = cachedUserAgent()
         if let existing = value(forHTTPHeaderField: "User-Agent") {
             setValue("\(existing) \(customUserAgent)", forHTTPHeaderField: "User-Agent")

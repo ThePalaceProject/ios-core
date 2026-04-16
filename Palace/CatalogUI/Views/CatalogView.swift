@@ -284,8 +284,7 @@ private extension CatalogView {
                     CatalogLaneSkeletonView()
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 12)
+            .padding(.vertical, 17)
         }
     }
 }
