@@ -501,12 +501,12 @@ extension TPPNetworkExecutor {
             // and the .username/.pin reads, sending Account B's credentials
             // to Account A's token endpoint.
             let snapshot = AccountsManager.shared.userAccount(for: capturedAccountId ?? AccountsManager.shared.currentAccountId ?? "").credentialSnapshot()
-            guard let username = snapshot.barcode,
-                  let password = snapshot.pin,
+            guard let username = snapshot.barcode, !username.isEmpty,
+                  let password = snapshot.pin, !password.isEmpty,
                   let tokenURL = snapshot.authDefinition?.tokenURL else {
-                Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
+                Log.error(#file, "Cannot refresh token: missing or empty credentials or tokenURL for account \(capturedAccountId ?? "nil")")
                 await self.tokenCoordinator.setRefreshing(false)
-                let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Unauthorized HTTP"])
+                let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"])
                 completion?(NYPLResult.failure(error, nil))
                 return
             }
