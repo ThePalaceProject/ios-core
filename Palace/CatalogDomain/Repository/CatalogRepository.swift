@@ -7,6 +7,11 @@ public protocol CatalogRepositoryProtocol {
     func fetchFeed(at url: URL) async throws -> CatalogFeed?
     func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry]
     func invalidateCache(for url: URL)
+
+    /// Synchronous, memory-only cache lookup. Returns a cached feed if one
+    /// exists and is not too old, without triggering any network activity.
+    /// Used by CatalogViewModel for instant entry point switching.
+    func cachedFeed(for url: URL) -> CatalogFeed?
 }
 
 public final class CatalogRepository: CatalogRepositoryProtocol {
@@ -249,6 +254,17 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         let cacheKey = url.absoluteString
         cacheQueue.async {
             self.memoryCache[cacheKey] = nil
+        }
+    }
+
+    public func cachedFeed(for url: URL) -> CatalogFeed? {
+        let cacheKey = url.absoluteString
+        // Synchronous access — safe because cacheQueue is serial and we
+        // only read. DispatchQueue.sync on a serial queue is deadlock-safe
+        // when called from a different queue (MainActor in our case).
+        return cacheQueue.sync {
+            guard let entry = memoryCache[cacheKey], !entry.isTooOld else { return nil }
+            return entry.feed
         }
     }
 
