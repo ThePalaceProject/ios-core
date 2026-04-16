@@ -109,6 +109,7 @@
 		10BDB9803CA69D9968DD25B0 /* StreakView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1D8E96BB21CEA1AB690046 /* StreakView.swift */; };
 		10DCC70174134074821BB5E3 /* TPPBookmarkR3LocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4FA6A7940BE4470BD0A3515 /* TPPBookmarkR3LocationTests.swift */; };
 		0F56EFAE3853AC2EEF6AD7E7 /* SAMLCookieSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */; };
+		E565CC878F888FC5B75E7066 /* SAMLCookieSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */; };
 		B2C3D4E5F607183940516273 /* TPPSAMLFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071839405162 /* TPPSAMLFlowTests.swift */; };
 		D4E5F6071839405162738495 /* MockSAMLAuthContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F60718394051627384 /* MockSAMLAuthContext.swift */; };
 		F607183940516273849506A7 /* MockSAMLWebViewPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F607183940516273849506 /* MockSAMLWebViewPresenter.swift */; };
@@ -1109,7 +1110,7 @@
 		E562DE472D38BB8C003A1A40 /* Image+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE462D38BB8A003A1A40 /* Image+Extension.swift */; };
 		E562DE492D38BB8C003A1A40 /* Image+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE462D38BB8A003A1A40 /* Image+Extension.swift */; };
 		E56576002C933527005953BD /* AudiobookFileLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56575FF2C933527005953BD /* AudiobookFileLogger.swift */; };
-		E565CC878F888FC5B75E7066 /* SAMLCookieSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5C956CCCED314E3E03EEA5 /* SAMLCookieSyncTests.swift */; };
+
 		E56724C12A132C1300972828 /* TPPAnnotationMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56724C02A132C1300972828 /* TPPAnnotationMock.swift */; };
 		E567C72C296743990079C28C /* BookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E567C72B296743990079C28C /* BookCell.swift */; };
 		E56D859D2E68DE9E00DFF16C /* CatalogFilterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56D859C2E68DE9E00DFF16C /* CatalogFilterModels.swift */; };
@@ -2720,7 +2721,7 @@
 		FC95BE63D9C7C7AE1EFB8D6B /* ChaosFaultInjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChaosFaultInjectionTests.swift; sourceTree = "<group>"; };
 		FE2159403F0FCBE90CFC6858 /* BookImageViewAccessibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookImageViewAccessibilityTests.swift; sourceTree = "<group>"; };
 		FE7BD91AF3E14990B745A0AA /* AudiobookDataManagerSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookDataManagerSyncTests.swift; sourceTree = "<group>"; };
-		FF5C956CCCED314E3E03EEA5 /* SAMLCookieSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SAMLCookieSyncTests.swift; sourceTree = "<group>"; };
+
 		FFA10178BD2885EBF24673F3 /* FontManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontManager.swift; sourceTree = "<group>"; };
 		FFEA4278133FE9AD4EB842F1 /* TPPEncryptedPDFDataProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFDataProvider.swift; sourceTree = "<group>"; };
 		FFFD104EE843356CD66327E6 /* CrossFormatMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossFormatMappingTests.swift; sourceTree = "<group>"; };
@@ -2940,7 +2941,7 @@
 				PP3702FR000000000000002 /* AccountAwareNetworkTests.swift */,
 				46A0B2DA8FB8ABF53C9E32FF /* CredentialGuardTests.swift */,
 				6F826CF3A1D6633781419179 /* ManifestFetchTests.swift */,
-				FF5C956CCCED314E3E03EEA5 /* SAMLCookieSyncTests.swift */,
+				F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */,
 				BDC90738317B9A2A4331572D /* TPPSessionTests.swift */,
 				30B163B18C48334A913B2CCA /* URLRequestNYPLAdditionsTests.swift */,
 			);

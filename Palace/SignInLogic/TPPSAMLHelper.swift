@@ -64,7 +64,7 @@ class TPPSAMLHelper {
 
     /// Legacy initializer — used by TPPSignInBusinessLogic during transition.
     /// The `businessLogic` property must be set immediately after init.
-    override init() {}
+    init() {}
 
     // MARK: - Login
 
@@ -76,7 +76,11 @@ class TPPSAMLHelper {
 
         var urlComponents = URLComponents(url: idpURL, resolvingAgainstBaseURL: true)
         let redirectURI = URLQueryItem(name: "redirect_uri", value: context.urlSettingsProvider.universalLinksURL.absoluteString)
-        urlComponents?.queryItems?.append(redirectURI)
+        if urlComponents?.queryItems == nil {
+            urlComponents?.queryItems = [redirectURI]
+        } else {
+            urlComponents?.queryItems?.append(redirectURI)
+        }
 
         guard let url = urlComponents?.url else {
             return
