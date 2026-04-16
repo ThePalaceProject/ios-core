@@ -87,16 +87,8 @@ final class CatalogViewModel: ObservableObject {
 
         guard !Task.isCancelled else { return }
 
-        // Warm the memory cache from disk BEFORE updating the UI.
-        // This ensures BookImageView.onAppear → imageCache.get() hits the
-        // memory cache instantly for returning users, eliminating skeleton flash.
-        let visibleKeys = mapped.lanes.prefix(3).flatMap { $0.books }.prefix(30).map(\.identifier)
-        if !visibleKeys.isEmpty {
-          await ImageCache.shared.warmMemoryCache(for: Array(visibleKeys))
-        }
-
-        guard !Task.isCancelled else { return }
-
+        // Show content immediately — don't block on image cache warming.
+        // BookImageView handles its own async loading with skeleton placeholders.
         await MainActor.run {
           guard !Task.isCancelled else { return }
           self.title = mapped.title
@@ -111,6 +103,15 @@ final class CatalogViewModel: ObservableObject {
 
         guard !Task.isCancelled else { return }
 
+        // Warm the memory cache from disk AFTER the UI is already showing.
+        // Returning users get instant covers once promotion finishes;
+        // new users see skeleton → cover transitions (same as before but
+        // content appears sooner because we don't block on this).
+        let visibleKeys = mapped.lanes.prefix(3).flatMap { $0.books }.prefix(30).map(\.identifier)
+        if !visibleKeys.isEmpty {
+          await ImageCache.shared.warmMemoryCache(for: Array(visibleKeys))
+        }
+
         // Prefetch thumbnails for visible lanes (network fetch for uncached)
         if !mapped.lanes.isEmpty {
           let visibleBooks = mapped.lanes.prefix(3).flatMap { $0.books }
@@ -119,7 +120,7 @@ final class CatalogViewModel: ObservableObject {
           await self.prefetchThumbnails(for: Array(mapped.ungroupedBooks.prefix(20)))
         }
 
-        // Change 4: Deferred prefetch for below-fold lanes
+        // Deferred prefetch for below-fold lanes
         if mapped.lanes.count > 3 {
           Task.detached(priority: .background) { [weak self] in
             guard let self else { return }
@@ -189,18 +190,17 @@ final class CatalogViewModel: ObservableObject {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
         let mapped = Self.mapFeed(feed)
 
-        // Warm memory cache for visible books before updating UI.
-        // Filter-switched feeds share many book identifiers, so most
-        // covers will already be in memory — only new ones need disk promotion.
-        let keys = mapped.lanes.prefix(3).flatMap { $0.books }.prefix(30).map(\.identifier)
-        if !keys.isEmpty {
-          await ImageCache.shared.warmMemoryCache(for: Array(keys))
-        }
-
+        // Update UI immediately, warm cache in background
         self.lanes = mapped.lanes
         self.ungroupedBooks = mapped.ungroupedBooks
         self.facetGroups = mapped.facetGroups
         self.entryPoints = mapped.entryPoints
+
+        // Warm memory cache after UI is showing
+        let keys = mapped.lanes.prefix(3).flatMap { $0.books }.prefix(30).map(\.identifier)
+        if !keys.isEmpty {
+          Task { await ImageCache.shared.warmMemoryCache(for: Array(keys)) }
+        }
       }
       isOptimisticLoading = false
 
