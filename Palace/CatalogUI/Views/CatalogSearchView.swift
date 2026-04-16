@@ -156,12 +156,12 @@ private extension CatalogSearchView {
             }
             .pickerStyle(.segmented)
             .frame(maxWidth: .infinity)
+            .frame(minHeight: 44)
             .accessibilityIdentifier(AccessibilityID.Search.formatFilterRow)
         }
         .frame(maxWidth: 700)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
     var searchBar: some View {

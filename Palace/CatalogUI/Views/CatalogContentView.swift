@@ -1,10 +1,16 @@
 import SwiftUI
 
-// MARK: - CatalogContentView
+// MARK: - CatalogContentView (Data-Driven)
+
 struct CatalogContentView: View {
-    @ObservedObject var viewModel: CatalogViewModel
+    let content: CatalogContent
+    let isOptimisticLoading: Bool
+    let scrollGeneration: UInt
     let onBookSelected: (TPPBook) -> Void
     let onLaneMoreTapped: (String, URL) -> Void
+    let onEntryPointSelected: (CatalogFilter) -> Void
+    let onFacetSelected: (CatalogFilter) -> Void
+    let onRefresh: () async -> Void
     var bookRegistry: TPPBookRegistry = .shared
 
     var body: some View {
@@ -15,22 +21,17 @@ struct CatalogContentView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 24) {
                         SwiftUI.Group {
-                            contentArea
+                            feedContentView
                                 .padding(.vertical, 17)
                                 .id("catalog-content-top")
                         }
                     }
                     .padding(.vertical, 17)
                 }
-                .refreshable { await viewModel.refresh() }
-                .onReceive(viewModel.$shouldScrollToTop) { shouldScroll in
-                    if shouldScroll {
-                        accessibleWithAnimation(.easeInOut(duration: 0.3)) {
-                            proxy.scrollTo("catalog-content-top", anchor: .top)
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            viewModel.resetScrollTrigger()
-                        }
+                .refreshable { await onRefresh() }
+                .onChange(of: scrollGeneration) { _ in
+                    accessibleWithAnimation(.easeInOut(duration: 0.3)) {
+                        proxy.scrollTo("catalog-content-top", anchor: .top)
                     }
                 }
             }
@@ -38,30 +39,30 @@ struct CatalogContentView: View {
     }
 }
 
-// MARK: - Private Views
+// MARK: - Subviews
+
 private extension CatalogContentView {
     @ViewBuilder
     var selectorsView: some View {
-        if !viewModel.entryPoints.isEmpty {
-            EntryPointsSelectorView(entryPoints: viewModel.entryPoints) { facet in
-                Task { await viewModel.applyEntryPoint(facet) }
+        if !content.selectors.entryPoints.isEmpty {
+            EntryPointsSelectorView(entryPoints: content.selectors.entryPoints) { facet in
+                onEntryPointSelected(facet)
             }
         }
 
-        if !viewModel.facetGroups.isEmpty {
-            FacetsSelectorView(facetGroups: viewModel.facetGroups) { facet in
-                Task { await viewModel.applyFacet(facet) }
+        if !content.selectors.facetGroups.isEmpty {
+            FacetsSelectorView(facetGroups: content.selectors.facetGroups) { facet in
+                onFacetSelected(facet)
             }
         }
     }
 
     @ViewBuilder
-    var contentArea: some View {
-        if viewModel.isContentReloading {
-            CatalogLoadingView()
-        } else if !viewModel.lanes.isEmpty {
+    var feedContentView: some View {
+        switch content.feed {
+        case .grouped(let lanes):
             LazyVStack(alignment: .leading, spacing: 24) {
-                ForEach(viewModel.lanes) { lane in
+                ForEach(lanes) { lane in
                     CatalogLaneRowView(
                         title: lane.title,
                         books: lane.books.map { bookRegistry.updatedBookMetadata($0) ?? $0 },
@@ -69,31 +70,58 @@ private extension CatalogContentView {
                         onSelect: onBookSelected,
                         onMoreTapped: onLaneMoreTapped,
                         showHeader: true,
-                        isLoading: lane.isLoading || viewModel.isOptimisticLoading
+                        isLoading: lane.isLoading || isOptimisticLoading
                     )
                 }
             }
-            .opacity(viewModel.isOptimisticLoading ? 0.6 : 1.0)
-            .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.isOptimisticLoading)
-        } else {
-            ScrollView {
-                BookListView(
-                    books: viewModel.ungroupedBooks,
-                    isLoading: .constant(viewModel.isOptimisticLoading),
-                    onSelect: onBookSelected
-                )
-            }
+            .opacity(isOptimisticLoading ? 0.6 : 1.0)
+            .accessibleAnimation(.easeInOut(duration: 0.2), value: isOptimisticLoading)
+
+        case .ungrouped(let books):
+            BookListView(
+                books: books,
+                isLoading: .constant(isOptimisticLoading),
+                onSelect: onBookSelected
+            )
             .accessibilityElement(children: .contain)
             .accessibilityLabel(Strings.Generic.booksListLabel)
-            .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.ungroupedBooks.count))
+            .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: books.count))
             .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
-            .opacity(viewModel.isOptimisticLoading ? 0.6 : 1.0)
-            .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.isOptimisticLoading)
+            .opacity(isOptimisticLoading ? 0.6 : 1.0)
+            .accessibleAnimation(.easeInOut(duration: 0.2), value: isOptimisticLoading)
+
+        case .empty:
+            EmptyView()
+        }
+    }
+}
+
+// MARK: - Switching Entry Point View
+
+extension CatalogContentView {
+    /// Skeleton placeholder shown while an entry point feed loads.
+    /// Entry point tabs remain visible above the skeleton.
+    static func switchingEntryPointView(
+        selectors: CatalogSelectors,
+        onEntryPointSelected: @escaping (CatalogFilter) -> Void,
+        onRefresh: @escaping () async -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !selectors.entryPoints.isEmpty {
+                EntryPointsSelectorView(entryPoints: selectors.entryPoints) { facet in
+                    onEntryPointSelected(facet)
+                }
+            }
+            ScrollView {
+                CatalogLoadingView()
+            }
+            .refreshable { await onRefresh() }
         }
     }
 }
 
 // MARK: - CatalogLoadingView
+
 struct CatalogLoadingView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -101,6 +129,6 @@ struct CatalogLoadingView: View {
                 CatalogLaneSkeletonView()
             }
         }
-        .padding(.vertical, 0)
+        .padding(.vertical, 17)
     }
 }

@@ -168,6 +168,8 @@ struct HoldsView: View {
             model.selectNewLibrary = true
         } label: {
             ImageProviders.MyBooksView.myLibraryIcon
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
         .accessibilityIdentifier(AccessibilityID.Holds.libraryButton)
         .accessibilityLabel(Strings.Generic.switchLibrary)
@@ -193,6 +195,8 @@ struct HoldsView: View {
             withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { model.showSearchSheet.toggle() }
         } label: {
             ImageProviders.MyBooksView.search
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
         .accessibilityIdentifier(AccessibilityID.Holds.searchButton)
         .accessibilityLabel(NSLocalizedString("Search Holds", comment: ""))

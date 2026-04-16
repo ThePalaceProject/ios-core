@@ -586,15 +586,25 @@ protocol AccountLogoDelegate: AnyObject {
         }
     }
 
+    /// Loads the logo image from network or cache.
+    /// Only call for accounts that are visible to the user (current account,
+    /// configured accounts in settings, visible cells in library picker).
+    /// Do NOT call in bulk for all accounts — 700+ concurrent logo fetches
+    /// saturate the connection pool and starve critical API requests.
     func loadLogo() {
         guard let url = self.logoUrl else { return }
+        guard !isLoadingLogo else { return }
+        isLoadingLogo = true
 
-        self.fetchImage(from: url, completion: {
-            guard let image = $0 else { return }
+        self.fetchImage(from: url, completion: { [weak self] in
+            self?.isLoadingLogo = false
+            guard let image = $0, let self else { return }
             self.logo = image
             self.logoDelegate?.logoDidUpdate(in: self, to: image)
         })
     }
+
+    private var isLoadingLogo = false
 
     private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> Void) {
         if let cachedImage = imageCache.get(for: self.uuid) {
