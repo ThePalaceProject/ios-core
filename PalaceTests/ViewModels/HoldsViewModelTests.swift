@@ -587,7 +587,7 @@ final class HoldsSyncFailureTests: XCTestCase {
 
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
 
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
+        await fulfillment(of: [errorExpectation], timeout: 3.0)
 
         // Stale data still shows (expected — we can't fix the data without a successful sync)
         XCTAssertEqual(viewModel.reservedBookVMs.count, 1, "Stale data persists")

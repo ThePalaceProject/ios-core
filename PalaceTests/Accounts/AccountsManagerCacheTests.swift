@@ -44,24 +44,24 @@ final class AccountsManagerCacheTests: XCTestCase {
         XCTAssertFalse(metadata.isExpired, "Fresh metadata must not be expired either")
     }
 
-    func testCatalogCacheMetadata_IsStale_ReturnsTrueAfter5Minutes() {
-        // Given: metadata created 6 minutes ago
-        let sixMinutesAgo = Date().addingTimeInterval(-360)
-        let metadata = CatalogCacheMetadata(timestamp: sixMinutesAgo, hash: "testhash")
+    func testCatalogCacheMetadata_IsStale_ReturnsTrueAfter6Hours() {
+        // Given: metadata created just over 6 hours ago (staleTTL is 21600s = 6 hours)
+        let justOverSixHours = Date().addingTimeInterval(-21601)
+        let metadata = CatalogCacheMetadata(timestamp: justOverSixHours, hash: "testhash")
 
         // Then: should be stale but not yet expired
-        XCTAssertTrue(metadata.isStale, "Metadata older than 5 minutes should be stale")
-        XCTAssertFalse(metadata.isExpired, "Metadata only 6 minutes old must not be expired (24-hour threshold)")
+        XCTAssertTrue(metadata.isStale, "Metadata older than 6 hours should be stale")
+        XCTAssertFalse(metadata.isExpired, "Metadata only ~6 hours old must not be expired (24-hour threshold)")
     }
 
-    func testCatalogCacheMetadata_IsStale_ReturnsFalseJustUnder5Minutes() {
-        // Given: metadata created just under 5 minutes ago (4 min 59 sec)
-        let justUnderFiveMinutes = Date().addingTimeInterval(-299)
-        let metadata = CatalogCacheMetadata(timestamp: justUnderFiveMinutes, hash: "testhash")
+    func testCatalogCacheMetadata_IsStale_ReturnsFalseJustUnder6Hours() {
+        // Given: metadata created just under 6 hours ago (5 hrs 59 min 59 sec)
+        let justUnderSixHours = Date().addingTimeInterval(-21599)
+        let metadata = CatalogCacheMetadata(timestamp: justUnderSixHours, hash: "testhash")
 
         // Then: should not be stale and not expired
-        XCTAssertFalse(metadata.isStale, "Metadata under 5 minutes should not be stale")
-        XCTAssertFalse(metadata.isExpired, "Metadata under 5 minutes must also not be expired")
+        XCTAssertFalse(metadata.isStale, "Metadata under 6 hours should not be stale")
+        XCTAssertFalse(metadata.isExpired, "Metadata under 6 hours must also not be expired")
     }
 
     func testCatalogCacheMetadata_IsExpired_ReturnsFalseWhenRecent() {
@@ -290,8 +290,8 @@ final class AccountsManagerCacheTests: XCTestCase {
         let dataURL = tempCacheDirectory.appendingPathComponent("accounts_catalog_\(hash).json")
         try? feedData.write(to: dataURL)
 
-        // Write stale metadata (6 minutes ago)
-        let staleTimestamp = Date().addingTimeInterval(-360)
+        // Write stale metadata (7 hours ago — past 6-hour staleTTL but under 24-hour expiry)
+        let staleTimestamp = Date().addingTimeInterval(-25200)
         let metadata = CatalogCacheMetadata(timestamp: staleTimestamp, hash: hash)
         saveCacheMetadata(metadata, hash: hash)
 
