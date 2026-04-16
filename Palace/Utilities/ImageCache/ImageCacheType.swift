@@ -263,21 +263,12 @@ public final class ImageCache: ImageCacheType {
         dataCache.clear()
     }
 
-    /// Evict all decoded in-memory images without touching the compressed disk
-    /// cache. Call this when the catalog view switches filters (All/Ebooks/
-    /// Audiobooks) or when a library switch occurs — the visible covers are
-    /// about to change entirely, so holding decoded pixels from the previous
-    /// view wastes CG raster data VM.
+    /// Evict decoded in-memory images without touching the compressed disk
+    /// cache. The disk cache retains JPEG data, so the next fetchCoverImage
+    /// call promotes from disk (~5ms) instead of hitting the network.
+    /// NSCache also auto-evicts under memory pressure independently.
     public func evictDecodedImages() {
         memoryImages.removeAllObjects()
-    }
-
-    /// Full eviction: clears NSCache AND tells TPPBook objects to release
-    /// their decoded UIImage references. Call only on library switch — NOT
-    /// on facet/entry point changes where the same books may reappear.
-    public func evictAllDecodedImages() {
-        memoryImages.removeAllObjects()
-        NotificationCenter.default.post(name: .TPPImageCacheDidEvict, object: nil)
     }
 
     private func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage? {

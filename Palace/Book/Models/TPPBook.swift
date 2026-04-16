@@ -148,22 +148,6 @@ public class TPPBook: NSObject, ObservableObject {
         super.init()
         self.fetchThumbnailImage()
         self.fetchCoverImage()
-
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(releaseDecodedImages),
-            name: .TPPImageCacheDidEvict, object: nil
-        )
-    }
-
-    @objc private func releaseDecodedImages() {
-        DispatchQueue.main.async { [weak self] in
-            self?.coverImage = nil
-            self?.thumbnailImage = nil
-        }
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
     }
 
     @objc convenience init?(entry: TPPOPDSEntry?) {

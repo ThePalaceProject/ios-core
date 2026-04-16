@@ -21,7 +21,6 @@ extension Notification.Name {
     static let TPPDidSignOut = Notification.Name("TPPDidSignOut")
     static let TPPIsSigningIn = Notification.Name("TPPIsSigningIn")
     static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name("TPPAppDelegateDidReceiveCleverRedirectURL")
-    static let TPPImageCacheDidEvict = Notification.Name("TPPImageCacheDidEvict")
     static let TPPBookRegistryDidChange = Notification.Name("TPPBookRegistryDidChange")
     static let TPPBookRegistryStateDidChange = Notification.Name("TPPBookRegistryStateDidChange")
 
