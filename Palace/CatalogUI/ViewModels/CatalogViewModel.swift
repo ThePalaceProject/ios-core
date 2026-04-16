@@ -120,6 +120,31 @@ final class CatalogViewModel: ObservableObject {
           }
         }
 
+        // Preload inactive entry points (Ebooks, Audiobooks) in the background.
+        // The repository caches these feeds in memory, so the first tap on any
+        // filter tab is instant instead of waiting for a network round-trip.
+        let inactiveEntryPoints = mapped.entryPoints.filter { !$0.active }
+        if !inactiveEntryPoints.isEmpty {
+          Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            await withTaskGroup(of: Void.self) { group in
+              for ep in inactiveEntryPoints {
+                guard let epURL = ep.href else { continue }
+                group.addTask {
+                  do {
+                    // This populates repository.memoryCache — subsequent
+                    // loadTopLevelCatalog calls return the cached feed instantly.
+                    _ = try await self.repository.loadTopLevelCatalog(at: epURL)
+                    Log.info(#file, "[PERF] Preloaded entry point '\(ep.title)'")
+                  } catch {
+                    // Non-critical — user will fetch on first tap instead
+                  }
+                }
+              }
+            }
+          }
+        }
+
         guard !Task.isCancelled else { return }
 
         // Warm the memory cache from disk AFTER the UI is already showing.
