@@ -39,10 +39,13 @@ struct CatalogLaneMoreView: View {
                 if viewModel.showSearch {
                     Button(action: { dismissSearch() }, label: {
                         Text(Strings.Generic.cancel)
+                            .frame(minHeight: 44)
                     })
                 } else {
                     Button(action: { presentSearch() }, label: {
                         ImageProviders.MyBooksView.search
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     })
                     .accessibilityLabel(Strings.Generic.searchCatalog)
                 }
