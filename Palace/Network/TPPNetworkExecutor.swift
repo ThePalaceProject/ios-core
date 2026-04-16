@@ -583,6 +583,14 @@ extension TPPNetworkExecutor {
     }
 
     func executeTokenRefresh(username: String, password: String, tokenURL: URL, accountId: String? = nil, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
+        guard !username.isEmpty, !password.isEmpty else {
+            Log.error(#file, "Cannot request token with empty credentials")
+            let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue,
+                                userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"])
+            completion(.failure(error))
+            return
+        }
+
         let session = self.urlSession
         Task {
             let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
