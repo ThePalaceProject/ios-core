@@ -526,8 +526,22 @@ private enum StorageKey: String {
     /// Instance-level snapshot — reads from this instance's keychain variables.
     /// On bound (per-account) instances the keys are immutable, so this is
     /// inherently race-free without needing a barrier.
+    ///
+    /// Cache coherence: each `TPPKeychainVariable` caches its last-read value
+    /// and only invalidates on a key change. The sign-in/out pipeline writes
+    /// via the singleton `TPPUserAccount.sharedAccount(libraryUUID:)`, not
+    /// via per-account instances — so this instance's caches are stale right
+    /// after another instance's write. We force a key re-bind (nil → uuid)
+    /// to invalidate every variable's cache before reading, mirroring the
+    /// behavior of the deprecated class-level `credentialSnapshot(for:)`.
+    /// Without this, the view model reads "signed in" state even after
+    /// sign-out has completed (see build 459 → HEAD regression).
     func credentialSnapshot() -> CredentialSnapshot {
         return accountInfoQueue.sync {
+            if let uuid = libraryUUID {
+                self.libraryUUID = nil
+                self.libraryUUID = uuid
+            }
             let creds = self.credentials
             let hasCreds = UserAccountAuthHelper.hasCredentials(creds)
             let hasToken = UserAccountAuthHelper.hasAuthToken(credentials: creds)
