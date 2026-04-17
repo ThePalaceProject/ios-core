@@ -144,6 +144,10 @@ final class AccessibilityServiceTests: XCTestCase {
 
         // This should not crash — haptic is gated
         await service.triggerHaptic(.selection)
+
+        let stored = await service.currentPreferences()
+        XCTAssertFalse(stored.hapticFeedbackEnabled,
+                       "Preference update must disable haptic gating")
     }
 
     func testHapticDisabledWithReducedMotion() async {
@@ -154,6 +158,12 @@ final class AccessibilityServiceTests: XCTestCase {
 
         // This should not crash — haptic is gated by reduced motion
         await service.triggerHaptic(.mediumImpact)
+
+        let stored = await service.currentPreferences()
+        XCTAssertTrue(stored.reducedMotion,
+                      "reducedMotion preference must be persisted")
+        XCTAssertTrue(stored.hapticFeedbackEnabled,
+                      "hapticFeedbackEnabled flag is still set (reduced-motion gates at trigger time, not at preference level)")
     }
 
     // MARK: - Codable

@@ -50,7 +50,7 @@ class BookRegistrySync {
         Log.debug(#file, "  Found \(records.count) books in registry")
 
         for obj in records {
-          guard var record = TPPBookRegistryRecord(record: obj) else { continue }
+          guard let record = TPPBookRegistryRecord(record: obj) else { continue }
           let originalState = record.state
 
           // Validate file existence for download states

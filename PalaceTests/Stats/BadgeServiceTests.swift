@@ -252,6 +252,10 @@ final class BadgeServiceTests: XCTestCase {
     _ = await badgeService.evaluateAllBadges()
 
     await fulfillment(of: [expectation], timeout: 2.0)
+    // Post-notification: the earned state must be persisted, not just announced.
+    let earned = await badgeService.earnedBadges()
+    XCTAssertFalse(earned.isEmpty,
+                   "Notification firing must correspond to at least one persisted earned badge")
   }
 
   // MARK: - All 15 Badges Exist

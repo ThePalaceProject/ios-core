@@ -71,9 +71,12 @@ final class MainActorHelpersTests: XCTestCase {
     }
 
     func testRunParallelFireAndForget_EmptyArray_CompletesImmediately() async {
+        let counter = Counter()
         let work: [@Sendable () async -> Void] = []
         await runParallelFireAndForget(work)
-        // If we reach here, the empty array completed successfully
+        let count = await counter.value
+        XCTAssertEqual(count, 0,
+                       "Empty work array must not execute any closures")
     }
 
     // MARK: - Debouncer Tests

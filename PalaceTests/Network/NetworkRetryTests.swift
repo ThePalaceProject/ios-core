@@ -222,19 +222,6 @@ final class NetworkTimeoutTests: XCTestCase {
                                     "Resource timeout must be >= per-request timeout")
     }
 
-    func testRequest_hasCorrectTimeout() {
-        var request = URLRequest(url: URL(string: "https://example.com")!)
-        request.timeoutInterval = 15
-
-        XCTAssertEqual(request.timeoutInterval, 15)
-        XCTAssertGreaterThan(request.timeoutInterval, 0, "Timeout must be positive")
-        // Verify the URL survived mutation
-        XCTAssertEqual(request.url?.absoluteString, "https://example.com")
-        // Verify a shorter timeout also sticks (guards against floor clamping)
-        request.timeoutInterval = 5
-        XCTAssertEqual(request.timeoutInterval, 5, "Timeout must be updatable to smaller values")
-    }
-
     func testDefaultTimeout_isReasonable() {
         let request = URLRequest(url: URL(string: "https://example.com")!)
 

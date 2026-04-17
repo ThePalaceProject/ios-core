@@ -221,8 +221,10 @@ final class TPPUserNotificationsTests: XCTestCase {
             genericBookmarks: nil
         )
 
-        // Should not crash with nil availability
+        let originalState = record.state
         NotificationService.compareAvailability(cachedRecord: record, andNewBook: book)
+        XCTAssertEqual(record.state, originalState,
+                       "compareAvailability with nil availability must not mutate record state")
     }
 
     // MARK: - requestAuthorization Tests

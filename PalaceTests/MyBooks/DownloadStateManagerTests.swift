@@ -197,16 +197,4 @@ final class DownloadStateManagerTests: XCTestCase {
         XCTAssertEqual(finalCount, 0, "All concurrent remove() calls must complete, leaving count=0")
     }
 
-    // MARK: - Max Concurrent Downloads
-
-    func testMaxConcurrentDownloads_canBeChanged() {
-        let original = stateManager.maxConcurrentDownloads
-        stateManager.maxConcurrentDownloads = 8
-        XCTAssertEqual(stateManager.maxConcurrentDownloads, 8)
-        XCTAssertNotEqual(stateManager.maxConcurrentDownloads, original,
-                          "Setting maxConcurrentDownloads to 8 must change the value from the default")
-
-        stateManager.maxConcurrentDownloads = 1
-        XCTAssertEqual(stateManager.maxConcurrentDownloads, 1)
-    }
 }

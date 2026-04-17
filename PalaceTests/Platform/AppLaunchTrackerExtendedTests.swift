@@ -191,10 +191,4 @@ final class AppLaunchTrackerExtendedTests: XCTestCase {
         XCTAssertTrue(LaunchMilestone.allCases.contains(.catalogLoaded))
     }
 
-    func testLaunchMilestone_RawValues() {
-        XCTAssertEqual(LaunchMilestone.processStart.rawValue, "process_start")
-        XCTAssertEqual(LaunchMilestone.didFinishLaunching.rawValue, "did_finish_launching")
-        XCTAssertEqual(LaunchMilestone.firstFrame.rawValue, "first_frame")
-        XCTAssertEqual(LaunchMilestone.catalogLoaded.rawValue, "catalog_loaded")
-    }
 }

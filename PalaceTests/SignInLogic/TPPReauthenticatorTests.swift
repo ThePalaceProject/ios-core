@@ -33,11 +33,9 @@ final class TPPReauthenticatorTests: XCTestCase {
 
     // MARK: - Initialization Tests
 
-    func testInit_createsInstance() {
-        XCTAssertNotNil(reauthenticator)
-        // A second instance must also be valid — the type is not a singleton
+    func testInit_createsDistinctInstances() {
+        // The type is not a singleton — each init must produce a distinct object
         let second = TPPReauthenticator()
-        XCTAssertNotNil(second)
         XCTAssertFalse(reauthenticator === second,
                        "Two TPPReauthenticator instances must be distinct objects")
     }

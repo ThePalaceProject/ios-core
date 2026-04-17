@@ -82,7 +82,7 @@ enum MockBackendTestHelper {
         // Configure the protocol — set direct path for test fixtures
         MockBackendURLProtocol.activeScenario = scenario
         MockBackendURLProtocol.fixtureDirectoryPath = fixturesURL().path
-        MockBackendURLProtocol.fixtureBundle = testBundle()
+        MockBackendURLProtocol.fixtureBundle = currentTestBundle()
 
         // Create executor with mock-injected session
         let config = URLSessionConfiguration.ephemeral
@@ -118,7 +118,7 @@ enum MockBackendTestHelper {
             .appendingPathComponent("Fixtures/API")
     }
 
-    private static func testBundle() -> Bundle {
+    private static func currentTestBundle() -> Bundle {
         Bundle(for: MockBackendIntegrationTests.self)
     }
 }

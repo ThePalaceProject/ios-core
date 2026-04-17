@@ -236,7 +236,7 @@ public final class AudiobookSessionManager: ObservableObject {
         let chapter = currentChapters[index]
         manager.audiobook.player.play(at: chapter.position, completion: nil)
 
-        Log.debug(#file, "Skipping to chapter: '\(chapter.title ?? "Unknown")'")
+        Log.debug(#file, "Skipping to chapter: '\(chapter.title)'")
     }
 
     /// Cycles through playback rates
@@ -325,11 +325,6 @@ public final class AudiobookSessionManager: ObservableObject {
     /// This is called via AudiobookEvents.managerCreated subscription.
     func bindToManager(_ newManager: AudiobookManager) {
         Log.info(#file, "Binding to AudiobookManager")
-        let hadExistingManager = manager != nil
-        let existingBookId = currentBook?.identifier ?? "none"
-
-        if hadExistingManager {
-        }
 
         // Clear previous subscriptions
         managerCancellables.removeAll()
@@ -578,7 +573,7 @@ public final class AudiobookSessionManager: ObservableObject {
                 currentChapter?.title != newChapter.title {
                 currentChapter = newChapter
                 chapterUpdatePublisher.send((chapters: currentChapters, current: currentChapter))
-                Log.debug(#file, "Chapter changed to: '\(newChapter.title ?? "Unknown")'")
+                Log.debug(#file, "Chapter changed to: '\(newChapter.title)'")
             }
         }
 

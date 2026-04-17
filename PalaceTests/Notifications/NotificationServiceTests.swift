@@ -162,8 +162,11 @@ final class NotificationServiceTests: XCTestCase {
             genericBookmarks: []
         )
 
-        // Should not crash
+        let originalIdentifier = record.book.identifier
         NotificationService.compareAvailability(cachedRecord: record, andNewBook: book2)
+        // Record must not be mutated when availability is absent on both sides
+        XCTAssertEqual(record.book.identifier, originalIdentifier,
+                       "compareAvailability with no availability on either book must not mutate the record")
     }
 
     func testCompareAvailabilityReservedToReady() {
@@ -190,8 +193,15 @@ final class NotificationServiceTests: XCTestCase {
         )
 
         // This should trigger a local notification (but won't in test since
-        // notification center isn't authorized). We verify it doesn't crash.
+        // notification center isn't authorized). Verify the call completes
+        // without mutating the cached record (notification is an external effect).
+        let originalIdentifier = record.book.identifier
+        let originalState = record.state
         NotificationService.compareAvailability(cachedRecord: record, andNewBook: readyBook)
+        XCTAssertEqual(record.book.identifier, originalIdentifier,
+                       "compareAvailability must not mutate the cached record's book identifier")
+        XCTAssertEqual(record.state, originalState,
+                       "compareAvailability must not mutate the cached record's state")
     }
 
     // MARK: - backgroundFetchIsNeeded Tests

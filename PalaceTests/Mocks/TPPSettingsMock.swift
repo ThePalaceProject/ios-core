@@ -16,13 +16,11 @@ import Foundation
 ///
 /// Usage:
 /// ```swift
-/// func testBetaLibraries() {
-///     let mockSettings = TPPSettingsMock()
-///     mockSettings.useBetaLibraries = true
-///
-///     let sut = MyClass(settings: mockSettings)
-///     // Test behavior when beta libraries are enabled
-/// }
+/// // inside an XCTestCase:
+/// let mockSettings = TPPSettingsMock()
+/// mockSettings.useBetaLibraries = true
+/// let sut = MyClass(settings: mockSettings)
+/// // Exercise behavior when beta libraries are enabled
 /// ```
 final class TPPSettingsMock: NSObject, TPPSettingsProviding {
 

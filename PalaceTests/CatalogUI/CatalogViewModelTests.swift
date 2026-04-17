@@ -175,6 +175,9 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         vm.$state.sink { if case .error = $0 { exp.fulfill() } }.store(in: &cancellables)
         await vm.load()
         await fulfillment(of: [exp], timeout: 1.0)
+        guard case .error = vm.state else {
+            return XCTFail("Expected .error state after load failure, got \(vm.state)")
+        }
     }
 
     func testLoad_WithNilResult_TransitionsToError() async {
@@ -184,6 +187,9 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         vm.$state.sink { if case .error = $0 { exp.fulfill() } }.store(in: &cancellables)
         await vm.load()
         await fulfillment(of: [exp], timeout: 1.0)
+        guard case .error = vm.state else {
+            return XCTFail("Expected .error state after nil result, got \(vm.state)")
+        }
     }
 
     func testSearchRepository_ReturnsMock() {
@@ -222,6 +228,8 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         vm.$state.sink { if case .loading = $0 { exp.fulfill() } }.store(in: &cancellables)
         await vm.forceRefresh()
         await fulfillment(of: [exp], timeout: 1.0)
+        XCTAssertGreaterThanOrEqual(mockRepository.loadTopLevelCatalogCallCount, 1,
+                                    "forceRefresh must invoke the repository at least once")
     }
 }
 

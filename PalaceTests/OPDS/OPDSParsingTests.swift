@@ -252,7 +252,6 @@ final class OPDSParsingTests: XCTestCase {
 
         let feed = TPPOPDSFeed(xml: xml)
 
-        XCTAssertNotNil(feed, "Feed should be created from minimal valid XML")
         XCTAssertEqual(feed?.identifier, "http://example.org/feed")
         XCTAssertEqual(feed?.title, "Test Feed")
         XCTAssertNotNil(feed?.updated, "Updated date should be parsed")
@@ -269,7 +268,6 @@ final class OPDSParsingTests: XCTestCase {
 
         let feed = TPPOPDSFeed(xml: xml)
 
-        XCTAssertNotNil(feed, "Feed should be created from complete XML")
         XCTAssertEqual(feed?.identifier, "http://example.org/catalog")
         XCTAssertEqual(feed?.title, "Library Catalog")
         XCTAssertNotNil(feed?.updated)
@@ -286,7 +284,6 @@ final class OPDSParsingTests: XCTestCase {
 
         let feed = TPPOPDSFeed(xml: xml)
 
-        XCTAssertNotNil(feed, "Feed should be created from single entry XML")
         XCTAssertEqual(feed?.entries.count, 1, "Feed should contain exactly one entry")
 
         if let entry = feed?.entries.first as? TPPOPDSEntry {
@@ -306,7 +303,6 @@ final class OPDSParsingTests: XCTestCase {
 
         let feed = TPPOPDSFeed(xml: xml)
 
-        XCTAssertNotNil(feed, "Feed should be created")
         XCTAssertEqual(feed?.authorizationIdentifier, "12345678", "Authorization identifier should be parsed")
         XCTAssertNotNil(feed?.licensor, "Licensor should be present")
         XCTAssertEqual(feed?.licensor?["vendor"] as? String, "Adobe")

@@ -202,6 +202,8 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
         businessLogic.logIn()
 
         wait(for: [expectation], timeout: 1.0)
+        XCTAssertTrue(businessLogic.isValidatingCredentials,
+                      "logIn() must leave the business logic in validating state after the notification")
     }
 
     func testLogIn_notifiesUIDelegateWillSignIn() {

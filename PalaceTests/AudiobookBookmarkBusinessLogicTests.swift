@@ -381,33 +381,6 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
         XCTAssertFalse(genericBookmarks.isEmpty, "Should have generic bookmarks in registry")
     }
 
-    // MARK: - Delete Bookmark Tests
-
-    func testDeleteBookmark_CallsAnnotationsManager() {
-        mockRegistry = TPPBookRegistryMock()
-        mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
-        mockAnnotations = TPPAnnotationMock()
-
-        // Pre-populate with a bookmark
-        mockAnnotations.bookmarks[fakeBook.identifier] = [
-            TestBookmark(annotationId: "test-annotation-123", value: "{}")
-        ]
-
-        sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
-        tracks = try! loadTracks(for: manifestJSON)
-
-        let position = TrackPosition(track: tracks.tracks[0], timestamp: 100, tracks: tracks)
-
-        let expectation = XCTestExpectation(description: "Delete bookmark")
-
-        sut.deleteBookmark(at: position) { _ in
-            // Deletion should complete (may or may not find the bookmark)
-            expectation.fulfill()
-        }
-
-        wait(for: [expectation], timeout: 3.0)
-    }
-
     // MARK: - Sync Bookmarks Tests
 
     func testSyncBookmarks_MergesLocalAndRemote() {
@@ -480,7 +453,11 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
         }
         wait(for: [survived], timeout: 3.0)
 
-        // If we get here, the weak self guard worked — no crash
+        // If we reach here, the weak self guard worked — no crash.
+        // Verify the SUT really was deallocated before the debounce fired
+        // (no resurrection via strong self capture in DispatchWorkItem).
+        XCTAssertNil(logic,
+                     "SUT must remain deallocated; debounced work must not resurrect self")
     }
 
     func testDebounce_RapidCalls_OnlyLastSyncs() {

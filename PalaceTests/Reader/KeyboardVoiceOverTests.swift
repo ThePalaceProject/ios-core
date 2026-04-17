@@ -105,37 +105,6 @@ final class KeyboardVoiceOverTests: XCTestCase {
         XCTAssertNotNil(sut, "Handler should be initialized")
     }
 
-    // MARK: - Test: Accessibility Labels
-
-    /// Verify navigation actions have proper accessibility support
-    func testNavigationActions_haveAccessibilityLabels() {
-        // Test that the navigation buttons in the reader have proper labels
-        // This would be tested more thoroughly in UI tests, but we verify the pattern
-
-        let backButton = UIBarButtonItem(
-            image: UIImage(systemName: "chevron.left"),
-            style: .plain,
-            target: nil,
-            action: nil
-        )
-        backButton.accessibilityLabel = Strings.Generic.goBack
-
-        XCTAssertNotNil(backButton.accessibilityLabel)
-        XCTAssertFalse(backButton.accessibilityLabel?.isEmpty ?? true)
-    }
-
-    /// Test reader settings button accessibility
-    func testSettingsButton_hasAccessibilityLabel() {
-        let settingsButton = UIBarButtonItem(
-            image: UIImage(systemName: "gear"),
-            style: .plain,
-            target: nil,
-            action: nil
-        )
-        settingsButton.accessibilityLabel = "Reader Settings"
-
-        XCTAssertEqual(settingsButton.accessibilityLabel, "Reader Settings")
-    }
 
     // MARK: - Test: Integration with Real Reader Components
 

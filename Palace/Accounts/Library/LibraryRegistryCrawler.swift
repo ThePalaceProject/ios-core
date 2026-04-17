@@ -346,7 +346,7 @@ final class LibraryRegistryCrawler {
         firstPageCount: Int
     ) async throws -> [OPDS2Publication] {
         // Parse the first next-page URL to extract offset/size pattern
-        guard var components = URLComponents(url: firstPageURL, resolvingAgainstBaseURL: false) else {
+        guard let components = URLComponents(url: firstPageURL, resolvingAgainstBaseURL: false) else {
             throw CrawlerError.serializationFailed
         }
 

@@ -185,6 +185,14 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
         }
 
         waitForExpectations(timeout: 30.0)
+        // Cache should be in a consistent state after concurrent access — no crashes
+        // implied by reaching this point, but verify nothing was corrupted by reading
+        // all 5 keys without throwing.
+        for i in 0..<5 {
+            _ = self.cacheManager.getLastCachedDoc("concurrent-\(i)")
+        }
+        XCTAssertNotNil(cacheManager,
+                        "Cache manager must still be usable after concurrent access")
     }
 
     func testConcurrentCacheAndClear_sameKey_doesNotCrash() {
@@ -205,6 +213,12 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
         }
 
         waitForExpectations(timeout: 30.0)
+        // Race-key state is either cached or cleared — either is fine;
+        // what matters is the cache is still operational.
+        let doc = TPPProblemDocument.fromDictionary(["title": "Post-race"])
+        cacheManager.cacheProblemDocument(doc, key: "race-key")
+        XCTAssertNotNil(cacheManager.getLastCachedDoc("race-key"),
+                        "Cache must accept new writes after concurrent race")
     }
 
     // MARK: - Notification
@@ -222,5 +236,8 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
         cacheManager.cacheProblemDocument(doc, key: "notif-key")
 
         wait(for: [expectation], timeout: 2.0)
+        // Additionally verify the doc was actually stored (post-notification side effect).
+        XCTAssertEqual(cacheManager.getLastCachedDoc("notif-key")?.title, "Notification Test",
+                       "Cached doc must be retrievable after notification fires")
     }
 }

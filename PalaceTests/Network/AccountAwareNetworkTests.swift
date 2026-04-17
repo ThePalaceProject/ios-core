@@ -261,9 +261,9 @@ final class AccountAwareNetworkTests: XCTestCase {
 
         let tokenURL = URL(string: "https://example.com/token")!
 
-        // Call without accountId (default nil) — the key assertion is that this
-        // compiles and runs without the accountId parameter (backward compatibility).
-        let _: Result<TokenResponse, Error> = await withCheckedContinuation { continuation in
+        // Call without accountId (default nil). Verify backward-compat overload
+        // still delivers a result (the stub returns a valid access_token).
+        let result: Result<TokenResponse, Error> = await withCheckedContinuation { continuation in
             executor.executeTokenRefresh(
                 username: "testuser",
                 password: "testpass",
@@ -272,5 +272,12 @@ final class AccountAwareNetworkTests: XCTestCase {
         }
 
         HTTPStubURLProtocol.reset()
+        switch result {
+        case .success(let response):
+            XCTAssertEqual(response.accessToken, "compat-token",
+                           "Backward-compat overload must still return the stubbed token")
+        case .failure(let error):
+            XCTFail("Backward-compat executeTokenRefresh should succeed, got: \(error)")
+        }
     }
 }

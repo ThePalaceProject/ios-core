@@ -206,7 +206,6 @@ public final class NowPlayingCoordinator {
         let title = info[MPMediaItemPropertyTitle] as? String ?? "Unknown"
         let elapsed = info[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? 0
         let duration = info[MPMediaItemPropertyPlaybackDuration] as? Double ?? 0
-        let hasArtwork = info[MPMediaItemPropertyArtwork] != nil
 
         Log.debug(#file, "Now Playing updated - title: '\(title)', elapsed: \(Int(elapsed))s/\(Int(duration))s, playing: \(isPlaying)")
     }
