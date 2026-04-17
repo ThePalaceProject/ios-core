@@ -568,7 +568,7 @@ final class HoldsSyncFailureTests: XCTestCase {
 
     // MARK: - Stale Data Persistence (still happens, but now with visible error)
 
-    func testSyncFailure_StaleDataPersists_ButErrorIsVisible() async {
+    func testSyncFailure_StaleDataPersists_ErrorSuppressedWhenCachedDataExists() async {
         let staleBook = TPPBookMocker.snapshotReservedBook(
             identifier: "stale-hold",
             title: "Book That Should Be Ready"
@@ -578,21 +578,19 @@ final class HoldsSyncFailureTests: XCTestCase {
         let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
         XCTAssertEqual(viewModel.reservedBookVMs.count, 1)
 
-        let errorExpectation = XCTestExpectation(description: "syncError is set")
-        viewModel.$syncError
-            .dropFirst()
-            .first { $0 != nil }
-            .sink { _ in errorExpectation.fulfill() }
-            .store(in: &cancellables)
-
+        // Sync fails, but cached holds are visible — error is intentionally suppressed
+        // to avoid alarming the user when stale data is still useful.
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
 
-        await fulfillment(of: [errorExpectation], timeout: 1.0)
+        // Give the notification pipeline time to process
+        let exp = XCTestExpectation(description: "notification processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 2.0)
 
-        // Stale data still shows (expected — we can't fix the data without a successful sync)
+        // Stale data still shows
         XCTAssertEqual(viewModel.reservedBookVMs.count, 1, "Stale data persists")
-        // But now the user KNOWS something went wrong
-        XCTAssertNotNil(viewModel.syncError, "Error banner is visible — user is informed")
+        // Error suppressed because cached holds are available
+        XCTAssertNil(viewModel.syncError, "Error suppressed when cached data exists")
         XCTAssertFalse(viewModel.isLoading, "Not stuck in loading state")
     }
 

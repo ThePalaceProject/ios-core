@@ -35,23 +35,24 @@ public final class ImageCache: ImageCacheType {
         let cacheMemoryMB: Int
         let maxConcurrentProcessing: Int
 
-        // PP-4020: Cover art in catalog lanes displays at ~100pt (300px @3x).
-        // 300px max keeps covers sharp while minimizing CG raster data VM.
-        // Each 300x300 RGBA decoded = ~360KB. With evictDecodedImages() called
-        // on filter switches, peak decoded memory stays under 20MB.
+        // Cover art in catalog lanes displays at ~100pt (300px @3x).
+        // Each 300x300 RGBA decoded = ~360KB. A typical catalog has 15 lanes
+        // × 7 visible books = ~105 covers across All/Ebooks/Audiobooks.
+        // The NSCache must hold enough to avoid re-fetching on entry point
+        // switches. Memory is reclaimed on library switch via evictAllDecodedImages().
         if deviceMemoryMB < 2048 {
-            cacheMemoryMB = 10
-            memoryImages.countLimit = 30
+            cacheMemoryMB = 15
+            memoryImages.countLimit = 60
             maxDimension = 200
             maxConcurrentProcessing = 2
         } else if deviceMemoryMB < 4096 {
-            cacheMemoryMB = 15
-            memoryImages.countLimit = 40
+            cacheMemoryMB = 25
+            memoryImages.countLimit = 100
             maxDimension = 300
             maxConcurrentProcessing = 3
         } else {
-            cacheMemoryMB = 20
-            memoryImages.countLimit = 50
+            cacheMemoryMB = 40
+            memoryImages.countLimit = 150
             maxDimension = 300
             maxConcurrentProcessing = 4
         }
@@ -262,11 +263,10 @@ public final class ImageCache: ImageCacheType {
         dataCache.clear()
     }
 
-    /// Evict all decoded in-memory images without touching the compressed disk
-    /// cache. Call this when the catalog view switches filters (All/Ebooks/
-    /// Audiobooks) or when a library switch occurs — the visible covers are
-    /// about to change entirely, so holding decoded pixels from the previous
-    /// view wastes CG raster data VM.
+    /// Evict decoded in-memory images without touching the compressed disk
+    /// cache. The disk cache retains JPEG data, so the next fetchCoverImage
+    /// call promotes from disk (~5ms) instead of hitting the network.
+    /// NSCache also auto-evicts under memory pressure independently.
     public func evictDecodedImages() {
         memoryImages.removeAllObjects()
     }

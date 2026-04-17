@@ -102,6 +102,7 @@ struct Strings {
         static let moreBooksInLane = NSLocalizedString("More books in %@", comment: "VoiceOver: See more books in a catalog lane")
         static let horizontalLaneHint = NSLocalizedString("Swipe horizontally to browse. Double tap to open a book.", comment: "VoiceOver: Hint for horizontal book lanes")
         static let catalogRegion = NSLocalizedString("Catalog", comment: "VoiceOver: Label for main catalog / browse region")
+        static let catalogFilter = NSLocalizedString("Filter by format", comment: "VoiceOver: Label for the catalog format filter (All, Ebooks, Audiobooks)")
         static let booksListLabel = NSLocalizedString("Books list", comment: "VoiceOver: Label for a list of books")
         static let expandSection = NSLocalizedString("Expand section", comment: "VoiceOver: Expand a collapsible section")
         static let collapseSection = NSLocalizedString("Collapse section", comment: "VoiceOver: Collapse an expanded section")

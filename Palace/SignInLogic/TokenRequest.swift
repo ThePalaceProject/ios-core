@@ -56,6 +56,7 @@ import Foundation
         // Memorial Library (PP-4045).
 
         var request = URLRequest(url: url, applyingCustomUserAgent: true)
+        request.assumesHTTP3Capable = false
         request.httpMethod = HTTPMethodType.POST.rawValue
 
         let loginString = "\(username):\(password)"

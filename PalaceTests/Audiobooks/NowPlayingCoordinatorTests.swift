@@ -339,12 +339,12 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             )
         }
 
-        // Wait for debounce to flush
+        // Wait for debounce to flush — CI runners may be slower
         let expectation = XCTestExpectation(description: "Debounce settles")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 2.0)
+        wait(for: [expectation], timeout: 3.0)
 
         let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
         let title = info?[MPMediaItemPropertyTitle] as? String

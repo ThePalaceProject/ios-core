@@ -1,0 +1,5 @@
+{
+  "status": "success",
+  "message": "Device registered successfully.",
+  "device_id": "urn:uuid:device-id-5678"
+}

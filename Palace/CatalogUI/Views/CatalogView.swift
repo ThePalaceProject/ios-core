@@ -56,6 +56,8 @@ private extension CatalogView {
         ToolbarItem(placement: .navigationBarLeading) {
             Button(action: { showAccountDialog = true }, label: {
                 ImageProviders.MyBooksView.myLibraryIcon
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             })
             .accessibilityIdentifier(AccessibilityID.Catalog.accountButton)
             .accessibilityLabel(Strings.Generic.switchLibrary)
@@ -66,11 +68,14 @@ private extension CatalogView {
             if showSearch {
                 Button(action: { dismissSearch() }, label: {
                     Text(Strings.Generic.cancel)
+                        .frame(minHeight: 44)
                 })
                 .accessibilityIdentifier(AccessibilityID.Search.cancelButton)
             } else {
                 Button(action: { presentSearch() }, label: {
                     ImageProviders.MyBooksView.search
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 })
                 .accessibilityIdentifier(AccessibilityID.Catalog.searchButton)
                 .accessibilityLabel(Strings.Generic.searchCatalog)
@@ -108,89 +113,90 @@ private extension CatalogView {
     @ViewBuilder
     var content: some View {
         VStack(alignment: .leading, spacing: 0) {
-            searchSection
-            loadingSection
-            errorSection
-            mainCatalogSection
+            if showSearch {
+                CatalogSearchView(
+                    repository: viewModel.searchRepository,
+                    baseURL: viewModel.searchBaseURL,
+                    books: viewModel.state.allBooks,
+                    onBookSelected: presentBookDetail
+                )
+            } else {
+                catalogStateView
+            }
         }
     }
 
     @ViewBuilder
-    private var searchSection: some View {
-        if showSearch {
-            CatalogSearchView(
-                repository: viewModel.searchRepository,
-                baseURL: viewModel.searchBaseURL,
-                books: allBooks,
-                onBookSelected: presentBookDetail
-            )
-        } else {
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var loadingSection: some View {
-        if !showSearch && viewModel.isLoading {
+    private var catalogStateView: some View {
+        switch viewModel.state {
+        case .loading:
             skeletonList
                 .accessibilityIdentifier(AccessibilityID.Catalog.loadingIndicator)
-        } else {
-            EmptyView()
-        }
-    }
 
-    @ViewBuilder
-    private var errorSection: some View {
-        if !showSearch, let error = viewModel.errorMessage {
-            VStack(spacing: 16) {
-                Text(Strings.Generic.error)
-                    .font(.headline)
-                    .foregroundColor(.red)
+        case .error(let message):
+            errorView(message: message)
 
-                Text(error)
-                    .font(.body)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                    .accessibilityIdentifier(AccessibilityID.Catalog.errorView)
-
-                Button(action: {
-                    Task { await viewModel.forceRefresh() }
-                }, label: {
-                    HStack {
-                        Image(systemName: "arrow.clockwise")
-                            .accessibilityHidden(true)
-                        Text(Strings.Generic.reload)
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
-                })
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
-        } else {
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var mainCatalogSection: some View {
-        if !showSearch && !viewModel.isLoading && viewModel.errorMessage == nil {
+        case .loaded(let catalogContent), .applyingFacet(let catalogContent):
             CatalogContentView(
-                viewModel: viewModel,
+                content: catalogContent,
+                isOptimisticLoading: viewModel.state.isApplyingFacet,
+                scrollGeneration: viewModel.scrollGeneration,
                 onBookSelected: presentBookDetail,
                 onLaneMoreTapped: { title, url in
                     coordinator.push(.catalogLaneMore(title: title, url: url))
-                }
+                },
+                onEntryPointSelected: { facet in
+                    Task { await viewModel.applyEntryPoint(facet) }
+                },
+                onFacetSelected: { facet in
+                    Task { await viewModel.applyFacet(facet) }
+                },
+                onRefresh: { await viewModel.refresh() }
             )
             .accessibilityIdentifier(AccessibilityID.Catalog.scrollView)
             .accessibilityLabel(Strings.Generic.catalogRegion)
             .accessibilityElement(children: .contain)
-        } else {
-            EmptyView()
+
+        case .switchingEntryPoint(let selectors):
+            CatalogContentView.switchingEntryPointView(
+                selectors: selectors,
+                onEntryPointSelected: { facet in
+                    Task { await viewModel.applyEntryPoint(facet) }
+                },
+                onRefresh: { await viewModel.refresh() }
+            )
         }
+    }
+
+    private func errorView(message: String) -> some View {
+        VStack(spacing: 16) {
+            Text(Strings.Generic.error)
+                .font(.headline)
+                .foregroundColor(.red)
+
+            Text(message)
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+                .accessibilityIdentifier(AccessibilityID.Catalog.errorView)
+
+            Button(action: {
+                Task { await viewModel.forceRefresh() }
+            }, label: {
+                HStack {
+                    Image(systemName: "arrow.clockwise")
+                        .accessibilityHidden(true)
+                    Text(Strings.Generic.reload)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(Color.blue)
+                .foregroundColor(.white)
+                .cornerRadius(8)
+            })
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
     }
 
     func presentBookDetail(_ book: TPPBook) {
@@ -264,10 +270,7 @@ private extension CatalogView {
 
     // MARK: - Computed Properties
     var allBooks: [TPPBook] {
-        if !viewModel.lanes.isEmpty {
-            return viewModel.lanes.flatMap { $0.books }
-        }
-        return viewModel.ungroupedBooks
+        viewModel.state.allBooks
     }
 
     // MARK: - Subviews
@@ -281,8 +284,7 @@ private extension CatalogView {
                     CatalogLaneSkeletonView()
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 12)
+            .padding(.vertical, 17)
         }
     }
 }

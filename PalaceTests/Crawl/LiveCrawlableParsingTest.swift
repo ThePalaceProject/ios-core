@@ -2,19 +2,31 @@ import XCTest
 @testable import Palace
 
 /// Integration test that fetches the live crawlable endpoint and verifies parsing.
-/// Requires network access — skipped in CI (set SKIP_NETWORK_TESTS=1 to skip).
+/// Requires network access — skipped by default (set RUN_NETWORK_TESTS=1 to enable).
+///
+/// Uses an ephemeral URLSession that bypasses globally-registered URL protocols
+/// (including NoNetworkURLProtocol) so the hermetic test layer does not block it.
 final class LiveCrawlableParsingTest: XCTestCase {
+
+    /// Ephemeral session that bypasses NoNetworkURLProtocol.
+    /// `URLSessionConfiguration.ephemeral` does NOT inherit globally-registered
+    /// protocol classes, so requests go through to the real network.
+    private lazy var networkSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        return URLSession(configuration: config)
+    }()
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        if ProcessInfo.processInfo.environment["SKIP_NETWORK_TESTS"] == "1" {
-            throw XCTSkip("Skipping network-dependent test in CI")
-        }
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RUN_NETWORK_TESTS"] == "1",
+            "Skipping network-dependent test (set RUN_NETWORK_TESTS=1 to run)"
+        )
     }
 
     func testParseLiveCrawlableFeed() async throws {
         let url = URL(string: "https://registry.palaceproject.io/libraries/crawlable?size=20")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await networkSession.data(from: url)
 
         // Verify it parses with our decoder
         let feed = try OPDS2CatalogsFeed.fromData(data)
@@ -65,8 +77,8 @@ final class LiveCrawlableParsingTest: XCTestCase {
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        // Use a direct URLSession fetcher (not TPPNetworkExecutor)
-        let fetcher = DirectURLSessionFetcher()
+        // Use a fetcher backed by the ephemeral session (bypasses NoNetworkURLProtocol)
+        let fetcher = EphemeralURLSessionFetcher(session: networkSession)
         let crawler = LibraryRegistryCrawler(
             fetcher: fetcher,
             hash: "live_test",
@@ -101,10 +113,12 @@ final class LiveCrawlableParsingTest: XCTestCase {
     }
 }
 
-/// Simple fetcher using URLSession directly — avoids TPPNetworkExecutor complexity
-private struct DirectURLSessionFetcher: CrawlerNetworkFetching {
+/// Fetcher using an ephemeral URLSession — bypasses globally-registered URL protocols.
+private struct EphemeralURLSessionFetcher: CrawlerNetworkFetching {
+    let session: URLSession
+
     func fetchData(from url: URL) async throws -> (Data, HTTPURLResponse?) {
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await session.data(from: url)
         return (data, response as? HTTPURLResponse)
     }
 }

@@ -129,8 +129,13 @@ cmd_evidence() {
   # --- 1. Unit Tests ---
   echo "Running tests..."
   local test_output
+  # Hard per-test timeout so hung tests fail visibly instead of stalling
+  # evidence collection. 120s is generous for async-heavy tests but catches
+  # indefinite-wait regressions in integration suites.
   test_output=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
     -destination 'id=DF4A2A27-9888-429D-A749-2E157A049A37' \
+    -test-timeouts-enabled YES \
+    -maximum-test-execution-time-allowance 120 \
     test 2>&1 || true)
 
   local pass_count fail_count

@@ -26,16 +26,10 @@ extension TPPBook {
     /// than the conservative device memory-tier cap, so the image is always sharp at its
     /// actual display size without wasting memory decoding more than needed.
     func fetchCoverImage(forDisplayHeight displayHeight: CGFloat?) {
-        let simpleKey = identifier
-        let coverKey = "\(identifier)_cover"
-
-        // For size-aware fetches use a dedicated cache key so different sizes don't collide.
-        // When a displayHeight is given, only check the size-specific key — falling back to
-        // the generic keys risks returning a small thumbnail that was cached from a list/lane
-        // view, which would appear pixelated at larger display sizes.
         let sizeKey: String? = displayHeight.map { "\(identifier)_\(Int($0))pt" }
-        let lookupKeys: [String] = if let sizeKey { [sizeKey, simpleKey] } else { [simpleKey] }
+        let lookupKeys: [String] = if let sizeKey { [sizeKey, identifier] } else { [identifier] }
 
+        // Synchronous memory-cache check (instant, no disk I/O on main thread)
         if let img = lookupKeys.lazy.compactMap({ [weak self] in
           self?.imageCache.get(for: $0) }).first {
             DispatchQueue.main.async {
@@ -52,13 +46,29 @@ extension TPPBook {
         if let displayHeight {
             Task { [weak self] in
                 guard let self else { return }
+
+                // Async cache check: promotes disk→memory before hitting network.
+                // This is the systemic fix for images "disappearing" on entry point
+                // switches — new TPPBook instances miss the sync check above (main
+                // thread returns nil for disk-only entries) but this async path finds
+                // them without a network round-trip.
+                for key in lookupKeys {
+                    if let cached = await self.imageCache.getAsync(for: key) {
+                        await MainActor.run {
+                            self.coverImage = cached
+                            self.updateDominantColor(using: cached)
+                            self.isCoverLoading = false
+                        }
+                        return
+                    }
+                }
+
+                // Cache miss — fetch from network
                 let img = await TPPBookCoverRegistry.shared.coverImage(for: self, displayPoints: displayHeight)
                 let final = img ?? self.thumbnailImage
                 await MainActor.run {
                     self.coverImage = final
                     if let img = final {
-                        // Cache under the most specific key only — avoids storing the
-                        // same decoded image 2-3 times and bloating CG raster data.
                         let cacheKey = sizeKey ?? self.identifier
                         self.imageCache.set(img, for: cacheKey)
                         self.updateDominantColor(using: img)

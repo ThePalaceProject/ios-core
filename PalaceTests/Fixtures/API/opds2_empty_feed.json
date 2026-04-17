@@ -1,0 +1,22 @@
+{
+  "metadata": {
+    "title": "Search Results: xyzzyplugh",
+    "itemsPerPage": 20,
+    "numberOfItems": 0,
+    "currentPage": 1
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "https://gorgon.staging.palaceproject.io/testlib/search?query=xyzzyplugh",
+      "type": "application/opds+json"
+    },
+    {
+      "rel": "search",
+      "href": "https://gorgon.staging.palaceproject.io/testlib/search{?query}",
+      "type": "application/opds+json",
+      "templated": true
+    }
+  ],
+  "publications": []
+}

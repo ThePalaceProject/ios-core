@@ -1,0 +1,25 @@
+{
+  "simplified:authorization_identifier": "23456789012345",
+  "simplified:authorization_expires": "2025-01-15T23:59:59Z",
+  "drm": [
+    {
+      "drm:vendor": "urn:uuid:2b43f847-0e12-4a42-b6d5-cc43500f0d57",
+      "drm:scheme": "http://librarysimplified.org/terms/drm/scheme/ACS",
+      "drm:clientToken": "TESTLIB|1717200000|xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx|aGFzaGVkX3Rva2VuX3ZhbHVl"
+    }
+  ],
+  "settings": {
+    "simplified:synchronize_annotations": true
+  },
+  "links": [
+    {
+      "rel": "http://www.w3.org/ns/oa#annotationService",
+      "href": "https://gorgon.staging.palaceproject.io/testlib/annotations/",
+      "type": "application/ld+json"
+    },
+    {
+      "rel": "http://librarysimplified.org/terms/drm/rel/devices",
+      "href": "https://gorgon.staging.palaceproject.io/testlib/devices/"
+    }
+  ]
+}

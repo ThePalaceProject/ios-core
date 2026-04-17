@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opds="http://opds-spec.org/2010/catalog"
+      xmlns:schema="http://schema.org/"
+      xmlns:dcterms="http://purl.org/dc/terms/"
+      xmlns:bibframe="http://bibframe.org/vocab/"
+      xmlns:simplified="http://librarysimplified.org/terms/">
+
+  <id>https://gorgon.staging.palaceproject.io/testlib/</id>
+  <title>Greenwood Public Library</title>
+  <updated>2024-06-15T10:00:00Z</updated>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/" rel="self" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/search{?query}" rel="search" type="application/atom+xml"/>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/?entrypoint=All" rel="http://opds-spec.org/facet" title="All" opds:facetGroup="Entrypoint" opds:activeFacet="true"/>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/?entrypoint=eBooks" rel="http://opds-spec.org/facet" title="eBooks" opds:facetGroup="Entrypoint"/>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/?entrypoint=Audiobooks" rel="http://opds-spec.org/facet" title="Audiobooks" opds:facetGroup="Entrypoint"/>
+
+  <!-- Group 1: Best Sellers -->
+  <entry schema:additionalType="http://schema.org/Book">
+    <id>urn:librarysimplified.org/terms/id/TestLib%20ID/grouped-001</id>
+    <title>Waves of Change</title>
+    <author>
+      <name>Raul Dominguez</name>
+    </author>
+    <updated>2024-06-14T09:00:00Z</updated>
+    <link href="https://gorgon.staging.palaceproject.io/images/waves-change-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/waves-change-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/grouped-001/borrow" rel="http://opds-spec.org/acquisition/borrow" type="application/atom+xml;type=entry;profile=opds-catalog">
+      <opds:indirectAcquisition type="application/vnd.adobe.adept+xml">
+        <opds:indirectAcquisition type="application/epub+zip"/>
+      </opds:indirectAcquisition>
+      <opds:availability status="available"/>
+      <opds:copies available="4" total="10"/>
+    </link>
+    <link rel="collection" href="https://gorgon.staging.palaceproject.io/testlib/feed/eng/Best%20Sellers" title="Best Sellers"/>
+  </entry>
+
+  <entry schema:additionalType="http://schema.org/Book">
+    <id>urn:librarysimplified.org/terms/id/TestLib%20ID/grouped-002</id>
+    <title>The Last Lighthouse Keeper</title>
+    <author>
+      <name>Fiona MacLeod</name>
+    </author>
+    <updated>2024-06-13T11:00:00Z</updated>
+    <link href="https://gorgon.staging.palaceproject.io/images/lighthouse-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/lighthouse-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/grouped-002/borrow" rel="http://opds-spec.org/acquisition/borrow" type="application/atom+xml;type=entry;profile=opds-catalog">
+      <opds:indirectAcquisition type="application/vnd.readium.lcp.license.v1.0+json">
+        <opds:indirectAcquisition type="application/epub+zip"/>
+      </opds:indirectAcquisition>
+      <opds:availability status="available"/>
+      <opds:copies available="2" total="5"/>
+    </link>
+    <link rel="collection" href="https://gorgon.staging.palaceproject.io/testlib/feed/eng/Best%20Sellers" title="Best Sellers"/>
+  </entry>
+
+  <!-- Group 2: Staff Picks -->
+  <entry schema:additionalType="http://schema.org/Book">
+    <id>urn:librarysimplified.org/terms/id/TestLib%20ID/grouped-003</id>
+    <title>Algorithms of the Heart</title>
+    <author>
+      <name>Jin Nakamura</name>
+    </author>
+    <updated>2024-06-12T15:30:00Z</updated>
+    <link href="https://gorgon.staging.palaceproject.io/images/algorithms-heart-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/algorithms-heart-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/grouped-003/borrow" rel="http://opds-spec.org/acquisition/borrow" type="application/atom+xml;type=entry;profile=opds-catalog">
+      <opds:indirectAcquisition type="application/vnd.adobe.adept+xml">
+        <opds:indirectAcquisition type="application/epub+zip"/>
+      </opds:indirectAcquisition>
+      <opds:availability status="unavailable"/>
+      <opds:holds total="4"/>
+      <opds:copies available="0" total="3"/>
+    </link>
+    <link rel="collection" href="https://gorgon.staging.palaceproject.io/testlib/feed/eng/Staff%20Picks" title="Staff Picks"/>
+  </entry>
+
+</feed>

@@ -451,6 +451,84 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
         XCTAssertNotNil(sut, "Business logic should still be valid after flush")
     }
 
+    // MARK: - Debounce Thread Safety Tests
+
+    func testDebounce_DeallocDuringPendingWork_DoesNotCrash() {
+        mockRegistry = TPPBookRegistryMock()
+        mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+        mockAnnotations = TPPAnnotationMock()
+
+        tracks = try! loadTracks(for: manifestJSON)
+        let position = TrackPosition(track: tracks.tracks[0], timestamp: 500, tracks: tracks)
+
+        // Create the SUT, trigger a debounced save, then immediately nil it out.
+        // Before the fix, the debounced DispatchWorkItem captured `self` strongly,
+        // so it would fire on a deallocated object (EXC_BAD_ACCESS).
+        var logic: AudiobookBookmarkBusinessLogic? = AudiobookBookmarkBusinessLogic(
+            book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations
+        )
+
+        logic?.saveListeningPosition(at: position, completion: nil)
+
+        // Deallocate while the debounced work item is still pending
+        logic = nil
+
+        // Wait longer than the debounce interval (1s) so the work item fires
+        let survived = XCTestExpectation(description: "Debounced work fires without crash")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
+            survived.fulfill()
+        }
+        wait(for: [survived], timeout: 3.0)
+
+        // If we get here, the weak self guard worked — no crash
+    }
+
+    func testDebounce_RapidCalls_OnlyLastSyncs() {
+        mockRegistry = TPPBookRegistryMock()
+        mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+        mockAnnotations = TPPAnnotationMock()
+
+        sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
+        tracks = try! loadTracks(for: manifestJSON)
+
+        // Fire 10 rapid saves — only the last should sync to server
+        let lastExpectation = XCTestExpectation(description: "Last save syncs")
+
+        for i in 0..<10 {
+            let position = TrackPosition(track: tracks.tracks[0], timestamp: TimeInterval(i * 100), tracks: tracks)
+            sut.saveListeningPosition(at: position) { timestamp in
+                if i == 9 {
+                    lastExpectation.fulfill()
+                }
+            }
+        }
+
+        wait(for: [lastExpectation], timeout: 5.0)
+
+        // All 10 should have saved locally (immediate), but server sync count should be small
+        // due to debouncing cancelling intermediate items
+        let savedLocation = mockRegistry.location(forIdentifier: fakeBook.identifier)
+        XCTAssertNotNil(savedLocation, "Should have saved at least one position locally")
+    }
+
+    func testFlush_AfterDealloc_DoesNotCrash() {
+        mockRegistry = TPPBookRegistryMock()
+        mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+        mockAnnotations = TPPAnnotationMock()
+
+        sut = AudiobookBookmarkBusinessLogic(book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations)
+        tracks = try! loadTracks(for: manifestJSON)
+
+        let position = TrackPosition(track: tracks.tracks[0], timestamp: 500, tracks: tracks)
+        sut.saveListeningPosition(at: position, completion: nil)
+
+        // Flush should execute pending work synchronously without crash
+        sut.flushPendingOperations()
+
+        let savedLocation = mockRegistry.location(forIdentifier: fakeBook.identifier)
+        XCTAssertNotNil(savedLocation, "Flushed position should be saved")
+    }
+
     // MARK: - Save Listening Position Sync Tests
 
     func testSaveListeningPositionSync_SavesImmediately() {
