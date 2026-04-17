@@ -10,9 +10,25 @@ import Foundation
 @testable import Palace
 
 class TPPUserAccountMock: TPPUserAccount {
-    private static var shared = TPPUserAccountMock()
+    /// Test-only fixed library UUID. Per-library isolation semantics are
+    /// exercised separately via `TPPMultiLibraryAccountMock` /
+    /// `TPPPerAccountIsolationTests`; here a single shared instance is fine.
+    static let testLibraryUUID = "test-library-mock"
+
+    private static var shared = TPPUserAccountMock(libraryUUID: testLibraryUUID)
+
+    /// Tests that call `TPPUserAccountMock.sharedAccount(libraryUUID:)` get
+    /// the fixed shared mock regardless of UUID — preserves the old behaviour.
+    /// Parent method is deprecated but still present as a thin delegate.
     override class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
         return shared
+    }
+
+    /// Convenience init used by older tests that assumed the legacy no-arg
+    /// singleton init on `TPPUserAccount`. Delegates to the real per-account
+    /// initializer with a fixed test UUID.
+    convenience init() {
+        self.init(libraryUUID: TPPUserAccountMock.testLibraryUUID)
     }
 
     // MARK: - Variable redefinitions to avoid keychain
@@ -207,7 +223,7 @@ class TPPUserAccountMock: TPPUserAccount {
     }
 
     static func resetShared() {
-        shared = TPPUserAccountMock()
+        shared = TPPUserAccountMock(libraryUUID: testLibraryUUID)
     }
 
     // MARK: - Clean everything up

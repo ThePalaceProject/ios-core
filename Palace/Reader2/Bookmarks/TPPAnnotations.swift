@@ -18,7 +18,7 @@ public struct AnnotationResponse {
 ///   both devices appeared to be the same device.
 enum AnnotationDevice {
     static func currentID() -> String {
-        if let adobeID = TPPUserAccount.sharedAccount().deviceID, !adobeID.isEmpty {
+        if let adobeID = AccountsManager.shared.currentUserAccount.deviceID, !adobeID.isEmpty {
             return adobeID
         }
         return "urn:uuid:\(FirebaseManager.shared.deviceID)"

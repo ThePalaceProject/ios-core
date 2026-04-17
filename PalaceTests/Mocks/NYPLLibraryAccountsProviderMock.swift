@@ -97,4 +97,24 @@ class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider {
             return Account(publication: pub, imageCache: MockImageCache())
         }
     }
+
+    // MARK: - TPPUserAccountResolving
+
+    /// Injectable account resolver. Tests that need single-instance behaviour
+    /// (default) get the shared `TPPUserAccountMock`, so credential writes
+    /// performed via `businessLogic.userAccount` are visible to subsequent
+    /// `TPPUserAccountMock.sharedAccount(libraryUUID:)` reads. Tests that
+    /// exercise per-library isolation (see `TPPCrossLibrarySignOutTests`)
+    /// assign a resolver that returns a distinct mock instance per UUID.
+    var userAccountResolver: (String) -> TPPUserAccount = { libraryUUID in
+        TPPUserAccountMock.sharedAccount(libraryUUID: libraryUUID)
+    }
+
+    func userAccount(for libraryUUID: String) -> TPPUserAccount {
+        return userAccountResolver(libraryUUID)
+    }
+
+    var currentUserAccount: TPPUserAccount {
+        return userAccount(for: currentAccountId ?? tppAccountUUID)
+    }
 }

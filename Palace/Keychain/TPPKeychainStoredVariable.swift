@@ -61,6 +61,20 @@ class TPPKeychainVariable<VariableType>: Keyable {
             }
         }
     }
+
+    /// Drops the cached value so the next `read()` pulls fresh from the
+    /// keychain. Use this when another process or another instance may have
+    /// written under the same key and this instance's cache could be stale.
+    ///
+    /// Replaces the historical "assign a fake key to force didSet" pattern
+    /// that TPPUserAccount used to invalidate all caches on snapshot — which
+    /// is what the mutable-libraryUUID-singleton anti-pattern was built on.
+    func invalidateCache() {
+        transaction.perform {
+            alreadyInited = false
+            cachedValue = nil
+        }
+    }
 }
 
 class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<VariableType> {

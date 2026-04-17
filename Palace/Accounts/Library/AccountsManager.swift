@@ -56,7 +56,7 @@ struct CatalogCacheMetadata: Codable {
     var currentUserAccount: TPPUserAccount { get }
 }
 
-@objc protocol TPPLibraryAccountsProvider: TPPCurrentLibraryAccountProvider {
+@objc protocol TPPLibraryAccountsProvider: TPPCurrentLibraryAccountProvider, TPPUserAccountResolving {
     var tppAccountUUID: String { get }
     var currentAccountId: String? { get }
     func account(_ uuid: String) -> Account?
@@ -228,6 +228,24 @@ struct CatalogCacheMetadata: Codable {
     private var userAccounts = [String: TPPUserAccount]()
     private let userAccountsLock = NSLock()
 
+    /// Last account returned from `currentUserAccount`. Used to ride out the
+    /// brief windows where `currentAccountId` is nil during an account switch
+    /// — without this, consumers observe a transiently-unauthenticated state
+    /// on an account that IS signed in, and fire spurious sign-in modals.
+    private var lastKnownCurrentUserAccount: TPPUserAccount?
+
+    /// Sentinel UUID for the "no account selected" placeholder. Not a real
+    /// library UUID — keychain reads for this instance return nil, so
+    /// hasCredentials() deterministically returns false.
+    private static let noAccountSentinelUUID = "__no_account_selected__"
+
+    /// Placeholder returned by `currentUserAccount` only on a truly fresh
+    /// install before any account has ever been selected. Lazily created so
+    /// app launch doesn't pay for a keychain-probed instance.
+    private lazy var noAccountPlaceholder: TPPUserAccount = TPPUserAccount(
+        libraryUUID: AccountsManager.noAccountSentinelUUID
+    )
+
     /// Returns a library-scoped `TPPUserAccount` instance. Creates and
     /// caches a new one on first access for a given UUID.
     func userAccount(for libraryUUID: String) -> TPPUserAccount {
@@ -242,12 +260,27 @@ struct CatalogCacheMetadata: Codable {
     }
 
     /// Convenience for the current library's user account.
+    ///
+    /// Thread-safety note: `currentAccountId` can transiently be nil during an
+    /// account switch (the old id is cleared before the new id is assigned).
+    /// If we blindly fell back to a fresh/empty instance in that window,
+    /// consumers like MyBooksDownloadCenter would observe `hasCredentials ==
+    /// false` on an account that IS signed in and fire a spurious login modal.
+    /// We cache the last-resolved account and return it during the nil window
+    /// instead. The placeholder path only fires on a true fresh-install state
+    /// where no account has ever been selected.
     var currentUserAccount: TPPUserAccount {
-        guard let id = currentAccountId else {
-            // Fallback to legacy singleton when no account is selected
-            return TPPUserAccount.sharedAccount()
+        if let id = currentAccountId {
+            let account = userAccount(for: id)
+            userAccountsLock.lock()
+            lastKnownCurrentUserAccount = account
+            userAccountsLock.unlock()
+            return account
         }
-        return userAccount(for: id)
+        userAccountsLock.lock()
+        let last = lastKnownCurrentUserAccount
+        userAccountsLock.unlock()
+        return last ?? noAccountPlaceholder
     }
 
     // MARK: – Load logic

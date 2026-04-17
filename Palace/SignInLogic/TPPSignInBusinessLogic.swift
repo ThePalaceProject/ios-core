@@ -542,8 +542,13 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     // MARK: - User Account Management
 
     /// The user account for the library we are signing in to.
+    ///
+    /// Returns the per-library instance owned by `libraryAccountsProvider`
+    /// (AccountsManager). This replaces the old `userAccountProvider.sharedAccount(libraryUUID:)`
+    /// path which mutated the legacy singleton's `libraryUUID` and caused
+    /// TOCTOU races during account switches.
     @objc var userAccount: TPPUserAccount {
-        return userAccountProvider.sharedAccount(libraryUUID: libraryAccountID)
+        return libraryAccountsProvider.userAccount(for: libraryAccountID)
     }
 
     /// Updates the user account for the library we are signing in to.

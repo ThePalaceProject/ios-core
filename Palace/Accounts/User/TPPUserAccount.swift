@@ -32,21 +32,27 @@ private enum StorageKey: String {
     }
 }
 
+/// Consumers that need the needsAuth query without pulling in the full
+/// TPPUserAccount type.
+///
+/// Historically this protocol also exposed `sharedAccount(libraryUUID:)` as a
+/// singleton entry point. Production callers have moved to
+/// `AccountsManager.userAccount(for:)` / `currentUserAccount`; the class-level
+/// `sharedAccount` helpers on `TPPUserAccount` are retained as thin delegates
+/// for a handful of test call sites and are scheduled for removal once those
+/// are migrated.
 @objc protocol TPPUserAccountProvider: NSObjectProtocol {
     var needsAuth: Bool { get }
-
-    static func sharedAccount(libraryUUID: String?) -> TPPUserAccount
 }
 
 @objcMembers class TPPUserAccount: NSObject, TPPUserAccountProvider {
-    static private let shared = TPPUserAccount()
     private let accountInfoQueue: DispatchQueue
     private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
     private var notifyAccountChange: Bool = true
 
-    /// When non-nil, this instance is bound to a specific library and its
-    /// keychain keys are immutable. The mutable `libraryUUID` path is only
-    /// used by the legacy singleton (where `boundLibraryUUID` is nil).
+    /// Always equal to `libraryUUID`. Kept as a separate property for
+    /// backwards-compat with older call sites that read it to assert the
+    /// account is bound to a specific library (per-account-isolation tests).
     let boundLibraryUUID: String?
 
     /// PP-3819: Incremented by `cancelPendingSignOut()` each time the user
@@ -64,103 +70,23 @@ private enum StorageKey: String {
 
     // MARK: - Initializers
 
-    /// Legacy singleton initializer. Uses mutable `libraryUUID` path.
-    /// Internal (not private) so that test mocks can subclass.
-    override init() {
-        self.boundLibraryUUID = nil
-        self.accountInfoQueue = DispatchQueue(label: "TPPUserAccount.accountInfoQueue")
-        super.init()
-    }
-
-    /// Per-account initializer. Creates an instance bound to a specific library
-    /// with immutable keychain keys. Each instance owns its own serial queue,
-    /// eliminating cross-account contention entirely.
+    /// Creates an account bound to a specific library. Keys are computed once
+    /// (lazily on first access) from the immutable `libraryUUID` and never
+    /// change for the lifetime of the instance.
     ///
-    /// Prefer this over `sharedAccount(libraryUUID:)` — it is not subject to
-    /// the TOCTOU race that the singleton pattern has.
+    /// Always construct instances via `AccountsManager.userAccount(for:)` so
+    /// there is one cached instance per library — direct `init(libraryUUID:)`
+    /// from production code will silently bypass the cache and risk duplicate
+    /// instances for the same library.
     init(libraryUUID: String) {
+        self.libraryUUID = libraryUUID
         self.boundLibraryUUID = libraryUUID
         self.accountInfoQueue = DispatchQueue(label: "TPPUserAccount.\(libraryUUID)")
         super.init()
-        // Set the mutable libraryUUID so the lazy keychain vars initialize
-        // with the correct keys. Since boundLibraryUUID is set, the didSet
-        // path that calls updateKeychainKeys() will fire once and then the
-        // keys are effectively frozen (no caller can change libraryUUID on
-        // a bound instance via the public API — sharedAccount(libraryUUID:)
-        // only mutates the singleton).
-        self.libraryUUID = libraryUUID
     }
 
-    var libraryUUID: String? {
-        didSet {
-            guard libraryUUID != oldValue else { return }
-
-            Log.debug(#file, "libraryUUID changed from \(oldValue ?? "nil") to \(libraryUUID ?? "nil")")
-
-            updateKeychainKeys()
-        }
-    }
-
-    /// Re-points every keychain variable at the current `libraryUUID` and
-    /// invalidates their caches so the next read fetches fresh data.
-    ///
-    /// The UUID suffix (`_<uuid>`) is computed once and reused for all keys to
-    /// reduce peak heap pressure. Each `keyForLibrary` call allocates a new
-    /// String; under low-memory conditions (~100 MB free) doing this 15 times
-    /// in rapid succession can corrupt the heap allocator's free list.
-    private func updateKeychainKeys() {
-        // Compute the shared suffix once. If this UUID is the NYPL default UUID
-        // (or nil), keyForLibrary returns the raw key without a suffix — match
-        // that behaviour here so we can use the fast path below.
-        let uuid = libraryUUID
-        let isDefaultUUID = uuid == nil || uuid == AccountsManager.shared.tppAccountUUID
-
-        // Wrap all 15 string assignments in a single autoreleasepool so any
-        // temporary Obj-C objects (NSString bridges) are released promptly
-        // rather than accumulating in the calling autorelease pool, which
-        // further reduces peak memory pressure.
-        autoreleasepool {
-            if isDefaultUUID {
-                // Fast path: keys are just the raw enum values — no new allocations.
-                _authorizationIdentifier.key = StorageKey.authorizationIdentifier.rawValue
-                _adobeToken.key            = StorageKey.adobeToken.rawValue
-                _licensor.key              = StorageKey.licensor.rawValue
-                _patron.key                = StorageKey.patron.rawValue
-                _adobeVendor.key           = StorageKey.adobeVendor.rawValue
-                _provider.key              = StorageKey.provider.rawValue
-                _userID.key                = StorageKey.userID.rawValue
-                _deviceID.key              = StorageKey.deviceID.rawValue
-                _credentials.key           = StorageKey.credentials.rawValue
-                _authDefinition.key        = StorageKey.authDefinition.rawValue
-                _cookies.key               = StorageKey.cookies.rawValue
-                _authState.key             = StorageKey.authState.rawValue
-                _barcode.key               = StorageKey.barcode.rawValue
-                _pin.key                   = StorageKey.PIN.rawValue
-                _authToken.key             = StorageKey.authToken.rawValue
-            } else {
-                // Slow path: compute the suffix once, then append it to each raw value.
-                // This is one allocation for the suffix + one allocation per key,
-                // down from two allocations per key (rawValue + interpolated result).
-                guard let uuid = uuid else { return }
-                let suffix = "_\(uuid)"
-                _authorizationIdentifier.key = StorageKey.authorizationIdentifier.rawValue + suffix
-                _adobeToken.key            = StorageKey.adobeToken.rawValue + suffix
-                _licensor.key              = StorageKey.licensor.rawValue + suffix
-                _patron.key                = StorageKey.patron.rawValue + suffix
-                _adobeVendor.key           = StorageKey.adobeVendor.rawValue + suffix
-                _provider.key              = StorageKey.provider.rawValue + suffix
-                _userID.key                = StorageKey.userID.rawValue + suffix
-                _deviceID.key              = StorageKey.deviceID.rawValue + suffix
-                _credentials.key           = StorageKey.credentials.rawValue + suffix
-                _authDefinition.key        = StorageKey.authDefinition.rawValue + suffix
-                _cookies.key               = StorageKey.cookies.rawValue + suffix
-                _authState.key             = StorageKey.authState.rawValue + suffix
-                _barcode.key               = StorageKey.barcode.rawValue + suffix
-                _pin.key                   = StorageKey.PIN.rawValue + suffix
-                _authToken.key             = StorageKey.authToken.rawValue + suffix
-            }
-        }
-    }
+    /// Library this account is bound to. Immutable.
+    let libraryUUID: String?
 
     var authDefinition: AccountDetails.Authentication? {
         get {
@@ -247,17 +173,25 @@ private enum StorageKey: String {
         }
     }
 
+    // MARK: - Test/Legacy Compatibility Shims
+    //
+    // These class methods are thin delegates to the per-account path. They are
+    // kept for a small number of test call sites that construct mocks via the
+    // legacy singleton-style API. No shared state is involved — each call
+    // resolves to the per-library instance owned by AccountsManager. Remove
+    // once every test call site has been migrated to
+    // `AccountsManager.shared.userAccount(for:)`.
+
+    @available(*, deprecated, message: "Use AccountsManager.shared.userAccount(for:) or .currentUserAccount")
     class func sharedAccount() -> TPPUserAccount {
-        return sharedAccount(libraryUUID: AccountsManager.shared.currentAccountId)
+        return AccountsManager.shared.currentUserAccount
     }
 
+    @available(*, deprecated, message: "Use AccountsManager.shared.userAccount(for:) or .currentUserAccount")
     class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
-        shared.accountInfoQueue.sync(flags: .barrier) {
-            if shared.libraryUUID != libraryUUID {
-                shared.libraryUUID = libraryUUID
-            }
-        }
-        return shared
+        let id = libraryUUID ?? AccountsManager.shared.currentAccountId ?? ""
+        guard !id.isEmpty else { return AccountsManager.shared.currentUserAccount }
+        return AccountsManager.shared.userAccount(for: id)
     }
 
     func setAuthDefinitionWithoutUpdate(authDefinition: AccountDetails.Authentication?) {
@@ -500,12 +434,40 @@ private enum StorageKey: String {
 
     // MARK: - Cache Refresh
 
+    /// Drops every keychain variable's in-memory cache so the next read pulls
+    /// fresh from the keychain. Callers should invoke this when another
+    /// process or another TPPUserAccount instance may have written under the
+    /// same keys (sign-in pipeline, sign-out finalisation, SAML cookie
+    /// rotation) and this instance's cached values could be stale.
+    ///
+    /// Historical note: the old implementation achieved this by assigning
+    /// `libraryUUID = nil; libraryUUID = uuid`, which forced a cache flip via
+    /// `updateKeychainKeys()`. That pattern required `libraryUUID` to be
+    /// mutable and was the root cause of the "libraryUUID changed from X →
+    /// nil → X" log thrash and the login-prompt-during-download race.
+    private func invalidateAllKeychainCaches() {
+        _authorizationIdentifier.invalidateCache()
+        _adobeToken.invalidateCache()
+        _licensor.invalidateCache()
+        _patron.invalidateCache()
+        _adobeVendor.invalidateCache()
+        _provider.invalidateCache()
+        _userID.invalidateCache()
+        _deviceID.invalidateCache()
+        _credentials.invalidateCache()
+        _authDefinition.invalidateCache()
+        _cookies.invalidateCache()
+        _authState.invalidateCache()
+        _barcode.invalidateCache()
+        _pin.invalidateCache()
+        _authToken.invalidateCache()
+    }
+
     @discardableResult
     func refreshCredentialsFromKeychain() -> Bool {
         return accountInfoQueue.sync(flags: .barrier) {
-            guard let uuid = libraryUUID else { return hasCredentials() }
-            libraryUUID = nil
-            libraryUUID = uuid
+            guard libraryUUID != nil else { return hasCredentials() }
+            invalidateAllKeychainCaches()
             return hasCredentials()
         }
     }
@@ -528,19 +490,15 @@ private enum StorageKey: String {
     /// inherently race-free without needing a barrier.
     ///
     /// Cache coherence: each `TPPKeychainVariable` caches its last-read value
-    /// and only invalidates on a key change. The sign-in/out pipeline writes
-    /// via the singleton `TPPUserAccount.sharedAccount(libraryUUID:)`, not
-    /// via per-account instances — so this instance's caches are stale right
-    /// after another instance's write. We force a key re-bind (nil → uuid)
-    /// to invalidate every variable's cache before reading, mirroring the
-    /// behavior of the deprecated class-level `credentialSnapshot(for:)`.
-    /// Without this, the view model reads "signed in" state even after
-    /// sign-out has completed (see build 459 → HEAD regression).
+    /// and only invalidates explicitly. Another instance of the same library
+    /// (or a different process) may have written under the same keys, so we
+    /// drop every cache before reading. Without this, the view model can read
+    /// "signed in" state even after sign-out has completed (build 459 → HEAD
+    /// regression).
     func credentialSnapshot() -> CredentialSnapshot {
         return accountInfoQueue.sync {
-            if let uuid = libraryUUID {
-                self.libraryUUID = nil
-                self.libraryUUID = uuid
+            if libraryUUID != nil {
+                invalidateAllKeychainCaches()
             }
             let creds = self.credentials
             let hasCreds = UserAccountAuthHelper.hasCredentials(creds)
@@ -563,48 +521,44 @@ private enum StorageKey: String {
         }
     }
 
-    /// Legacy class-level snapshot — delegates to the singleton with UUID switching.
-    /// Deprecated: prefer `AccountsManager.shared.userAccount(for:).credentialSnapshot()`.
+    /// Class-level snapshot that routes to the per-library instance owned by
+    /// AccountsManager. Preserved for Obj-C callers and legacy tests that use
+    /// `TPPUserAccount.credentialSnapshot(for:)` — internally it is just a
+    /// thin forward to the safe per-account path, with no singleton mutation.
     class func credentialSnapshot(for libraryUUID: String?) -> CredentialSnapshot {
-        return shared.accountInfoQueue.sync(flags: .barrier) {
-            if shared.libraryUUID != libraryUUID {
-                shared.libraryUUID = libraryUUID
-            }
-
-            if let uuid = shared.libraryUUID {
-                shared.libraryUUID = nil
-                shared.libraryUUID = uuid
-            }
-
-            let creds = shared.credentials
-            let hasCreds = UserAccountAuthHelper.hasCredentials(creds)
-            let hasToken = UserAccountAuthHelper.hasAuthToken(credentials: creds)
-            let state = UserAccountAuthHelper.resolveAuthState(
-                storedState: shared._authState.read(),
-                hasCredentials: hasCreds
-            )
-
+        let id = libraryUUID ?? AccountsManager.shared.currentAccountId ?? ""
+        guard !id.isEmpty else {
             return CredentialSnapshot(
-                hasCredentials: hasCreds,
-                hasAuthToken: hasToken,
-                authState: state,
-                barcode: UserAccountAuthHelper.barcode(from: creds),
-                pin: UserAccountAuthHelper.pin(from: creds),
-                authToken: UserAccountAuthHelper.authToken(from: creds),
-                authDefinition: shared.authDefinition,
-                cookies: shared._cookies.read()
+                hasCredentials: false,
+                hasAuthToken: false,
+                authState: .loggedOut,
+                barcode: nil,
+                pin: nil,
+                authToken: nil,
+                authDefinition: nil,
+                cookies: nil
             )
         }
+        return AccountsManager.shared.userAccount(for: id).credentialSnapshot()
     }
 
     // MARK: - Atomic Write
 
+    /// Runs `block` under this account's barrier queue so multi-step writes
+    /// (sign-in pipeline: credentials + tokens + cookies + state) are applied
+    /// atomically relative to other readers. The `libraryUUID` parameter is
+    /// preserved for backwards compatibility with callers that already pass
+    /// it; it is validated against `self.libraryUUID` to catch cases where a
+    /// caller passes a different library's UUID (which is always a bug now
+    /// that instances are per-library).
     func atomicUpdate(for libraryUUID: String?,
                       _ block: (TPPUserAccount) -> Void) {
+        if let libraryUUID = libraryUUID,
+           let selfUUID = self.libraryUUID,
+           libraryUUID != selfUUID {
+            assertionFailure("atomicUpdate called with libraryUUID \(libraryUUID) on an account bound to \(selfUUID)")
+        }
         accountInfoQueue.sync(flags: .barrier) {
-            if self.libraryUUID != libraryUUID {
-                self.libraryUUID = libraryUUID
-            }
             block(self)
         }
     }
