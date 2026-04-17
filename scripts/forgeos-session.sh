@@ -381,15 +381,25 @@ gates = pipeline.get("gates", [])
 for g in gates:
     print(f"GATE:{g['gate_id']}:{g['status']}")
 
-# Find unit_test evidence with pass/fail counts
-for e in (evidence_list if isinstance(evidence_list, list) else []):
-    if e.get("type") == "unit_test":
-        summary = e.get("summary", "")
+# Find unit_test evidence — use only the MOST RECENT entry. Older submissions
+# represent prior states that have been superseded by subsequent test runs;
+# treating them as live against the gate would mean "once a failure is recorded,
+# you can never recover" which defeats the purpose of re-running after fixes.
+unit_tests = [e for e in (evidence_list if isinstance(evidence_list, list) else []) if e.get("type") == "unit_test"]
+unit_tests.sort(key=lambda e: e.get("created_at", ""), reverse=True)
+if unit_tests:
+    e = unit_tests[0]
+    summary = e.get("summary", "")
+    # Prefer structured counts when present; fall back to summary-string regex.
+    pass_count = e.get("pass_count")
+    fail_count = e.get("fail_count")
+    if pass_count is None:
         m = re.search(r"(\d+)\s+tests?\s+pass", summary)
-        f = re.search(r"(\d+)\s+failure", summary)
         pass_count = int(m.group(1)) if m else 0
+    if fail_count is None:
+        f = re.search(r"(\d+)\s+failure", summary)
         fail_count = int(f.group(1)) if f else 0
-        print(f"TESTS:{pass_count}:{fail_count}")
+    print(f"TESTS:{pass_count}:{fail_count}")
 
 print(f"STATUS:{changeset.get('status', 'unknown')}")
 PYEOF
