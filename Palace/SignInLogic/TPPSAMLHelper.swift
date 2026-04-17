@@ -71,9 +71,7 @@ class TPPSAMLHelper {
 
     func logIn(loginCancelHandler: @escaping () -> Void) {
         guard let context = context else { return }
-        guard let idpURL = context.selectedIDP?.url else {
-            return
-        }
+        guard let idpURL = context.selectedIDP?.url else { return }
 
         var urlComponents = URLComponents(url: idpURL, resolvingAgainstBaseURL: true)
         let redirectURI = URLQueryItem(name: "redirect_uri", value: context.urlSettingsProvider.universalLinksURL.absoluteString)
@@ -83,9 +81,7 @@ class TPPSAMLHelper {
             urlComponents?.queryItems?.append(redirectURI)
         }
 
-        guard let url = urlComponents?.url else {
-            return
-        }
+        guard let url = urlComponents?.url else { return }
 
         // Phase 3: Filter expired cookies before sending to IdP
         let savedCookies = context.savedCookies.filter { cookie in

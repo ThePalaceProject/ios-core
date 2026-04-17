@@ -66,8 +66,14 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     @Published var isSignedIn: Bool = false
 
     var canSignIn: Bool {
+        // Browser-based auths don't collect credentials on-device — the Sign In
+        // button just kicks off the WebView / ASWebAuthenticationSession, so
+        // canSignIn must be true unconditionally. Missing `.isOidc` here is
+        // what silently blocked OIDC sign-in after PP-4020; the symmetric miss
+        // is in AccountDetailView.shouldShowSignInPrompt.
         if businessLogic.selectedAuthentication?.isOauth == true ||
-            businessLogic.selectedAuthentication?.isSaml == true {
+            businessLogic.selectedAuthentication?.isSaml == true ||
+            businessLogic.selectedAuthentication?.isOidc == true {
             return true
         }
 
@@ -324,7 +330,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func cellsForAuthMethod(_ auth: AccountDetails.Authentication) -> [CellType] {
-        if auth.isOauth {
+        // Browser-based auths (OAuth, OIDC): no on-device credentials to show.
+        // Sign-in happens in a WebView / ASWebAuthenticationSession; the
+        // account detail list only needs the Sign In / Sign Out button.
+        // OIDC was missing here, so signed-in OIDC accounts were rendering
+        // the barcode/PIN/sign-in cells inappropriately.
+        if auth.isOauth || auth.isOidc {
             return [.logInSignOut]
         }
 
@@ -354,7 +365,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
         isSigningOut = false
 
-        if businessLogic.selectedAuthentication?.isOauth == true {
+        // Browser-based auth (OAuth, OIDC) opens directly without
+        // on-device credential collection. SAML goes through samlHelper
+        // (also a WebView, but routed via the default logIn() switch).
+        if businessLogic.selectedAuthentication?.isOauth == true ||
+           businessLogic.selectedAuthentication?.isOidc == true {
             businessLogic.logIn()
             return
         }
@@ -633,12 +648,14 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
         signInTimeoutTask?.cancel()
         signInTimeoutTask = nil
 
-        // For SAML/OAuth, don't start a timeout here - the user will be in a WebView
-        // The timeout will start when the WebView dismisses (in startDRMProcessingTimeout)
-        let isSAMLOrOAuth = businessLogic.selectedAuthentication?.isSaml == true ||
-            businessLogic.selectedAuthentication?.isOauth == true
+        // For browser-based auth (SAML, OAuth, OIDC), don't start a timeout here -
+        // the user will be in a WebView / ASWebAuthenticationSession.
+        // The timeout starts when the browser session dismisses.
+        let isBrowserBasedAuth = businessLogic.selectedAuthentication?.isSaml == true ||
+            businessLogic.selectedAuthentication?.isOauth == true ||
+            businessLogic.selectedAuthentication?.isOidc == true
 
-        if !isSAMLOrOAuth {
+        if !isBrowserBasedAuth {
             startDRMProcessingTimeout()
         }
     }
