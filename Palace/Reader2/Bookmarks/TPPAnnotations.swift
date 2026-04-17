@@ -291,7 +291,20 @@ protocol AnnotationsManager {
         task?.resume()
     }
 
-    private static func annotationID(fromNetworkData data: Data?) -> String? {
+    /// Parses the LD+JSON annotation envelope, extracts items from `first.items`,
+    /// and converts each to a domain bookmark via `TPPBookmarkFactory`.
+    /// Exposed as internal (not private) so fuzz and contract tests can exercise
+    /// the real parsing chain without needing a network call.
+    static func parseAnnotationItems(fromData data: Data) -> [[String: Any]]? {
+        guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+              let first = json["first"] as? [String: Any],
+              let items = first["items"] as? [[String: Any]] else {
+            return nil
+        }
+        return items
+    }
+
+    static func annotationID(fromNetworkData data: Data?) -> String? {
         guard let data = data else {
             Log.error(#file, "No Annotation ID saved: No data received from server.")
             return nil
@@ -308,7 +321,7 @@ protocol AnnotationsManager {
         }
     }
 
-    private static func timeStamp(fromNetworkData data: Data?) -> String? {
+    static func timeStamp(fromNetworkData data: Data?) -> String? {
         guard let data = data else {
             Log.error(#file, "No Annotation ID saved: No data received from server.")
             return nil
