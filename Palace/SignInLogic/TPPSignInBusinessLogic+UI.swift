@@ -37,6 +37,11 @@ extension TPPSignInBusinessLogic {
             let barcode = self.capturedBarcode ?? self.uiDelegate?.username
             let pin = self.capturedPin ?? self.uiDelegate?.pin
 
+            // Clear captured credentials immediately after reading — they're now
+            // in local variables and will be written to the keychain below.
+            self.capturedBarcode = nil
+            self.capturedPin = nil
+
             self.updateUserAccount(forDRMAuthorization: drmSuccess,
                                    withBarcode: barcode,
                                    pin: pin,

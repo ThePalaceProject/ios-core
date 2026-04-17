@@ -46,7 +46,7 @@ protocol Reauthenticator: NSObject {
                                     usingExistingCredentials: Bool,
                                     authenticationCompletion: (() -> Void)?) {
         authenticateCallCount += 1
-        TPPMainThreadRun.asyncIfNeeded {
+        Task { @MainActor in
             Log.info(#file, "TPPReauthenticator: Re-authentication requested, using existing credentials: \(usingExistingCredentials)")
 
             // Use new SwiftUI sign-in modal

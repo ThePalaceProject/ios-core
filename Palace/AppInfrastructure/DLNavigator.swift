@@ -82,12 +82,14 @@ class DLNavigator {
         if AccountsManager.shared.userAccount(for: libraryId).isSignedIn() {
             return
         }
-        SignInModalPresenter.presentSignInModalForCurrentAccount {
-            let accountList = TPPAccountList { account in
-                MyBooksViewModel().authenticateAndLoad(account: account)
+        Task { @MainActor in
+            SignInModalPresenter.presentSignInModalForCurrentAccount {
+                let accountList = TPPAccountList { account in
+                    MyBooksViewModel().authenticateAndLoad(account: account)
+                }
+                let nav = UINavigationController(rootViewController: accountList)
+                topViewController.present(nav, animated: true)
             }
-            let nav = UINavigationController(rootViewController: accountList)
-            topViewController.present(nav, animated: true)
         }
     }
 

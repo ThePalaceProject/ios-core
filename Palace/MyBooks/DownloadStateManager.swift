@@ -60,35 +60,15 @@ final class DownloadStateManager: DownloadStateManaging {
             return nil
         }
 
-        if downloadInfo is MyBooksDownloadInfo {
-            await downloadCoordinator.cacheDownloadInfo(downloadInfo, for: bookIdentifier)
-            return downloadInfo
-        } else {
-            Log.error(#file, "Corrupted download info detected for book \(bookIdentifier), removing entry")
-            await bookIdentifierToDownloadInfo.remove(bookIdentifier)
-            await downloadCoordinator.removeCachedDownloadInfo(for: bookIdentifier)
-            return nil
-        }
+        await downloadCoordinator.cacheDownloadInfo(downloadInfo, for: bookIdentifier)
+        return downloadInfo
     }
 
-    /// Synchronous wrapper for legacy compatibility (@objc, UIKit delegates).
-    /// Uses semaphore with short timeout to avoid UI blocking.
+    /// Synchronous accessor for legacy compatibility (@objc, UIKit delegates).
+    /// Reads from SafeDictionary's lock-protected synchronous mirror — no async
+    /// bridging, no semaphores, no data races.
     func downloadInfo(forBookIdentifier bookIdentifier: String) -> MyBooksDownloadInfo? {
-        let semaphore = DispatchSemaphore(value: 0)
-        var result: MyBooksDownloadInfo?
-
-        Task.detached(priority: .userInitiated) {
-            result = await self.downloadCoordinator.getCachedDownloadInfo(for: bookIdentifier)
-
-            if result == nil {
-                result = await self.downloadInfoAsync(forBookIdentifier: bookIdentifier)
-            }
-
-            semaphore.signal()
-        }
-
-        _ = semaphore.wait(timeout: .now() + 0.05)
-        return result
+        bookIdentifierToDownloadInfo.syncGet(bookIdentifier)
     }
 
     /// Returns the current download progress for a book (0.0 to 1.0).

@@ -159,7 +159,11 @@ struct CatalogCacheMetadata: Codable {
             self.currentAccount?.hasUpdatedToken = false
             currentAccountId = newValue?.uuid
             TPPErrorLogger.setUserID(self.currentUserAccount.barcode)
-            isAccountSwitching = false
+            // isAccountSwitching is reset asynchronously by cleanupActiveContentBeforeAccountSwitch
+            // after navigation cleanup completes — NOT here, to avoid premature reset (F-032).
+            if previousAccountId == newAccountId || previousAccountId == nil {
+                isAccountSwitching = false
+            }
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         }
     }
@@ -168,8 +172,9 @@ struct CatalogCacheMetadata: Codable {
     /// content before switching accounts to prevent cross-account credential leaks.
     private func cleanupActiveContentBeforeAccountSwitch(from previousId: String?, to newId: String?) {
         networkExecutor.cancelNonEssentialTasks()
+        MyBooksDownloadCenter.clearAllBorrowReauthState()
 
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
             if let coordinator = NavigationCoordinatorHub.shared.coordinator {
                 let pathCount = coordinator.path.count
                 Log.debug(#file, "  Navigation path has \(pathCount) items")
@@ -181,6 +186,8 @@ struct CatalogCacheMetadata: Codable {
                     try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
                 }
             }
+            // Reset flag AFTER async cleanup completes — not in the setter (F-032)
+            self?.isAccountSwitching = false
         }
     }
 

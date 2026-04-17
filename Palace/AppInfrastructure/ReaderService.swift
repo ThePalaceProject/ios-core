@@ -16,9 +16,10 @@ final class ReaderService {
     private var redownloadObservers: [String: AnyCancellable] = [:]
     private var redownloadTimeouts: [String: Task<Void, Never>] = [:]
 
-    private func topPresenter() -> UIViewController {
+    private func topPresenter() -> UIViewController? {
         guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
-            return UIViewController()
+            Log.warn(#file, "No root view controller available — cannot present reader")
+            return nil
         }
         var base: UIViewController = root
         while let presented = base.presentedViewController { base = presented }
@@ -32,7 +33,8 @@ final class ReaderService {
 
     @MainActor
     private func openEPUBInternal(_ book: TPPBook, isRetry: Bool) {
-        r3Owner.libraryService.openBook(book, sender: topPresenter()) { result in
+        guard let presenter = topPresenter() else { return }
+        r3Owner.libraryService.openBook(book, sender: presenter) { result in
             switch result {
             case .success(let publication):
                 if let coordinator = NavigationCoordinatorHub.shared.coordinator {
@@ -52,7 +54,8 @@ final class ReaderService {
 
     @MainActor
     func openSample(_ book: TPPBook, url: URL) {
-        r3Owner.libraryService.openSample(book, sampleURL: url, sender: topPresenter()) { result in
+        guard let presenter = topPresenter() else { return }
+        r3Owner.libraryService.openSample(book, sampleURL: url, sender: presenter) { result in
             switch result {
             case .success(let publication):
                 if let coordinator = NavigationCoordinatorHub.shared.coordinator {

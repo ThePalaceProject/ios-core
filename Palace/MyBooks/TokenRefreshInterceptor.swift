@@ -145,11 +145,6 @@ final class TokenRefreshInterceptor {
             self.hasAttemptedAuthentication = true
             self.isRequestingCredentials = true
 
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                self?.isRequestingCredentials = false
-            }
-
             self.reauthenticator.authenticateIfNeeded(delegate.userAccount, usingExistingCredentials: false) { [weak self, weak delegate] in
                 guard let self = self, let delegate = delegate else { return }
 
@@ -182,11 +177,6 @@ final class TokenRefreshInterceptor {
         }
 
         self.isRequestingCredentials = true
-
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            self?.isRequestingCredentials = false
-        }
 
         #if FEATURE_DRM_CONNECTOR
         if AdobeCertificate.defaultCertificate?.hasExpired ?? false {
@@ -247,10 +237,6 @@ final class TokenRefreshInterceptor {
                 guard !self.isRequestingCredentials else { return }
 
                 self.isRequestingCredentials = true
-                Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    self?.isRequestingCredentials = false
-                }
 
                 self.reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self, weak delegate] in
                     Task { @MainActor in
@@ -296,11 +282,6 @@ final class TokenRefreshInterceptor {
                 }
 
                 self.isRequestingCredentials = true
-
-                Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    self?.isRequestingCredentials = false
-                }
 
                 self.reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self, weak delegate] in
                     Task { @MainActor [weak self] in

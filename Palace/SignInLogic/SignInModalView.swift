@@ -45,7 +45,10 @@ struct SignInModalView: View {
     }
 }
 
-/// Bridge class to present SignInModalView from Objective-C
+/// Bridge class to present SignInModalView from Objective-C.
+/// @MainActor ensures `isPresenting` reads/writes are serialized — prevents
+/// duplicate modals from concurrent 401 responses on different threads.
+@MainActor
 @objcMembers
 class SignInModalPresenter: NSObject {
 

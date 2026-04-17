@@ -234,11 +234,13 @@ final class NetworkQueue: NSObject {
 
         let task = URLSession.shared.dataTask(with: urlRequest) { (_, response, _) in
             self.serialQueue.async {
-                if let response = response as? HTTPURLResponse {
-                    if response.statusCode == 200 {
-                        Log.info(#file, "Queued Request Upload: Success")
-                        self.deleteRow(db, id: requestRow[self.sqlID])
-                    }
+                if let response = response as? HTTPURLResponse,
+                   (200...299).contains(response.statusCode) {
+                    Log.info(#file, "Queued Request Upload: Success (\(response.statusCode))")
+                    self.deleteRow(db, id: requestRow[self.sqlID])
+                } else {
+                    let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                    Log.warn(#file, "Queued Request retry failed with status \(code)")
                 }
                 self.retryRequestCount -= 1
             }

@@ -137,9 +137,11 @@ extension TPPSignInBusinessLogic {
 
         for param in payload.components(separatedBy: "&") {
             let elts = param.components(separatedBy: "=")
-            guard elts.count >= 2, let key = elts.first, let value = elts.last else {
+            guard elts.count >= 2, let key = elts.first else {
                 continue
             }
+            // Join all segments after the key — values can contain '=' (e.g. base64 tokens)
+            let value = elts.dropFirst().joined(separator: "=")
             kvpairs[key] = value
         }
 
@@ -180,7 +182,6 @@ extension TPPSignInBusinessLogic {
 
         Log.info(#file, "🔐 [REDIRECT] ✅ Successfully extracted auth data:")
         Log.info(#file, "🔐 [REDIRECT]   Auth token length: \(authToken.count) characters")
-        Log.info(#file, "🔐 [REDIRECT]   Auth token prefix: \(authToken.prefix(20))...")
         Log.info(#file, "🔐 [REDIRECT]   Patron keys: \(parsedPatron.keys.sorted().joined(separator: ", "))")
         if let patronName = parsedPatron["name"] as? String {
             Log.info(#file, "🔐 [REDIRECT]   Patron name: \(patronName)")

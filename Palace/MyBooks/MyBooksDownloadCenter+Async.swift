@@ -35,6 +35,14 @@ extension MyBooksDownloadCenter {
         borrowReauthAttempted.remove(bookId)
     }
 
+    /// Clears all borrow re-auth tracking state. Called on account switch
+    /// to prevent stale circuit breaker state from the previous account.
+    static func clearAllBorrowReauthState() {
+        borrowReauthLock.lock()
+        defer { borrowReauthLock.unlock() }
+        borrowReauthAttempted.removeAll()
+    }
+
     // MARK: - Async Borrow Operations
 
     /// Borrows a book asynchronously using modern async/await pattern

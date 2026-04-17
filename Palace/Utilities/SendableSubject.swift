@@ -6,14 +6,15 @@ import Combine
 /// that safety contract explicit via `@unchecked Sendable` instead of
 /// requiring `nonisolated(unsafe)` on each property.
 struct SendablePassthrough<Output: Sendable>: @unchecked Sendable {
-    let subject = PassthroughSubject<Output, Never>()
+    private let subject = PassthroughSubject<Output, Never>()
     func send(_ value: Output) { subject.send(value) }
     func eraseToAnyPublisher() -> AnyPublisher<Output, Never> { subject.eraseToAnyPublisher() }
 }
 
 struct SendableCurrentValue<Output: Sendable>: @unchecked Sendable {
-    let subject: CurrentValueSubject<Output, Never>
+    private let subject: CurrentValueSubject<Output, Never>
     init(_ value: Output) { subject = CurrentValueSubject(value) }
+    var value: Output { subject.value }
     func send(_ value: Output) { subject.send(value) }
     func eraseToAnyPublisher() -> AnyPublisher<Output, Never> { subject.eraseToAnyPublisher() }
 }

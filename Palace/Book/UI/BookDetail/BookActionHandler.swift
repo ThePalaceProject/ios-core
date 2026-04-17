@@ -12,10 +12,18 @@ import PalaceAudiobookToolkit
 @MainActor
 final class BookActionHandler {
     private let downloadCenter: MyBooksDownloadCenter
+    private let accountsManager: AccountsManager
+    private let bookRegistry: TPPBookRegistrySyncing
     private weak var viewModel: BookDetailViewModel?
 
-    init(downloadCenter: MyBooksDownloadCenter = .shared) {
+    init(
+        downloadCenter: MyBooksDownloadCenter = .shared,
+        accountsManager: AccountsManager = .shared,
+        bookRegistry: TPPBookRegistrySyncing = TPPBookRegistry.shared
+    ) {
         self.downloadCenter = downloadCenter
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
     }
 
     func attach(to viewModel: BookDetailViewModel) {
@@ -76,11 +84,11 @@ final class BookActionHandler {
 
     private func ensureAuthAndExecute(_ action: @escaping () -> Void) {
         let businessLogic = TPPSignInBusinessLogic(
-            libraryAccountID: AccountsManager.shared.currentAccount?.uuid ?? "",
-            libraryAccountsProvider: AccountsManager.shared,
+            libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
+            libraryAccountsProvider: accountsManager,
             urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookRegistry: bookRegistry,
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
@@ -90,12 +98,12 @@ final class BookActionHandler {
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
-                let account = AccountsManager.shared.currentUserAccount
+                let account = self.accountsManager.currentUserAccount
                 if account.needsAuth && !account.hasCredentials() {
                     self.viewModel?.showHalfSheet = false
-                    SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
+                    SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: self.accountsManager) { [weak self] in
                         guard let self else { return }
-                        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+                        guard self.accountsManager.currentUserAccount.hasCredentials() else {
                             Log.info(#file, "Sign-in cancelled or failed, not proceeding with action")
                             self.viewModel?.processingButtons.remove(.download)
                             self.viewModel?.processingButtons.remove(.get)
@@ -127,13 +135,13 @@ final class BookActionHandler {
 
     func didSelectReserve(for book: TPPBook, completion: (() -> Void)? = nil) {
         ensureAuthAndExecute { [weak self] in
-            guard self != nil else {
+            guard let self else {
                 completion?()
                 return
             }
             Task {
                 do {
-                    _ = try await MyBooksDownloadCenter.shared.borrowAsync(book, attemptDownload: false)
+                    _ = try await self.downloadCenter.borrowAsync(book, attemptDownload: false)
                 } catch {
                     Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
                 }
@@ -168,7 +176,7 @@ final class BookActionHandler {
             Task { @MainActor in
                 guard let self = self else { return }
                 #if FEATURE_DRM_CONNECTOR
-                let user = AccountsManager.shared.currentUserAccount
+                let user = self.accountsManager.currentUserAccount
 
                 if user.hasCredentials() {
                     if user.hasAuthToken() {

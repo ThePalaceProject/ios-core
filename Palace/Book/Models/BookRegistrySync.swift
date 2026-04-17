@@ -7,6 +7,9 @@ class BookRegistrySync {
   private let store: BookRegistryStore
   private let registryFolderName = "registry"
   private let registryFileName = "registry.json"
+  /// Serial queue for disk writes — prevents out-of-order save races where a stale
+  /// snapshot could overwrite a newer one if two saves dispatch concurrently.
+  private let diskWriteQueue = DispatchQueue(label: "com.palace.registryDiskWrite")
 
   var syncUrl: URL?
   var loadingAccount: String?
@@ -248,7 +251,7 @@ class BookRegistrySync {
     let snapshot = store.registrySnapshot()
     let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
 
-    DispatchQueue.global(qos: .utility).async {
+    diskWriteQueue.async {
       do {
         let directoryURL = registryUrl.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: directoryURL.path) {

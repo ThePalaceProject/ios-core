@@ -258,9 +258,11 @@ extension TPPSignInBusinessLogic {
         var kvpairs = [String: String]()
         for param in payload.components(separatedBy: "&") {
             let elts = param.components(separatedBy: "=")
-            guard elts.count >= 2, let key = elts.first, let value = elts.last else {
+            guard elts.count >= 2, let key = elts.first else {
                 continue
             }
+            // Join all segments after the key — values can contain '=' (e.g. base64 tokens)
+            let value = elts.dropFirst().joined(separator: "=")
             kvpairs[key] = value
         }
 
