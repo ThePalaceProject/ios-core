@@ -681,7 +681,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         for config in DebugSettings.TestHoldsConfiguration.allCases {
             let isSelected = DebugSettings.shared.testHoldsConfiguration == config
             let checkmark = isSelected ? " ✓" : ""
-            let expectedBadge = config.expectedBadgeCount >= 0 ? " (badge=\(config.expectedBadgeCount))" : ""
 
             alert.addAction(UIAlertAction(title: config.displayName + checkmark, style: .default) { [weak self] _ in
                 DebugSettings.shared.testHoldsConfiguration = config

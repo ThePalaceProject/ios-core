@@ -69,7 +69,10 @@ actor HostFailureTracker {
 
 // MARK: - Swift Concurrency Actor
 actor TPPBookCoverRegistry {
-    let imageCache: ImageCacheType
+    /// nonisolated(unsafe) because ImageCacheType is not Sendable but the underlying
+    /// NSCache-backed implementation handles its own synchronization, so reading the
+    /// reference from any context is safe.
+    nonisolated(unsafe) let imageCache: ImageCacheType
 
     static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared)
 
@@ -178,7 +181,7 @@ actor TPPBookCoverRegistry {
         if await hostFailureTracker.isHostFailing(url.host) { return await coverImage(for: book, displayHeight: displayPoints) }
 
         await acquireFetchSlot()
-        defer { Task { await self.releaseFetchSlot() } }
+        defer { Task { self.releaseFetchSlot() } }
 
         do {
             let (data, _) = try await Self.imageSession.data(for: URLRequest.withoutHTTP3Assumption(url: url))
@@ -216,7 +219,7 @@ actor TPPBookCoverRegistry {
         }
 
         await acquireFetchSlot()
-        defer { Task { await self.releaseFetchSlot() } }
+        defer { Task { self.releaseFetchSlot() } }
 
         do {
             let (data, _) = try await Self.imageSession.data(for: URLRequest.withoutHTTP3Assumption(url: url))
@@ -512,12 +515,14 @@ public class TPPBookCoverRegistryBridge: NSObject {
             }
 
             // Use main actor for UI-related cache operations
+            let finalImg = img
+            let capturedBook = book
             await MainActor.run {
-                if let img = img {
-                    sharedImageCache.set(img, for: coverKey)
-                    book?.imageCache.set(img, for: coverKey)
+                if let finalImg {
+                    sharedImageCache.set(finalImg, for: coverKey)
+                    capturedBook?.imageCache.set(finalImg, for: coverKey)
                 }
-                completion(img)
+                completion(finalImg)
             }
         }
     }
@@ -546,12 +551,14 @@ public class TPPBookCoverRegistryBridge: NSObject {
             }
 
             // Use main actor for UI-related cache operations
+            let finalImg = img
+            let capturedBook = book
             await MainActor.run {
-                if let img = img {
-                    sharedImageCache.set(img, for: thumbnailKey)
-                    book?.imageCache.set(img, for: thumbnailKey)
+                if let finalImg {
+                    sharedImageCache.set(finalImg, for: thumbnailKey)
+                    capturedBook?.imageCache.set(finalImg, for: thumbnailKey)
                 }
-                completion(img)
+                completion(finalImg)
             }
         }
     }

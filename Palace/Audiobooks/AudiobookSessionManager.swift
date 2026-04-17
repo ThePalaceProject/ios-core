@@ -325,11 +325,6 @@ public final class AudiobookSessionManager: ObservableObject {
     /// This is called via AudiobookEvents.managerCreated subscription.
     func bindToManager(_ newManager: AudiobookManager) {
         Log.info(#file, "Binding to AudiobookManager")
-        let hadExistingManager = manager != nil
-        let existingBookId = currentBook?.identifier ?? "none"
-
-        if hadExistingManager {
-        }
 
         // Clear previous subscriptions
         managerCancellables.removeAll()
