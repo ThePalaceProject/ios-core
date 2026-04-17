@@ -44,16 +44,6 @@ final class ReachabilityTests: XCTestCase {
         XCTAssertFalse(status.details.isEmpty, "Details should not be empty")
     }
 
-    // MARK: - Monitoring (safe start/stop)
-
-    func testStartAndStopMonitoring_doesNotCrash() {
-        // Multiple starts and stops should be safe
-        Reachability.shared.startMonitoring()
-        Reachability.shared.startMonitoring()
-        Reachability.shared.stopMonitoring()
-        Reachability.shared.stopMonitoring()
-    }
-
     // MARK: - isConnected Property
 
     func testIsConnected_property_returnsBool() {

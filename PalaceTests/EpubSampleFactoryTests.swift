@@ -91,8 +91,14 @@ final class EpubSampleFactoryTests: XCTestCase {
         // Create a book without a sample (hasSample: false is the default)
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
 
-        // Just verify the method can be called without crashing
-        // The mock book has no sample, so this should handle that gracefully
-        EpubSampleFactory.createSample(book: book) { _, _ in }
+        let completed = XCTestExpectation(description: "createSample completion fires")
+        var receivedError: Error?
+        EpubSampleFactory.createSample(book: book) { _, error in
+            receivedError = error
+            completed.fulfill()
+        }
+        wait(for: [completed], timeout: 3.0)
+        XCTAssertNotNil(receivedError,
+                        "A book without a sample must yield an error via the completion")
     }
 }

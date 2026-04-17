@@ -109,9 +109,11 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
 
         poster.storeReadPosition(locator: locator)
 
-        // With 0 totalProgression and no CSS selector, should not store
-        // Note: This depends on the implementation - verify actual behavior
-        // The location might or might not be stored depending on shouldStore logic
+        // With 0 totalProgression and no CSS selector, the poster's shouldStore
+        // guard must reject the position — otherwise we'd persist a meaningless
+        // "beginning of chapter" every time the reader opens a book.
+        XCTAssertNil(bookRegistryMock.location(forIdentifier: testBook.identifier),
+                     "Zero progression + no CSS selector must not persist a position")
     }
 
     func testStoreReadPosition_positiveProgression_stores() {

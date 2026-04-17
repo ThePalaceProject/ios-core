@@ -27,6 +27,10 @@ class Date_NYPLAdditionsTests: XCTestCase {
                 _ = date.rfc1123String
             }
         }
+
+        // Correctness assertion: the cached value must still produce the right output
+        XCTAssertEqual(date.rfc1123String, "Sun, 09 Sep 2001 01:46:40 GMT",
+                       "Repeated formatting must not corrupt the cached output")
     }
 
     func testISO8601FullDateParsing() {

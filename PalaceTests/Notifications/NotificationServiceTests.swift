@@ -162,8 +162,11 @@ final class NotificationServiceTests: XCTestCase {
             genericBookmarks: []
         )
 
-        // Should not crash
+        let originalIdentifier = record.book.identifier
         NotificationService.compareAvailability(cachedRecord: record, andNewBook: book2)
+        // Record must not be mutated when availability is absent on both sides
+        XCTAssertEqual(record.book.identifier, originalIdentifier,
+                       "compareAvailability with no availability on either book must not mutate the record")
     }
 
     func testCompareAvailabilityReservedToReady() {

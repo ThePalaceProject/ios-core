@@ -398,27 +398,31 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
     func testRefreshTokenAndResume_NilTask_NilAccountId_DoesNotCrash() {
         let executor = makeExecutor()
         let expectation = XCTestExpectation(description: "Refresh completes")
+        var gotResult = false
 
-        executor.refreshTokenAndResume(task: nil, accountId: nil) { result in
-            switch result {
-            case .failure, .success:
-                break
-            }
+        executor.refreshTokenAndResume(task: nil, accountId: nil) { _ in
+            gotResult = true
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 5.0)
+        XCTAssertTrue(gotResult,
+                      "Completion must be invoked (success or failure) even with nil task and nil accountId")
     }
 
     func testRefreshTokenAndResume_DefaultAccountId_BackwardCompatible() {
         let executor = makeExecutor()
         let expectation = XCTestExpectation(description: "Refresh completes")
+        var gotResult = false
 
         executor.refreshTokenAndResume(task: nil) { _ in
+            gotResult = true
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 5.0)
+        XCTAssertTrue(gotResult,
+                      "Backward-compat overload (no accountId) must still deliver a completion")
     }
 
     // MARK: executeTokenRefresh Guards
@@ -661,14 +665,18 @@ final class ConcurrentTokenRefreshTests: XCTestCase {
     func testRefreshTokenAndResume_noCredentials_failsImmediately() {
         let executor = makeExecutor()
         let expectation = XCTestExpectation(description: "Refresh completes")
+        var wasFailure = false
 
         executor.refreshTokenAndResume(task: nil) { result in
             if case .failure = result {
+                wasFailure = true
                 expectation.fulfill()
             }
         }
 
         wait(for: [expectation], timeout: 5.0)
+        XCTAssertTrue(wasFailure,
+                      "refreshTokenAndResume without credentials must fail immediately, not succeed")
     }
 }
 
