@@ -168,6 +168,24 @@ class AccountDetailViewModel: NSObject, ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        // Belt-and-suspenders refresh signals. The `.TPPUserAccountDidChange`
+        // path depends on the full sign-out/sign-in pipeline completing; if
+        // that pipeline hiccups (or lengthens — e.g. SAML SLO), the view can
+        // miss the state change. These two channels guarantee a refresh:
+        //   1. .TPPDidSignOut is posted synchronously by removeAll().
+        //   2. UserAccountPublisher.$hasCredentials is the authoritative
+        //      @Published source of truth for credential state.
+        NotificationCenter.default.publisher(for: .TPPDidSignOut)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.accountDidChange() }
+            .store(in: &cancellables)
+
+        UserAccountPublisher.shared.$hasCredentials
+            .receive(on: RunLoop.main)
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.accountDidChange() }
+            .store(in: &cancellables)
     }
 
     private func loadInitialData() {
@@ -201,6 +219,10 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     private func setupViews() {
         isSyncEnabled = selectedAccount?.details?.syncPermissionGranted ?? false
+        // For multi-auth libraries (e.g. SAML + basic-auth fallback), prefer
+        // the WebView-based auth as the default so the sign-in prompt shows
+        // the single IdP button instead of inline credential fields.
+        businessLogic.selectPreferredAuthIfNeeded()
         setupTableData()
         loadBarcodeIfNeeded()
     }

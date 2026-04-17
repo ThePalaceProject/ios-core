@@ -636,6 +636,28 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         libraryAccount?.details?.auths.contains { $0.isSaml } ?? false
     }
 
+    /// Auto-select a WebView-based authentication (SAML, then OIDC) when
+    /// the library advertises multiple auth methods and none is explicitly
+    /// chosen. Fixes the regression where multi-auth SAML libraries rendered
+    /// the basic-auth credential fields instead of the SAML sign-in prompt.
+    ///
+    /// Idempotent: only sets `selectedAuthentication` when it is currently
+    /// nil (i.e., the library offers >1 auth and no prior choice exists).
+    /// Does nothing for libraries with a single auth — `selectedAuthentication`
+    /// already resolves to the only option in that case.
+    @objc func selectPreferredAuthIfNeeded() {
+        guard selectedAuthentication == nil else { return }
+        guard let auths = libraryAccount?.details?.auths, auths.count > 1 else { return }
+        if let saml = auths.first(where: { $0.isSaml }) {
+            selectedAuthentication = saml
+            return
+        }
+        if let oidc = auths.first(where: { $0.isOidc }) {
+            selectedAuthentication = oidc
+            return
+        }
+    }
+
     @objc func shouldShowEULALink() -> Bool {
         return libraryAccount?.details?.getLicenseURL(.eula) != nil
     }

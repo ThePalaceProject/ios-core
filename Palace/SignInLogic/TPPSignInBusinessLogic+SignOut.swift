@@ -208,10 +208,15 @@ extension TPPSignInBusinessLogic {
         bookDownloadsCenter.reset(libraryAccountID)
         bookRegistry.reset(libraryAccountID)
 
-        // Capture the OIDC access token before removeAll() wipes it.
-        // The CM logout endpoint requires Authorization: Bearer <token>,
-        // and we need this for the API call in performFinalSignOutCleanup.
-        let oidcAccessToken: String? = selectedAuthentication?.isOidc == true ? userAccount.authToken : nil
+        // Capture the access token before removeAll() wipes it.
+        // CM logout endpoints (OIDC and SAML SLO / PP-3452) require
+        // Authorization: Bearer <token>; we need this for the API calls
+        // in performFinalSignOutCleanup.
+        let cmLogoutAccessToken: String? = {
+            let needsToken = selectedAuthentication?.isOidc == true
+                || selectedAuthentication?.samlLogoutHref != nil
+            return needsToken ? userAccount.authToken : nil
+        }()
 
         userAccount.removeAll()
         selectedIDP = nil
@@ -222,14 +227,19 @@ extension TPPSignInBusinessLogic {
 
         // Clear the IdP session before notifying the UI that sign-out is complete.
         //
-        // SAML/OAuth: patron authenticates via WKWebView, so clearing WKWebView
-        // data invalidates the IdP session on this device.
+        // OAuth: patron authenticates via WKWebView, so clearing WKWebView data
+        // invalidates the IdP session on this device.
+        //
+        // SAML: if the CM advertises a logout link (PP-3452), call the CM's
+        // saml_logout_redirect endpoint with Bearer — this invalidates the
+        // server-side credential and, if the IdP supports SLO, the IdP session.
+        // Then clear WKWebView data to invalidate local cookies.
         //
         // OIDC: the CM's logout endpoint is an authenticated REST API — we call
         // it directly with the captured access token, no browser involved.
         //
         // CRITICAL: all async steps must finish BEFORE notifying the UI delegate.
-        performFinalSignOutCleanup(oidcAccessToken: oidcAccessToken) { [weak self] in
+        performFinalSignOutCleanup(cmLogoutAccessToken: cmLogoutAccessToken) { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.isSignOutInProgress = false
@@ -240,16 +250,34 @@ extension TPPSignInBusinessLogic {
 
     /// Routes to the appropriate IdP session-clearing step based on auth type.
     ///
-    /// OIDC makes an authenticated API call to the CM's logout endpoint using
-    /// the access token captured before credentials were cleared, then clears
-    /// WKWebView data. All other types clear WKWebView data directly.
-    private func performFinalSignOutCleanup(oidcAccessToken: String? = nil,
+    /// OIDC: authenticated API call to CM end-session endpoint, then WKWebView cleanup.
+    /// SAML + logout link present (PP-3452): authenticated API call to CM
+    ///   saml_logout_redirect, then WKWebView cleanup.
+    /// Everything else: WKWebView cleanup only.
+    private func performFinalSignOutCleanup(cmLogoutAccessToken: String? = nil,
                                             completion: @escaping () -> Void) {
         if selectedAuthentication?.isOidc == true {
-            oidcLogOut(accessToken: oidcAccessToken) { [weak self] in
+            oidcLogOut(accessToken: cmLogoutAccessToken) { [weak self] in
                 guard let self = self else {
                     // self deallocated — still clear WebView data and call completion
                     // to ensure the UI state is reset.
+                    DispatchQueue.main.async {
+                        let dataStore = WKWebsiteDataStore.default()
+                        let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+                        dataStore.removeData(ofTypes: dataTypes, modifiedSince: .distantPast) {
+                            if let cookies = HTTPCookieStorage.shared.cookies {
+                                for cookie in cookies { HTTPCookieStorage.shared.deleteCookie(cookie) }
+                            }
+                            completion()
+                        }
+                    }
+                    return
+                }
+                self.clearWebViewData(completion: completion)
+            }
+        } else if selectedAuthentication?.samlLogoutHref != nil {
+            samlLogOut(accessToken: cmLogoutAccessToken) { [weak self] in
+                guard let self = self else {
                     DispatchQueue.main.async {
                         let dataStore = WKWebsiteDataStore.default()
                         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
