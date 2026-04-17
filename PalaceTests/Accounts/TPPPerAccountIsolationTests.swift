@@ -161,7 +161,9 @@ final class TPPPerAccountIsolationTests: XCTestCase {
         accountB.setBarcode("concurrentB", PIN: "pinB")
         accountB.markLoggedIn()
 
-        let iterations = 200
+        // Reduced from 200 to 20 — keychain operations are slow on simulator
+        // and 400 concurrent SecItem calls can deadlock the keychain daemon.
+        let iterations = 20
         let expectation = expectation(description: "concurrent snapshots")
         expectation.expectedFulfillmentCount = iterations * 2
         var failures = [String]()
