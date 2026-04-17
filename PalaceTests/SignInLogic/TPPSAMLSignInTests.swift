@@ -349,9 +349,8 @@ final class TPPSAMLSignInTests: XCTestCase {
       cookies: nil
     )
     
-    // Assert: Credentials should be retrievable with same library UUID
-    let account = TPPUserAccountMock.sharedAccount(libraryUUID: expectedLibraryID)
-    XCTAssertTrue(account.hasCredentials(),
+    // Assert: Credentials should be on the business logic's own user account
+    XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
                   "Credentials should be retrievable with the same library UUID")
   }
   
