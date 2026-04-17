@@ -118,7 +118,7 @@ enum MockBackendTestHelper {
             .appendingPathComponent("Fixtures/API")
     }
 
-    private static func testBundle() -> Bundle {
+    private static func currentTestBundle() -> Bundle {
         Bundle(for: MockBackendIntegrationTests.self)
     }
 }

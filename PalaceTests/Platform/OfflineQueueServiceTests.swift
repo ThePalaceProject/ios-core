@@ -182,11 +182,13 @@ final class OfflineQueueServiceTests: XCTestCase {
 
     func testStatusPublisherEmits() async {
         let expectation = XCTestExpectation(description: "Status published")
+        var receivedStatus: OfflineQueueStatus?
 
         service.statusPublisher
             .dropFirst() // Drop initial empty
             .first()
             .sink { status in
+                receivedStatus = status
                 expectation.fulfill()
             }
             .store(in: &cancellables)
@@ -195,6 +197,8 @@ final class OfflineQueueServiceTests: XCTestCase {
         await service.enqueue(action)
 
         await fulfillment(of: [expectation], timeout: 2.0)
+        XCTAssertNotNil(receivedStatus,
+                        "statusPublisher must deliver a status snapshot to subscribers")
     }
 
     func testActionPublisherEmits() async {

@@ -165,6 +165,7 @@ final class PositionSyncServiceTests: XCTestCase {
 
     func testSyncAvailableEventPublished() async {
         let expectation = XCTestExpectation(description: "Sync available event")
+        var sawSyncAvailable = false
 
         let abPos = ReadingPosition.audiobook(
             bookID: "book1", chapterIndex: 3, timeOffset: 100, deviceID: "d1"
@@ -177,6 +178,7 @@ final class PositionSyncServiceTests: XCTestCase {
         service.eventPublisher
             .sink { event in
                 if case .syncAvailable = event {
+                    sawSyncAvailable = true
                     expectation.fulfill()
                 }
             }
@@ -185,6 +187,8 @@ final class PositionSyncServiceTests: XCTestCase {
         _ = await service.checkForSyncOffer(bookID: "book1", openingFormat: .epub)
 
         await fulfillment(of: [expectation], timeout: 2.0)
+        XCTAssertTrue(sawSyncAvailable,
+                      "eventPublisher must emit .syncAvailable when an alt-format position exists")
     }
 
     // MARK: - Mappings
