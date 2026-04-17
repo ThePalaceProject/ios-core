@@ -348,8 +348,10 @@ final class UserAccountPublisherAuthStateTests: XCTestCase {
         // When: Mark as stale
         publisher.markCredentialsStale()
 
-        // Then: Publisher should fire
+        // Then: Publisher should fire AND the authState must reflect the stale status
         waitForExpectations(timeout: 1)
+        XCTAssertEqual(publisher.authState, .stale,
+                       "authState must transition to .stale after markCredentialsStale()")
     }
 
     func testAuthStateDidChangePublisher_firesOnStateChanges() {
