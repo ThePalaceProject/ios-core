@@ -896,7 +896,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         account.setAuthState(.loggedIn)
         vm.refreshSignInState()
 
-        XCTExpectFailure("Requires TPPUserAccount singleton integration — tracked for AccountDetailViewModel DI migration")
+        // DI migration resolved the singleton integration issue — these assertions now pass
         XCTAssertTrue(vm.isSignedIn)
         account.removeAll()
     }
@@ -912,7 +912,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
 
         let vm = AccountDetailViewModel(libraryAccountID: libraryID)
         vm.businessLogicDidCompleteSignIn(vm.businessLogic)
-        XCTExpectFailure("Requires TPPUserAccount singleton integration — tracked for AccountDetailViewModel DI migration")
+        // DI migration resolved the singleton integration issue — these assertions now pass
         XCTAssertEqual(vm.usernameText, "foo")
         XCTAssertEqual(vm.pinText, "9999")
 
@@ -1008,7 +1008,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
 
         let vm = AccountDetailViewModel(libraryAccountID: libraryID)
         vm.refreshSignInState()
-        XCTExpectFailure("Requires TPPUserAccount singleton integration — tracked for AccountDetailViewModel DI migration")
+        // DI migration resolved the singleton integration issue — these assertions now pass
         XCTAssertTrue(vm.isSignedIn)
         vm.isSigningOut = false
 
