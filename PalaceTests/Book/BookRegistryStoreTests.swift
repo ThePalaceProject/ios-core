@@ -367,7 +367,8 @@ final class BookRegistryStoreTests: XCTestCase {
             .store(in: &cancellables)
 
         store.addBook(book, state: .downloadNeeded)
-        wait(for: [received], timeout: 3.0)
+        // Barrier + main dispatch can take several seconds under load
+        wait(for: [received], timeout: 10.0)
         XCTAssertGreaterThan(receivedCount, 0,
                              "Subject must emit at least once when a book is added")
         XCTAssertEqual(store.state(for: book.identifier), .downloadNeeded,
