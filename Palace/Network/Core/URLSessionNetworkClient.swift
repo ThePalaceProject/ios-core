@@ -33,7 +33,7 @@ final class URLSessionNetworkClient: NetworkClient {
         }
         urlRequest.httpBody = request.body
 
-        let (data, response) = try await withCheckedThrowingContinuation { continuation in
+        let (data, response): (Data, HTTPURLResponse) = try await withCheckedThrowingContinuation { continuation in
             switch request.method {
             case .GET, .HEAD:
                 _ = self.executor.GET(request: urlRequest, useTokenIfAvailable: true) { data, response, error in
