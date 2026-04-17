@@ -102,6 +102,10 @@
 		0F56EFAE3853AC2EEF6AD7E7 /* SAMLCookieSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */; };
 		E565CC878F888FC5B75E7066 /* SAMLCookieSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */; };
 		B2C3D4E5F607183940516273 /* TPPSAMLFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071839405162 /* TPPSAMLFlowTests.swift */; };
+		D6E7F8091A2B3C4D5E6F7081 /* TPPSAMLLogoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D6E7F8091A2B3C4D5E6F70 /* TPPSAMLLogoutTests.swift */; };
+		F7081A2B3C4D5E6F70819203 /* TPPAuthDocumentContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F7081A2B3C4D5E6F708192 /* TPPAuthDocumentContractTests.swift */; };
+		091A2B3C4D5E6F7081921324 /* TPPPreferredAuthSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8091A2B3C4D5E6F70819213 /* TPPPreferredAuthSelectionTests.swift */; };
+		1A2B3C4D5E6F70819213A435 /* TPPCredentialSnapshotCoherenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 091A2B3C4D5E6F708192A3B4 /* TPPCredentialSnapshotCoherenceTests.swift */; };
 		D4E5F6071839405162738495 /* MockSAMLAuthContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F60718394051627384 /* MockSAMLAuthContext.swift */; };
 		F607183940516273849506A7 /* MockSAMLWebViewPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F607183940516273849506 /* MockSAMLWebViewPresenter.swift */; };
 		11068C55196DD37900E8A94B /* TPPNull.m in Sources */ = {isa = PBXBuildFile; fileRef = 11068C54196DD37900E8A94B /* TPPNull.m */; };
@@ -1001,6 +1005,8 @@
 		E50546CE2E621C39007CCFAB /* AppTabRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546CC2E621C39007CCFAB /* AppTabRouter.swift */; };
 		E50546CE2E6F8A0007CCFA01 /* TPPSignInBusinessLogic+OIDC.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546CD2E6F8A0007CCFA01 /* TPPSignInBusinessLogic+OIDC.swift */; };
 		E50546CF2E6F8A0007CCFA02 /* TPPSignInBusinessLogic+OIDC.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546CD2E6F8A0007CCFA01 /* TPPSignInBusinessLogic+OIDC.swift */; };
+		E50546D22E6F8C0007CCFA05 /* TPPSignInBusinessLogic+SAML.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546D12E6F8C0007CCFA04 /* TPPSignInBusinessLogic+SAML.swift */; };
+		E50546D32E6F8C0007CCFA06 /* TPPSignInBusinessLogic+SAML.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50546D12E6F8C0007CCFA04 /* TPPSignInBusinessLogic+SAML.swift */; };
 		E505473F2E6233D0007CCFAB /* ReaderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E505473E2E6233D0007CCFAB /* ReaderService.swift */; };
 		E50547402E6233D0007CCFAB /* ReaderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E505473E2E6233D0007CCFAB /* ReaderService.swift */; };
 		E50547482E625377007CCFAB /* BookService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50547472E625377007CCFAB /* BookService.swift */; };
@@ -2414,6 +2420,7 @@
 		E50546C92E621B75007CCFAB /* NavigationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationCoordinator.swift; sourceTree = "<group>"; };
 		E50546CC2E621C39007CCFAB /* AppTabRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTabRouter.swift; sourceTree = "<group>"; };
 		E50546CD2E6F8A0007CCFA01 /* TPPSignInBusinessLogic+OIDC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+OIDC.swift"; sourceTree = "<group>"; };
+		E50546D12E6F8C0007CCFA04 /* TPPSignInBusinessLogic+SAML.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+SAML.swift"; sourceTree = "<group>"; };
 		E50546D02E6F8B0007CCFA03 /* TPPSignInOIDCTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSignInOIDCTests.swift; sourceTree = "<group>"; };
 		E505473E2E6233D0007CCFAB /* ReaderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderService.swift; sourceTree = "<group>"; };
 		E50547472E625377007CCFAB /* BookService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookService.swift; sourceTree = "<group>"; };
@@ -2712,6 +2719,10 @@
 		KCHAVAIL00FILEREF000001 /* KeychainAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainAvailability.swift; sourceTree = "<group>"; };
 		F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SAMLCookieSyncTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071839405162 /* TPPSAMLFlowTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPSAMLFlowTests.swift; sourceTree = "<group>"; };
+		C5D6E7F8091A2B3C4D5E6F70 /* TPPSAMLLogoutTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPSAMLLogoutTests.swift; sourceTree = "<group>"; };
+		E6F7081A2B3C4D5E6F708192 /* TPPAuthDocumentContractTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPAuthDocumentContractTests.swift; sourceTree = "<group>"; };
+		F8091A2B3C4D5E6F70819213 /* TPPPreferredAuthSelectionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPPreferredAuthSelectionTests.swift; sourceTree = "<group>"; };
+		091A2B3C4D5E6F708192A3B4 /* TPPCredentialSnapshotCoherenceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPCredentialSnapshotCoherenceTests.swift; sourceTree = "<group>"; };
 		C3D4E5F60718394051627384 /* MockSAMLAuthContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MockSAMLAuthContext.swift; sourceTree = "<group>"; };
 		E5F607183940516273849506 /* MockSAMLWebViewPresenter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MockSAMLWebViewPresenter.swift; sourceTree = "<group>"; };
 		HTVI00012F2600010000001B /* HTMLTextViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextViewTests.swift; sourceTree = "<group>"; };
@@ -3485,6 +3496,7 @@
 				737F4A6A254A137900A3C34B /* TPPSignInBusinessLogic+DRM.swift */,
 				733FF9BD2530F9E700CDAA13 /* TPPSignInBusinessLogic+OAuth.swift */,
 				E50546CD2E6F8A0007CCFA01 /* TPPSignInBusinessLogic+OIDC.swift */,
+				E50546D12E6F8C0007CCFA04 /* TPPSignInBusinessLogic+SAML.swift */,
 				7314D13F2551E73C00723E26 /* TPPSignInBusinessLogic+SignOut.swift */,
 				73A794A525477D8F00C59CC1 /* TPPSignInBusinessLogic+UI.swift */,
 				739062D125358CF900D0743D /* TPPSignInBusinessLogicUIDelegate.swift */,
@@ -4144,6 +4156,10 @@
 				F002381F5C11990812629F32 /* TPPSignInAdobeSkipTests.swift */,
 				FC465C72310C5054118CBBEA /* UserAccountValidationTests.swift */,
 				A1B2C3D4E5F6071839405162 /* TPPSAMLFlowTests.swift */,
+				C5D6E7F8091A2B3C4D5E6F70 /* TPPSAMLLogoutTests.swift */,
+				E6F7081A2B3C4D5E6F708192 /* TPPAuthDocumentContractTests.swift */,
+				F8091A2B3C4D5E6F70819213 /* TPPPreferredAuthSelectionTests.swift */,
+				091A2B3C4D5E6F708192A3B4 /* TPPCredentialSnapshotCoherenceTests.swift */,
 			);
 			path = SignInLogic;
 			sourceTree = "<group>";
@@ -6188,6 +6204,10 @@
 				CRWL0013BTST00000001 /* CrossDeviceBookmarkSyncTests.swift in Sources */,
 				0F56EFAE3853AC2EEF6AD7E7 /* SAMLCookieSyncTests.swift in Sources */,
 				B2C3D4E5F607183940516273 /* TPPSAMLFlowTests.swift in Sources */,
+				D6E7F8091A2B3C4D5E6F7081 /* TPPSAMLLogoutTests.swift in Sources */,
+				F7081A2B3C4D5E6F70819203 /* TPPAuthDocumentContractTests.swift in Sources */,
+				091A2B3C4D5E6F7081921324 /* TPPPreferredAuthSelectionTests.swift in Sources */,
+				1A2B3C4D5E6F70819213A435 /* TPPCredentialSnapshotCoherenceTests.swift in Sources */,
 				D4E5F6071839405162738495 /* MockSAMLAuthContext.swift in Sources */,
 				F607183940516273849506A7 /* MockSAMLWebViewPresenter.swift in Sources */,
 				07C193E7CABE357ED0A3B4C0 /* NotificationSyncThrottleTests.swift in Sources */,
@@ -6568,6 +6588,7 @@
 				73EB0B0225821DF4006BC997 /* TPPNetworkResponder.swift in Sources */,
 				73EB0B0525821DF4006BC997 /* TPPSignInBusinessLogic+SignOut.swift in Sources */,
 				E50546CF2E6F8A0007CCFA02 /* TPPSignInBusinessLogic+OIDC.swift in Sources */,
+				E50546D32E6F8C0007CCFA06 /* TPPSignInBusinessLogic+SAML.swift in Sources */,
 				213998FE268F9E3000B4EB60 /* TPPRegistryDebuggingCell.swift in Sources */,
 				E78AE807291C1D9600884446 /* TPPBookRegistry+Extensions.swift in Sources */,
 				E5E03F342CED172200D9979D /* TPPReadiumBookmark+R3.swift in Sources */,
@@ -7040,6 +7061,7 @@
 				7386C1F4245225A5004C78BD /* TPPReaderPositionsVC.swift in Sources */,
 				7314D1402551E73C00723E26 /* TPPSignInBusinessLogic+SignOut.swift in Sources */,
 				E50546CE2E6F8A0007CCFA01 /* TPPSignInBusinessLogic+OIDC.swift in Sources */,
+				E50546D22E6F8C0007CCFA05 /* TPPSignInBusinessLogic+SAML.swift in Sources */,
 				E5AA6F4129A6BA4000601B02 /* RefreshableView.swift in Sources */,
 				E562DE452D38BA3B003A1A40 /* UIDevice+Extension.swift in Sources */,
 				87C254132B0D459592C2B7D6 /* UIApplication+MainScene.swift in Sources */,
