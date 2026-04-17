@@ -368,6 +368,10 @@ final class BookRegistryStoreTests: XCTestCase {
 
         store.addBook(book, state: .downloadNeeded)
         wait(for: [received], timeout: 3.0)
+        XCTAssertGreaterThan(receivedCount, 0,
+                             "Subject must emit at least once when a book is added")
+        XCTAssertEqual(store.state(for: book.identifier), .downloadNeeded,
+                       "Added book's state must be observable via state(for:)")
     }
 
     // MARK: - MutateRegistrySync

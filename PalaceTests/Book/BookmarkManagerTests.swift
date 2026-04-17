@@ -275,7 +275,11 @@ final class BookmarkManagerTests: XCTestCase {
         let bookmark = makeReadiumBookmark()
         manager.addReadiumBookmark(bookmark, forIdentifier: "nonexistent")
         waitForBarrier()
-        // Should not crash, save should not be called since guard fails
+        // Guard must fail: no bookmark stored, no save triggered
+        XCTAssertTrue(manager.readiumBookmarks(forIdentifier: "nonexistent").isEmpty,
+                      "Readium bookmarks for a missing book must remain empty")
+        XCTAssertEqual(saveCallCount, 0,
+                       "Save must not fire when book is missing from the store")
     }
 
     // MARK: - Generic Bookmarks
@@ -297,7 +301,10 @@ final class BookmarkManagerTests: XCTestCase {
         let location = makeLocation(page: 10)
         manager.addGenericBookmark(location, forIdentifier: "nonexistent")
         waitForBarrier()
-        // Should handle gracefully
+        XCTAssertTrue(manager.genericBookmarks(forIdentifier: "nonexistent").isEmpty,
+                      "Generic bookmarks for a missing book must remain empty")
+        XCTAssertEqual(saveCallCount, 0,
+                       "Save must not fire when book is missing from the store")
     }
 
     func test_deleteGenericBookmark_bySimilarity() {

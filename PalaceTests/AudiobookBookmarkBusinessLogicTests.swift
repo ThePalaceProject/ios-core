@@ -480,7 +480,11 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
         }
         wait(for: [survived], timeout: 3.0)
 
-        // If we get here, the weak self guard worked — no crash
+        // If we reach here, the weak self guard worked — no crash.
+        // Verify the SUT really was deallocated before the debounce fired
+        // (no resurrection via strong self capture in DispatchWorkItem).
+        XCTAssertNil(logic,
+                     "SUT must remain deallocated; debounced work must not resurrect self")
     }
 
     func testDebounce_RapidCalls_OnlyLastSyncs() {
