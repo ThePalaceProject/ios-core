@@ -214,4 +214,88 @@ final class GeneralCacheTests: XCTestCase {
         let url2 = cache.fileURL(for: "another-key")
         XCTAssertNotEqual(url, url2, "Different keys must map to different file URLs")
     }
+
+    // MARK: - Directory Recreation
+
+    /// Regression: `clearCacheOnUpdate()` at launch wipes non-Adobe cache dirs
+    /// including the cache's own directory. Subsequent `set()` must not fail
+    /// with "The folder doesn't exist" — saveToDisk must recreate the dir.
+    func testSet_afterExternalDirectoryDeletion_recreatesAndSucceeds() {
+        let diskCache = GeneralCache<String, Data>(
+            cacheName: "DirDeletionRegression-\(UUID().uuidString)",
+            mode: .diskOnly
+        )
+        // Prime cache so we know the URL and directory exist
+        let firstKey = "warmup"
+        diskCache.set(Data("seed".utf8), for: firstKey)
+
+        let firstURL = diskCache.fileURL(for: firstKey)
+        let cacheDir = firstURL.deletingLastPathComponent()
+
+        // Give the async barrier write a moment to complete
+        let readExp = expectation(description: "seed written")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
+            readExp.fulfill()
+        }
+        wait(for: [readExp], timeout: 1.0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cacheDir.path),
+                      "Precondition: cache directory exists after first write")
+
+        // Simulate clearCacheOnUpdate() wiping the directory
+        try? FileManager.default.removeItem(at: cacheDir)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cacheDir.path),
+                       "Precondition: cache directory is gone")
+
+        // The new write must recreate the directory and succeed
+        let payload = Data("after-delete".utf8)
+        diskCache.set(payload, for: "recovered")
+
+        let recoveredURL = diskCache.fileURL(for: "recovered")
+        let writeExp = expectation(description: "recovered written")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) {
+            writeExp.fulfill()
+        }
+        wait(for: [writeExp], timeout: 1.5)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cacheDir.path),
+                      "saveToDisk should recreate the cache directory")
+        XCTAssertEqual(try? Data(contentsOf: recoveredURL), payload,
+                       "Data should be written after directory recovery")
+
+        try? FileManager.default.removeItem(at: cacheDir)
+    }
+
+    /// `clearAllCaches()` must preserve the app's bundle-id directory (which
+    /// hosts the system `URLCache` Cache.db). Wiping it causes NSURLStorage
+    /// errors on launch.
+    func testClearAllCaches_preservesBundleIDDirectory() throws {
+        guard let cachesDir = FileManager.default.urls(for: .cachesDirectory,
+                                                       in: .userDomainMask).first,
+              let bundleID = Bundle.main.bundleIdentifier
+        else {
+            XCTFail("Caches dir or bundle ID unavailable")
+            return
+        }
+
+        let bundleDir = cachesDir.appendingPathComponent(bundleID, isDirectory: true)
+        let createdForTest = !FileManager.default.fileExists(atPath: bundleDir.path)
+        if createdForTest {
+            try FileManager.default.createDirectory(at: bundleDir,
+                                                    withIntermediateDirectories: true)
+        }
+        let sentinel = bundleDir.appendingPathComponent("sentinel.txt")
+        try Data("sentinel".utf8).write(to: sentinel)
+
+        GeneralCache<String, Data>.clearAllCaches()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: bundleDir.path),
+                      "Bundle-id dir must survive clearAllCaches (hosts URLCache)")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sentinel.path),
+                      "Sentinel file must survive clearAllCaches")
+
+        try? FileManager.default.removeItem(at: sentinel)
+        if createdForTest {
+            try? FileManager.default.removeItem(at: bundleDir)
+        }
+    }
 }

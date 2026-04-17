@@ -251,6 +251,9 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     private func saveToDisk(_ entry: Entry, for key: Key) {
         let url = fileURL(for: key)
         do {
+            if !fileManager.fileExists(atPath: cacheDirectory.path) {
+                try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+            }
             let raw: Data
             if Value.self == Data.self, let d = entry.value as? Data {
                 raw = d
@@ -292,6 +295,7 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     public static func clearAllCaches() {
         let fileManager = FileManager.default
         guard let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+        let bundleID = Bundle.main.bundleIdentifier?.lowercased()
         do {
             let contents = try fileManager.contentsOfDirectory(at: cachesDir, includingPropertiesForKeys: nil)
             for url in contents {
@@ -307,6 +311,7 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
                     filename.hasPrefix("acsm") ||
                     filename.contains("rights") ||
                     filename.contains("license") ||
+                    (bundleID != nil && filename == bundleID) ||
                     fullPath.contains("adobe") ||
                     fullPath.contains("adept") ||
                     fullPath.contains("/drm/") ||
