@@ -244,12 +244,7 @@ final class TPPBasicAuthTests: XCTestCase {
     }
 }
 
-// MARK: - Mock Credentials Provider
-
-final class MockCredentialsProvider: NSObject, NYPLBasicAuthCredentialsProvider {
-    var username: String?
-    var pin: String?
-}
+// MockCredentialsProvider extracted to PalaceTests/Mocks/MockCredentialsProvider.swift
 
 // MARK: - Mock Challenge Sender
 

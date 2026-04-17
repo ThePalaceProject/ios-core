@@ -15,6 +15,7 @@ struct HoldsView: View {
         ZStack {
             mainContent
                 .background(Color(TPPConfiguration.backgroundColor()))
+                .overlay(alignment: .bottom) { SamplePreviewBarView() }
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .principal) {
