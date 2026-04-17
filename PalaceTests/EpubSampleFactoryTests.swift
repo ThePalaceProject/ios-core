@@ -19,14 +19,6 @@ final class EpubSampleFactoryTests: XCTestCase {
         XCTAssertEqual(sampleURL.url, testURL)
     }
 
-    func testEpubLocationSampleURL_urlIsAccessible() {
-        let testURL = URL(string: "https://example.com/sample.epub")!
-        let sampleURL = EpubLocationSampleURL(url: testURL)
-
-        XCTAssertNotNil(sampleURL.url)
-        XCTAssertEqual(sampleURL.url.absoluteString, "https://example.com/sample.epub")
-    }
-
     // MARK: - EpubSampleWebURL Tests
 
     func testEpubSampleWebURL_isSubclassOfEpubLocationSampleURL() {

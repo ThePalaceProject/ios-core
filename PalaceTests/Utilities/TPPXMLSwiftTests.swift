@@ -5,17 +5,6 @@ final class TPPXMLSwiftTests: XCTestCase {
 
   // MARK: - Parsing Valid XML
 
-  func test_parseValidXML_returnsNonNilRoot() {
-    let bundle = Bundle(for: type(of: self))
-    guard let url = bundle.url(forResource: "valid", withExtension: "xml"),
-          let data = try? Data(contentsOf: url) else {
-      XCTFail("Missing valid.xml test resource")
-      return
-    }
-    let root = TPPXML(data: data)
-    XCTAssertNotNil(root, "Valid XML should parse successfully")
-  }
-
   func test_parseValidXML_rootName_isFoo() {
     let bundle = Bundle(for: type(of: self))
     guard let url = bundle.url(forResource: "valid", withExtension: "xml"),
@@ -205,7 +194,6 @@ guard bars.count >= 2 else {
       return
     }
     let root = TPPXML(data: data)
-    XCTAssertNotNil(root)
     XCTAssertEqual(root?.name, "root")
     let child = root?.firstChild(withName: "child")
     XCTAssertEqual(child?.value, "value")

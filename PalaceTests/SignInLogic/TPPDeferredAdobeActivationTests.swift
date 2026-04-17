@@ -335,8 +335,7 @@ final class TPPBookRequiresAdobeDRMTests: XCTestCase {
     func testRequiresAdobeDRM_trueForOPDSFixtureEntry() {
         #if FEATURE_DRM_CONNECTOR
         let book = TPPBook(entry: TPPFake.opdsEntry)
-        XCTAssertNotNil(book)
-        XCTAssertTrue(book!.requiresAdobeDRM,
+        XCTAssertTrue(book?.requiresAdobeDRM ?? false,
                       "OPDS fixture entry with Adobe DRM indirect acquisitions should require Adobe DRM")
         #endif
     }

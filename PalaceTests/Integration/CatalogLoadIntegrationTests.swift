@@ -111,13 +111,12 @@ final class CatalogLoadIntegrationTests: XCTestCase {
         XCTAssertEqual(contentType, "application/atom+xml;profile=opds-catalog",
                        "Content-Type should be OPDS")
 
-        let responseString = String(data: response.data, encoding: .utf8)
-        XCTAssertNotNil(responseString, "Response data should be valid UTF-8")
-        XCTAssertTrue(responseString!.contains("<title>Test Library</title>"),
+        let responseString = String(data: response.data, encoding: .utf8) ?? ""
+        XCTAssertTrue(responseString.contains("<title>Test Library</title>"),
                       "Feed should contain expected title")
-        XCTAssertTrue(responseString!.contains("entry-0"),
+        XCTAssertTrue(responseString.contains("entry-0"),
                       "Feed should contain entry IDs")
-        XCTAssertTrue(responseString!.contains("entry-2"),
+        XCTAssertTrue(responseString.contains("entry-2"),
                       "Feed should contain all 3 entries")
     }
 

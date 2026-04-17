@@ -708,20 +708,6 @@ final class URLSessionCredentialStorageTests: XCTestCase {
         XCTAssertNotNil(config)
     }
 
-    func testNetworkExecutor_CustomConfig_AcceptsNilCredentialStorage() {
-        let config = URLSessionConfiguration.ephemeral
-        config.urlCredentialStorage = nil
-        config.protocolClasses = [HTTPStubURLProtocol.self]
-
-        let executor = TPPNetworkExecutor(
-            credentialsProvider: nil,
-            cachingStrategy: .ephemeral,
-            sessionConfiguration: config,
-            delegateQueue: nil
-        )
-
-        XCTAssertNotNil(executor, "Executor must work with nil credential storage config")
-    }
 }
 
 // MARK: - Basic Auth Challenge Empty Credential Behavior

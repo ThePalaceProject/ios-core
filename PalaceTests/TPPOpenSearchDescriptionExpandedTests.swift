@@ -18,7 +18,6 @@ final class TPPOpenSearchDescriptionExpandedTests: XCTestCase {
       return
     }
     let description = TPPOpenSearchDescription(xml: xml)
-    XCTAssertNotNil(description, "Should parse valid OpenSearch XML")
     XCTAssertEqual(description?.humanReadableDescription, "Search the library")
   }
 
@@ -58,14 +57,12 @@ final class TPPOpenSearchDescriptionExpandedTests: XCTestCase {
   func test_initWithTitle_setsDescriptionAndBooks() {
     let books: [Any] = ["book1", "book2"]
     let description = TPPOpenSearchDescription(title: "My Search", books: books)
-    XCTAssertNotNil(description)
     XCTAssertEqual(description.humanReadableDescription, "My Search")
     XCTAssertEqual(description.books?.count, 2)
   }
 
   func test_initWithTitle_emptyBooks_setsEmptyBooks() {
     let description = TPPOpenSearchDescription(title: "Search", books: [])
-    XCTAssertNotNil(description)
     XCTAssertEqual(description.books?.count, 0)
   }
 

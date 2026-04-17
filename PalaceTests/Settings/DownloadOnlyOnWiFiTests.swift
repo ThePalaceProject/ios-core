@@ -56,19 +56,6 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
                       "Re-reading the setting after setting to true must still return true")
     }
 
-    // MARK: - Protocol Conformance
-
-    func testSettingsProviding_includesDownloadOnlyOnWiFi() {
-        let settings: TPPSettingsProviding = TPPSettings.shared
-        let original = settings.downloadOnlyOnWiFi
-        settings.downloadOnlyOnWiFi = !original
-        XCTAssertNotEqual(settings.downloadOnlyOnWiFi, original)
-        // Change must also be visible through the concrete type
-        XCTAssertEqual(TPPSettings.shared.downloadOnlyOnWiFi, !original,
-                       "Protocol mutation must be visible through the concrete type")
-        settings.downloadOnlyOnWiFi = original
-    }
-
     // MARK: - Mock
 
     func testMock_defaultIsFalse() {

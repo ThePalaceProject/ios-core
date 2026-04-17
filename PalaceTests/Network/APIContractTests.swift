@@ -249,7 +249,6 @@ final class OPDS1LoansFeedContractTests: XCTestCase {
 
     func testParseLoansFeed_ReturnsThreeEntries() {
         let feed = parseFeed(from: "opds1_loans_feed")
-        XCTAssertNotNil(feed)
         XCTAssertEqual(feed?.entries.count, 3)
         XCTAssertEqual(feed?.title, "Active Loans")
         XCTAssertEqual(feed?.type, .acquisitionUngrouped)
@@ -447,11 +446,14 @@ final class PatronProfileContractTests: XCTestCase {
         let data = TestFixture.loadJSON("patron_profile")
         let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
 
-        let expiresString = json["simplified:authorization_expires"] as? String
-        XCTAssertNotNil(expiresString)
-        // Verify it parses as a date
-        let formatter = ISO8601DateFormatter()
-        XCTAssertNotNil(formatter.date(from: expiresString ?? ""), "Expiration must be valid ISO8601")
+        let expiresString = json["simplified:authorization_expires"] as? String ?? ""
+        XCTAssertFalse(expiresString.isEmpty,
+                       "Patron profile fixture must contain authorization_expires field")
+        let date = ISO8601DateFormatter().date(from: expiresString)
+        // Fixture's expiration is 2030-01-15T00:00:00Z — future date, past epoch
+        let year = date.map { Calendar(identifier: .gregorian).component(.year, from: $0) } ?? 0
+        XCTAssertGreaterThan(year, 2020,
+                             "Expiration must parse as an ISO8601 date after 2020")
     }
 }
 
@@ -534,7 +536,6 @@ final class OPDS1CatalogGroupedContractTests: XCTestCase {
             return XCTFail("Failed to parse XML")
         }
         let feed = TPPOPDSFeed(xml: xml)
-        XCTAssertNotNil(feed)
         XCTAssertEqual(feed?.type, .acquisitionGrouped)
         XCTAssertEqual(feed?.entries.count, 3)
     }

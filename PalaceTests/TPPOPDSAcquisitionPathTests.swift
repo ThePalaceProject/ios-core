@@ -53,9 +53,9 @@ class TPPOPDSAcquisitionPathTests: XCTestCase {
             return
         }
         let bookWithSample = TPPBook(entry: entryWithSample)
-        XCTAssertNotNil(bookWithSample)
-        XCTAssert(bookWithSample?.defaultAcquisition?.relation != TPPOPDSAcquisitionRelation.sample)
-        XCTAssertNotNil(bookWithSample?.sampleAcquisition)
-        XCTAssert(bookWithSample?.sampleAcquisition?.relation == TPPOPDSAcquisitionRelation.sample)
+        XCTAssertNotEqual(bookWithSample?.defaultAcquisition?.relation, .sample,
+                          "Default acquisition must NOT be the sample link")
+        XCTAssertEqual(bookWithSample?.sampleAcquisition?.relation, .sample,
+                       "Sample acquisition must have the sample relation")
     }
 }

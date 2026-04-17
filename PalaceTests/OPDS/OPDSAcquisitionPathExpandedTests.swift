@@ -20,8 +20,7 @@ final class OPDSAcquisitionPathExpandedTests: XCTestCase {
       return
     }
     let feed = TPPOPDSFeed(xml: xml)
-    XCTAssertNotNil(feed, "Should parse a valid OPDS feed")
-    XCTAssertNotNil(feed?.entries, "Feed should have entries")
+    XCTAssertFalse(feed?.entries.isEmpty ?? true, "Feed should have at least one entry")
     XCTAssertGreaterThan(feed?.entries.count ?? 0, 0, "Feed should have at least one entry")
   }
 
