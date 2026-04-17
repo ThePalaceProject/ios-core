@@ -22,7 +22,7 @@ final class BadgeServiceTests: XCTestCase {
     )
     await statsService.recordBookCompletion(completion)
 
-    let earned = await badgeService.earnedBadges()()
+    let earned = await badgeService.earnedBadges()
     XCTAssertTrue(earned.contains(where: { $0.id == "first_book_finished" }))
   }
 
@@ -61,7 +61,7 @@ final class BadgeServiceTests: XCTestCase {
       await statsService.recordBookCompletion(completion)
     }
 
-    let earned = await badgeService.earnedBadges()()
+    let earned = await badgeService.earnedBadges()
     XCTAssertTrue(earned.contains(where: { $0.id == "ten_books_club" }))
   }
 
@@ -137,7 +137,7 @@ final class BadgeServiceTests: XCTestCase {
     )
     await statsService.recordSession(session)
 
-    let earned = await badgeService.earnedBadges()()
+    let earned = await badgeService.earnedBadges()
     XCTAssertTrue(earned.contains(where: { $0.id == "marathon_reader" }))
   }
 
@@ -170,7 +170,7 @@ final class BadgeServiceTests: XCTestCase {
       await statsService.recordBookCompletion(completion)
     }
 
-    let earned = await badgeService.earnedBadges()()
+    let earned = await badgeService.earnedBadges()
     XCTAssertTrue(earned.contains(where: { $0.id == "audiobook_adventurer" }))
   }
 
