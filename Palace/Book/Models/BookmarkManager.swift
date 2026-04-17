@@ -96,6 +96,10 @@ class BookmarkManager {
 
   func addGenericBookmark(_ location: TPPBookLocation, forIdentifier identifier: String) {
     store.mutateRegistry { [weak self, save] registry in
+      guard registry[identifier] != nil else {
+        Log.warn(#function, "Skipping bookmark add + save for missing book: \(identifier)")
+        return
+      }
       self?.addGenericBookmarkInline(location, forIdentifier: identifier, registry: &registry)
       save()
     }

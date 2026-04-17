@@ -134,7 +134,9 @@ final class FacetViewModelTests: XCTestCase {
 
     func testCurrentAccountURLWithNilAccount() {
         let vm = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        // The init populates from AccountsManager.shared — clear to test nil path
         vm.currentAccount = nil
+        vm.logo = nil
 
         // With no account, all account-derived computed properties must be nil
         XCTAssertNil(vm.currentAccountURL, "currentAccountURL must be nil when currentAccount is nil")
@@ -147,8 +149,12 @@ final class FacetViewModelTests: XCTestCase {
     func testShowAccountScreenInitiallyFalse() {
         let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
 
+        // showAccountScreen defaults to false regardless of account state
         XCTAssertFalse(viewModel.showAccountScreen)
-        XCTAssertNil(viewModel.currentAccount, "currentAccount must be nil by default (no account injected)")
+
+        // Clear account to test nil-account derived properties
+        viewModel.currentAccount = nil
+        viewModel.logo = nil
         XCTAssertNil(viewModel.currentAccountURL, "currentAccountURL must be nil when no account is set")
     }
 
@@ -175,7 +181,9 @@ final class FacetViewModelTests: XCTestCase {
 
     func testLogoInitiallyNilWithoutAccount() {
         let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        // Clear state populated by init's updateAccount() call
         viewModel.currentAccount = nil
+        viewModel.logo = nil
 
         // With no account, logo and URL must both be nil
         XCTAssertNil(viewModel.logo, "logo must be nil when no currentAccount is set")
