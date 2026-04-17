@@ -79,9 +79,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         self.userAccountProvider = userAccountProvider
         self.networker = networkExecutor
         self.drmAuthorizer = drmAuthorizer
-        self.samlHelper = TPPSAMLHelper()
+        self._samlHelper = TPPSAMLHelper()
         super.init()
-        self.samlHelper.businessLogic = self
+        self._samlHelper.businessLogic = self
     }
 
     /// Signing in and out may imply syncing the book registry.
@@ -130,14 +130,34 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     @objc let urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider
 
     /// Cookies used to authenticate. Only required for the SAML flow.
+    /// TODO: Phase 5 follow-up — migrate callers to read from samlHelper.cookies,
+    /// then remove this property. Currently both businessLogic.cookies and
+    /// samlHelper.cookies are set by the legacy bridge during SAML login.
     @objc var cookies: [HTTPCookie]?
 
     /// Performs initiation rites for SAML sign-in.
-    let samlHelper: TPPSAMLHelper
+    /// Eagerly created for backward compatibility; use `samlHelperIfNeeded`
+    /// for lazy access when SAML support is not guaranteed.
+    private let _samlHelper: TPPSAMLHelper
+
+    /// The SAML helper — always available (eagerly created in init).
+    var samlHelper: TPPSAMLHelper { _samlHelper }
+
+    /// Returns the SAML helper only if the current library supports SAML auth.
+    /// Returns nil for non-SAML libraries to avoid polluting their state.
+    var samlHelperIfNeeded: TPPSAMLHelper? {
+        guard isSamlPossible() || selectedAuthentication?.isSaml == true else {
+            return nil
+        }
+        return _samlHelper
+    }
 
     /// This overrides the sign-in state logic to behave as if the user isn't
     /// authenticated. This is useful if we already have credentials, but
     /// the session expired (e.g. SAML flow).
+    /// TODO: Remove once credentialsStale state machine is proven in production.
+    /// isSignedIn() now checks both this flag AND userAccount.authState == .credentialsStale.
+    /// Both are set/reset in tandem (refreshAuth sets both, updateUserAccount resets both).
     var ignoreSignedInState: Bool = false
 
     /// This is `true` during the process of validating credentials.
@@ -479,6 +499,8 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                 // when we were logged in, but IDP expired our session and if this
                 // happens, we want the user to pick the idp to begin reauthentication
                 ignoreSignedInState = true
+                // Phase 4: Also mark credentials stale via state machine
+                userAccount.markCredentialsStale()
                 if authDef.isSaml {
                     selectedAuthentication = nil
                 }
@@ -593,6 +615,12 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
 
     func isSignedIn() -> Bool {
+        // Phase 4: Use auth state instead of boolean flag.
+        // credentialsStale means we have credentials but the session expired
+        // (e.g. SAML IdP session timeout) — user must re-authenticate.
+        if userAccount.authState == .credentialsStale {
+            return false
+        }
         if ignoreSignedInState {
             return false
         }

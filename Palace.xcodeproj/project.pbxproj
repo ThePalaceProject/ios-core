@@ -99,6 +99,14 @@
 		10B89E606AFEA9DCA89F038E /* TPPBookDetailDownloadFailedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADDA3478B2DF503D6CBD4575 /* TPPBookDetailDownloadFailedView.swift */; };
 		10BDB9803CA69D9968DD25B0 /* StreakView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1D8E96BB21CEA1AB690046 /* StreakView.swift */; };
 		10DCC70174134074821BB5E3 /* TPPBookmarkR3LocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4FA6A7940BE4470BD0A3515 /* TPPBookmarkR3LocationTests.swift */; };
+		0F56EFAE3853AC2EEF6AD7E7 /* SAMLCookieSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */; };
+		E565CC878F888FC5B75E7066 /* SAMLCookieSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */; };
+		B2C3D4E5F607183940516273 /* TPPSAMLFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071839405162 /* TPPSAMLFlowTests.swift */; };
+		D4E5F6071839405162738495 /* MockSAMLAuthContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F60718394051627384 /* MockSAMLAuthContext.swift */; };
+		F607183940516273849506A7 /* MockSAMLWebViewPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F607183940516273849506 /* MockSAMLWebViewPresenter.swift */; };
+		11068C55196DD37900E8A94B /* TPPNull.m in Sources */ = {isa = PBXBuildFile; fileRef = 11068C54196DD37900E8A94B /* TPPNull.m */; };
+		1107835E19816E3D0071AB1E /* UIView+TPPViewAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 1107835D19816E3D0071AB1E /* UIView+TPPViewAdditions.m */; };
+		110AD83D19E497D6005724C3 /* TPPOPDSAttribute.m in Sources */ = {isa = PBXBuildFile; fileRef = 110AD83B19E497D6005724C3 /* TPPOPDSAttribute.m */; };
 		110F853E19D5FA7300052DF7 /* DetailSummaryTemplate.html in Resources */ = {isa = PBXBuildFile; fileRef = 110F853C19D5FA7300052DF7 /* DetailSummaryTemplate.html */; };
 		1112A8431A3249B4002B8CC1 /* libTenPrintCover.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 1112A81F1A322C53002B8CC1 /* libTenPrintCover.a */; };
 		119503E71993F914009FB788 /* libxml2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 119503E61993F914009FB788 /* libxml2.dylib */; };
@@ -1084,7 +1092,7 @@
 		E562DE472D38BB8C003A1A40 /* Image+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE462D38BB8A003A1A40 /* Image+Extension.swift */; };
 		E562DE492D38BB8C003A1A40 /* Image+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = E562DE462D38BB8A003A1A40 /* Image+Extension.swift */; };
 		E56576002C933527005953BD /* AudiobookFileLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56575FF2C933527005953BD /* AudiobookFileLogger.swift */; };
-		E565CC878F888FC5B75E7066 /* SAMLCookieSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5C956CCCED314E3E03EEA5 /* SAMLCookieSyncTests.swift */; };
+
 		E56724C12A132C1300972828 /* TPPAnnotationMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56724C02A132C1300972828 /* TPPAnnotationMock.swift */; };
 		E567C72C296743990079C28C /* BookCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E567C72B296743990079C28C /* BookCell.swift */; };
 		E56D859D2E68DE9E00DFF16C /* CatalogFilterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56D859C2E68DE9E00DFF16C /* CatalogFilterModels.swift */; };
@@ -2682,7 +2690,7 @@
 		FC95BE63D9C7C7AE1EFB8D6B /* ChaosFaultInjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChaosFaultInjectionTests.swift; sourceTree = "<group>"; };
 		FE2159403F0FCBE90CFC6858 /* BookImageViewAccessibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookImageViewAccessibilityTests.swift; sourceTree = "<group>"; };
 		FE7BD91AF3E14990B745A0AA /* AudiobookDataManagerSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookDataManagerSyncTests.swift; sourceTree = "<group>"; };
-		FF5C956CCCED314E3E03EEA5 /* SAMLCookieSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SAMLCookieSyncTests.swift; sourceTree = "<group>"; };
+
 		FFA10178BD2885EBF24673F3 /* FontManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontManager.swift; sourceTree = "<group>"; };
 		FFEA4278133FE9AD4EB842F1 /* TPPEncryptedPDFDataProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFDataProvider.swift; sourceTree = "<group>"; };
 		FFFD104EE843356CD66327E6 /* CrossFormatMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossFormatMappingTests.swift; sourceTree = "<group>"; };
@@ -2693,6 +2701,11 @@
 		INTG0001B7A00000000006 /* BookStateIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookStateIntegrationTests.swift; sourceTree = "<group>"; };
 		INTG0001B7A00000000008 /* CatalogLoadIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogLoadIntegrationTests.swift; sourceTree = "<group>"; };
 		KCHAVAIL00FILEREF000001 /* KeychainAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainAvailability.swift; sourceTree = "<group>"; };
+		F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SAMLCookieSyncTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6071839405162 /* TPPSAMLFlowTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPSAMLFlowTests.swift; sourceTree = "<group>"; };
+		C3D4E5F60718394051627384 /* MockSAMLAuthContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MockSAMLAuthContext.swift; sourceTree = "<group>"; };
+		E5F607183940516273849506 /* MockSAMLWebViewPresenter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MockSAMLWebViewPresenter.swift; sourceTree = "<group>"; };
+		HTVI00012F2600010000001B /* HTMLTextViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLTextViewTests.swift; sourceTree = "<group>"; };
 		LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoanExpiryHandlingTests.swift; sourceTree = "<group>"; };
 		NEWTST001CONFIGTEST0001 /* TPPConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPConfigurationTests.swift; sourceTree = "<group>"; };
 		NEWTST003KEYCHNTEST0001 /* TPPKeychainSwiftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPKeychainSwiftTests.swift; sourceTree = "<group>"; };
@@ -2897,7 +2910,7 @@
 				PP3702FR000000000000002 /* AccountAwareNetworkTests.swift */,
 				46A0B2DA8FB8ABF53C9E32FF /* CredentialGuardTests.swift */,
 				6F826CF3A1D6633781419179 /* ManifestFetchTests.swift */,
-				FF5C956CCCED314E3E03EEA5 /* SAMLCookieSyncTests.swift */,
+				F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */,
 				BDC90738317B9A2A4331572D /* TPPSessionTests.swift */,
 				30B163B18C48334A913B2CCA /* URLRequestNYPLAdditionsTests.swift */,
 			);
@@ -3515,6 +3528,8 @@
 				9842D046008345B881CDC7E7 /* TPPReauthenticatorMock.swift */,
 				A2A352697B589358F91035A1 /* MockVisualNavigator.swift */,
 				F75B6896C9742C07208D935E /* MockVisualNavigator.swift */,
+				C3D4E5F60718394051627384 /* MockSAMLAuthContext.swift */,
+				E5F607183940516273849506 /* MockSAMLWebViewPresenter.swift */,
 				6C493684B84FF9EDBEBCD104 /* MockCredentialsProvider.swift */,
 				79DE74A085DC8D24F0CC2348 /* MockBackgroundDownloadDelegate.swift */,
 			);
@@ -4116,6 +4131,7 @@
 				71E3B2C7B51DEBF595766568 /* TPPSAMLSignInTests.swift */,
 				F002381F5C11990812629F32 /* TPPSignInAdobeSkipTests.swift */,
 				FC465C72310C5054118CBBEA /* UserAccountValidationTests.swift */,
+				A1B2C3D4E5F6071839405162 /* TPPSAMLFlowTests.swift */,
 			);
 			path = SignInLogic;
 			sourceTree = "<group>";
@@ -6158,6 +6174,11 @@
 				CRWL0011BTST00000001 /* LiveCrawlableParsingTest.swift in Sources */,
 				CRWL0012BTST00000001 /* CrawlerFallbackTests.swift in Sources */,
 				CRWL0013BTST00000001 /* CrossDeviceBookmarkSyncTests.swift in Sources */,
+				0F56EFAE3853AC2EEF6AD7E7 /* SAMLCookieSyncTests.swift in Sources */,
+				B2C3D4E5F607183940516273 /* TPPSAMLFlowTests.swift in Sources */,
+				D4E5F6071839405162738495 /* MockSAMLAuthContext.swift in Sources */,
+				F607183940516273849506A7 /* MockSAMLWebViewPresenter.swift in Sources */,
+				07C193E7CABE357ED0A3B4C0 /* NotificationSyncThrottleTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
