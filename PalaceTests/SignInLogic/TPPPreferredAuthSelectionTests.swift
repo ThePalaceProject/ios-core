@@ -122,4 +122,42 @@ final class TPPPreferredAuthSelectionTests: XCTestCase {
         XCTAssertEqual(businessLogic.selectedAuthentication?.isSaml, true,
                        "After auto-selection, selectedAuthentication.isSaml must be true so shouldShowSignInPrompt renders the SAML prompt")
     }
+
+    // The Sign In button is a silent no-op if `selectedIDP` is nil when
+    // `samlHelper.logIn()` runs (it guards on `context.selectedIDP?.url`).
+    // For single-IdP SAML libraries, auto-selection must populate selectedIDP
+    // so the tap on "Sign in" opens the WebView immediately.
+    func testSelectPreferredAuth_AutoSelectsSoleSAMLIDP() {
+        businessLogic.selectPreferredAuthIfNeeded()
+
+        guard let samlAuth = businessLogic.selectedAuthentication, samlAuth.isSaml else {
+            XCTFail("precondition: auto-selection should have picked SAML")
+            return
+        }
+
+        let idpCount = samlAuth.samlIdps?.count ?? 0
+        if idpCount == 1 {
+            XCTAssertNotNil(businessLogic.selectedIDP,
+                            "Single-IdP SAML libraries must have selectedIDP populated after auto-select — " +
+                            "otherwise samlHelper.logIn() guards on nil and Sign In does nothing")
+            XCTAssertTrue(samlAuth.samlIdps?.contains(where: { $0 === businessLogic.selectedIDP }) ?? false,
+                          "Auto-selected IdP must be the one advertised by the auth doc")
+        } else {
+            // Multi-IdP — don't auto-select (user must pick).
+            XCTAssertNil(businessLogic.selectedIDP,
+                         "Multi-IdP libraries must NOT auto-select an IdP — user must choose")
+        }
+    }
+
+    func testSelectPreferredAuth_DoesNotOverrideExplicitIDPChoice() {
+        businessLogic.selectPreferredAuthIfNeeded()
+        let firstIDP = businessLogic.selectedIDP
+
+        // Simulate user picking a different IdP (or re-picking).
+        businessLogic.selectPreferredAuthIfNeeded()
+        let secondIDP = businessLogic.selectedIDP
+
+        XCTAssertTrue(firstIDP === secondIDP,
+                      "Repeated calls must not clobber the IdP — idempotent behavior required for view redraws")
+    }
 }
