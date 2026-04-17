@@ -59,6 +59,8 @@ extension TPPSignInBusinessLogic {
             #endif
 
             self.ignoreSignedInState = false
+            // Phase 4: Restore auth state after successful credential refresh
+            self.userAccount.markLoggedIn()
 
             let completionHandler = self.refreshAuthCompletion
             self.refreshAuthCompletion = nil

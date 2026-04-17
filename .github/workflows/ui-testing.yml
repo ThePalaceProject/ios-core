@@ -176,12 +176,18 @@ jobs:
             done
           fi
 
+          # -test-timeouts-enabled + -maximum-test-execution-time-allowance:
+          # Any individual test that exceeds 120s hard-fails with the test name,
+          # instead of hanging CI indefinitely (seen 2026-04-17 — full suite stuck
+          # for 30+ min on one test with an indefinite XCTWaiter).
           xcodebuild test-without-building \
             -project Palace.xcodeproj \
             -scheme Palace \
             -destination "id=${{ steps.simulator.outputs.udid }}" \
             -derivedDataPath DerivedData \
             -resultBundlePath UITestResults.xcresult \
+            -test-timeouts-enabled YES \
+            -maximum-test-execution-time-allowance 120 \
             $TEST_ARGS \
             2>&1 | tee ui-test-run.log
 
