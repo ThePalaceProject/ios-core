@@ -121,6 +121,8 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
         // No-op for mock
     }
 
+    func cachedFeed(for url: URL) -> CatalogFeed? { nil }
+
     // MARK: - Test Helpers
 
     func reset() {

@@ -97,7 +97,7 @@ final class CarPlayImageProvider {
         }
 
         do {
-            let (data, _) = try await URLSession.shared.data(from: imageURL)
+            let (data, _) = try await URLSession.shared.data(for: URLRequest.withoutHTTP3Assumption(url: imageURL))
             return UIImage(data: data)
         } catch {
             Log.error(#file, "CarPlay: Failed to load artwork for '\(book.title)': \(error)")

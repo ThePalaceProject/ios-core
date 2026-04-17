@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opds="http://opds-spec.org/2010/catalog"
+      xmlns:schema="http://schema.org/"
+      xmlns:dcterms="http://purl.org/dc/terms/"
+      xmlns:bibframe="http://bibframe.org/vocab/"
+      xmlns:simplified="http://librarysimplified.org/terms/">
+
+  <id>https://gorgon.staging.palaceproject.io/testlib/holds</id>
+  <title>Holds</title>
+  <updated>2024-06-15T12:00:00Z</updated>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/holds" rel="self" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+
+  <!-- Entry 1: Reserved hold, position 3 -->
+  <entry schema:additionalType="http://schema.org/Book">
+    <id>urn:librarysimplified.org/terms/id/TestLib%20ID/hold-reserved-001</id>
+    <title>The Glass Menagerie Reimagined</title>
+    <author>
+      <name>Tomoko Fujioka</name>
+    </author>
+    <summary type="html">A modern retelling of Tennessee Williams&#8217; classic, set in contemporary Tokyo, exploring themes of memory, obligation, and the fragility of dreams across cultures.</summary>
+    <updated>2024-06-10T11:00:00Z</updated>
+    <published>2024-04-01T00:00:00Z</published>
+    <dcterms:language>en</dcterms:language>
+    <dcterms:publisher>Sakura Literary</dcterms:publisher>
+    <category term="Adult" scheme="http://schema.org/audience" label="Adult"/>
+    <category term="http://librarysimplified.org/terms/fiction/Fiction" scheme="http://librarysimplified.org/terms/fiction/" label="Fiction"/>
+    <category term="http://librarysimplified.org/terms/genres/Simplified/Literary%20Fiction" scheme="http://librarysimplified.org/terms/genres/Simplified/" label="Literary Fiction"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/glass-menagerie-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/glass-menagerie-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/hold-reserved-001" type="application/atom+xml;type=entry;profile=opds-catalog" rel="alternate"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/hold-reserved-001/borrow" rel="http://opds-spec.org/acquisition/borrow" type="application/atom+xml;type=entry;profile=opds-catalog">
+      <opds:indirectAcquisition type="application/vnd.adobe.adept+xml">
+        <opds:indirectAcquisition type="application/epub+zip"/>
+      </opds:indirectAcquisition>
+      <opds:availability status="reserved" since="2024-06-05T10:00:00Z" until="2024-07-05T10:00:00Z"/>
+      <opds:holds total="8" position="3"/>
+      <opds:copies available="0" total="2"/>
+    </link>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/hold-reserved-001/revoke" rel="http://librarysimplified.org/terms/rel/revoke" type="application/atom+xml;type=entry;profile=opds-catalog"/>
+    <bibframe:distribution bibframe:ProviderName="Bibliotheca"/>
+  </entry>
+
+  <!-- Entry 2: Ready to borrow -->
+  <entry schema:additionalType="http://schema.org/Book">
+    <id>urn:librarysimplified.org/terms/id/TestLib%20ID/hold-ready-002</id>
+    <title>Quantum Cooking: Science in the Kitchen</title>
+    <author>
+      <name>Dr. Amara Osei</name>
+    </author>
+    <summary type="html">A groundbreaking cookbook that explains the physics and chemistry behind everyday cooking techniques, from Maillard reactions to spherification, making molecular gastronomy accessible to home cooks.</summary>
+    <updated>2024-06-14T16:00:00Z</updated>
+    <published>2023-11-15T00:00:00Z</published>
+    <dcterms:language>en</dcterms:language>
+    <dcterms:publisher>Catalyst Books</dcterms:publisher>
+    <category term="Adult" scheme="http://schema.org/audience" label="Adult"/>
+    <category term="http://librarysimplified.org/terms/fiction/Nonfiction" scheme="http://librarysimplified.org/terms/fiction/" label="Nonfiction"/>
+    <category term="http://librarysimplified.org/terms/genres/Simplified/Cooking" scheme="http://librarysimplified.org/terms/genres/Simplified/" label="Cooking"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/quantum-cooking-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/quantum-cooking-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/hold-ready-002" type="application/atom+xml;type=entry;profile=opds-catalog" rel="alternate"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/hold-ready-002/borrow" rel="http://opds-spec.org/acquisition/borrow" type="application/atom+xml;type=entry;profile=opds-catalog">
+      <opds:indirectAcquisition type="application/vnd.readium.lcp.license.v1.0+json">
+        <opds:indirectAcquisition type="application/epub+zip"/>
+      </opds:indirectAcquisition>
+      <opds:availability status="ready" since="2024-06-14T08:00:00Z" until="2024-06-17T08:00:00Z"/>
+      <opds:holds total="5"/>
+      <opds:copies available="1" total="3"/>
+    </link>
+    <bibframe:distribution bibframe:ProviderName="Palace"/>
+  </entry>
+
+</feed>

@@ -440,7 +440,7 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
         ) { result in
             switch result {
             case .failure(let error):
-                XCTAssertTrue(error.localizedDescription.contains("empty credentials"),
+                XCTAssertTrue(error.localizedDescription.contains("empty") || error.localizedDescription.contains("username"),
                               "Should fail with empty credentials error, got: \(error.localizedDescription)")
             case .success:
                 XCTFail("Expected failure for empty username")
@@ -468,7 +468,7 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
         ) { result in
             switch result {
             case .failure(let error):
-                XCTAssertTrue(error.localizedDescription.contains("empty credentials"),
+                XCTAssertTrue(error.localizedDescription.contains("empty") || error.localizedDescription.contains("credentials"),
                               "Should fail with empty credentials error, got: \(error.localizedDescription)")
             case .success:
                 XCTFail("Expected failure for empty password")

@@ -1,0 +1,34 @@
+{
+  "id": "ef15e740-697c-11e3-949a-0800200c9a66",
+  "issued": "2024-06-01T00:00:00Z",
+  "provider": "https://www.example.com",
+  "encryption": {
+    "profile": "http://readium.org/lcp/basic-profile",
+    "content_key": {
+      "algorithm": "http://www.w3.org/2001/04/xmlenc#aes256-cbc",
+      "encrypted_value": "BASE64_ENCRYPTED_KEY_DATA"
+    },
+    "user_key": {
+      "algorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
+      "text_hint": "Enter your library card number",
+      "key_check": "BASE64_KEY_CHECK_DATA"
+    }
+  },
+  "links": [
+    {"rel": "hint", "href": "https://example.com/hint", "type": "text/html"},
+    {"rel": "publication", "href": "https://example.com/pub.epub", "type": "application/epub+zip", "length": 1024000},
+    {"rel": "self", "href": "https://example.com/license.lcpl", "type": "application/vnd.readium.lcp.license.v1.0+json"},
+    {"rel": "status", "href": "https://example.com/status", "type": "application/vnd.readium.license.status.v1.0+json"}
+  ],
+  "rights": {
+    "print": 10,
+    "copy": 2048,
+    "start": "2024-06-01T00:00:00Z",
+    "end": "2024-06-15T00:00:00Z"
+  },
+  "signature": {
+    "algorithm": "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256",
+    "certificate": "BASE64_CERTIFICATE_DATA",
+    "value": "BASE64_SIGNATURE_VALUE"
+  }
+}

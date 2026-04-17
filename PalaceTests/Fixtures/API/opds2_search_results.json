@@ -1,0 +1,134 @@
+{
+  "metadata": {
+    "title": "Search Results: garden",
+    "itemsPerPage": 20,
+    "numberOfItems": 42,
+    "currentPage": 1
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "https://gorgon.staging.palaceproject.io/testlib/search?query=garden&page=1",
+      "type": "application/opds+json"
+    },
+    {
+      "rel": "next",
+      "href": "https://gorgon.staging.palaceproject.io/testlib/search?query=garden&page=2",
+      "type": "application/opds+json"
+    },
+    {
+      "rel": "search",
+      "href": "https://gorgon.staging.palaceproject.io/testlib/search{?query}",
+      "type": "application/opds+json",
+      "templated": true
+    }
+  ],
+  "publications": [
+    {
+      "metadata": {
+        "identifier": "urn:uuid:search-001-aaaa-bbbb-cccc-ddddeeee0001",
+        "type": "http://schema.org/Book",
+        "title": "The Midnight Garden",
+        "author": [
+          {
+            "name": "Eleanor Ashford"
+          }
+        ],
+        "published": "2023-03-15",
+        "language": ["en"],
+        "description": "A captivating tale of a botanist who discovers a garden that only blooms at midnight."
+      },
+      "images": [
+        {
+          "href": "https://gorgon.staging.palaceproject.io/images/midnight-garden-cover.jpg",
+          "type": "image/jpeg"
+        }
+      ],
+      "links": [
+        {
+          "rel": "http://opds-spec.org/acquisition/borrow",
+          "href": "https://gorgon.staging.palaceproject.io/testlib/works/search-001/borrow",
+          "type": "application/atom+xml;type=entry;profile=opds-catalog",
+          "properties": {
+            "availability": {
+              "state": "available"
+            },
+            "copies": {
+              "total": 5,
+              "available": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "identifier": "urn:uuid:search-002-aaaa-bbbb-cccc-ddddeeee0002",
+        "type": "http://schema.org/Book",
+        "title": "Secret Gardens of Europe",
+        "author": [
+          {
+            "name": "Hans Bergmann"
+          }
+        ],
+        "published": "2022-07-01",
+        "language": ["en"],
+        "description": "A photographic tour of hidden and rarely visited gardens across the European continent."
+      },
+      "images": [
+        {
+          "href": "https://gorgon.staging.palaceproject.io/images/secret-gardens-cover.jpg",
+          "type": "image/jpeg"
+        }
+      ],
+      "links": [
+        {
+          "rel": "http://opds-spec.org/acquisition/open-access",
+          "href": "https://gorgon.staging.palaceproject.io/open-access/secret-gardens.epub",
+          "type": "application/epub+zip"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "identifier": "urn:uuid:search-003-aaaa-bbbb-cccc-ddddeeee0003",
+        "type": "http://schema.org/Audiobook",
+        "title": "The Garden of Forking Paths",
+        "author": [
+          {
+            "name": "Jorge Luis Borges"
+          }
+        ],
+        "published": "2021-11-10",
+        "language": ["en"],
+        "duration": 5400
+      },
+      "images": [
+        {
+          "href": "https://gorgon.staging.palaceproject.io/images/forking-paths-cover.jpg",
+          "type": "image/jpeg"
+        }
+      ],
+      "links": [
+        {
+          "rel": "http://opds-spec.org/acquisition/borrow",
+          "href": "https://gorgon.staging.palaceproject.io/testlib/works/search-003/borrow",
+          "type": "application/atom+xml;type=entry;profile=opds-catalog",
+          "properties": {
+            "availability": {
+              "state": "unavailable"
+            },
+            "copies": {
+              "total": 2,
+              "available": 0
+            },
+            "holds": {
+              "total": 3,
+              "position": null
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

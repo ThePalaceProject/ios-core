@@ -1,0 +1,18 @@
+{
+  "@context": "http://www.w3.org/ns/anno.jsonld",
+  "id": "https://gorgon.staging.palaceproject.io/testlib/annotations/new-annotation-789",
+  "type": "Annotation",
+  "motivation": "http://www.w3.org/ns/oa#idling",
+  "body": {
+    "http://librarysimplified.org/terms/time": "2024-06-15T14:30:00Z",
+    "http://librarysimplified.org/terms/device": "urn:uuid:device-id-5678",
+    "http://librarysimplified.org/terms/chapter": "Chapter 7: The Hidden Map"
+  },
+  "target": {
+    "source": "urn:uuid:c7d8e9f0-1234-5678-abcd-ef0123456789",
+    "selector": {
+      "type": "oa:FragmentSelector",
+      "value": "{\"idref\":\"chapter7\",\"contentCFI\":\"/4/2/18\",\"progressWithinChapter\":0.62,\"progressWithinBook\":0.41}"
+    }
+  }
+}

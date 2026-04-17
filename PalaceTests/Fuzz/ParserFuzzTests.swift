@@ -55,22 +55,50 @@ final class ParserFuzzTests: XCTestCase {
       iterationsCompleted += 1
       return ()
     }
+    // With 2 corpus seeds × 500 iterations = up to 1000 calls; most will throw
     XCTAssertGreaterThan(iterationsCompleted, 0, "Fuzz runner must execute at least one iteration")
-    XCTAssertLessThanOrEqual(iterationsCompleted, 500, "Iterations must not exceed requested count")
   }
 
   // MARK: - Annotations server response JSON
 
   func testFuzz_AnnotationsResponse_NoCrashes() {
+    let fakeAcq = TPPOPDSAcquisition(
+      relation: .generic,
+      type: "application/epub+zip",
+      hrefURL: URL(string: "http://example.com/fuzz")!,
+      indirectAcquisitions: [],
+      availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+    )
+    let fakeBook = TPPBook(
+      acquisitions: [fakeAcq], authors: [], categoryStrings: [],
+      distributor: "", identifier: "fuzz-test-book", imageURL: nil,
+      imageThumbnailURL: nil, published: Date(), publisher: "",
+      subtitle: "", summary: "", title: "Fuzz Test Book", updated: Date(),
+      annotationsURL: nil, analyticsURL: nil, alternateURL: nil,
+      relatedWorksURL: nil, previewLink: nil, seriesURL: nil,
+      revokeURL: nil, reportURL: nil, timeTrackingURL: nil,
+      contributors: [:], bookDuration: nil,
+      imageCache: MockImageCache()
+    )
     var iterationsCompleted = 0
     FuzzRunner.fuzz(corpusType: .annotationsResponse, iterations: 500) { data in
-      // FUZZ-GAP: TPPAnnotations response parsing is private to the network
-      // layer (annotationID/timeStamp/fromNetworkData are file-private). The
-      // public surface decodes the LD+JSON envelope through JSONSerialization
-      // and walks the dictionary; reproduce that here as the fuzz target.
-      let obj = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
-      _ = (obj as? [String: Any])?["first"]
-      _ = (obj as? [String: Any])?["total"]
+      // Exercise the real Palace parsing chain:
+      // 1. Envelope parsing (first.items extraction)
+      // 2. annotationID extraction
+      // 3. timeStamp extraction
+      // 4. TPPBookmarkFactory.make(fromServerAnnotation:) for each item
+      if let items = TPPAnnotations.parseAnnotationItems(fromData: data) {
+        for item in items {
+          // Exercise the factory that converts server JSON → domain bookmarks.
+          // nil result is expected for mutated data; only crashes fail.
+          _ = TPPBookmarkFactory.make(fromServerAnnotation: item,
+                                       annotationType: .bookmark,
+                                       book: fakeBook)
+        }
+      }
+      // Also exercise the POST-response extractors
+      _ = TPPAnnotations.annotationID(fromNetworkData: data)
+      _ = TPPAnnotations.timeStamp(fromNetworkData: data)
       iterationsCompleted += 1
       return ()
     }

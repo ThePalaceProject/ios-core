@@ -14,11 +14,11 @@ import Foundation
     private var registry: TPPBookRegistryProvider
     private var annotationsManager: AnnotationsManager
     private var isSyncing: Bool = false
-    private let queue = DispatchQueue(label: "com.palace.audiobookBookmarkBusinessLogic", attributes: .concurrent)
+    private let queue = DispatchQueue(label: "com.palace.audiobookBookmarkBusinessLogic")
     private var debounceTimer: Timer?
     private let debounceInterval: TimeInterval = 1.0
     private var completionHandlersQueue: [([AudioBookmark]) -> Void] = []
-    private var debounceWorkItem: DispatchWorkItem?
+    private var debounceWorkItem: DispatchWorkItem?  // Access only on `queue`
     private var deletedBookmarkIds = Set<String>()
 
     @objc convenience init(book: TPPBook) {
@@ -44,8 +44,8 @@ import Foundation
         }
 
         // Debounce only the network sync, not the local save
-        debounce {
-            self.syncListeningPositionToServer(at: position, completion: completion)
+        debounce { [weak self] in
+            self?.syncListeningPositionToServer(at: position, completion: completion)
         }
     }
 
@@ -472,10 +472,10 @@ import Foundation
     /// Immediately flushes any pending debounced operations
     /// Call this on app lifecycle events (willTerminate, didEnterBackground) to ensure no data loss
     public func flushPendingOperations() {
-        if let workItem = debounceWorkItem {
-            Log.debug(#file, "🚨 Flushing pending operations immediately")
+        queue.sync {
+            guard let workItem = debounceWorkItem else { return }
+            Log.debug(#file, "Flushing pending operations immediately")
             workItem.cancel()
-            // Execute the work item immediately on current thread
             workItem.perform()
             debounceWorkItem = nil
         }
@@ -497,11 +497,17 @@ import Foundation
     }
 
     private func debounce(action: @escaping () -> Void) {
-        debounceWorkItem?.cancel()
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.debounceWorkItem?.cancel()
 
-        let workItem = DispatchWorkItem(block: action)
-        debounceWorkItem = workItem
-        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + debounceInterval, execute: workItem)
+            let workItem = DispatchWorkItem(block: action)
+            self.debounceWorkItem = workItem
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(
+                deadline: .now() + self.debounceInterval,
+                execute: workItem
+            )
+        }
     }
 }
 

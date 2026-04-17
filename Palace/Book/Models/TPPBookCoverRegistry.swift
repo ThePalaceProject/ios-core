@@ -181,7 +181,7 @@ actor TPPBookCoverRegistry {
         defer { Task { await self.releaseFetchSlot() } }
 
         do {
-            let (data, _) = try await Self.imageSession.data(from: url)
+            let (data, _) = try await Self.imageSession.data(for: URLRequest.withoutHTTP3Assumption(url: url))
             await hostFailureTracker.recordSuccess(for: url.host)
             guard let image = Self.downsampleImage(data: data, maxDimension: neededPixels) else {
                 return await coverImage(for: book, displayHeight: displayPoints)
@@ -219,7 +219,7 @@ actor TPPBookCoverRegistry {
         defer { Task { await self.releaseFetchSlot() } }
 
         do {
-            let (data, _) = try await Self.imageSession.data(from: url)
+            let (data, _) = try await Self.imageSession.data(for: URLRequest.withoutHTTP3Assumption(url: url))
             await hostFailureTracker.recordSuccess(for: url.host)
 
             guard let image = Self.downsampleImage(data: data, maxDimension: playerDimension) else {
@@ -255,7 +255,7 @@ actor TPPBookCoverRegistry {
             defer { Task { await self.releaseFetchSlot() } }
 
             do {
-                let (data, _) = try await Self.imageSession.data(from: url)
+                let (data, _) = try await Self.imageSession.data(for: URLRequest.withoutHTTP3Assumption(url: url))
 
                 // Host is reachable — clear any failure record
                 await self.hostFailureTracker.recordSuccess(for: url.host)
@@ -424,7 +424,7 @@ actor TPPBookCoverRegistry {
             defer { Task { await self.releaseFetchSlot() } }
 
             do {
-                let (data, _) = try await Self.imageSession.data(from: url)
+                let (data, _) = try await Self.imageSession.data(for: URLRequest.withoutHTTP3Assumption(url: url))
 
                 // Host is reachable — clear any failure record
                 await self.hostFailureTracker.recordSuccess(for: url.host)

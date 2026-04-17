@@ -194,6 +194,8 @@ struct MyBooksView: View {
     private var leadingBarButton: some View {
         Button(action: { model.selectNewLibrary.toggle() }, label: {
             ImageProviders.MyBooksView.myLibraryIcon
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         })
         .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
         .accessibilityLabel(Strings.Generic.switchLibrary)
@@ -203,6 +205,8 @@ struct MyBooksView: View {
     private var trailingBarButton: some View {
         Button(action: { withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { model.showSearchSheet.toggle() } }, label: {
             ImageProviders.MyBooksView.search
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         })
         .accessibilityIdentifier(AccessibilityID.MyBooks.searchButton)
         .accessibilityLabel(Strings.Generic.searchBooks)

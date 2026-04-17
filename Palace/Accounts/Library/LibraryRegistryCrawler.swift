@@ -23,7 +23,7 @@ protocol CrawlerNetworkFetching {
 /// cache policies. Registry crawling is a public unauthenticated endpoint.
 struct URLSessionCrawlerFetcher: CrawlerNetworkFetching {
     func fetchData(from url: URL) async throws -> (Data, HTTPURLResponse?) {
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await URLSession.shared.data(for: URLRequest.withoutHTTP3Assumption(url: url))
         return (data, response as? HTTPURLResponse)
     }
 }
