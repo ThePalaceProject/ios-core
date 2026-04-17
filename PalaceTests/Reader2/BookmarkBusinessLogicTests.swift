@@ -336,7 +336,7 @@ final class BookmarkSyncTests: XCTestCase {
         ) { completed.fulfill() }
         wait(for: [completed], timeout: 1.0)
         // With no input bookmarks, the registry must remain empty
-        XCTAssertTrue(bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier).isEmpty,
+        XCTAssertTrue(bookRegistryMock.readiumBookmarks(forIdentifier: testBook.identifier).isEmpty,
                       "No bookmarks should be added when server and local lists are both empty")
     }
 
