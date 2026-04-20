@@ -40,6 +40,7 @@ final class HoldsViewModel: ObservableObject {
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
     private let settings: TPPSettings
+    private let hasCredentials: () -> Bool
 
     struct SyncError: Identifiable {
         let id = UUID()
@@ -50,10 +51,16 @@ final class HoldsViewModel: ObservableObject {
         self.init(bookRegistry: TPPBookRegistry.shared)
     }
 
-    init(bookRegistry: TPPBookRegistryProvider, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
+    init(
+        bookRegistry: TPPBookRegistryProvider,
+        accountsManager: AccountsManager = .shared,
+        settings: TPPSettings = .shared,
+        hasCredentials: (() -> Bool)? = nil
+    ) {
         self.accountsManager = accountsManager
         self.settings = settings
         self.bookRegistry = bookRegistry
+        self.hasCredentials = hasCredentials ?? { accountsManager.currentUserAccount.hasCredentials() }
 
         NotificationCenter.default.publisher(for: .TPPSyncBegan)
             .receive(on: DispatchQueue.main)
@@ -91,6 +98,12 @@ final class HoldsViewModel: ObservableObject {
         // the cached data is still useful, no need to alarm the user
         guard visibleBooks.isEmpty else {
             Log.debug(#file, "Sync failed but holds are cached — suppressing error banner")
+            return
+        }
+        // Anonymous users can't fetch holds by design. The empty-state text
+        // already explains the Holds tab; an error banner here is noise.
+        guard hasCredentials() else {
+            Log.debug(#file, "Sync failed for anonymous user — suppressing error banner")
             return
         }
         if let errorDoc = notification.userInfo?[TPPBookRegistry.syncFailureErrorDocumentKey] as? [AnyHashable: Any],

@@ -9,6 +9,28 @@ scenario:
       role: primary
 
   steps:
+    - id: onboard_app
+      description: "Dismiss first-launch alerts and open the Catalog on A1QA"
+      goal: >
+        If a SpringBoard "Would Like to Send You Notifications" alert is on
+        screen, tap "Don't Allow" to dismiss it. If the Add Library picker
+        appears, select "A1QA Test Library" (use the search field if it
+        isn't visible in the initial list). Wait for the Catalog screen on
+        A1QA to appear before proceeding.
+      checkpoint: app_ready_on_a1qa
+      max_iterations: 10
+
+    - id: sign_in
+      description: "Sign in to A1QA Test Library"
+      goal: >
+        Open Settings → Libraries → A1QA Test Library (or tap "Sign In" on a
+        catalog row that requires auth). Enter barcode and PIN from
+        ~/.specterqa/credentials/a1qa-test.env (A1QA_BARCODE, A1QA_PIN).
+        Submit and wait for the authenticated state (signed-in indicator
+        shown, My Books / Holds populate).
+      checkpoint: user_authenticated
+      max_iterations: 10
+
     - id: navigate_to_my_books
       description: "Open My Books tab"
       goal: >
@@ -23,3 +45,14 @@ scenario:
       description: "Tap Return to return the book"
       goal: >
         Tap the Return button and confirm the book is removed from My Books.
+
+    - id: teardown_sign_out
+      description: "Sign out of A1QA to release the DRM device activation"
+      goal: >
+        After the journey body is complete, navigate Settings → Libraries →
+        A1QA Test Library and tap "Sign Out". Confirm in any presented alert.
+        Verify the user is no longer authenticated. This step is required at
+        the end of every authenticated journey so the test account does not
+        accumulate Adobe/ADEPT device activations (they are limited per user).
+      checkpoint: signed_out
+      max_iterations: 8

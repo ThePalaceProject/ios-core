@@ -97,6 +97,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
+    /// When true, signIn() proceeds even if the user has stale credentials
+    /// (instead of showing sign-out confirmation). Set by SignInModalView for
+    /// re-auth flows triggered by 401 responses.
+    var forceReauthMode: Bool = false
+
     init(libraryAccountID: String, accountsManager: AccountsManager = .shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared) {
         self.libraryAccountID = libraryAccountID
         self.accountsManager = accountsManager
@@ -357,7 +362,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     // MARK: - Actions
 
     func signIn() {
-        guard !isSignedIn else {
+        // Allow re-auth when credentials are stale (e.g., OIDC token expired).
+        // Without forceReauthMode, tapping "Sign In" with stale credentials
+        // would show sign-out confirmation instead of the auth flow.
+        let isReauth = forceReauthMode && selectedUserAccount.authState == .credentialsStale
+        guard !isSignedIn || isReauth else {
             isSigningOut = true
             presentSignOutAlert()
             return

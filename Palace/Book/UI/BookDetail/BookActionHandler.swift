@@ -184,14 +184,14 @@ final class BookActionHandler {
                         return
                     } else if AdobeCertificate.isDRMAvailable &&
                                 !AdobeDRMService.shared.isUserAuthorized(user.userID, deviceID: user.deviceID) {
-                        let reauthenticator = TPPReauthenticator()
-                        reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
-                            Task { @MainActor in
-                                guard user.hasCredentials() else {
-                                    completion?()
-                                    return
-                                }
-                                self.openBook(book, completion: completion)
+                        // On-demand DRM activation instead of showing sign-in modal
+                        Task {
+                            do {
+                                try await AdobeDRMService.shared.ensureDeviceActivated()
+                                await MainActor.run { self.openBook(book, completion: completion) }
+                            } catch {
+                                Log.error(#file, "Adobe DRM activation failed for open: \(error.localizedDescription)")
+                                await MainActor.run { completion?() }
                             }
                         }
                         return

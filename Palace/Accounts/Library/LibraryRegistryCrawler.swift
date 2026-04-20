@@ -56,6 +56,15 @@ final class LibraryRegistryCrawler {
         case failure(Error)
     }
 
+    /// Result from crawlFirstPage — includes the parsed page so callers
+    /// can check nextPageURL without re-parsing serialized data (which
+    /// drops pagination links).
+    enum FirstPageResult {
+        case success(data: Data, page: OPDS2CatalogsFeed)
+        case noChanges
+        case failure(Error)
+    }
+
     private let fetcher: CrawlerNetworkFetching
     private let hash: String
     private let stateDirectory: URL
@@ -224,7 +233,7 @@ final class LibraryRegistryCrawler {
     /// Returns partial data (~20-100 libraries) in ~260ms instead of waiting
     /// for the full 5-second crawl. Call `crawlRemainingPages` afterward to
     /// get the rest in the background.
-    func crawlFirstPage(baseURL: URL) async -> CrawlResult {
+    func crawlFirstPage(baseURL: URL) async -> FirstPageResult {
         var state = loadCrawlState()
         let crawlableURL = Self.crawlableURL(from: baseURL)
 
@@ -242,7 +251,7 @@ final class LibraryRegistryCrawler {
             }
             saveCrawlState(state)
 
-            // Serialize first page as a partial catalog
+            // Serialize first page as a partial catalog for immediate display
             let meta = OPDS2CatalogsFeed.Metadata(
                 adobe_vendor_id: page.metadata.adobe_vendor_id,
                 title: page.metadata.title
@@ -254,7 +263,8 @@ final class LibraryRegistryCrawler {
                 return .failure(CrawlerError.serializationFailed)
             }
 
-            return .success(serialized)
+            // Return both serialized data (for caching) and parsed page (for pagination links)
+            return .success(data: serialized, page: page)
         } catch {
             Log.error(#file, "First page crawl failed: \(error.localizedDescription)")
             return .failure(error)

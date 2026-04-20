@@ -458,8 +458,14 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             return
         }
 
+        guard let libraryAccount = libraryAccount else {
+            Log.warn(#file, "No library account available — cannot load auth document")
+            completion(false)
+            return
+        }
+
         isAuthenticationDocumentLoading = true
-        libraryAccount?.loadAuthenticationDocument(using: self) { success in
+        libraryAccount.loadAuthenticationDocument(using: self) { success in
             self.isAuthenticationDocumentLoading = false
             completion(success)
         }

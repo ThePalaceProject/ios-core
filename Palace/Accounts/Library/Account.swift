@@ -226,6 +226,33 @@ protocol AccountLogoDelegate: AnyObject {
             authType == .oidc
         }
 
+        /// Describes how the app should re-authenticate when credentials expire.
+        /// Use this instead of checking individual auth type booleans for re-auth decisions.
+        enum ReauthStrategy {
+            /// Present a browser-based sign-in flow (SAML IdP, OIDC provider)
+            case browser
+            /// Refresh the token programmatically via tokenURL (OAuth, basic-token)
+            case tokenRefresh
+            /// Show a credential prompt (username/password)
+            case credentialPrompt
+            /// No re-auth possible (anonymous, COPPA, unknown)
+            case none
+        }
+
+        /// The re-authentication strategy for this auth type.
+        var reauthStrategy: ReauthStrategy {
+            switch authType {
+            case .saml, .oidc:
+                return .browser
+            case .oauthIntermediary, .token:
+                return .tokenRefresh
+            case .basic:
+                return .credentialPrompt
+            case .anonymous, .coppa, .none:
+                return .none
+            }
+        }
+
         var catalogRequiresAuthentication: Bool {
             // you need an oauth token in order to access catalogs if authentication type is either oauth with intermediary (ex. Clever), or SAML
             authType == .oauthIntermediary

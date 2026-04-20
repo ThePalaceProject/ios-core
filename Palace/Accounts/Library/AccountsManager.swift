@@ -348,7 +348,7 @@ struct CatalogCacheMetadata: Codable {
         // 2. Try disk cache first (stale-while-revalidate)
         if hasCachedCatalogData(hash: hash),
            let cachedData = readCachedAccountsCatalogData(hash: hash) {
-            Log.info(#file, "Loading catalogs from cache (stale-while-revalidate)")
+            Log.info(#file, "Loading catalogs from cache (stale-while-revalidate), hash=\(hash), dataSize=\(cachedData.count)")
 
             // dedupe concurrent loads for initial cache load
             if addLoadingHandler(for: hash, completion) { return }
@@ -387,7 +387,7 @@ struct CatalogCacheMetadata: Codable {
             let firstPageResult = await crawler.crawlFirstPage(baseURL: targetUrl)
 
             switch firstPageResult {
-            case .success(let firstPageData):
+            case .success(let firstPageData, let firstPage):
                 // Display first page immediately
                 self.cacheAccountsCatalogData(firstPageData, hash: hash)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: firstPageData, key: hash) { success in
@@ -396,16 +396,18 @@ struct CatalogCacheMetadata: Codable {
                 }
 
                 // Step 2: Paginate remaining pages in background
+                // Use the parsed firstPage (not re-parsed data) to check nextPageURL,
+                // because serializeAsCatalogsFeed drops pagination links.
+                guard firstPage.nextPageURL != nil else {
+                    Log.info(#file, "Single-page registry response (\(firstPage.catalogs.count) libraries) — no pagination needed")
+                    self.triggerCatalogPreload()
+                    break
+                }
+
+                Log.info(#file, "Registry has more pages (first page: \(firstPage.catalogs.count) of \(firstPage.metadata.numberOfItems ?? -1)) — paginating in background")
                 Task(priority: .utility) { [weak self] in
                     guard let self = self else { return }
-                    guard let firstPage = try? OPDS2CatalogsFeed.fromData(firstPageData),
-                          firstPage.nextPageURL != nil else {
-                        // Only one page — already displayed everything
-                        self.triggerCatalogPreload()
-                        return
-                    }
 
-                    Log.debug(#file, "Crawling remaining pages in background for hash \(hash)")
                     let remainingResult = await crawler.crawlRemainingPages(
                         firstPage: firstPage,
                         baseURL: targetUrl,
@@ -414,6 +416,8 @@ struct CatalogCacheMetadata: Codable {
                     )
 
                     if case .success(let fullData) = remainingResult {
+                        let fullCount = (try? OPDS2CatalogsFeed.fromData(fullData))?.catalogs.count ?? -1
+                        Log.info(#file, "Background pagination complete: \(fullCount) total libraries cached")
                         self.cacheAccountsCatalogData(fullData, hash: hash)
                         self.loadAccountSetsAndAuthDoc(fromCatalogData: fullData, key: hash) { _ in
                             NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
@@ -425,8 +429,8 @@ struct CatalogCacheMetadata: Codable {
             case .noChanges:
                 self.callAndClearLoadingHandlers(for: hash, true)
 
-            case .failure:
-                Log.info(#file, "First page crawl failed, falling back to direct GET")
+            case .failure(let error):
+                Log.info(#file, "First page crawl failed: \(error), falling back to direct GET to \(targetUrl)")
                 self.fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
             }
         }
@@ -487,7 +491,8 @@ struct CatalogCacheMetadata: Codable {
 
             switch result {
             case .success(let data):
-                Log.info(#file, "Background crawl successful for hash \(hash)")
+                let pubCount = (try? OPDS2CatalogsFeed.fromData(data))?.catalogs.count ?? -1
+                Log.info(#file, "Background crawl successful for hash \(hash), \(pubCount) libraries in result, dataSize=\(data.count)")
                 self.cacheAccountsCatalogData(data, hash: hash)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { [weak self] _ in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
@@ -676,7 +681,15 @@ struct CatalogCacheMetadata: Codable {
                 if let cur = self.currentAccount, cur.details?.needsAgeCheck ?? false {
                     mainFeed = cur.details?.defaultAuth?.coppaURL(isOfAge: true)
                 }
-                self.settings.accountMainFeedURL = mainFeed
+                // Don't overwrite a valid accountMainFeedURL with nil.
+                // On cache loads the current account may not have its catalogUrl
+                // populated yet (auth doc hasn't loaded), but the URL from the
+                // previous session is still valid in UserDefaults.
+                if let mainFeed {
+                    self.settings.accountMainFeedURL = mainFeed
+                } else if self.settings.accountMainFeedURL == nil {
+                    Log.warn(#file, "accountMainFeedURL is nil and no cached value — catalog will not load until auth doc completes")
+                }
                 UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
                 completion(true)

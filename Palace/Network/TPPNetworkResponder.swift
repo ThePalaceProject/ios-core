@@ -403,8 +403,8 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
         // Mark credentials as stale - preserves Adobe DRM activation
         AccountsManager.shared.userAccount(for: accountId ?? "").markCredentialsStale()
 
-        if authDef?.isSaml == true {
-            Log.info(#file, "Server returned 401 for SAML - credentials marked stale, will trigger re-auth flow")
+        if authDef?.reauthStrategy == .browser {
+            Log.info(#file, "Server returned 401 for browser-based auth - credentials marked stale, will trigger re-auth flow")
             return false
         }
 

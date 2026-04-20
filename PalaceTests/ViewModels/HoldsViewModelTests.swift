@@ -594,6 +594,40 @@ final class HoldsSyncFailureTests: XCTestCase {
         XCTAssertFalse(viewModel.isLoading, "Not stuck in loading state")
     }
 
+    func testSyncFailure_AnonymousUser_SuppressesErrorBanner() async {
+        // Anonymous user on a library that requires auth — sync fails because
+        // we can't fetch holds without credentials. The empty-state text already
+        // handles the anonymous case; an error banner here is noise.
+        let viewModel = HoldsViewModel(bookRegistry: mockRegistry, hasCredentials: { false })
+        XCTAssertTrue(viewModel.visibleBooks.isEmpty, "Precondition: no cached holds")
+
+        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+
+        let exp = XCTestExpectation(description: "notification processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 2.0)
+
+        XCTAssertNil(viewModel.syncError, "Error banner must be suppressed for anonymous users")
+        XCTAssertFalse(viewModel.isLoading, "Not stuck in loading state")
+    }
+
+    func testSyncFailure_AuthenticatedUser_ShowsErrorBanner() async {
+        // Authenticated user — sync failed for a real reason. Banner still appears.
+        let viewModel = HoldsViewModel(bookRegistry: mockRegistry, hasCredentials: { true })
+
+        let errorExpectation = XCTestExpectation(description: "syncError surfaced")
+        viewModel.$syncError
+            .dropFirst()
+            .first { $0 != nil }
+            .sink { _ in errorExpectation.fulfill() }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        await fulfillment(of: [errorExpectation], timeout: 1.0)
+
+        XCTAssertNotNil(viewModel.syncError, "Authenticated users still see the error")
+    }
+
     func testSyncFailure_WithTitleOnly_UsesTitle() async {
         let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
 

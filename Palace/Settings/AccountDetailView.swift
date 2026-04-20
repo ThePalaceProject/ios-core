@@ -42,7 +42,18 @@ struct AccountDetailView: View {
                 Text(viewModel.alertMessage)
             })
             .onAppear {
+                viewModel.forceReauthMode = forceReauthMode
                 viewModel.refreshSignInState()
+            }
+            .task {
+                // Auto-trigger OIDC browser flow when presented for re-auth
+                // with stale credentials — no manual "Sign In" tap needed.
+                // The ASWebAuthenticationSession presents its own system browser sheet.
+                if forceReauthMode,
+                   viewModel.selectedUserAccount.authState == .credentialsStale,
+                   viewModel.businessLogic.selectedAuthentication?.isOidc == true {
+                    viewModel.signIn()
+                }
             }
     }
 

@@ -108,6 +108,7 @@ struct BookDetailView: View {
             }
             .onDisappear {
                 viewModel.showHalfSheet = false
+                viewModel.processingButtons.removeAll()
             }
             .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
                 handleOrientationChange()

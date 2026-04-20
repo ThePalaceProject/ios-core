@@ -5,6 +5,7 @@
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
 
+import AuthenticationServices
 import Foundation
 
 /// Modern async/await extensions for MyBooksDownloadCenter
@@ -312,31 +313,26 @@ extension MyBooksDownloadCenter {
         // Handle based on auth type
         let needsBrowserReauth = (authDef?.isSaml == true || authDef?.isOidc == true) && hasCredentials
         if needsBrowserReauth {
-            let authLabel = authDef?.isOidc == true ? "OIDC" : "SAML"
-            Log.info(#file, "\(authLabel) session expired during borrow - credentials marked stale, triggering re-auth flow")
-
-            await MainActor.run { [weak self] in
-                SignInModalPresenter.presentSignInModalForCurrentAccount {
-                    guard let self else { return }
-
-                    guard self.userAccount.hasCredentials() else {
-                        Log.info(#file, "\(authLabel) re-auth cancelled or failed, not retrying borrow for '\(book.title)'")
-                        Self.clearBorrowReauthAttempted(for: book.identifier)
-                        return
-                    }
-
-                    Log.info(#file, "\(authLabel) re-auth completed, retrying borrow for '\(book.title)'")
-
+            if authDef?.isOidc == true {
+                Log.info(#file, "OIDC session expired during borrow - attempting silent re-auth via ASWebAuthenticationSession")
+                let oidcSuccess = await attemptOIDCSilentReauth()
+                if oidcSuccess {
+                    Log.info(#file, "OIDC silent re-auth succeeded, retrying borrow for '\(book.title)'")
                     Self.clearBorrowReauthAttempted(for: book.identifier)
-
                     Task {
                         do {
                             _ = try await self.borrowAsync(book, attemptDownload: attemptDownload)
                         } catch {
-                            Log.error(#file, "Retry borrow failed after \(authLabel) re-auth: \(error.localizedDescription)")
+                            Log.error(#file, "Retry borrow failed after OIDC re-auth: \(error.localizedDescription)")
                         }
                     }
+                } else {
+                    Log.info(#file, "OIDC silent re-auth failed/cancelled - falling back to sign-in modal")
+                    await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "OIDC")
                 }
+            } else {
+                Log.info(#file, "SAML session expired during borrow - credentials marked stale, triggering re-auth flow")
+                await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "SAML")
             }
             return true
 
@@ -489,5 +485,114 @@ extension MyBooksDownloadCenter {
         }
 
         return baseMessage
+    }
+
+    // MARK: - OIDC Silent Re-auth
+
+    /// Attempts OIDC re-authentication using `ASWebAuthenticationSession`.
+    /// Returns `true` if a new token was obtained, `false` on failure/cancel.
+    private func attemptOIDCSilentReauth() async -> Bool {
+        guard let authDef = userAccount.authDefinition,
+              let oidcURL = authDef.oidcAuthenticationUrl else {
+            return false
+        }
+
+        let callbackScheme = TPPSignInBusinessLogic.oidcCallbackScheme
+        let callbackHost = TPPSignInBusinessLogic.oidcCallbackHost
+        let redirectURI = "\(callbackScheme)://\(callbackHost)/callback"
+
+        guard var urlComponents = URLComponents(url: oidcURL, resolvingAgainstBaseURL: true) else {
+            return false
+        }
+
+        let redirectParam = URLQueryItem(name: "redirect_uri", value: redirectURI)
+        if urlComponents.queryItems != nil {
+            urlComponents.queryItems?.append(redirectParam)
+        } else {
+            urlComponents.queryItems = [redirectParam]
+        }
+
+        guard let finalURL = urlComponents.url else { return false }
+
+        return await withCheckedContinuation { continuation in
+            Task { @MainActor in
+                let session = ASWebAuthenticationSession(
+                    url: finalURL,
+                    callbackURLScheme: callbackScheme
+                ) { [weak self] callbackURL, error in
+                    guard let self else {
+                        continuation.resume(returning: false)
+                        return
+                    }
+
+                    if error != nil {
+                        continuation.resume(returning: false)
+                        return
+                    }
+
+                    guard let callbackURL,
+                          let payload = callbackURL.query ?? callbackURL.fragment else {
+                        continuation.resume(returning: false)
+                        return
+                    }
+
+                    var kvpairs = [String: String]()
+                    for param in payload.components(separatedBy: "&") {
+                        let elts = param.components(separatedBy: "=")
+                        guard elts.count >= 2, let key = elts.first else { continue }
+                        kvpairs[key] = elts.dropFirst().joined(separator: "=")
+                    }
+
+                    guard let accessToken = kvpairs["access_token"] else {
+                        continuation.resume(returning: false)
+                        return
+                    }
+
+                    let ua = self.userAccount
+                    ua.setAuthToken(accessToken, barcode: ua.barcode, pin: ua.PIN, expirationDate: nil)
+                    Log.info(#file, "OIDC silent re-auth: token updated successfully")
+                    continuation.resume(returning: true)
+                }
+
+                session.presentationContextProvider = OIDCBorrowPresentationContext.shared
+                session.prefersEphemeralWebBrowserSession = false
+                session.start()
+            }
+        }
+    }
+
+    /// Presents the sign-in modal and retries the borrow on success.
+    private func presentSignInModalAndRetryBorrow(book: TPPBook, attemptDownload: Bool, authLabel: String) async {
+        await MainActor.run { [weak self] in
+            SignInModalPresenter.presentSignInModalForCurrentAccount {
+                guard let self else { return }
+
+                guard self.userAccount.hasCredentials() else {
+                    Log.info(#file, "\(authLabel) re-auth cancelled or failed, not retrying borrow for '\(book.title)'")
+                    Self.clearBorrowReauthAttempted(for: book.identifier)
+                    return
+                }
+
+                Log.info(#file, "\(authLabel) re-auth completed, retrying borrow for '\(book.title)'")
+                Self.clearBorrowReauthAttempted(for: book.identifier)
+
+                Task {
+                    do {
+                        _ = try await self.borrowAsync(book, attemptDownload: attemptDownload)
+                    } catch {
+                        Log.error(#file, "Retry borrow failed after \(authLabel) re-auth: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Provides a window anchor for `ASWebAuthenticationSession` in the borrow flow.
+private final class OIDCBorrowPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
+    static let shared = OIDCBorrowPresentationContext()
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        UIApplication.shared.mainKeyWindow ?? ASPresentationAnchor()
     }
 }

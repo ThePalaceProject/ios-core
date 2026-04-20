@@ -5,6 +5,14 @@ import PalaceAudiobookToolkit
 
 enum BookService {
     private static var openingBooks = Set<String>()
+    #if LCP
+    /// The current LCP decryptor holding an open Readium Publication.
+    /// Each Publication holds file handles to the .lcpa ZIP package.
+    /// Releasing the previous one before opening a new audiobook prevents
+    /// file descriptor exhaustion that causes the LCP pipeline to hang
+    /// after ~14 audiobook opens.
+    private static var currentLCPDecryptor: LCPAudiobooks?
+    #endif
 
     static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, onFinish: (() -> Void)? = nil) {
 
@@ -13,6 +21,19 @@ enum BookService {
             Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
             onFinish?()
             return
+        }
+
+        // Only one audiobook can play at a time. If another audiobook is
+        // already being opened, cancel the pending open to avoid concurrent
+        // LCP license processing / manager creation that freezes the UI.
+        if book.defaultBookContentType == .audiobook {
+            let otherPendingAudiobooks = openingBooks.subtracting([book.identifier])
+            if !otherPendingAudiobooks.isEmpty {
+                Log.info(#file, "Cancelling \(otherPendingAudiobooks.count) pending audiobook open(s) before opening \(book.title)")
+                for id in otherPendingAudiobooks {
+                    openingBooks.remove(id)
+                }
+            }
         }
 
         openingBooks.insert(book.identifier)
@@ -209,6 +230,16 @@ enum BookService {
         Log.debug(#file, "🔐 [LCP AUDIOBOOK] Building LCP-protected audiobook")
         Log.debug(#file, "  LCP source: \(lcpSourceURL.path)")
 
+        // Release the previous LCP publication's file handles before opening
+        // a new one. Each Readium Publication holds open file descriptors to
+        // the .lcpa ZIP. Without this, repeated opens exhaust the FD limit
+        // and the next publicationOpener.open() hangs indefinitely.
+        if let previous = currentLCPDecryptor {
+            Log.info(#file, "  Releasing previous LCP publication resources")
+            previous.releaseResources()
+            currentLCPDecryptor = nil
+        }
+
         guard let lcpAudiobooks = LCPAudiobooks(for: lcpSourceURL) else {
             Log.error(#file, "  ❌ Failed to create LCPAudiobooks instance from URL")
             Log.error(#file, "    This could indicate license parsing failure or invalid LCP file")
@@ -218,6 +249,7 @@ enum BookService {
             return
         }
 
+        currentLCPDecryptor = lcpAudiobooks
         Log.debug(#file, "  ✅ LCPAudiobooks instance created")
 
         if let cached = lcpAudiobooks.cachedContentDictionary() as? [String: Any] {
@@ -349,6 +381,14 @@ enum BookService {
         // Capture only the serialized Data (value type) instead of the raw dictionary
         let vendorCompletion: (Foundation.NSError?) -> Void = { (error: Foundation.NSError?) in
             Task { @MainActor in
+                // If another audiobook open cancelled this one (removed our ID
+                // from openingBooks), bail out to avoid creating a zombie manager.
+                guard openingBooks.contains(book.identifier) else {
+                    Log.info(#file, "  ⏹️ Audiobook open for \(book.title) was superseded — skipping manager creation")
+                    onFinish?()
+                    return
+                }
+
                 if let error = error {
                     Log.error(#file, "  ❌ Vendor completion failed with error: \(error.localizedDescription)")
                     Log.error(#file, "    Domain: \(error.domain), Code: \(error.code)")

@@ -153,12 +153,13 @@ final class CrawlerFallbackTests: XCTestCase {
         let crawler = makeCrawler()
         let result = await crawler.crawlFirstPage(baseURL: baseURL)
 
-        guard case .success(let data) = result else {
+        guard case let .success(data, page) = result else {
             XCTFail("Expected first page success")
             return
         }
         let feed = try! OPDS2CatalogsFeed.fromData(data)
         XCTAssertEqual(feed.catalogs.count, 2, "Should return first page catalogs")
+        XCTAssertEqual(page.catalogs.count, 2, "Parsed page should also have 2 catalogs")
     }
 
     func testCrawlFirstPage_NetworkDown_ReturnsFailure() async {
@@ -283,7 +284,38 @@ final class CrawlerFallbackTests: XCTestCase {
         // First page was already displayed — user has partial data
     }
 
-    // MARK: - 10. Empty crawlable feed
+    // MARK: - 10. First page preserves pagination links for background pagination
+
+    func testCrawlFirstPage_PreservesPaginationLinks_InParsedPage() async {
+        let crawlableURL = URL(string: "https://registry.example.com/libraries/crawlable")!
+        let nextPageURL = "https://registry.example.com/libraries/crawlable?offset=100&size=100"
+        let feedJSON = makeCatalogsFeedJSON(
+            catalogs: [makeCatalog(id: "lib-1")],
+            nextURL: nextPageURL,
+            numberOfItems: 500
+        )
+        fetcher.stub(url: crawlableURL, data: feedJSON)
+
+        let crawler = makeCrawler()
+        let result = await crawler.crawlFirstPage(baseURL: baseURL)
+
+        guard case let .success(data, page) = result else {
+            XCTFail("Expected first page success")
+            return
+        }
+
+        // The parsed page must retain the next link — this is what
+        // fetchFromNetwork uses to decide whether to paginate.
+        XCTAssertNotNil(page.nextPageURL, "Parsed page must preserve next link for pagination")
+        XCTAssertEqual(page.nextPageURL?.absoluteString, nextPageURL)
+
+        // The serialized data drops links (by design — it's for caching),
+        // so re-parsing it must NOT be used for pagination decisions.
+        let cachedFeed = try! OPDS2CatalogsFeed.fromData(data)
+        XCTAssertNil(cachedFeed.nextPageURL, "Cached data drops links — this is why we return the parsed page separately")
+    }
+
+    // MARK: - 11. Empty crawlable feed
 
     func testCrawl_EmptyFeed_ReturnsSuccessWithNoLibraries() async {
         let crawlableURL = URL(string: "https://registry.example.com/libraries/crawlable")!

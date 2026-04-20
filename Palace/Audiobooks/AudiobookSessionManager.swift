@@ -326,8 +326,16 @@ public final class AudiobookSessionManager: ObservableObject {
     func bindToManager(_ newManager: AudiobookManager) {
         Log.info(#file, "Binding to AudiobookManager")
 
-        // Clear previous subscriptions
+        // Stop and unload old manager to prevent resource accumulation.
+        // Without this, each re-entry creates a new manager while the old one
+        // continues playing and downloading, eventually overwhelming the
+        // audio session and main thread with cascading publisher updates.
         managerCancellables.removeAll()
+        if let oldManager = manager, oldManager as AnyObject !== newManager as AnyObject {
+            Log.info(#file, "Stopping previous AudiobookManager before rebinding")
+            oldManager.pause()
+            oldManager.unload()
+        }
 
         manager = newManager
         audiobook = newManager.audiobook

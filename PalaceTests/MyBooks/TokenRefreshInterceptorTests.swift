@@ -231,11 +231,13 @@ final class TokenRefreshInterceptorTests: XCTestCase {
 
         // Second call should show alert instead of reauth
         let secondExpectation = XCTestExpectation(description: "Second attempt")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            self.interceptor.handleBorrowInvalidCredentials(for: book, error: nil)
+        let pollItem = DispatchWorkItem { [weak self] in
+            self?.interceptor.handleBorrowInvalidCredentials(for: book, error: nil)
             secondExpectation.fulfill()
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: pollItem)
         wait(for: [secondExpectation], timeout: 2.0)
+        pollItem.cancel()
 
         // Should only have reauthenticated once
         XCTAssertEqual(mockReauthenticator.authenticateCallCount, 1)
@@ -251,14 +253,16 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         }
 
         let expectation = XCTestExpectation(description: "Download started after reauth")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            if !self.mockDelegate.startDownloadCalls.isEmpty {
+        let pollItem = DispatchWorkItem { [weak self] in
+            if let self, !self.mockDelegate.startDownloadCalls.isEmpty {
                 expectation.fulfill()
             }
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pollItem)
 
         interceptor.handleBorrowInvalidCredentials(for: book, error: nil)
         wait(for: [expectation], timeout: 3.0)
+        pollItem.cancel()
 
         XCTAssertEqual(mockDelegate.startDownloadCalls.count, 1)
         XCTAssertEqual(mockDelegate.startDownloadCalls.first?.book.identifier, book.identifier)
@@ -312,12 +316,14 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         interceptor.handleProblem(for: book, problemDocument: nil)
 
         let expectation = XCTestExpectation(description: "SAML retry")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            if !self.mockDelegate.startDownloadCalls.isEmpty {
+        let pollItem = DispatchWorkItem { [weak self] in
+            if let self, !self.mockDelegate.startDownloadCalls.isEmpty {
                 expectation.fulfill()
             }
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pollItem)
         wait(for: [expectation], timeout: 2.0)
+        pollItem.cancel()
 
         XCTAssertEqual(mockDelegate.startDownloadCalls.count, 1)
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .SAMLStarted)
@@ -334,10 +340,12 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         interceptor.handleProblem(for: book, problemDocument: nil)
 
         let expectation = XCTestExpectation(description: "Wait")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        let pollItem = DispatchWorkItem {
             expectation.fulfill()
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pollItem)
         wait(for: [expectation], timeout: 5.0)
+        pollItem.cancel()
 
         // Should NOT trigger reauth for authenticated basic user
         XCTAssertFalse(mockReauthenticator.authenticateIfNeededCalled)
@@ -405,5 +413,181 @@ final class TokenRefreshInterceptorTests: XCTestCase {
 
         XCTAssertFalse(result)
         XCTAssertFalse(mockReauthenticator.authenticateIfNeededCalled)
+    }
+
+    // MARK: - OIDC Re-Authentication (401 with stale credentials)
+
+    func testHandleDownloadFailure_OIDC_401_triggersReauthViaSignInModal() {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let url = URL(string: "https://example.com/book")!
+        let response401 = HTTPURLResponse(
+            url: url, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil
+        )!
+        let task = MockURLSessionDownloadTask(
+            taskIdentifier: 42,
+            request: URLRequest(url: url),
+            response: response401
+        )
+
+        // OIDC with valid credentials — server returned 401
+        mockUserAccount._credentials = .token(authToken: "expired-token")
+        mockUserAccount._authDefinition = makeAuthDefinition(authType: .oidc)
+
+        let result = interceptor.handleDownloadFailureWithAuthCheck(
+            for: book, task: task, problemDoc: nil, failureError: nil
+        )
+
+        XCTAssertTrue(result, "OIDC 401 should trigger re-auth, not show error")
+
+        // triggerBrowserReauth is async (cleans up download state first), so wait
+        let expectation = XCTestExpectation(description: "Reauthenticator called")
+        let pollItem = DispatchWorkItem { [weak self] in
+            if let self, self.mockReauthenticator.authenticateIfNeededCalled {
+                expectation.fulfill()
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: pollItem)
+        wait(for: [expectation], timeout: 3.0)
+        pollItem.cancel()
+        XCTAssertTrue(mockReauthenticator.authenticateIfNeededCalled,
+                      "Should present sign-in modal for OIDC re-auth")
+    }
+
+    func testHandleDownloadFailure_OIDC_401_marksCredentialsStale() {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let url = URL(string: "https://example.com/book")!
+        let response401 = HTTPURLResponse(
+            url: url, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil
+        )!
+        let task = MockURLSessionDownloadTask(
+            taskIdentifier: 43,
+            request: URLRequest(url: url),
+            response: response401
+        )
+
+        mockUserAccount._credentials = .token(authToken: "expired-token")
+        mockUserAccount._authDefinition = makeAuthDefinition(authType: .oidc)
+
+        _ = interceptor.handleDownloadFailureWithAuthCheck(
+            for: book, task: task, problemDoc: nil, failureError: nil
+        )
+
+        XCTAssertEqual(mockUserAccount.authState, .credentialsStale,
+                       "Should mark credentials stale before triggering re-auth")
+    }
+
+    func testHandleDownloadFailure_OIDC_successfulReauth_retriesDownload() {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let url = URL(string: "https://example.com/book")!
+        let response401 = HTTPURLResponse(
+            url: url, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil
+        )!
+        let task = MockURLSessionDownloadTask(
+            taskIdentifier: 44,
+            request: URLRequest(url: url),
+            response: response401
+        )
+
+        // Setup: reauthenticator restores credentials and marks logged in
+        mockReauthenticator.onAuthenticate = { [weak self] _, _ in
+            self?.mockUserAccount.setAuthToken("new-token", barcode: nil, pin: nil, expirationDate: nil)
+            self?.mockUserAccount.markLoggedIn()
+        }
+
+        mockUserAccount._credentials = .token(authToken: "expired-token")
+        mockUserAccount._authDefinition = makeAuthDefinition(authType: .oidc)
+
+        _ = interceptor.handleDownloadFailureWithAuthCheck(
+            for: book, task: task, problemDoc: nil, failureError: nil
+        )
+
+        let expectation = XCTestExpectation(description: "Download retried after OIDC re-auth")
+        let pollItem = DispatchWorkItem { [weak self] in
+            if let self, !self.mockDelegate.startDownloadCalls.isEmpty {
+                expectation.fulfill()
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: pollItem)
+        wait(for: [expectation], timeout: 3.0)
+        pollItem.cancel()
+
+        XCTAssertEqual(mockDelegate.startDownloadCalls.count, 1,
+                       "Should retry download after successful OIDC re-auth")
+    }
+
+    func testHandleDownloadFailure_OIDC_cancelledReauth_doesNotRetry() {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let url = URL(string: "https://example.com/book")!
+        let response401 = HTTPURLResponse(
+            url: url, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil
+        )!
+        let task = MockURLSessionDownloadTask(
+            taskIdentifier: 45,
+            request: URLRequest(url: url),
+            response: response401
+        )
+
+        // Setup: reauthenticator fires completion but user cancelled (state stays stale)
+        mockReauthenticator.onAuthenticate = { _, _ in
+            // User cancelled — no state change
+        }
+
+        mockUserAccount._credentials = .token(authToken: "expired-token")
+        mockUserAccount._authDefinition = makeAuthDefinition(authType: .oidc)
+
+        _ = interceptor.handleDownloadFailureWithAuthCheck(
+            for: book, task: task, problemDoc: nil, failureError: nil
+        )
+
+        let expectation = XCTestExpectation(description: "Wait for async completion")
+        let pollItem = DispatchWorkItem {
+            expectation.fulfill()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: pollItem)
+        wait(for: [expectation], timeout: 3.0)
+        pollItem.cancel()
+
+        XCTAssertEqual(mockDelegate.startDownloadCalls.count, 0,
+                       "Should NOT retry download when re-auth is cancelled (credentials still stale)")
+    }
+
+    func testHandleDownloadFailure_noActiveLoan_OIDC_triggersReauth() {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        mockRegistry.addBook(book, state: .downloading)
+
+        let url = URL(string: "https://example.com")!
+        let task = MockURLSessionDownloadTask(
+            taskIdentifier: 46,
+            request: URLRequest(url: url)
+        )
+
+        let problemDoc = TPPProblemDocument.fromDictionary([
+            "type": TPPProblemDocument.TypeNoActiveLoan,
+            "title": "No Active Loan",
+            "status": 404
+        ])
+
+        // OIDC with credentials — should treat no-active-loan as session expiry
+        mockUserAccount._credentials = .token(authToken: "expired-token")
+        mockUserAccount._authDefinition = makeAuthDefinition(authType: .oidc)
+
+        let result = interceptor.handleDownloadFailureWithAuthCheck(
+            for: book, task: task, problemDoc: problemDoc, failureError: nil
+        )
+
+        XCTAssertTrue(result, "OIDC + no-active-loan should trigger re-auth, not auto-borrow")
+
+        // triggerBrowserReauth is async, so wait for completion
+        let expectation = XCTestExpectation(description: "Reauthenticator called")
+        let pollItem = DispatchWorkItem { [weak self] in
+            if let self, self.mockReauthenticator.authenticateIfNeededCalled {
+                expectation.fulfill()
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: pollItem)
+        wait(for: [expectation], timeout: 3.0)
+        pollItem.cancel()
+        XCTAssertTrue(mockReauthenticator.authenticateIfNeededCalled,
+                      "Should present sign-in modal for OIDC re-auth on no-active-loan")
     }
 }

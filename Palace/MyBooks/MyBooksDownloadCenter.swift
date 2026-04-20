@@ -1627,8 +1627,26 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                     logBookDownloadFailure(book, reason: "Received PDF for AdobeDRM rights", downloadTask: task, metadata: nil)
                     failureRequiringAlert = true
                 } else if let acsmData = try? Data(contentsOf: location) {
-                    NSLog("Download finished. Fulfilling with userID: \(userAccount.userID ?? "")")
-                    AdobeDRMService.shared.fulfill(withACSMData: acsmData, tag: book.identifier, userID: userAccount.userID, deviceID: userAccount.deviceID)
+                    // Ensure Adobe DRM device is activated before attempting ACSM fulfillment.
+                    // PP-3649 deferred activation from login to borrow time, but the download-retry
+                    // path bypasses the borrow flow — so activation must also be checked here.
+                    Task { [weak self] in
+                        guard let self else { return }
+                        do {
+                            try await AdobeDRMService.shared.ensureDeviceActivated()
+                            let ua = self.userAccount
+                            Log.info(#file, "Adobe DRM activated — fulfilling ACSM for '\(book.title)' with userID: \(ua.userID ?? "nil")")
+                            await MainActor.run {
+                                AdobeDRMService.shared.fulfill(withACSMData: acsmData, tag: book.identifier, userID: ua.userID, deviceID: ua.deviceID)
+                            }
+                        } catch {
+                            Log.error(#file, "Adobe DRM activation failed for '\(book.title)': \(error.localizedDescription)")
+                            await MainActor.run {
+                                self.bookRegistry.setState(.downloadFailed, for: book.identifier)
+                                self.alertForProblemDocument(nil, error: error, book: book)
+                            }
+                        }
+                    }
                 }
                 #endif
             case .lcp:
@@ -1678,36 +1696,72 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                 // trigger re-authentication since our Palace credentials are not the issue
                 let originalURL = task.originalRequest?.url
                 let httpResponse = task.response as? HTTPURLResponse
-                if httpResponse?.indicatesAuthenticationNeedsRefresh(with: problemDoc, originalRequestURL: originalURL) == true {
-                    let authDef = self.userAccount.authDefinition
+                let reauthStrategy = self.userAccount.authDefinition?.reauthStrategy ?? .none
 
+                if httpResponse?.indicatesAuthenticationNeedsRefresh(with: problemDoc, originalRequestURL: originalURL) == true {
                     // If user has credentials but got 401, this is a session/token expiry issue
                     if hasCredentials {
                         // Mark credentials as stale - preserves Adobe DRM activation
                         self.userAccount.markCredentialsStale()
 
-                        if authDef?.isSaml == true {
-                            // SAML cookies expired - need to re-auth via IDP
-                            Log.info(#file, "SAML session expired - marking credentials stale and triggering re-auth flow")
+                        switch reauthStrategy {
+                        case .browser:
+                            if self.userAccount.authDefinition?.isSaml == true {
+                                // SAML cookies expired - need to re-auth via IDP
+                                Log.info(#file, "SAML session expired - triggering SAML re-auth flow")
 
-                            Task {
-                                // Clear download tracking completely
-                                await self.bookIdentifierToDownloadInfo.remove(book.identifier)
-                                await self.taskIdentifierToBook.remove(task.taskIdentifier)
-                                await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+                                Task {
+                                    await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+                                    await self.taskIdentifierToBook.remove(task.taskIdentifier)
+                                    await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
 
-                                // Then set state and retry on main thread
-                                await MainActor.run {
-                                    self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
-                                    Log.info(#file, "Cleared failed download, now retrying with SAML re-auth")
-                                    self.startDownload(for: book)
+                                    await MainActor.run {
+                                        self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                                        Log.info(#file, "Cleared failed download, now retrying with SAML re-auth")
+                                        self.startDownload(for: book)
+                                    }
+                                }
+                            } else {
+                                // OIDC or other browser-based auth - present sign-in modal
+                                Log.info(#file, "Browser-based auth expired - triggering re-auth via sign-in modal")
+
+                                // Clean up download tracking before presenting modal
+                                Task { [weak self] in
+                                    guard let self else { return }
+                                    await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+                                    await self.taskIdentifierToBook.remove(task.taskIdentifier)
+                                    await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+
+                                    await MainActor.run { [weak self] in
+                                        guard let self else { return }
+                                        self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
+
+                                        self.reauthenticator.authenticateIfNeeded(
+                                            self.userAccount,
+                                            usingExistingCredentials: false,
+                                            authenticationCompletion: { [weak self] in
+                                                Task { @MainActor [weak self] in
+                                                    guard let self else { return }
+                                                    guard self.userAccount.authState == .loggedIn else {
+                                                        Log.info(#file, "Re-auth cancelled or incomplete, not retrying download for \(book.identifier)")
+                                                        return
+                                                    }
+                                                    Log.info(#file, "Re-auth completed, retrying download for \(book.identifier)")
+                                                    self.startDownload(for: book)
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                             return
-                        } else {
-                            // OAuth/Token - refresh was already attempted by TPPNetworkResponder
-                            // If we got here, refresh failed - show error
+
+                        case .tokenRefresh:
+                            // Token refresh was already attempted by TPPNetworkResponder
                             Log.warn(#file, "Token refresh failed for \(book.identifier) - showing error")
+
+                        case .credentialPrompt, .none:
+                            Log.warn(#file, "Auth failed for \(book.identifier) - showing error")
                         }
                     } else if loginRequired {
                         // No credentials - show sign-in
@@ -1754,24 +1808,52 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                 // Check if the error is "No active loan" - attempt to re-borrow
                 if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
 
-                    // PP-3716: When a SAML token expires, the server returns "no-active-loan"
-                    // (400) instead of "invalid-credentials" (401). If the user has SAML
-                    // credentials, treat this as a session expiry and trigger re-auth
-                    // instead of attempting an auto-borrow (which would also fail).
-                    let authDef = self.userAccount.authDefinition
-                    if authDef?.isSaml == true && hasCredentials {
-                        Log.info(#file, "SAML: 'no-active-loan' with active SAML credentials — treating as session expiry (PP-3716)")
+                    // PP-3716: When browser-based auth expires, the server may return
+                    // "no-active-loan" (400) instead of 401. Treat as session expiry.
+                    if reauthStrategy == .browser && hasCredentials {
                         self.userAccount.markCredentialsStale()
 
-                        Task {
-                            await self.bookIdentifierToDownloadInfo.remove(book.identifier)
-                            await self.taskIdentifierToBook.remove(task.taskIdentifier)
-                            await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+                        if self.userAccount.authDefinition?.isSaml == true {
+                            Log.info(#file, "SAML: 'no-active-loan' treating as session expiry (PP-3716)")
+                            Task {
+                                await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+                                await self.taskIdentifierToBook.remove(task.taskIdentifier)
+                                await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
 
-                            await MainActor.run {
-                                self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
-                                Log.info(#file, "SAML: Cleared failed download, retrying with SAML re-auth for \(book.identifier)")
-                                self.startDownload(for: book)
+                                await MainActor.run {
+                                    self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                                    Log.info(#file, "SAML: Cleared failed download, retrying with SAML re-auth for \(book.identifier)")
+                                    self.startDownload(for: book)
+                                }
+                            }
+                        } else {
+                            Log.info(#file, "Browser auth: 'no-active-loan' treating as session expiry")
+                            Task { [weak self] in
+                                guard let self else { return }
+                                await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+                                await self.taskIdentifierToBook.remove(task.taskIdentifier)
+                                await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+
+                                await MainActor.run { [weak self] in
+                                    guard let self else { return }
+                                    self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
+
+                                    self.reauthenticator.authenticateIfNeeded(
+                                        self.userAccount,
+                                        usingExistingCredentials: false,
+                                        authenticationCompletion: { [weak self] in
+                                            Task { @MainActor [weak self] in
+                                                guard let self else { return }
+                                                guard self.userAccount.authState == .loggedIn else {
+                                                    Log.info(#file, "Re-auth cancelled or incomplete, not retrying download for \(book.identifier)")
+                                                    return
+                                                }
+                                                Log.info(#file, "Re-auth completed, retrying download for \(book.identifier)")
+                                                self.startDownload(for: book)
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                         return
@@ -2796,7 +2878,11 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
     }
 
     func didIgnoreFulfillmentWithNoAuthorizationPresent() {
-        self.reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true, authenticationCompletion: nil)
+        // Pre-PP-3649 behavior was to show a sign-in modal, but now that we call
+        // ensureDeviceActivated() before fulfillment, this path should only be hit
+        // if activation succeeded but the device was deauthorized mid-fulfillment
+        // (extremely rare). Log for diagnostics rather than showing a confusing modal.
+        Log.warn(#file, "Adobe DRM fulfillment rejected after activation — device may have been deauthorized mid-download")
     }
 }
 #endif

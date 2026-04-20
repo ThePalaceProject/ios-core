@@ -6,6 +6,7 @@
 //  and 401 re-authentication logic into a focused, single-responsibility type.
 //
 
+import AuthenticationServices
 import Foundation
 
 // MARK: - TokenRefreshInterceptorDelegate
@@ -71,18 +72,30 @@ final class TokenRefreshInterceptor {
         let httpResponse = task.response as? HTTPURLResponse
 
         // Check if response indicates authentication needs refresh
-        if httpResponse?.indicatesAuthenticationNeedsRefresh(with: problemDoc, originalRequestURL: originalURL) == true {
-            let authDef = userAccount.authDefinition
+        let reauthStrategy = userAccount.authDefinition?.reauthStrategy ?? .none
 
+        if httpResponse?.indicatesAuthenticationNeedsRefresh(with: problemDoc, originalRequestURL: originalURL) == true {
             if hasCredentials {
                 userAccount.markCredentialsStale()
 
-                if authDef?.isSaml == true {
-                    Log.info(#file, "SAML session expired - marking credentials stale and triggering re-auth flow")
-                    triggerSAMLReauth(for: book, task: task)
+                switch reauthStrategy {
+                case .browser:
+                    if userAccount.authDefinition?.isSaml == true {
+                        Log.info(#file, "SAML session expired - triggering SAML re-auth flow")
+                        triggerSAMLReauth(for: book, task: task)
+                    } else if userAccount.authDefinition?.isOidc == true {
+                        Log.info(#file, "OIDC session expired - attempting silent re-auth via ASWebAuthenticationSession")
+                        triggerOIDCReauth(for: book, task: task)
+                    } else {
+                        Log.info(#file, "Browser-based auth expired - triggering re-auth via sign-in modal")
+                        triggerBrowserReauth(for: book, task: task)
+                    }
                     return true
-                } else {
+                case .tokenRefresh:
+                    // Token refresh was already attempted by TPPNetworkResponder
                     Log.warn(#file, "Token refresh failed for \(book.identifier) - showing error")
+                case .credentialPrompt, .none:
+                    Log.warn(#file, "Auth failed for \(book.identifier) - showing error")
                 }
             } else if loginRequired {
                 Log.info(#file, "No credentials - showing sign-in modal")
@@ -95,17 +108,26 @@ final class TokenRefreshInterceptor {
             return true
         }
 
-        // Check for "no active loan" with SAML - treat as session expiry (PP-3716)
+        // Check for "no active loan" with browser-based auth — treat as session expiry (PP-3716)
+        // Browser-based auth (SAML/OIDC) can cause the server to return "no-active-loan"
+        // instead of 401 when the session expires.
         if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
-            let authDef = userAccount.authDefinition
-            if authDef?.isSaml == true && hasCredentials {
-                Log.info(#file, "SAML: 'no-active-loan' with active SAML credentials - treating as session expiry (PP-3716)")
+            if reauthStrategy == .browser && hasCredentials {
                 userAccount.markCredentialsStale()
-                triggerSAMLReauth(for: book, task: task)
+                if userAccount.authDefinition?.isSaml == true {
+                    Log.info(#file, "SAML: 'no-active-loan' treating as session expiry (PP-3716)")
+                    triggerSAMLReauth(for: book, task: task)
+                } else if userAccount.authDefinition?.isOidc == true {
+                    Log.info(#file, "OIDC: 'no-active-loan' treating as session expiry")
+                    triggerOIDCReauth(for: book, task: task)
+                } else {
+                    Log.info(#file, "Browser auth: 'no-active-loan' treating as session expiry")
+                    triggerBrowserReauth(for: book, task: task)
+                }
                 return true
             }
 
-            // Non-SAML: attempt auto-borrow
+            // Non-browser-based auth: attempt auto-borrow
             Log.info(#file, "Download failed: No active loan for \(book.identifier). Auto-borrowing...")
             delegate.bookRegistry.setState(.unregistered, for: book.identifier)
             delegate.startBorrow(for: book, attemptDownload: true) { [weak delegate] in
@@ -251,25 +273,48 @@ final class TokenRefreshInterceptor {
             return
         }
 
-        // For SAML with expired cookies, try SAML flow once
-        if authDef?.isSaml == true && hasCredentials {
-            Log.info(#file, "SAML cookies expired - triggering SAML re-auth flow")
+        // For browser-based auth (SAML/OIDC) with expired session, trigger re-auth
+        if authDef?.reauthStrategy == .browser && hasCredentials {
+            if authDef?.isSaml == true {
+                Log.info(#file, "SAML cookies expired - triggering SAML re-auth flow")
 
-            Task { [weak delegate] in
-                guard let delegate = delegate else { return }
-                await delegate.stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
-                await delegate.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
+                Task { [weak delegate] in
+                    guard let delegate = delegate else { return }
+                    await delegate.stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
+                    await delegate.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
 
-                await MainActor.run {
-                    bookRegistry.setState(.SAMLStarted, for: book.identifier)
-                    Log.info(#file, "Cleared download state, retrying with SAML re-auth")
-                    delegate.startDownload(for: book, withRequest: nil)
+                    await MainActor.run {
+                        bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                        Log.info(#file, "Cleared download state, retrying with SAML re-auth")
+                        delegate.startDownload(for: book, withRequest: nil)
+                    }
+                }
+            } else {
+                Log.info(#file, "Browser-based auth expired - triggering re-auth via sign-in modal")
+                userAccount.markCredentialsStale()
+                bookRegistry.setState(.downloadNeeded, for: book.identifier)
+
+                Task { @MainActor [weak self] in
+                    guard let self = self, let delegate = self.delegate else { return }
+
+                    guard !self.isRequestingCredentials else { return }
+                    self.isRequestingCredentials = true
+
+                    self.reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self, weak delegate] in
+                        Task { @MainActor [weak self] in
+                            self?.isRequestingCredentials = false
+                            if delegate?.userAccount.authState == .loggedIn {
+                                Log.info(#file, "Browser re-auth completed, retrying download")
+                                delegate?.startDownload(for: book, withRequest: nil)
+                            }
+                        }
+                    }
                 }
             }
             return
         }
 
-        // For non-SAML or no credentials, set to downloadNeeded
+        // For non-browser-based auth or no credentials, set to downloadNeeded
         bookRegistry.setState(.downloadNeeded, for: book.identifier)
 
         if !hasCredentials {
@@ -339,6 +384,149 @@ final class TokenRefreshInterceptor {
         )
     }
 
+    /// Triggers browser-based re-auth (OIDC, etc.) with proper download state cleanup.
+    /// Unlike SAML which uses a special `.SAMLStarted` book state, browser re-auth
+    /// cleans up tracking, resets book state, and presents the sign-in modal.
+    private func triggerBrowserReauth(for book: TPPBook, task: URLSessionTask) {
+        guard let delegate = delegate else { return }
+        let stateManager = delegate.stateManager
+
+        Task {
+            await stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
+            await stateManager.taskIdentifierToBook.remove(task.taskIdentifier)
+            await stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
+
+            await MainActor.run { [weak self, weak delegate] in
+                guard let self = self, let delegate = delegate else { return }
+                delegate.bookRegistry.setState(.downloadNeeded, for: book.identifier)
+                Log.info(#file, "Cleared failed download state, presenting sign-in modal for \(book.identifier)")
+
+                self.reauthenticator.authenticateIfNeeded(
+                    delegate.userAccount,
+                    usingExistingCredentials: false,
+                    authenticationCompletion: { [weak delegate] in
+                        Task { @MainActor [weak delegate] in
+                            guard let delegate = delegate else { return }
+                            // Check authState, not just hasCredentials — stale creds still
+                            // return true for hasCredentials() but won't work for downloads
+                            guard delegate.userAccount.authState == .loggedIn else {
+                                Log.info(#file, "Re-auth cancelled or incomplete, not retrying download for \(book.identifier)")
+                                return
+                            }
+                            Log.info(#file, "Re-auth completed, retrying download for \(book.identifier)")
+                            delegate.startDownload(for: book, withRequest: nil)
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    /// Attempts silent OIDC re-authentication using `ASWebAuthenticationSession`.
+    /// Since `prefersEphemeralWebBrowserSession` is false, the session reuses the
+    /// system browser's existing IdP cookies. If the user's IdP session is still
+    /// alive, the re-auth completes seamlessly without user interaction (the system
+    /// sheet appears briefly and auto-dismisses). Only falls back to the full
+    /// sign-in modal if the silent attempt fails or is cancelled.
+    @MainActor
+    private func triggerOIDCReauth(for book: TPPBook, task: URLSessionTask) {
+        guard let delegate = delegate else { return }
+        let stateManager = delegate.stateManager
+        let userAccount = delegate.userAccount
+
+        guard let authDef = userAccount.authDefinition,
+              let oidcURL = authDef.oidcAuthenticationUrl else {
+            Log.warn(#file, "OIDC reauth: no authenticate URL — falling back to sign-in modal")
+            triggerBrowserReauth(for: book, task: task)
+            return
+        }
+
+        // Build the OIDC URL with redirect_uri
+        let callbackScheme = TPPSignInBusinessLogic.oidcCallbackScheme
+        let callbackHost = TPPSignInBusinessLogic.oidcCallbackHost
+        let redirectURI = "\(callbackScheme)://\(callbackHost)/callback"
+
+        guard var urlComponents = URLComponents(url: oidcURL, resolvingAgainstBaseURL: true) else {
+            Log.warn(#file, "OIDC reauth: malformed authenticate URL — falling back to sign-in modal")
+            triggerBrowserReauth(for: book, task: task)
+            return
+        }
+
+        let redirectParam = URLQueryItem(name: "redirect_uri", value: redirectURI)
+        if urlComponents.queryItems != nil {
+            urlComponents.queryItems?.append(redirectParam)
+        } else {
+            urlComponents.queryItems = [redirectParam]
+        }
+
+        guard let finalURL = urlComponents.url else {
+            triggerBrowserReauth(for: book, task: task)
+            return
+        }
+
+        Log.info(#file, "OIDC reauth: starting ASWebAuthenticationSession for \(book.identifier)")
+
+        let session = ASWebAuthenticationSession(
+            url: finalURL,
+            callbackURLScheme: callbackScheme
+        ) { [weak self, weak delegate] callbackURL, error in
+            Task { @MainActor [weak self, weak delegate] in
+                guard let self = self, let delegate = delegate else { return }
+
+                if let error = error as? ASWebAuthenticationSessionError,
+                   error.code == .canceledLogin {
+                    Log.info(#file, "OIDC silent reauth cancelled by user — falling back to sign-in modal")
+                    self.triggerBrowserReauth(for: book, task: task)
+                    return
+                }
+
+                if let error = error {
+                    Log.warn(#file, "OIDC silent reauth failed: \(error.localizedDescription) — falling back to sign-in modal")
+                    self.triggerBrowserReauth(for: book, task: task)
+                    return
+                }
+
+                guard let callbackURL = callbackURL,
+                      let payload = callbackURL.query ?? callbackURL.fragment else {
+                    Log.warn(#file, "OIDC silent reauth: no callback data — falling back to sign-in modal")
+                    self.triggerBrowserReauth(for: book, task: task)
+                    return
+                }
+
+                // Parse access_token from callback
+                var kvpairs = [String: String]()
+                for param in payload.components(separatedBy: "&") {
+                    let elts = param.components(separatedBy: "=")
+                    guard elts.count >= 2, let key = elts.first else { continue }
+                    kvpairs[key] = elts.dropFirst().joined(separator: "=")
+                }
+
+                guard let accessToken = kvpairs["access_token"] else {
+                    Log.warn(#file, "OIDC silent reauth: no access_token in callback — falling back to sign-in modal")
+                    self.triggerBrowserReauth(for: book, task: task)
+                    return
+                }
+
+                // Update the stored auth token, preserving existing barcode/pin
+                Log.info(#file, "OIDC silent reauth succeeded — updating token and retrying download for \(book.identifier)")
+                let ua = delegate.userAccount
+                ua.setAuthToken(accessToken, barcode: ua.barcode, pin: ua.PIN, expirationDate: nil)
+
+                // Clean up failed download state and retry
+                await stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
+                await stateManager.taskIdentifierToBook.remove(task.taskIdentifier)
+                await stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
+                delegate.bookRegistry.setState(.downloadNeeded, for: book.identifier)
+                delegate.startDownload(for: book, withRequest: nil)
+            }
+        }
+
+        // Present the session — uses existing system browser cookies for silent SSO
+        session.presentationContextProvider = OIDCPresentationContextProvider.shared
+        session.prefersEphemeralWebBrowserSession = false
+        session.start()
+    }
+
     private func showBorrowAlert(for book: TPPBook, with error: [String: Any]?) {
         guard let delegate = delegate else { return }
         let alertTitle = Strings.MyDownloadCenter.borrowFailed
@@ -365,5 +553,17 @@ final class TokenRefreshInterceptor {
                 DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, retryAction: retryAction)
             )
         }
+    }
+}
+
+// MARK: - OIDC Presentation Context
+
+/// Provides a window anchor for `ASWebAuthenticationSession` when triggered
+/// from the network/download layer (which has no UI context of its own).
+private final class OIDCPresentationContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    static let shared = OIDCPresentationContextProvider()
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        UIApplication.shared.mainKeyWindow ?? ASPresentationAnchor()
     }
 }

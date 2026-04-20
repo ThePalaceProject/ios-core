@@ -49,7 +49,17 @@ private class WeakViewController {
 /// Owns a NavigationPath and transient payload storage to resolve non-hashable models.
 @MainActor
 final class NavigationCoordinator: ObservableObject {
-    @Published var path = NavigationPath()
+    @Published var path = NavigationPath() {
+        didSet {
+            // When the user navigates back via SwiftUI's built-in back gesture
+            // (bypassing our pop()), isTopRouteAudio becomes stale. Reset it
+            // whenever the path shrinks to avoid wrongly clearing the full stack
+            // on the next audiobook open.
+            if path.count < oldValue.count {
+                isTopRouteAudio = false
+            }
+        }
+    }
 
     /// Transient payload storage keyed by stable identifiers.
     /// This lets us resolve non-hashable models like Objective-C `TPPBook` at destination time.
