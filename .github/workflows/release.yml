@@ -13,6 +13,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           submodules: true
+          fetch-depth: 0
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
       - name: Checkout Certificates
         uses: actions/checkout@v3
