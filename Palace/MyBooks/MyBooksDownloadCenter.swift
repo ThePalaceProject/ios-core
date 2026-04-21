@@ -506,11 +506,46 @@ import OverdriveProcessor
         } else {
             #if FEATURE_OVERDRIVE
             if book.distributor == OverdriveDistributorKey && book.defaultBookContentType == .audiobook {
+                if Self.shouldDeferOverdriveFulfillment(for: book, state: state) {
+                    deferOverdriveFulfillment(for: book)
+                    return
+                }
                 processOverdriveDownload(for: book, withState: state)
                 return
             }
             #endif
             processRegularDownload(for: book, withState: state, andRequest: initedRequest)
+        }
+    }
+
+    /// Returns `true` when a book would be routed to the Overdrive fulfillment
+    /// path but its default acquisition is still a borrow relation — meaning
+    /// the post-borrow OPDS entry didn't expose a fulfillment URL.
+    ///
+    /// `OverdriveAPIExecutor.fulfillBook()` expects the target URL to return a
+    /// 302 carrying `x-overdrive-scope` and `x-overdrive-patron-authorization`
+    /// headers. Hitting the Palace CM's `/borrow` URL with an active loan
+    /// returns a 200 OPDS atom entry instead, producing a spurious "wrong
+    /// headers" error. When this guard fires we defer the download, sync the
+    /// loans feed, and surface a retry-able message to the user.
+    static func shouldDeferOverdriveFulfillment(for book: TPPBook, state: TPPBookState) -> Bool {
+        guard state != .unregistered, state != .holding else { return false }
+        return book.defaultAcquisitionIfBorrow != nil
+    }
+
+    private func deferOverdriveFulfillment(for book: TPPBook) {
+        Log.warn(#file, "Overdrive audiobook '\(book.title)' routed to fulfillment but default acquisition is still borrow — deferring and syncing loans feed")
+        Task { await downloadCoordinator.registerCompletion(identifier: book.identifier) }
+        bookRegistry.sync()
+        runOnMainAsync {
+            self.publishAndAnnounceError(
+                DownloadErrorInfo(
+                    bookId: book.identifier,
+                    title: DisplayStrings.borrowFailed,
+                    message: DisplayStrings.loanAlreadyExistsAlertMessage,
+                    kind: .borrow
+                )
+            )
         }
     }
 
