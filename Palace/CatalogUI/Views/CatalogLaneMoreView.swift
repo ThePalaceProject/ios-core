@@ -14,6 +14,11 @@ struct CatalogLaneMoreView: View {
     @StateObject private var logoObserver = CatalogLogoObserver()
     @State private var currentAccountUUID: String = ""
 
+    // PP-4065: scroll-to-top should fire exactly once, on the first appearance
+    // of this view, and never again. After that, refresh and cell actions
+    // (borrow/return/hold) must preserve the user's scroll position.
+    @State private var didScrollToTopOnFirstAppear = false
+
     // MARK: - Initialization
 
     init(title: String = "", url: URL) {
@@ -361,17 +366,28 @@ private extension CatalogLaneMoreView {
 
     @ViewBuilder
     var booksView: some View {
-        ScrollView {
-            BookListView(
-                books: viewModel.ungroupedBooks,
-                isLoading: $viewModel.isLoading,
-                onSelect: { book in presentBookDetail(book) },
-                onLoadMore: viewModel.shouldShowPagination ? { @MainActor in await viewModel.loadNextPage() } : nil,
-                isLoadingMore: viewModel.isLoadingMore
-            )
-        }
-        .refreshable {
-            await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
+        ScrollViewReader { proxy in
+            ScrollView {
+                BookListView(
+                    books: viewModel.ungroupedBooks,
+                    isLoading: $viewModel.isLoading,
+                    onSelect: { book in presentBookDetail(book) },
+                    onLoadMore: viewModel.shouldShowPagination ? { @MainActor in await viewModel.loadNextPage() } : nil,
+                    isLoadingMore: viewModel.isLoadingMore
+                )
+                .id("books-list-top")
+            }
+            .refreshable {
+                await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
+            }
+            .onAppear {
+                // PP-4065: scroll to top on the FIRST appearance only.
+                // Refresh and registry updates (borrow/return/hold) must not
+                // scroll — they keep the user's place in the list.
+                guard !didScrollToTopOnFirstAppear else { return }
+                didScrollToTopOnFirstAppear = true
+                proxy.scrollTo("books-list-top", anchor: .top)
+            }
         }
     }
 }
