@@ -235,7 +235,17 @@ extension LCPAudiobooks: LCPStreamingProvider {
             return cachedPublication != nil
         }
 
-        if !hasPublication {
+        if hasPublication {
+            // Publication is already loaded (the loader's contentDictionary call
+            // cached it). Signal the player right away so it doesn't wait on the
+            // 30s "Publication loading timeout" fallback. Without this, every
+            // back-to-back LCP audiobook open creates a fresh LCPStreamingPlayer
+            // whose isLoaded flag can only flip via publicationDidLoad() — which
+            // otherwise only fires from the !hasPublication branch below.
+            DispatchQueue.main.async {
+                streamingPlayer.publicationDidLoad()
+            }
+        } else {
             DispatchQueue.global(qos: .userInteractive).async { [weak self] in
                 self?.loadContentDictionary { _, error in
                     if let error = error {
