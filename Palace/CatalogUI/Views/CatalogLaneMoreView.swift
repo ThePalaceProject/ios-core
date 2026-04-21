@@ -375,8 +375,11 @@ private extension CatalogLaneMoreView {
             .refreshable {
                 await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
             }
-            .onChange(of: viewModel.ungroupedBooks) { _ in
-                // Scroll to top when books change (new results loaded)
+            .onChange(of: viewModel.feedId) { _ in
+                // PP-4065: scroll to top only when a new feed is loaded
+                // (search/filter/sort). Watching `ungroupedBooks` also fired
+                // on borrow/return registry updates and pagination appends,
+                // causing the list to jump to the top on every Borrow tap.
                 proxy.scrollTo("books-list-top", anchor: .top)
             }
         }

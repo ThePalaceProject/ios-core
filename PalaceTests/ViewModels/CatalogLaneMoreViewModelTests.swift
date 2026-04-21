@@ -473,4 +473,43 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.title.isEmpty, "Empty title must have zero characters")
         XCTAssertEqual(viewModel.title.count, 0, "Empty title count must be 0")
     }
+
+    // MARK: - feedId (PP-4065)
+    //
+    // feedId is the signal the view watches to decide when to scroll to top
+    // (new feed = scroll reset; state-only mutations = preserve scroll).
+    // It must only bump on a completed feed fetch — not on in-place book
+    // mutations like borrow/return (applyRegistryUpdates) or pagination
+    // appends (loadNextPage). Watching `ungroupedBooks` directly caused
+    // PP-4065: the list jumped to the top whenever a user tapped Borrow.
+
+    func testFeedId_DoesNotIncrement_WhenApplyRegistryUpdatesMutatesBooks() {
+        let viewModel = createViewModel()
+        let book1 = TPPBookMocker.mockBook(identifier: "b1", title: "B1")
+        let book2 = TPPBookMocker.mockBook(identifier: "b2", title: "B2")
+        viewModel.ungroupedBooks = [book1, book2]
+        let feedIdBeforeBorrow = viewModel.feedId
+
+        viewModel.applyRegistryUpdates(changedIdentifier: "b1")
+
+        XCTAssertEqual(
+            viewModel.feedId, feedIdBeforeBorrow,
+            "PP-4065: Registry updates must not bump feedId — otherwise the list scrolls to top on Borrow."
+        )
+    }
+
+    func testFeedId_DoesNotIncrement_WhenUngroupedBooksReassignedWithoutFetch() {
+        let viewModel = createViewModel()
+        let feedIdBeforeMutation = viewModel.feedId
+
+        viewModel.ungroupedBooks = [
+            TPPBookMocker.mockBook(identifier: "a", title: "A"),
+            TPPBookMocker.mockBook(identifier: "b", title: "B")
+        ]
+
+        XCTAssertEqual(
+            viewModel.feedId, feedIdBeforeMutation,
+            "feedId must only change on fetchAndApplyFeed. Pagination appends and any other in-place array mutation must leave scroll position untouched."
+        )
+    }
 }

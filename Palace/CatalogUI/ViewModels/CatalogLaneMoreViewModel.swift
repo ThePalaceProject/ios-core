@@ -16,6 +16,11 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   @Published var nextPageURL: URL?
   @Published var isLoadingMore = false
+
+  // Bumps only on a completed fetchAndApplyFeed so the view can reset
+  // scroll on a new feed (search/filter/sort) without resetting on
+  // in-place mutations like borrow updates or pagination appends. See PP-4065.
+  @Published private(set) var feedId: Int = 0
   
   // UI State
   @Published var showingSortSheet = false
@@ -171,6 +176,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
           appliedSelections.removeAll()
           pendingSelections.removeAll()
         }
+
+        feedId &+= 1
       }
     } catch {
       self.error = error.localizedDescription
