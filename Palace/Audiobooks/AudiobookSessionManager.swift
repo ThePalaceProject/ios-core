@@ -112,6 +112,15 @@ public final class AudiobookSessionManager: ObservableObject {
     /// a superseded loader can't bind their manager onto the session.
     private var loadGeneration: UInt64 = 0
 
+    /// True once `.playbackBegan` has fired at least once during the current
+    /// session. Used to distinguish a cold-load failure (first chapter never
+    /// became ready — book is broken) from a mid-playback failure (chapter
+    /// boundary error — user is already listening, can scrub back). Cold-
+    /// load failures dismiss the dead player UI and show an OK-only
+    /// "unavailable" alert; mid-playback failures keep the player open with
+    /// the toolkit's toast.
+    private var hasEverStartedPlayback: Bool = false
+
     private var managerCancellables = Set<AnyCancellable>()
 
     // MARK: - Publishers for External Observers
@@ -179,6 +188,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
         state = .loading(bookId: book.identifier)
         currentBook = book
+        hasEverStartedPlayback = false
         playbackStatePublisher.send(state)
 
         loadGeneration &+= 1
@@ -633,6 +643,7 @@ public final class AudiobookSessionManager: ObservableObject {
         case .playbackBegan(let position):
             Log.debug(#file, "Playback began at: \(position.timestamp)")
             isPlaying = true
+            hasEverStartedPlayback = true
             state = .playing(bookId: bookId)
             currentPosition = position
             updateNowPlayingInfo(position: position)
@@ -677,6 +688,30 @@ public final class AudiobookSessionManager: ObservableObject {
             }
 
             errorPublisher.send(.unknown("Playback failed"))
+
+            // Cold-load failure: playback never started for this session, so
+            // the player UI is just a stuck slider showing 0:00 over a dead
+            // AVPlayerItem. Dismiss the player and surface an honest "not
+            // playable right now" alert — NOT a retry offer, since these
+            // failures are typically persistent (distributor auth issues,
+            // yanked content, etc.) and a retry button would just invite
+            // rage-tapping for no outcome. If the problem was truly
+            // transient the user can re-tap the book themselves; that's
+            // natural UX, not a fake recovery affordance.
+            if !hasEverStartedPlayback, currentBook != nil {
+                Log.info(#file, "Cold-load failure detected — dismissing player UI and showing unavailable alert")
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.stopPlayback(dismissPhoneUI: true)
+                    await MainActor.run {
+                        let alert = TPPAlertUtils.alert(
+                            title: NSLocalizedString("Audiobook Unavailable", comment: "Title when a cold-load playback failure dismisses the player"),
+                            message: NSLocalizedString("This audiobook couldn't be played right now. The content may be temporarily unavailable — please try again later or contact your library.", comment: "Message when a cold-load playback failure dismisses the player")
+                        )
+                        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+                    }
+                }
+            }
 
         case .playbackCompleted(let position):
             Log.info(#file, "Playback completed at: \(position.timestamp)")
