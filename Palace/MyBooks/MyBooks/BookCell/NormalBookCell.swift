@@ -102,7 +102,7 @@ struct NormalBookCell: View {
         .onAppear {
             // Initialize with current progress if downloading
             if isDownloading {
-                downloadProgress = MyBooksDownloadCenter.shared.downloadProgress(for: model.book.identifier)
+                downloadProgress = model.downloadCenter.downloadProgress(for: model.book.identifier)
             }
         }
     }
@@ -110,7 +110,7 @@ struct NormalBookCell: View {
     // MARK: - Download Progress Publisher
 
     private var downloadProgressPublisher: AnyPublisher<Double, Never> {
-        MyBooksDownloadCenter.shared.downloadProgressPublisher
+        model.downloadCenter.downloadProgressPublisher
             .filter { [model] (update: (String, Double)) in
                 update.0 == model.book.identifier
             }

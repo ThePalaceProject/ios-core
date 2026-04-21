@@ -6,6 +6,8 @@ class TPPRegistryDebuggingCell: UITableViewCell {
 
     private var inputField = UITextField()
     weak var delegate: TPPLoadingViewController?
+    private let settings: TPPSettings = .shared
+    private let accountsManager: AccountsManager = .shared
 
     private var reloadInProgress: Bool = false {
         didSet {
@@ -45,7 +47,7 @@ class TPPRegistryDebuggingCell: UITableViewCell {
         stackView.axis = .vertical
 
         inputField.placeholder = "Input custom server"
-        inputField.text = TPPSettings.shared.customLibraryRegistryServer
+        inputField.text = settings.customLibraryRegistryServer
         inputField.autocapitalizationType = .none
         inputField.autocorrectionType = .no
 
@@ -123,20 +125,20 @@ class TPPRegistryDebuggingCell: UITableViewCell {
 
     @objc private func clear() {
         inputField.text = nil
-        TPPSettings.shared.customLibraryRegistryServer = nil
-        AccountsManager.shared.clearCache()
+        settings.customLibraryRegistryServer = nil
+        accountsManager.clearCache()
         self.showAlert(title: "Configuration Updated", message: "Registry has been reset to default")
     }
 
     @objc private func set() {
-        AccountsManager.shared.clearCache()
+        accountsManager.clearCache()
 
         guard let text = inputField.text, !text.isEmpty else {
             self.showAlert(title: "Configuration Update Failed", message: "Please enter a valid server URL")
             return
         }
 
-        TPPSettings.shared.customLibraryRegistryServer = text
+        settings.customLibraryRegistryServer = text
         let message = String(format: "Registry server: %@", text)
         reloadRegistry { isSuccess in
             if isSuccess {
@@ -151,8 +153,8 @@ class TPPRegistryDebuggingCell: UITableViewCell {
         guard !reloadInProgress else { return }
         reloadInProgress.toggle()
 
-        AccountsManager.shared.clearCache()
-        AccountsManager.shared.updateAccountSet { isSuccess in
+        accountsManager.clearCache()
+        accountsManager.updateAccountSet { isSuccess in
             self.reloadInProgress.toggle()
             completion(isSuccess)
         }

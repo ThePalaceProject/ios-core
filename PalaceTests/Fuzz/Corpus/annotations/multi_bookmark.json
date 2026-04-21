@@ -1,0 +1,60 @@
+{
+  "@context": "http://www.w3.org/ns/anno.jsonld",
+  "total": 3,
+  "type": ["BasicContainer", "AnnotationCollection"],
+  "id": "https://example.com/annotations/",
+  "first": {
+    "items": [
+      {
+        "motivation": "http://www.w3.org/ns/oa#bookmarking",
+        "type": "Annotation",
+        "id": "https://example.com/annotations/100",
+        "body": {
+          "http://librarysimplified.org/terms/time": "2024-06-01T10:30:00Z",
+          "http://librarysimplified.org/terms/device": "device-uuid-1"
+        },
+        "target": {
+          "source": "urn:isbn:9780123456789",
+          "selector": {
+            "type": "FragmentSelector",
+            "value": "{\"idref\":\"chapter1\",\"contentCFI\":\"/4/2/8\",\"progressWithinChapter\":0.45}"
+          }
+        }
+      },
+      {
+        "motivation": "http://www.w3.org/ns/oa#bookmarking",
+        "type": "Annotation",
+        "id": "https://example.com/annotations/101",
+        "body": {
+          "http://librarysimplified.org/terms/time": "2024-06-02T14:15:00Z",
+          "http://librarysimplified.org/terms/device": "device-uuid-2"
+        },
+        "target": {
+          "source": "urn:isbn:9780123456789",
+          "selector": {
+            "type": "FragmentSelector",
+            "value": "{\"idref\":\"chapter3\",\"contentCFI\":\"/4/2/16\",\"progressWithinChapter\":0.78}"
+          }
+        }
+      },
+      {
+        "motivation": "http://librarysimplified.org/terms/annotation/idling",
+        "type": "Annotation",
+        "id": "https://example.com/annotations/102",
+        "body": {
+          "http://librarysimplified.org/terms/time": "2024-06-03T09:00:00Z",
+          "http://librarysimplified.org/terms/device": "device-uuid-1"
+        },
+        "target": {
+          "source": "urn:isbn:9780123456789",
+          "selector": {
+            "type": "FragmentSelector",
+            "value": "{\"idref\":\"chapter5\",\"contentCFI\":\"/4/2/24\",\"progressWithinChapter\":0.12}"
+          }
+        }
+      }
+    ],
+    "type": "AnnotationPage",
+    "id": "https://example.com/annotations/?page=0"
+  }
+}

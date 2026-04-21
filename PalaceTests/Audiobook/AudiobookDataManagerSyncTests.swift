@@ -7,6 +7,15 @@
 
 import XCTest
 import Combine
+
+private func clearAudiobookTimeTrackerStore() {
+    if let dir = TPPBookContentMetadataFilesHelper.directory(for: "timetracker") {
+        let storeFile = dir.appendingPathComponent("store.json")
+        try? FileManager.default.removeItem(at: storeFile)
+    }
+}
+
+
 @testable import Palace
 
 // MARK: - Mock Network Executor for Testing
@@ -112,10 +121,19 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        clearAudiobookTimeTrackerStore()
         mockNetworkExecutor = MockNetworkExecutorForSync()
         dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
+        // Drain any reachability-triggered initial syncValues call that the
+        // dataManager constructor's Combine subscription may have queued.
+        // Without this, the constructor's auto-sync races with the test's
+        // explicit syncValues and produces an extra unexpected POST.
+        let drain = expectation(description: "drain initial sync")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { drain.fulfill() }
+        wait(for: [drain], timeout: 3.0)
+        mockNetworkExecutor.reset()
         testStoreURL = FileManager.default.temporaryDirectory.appendingPathComponent("test_timetracker")
     }
 
@@ -125,6 +143,7 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
         dataManager = nil
         mockNetworkExecutor = nil
         try? FileManager.default.removeItem(at: testStoreURL)
+        clearAudiobookTimeTrackerStore()
         super.tearDown()
     }
 
@@ -136,8 +155,7 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
         XCTAssertTrue(dataManager.store.urls.isEmpty)
     }
 
-    func testSyncValues_withQueuedEntries_postsToCorrectURL() {
-        let trackingURL = URL(string: "https://api.example.com/track")!
+    func testSyncValues_withQueuedEntries_postsToCorrectURL() {        let trackingURL = URL(string: "https://api.example.com/track")!
         let entry = AudiobookTimeEntry(
             id: "entry-1", bookId: "book-123", libraryId: "lib-456",
             timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:30Z", duration: 45
@@ -166,8 +184,7 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
         XCTAssertEqual(mockNetworkExecutor.requestHistory.first?.request.httpMethod, "POST")
     }
 
-    func testSyncValues_withSuccessfulResponse_removesEntriesFromQueue() {
-        let trackingURL = URL(string: "https://api.example.com/track")!
+    func testSyncValues_withSuccessfulResponse_removesEntriesFromQueue() {        let trackingURL = URL(string: "https://api.example.com/track")!
         let entry = AudiobookTimeEntry(
             id: "entry-1", bookId: "book-123", libraryId: "lib-456",
             timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:30Z", duration: 45
@@ -200,8 +217,7 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
         XCTAssertEqual(dataManager.store.queue.count, 0, "Entry should be removed after successful sync")
     }
 
-    func testSyncValues_withMultipleBooks_makesRequestForEach() {
-        let trackingURL1 = URL(string: "https://api.example.com/track/book1")!
+    func testSyncValues_withMultipleBooks_makesRequestForEach() {        let trackingURL1 = URL(string: "https://api.example.com/track/book1")!
         let trackingURL2 = URL(string: "https://api.example.com/track/book2")!
 
         let entry1 = AudiobookTimeEntry(
@@ -298,10 +314,17 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        clearAudiobookTimeTrackerStore()
         mockNetworkExecutor = MockNetworkExecutorForSync()
         dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
+        // Drain the constructor's reachability-triggered initial syncValues
+        // before each test (see AudiobookDataManagerNetworkSyncTests.setUp).
+        let drain = expectation(description: "drain initial sync")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { drain.fulfill() }
+        wait(for: [drain], timeout: 3.0)
+        mockNetworkExecutor.reset()
     }
 
     override func tearDown() {
@@ -309,6 +332,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         dataManager?.store.urls.removeAll()
         dataManager = nil
         mockNetworkExecutor = nil
+        clearAudiobookTimeTrackerStore()
         super.tearDown()
     }
 
@@ -328,8 +352,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         wait(for: [syncDone], timeout: 5.0)
     }
 
-    func testSyncValues_with404Response_removesEntriesAndURL() {
-        let trackingURL = URL(string: "https://api.example.com/track/expired")!
+    func testSyncValues_with404Response_removesEntriesAndURL() {        let trackingURL = URL(string: "https://api.example.com/track/expired")!
         let entry = AudiobookTimeEntry(
             id: "entry-1", bookId: "book-expired", libraryId: "lib-456",
             timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:30Z", duration: 45
@@ -389,8 +412,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         XCTAssertEqual(dataManager.store.queue.count, 1, "Entries should be kept for retry on 503")
     }
 
-    func testSyncValues_withPartialSuccess_removesOnlySuccessfulEntries() {
-        let trackingURL = URL(string: "https://api.example.com/track")!
+    func testSyncValues_withPartialSuccess_removesOnlySuccessfulEntries() {        let trackingURL = URL(string: "https://api.example.com/track")!
         let entry1 = AudiobookTimeEntry(
             id: "entry-success", bookId: "book-1", libraryId: "lib-1",
             timeTrackingUrl: trackingURL, duringMinute: "2024-01-15T10:30Z", duration: 30
@@ -449,6 +471,7 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        clearAudiobookTimeTrackerStore()
         testStoreDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("test_timetracker_\(UUID().uuidString)")
         testStoreFile = testStoreDirectory.appendingPathComponent("store.json")
         try? FileManager.default.createDirectory(at: testStoreDirectory, withIntermediateDirectories: true)
@@ -456,6 +479,7 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
 
     override func tearDown() {
         try? FileManager.default.removeItem(at: testStoreDirectory)
+        clearAudiobookTimeTrackerStore()
         super.tearDown()
     }
 
@@ -548,6 +572,7 @@ final class AudiobookDataManagerEmptyQueueTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        clearAudiobookTimeTrackerStore()
         mockNetworkExecutor = MockNetworkExecutorForSync()
         dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
         dataManager.store.queue.removeAll()
@@ -559,6 +584,7 @@ final class AudiobookDataManagerEmptyQueueTests: XCTestCase {
         dataManager?.store.urls.removeAll()
         dataManager = nil
         mockNetworkExecutor = nil
+        clearAudiobookTimeTrackerStore()
         super.tearDown()
     }
 

@@ -10,21 +10,8 @@ struct BookImageView: View {
 
     @State private var showSkeleton: Bool = true
 
-    /// Check if cover is already loaded (skip skeleton entirely)
     private var hasPreloadedCover: Bool {
         book.coverImage != nil || book.thumbnailImage != nil
-    }
-
-    /// Single combined accessibility label for the cover stack. The cover image is always
-    /// announced first; if the book is an audiobook, the badge information is appended so
-    /// VoiceOver users still hear it without the badge becoming a separate focus target.
-    var combinedAccessibilityLabel: String {
-        let coverLabel = String(format: NSLocalizedString("Cover image for %@", comment: "Book cover accessibility"), book.title)
-        if book.isAudiobook {
-            let audiobookLabel = NSLocalizedString("Audiobook", comment: "Audiobook badge accessibility")
-            return "\(coverLabel), \(audiobookLabel)"
-        }
-        return coverLabel
     }
 
     var body: some View {
@@ -39,12 +26,8 @@ struct BookImageView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .transition(.opacity)
-                    // PP-3968: an explicit empty label tells iOS the image is
-                    // intentionally undescribed and disables VoiceOver Image
-                    // Recognition (text-on-cover OCR), which would otherwise
-                    // read printed blurbs/quotes/series-name from cover art.
-                    .accessibilityLabel(Text(verbatim: ""))
-                    .accessibilityHidden(true)
+                    .accessibilityLabel(treatImageAsDecorativeInLists ? "" : String(format: NSLocalizedString("Cover image for %@", comment: "Book cover accessibility"), book.title))
+                    .accessibilityHidden(treatImageAsDecorativeInLists)
             }
 
             if book.isAudiobook {
@@ -55,24 +38,19 @@ struct BookImageView: View {
                     .background(Circle().fill(Color.colorAudiobookBackground))
                     .clipShape(Circle())
                     .padding([.trailing, .bottom], 10)
-                    .accessibilityLabel(Text(verbatim: ""))
-                    .accessibilityHidden(true)
+                    .accessibilityLabel(NSLocalizedString("Audiobook", comment: "Audiobook badge accessibility"))
+                    .accessibilityHidden(treatImageAsDecorativeInLists)
             }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityHidden(treatImageAsDecorativeInLists)
-        .accessibilityLabel(combinedAccessibilityLabel)
-        .accessibilityAddTraits(.isImage)
+        .accessibilityElement(children: treatImageAsDecorativeInLists ? .ignore : .combine)
         .frame(width: width, height: height)
         .onAppear {
-            // Suppress skeleton immediately if something is already available to show
             if hasPreloadedCover {
                 showSkeleton = false
             }
-            // Always fetch at the correct display size. The registry checks the size-specific
-            // cache key first, so this is instant when the right resolution is cached.
-            // Without this, a small thumbnail loaded earlier (e.g. catalog lane) would be
-            // displayed at full size, causing pixelation on large screens.
+            // fetchCoverImage checks memory cache (instant), then disk cache
+            // (async), then network. Covers survive entry point switches via
+            // the async disk→memory promotion path.
             book.fetchCoverImage(forDisplayHeight: height)
         }
         .onChange(of: book.coverImage) { newImage in

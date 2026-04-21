@@ -1,12 +1,6 @@
 import SwiftUI
 import Combine
-import UIKit
 import PalaceUIKit
-
-// MARK: - Accessibility focus (list callout when entering My Books)
-private enum MyBooksAccessibilityFocus: Hashable {
-    case list
-}
 
 struct MyBooksView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator
@@ -14,9 +8,18 @@ struct MyBooksView: View {
     @ObservedObject var model: MyBooksViewModel
     @State private var showSortSheet: Bool = false
     @StateObject private var logoObserver = CatalogLogoObserver()
-    @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+    @State private var currentAccountUUID: String = ""
     @FocusState private var isSearchFocused: Bool
-    @AccessibilityFocusState private var accessibilityFocus: MyBooksAccessibilityFocus?
+    let accountsManager: AccountsManager
+    let settings: TPPSettings
+    let bookRegistry: TPPBookRegistryProvider
+
+    init(model: MyBooksViewModel, accountsManager: AccountsManager = AccountsManager.shared, settings: TPPSettings = TPPSettings.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        self.model = model
+        self.accountsManager = accountsManager
+        self.settings = settings
+        self.bookRegistry = bookRegistry
+    }
     // Centralized sample preview manager overlay
 
     var body: some View {
@@ -33,7 +36,7 @@ struct MyBooksView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 LibraryNavTitleView(onTap: {
-                    if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+                    if let urlString = accountsManager.currentAccount?.homePageUrl, let url = URL(string: urlString) {
                         UIApplication.shared.open(url, options: [:], completionHandler: nil)
                     }
                 })
@@ -56,31 +59,20 @@ struct MyBooksView: View {
             }
         }
         .onAppear {
+            model.isVisible = true
             model.showSearchSheet = false
-            let account = AccountsManager.shared.currentAccount
+            let account = accountsManager.currentAccount
             account?.logoDelegate = logoObserver
             account?.loadLogo()
             currentAccountUUID = account?.uuid ?? ""
-            // Move VoiceOver to list and announce "My Books list, X books" when entering the tab
-            if !model.isLoading, !model.showInstructionsLabel, UIAccessibility.isVoiceOverRunning {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    accessibilityFocus = .list
-                    let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.books.count)
-                    UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.myBooksListLabel), \(value)")
-                }
-            }
+            // Background refresh on appear — sync silently, UI updates via notifications
+            model.refreshInBackground()
         }
-        .onChange(of: model.isLoading) { isLoading in
-            if !isLoading, !model.showInstructionsLabel, UIAccessibility.isVoiceOverRunning {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    accessibilityFocus = .list
-                    let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.books.count)
-                    UIAccessibility.post(notification: .announcement, argument: "\(Strings.Generic.myBooksListLabel), \(value)")
-                }
-            }
+        .onDisappear {
+            model.isVisible = false
         }
         .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
-            let account = AccountsManager.shared.currentAccount
+            let account = accountsManager.currentAccount
             account?.logoDelegate = logoObserver
             account?.loadLogo()
             currentAccountUUID = account?.uuid ?? ""
@@ -102,7 +94,7 @@ struct MyBooksView: View {
                 SamplePreviewManager.shared.close()
                 return
             }
-            if let book = TPPBookRegistry.shared.book(forIdentifier: identifier) ?? model.books.first(where: { $0.identifier == identifier }) {
+            if let book = bookRegistry.book(forIdentifier: identifier) ?? model.books.first(where: { $0.identifier == identifier }) {
                 SamplePreviewManager.shared.toggle(for: book)
             }
         }
@@ -140,14 +132,10 @@ struct MyBooksView: View {
                         onSelect: { book in presentBookDetail(for: book) }
                     )
                 }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel(Strings.Generic.myBooksListLabel)
-                .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: model.books.count))
-                .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
                 .accessibilityIdentifier(AccessibilityID.MyBooks.gridView)
-                .accessibilityFocused($accessibilityFocus, equals: .list)
                 .scrollIndicators(.visible)
                 .refreshable { model.reloadData() }
+                .animation(.easeInOut(duration: 0.3), value: model.books.count)
                 .scrollDismissesKeyboard(.interactively)
                 .simultaneousGesture(DragGesture().onChanged { _ in
                     if model.showSearchSheet {
@@ -206,6 +194,8 @@ struct MyBooksView: View {
     private var leadingBarButton: some View {
         Button(action: { model.selectNewLibrary.toggle() }, label: {
             ImageProviders.MyBooksView.myLibraryIcon
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         })
         .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
         .accessibilityLabel(Strings.Generic.switchLibrary)
@@ -215,6 +205,8 @@ struct MyBooksView: View {
     private var trailingBarButton: some View {
         Button(action: { withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { model.showSearchSheet.toggle() } }, label: {
             ImageProviders.MyBooksView.search
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         })
         .accessibilityIdentifier(AccessibilityID.MyBooks.searchButton)
         .accessibilityLabel(Strings.Generic.searchBooks)
@@ -238,7 +230,7 @@ struct MyBooksView: View {
     }
 
     private func existingLibraryButtons() -> [ActionSheet.Button] {
-        TPPSettings.shared.settingsAccountsList.map { account in
+        settings.settingsAccountsList.map { account in
             .default(Text(account.name)) {
                 model.loadAccount(account)
                 model.showLibraryAccountView = false

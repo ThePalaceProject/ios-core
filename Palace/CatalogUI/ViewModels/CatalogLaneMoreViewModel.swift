@@ -34,7 +34,9 @@ class CatalogLaneMoreViewModel: ObservableObject {
   let url: URL
   private let filterService = CatalogFilterService.self
   private let api: DefaultCatalogAPI
-  
+  private let bookRegistry: TPPBookRegistry
+  private let bookCellModelCache: BookCellModelCache
+
   private var cancellables = Set<AnyCancellable>()
   
   /// Original catalog books (before registry updates) - used to restore state after returns
@@ -59,9 +61,17 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   // MARK: - Initialization
   
-  init(title: String, url: URL, api: DefaultCatalogAPI? = nil) {
+  init(
+    title: String,
+    url: URL,
+    api: DefaultCatalogAPI? = nil,
+    bookRegistry: TPPBookRegistry = .shared,
+    bookCellModelCache: BookCellModelCache = .shared
+  ) {
     self.title = title
     self.url = url
+    self.bookRegistry = bookRegistry
+    self.bookCellModelCache = bookCellModelCache
     self.api = api ?? DefaultCatalogAPI(
       client: URLSessionNetworkClient(),
       parser: OPDSParser()
@@ -129,19 +139,30 @@ class CatalogLaneMoreViewModel: ObservableObject {
         facetGroups.removeAll()
         nextPageURL = nil
         
-        let feedObjc = feed.opdsFeed
-        extractNextPageURL(from: feedObjc)
-        
-        if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-          switch feedObjc.type {
-          case .acquisitionGrouped:
-            processGroupedFeed(entries: entries, feedObjc: feedObjc)
-          case .acquisitionUngrouped:
-            processUngroupedFeed(entries: entries, feedObjc: feedObjc)
-          case .navigation, .invalid:
-            break
-          @unknown default:
-            break
+        // OPDS 2 path
+        if let opds2 = feed.opds2Feed {
+          nextPageURL = opds2.nextPageURL
+          if opds2.isGroupedFeed {
+            processOPDS2GroupedFeed(opds2)
+          } else if opds2.isPublicationFeed {
+            processOPDS2PublicationFeed(opds2)
+          }
+        } else {
+          // OPDS 1 path
+          let feedObjc = feed.opdsFeed
+          extractNextPageURL(from: feedObjc)
+
+          if let entries = feedObjc.entries as? [TPPOPDSEntry] {
+            switch feedObjc.type {
+            case .acquisitionGrouped:
+              processGroupedFeed(entries: entries, feedObjc: feedObjc)
+            case .acquisitionUngrouped:
+              processUngroupedFeed(entries: entries, feedObjc: feedObjc)
+            case .navigation, .invalid:
+              break
+            @unknown default:
+              break
+            }
           }
         }
         
@@ -195,6 +216,33 @@ class CatalogLaneMoreViewModel: ObservableObject {
     )
   }
   
+  // MARK: - OPDS 2 Processing
+
+  private func processOPDS2GroupedFeed(_ feed: OPDS2Feed) {
+    guard let groups = feed.groups else { return }
+    var newLanes: [CatalogLaneModel] = []
+    for group in groups {
+      let books = (group.publications ?? []).compactMap { $0.toBook() }
+      guard !books.isEmpty else { continue }
+      newLanes.append(CatalogLaneModel(
+        title: group.title,
+        books: books,
+        moreURL: group.moreURL,
+        isLoading: books.count < 3
+      ))
+    }
+    lanes = newLanes
+    storeOriginalCatalogBooks(newLanes.flatMap { $0.books })
+    facetGroups = CatalogViewModel.extractOPDS2Facets(from: feed).0
+  }
+
+  private func processOPDS2PublicationFeed(_ feed: OPDS2Feed) {
+    let books = (feed.publications ?? []).compactMap { $0.toBook() }
+    ungroupedBooks = books
+    storeOriginalCatalogBooks(books)
+    facetGroups = CatalogViewModel.extractOPDS2Facets(from: feed).0
+  }
+
   // MARK: - Pagination
   
   private func extractNextPageURL(from feed: TPPOPDSFeed) {
@@ -215,12 +263,19 @@ class CatalogLaneMoreViewModel: ObservableObject {
     
     do {
       if let feed = try await api.fetchFeed(at: nextURL) {
-        let feedObjc = feed.opdsFeed
-        extractNextPageURL(from: feedObjc)
-        
-        if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-          let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+        if let opds2 = feed.opds2Feed {
+          nextPageURL = opds2.nextPageURL
+          let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
+          let newBooks = pubs.compactMap { $0.toBook() }
           ungroupedBooks.append(contentsOf: newBooks)
+        } else {
+          let feedObjc = feed.opdsFeed
+          extractNextPageURL(from: feedObjc)
+
+          if let entries = feedObjc.entries as? [TPPOPDSEntry] {
+            let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+            ungroupedBooks.append(contentsOf: newBooks)
+          }
         }
       }
     } catch {
@@ -251,7 +306,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
           let book = books[bIdx]
           if let changedIdentifier, book.identifier != changedIdentifier { continue }
           
-          if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+          if let registryBook = bookRegistry.book(forIdentifier: book.identifier) {
             // Book is in registry - use registry version
             books[bIdx] = registryBook
             changed = true
@@ -262,7 +317,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
               books[bIdx] = originalBook
             }
             // Invalidate cached model so it gets recreated with fresh state
-            BookCellModelCache.shared.invalidate(for: book.identifier)
+            bookCellModelCache.invalidate(for: book.identifier)
             changed = true
           }
         }
@@ -284,7 +339,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
         let book = books[idx]
         if let changedIdentifier, book.identifier != changedIdentifier { continue }
         
-        if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+        if let registryBook = bookRegistry.book(forIdentifier: book.identifier) {
           // Book is in registry - use registry version
           books[idx] = registryBook
           anyChanged = true
@@ -295,7 +350,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
             books[idx] = originalBook
           }
           // Invalidate cached model so it gets recreated with fresh state
-          BookCellModelCache.shared.invalidate(for: book.identifier)
+          bookCellModelCache.invalidate(for: book.identifier)
           anyChanged = true
         }
       }
@@ -344,12 +399,17 @@ class CatalogLaneMoreViewModel: ObservableObject {
       for filter in sortedFilters {
         if let filterURL = CatalogFilterService.findFilterInCurrentFacets(filter, in: currentFacetGroups) {
           if let feed = try await api.fetchFeed(at: filterURL) {
-            if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
-              ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
-            }
-            
-            if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
-              currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
+            if let opds2 = feed.opds2Feed {
+              let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
+              ungroupedBooks = pubs.compactMap { $0.toBook() }
+              currentFacetGroups = CatalogViewModel.extractOPDS2Facets(from: opds2).0
+            } else {
+              if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
+                ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+              }
+              if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
+                currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
+              }
             }
           }
         }

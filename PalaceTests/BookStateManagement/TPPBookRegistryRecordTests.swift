@@ -148,7 +148,6 @@ final class TPPBookRegistryRecordTests: XCTestCase {
 
         let restoredRecord = TPPBookRegistryRecord(record: registryData)
 
-        XCTAssertNotNil(restoredRecord)
         XCTAssertEqual(restoredRecord?.state, .downloadSuccessful)
     }
 

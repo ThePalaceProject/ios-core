@@ -124,14 +124,14 @@ extension UserAccountPublisher {
     /// Resets publisher state for testing
     func resetForTesting() {
         // Create mock account state
-        let mockAccount = TPPUserAccount.sharedAccount()
+        let mockAccount = AccountsManager.shared.currentUserAccount
         updateState(from: mockAccount)
     }
 
     /// Simulates sign in for testing
     func simulateSignIn(barcode: String, patronName: String?) {
         // Use actual account to trigger real state changes
-        TPPUserAccount.sharedAccount().setBarcode(barcode, PIN: "test")
+        AccountsManager.shared.currentUserAccount.setBarcode(barcode, PIN: "test")
     }
 
     /// Simulates sign out for testing

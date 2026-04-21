@@ -1,0 +1,17 @@
+replay:
+  name: book-transactions
+  bundle_id: org.thepalaceproject.palace
+  device_id: booted
+  recorded_at: '2026-04-08T15:43:33'
+  steps:
+  - action: tap
+    element_index: 56
+    element_label: My Books
+    x: 146.5
+    y: 786.0
+    expect_elements:
+    - Switch Library
+    - A1QA Test Library
+    - Search Books
+    - Sort
+    screenshot_threshold: 5.0

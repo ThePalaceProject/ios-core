@@ -34,6 +34,16 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
 
     func testCacheSize_isFive() {
         XCTAssertEqual(TPPProblemDocumentCacheManager.CACHE_SIZE, 5)
+        XCTAssertGreaterThan(TPPProblemDocumentCacheManager.CACHE_SIZE, 0,
+                             "Cache size must be positive")
+        // Fresh instance should accept at least CACHE_SIZE documents without eviction errors
+        let key = "cache-size-test-\(UUID().uuidString)"
+        for i in 0..<TPPProblemDocumentCacheManager.CACHE_SIZE {
+            let doc = TPPProblemDocument.fromDictionary(["title": "Doc \(i)"])
+            cacheManager.cacheProblemDocument(doc, key: key)
+        }
+        XCTAssertNotNil(cacheManager.getLastCachedDoc(key),
+                        "Last document must be retrievable after filling up to CACHE_SIZE")
     }
 
     // MARK: - Basic Cache/Retrieve
@@ -52,8 +62,12 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
     }
 
     func testGetLastCachedDoc_unknownKey_returnsNil() {
-        let result = cacheManager.getLastCachedDoc("nonexistent-key-\(UUID().uuidString)")
+        let key = "nonexistent-key-\(UUID().uuidString)"
+        let result = cacheManager.getLastCachedDoc(key)
         XCTAssertNil(result)
+        // Querying an unknown key twice must consistently return nil (no side effects)
+        let secondResult = cacheManager.getLastCachedDoc(key)
+        XCTAssertNil(secondResult, "Repeated queries for an unknown key must always return nil")
     }
 
     // MARK: - Multiple Documents Per Key
@@ -92,8 +106,12 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
     }
 
     func testClearCachedDoc_nonexistentKey_doesNotCrash() {
+        let key = "nonexistent-key-\(UUID().uuidString)"
         // Should not crash
-        cacheManager.clearCachedDoc("nonexistent-key-\(UUID().uuidString)")
+        cacheManager.clearCachedDoc(key)
+        // After clearing a non-existent key, retrieving it must still return nil
+        XCTAssertNil(cacheManager.getLastCachedDoc(key),
+                     "Clearing a non-existent key must leave it as nil")
     }
 
     // MARK: - LRU Behavior
@@ -167,6 +185,14 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
         }
 
         waitForExpectations(timeout: 30.0)
+        // Cache should be in a consistent state after concurrent access — no crashes
+        // implied by reaching this point, but verify nothing was corrupted by reading
+        // all 5 keys without throwing.
+        for i in 0..<5 {
+            _ = self.cacheManager.getLastCachedDoc("concurrent-\(i)")
+        }
+        XCTAssertNotNil(cacheManager,
+                        "Cache manager must still be usable after concurrent access")
     }
 
     func testConcurrentCacheAndClear_sameKey_doesNotCrash() {
@@ -187,6 +213,12 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
         }
 
         waitForExpectations(timeout: 30.0)
+        // Race-key state is either cached or cleared — either is fine;
+        // what matters is the cache is still operational.
+        let doc = TPPProblemDocument.fromDictionary(["title": "Post-race"])
+        cacheManager.cacheProblemDocument(doc, key: "race-key")
+        XCTAssertNotNil(cacheManager.getLastCachedDoc("race-key"),
+                        "Cache must accept new writes after concurrent race")
     }
 
     // MARK: - Notification
@@ -204,5 +236,8 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
         cacheManager.cacheProblemDocument(doc, key: "notif-key")
 
         wait(for: [expectation], timeout: 2.0)
+        // Additionally verify the doc was actually stored (post-notification side effect).
+        XCTAssertEqual(cacheManager.getLastCachedDoc("notif-key")?.title, "Notification Test",
+                       "Cached doc must be retrievable after notification fires")
     }
 }

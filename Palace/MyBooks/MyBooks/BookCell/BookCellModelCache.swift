@@ -70,9 +70,6 @@ final class BookCellModelCache: ObservableObject {
 
     // MARK: - Initialization
 
-    private var memoryWarningObserver: NSObjectProtocol?
-    private var accountChangeObserver: NSObjectProtocol?
-
     public init(
         configuration: Configuration = .default,
         imageCache: ImageCacheType = ImageCache.shared,
@@ -93,32 +90,23 @@ final class BookCellModelCache: ObservableObject {
 
     deinit {
         cleanupTask?.cancel()
-        if let observer = memoryWarningObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = accountChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
     }
 
     private func setupMemoryWarningObserver() {
-        memoryWarningObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.handleMemoryWarning()
-        }
+        NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleMemoryWarning()
+            }
+            .store(in: &cancellables)
     }
 
     private func setupAccountChangeObserver() {
-        accountChangeObserver = NotificationCenter.default.addObserver(
-            forName: NSNotification.Name.TPPCurrentAccountDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.handleAccountChange()
-        }
+        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+            .sink { [weak self] _ in
+                self?.handleAccountChange()
+            }
+            .store(in: &cancellables)
     }
 
     private func handleAccountChange() {

@@ -129,7 +129,7 @@ final class SettingsViewModel: ObservableObject {
     ///   - settings: Settings provider (defaults to `TPPSettings.shared`).
     ///   - accountsManager: Accounts manager (defaults to `AccountsManager.shared`).
     init(
-        settings: TPPSettingsProviding = TPPSettings.shared,
+        settings: TPPSettingsProviding = AppContainer.shared.settings,
         accountsManager: AccountsManager = AccountsManager.shared
     ) {
         self.settings = settings
@@ -166,7 +166,7 @@ final class SettingsViewModel: ObservableObject {
 
     /// Refreshes the accounts list from the accounts manager.
     func refreshAccountsList() {
-        settingsAccountsList = TPPSettings.shared.settingsAccountsList
+        settingsAccountsList = (settings as? TPPSettings)?.settingsAccountsList ?? []
     }
 
     /// Clears the custom feed URL, reverting to the default feed.

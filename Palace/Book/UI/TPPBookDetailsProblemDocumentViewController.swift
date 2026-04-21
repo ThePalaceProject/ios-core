@@ -44,8 +44,9 @@
         if UIDevice.current.userInterfaceIdiom == .pad,
            let win = UIApplication.shared.mainKeyWindow,
            win.traitCollection.horizontalSizeClass != .compact {
-            navBar = UIView.init()
-            navBar!.translatesAutoresizingMaskIntoConstraints = false
+            let navBarView = UIView.init()
+            navBarView.translatesAutoresizingMaskIntoConstraints = false
+            navBar = navBarView
 
             // Back Button
             let backButton = UIButton.init(type: .system)
@@ -56,7 +57,7 @@
             backButton.contentHorizontalAlignment = .left
             backButton.contentEdgeInsets = UIEdgeInsets.init(top: 0, left: 0, bottom: 0, right: 2)
             backButton.addTarget(self, action: #selector(backButtonWasPressed), for: .touchDown)
-            navBar!.addSubview(backButton)
+            navBarView.addSubview(backButton)
 
             // Close Button
             let closeButton = UIButton.init(type: .system)
@@ -67,23 +68,23 @@
             closeButton.contentHorizontalAlignment = .right
             closeButton.contentEdgeInsets = UIEdgeInsets.init(top: 0, left: 2, bottom: 0, right: 0)
             closeButton.addTarget(self, action: #selector(closeButtonWasPressed), for: .touchDown)
-            navBar!.addSubview(closeButton)
+            navBarView.addSubview(closeButton)
 
-            scrollView.addSubview(navBar!)
+            scrollView.addSubview(navBarView)
 
             // Layout navbar
             let buttonHeight = max(backButton.intrinsicContentSize.height, closeButton.intrinsicContentSize.height)
-            navBar!.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: elementSpacing).isActive = true
-            navBar!.leadingAnchor.constraint(equalTo: margins.leadingAnchor).isActive = true
-            navBar!.trailingAnchor.constraint(equalTo: margins.trailingAnchor).isActive = true
-            navBar!.widthAnchor.constraint(greaterThanOrEqualToConstant: backButton.intrinsicContentSize.width + closeButton.intrinsicContentSize.width).isActive = true
-            navBar!.heightAnchor.constraint(equalToConstant: buttonHeight).isActive = true
+            navBarView.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: elementSpacing).isActive = true
+            navBarView.leadingAnchor.constraint(equalTo: margins.leadingAnchor).isActive = true
+            navBarView.trailingAnchor.constraint(equalTo: margins.trailingAnchor).isActive = true
+            navBarView.widthAnchor.constraint(greaterThanOrEqualToConstant: backButton.intrinsicContentSize.width + closeButton.intrinsicContentSize.width).isActive = true
+            navBarView.heightAnchor.constraint(equalToConstant: buttonHeight).isActive = true
 
-            backButton.leadingAnchor.constraint(equalTo: navBar!.leadingAnchor).isActive = true
-            backButton.topAnchor.constraint(equalTo: navBar!.topAnchor).isActive = true
+            backButton.leadingAnchor.constraint(equalTo: navBarView.leadingAnchor).isActive = true
+            backButton.topAnchor.constraint(equalTo: navBarView.topAnchor).isActive = true
 
-            closeButton.trailingAnchor.constraint(equalTo: navBar!.trailingAnchor).isActive = true
-            closeButton.topAnchor.constraint(equalTo: navBar!.topAnchor).isActive = true
+            closeButton.trailingAnchor.constraint(equalTo: navBarView.trailingAnchor).isActive = true
+            closeButton.topAnchor.constraint(equalTo: navBarView.topAnchor).isActive = true
         }
 
         // Info Label
@@ -105,8 +106,8 @@
         scrollView.addSubview(submitButton)
 
         // Layout
-        if navBar != nil {
-            label.topAnchor.constraint(equalTo: navBar!.bottomAnchor, constant: elementSpacing).isActive = true
+        if let navBar = navBar {
+            label.topAnchor.constraint(equalTo: navBar.bottomAnchor, constant: elementSpacing).isActive = true
         } else {
             label.topAnchor.constraint(equalTo: scrollView.topAnchor).isActive = true
         }
@@ -146,7 +147,7 @@
         let boldFont = UIFont.boldPalaceFont(ofSize: 12)
         let type = problemDocument.type ?? "n/a"
         let title = problemDocument.title ?? "n/a"
-        let status = problemDocument.status == nil ? "n/a" : "\(problemDocument.status!)"
+        let status = problemDocument.status.map { "\($0)" } ?? "n/a"
         let detail = problemDocument.detail ?? "n/a"
         let instance = problemDocument.instance ?? "n/a"
         let result = NSMutableAttributedString.init()
@@ -178,7 +179,7 @@
         alert.addAction(UIAlertAction.init(title: "Cancel", style: .cancel, handler: nil))
         alert.addAction(UIAlertAction.init(title: "Send email", style: .default, handler: { (_) in
             let labelText = self.label?.attributedText?.string ?? ""
-            let patronID = TPPUserAccount.sharedAccount().authorizationIdentifier ?? "n/a"
+            let patronID = AccountsManager.shared.currentUserAccount.authorizationIdentifier ?? "n/a"
             let body = """
         \(labelText)\n\
         DeviceModel:\n\(UIDevice.current.model)\n\n

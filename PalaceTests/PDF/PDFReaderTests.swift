@@ -30,6 +30,11 @@ final class PDFReaderTests: XCTestCase {
         let page = TPPPDFPage(pageNumber: 5)
 
         XCTAssertEqual(page.pageNumber, 5)
+        // Verify round-trip via JSON to prove the stored value is the canonical one
+        let data = try? JSONEncoder().encode(page)
+        XCTAssertNotNil(data, "TPPPDFPage should be encodable")
+        let json = data.flatMap { String(data: $0, encoding: .utf8) }
+        XCTAssertTrue(json?.contains("5") ?? false, "Encoded JSON should contain the page number")
     }
 
     func testPDFPage_Encoding() throws {
@@ -85,6 +90,8 @@ final class PDFReaderTests: XCTestCase {
         let bookmark = TPPPDFPageBookmark(page: 1)
 
         XCTAssertTrue(bookmark is Bookmark)
+        XCTAssertEqual(bookmark.page, 1, "Page number must be preserved during Bookmark conformance init")
+        XCTAssertEqual(bookmark.type, "LocatorPage", "Bookmark type must be LocatorPage")
     }
 
     func testPDFPageBookmark_Encoding() throws {
@@ -125,6 +132,8 @@ final class PDFReaderTests: XCTestCase {
         let book = createPDFBook()
 
         XCTAssertEqual(book.defaultBookContentType, .pdf)
+        XCTAssertNotEqual(book.defaultBookContentType, .epub, "PDF book must not report epub content type")
+        XCTAssertFalse(book.isAudiobook, "PDF book must not be identified as audiobook")
     }
 
     func testLCPPDFBook_ContentType() {
@@ -136,5 +145,11 @@ final class PDFReaderTests: XCTestCase {
             contentType == .pdf || contentType == .unsupported,
             "LCP PDF should be .pdf or .unsupported depending on acquisition configuration"
         )
+        // The book should still have a valid identifier and title regardless of DRM type
+        XCTAssertFalse(book.identifier.isEmpty, "LCP PDF book should have a non-empty identifier")
+        XCTAssertFalse(book.title.isEmpty, "LCP PDF book should have a non-empty title")
+        // Verify the book is distinct from a plain PDF book
+        let plainPDF = createPDFBook()
+        XCTAssertNotEqual(book.identifier, plainPDF.identifier, "LCP PDF and plain PDF should be different book instances")
     }
 }

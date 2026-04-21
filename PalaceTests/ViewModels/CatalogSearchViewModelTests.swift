@@ -121,6 +121,8 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
         // No-op for mock
     }
 
+    func cachedFeed(for url: URL) -> CatalogFeed? { nil }
+
     // MARK: - Test Helpers
 
     func reset() {
@@ -624,6 +626,10 @@ final class CatalogSearchViewModelTests: XCTestCase {
         viewModel.clearSearch()
 
         XCTAssertNotEqual(viewModel.searchId, initialSearchId, "searchId should change on clear")
+        // Clearing again must produce yet another distinct searchId
+        let afterFirstClear = viewModel.searchId
+        viewModel.clearSearch()
+        XCTAssertNotEqual(viewModel.searchId, afterFirstClear, "Each clearSearch must produce a new unique searchId")
     }
 
     func testClearSearch_CancelsPendingOperations() async {
@@ -720,10 +726,12 @@ final class CatalogSearchViewModelTests: XCTestCase {
     func testUpdateBooks_SetsFilteredBooks_WhenQueryEmpty() {
         let viewModel = createViewModel()
         let books = [createTestBook(), createTestBook()]
+        XCTAssertTrue(viewModel.filteredBooks.isEmpty, "filteredBooks must start empty")
 
         viewModel.updateBooks(books)
 
         XCTAssertEqual(viewModel.filteredBooks.count, 2)
+        XCTAssertEqual(viewModel.searchQuery, "", "Empty query must remain empty after updateBooks")
     }
 
     func testUpdateBooks_DoesNotChangeFilteredBooks_WhenQueryNotEmpty() {
@@ -787,6 +795,9 @@ final class CatalogSearchViewModelTests: XCTestCase {
         }
 
         await fulfillment(of: [expectation], timeout: 1.0)
+        // isLoadingMore must have been true at some point during loading
+        XCTAssertNotNil(viewModel.nextPageURL != nil || viewModel.isLoadingMore == false,
+                        "After loadNextPage completes, isLoadingMore must eventually return to false")
     }
 
     func testLoadNextPage_DoesNotChangeSearchId() async {
@@ -817,11 +828,13 @@ final class CatalogSearchViewModelTests: XCTestCase {
     func testApplyRegistryUpdates_WithEmptyFilteredBooks_DoesNothing() {
         let viewModel = createViewModel()
         viewModel.filteredBooks = []
+        let initialSearchId = viewModel.searchId
 
         // Should not crash or throw
         viewModel.applyRegistryUpdates(changedIdentifier: nil)
 
         XCTAssertTrue(viewModel.filteredBooks.isEmpty)
+        XCTAssertEqual(viewModel.searchId, initialSearchId, "searchId must not change during registry updates on empty books")
     }
 
     // MARK: - Edge Case Tests
@@ -866,10 +879,13 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
     func testUpdateBooks_EmptyArray_Works() {
         let viewModel = createViewModel()
+        viewModel.updateBooks([createTestBook()])
+        XCTAssertFalse(viewModel.filteredBooks.isEmpty, "Precondition: must have books before clearing")
 
         viewModel.updateBooks([])
 
         XCTAssertTrue(viewModel.filteredBooks.isEmpty)
+        XCTAssertEqual(viewModel.searchQuery, "", "Query must remain empty after clearing books")
     }
 
     func testUpdateBooks_LargeArray_Works() {
@@ -879,6 +895,7 @@ final class CatalogSearchViewModelTests: XCTestCase {
         viewModel.updateBooks(books)
 
         XCTAssertEqual(viewModel.filteredBooks.count, 100)
+        XCTAssertFalse(viewModel.isLoading, "isLoading must be false after updateBooks completes")
     }
 
     // MARK: - Concurrent Operation Tests

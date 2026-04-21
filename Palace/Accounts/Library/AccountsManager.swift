@@ -9,20 +9,35 @@ struct CatalogCacheMetadata: Codable {
     let timestamp: Date
     let hash: String
 
-    /// Cache is stale after 5 minutes (should refresh in background)
-    private static let staleTTL: TimeInterval = 300
+    /// Default stale TTL: 6 hours (half the server's typical Cache-Control
+    /// max-age of 12hr). Overridden dynamically by `staleTTL(serverMaxAge:)`.
+    private static let defaultStaleTTL: TimeInterval = 21600
 
     /// Cache expires after 24 hours (must not be used)
     private static let maxAge: TimeInterval = 86400
 
-    /// Returns true if cache is stale (older than 5 minutes)
-    /// Stale data can still be used, but should trigger background refresh
+    /// Returns the stale TTL, dynamically adjusted from the server's
+    /// Cache-Control max-age if available. Uses half the server's value
+    /// with a floor of 5 minutes and a ceiling of 12 hours.
+    static func staleTTL(serverMaxAge: TimeInterval?) -> TimeInterval {
+        guard let serverMax = serverMaxAge, serverMax > 0 else {
+            return defaultStaleTTL
+        }
+        let half = serverMax / 2
+        return min(max(half, 300), 43200) // clamp to [5min, 12hr]
+    }
+
+    /// Returns true if cache is stale given the server's max-age hint.
+    func isStale(serverMaxAge: TimeInterval?) -> Bool {
+        Date().timeIntervalSince(timestamp) > Self.staleTTL(serverMaxAge: serverMaxAge)
+    }
+
+    /// Returns true if cache is stale using the default TTL (no server hint).
     var isStale: Bool {
-        Date().timeIntervalSince(timestamp) > Self.staleTTL
+        isStale(serverMaxAge: nil)
     }
 
     /// Returns true if cache is expired (older than 24 hours)
-    /// Expired data should not be used at all
     var isExpired: Bool {
         Date().timeIntervalSince(timestamp) > Self.maxAge
     }
@@ -32,14 +47,23 @@ struct CatalogCacheMetadata: Codable {
     var currentAccount: Account? { get }
 }
 
-@objc protocol TPPLibraryAccountsProvider: TPPCurrentLibraryAccountProvider {
+/// Resolves per-library `TPPUserAccount` instances. Prefer this over
+/// `TPPUserAccount.sharedAccount(libraryUUID:)` — instances returned by
+/// this protocol have immutable keychain keys and are not subject to the
+/// TOCTOU race in the singleton's mutable `libraryUUID` pattern.
+@objc protocol TPPUserAccountResolving: NSObjectProtocol {
+    func userAccount(for libraryUUID: String) -> TPPUserAccount
+    var currentUserAccount: TPPUserAccount { get }
+}
+
+@objc protocol TPPLibraryAccountsProvider: TPPCurrentLibraryAccountProvider, TPPUserAccountResolving {
     var tppAccountUUID: String { get }
     var currentAccountId: String? { get }
     func account(_ uuid: String) -> Account?
 }
 
 /// Manages library accounts asynchronously with authentication & image loading
-@objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider {
+@objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider, TPPUserAccountResolving {
 
     static let shared = AccountsManager()
     static func sharedInstance() -> AccountsManager { shared }
@@ -58,21 +82,31 @@ struct CatalogCacheMetadata: Codable {
 
     let tppAccountUUID = AccountsManager.TPPAccountUUIDs[0]
 
+    /// True during an account switch — suppresses sign-in modal presentation
+    /// to prevent the intermittent login prompt (F-032).
+    private(set) var isAccountSwitching = false
+
     let ageCheck: TPPAgeCheckVerifying
+    private let settings: TPPSettings
+    private let networkExecutor: TPPNetworkExecutor
     private var accountSet: String
     private var accountSets = [String: [Account]]()
     private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
+
+    private let catalogPreloader = CatalogPreloader()
 
     // Per‐catalog in‐flight tracking:
     private var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
     private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
 
     private override init() {
+        self.settings = .shared
+        self.networkExecutor = .shared
         self.accountSet = TPPConfiguration.customUrlHash()
-            ?? (TPPSettings.shared.useBetaLibraries
+            ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrlHash
                     : TPPConfiguration.prodUrlHash)
-        self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: TPPSettings.shared)
+        self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: settings)
         super.init()
         NotificationCenter.default.addObserver(
             self,
@@ -115,12 +149,21 @@ struct CatalogCacheMetadata: Codable {
 
             if previousAccountId != newAccountId, previousAccountId != nil {
                 Log.info(#file, "🔄 Account switch detected - cleaning up active content")
+                isAccountSwitching = true
                 cleanupActiveContentBeforeAccountSwitch(from: previousAccountId, to: newAccountId)
+                // Evict decoded cover images — the new library has different covers.
+                // Keeps compressed JPEG cache on disk for fast re-decode if user switches back.
+                ImageCache.shared.evictDecodedImages()
             }
 
             self.currentAccount?.hasUpdatedToken = false
             currentAccountId = newValue?.uuid
-            TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
+            TPPErrorLogger.setUserID(self.currentUserAccount.barcode)
+            // isAccountSwitching is reset asynchronously by cleanupActiveContentBeforeAccountSwitch
+            // after navigation cleanup completes — NOT here, to avoid premature reset (F-032).
+            if previousAccountId == newAccountId || previousAccountId == nil {
+                isAccountSwitching = false
+            }
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         }
     }
@@ -128,9 +171,10 @@ struct CatalogCacheMetadata: Codable {
     /// Cleans up active audiobook playback, in-flight network requests, and other
     /// content before switching accounts to prevent cross-account credential leaks.
     private func cleanupActiveContentBeforeAccountSwitch(from previousId: String?, to newId: String?) {
-        TPPNetworkExecutor.shared.cancelNonEssentialTasks()
+        networkExecutor.cancelNonEssentialTasks()
+        MyBooksDownloadCenter.clearAllBorrowReauthState()
 
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
             if let coordinator = NavigationCoordinatorHub.shared.coordinator {
                 let pathCount = coordinator.path.count
                 Log.debug(#file, "  Navigation path has \(pathCount) items")
@@ -142,6 +186,8 @@ struct CatalogCacheMetadata: Codable {
                     try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
                 }
             }
+            // Reset flag AFTER async cleanup completes — not in the setter (F-032)
+            self?.isAccountSwitching = false
         }
     }
 
@@ -172,6 +218,69 @@ struct CatalogCacheMetadata: Codable {
         return performRead {
             !(self.accountSets[self.accountSet]?.isEmpty ?? true)
         }
+    }
+
+    // MARK: - Per-Account User Credentials
+
+    /// Cache of per-library `TPPUserAccount` instances. Each instance has
+    /// immutable keychain keys, eliminating the TOCTOU race that the
+    /// singleton's mutable `libraryUUID` pattern was subject to.
+    private var userAccounts = [String: TPPUserAccount]()
+    private let userAccountsLock = NSLock()
+
+    /// Last account returned from `currentUserAccount`. Used to ride out the
+    /// brief windows where `currentAccountId` is nil during an account switch
+    /// — without this, consumers observe a transiently-unauthenticated state
+    /// on an account that IS signed in, and fire spurious sign-in modals.
+    private var lastKnownCurrentUserAccount: TPPUserAccount?
+
+    /// Sentinel UUID for the "no account selected" placeholder. Not a real
+    /// library UUID — keychain reads for this instance return nil, so
+    /// hasCredentials() deterministically returns false.
+    private static let noAccountSentinelUUID = "__no_account_selected__"
+
+    /// Placeholder returned by `currentUserAccount` only on a truly fresh
+    /// install before any account has ever been selected. Lazily created so
+    /// app launch doesn't pay for a keychain-probed instance.
+    private lazy var noAccountPlaceholder: TPPUserAccount = TPPUserAccount(
+        libraryUUID: AccountsManager.noAccountSentinelUUID
+    )
+
+    /// Returns a library-scoped `TPPUserAccount` instance. Creates and
+    /// caches a new one on first access for a given UUID.
+    func userAccount(for libraryUUID: String) -> TPPUserAccount {
+        userAccountsLock.lock()
+        defer { userAccountsLock.unlock() }
+        if let existing = userAccounts[libraryUUID] {
+            return existing
+        }
+        let account = TPPUserAccount(libraryUUID: libraryUUID)
+        userAccounts[libraryUUID] = account
+        return account
+    }
+
+    /// Convenience for the current library's user account.
+    ///
+    /// Thread-safety note: `currentAccountId` can transiently be nil during an
+    /// account switch (the old id is cleared before the new id is assigned).
+    /// If we blindly fell back to a fresh/empty instance in that window,
+    /// consumers like MyBooksDownloadCenter would observe `hasCredentials ==
+    /// false` on an account that IS signed in and fire a spurious login modal.
+    /// We cache the last-resolved account and return it during the nil window
+    /// instead. The placeholder path only fires on a true fresh-install state
+    /// where no account has ever been selected.
+    var currentUserAccount: TPPUserAccount {
+        if let id = currentAccountId {
+            let account = userAccount(for: id)
+            userAccountsLock.lock()
+            lastKnownCurrentUserAccount = account
+            userAccountsLock.unlock()
+            return account
+        }
+        userAccountsLock.lock()
+        let last = lastKnownCurrentUserAccount
+        userAccountsLock.unlock()
+        return last ?? noAccountPlaceholder
     }
 
     // MARK: – Load logic
@@ -218,7 +327,7 @@ struct CatalogCacheMetadata: Codable {
     /// 3. If no cache or expired, fetch from network
     func loadCatalogs(completion: ((Bool) -> Void)?) {
         let targetUrl = TPPConfiguration.customUrl()
-            ?? (TPPSettings.shared.useBetaLibraries
+            ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrl
                     : TPPConfiguration.prodUrl)
         let hash = targetUrl.absoluteString
@@ -239,7 +348,7 @@ struct CatalogCacheMetadata: Codable {
         // 2. Try disk cache first (stale-while-revalidate)
         if hasCachedCatalogData(hash: hash),
            let cachedData = readCachedAccountsCatalogData(hash: hash) {
-            Log.info(#file, "Loading catalogs from cache (stale-while-revalidate)")
+            Log.info(#file, "Loading catalogs from cache (stale-while-revalidate), hash=\(hash), dataSize=\(cachedData.count)")
 
             // dedupe concurrent loads for initial cache load
             if addLoadingHandler(for: hash, completion) { return }
@@ -263,9 +372,73 @@ struct CatalogCacheMetadata: Codable {
         fetchFromNetwork(targetUrl: targetUrl, hash: hash)
     }
 
-    /// Fetches catalog data from network (used for initial load when no cache)
+    /// Fetches catalog data using the first-page fast path:
+    /// 1. Fetch first page (~35KB, ~260ms) → display immediately
+    /// 2. Paginate remaining pages in background → update cache when done
+    /// Falls back to a direct GET if even the first page fails.
     private func fetchFromNetwork(targetUrl: URL, hash: String) {
-        TPPNetworkExecutor.shared.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+        Task(priority: .userInitiated) { [weak self] in
+            guard let self = self else { return }
+            Log.debug(#file, "Fetching catalogs via first-page fast path for hash \(hash)")
+
+            let crawler = LibraryRegistryCrawler(fetcher: URLSessionCrawlerFetcher(), hash: hash)
+
+            // Step 1: Fetch first page for immediate display
+            let firstPageResult = await crawler.crawlFirstPage(baseURL: targetUrl)
+
+            switch firstPageResult {
+            case .success(let firstPageData, let firstPage):
+                // Display first page immediately
+                self.cacheAccountsCatalogData(firstPageData, hash: hash)
+                self.loadAccountSetsAndAuthDoc(fromCatalogData: firstPageData, key: hash) { success in
+                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                    self.callAndClearLoadingHandlers(for: hash, success)
+                }
+
+                // Step 2: Paginate remaining pages in background
+                // Use the parsed firstPage (not re-parsed data) to check nextPageURL,
+                // because serializeAsCatalogsFeed drops pagination links.
+                guard firstPage.nextPageURL != nil else {
+                    Log.info(#file, "Single-page registry response (\(firstPage.catalogs.count) libraries) — no pagination needed")
+                    self.triggerCatalogPreload()
+                    break
+                }
+
+                Log.info(#file, "Registry has more pages (first page: \(firstPage.catalogs.count) of \(firstPage.metadata.numberOfItems ?? -1)) — paginating in background")
+                Task(priority: .utility) { [weak self] in
+                    guard let self = self else { return }
+
+                    let remainingResult = await crawler.crawlRemainingPages(
+                        firstPage: firstPage,
+                        baseURL: targetUrl,
+                        existingPublications: firstPage.catalogs,
+                        feedMetadata: firstPage.metadata
+                    )
+
+                    if case .success(let fullData) = remainingResult {
+                        let fullCount = (try? OPDS2CatalogsFeed.fromData(fullData))?.catalogs.count ?? -1
+                        Log.info(#file, "Background pagination complete: \(fullCount) total libraries cached")
+                        self.cacheAccountsCatalogData(fullData, hash: hash)
+                        self.loadAccountSetsAndAuthDoc(fromCatalogData: fullData, key: hash) { _ in
+                            NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                        }
+                    }
+                    self.triggerCatalogPreload()
+                }
+
+            case .noChanges:
+                self.callAndClearLoadingHandlers(for: hash, true)
+
+            case .failure(let error):
+                Log.info(#file, "First page crawl failed: \(error), falling back to direct GET to \(targetUrl)")
+                self.fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
+            }
+        }
+    }
+
+    /// Fallback direct GET when crawler fails on first launch.
+    private func fallbackFetchFromNetwork(targetUrl: URL, hash: String) {
+        networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
             guard let self = self else { return }
             switch result {
             case .success(let data, _):
@@ -274,10 +447,8 @@ struct CatalogCacheMetadata: Codable {
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     self.callAndClearLoadingHandlers(for: hash, success)
                 }
-
             case .failure(let error, _):
                 Log.error(#file, "Failed to load catalogs from network: \(error.localizedDescription)")
-                // fallback to disk (even expired data is better than nothing for network failure)
                 if let data = self.readCachedAccountsCatalogData(hash: hash) {
                     Log.info(#file, "Using cached catalog data as fallback after network failure")
                     self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
@@ -292,28 +463,82 @@ struct CatalogCacheMetadata: Codable {
         }
     }
 
-    /// Refreshes catalog data in background without blocking the UI
+    /// Refreshes catalog data in background using the incremental crawler.
+    /// Falls back to a direct GET if the crawlable endpoint fails.
     private func refreshInBackground(targetUrl: URL, hash: String) {
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            Log.debug(#file, "Starting background refresh for catalog hash \(hash)")
+        Task(priority: .utility) { [weak self] in
+            guard let self = self else { return }
+            Log.debug(#file, "Starting background refresh (crawl) for catalog hash \(hash)")
 
-            TPPNetworkExecutor.shared.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
-                guard let self = self else { return }
-
-                switch result {
-                case .success(let data, _):
-                    Log.info(#file, "Background refresh successful for hash \(hash)")
-                    self.cacheAccountsCatalogData(data, hash: hash)
-                    self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { _ in
-                        // Notify UI that fresh data is available
-                        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
-                    }
-
-                case .failure(let error, _):
-                    Log.debug(#file, "Background refresh failed for hash \(hash): \(error.localizedDescription). Using cached data.")
-                // Silent failure - we already have cached data displayed
-                }
+            // Parse existing cached publications for merge
+            let existingPubs: [OPDS2Publication]
+            let existingMetadata: OPDS2CatalogsFeed.Metadata?
+            if let cachedData = self.readCachedAccountsCatalogData(hash: hash),
+               let feed = try? OPDS2CatalogsFeed.fromData(cachedData) {
+                existingPubs = feed.catalogs
+                existingMetadata = feed.metadata
+            } else {
+                existingPubs = []
+                existingMetadata = nil
             }
+
+            let crawler = LibraryRegistryCrawler(fetcher: URLSessionCrawlerFetcher(), hash: hash)
+            let result = await crawler.crawl(
+                baseURL: targetUrl,
+                existingPublications: existingPubs,
+                feedMetadata: existingMetadata
+            )
+
+            switch result {
+            case .success(let data):
+                let pubCount = (try? OPDS2CatalogsFeed.fromData(data))?.catalogs.count ?? -1
+                Log.info(#file, "Background crawl successful for hash \(hash), \(pubCount) libraries in result, dataSize=\(data.count)")
+                self.cacheAccountsCatalogData(data, hash: hash)
+                self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { [weak self] _ in
+                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                    // Preload catalogs for active accounts
+                    self?.triggerCatalogPreload()
+                }
+
+            case .noChanges:
+                Log.debug(#file, "Background crawl found no changes for hash \(hash)")
+                // Still preload catalogs — they may not be cached yet
+                self.triggerCatalogPreload()
+
+            case .failure(let error):
+                Log.debug(#file, "Background crawl failed for hash \(hash): \(error.localizedDescription)")
+                // Fallback: try direct GET (old behavior)
+                self.fallbackDirectRefresh(targetUrl: targetUrl, hash: hash)
+            }
+        }
+    }
+
+    /// Fallback to direct GET when crawlable endpoint fails.
+    private func fallbackDirectRefresh(targetUrl: URL, hash: String) {
+        networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .success(let data, _):
+                Log.info(#file, "Fallback direct refresh successful for hash \(hash)")
+                self.cacheAccountsCatalogData(data, hash: hash)
+                self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { _ in
+                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                }
+            case .failure(let error, _):
+                Log.debug(#file, "Fallback direct refresh also failed for hash \(hash): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Triggers catalog feed preloading for active accounts.
+    private func triggerCatalogPreload() {
+        Task(priority: .utility) { [weak self] in
+            guard let self = self else { return }
+            await self.catalogPreloader.preloadCatalogs(
+                currentAccount: self.currentAccount,
+                recentAccountUUIDs: self.settings.settingsAccountIdsList,
+                accountProvider: { self.account($0) }
+            )
         }
     }
 
@@ -380,7 +605,22 @@ struct CatalogCacheMetadata: Codable {
             // No metadata means we should refresh
             return true
         }
-        return metadata.isStale
+        // Use server's Cache-Control max-age if available from crawl state
+        let serverMaxAge = readCrawlState(hash: hash)?.serverMaxAge
+        return metadata.isStale(serverMaxAge: serverMaxAge)
+    }
+
+    /// Reads crawl state for the given hash (used for dynamic TTL adjustment)
+    private func readCrawlState(hash: String) -> CrawlState? {
+        guard let appSupport = try? FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ) else { return nil }
+        let url = appSupport.appendingPathComponent("crawl_state_\(hash).json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(CrawlState.self, from: data)
     }
 
     // MARK: – Parsing & notifying
@@ -398,11 +638,17 @@ struct CatalogCacheMetadata: Codable {
 
             // Carry over authenticationDocument (and thus details) from old
             // accounts so a background refresh doesn't nil-out details while
-            // the user is actively using the app.
+            // the user is actively using the app. Also invalidate logo cache
+            // entries when the thumbnail URL has changed.
             for newAccount in newAccounts {
-                if let old = oldAccounts.first(where: { $0.uuid == newAccount.uuid }),
-                   let authDoc = old.authenticationDocument {
-                    newAccount.authenticationDocument = authDoc
+                if let old = oldAccounts.first(where: { $0.uuid == newAccount.uuid }) {
+                    if let authDoc = old.authenticationDocument {
+                        newAccount.authenticationDocument = authDoc
+                    }
+                    // Evict cached logo if the thumbnail URL changed
+                    if old.logoUrl != newAccount.logoUrl {
+                        ImageCache.shared.remove(for: newAccount.uuid)
+                    }
                 }
             }
 
@@ -418,11 +664,11 @@ struct CatalogCacheMetadata: Codable {
             if accountExistenceChanged || currentAccountMissingDetails, let current = self.currentAccount {
                 group.enter()
                 current.loadLogo()
-                current.loadAuthenticationDocument(using: TPPUserAccount.sharedAccount()) { _ in
+                current.loadAuthenticationDocument(using: self.currentUserAccount) { _ in
                     if current.details?.needsAgeCheck ?? false {
                         group.enter()
                         self.ageCheck.verifyCurrentAccountAgeRequirement(
-                            userAccountProvider: TPPUserAccount.sharedAccount(),
+                            userAccountProvider: self.currentUserAccount,
                             currentLibraryAccountProvider: self
                         ) { _ in group.leave() }
                     }
@@ -435,7 +681,15 @@ struct CatalogCacheMetadata: Codable {
                 if let cur = self.currentAccount, cur.details?.needsAgeCheck ?? false {
                     mainFeed = cur.details?.defaultAuth?.coppaURL(isOfAge: true)
                 }
-                TPPSettings.shared.accountMainFeedURL = mainFeed
+                // Don't overwrite a valid accountMainFeedURL with nil.
+                // On cache loads the current account may not have its catalogUrl
+                // populated yet (auth doc hasn't loaded), but the URL from the
+                // previous session is still valid in UserDefaults.
+                if let mainFeed {
+                    self.settings.accountMainFeedURL = mainFeed
+                } else if self.settings.accountMainFeedURL == nil {
+                    Log.warn(#file, "accountMainFeedURL is nil and no cached value — catalog will not load until auth doc completes")
+                }
                 UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
                 completion(true)
@@ -453,7 +707,7 @@ struct CatalogCacheMetadata: Codable {
 
     func updateAccountSet(completion: ((Bool) -> Void)?) {
         let newHash = TPPConfiguration.customUrlHash()
-            ?? (TPPSettings.shared.useBetaLibraries
+            ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrlHash
                     : TPPConfiguration.prodUrlHash)
 
@@ -465,21 +719,35 @@ struct CatalogCacheMetadata: Codable {
         }
     }
 
-    /// Clears all local catalog and authentication caches
+    /// Clears all local catalog, crawl state, and authentication caches
     func clearCache() {
         // network cache
-        TPPNetworkExecutor.shared.clearCache()
-        // file caches — files are named with a hash suffix (e.g. accounts_catalog_<hash>.json)
-        // so we enumerate the directory and delete by prefix match rather than exact name
-        let prefixes = ["library_list_", "accounts_catalog_", "authentication_document_"]
+        networkExecutor.clearCache()
+        // file caches — delete all files matching known prefixes
+        let prefixes = [
+            "library_list_",
+            "accounts_catalog_",
+            "accounts_catalog_metadata_",
+            "authentication_document_",
+            "crawl_state_",
+        ]
         let fm = FileManager.default
-        if let appSupport = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false),
-           let contents = try? fm.contentsOfDirectory(at: appSupport, includingPropertiesForKeys: nil) {
-            for fileUrl in contents {
-                let name = fileUrl.lastPathComponent
-                if prefixes.contains(where: { name.hasPrefix($0) }) {
-                    try? fm.removeItem(at: fileUrl)
-                }
+        guard let appSupport = try? fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ) else { return }
+
+        guard let files = try? fm.contentsOfDirectory(
+            at: appSupport,
+            includingPropertiesForKeys: nil
+        ) else { return }
+
+        for file in files {
+            let name = file.lastPathComponent
+            if prefixes.contains(where: { name.hasPrefix($0) }) {
+                try? fm.removeItem(at: file)
             }
         }
     }

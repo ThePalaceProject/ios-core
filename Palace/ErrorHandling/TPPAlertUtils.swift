@@ -27,7 +27,11 @@ import UIKit
      - Parameter error: An error. If the error contains a localizedDescription, that will be used for the alert message.
      - Returns: The alert controller to be presented.
      */
-    class func alert(title: String?, error: NSError?) -> UIAlertController {
+    class func alert(
+        title: String?,
+        error: NSError?,
+        activityTracker: ErrorActivityTracker = .shared
+    ) -> UIAlertController {
         // IMPORTANT: Log all errors that result in user-facing alerts
         // This ensures enhanced logging captures them
         if let error = error {
@@ -41,7 +45,7 @@ import UIKit
         // Track in the activity trail for error detail views
         Task {
             let msg = "Error alert: \(title ?? "Unknown") — \(error?.localizedDescription ?? "no error")"
-            await ErrorActivityTracker.shared.log(msg, category: .general)
+            await activityTracker.log(msg, category: .general)
         }
 
         var message = ""
@@ -114,8 +118,8 @@ import UIKit
      @return the alert
      */
     class func alert(title: String?, message: String?, style: UIAlertAction.Style) -> UIAlertController {
-        let alertTitle = (title?.count ?? 0) > 0 ? NSLocalizedString(title!, comment: "") : "Alert"
-        let alertMessage = (message?.count ?? 0) > 0 ? NSLocalizedString(message!, comment: "") : ""
+        let alertTitle = title.flatMap({ $0.isEmpty ? nil : NSLocalizedString($0, comment: "") }) ?? "Alert"
+        let alertMessage = message.flatMap({ $0.isEmpty ? nil : NSLocalizedString($0, comment: "") }) ?? ""
         let alertController = UIAlertController.init(
             title: alertTitle,
             message: alertMessage,

@@ -10,18 +10,13 @@
 #import "OverdriveProcessor/OverdriveProcessor.h"
 #endif
 
-#import "NSDate+NYPLDateAdditions.h"
-#import "TPPOPDSAcquisition.h"
-#import "TPPConfiguration.h"
-#import "TPPKeychain.h"
-#import "TPPLocalization.h"
-#import "TPPOPDS.h"
-#import "TPPXML.h"
-#import "UIFont+TPPSystemFontOverride.h"
-#import "UIView+TPPViewAdditions.h"
-#import "TPPEncryptedPDFDataProvider.h"
+// NYPLTenPrintCoverView.h transitively imports <CoreText/CoreText.h> and
+// <UIKit/UIKit.h>. Under Clang modules those become @import statements,
+// which fail in Objective-C++ (.mm) compilation contexts where C++ modules
+// are disabled. Swift compiles the bridging header in pure Objective-C
+// mode (where this is fine), so guarding on !__cplusplus skips it for the
+// ObjC++ consumers (e.g. AdobeDRMContainer.mm) without affecting Swift.
+#if !defined(__cplusplus)
 #import "NYPLTenPrintCoverView.h"
-#import "TPPOpenSearchDescription.h"
-#import "TPPJSON.h"
-#import "TPPOPDSFeed.h"
-#import "TPPObjCExceptionCatcher.h"
+#endif
+#import "../Utilities/TPPObjCExceptionCatcher.h"

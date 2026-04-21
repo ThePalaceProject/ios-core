@@ -547,30 +547,45 @@ final class RightsManagementDetectionTests: XCTestCase {
         let mimeType = "application/vnd.adobe.adept+xml"
         let rights = detectRightsManagement(from: mimeType)
         XCTAssertEqual(rights, .adobe)
+        // Adobe must be distinct from LCP and none
+        XCTAssertNotEqual(rights, .lcp, "Adobe ADEPT must not be misidentified as LCP")
+        XCTAssertNotEqual(rights, .none, "Adobe ADEPT must not be misidentified as no-DRM")
     }
 
     func testMimeType_lcpLicense_detectsLCPRights() {
         let mimeType = "application/vnd.readium.lcp.license.v1.0+json"
         let rights = detectRightsManagement(from: mimeType)
         XCTAssertEqual(rights, .lcp)
+        // LCP must be distinct from Adobe and bearer token
+        XCTAssertNotEqual(rights, .adobe, "LCP must not be misidentified as Adobe ADEPT")
+        XCTAssertNotEqual(rights, .simplifiedBearerTokenJSON, "LCP must not be misidentified as bearer token")
     }
 
     func testMimeType_epubZip_detectsNoRights() {
         let mimeType = "application/epub+zip"
         let rights = detectRightsManagement(from: mimeType)
         XCTAssertEqual(rights, .none)
+        // No-DRM epub must be distinct from DRM types
+        XCTAssertNotEqual(rights, .adobe, "Open EPUB must not be flagged as Adobe DRM")
+        XCTAssertNotEqual(rights, .lcp, "Open EPUB must not be flagged as LCP DRM")
     }
 
     func testMimeType_bearerToken_detectsBearerTokenRights() {
         let mimeType = "application/vnd.librarysimplified.bearer-token+json"
         let rights = detectRightsManagement(from: mimeType)
         XCTAssertEqual(rights, .simplifiedBearerTokenJSON)
+        // Bearer token is a specific rights management type — must not fall through to unknown
+        XCTAssertNotEqual(rights, .unknown, "Bearer token MIME must not be classified as unknown")
     }
 
     func testMimeType_unknown_detectsUnknown() {
         let mimeType = "application/unknown-type"
         let rights = detectRightsManagement(from: mimeType)
         XCTAssertEqual(rights, .unknown)
+        // Unknown must not be any of the known DRM types
+        XCTAssertNotEqual(rights, .adobe)
+        XCTAssertNotEqual(rights, .lcp)
+        XCTAssertNotEqual(rights, .none)
     }
 
     // Helper that mimics MyBooksDownloadCenter's logic
@@ -736,6 +751,9 @@ final class RedirectHandlingIntegrationTests: XCTestCase {
 
         // Then should block the insecure redirect
         XCTAssertTrue(shouldBlock, "HTTPS to HTTP redirect should be blocked for security")
+        // Verify the underlying scheme comparison that drives the decision
+        XCTAssertEqual(originalURL.scheme, "https", "Original must be HTTPS")
+        XCTAssertEqual(redirectURL.scheme, "http", "Redirect must be HTTP for this scenario")
     }
 
     func testRedirect_httpsToHttps_allowed() {
@@ -748,6 +766,9 @@ final class RedirectHandlingIntegrationTests: XCTestCase {
 
         // Then should allow the secure redirect
         XCTAssertFalse(shouldBlock, "HTTPS to HTTPS redirect should be allowed")
+        // Both URLs must be HTTPS for this test scenario
+        XCTAssertEqual(originalURL.scheme, redirectURL.scheme, "Both URLs must share the same scheme")
+        XCTAssertEqual(redirectURL.scheme, "https", "Redirect must be HTTPS")
     }
 
     func testRedirect_maxAttempts_enforced() async {
@@ -943,6 +964,10 @@ final class DiskBudgetTests: XCTestCase {
 
         // Then free space should be positive
         XCTAssertGreaterThan(freeSpace, 0, "System should have available disk space")
+        // The total size must also be positive and greater than or equal to free space
+        let totalSize = attributes?[.systemSize] as? Int64 ?? 0
+        XCTAssertGreaterThan(totalSize, 0, "Total disk size must be positive")
+        XCTAssertGreaterThanOrEqual(totalSize, freeSpace, "Total disk size must be at least as large as free space")
     }
 
     func testContentDirectory_createdOnAccess() {

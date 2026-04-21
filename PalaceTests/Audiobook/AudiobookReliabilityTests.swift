@@ -84,8 +84,10 @@ final class AudiobookSessionManagerTests: XCTestCase {
     func testBackgroundCompletionHandlerRegistration() {
         let sessionId = "test-session-\(UUID().uuidString)"
         let expectation = expectation(description: "Background completion handler called")
+        var handlerCallCount = 0
 
         AudiobookSessionManager.shared.registerBackgroundCompletionHandler({
+            handlerCallCount += 1
             expectation.fulfill()
         }, forSessionIdentifier: sessionId)
 
@@ -96,6 +98,7 @@ final class AudiobookSessionManagerTests: XCTestCase {
         }
 
         waitForExpectations(timeout: 3.0)
+        XCTAssertEqual(handlerCallCount, 1, "Background completion handler must be called exactly once")
     }
 }
 
@@ -122,8 +125,7 @@ final class DownloadWatchdogTests: XCTestCase {
         XCTAssertEqual(watchdog.configuration.checkInterval, 5.0)
     }
 
-    func testDefaultConfiguration() {
-        // Given/When
+    func testDefaultConfiguration() {        // Given/When
         let config = DownloadWatchdog.Configuration.default
 
         // Then
@@ -134,16 +136,21 @@ final class DownloadWatchdogTests: XCTestCase {
     }
 
     func testStartAndStop() {
-        // Given
-        let watchdog = DownloadWatchdog()
+        // Use a checkInterval far larger than the test lifetime so the
+        // periodic monitoring Task never actually fires its body before we
+        // tear down. The default 10s interval races the test scope exit
+        // and crashes when the AsyncStream Task and the deinit-triggered
+        // stop() collide on the internal barrier queue.
+        let config = DownloadWatchdog.Configuration(
+            stallTimeout: 3600,
+            maxRetries: 0,
+            retryDelay: 3600,
+            checkInterval: 3600
+        )
+        let watchdog = DownloadWatchdog(configuration: config)
 
-        // When
         watchdog.start()
-
-        // status uses queue.sync — drains the internal queue before reading
-        XCTAssertTrue(watchdog.status.isEmpty) // No downloads monitored yet
-
-        // Cleanup
+        XCTAssertTrue(watchdog.status.isEmpty)
         watchdog.stop()
     }
 }
@@ -316,10 +323,17 @@ final class AudiobookStorageLocationTests: XCTestCase {
 
         // When
         let appSupportURLs = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+        let appSupportURL = appSupportURLs.first
 
-        // Then
-        XCTAssertFalse(appSupportURLs.isEmpty)
-        XCTAssertTrue(appSupportURLs.first != nil)
+        // Then — directory must exist and be a directory (not a file)
+        XCTAssertFalse(appSupportURLs.isEmpty, "Application support directories list must not be empty")
+        XCTAssertNotNil(appSupportURL, "Must have at least one application support directory URL")
+        if let url = appSupportURL {
+            var isDir: ObjCBool = false
+            let exists = fileManager.fileExists(atPath: url.path, isDirectory: &isDir)
+            XCTAssertTrue(exists, "Application support directory must exist on disk")
+            XCTAssertTrue(isDir.boolValue, "Application support URL must point to a directory, not a file")
+        }
     }
 
     func testAudiobooksDirectoryPath() {
@@ -333,9 +347,14 @@ final class AudiobookStorageLocationTests: XCTestCase {
         // When
         let expectedPath = appSupport.appendingPathComponent("Audiobooks/Downloads", isDirectory: true)
 
-        // Then
-        XCTAssertTrue(expectedPath.path.contains("Library/Application Support"))
-        XCTAssertTrue(expectedPath.path.hasSuffix("Audiobooks/Downloads"))
+        // Then — verify path structure and that it is buildable (not a dead path reference)
+        XCTAssertTrue(expectedPath.path.contains("Library/Application Support"),
+                      "Audiobooks/Downloads path must reside in Library/Application Support")
+        XCTAssertTrue(expectedPath.path.hasSuffix("Audiobooks/Downloads"),
+                      "Path must end with Audiobooks/Downloads")
+        XCTAssertTrue(expectedPath.hasDirectoryPath,
+                      "URL must be marked as a directory path")
+        XCTAssertFalse(expectedPath.path.isEmpty, "Resulting path must not be empty")
     }
 
     func testOverdriveDirectoryPath() {

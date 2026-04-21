@@ -43,27 +43,20 @@ struct CatalogLaneRowView: View {
                         .padding(.vertical)
                     })
                     .buttonStyle(.plain)
-                    // PP-3968: replace the children with a single, predictable
-                    // VoiceOver announcement (Title, by Author, narrated by …)
-                    // and drop the "button" trait so the cell sounds like a
-                    // static list item — matches Audible/Libby UX.
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(book.voiceOverLabel)
-                    .accessibilityRemoveTraits(.isButton)
+                    .accessibilityLabel(Self.accessibilityLabel(for: book))
                 }
             }
             .padding(.horizontal, 12)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
+        .accessibilityAddTraits(.isHeader) // PP-3980: scroll container exposes title in heading rotor
         .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: books.count))
         .accessibilityHint(Strings.Generic.horizontalLaneHint)
-        .accessibilityAddTraits(.isHeader)
     }
 
-    /// PP-3968: legacy hook used by `accessibilityLabel(for:)`-style call sites.
-    /// Delegates to `TPPBook.voiceOverLabel`, which is the single source of
-    /// truth for cell announcements across catalog lanes, My Books, and Holds.
+    /// PP-3968: Single source of truth for the catalog cell VoiceOver label.
+    /// Delegates to TPPBook.voiceOverLabel for the canonical Audible/Libby-style format.
     static func accessibilityLabel(for book: TPPBook) -> String {
         book.voiceOverLabel
     }
@@ -81,13 +74,15 @@ struct CatalogLaneRowView: View {
                 .lineLimit(3)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
+                .accessibilityAddTraits(.isHeader) // PP-3980: expose swimlane title in heading rotor
             Spacer()
             if let more = moreURL, let onMoreTapped = onMoreTapped {
                 Button("More…") {
                     onMoreTapped(title, more)
                 }
                 .font(.footnote)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
                 .accessibilityLabel(String(format: Strings.Generic.moreBooksInLane, title))
             }
         }
@@ -104,7 +99,7 @@ private struct LaneSkeletonView: View {
                 ForEach(0..<6, id: \.self) { _ in
                     Rectangle()
                         .fill(Color.gray.opacity(0.25))
-                        .frame(width: 120, height: 150)
+                        .frame(width: 100, height: 150)
                         .opacity(pulse ? 0.6 : 1.0)
                         .padding(.vertical)
                 }

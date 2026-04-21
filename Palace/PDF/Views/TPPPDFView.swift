@@ -33,14 +33,6 @@ struct TPPPDFView: View {
                 .accessibilityScrollAction { edge in
                     handleAccessibilityScroll(edge)
                 }
-                // PP-3838: Full Keyboard Access (Tab-Z menu) and VoiceOver rotor
-                // custom actions for page navigation, mirroring the EPUB reader.
-                .accessibilityAction(named: Text(Strings.Generic.nextPage)) {
-                    advancePage(by: 1)
-                }
-                .accessibilityAction(named: Text(Strings.Generic.previousPage)) {
-                    advancePage(by: -1)
-                }
 
             VStack {
                 TPPPDFLabel(documentTitle)
@@ -94,19 +86,12 @@ struct TPPPDFView: View {
     private func handleAccessibilityScroll(_ edge: Edge) {
         switch edge {
         case .trailing, .bottom:
-            advancePage(by: 1)
+            guard metadata.currentPage < document.pageCount - 1 else { return }
+            metadata.currentPage += 1
         case .leading, .top:
-            advancePage(by: -1)
+            guard metadata.currentPage > 0 else { return }
+            metadata.currentPage -= 1
         }
-    }
-
-    /// Advances `metadata.currentPage` by `delta` (clamped) and posts a
-    /// VoiceOver page-scrolled announcement. Shared by the scroll action,
-    /// the FKA / rotor custom actions, and the visible toolbar.
-    func advancePage(by delta: Int) {
-        let target = metadata.currentPage + delta
-        guard target >= 0, target < document.pageCount else { return }
-        metadata.currentPage = target
         let status = String(format: Strings.TPPBaseReaderViewController.pageOf, metadata.currentPage + 1) + "\(document.pageCount)"
         UIAccessibility.post(notification: .pageScrolled, argument: status)
     }

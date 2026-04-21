@@ -1,504 +1,252 @@
-//
-//  CatalogViewModelTests.swift
-//  PalaceTests
-//
-//  Tests for CatalogViewModel with dependency injection,
-//  CatalogFilter, CatalogFilterGroup, CatalogLaneModel, and MappedCatalog.
-//
-//  Copyright © 2024 The Palace Project. All rights reserved.
-//
-
 import XCTest
 import Combine
 @testable import Palace
 
-// MARK: - CatalogFilter Tests (Real Production Struct)
+// MARK: - CatalogState Tests
 
-final class CatalogFilterTests: XCTestCase {
+final class CatalogStateTests: XCTestCase {
 
-    func testCatalogFilter_StoresProvidedValues() {
-        let filter = CatalogFilter(
-            id: "test-id",
-            title: "Audiobooks",
-            href: URL(string: "https://example.org/audiobooks"),
-            active: false
-        )
-
-        XCTAssertEqual(filter.id, "test-id")
-        XCTAssertEqual(filter.title, "Audiobooks")
-        XCTAssertNotNil(filter.href)
-        XCTAssertFalse(filter.active)
+    func testState_Loading_HasNoContent() {
+        let state = CatalogState.loading
+        XCTAssertNil(state.content)
+        XCTAssertNil(state.title)
+        XCTAssertTrue(state.allBooks.isEmpty)
+        XCTAssertFalse(state.isApplyingFacet)
     }
 
-    func testCatalogFilter_ActiveState() {
-        let activeFilter = CatalogFilter(
-            id: "active-id",
-            title: "All",
-            href: URL(string: "https://example.org/all"),
-            active: true
-        )
-
-        XCTAssertTrue(activeFilter.active)
+    func testState_Error_HasNoContent() {
+        let state = CatalogState.error("Network failed")
+        XCTAssertNil(state.content)
+        XCTAssertTrue(state.allBooks.isEmpty)
     }
 
-    func testCatalogFilter_WithNilHref() {
-        let filter = CatalogFilter(
-            id: "no-href",
-            title: "No Link",
-            href: nil,
-            active: false
+    func testState_Loaded_ExposesContent() {
+        let books = [TPPBookMocker.snapshotEPUB()]
+        let content = CatalogContent(
+            title: "Test Library",
+            feed: .grouped([CatalogLaneModel(title: "Lane", books: books, moreURL: nil)]),
+            selectors: .empty
         )
+        let state = CatalogState.loaded(content)
+        XCTAssertEqual(state.title, "Test Library")
+        XCTAssertEqual(state.allBooks.count, 1)
+        XCTAssertFalse(state.isApplyingFacet)
+    }
 
-        XCTAssertNil(filter.href)
+    func testState_ApplyingFacet_IsTrue() {
+        let content = CatalogContent(title: "T", feed: .empty, selectors: .empty)
+        XCTAssertTrue(CatalogState.applyingFacet(content).isApplyingFacet)
+    }
+
+    func testState_SwitchingEntryPoint_HasNoContent() {
+        let selectors = CatalogSelectors(
+            entryPoints: [CatalogFilter(id: "1", title: "All", href: nil, active: true)],
+            facetGroups: []
+        )
+        XCTAssertNil(CatalogState.switchingEntryPoint(selectors).content)
+    }
+
+    func testState_AllBooks_Grouped() {
+        let lanes = [
+            CatalogLaneModel(title: "L1", books: [TPPBookMocker.snapshotEPUB()], moreURL: nil),
+            CatalogLaneModel(title: "L2", books: [TPPBookMocker.snapshotAudiobook()], moreURL: nil)
+        ]
+        let state = CatalogState.loaded(CatalogContent(title: "T", feed: .grouped(lanes), selectors: .empty))
+        XCTAssertEqual(state.allBooks.count, 2)
+    }
+
+    func testState_AllBooks_Ungrouped() {
+        let books = [TPPBookMocker.snapshotEPUB(), TPPBookMocker.snapshotAudiobook()]
+        let state = CatalogState.loaded(CatalogContent(title: "T", feed: .ungrouped(books), selectors: .empty))
+        XCTAssertEqual(state.allBooks.count, 2)
     }
 }
 
-// MARK: - CatalogFilterGroup Tests (Real Production Struct)
+// MARK: - CatalogSelectors Tests
 
-final class CatalogFilterGroupTests: XCTestCase {
+final class CatalogSelectorsTests: XCTestCase {
 
-    func testCatalogFilterGroup_StoresProvidedValues() {
-        let filters = [
-            CatalogFilter(id: "1", title: "All", href: nil, active: true),
-            CatalogFilter(id: "2", title: "Available Now", href: URL(string: "https://example.org/available"), active: false)
-        ]
-
-        let group = CatalogFilterGroup(id: "availability", name: "Availability", filters: filters)
-
-        XCTAssertEqual(group.id, "availability")
-        XCTAssertEqual(group.name, "Availability")
-        XCTAssertEqual(group.filters.count, 2)
-    }
-
-    func testCatalogFilterGroup_EmptyFilters() {
-        let group = CatalogFilterGroup(id: "empty", name: "Empty Group", filters: [])
-
-        XCTAssertTrue(group.filters.isEmpty)
-    }
-
-    func testCatalogFilterGroup_ActiveFilter() {
+    func testWithSelectedFacet_UpdatesActiveState() {
         let filters = [
             CatalogFilter(id: "1", title: "All", href: nil, active: true),
             CatalogFilter(id: "2", title: "Fiction", href: nil, active: false)
         ]
+        let selectors = CatalogSelectors(
+            entryPoints: [],
+            facetGroups: [CatalogFilterGroup(id: "g", name: "Genre", filters: filters)]
+        )
+        let updated = selectors.withSelectedFacet(CatalogFilter(id: "2", title: "Fiction", href: nil, active: false))
+        XCTAssertFalse(updated.facetGroups[0].filters[0].active)
+        XCTAssertTrue(updated.facetGroups[0].filters[1].active)
+    }
 
-        let group = CatalogFilterGroup(id: "genre", name: "Genre", filters: filters)
-
-        let activeFilter = group.filters.first { $0.active }
-        XCTAssertNotNil(activeFilter)
-        XCTAssertEqual(activeFilter?.title, "All")
+    func testWithSelectedEntryPoint_UpdatesActiveState() {
+        let selectors = CatalogSelectors(
+            entryPoints: [
+                CatalogFilter(id: "1", title: "All", href: URL(string: "https://a.com/all"), active: true),
+                CatalogFilter(id: "2", title: "Ebooks", href: URL(string: "https://a.com/ebooks"), active: false)
+            ],
+            facetGroups: []
+        )
+        let updated = selectors.withSelectedEntryPoint(
+            CatalogFilter(id: "2", title: "Ebooks", href: URL(string: "https://a.com/ebooks"), active: false)
+        )
+        XCTAssertFalse(updated.entryPoints[0].active)
+        XCTAssertTrue(updated.entryPoints[1].active)
     }
 }
 
-// MARK: - CatalogLaneModel Tests (Real Production Struct)
+// MARK: - MappedCatalog Bridge Tests
 
-final class CatalogLaneModelTests: XCTestCase {
+final class MappedCatalogBridgeTests: XCTestCase {
 
-    func testCatalogLaneModel_StoresProvidedValues() {
-        let lane = CatalogLaneModel(
-            title: "Popular Books",
-            books: [],
-            moreURL: URL(string: "https://example.org/more"),
-            isLoading: false
+    func testToCatalogContent_GroupedFeed() {
+        let mapped = CatalogViewModel.MappedCatalog(
+            title: "Library", entries: [],
+            lanes: [CatalogLaneModel(title: "Lane", books: [], moreURL: nil)],
+            ungroupedBooks: [], facetGroups: [], entryPoints: []
         )
-
-        XCTAssertEqual(lane.title, "Popular Books")
-        XCTAssertTrue(lane.books.isEmpty)
-        XCTAssertNotNil(lane.moreURL)
-        XCTAssertFalse(lane.isLoading)
+        let content = mapped.toCatalogContent()
+        XCTAssertEqual(content.title, "Library")
+        if case .grouped(let lanes) = content.feed { XCTAssertEqual(lanes.count, 1) }
+        else { XCTFail("Expected .grouped") }
     }
 
-    func testCatalogLaneModel_LoadingState() {
-        let loadingLane = CatalogLaneModel(
-            title: "Loading Lane",
-            books: [],
-            moreURL: nil,
-            isLoading: true
+    func testToCatalogContent_UngroupedFeed() {
+        let mapped = CatalogViewModel.MappedCatalog(
+            title: "Books", entries: [], lanes: [],
+            ungroupedBooks: [TPPBookMocker.snapshotEPUB()],
+            facetGroups: [], entryPoints: []
         )
-
-        XCTAssertTrue(loadingLane.isLoading)
+        if case .ungrouped(let books) = mapped.toCatalogContent().feed { XCTAssertEqual(books.count, 1) }
+        else { XCTFail("Expected .ungrouped") }
     }
 
-    func testCatalogLaneModel_HasUniqueId() {
-        let lane1 = CatalogLaneModel(title: "Lane 1", books: [], moreURL: nil)
-        let lane2 = CatalogLaneModel(title: "Lane 1", books: [], moreURL: nil)
-
-        // Each lane should have unique ID even with same title
-        XCTAssertNotEqual(lane1.id, lane2.id)
-    }
-
-    func testCatalogLaneModel_WithBooks() {
-        let books = [
-            TPPBookMocker.snapshotEPUB(),
-            TPPBookMocker.snapshotAudiobook()
-        ]
-
-        let lane = CatalogLaneModel(title: "Featured", books: books, moreURL: nil)
-
-        XCTAssertEqual(lane.books.count, 2)
+    func testToCatalogContent_EmptyFeed() {
+        let mapped = CatalogViewModel.MappedCatalog(
+            title: "E", entries: [], lanes: [], ungroupedBooks: [],
+            facetGroups: [], entryPoints: []
+        )
+        if case .empty = mapped.toCatalogContent().feed { } else { XCTFail("Expected .empty") }
     }
 }
 
-// MARK: - MappedCatalog Tests (Real Production Struct)
-
-final class MappedCatalogTests: XCTestCase {
-
-    func testMappedCatalog_EmptyFeed() {
-        let mapped = CatalogViewModel.MappedCatalog(
-            title: "Empty",
-            entries: [],
-            lanes: [],
-            ungroupedBooks: [],
-            facetGroups: [],
-            entryPoints: []
-        )
-
-        XCTAssertEqual(mapped.title, "Empty")
-        XCTAssertTrue(mapped.entries.isEmpty)
-        XCTAssertTrue(mapped.lanes.isEmpty)
-        XCTAssertTrue(mapped.ungroupedBooks.isEmpty)
-        XCTAssertTrue(mapped.facetGroups.isEmpty)
-        XCTAssertTrue(mapped.entryPoints.isEmpty)
-    }
-
-    func testMappedCatalog_WithLanes() {
-        let lanes = [
-            CatalogLaneModel(title: "Fiction", books: [], moreURL: nil),
-            CatalogLaneModel(title: "Non-Fiction", books: [], moreURL: nil)
-        ]
-
-        let mapped = CatalogViewModel.MappedCatalog(
-            title: "Catalog",
-            entries: [],
-            lanes: lanes,
-            ungroupedBooks: [],
-            facetGroups: [],
-            entryPoints: []
-        )
-
-        XCTAssertEqual(mapped.lanes.count, 2)
-        XCTAssertEqual(mapped.lanes[0].title, "Fiction")
-        XCTAssertEqual(mapped.lanes[1].title, "Non-Fiction")
-    }
-
-    func testMappedCatalog_WithUngroupedBooks() {
-        let books = [TPPBookMocker.snapshotEPUB()]
-
-        let mapped = CatalogViewModel.MappedCatalog(
-            title: "Books",
-            entries: [],
-            lanes: [],
-            ungroupedBooks: books,
-            facetGroups: [],
-            entryPoints: []
-        )
-
-        XCTAssertEqual(mapped.ungroupedBooks.count, 1)
-        XCTAssertTrue(mapped.lanes.isEmpty)
-    }
-}
-
-// MARK: - CatalogViewModel Tests (Real ViewModel with Mock Repository)
+// MARK: - CatalogViewModel State Machine Tests
 
 @MainActor
-final class CatalogViewModelIntegrationTests: XCTestCase {
+final class CatalogViewModelStateMachineTests: XCTestCase {
 
     private var mockRepository: CatalogRepositoryMock!
     private var cancellables: Set<AnyCancellable>!
-    private var testURL: URL!
+    private let testURL = URL(string: "https://example.com/catalog")!
 
     override func setUp() {
         super.setUp()
         mockRepository = CatalogRepositoryMock()
-        cancellables = Set<AnyCancellable>()
-        testURL = URL(string: "https://example.com/catalog")!
+        cancellables = []
     }
 
     override func tearDown() {
         mockRepository = nil
         cancellables = nil
-        testURL = nil
-        super.tearDown()
-    }
-
-    private func createViewModel(url: URL? = nil) -> CatalogViewModel {
-        let urlToUse = url ?? testURL!
-        return CatalogViewModel(
-            repository: mockRepository,
-            topLevelURLProvider: { urlToUse }
-        )
-    }
-
-    // MARK: - Initialization Tests
-
-    func testViewModel_InitialState_HasCorrectDefaults() {
-        let viewModel = createViewModel()
-
-        XCTAssertEqual(viewModel.title, "")
-        XCTAssertTrue(viewModel.entries.isEmpty)
-        XCTAssertTrue(viewModel.lanes.isEmpty)
-        XCTAssertTrue(viewModel.ungroupedBooks.isEmpty)
-        XCTAssertFalse(viewModel.isLoading)
-        XCTAssertNil(viewModel.errorMessage)
-        XCTAssertTrue(viewModel.facetGroups.isEmpty)
-        XCTAssertTrue(viewModel.entryPoints.isEmpty)
-    }
-
-    // MARK: - Load Tests with Mock Repository
-    // Tests use Combine publishers with XCTestExpectation to observe completion.
-
-    func testLoad_WithNilURL_DoesNotLoad() async {
-        let viewModel = CatalogViewModel(
-            repository: mockRepository,
-            topLevelURLProvider: { nil }
-        )
-
-        await viewModel.load()
-
-        // With nil URL, load() returns early synchronously
-        XCTAssertFalse(viewModel.isLoading)
-        XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, 0)
-    }
-
-    func testLoad_SetsIsLoadingTrue() async {
-        let viewModel = createViewModel()
-
-        let expectation = XCTestExpectation(description: "isLoading becomes true")
-
-        viewModel.$isLoading
-            .dropFirst()
-            .sink { isLoading in
-                if isLoading {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
-
-        await viewModel.load()
-
-        await fulfillment(of: [expectation], timeout: 1.0)
-    }
-
-    func testLoad_WithError_SetsErrorMessage() async {
-        mockRepository.loadTopLevelCatalogError = TestError.networkError
-        let viewModel = createViewModel()
-
-        let expectation = XCTestExpectation(description: "errorMessage is set")
-
-        viewModel.$errorMessage
-            .dropFirst()
-            .sink { errorMessage in
-                if errorMessage != nil {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
-
-        await viewModel.load()
-
-        await fulfillment(of: [expectation], timeout: 1.0)
-        XCTAssertNotNil(viewModel.errorMessage)
-    }
-
-    func testLoad_WithNilResult_SetsErrorMessage() async {
-        mockRepository.loadTopLevelCatalogResult = nil
-        let viewModel = createViewModel()
-
-        let expectation = XCTestExpectation(description: "errorMessage is set")
-
-        viewModel.$errorMessage
-            .dropFirst()
-            .sink { errorMessage in
-                if errorMessage != nil {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
-
-        await viewModel.load()
-
-        await fulfillment(of: [expectation], timeout: 1.0)
-        XCTAssertNotNil(viewModel.errorMessage)
-    }
-
-    // MARK: - Scroll Management Tests
-
-    func testResetScrollTrigger_SetsFalse() {
-        let viewModel = createViewModel()
-        viewModel.shouldScrollToTop = true
-
-        viewModel.resetScrollTrigger()
-
-        XCTAssertFalse(viewModel.shouldScrollToTop)
-    }
-
-    // MARK: - Search Repository Accessor Tests
-
-    func testSearchRepository_ReturnsSameRepository() {
-        let viewModel = createViewModel()
-
-        let searchRepo = viewModel.searchRepository
-
-        XCTAssertTrue(searchRepo is CatalogRepositoryMock)
-    }
-
-    func testSearchBaseURL_ReturnsCorrectURL() {
-        let viewModel = createViewModel()
-
-        let baseURL = viewModel.searchBaseURL()
-
-        XCTAssertEqual(baseURL, testURL)
-    }
-
-    // MARK: - Handle Account Change Tests
-
-    func testHandleAccountChange_SetsIsLoadingTrue() async {
-        let viewModel = createViewModel()
-
-        let expectation = XCTestExpectation(description: "isLoading becomes true")
-
-        viewModel.$isLoading
-            .dropFirst()
-            .sink { isLoading in
-                if isLoading {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
-
-        await viewModel.handleAccountChange()
-
-        await fulfillment(of: [expectation], timeout: 1.0)
-    }
-
-    // MARK: - Force Refresh Tests
-
-    func testForceRefresh_SetsIsLoadingTrue() async {
-        let viewModel = createViewModel()
-
-        let expectation = XCTestExpectation(description: "isLoading becomes true")
-
-        viewModel.$isLoading
-            .dropFirst()
-            .sink { isLoading in
-                if isLoading {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
-
-        await viewModel.forceRefresh()
-
-        await fulfillment(of: [expectation], timeout: 1.0)
-    }
-
-    // MARK: - Published Property Tests
-
-    func testIsContentReloading_PublishesChanges() {
-        let viewModel = createViewModel()
-
-        let expectation = XCTestExpectation(description: "isContentReloading should publish")
-
-        viewModel.$isContentReloading
-            .dropFirst()
-            .sink { _ in
-                expectation.fulfill()
-            }
-            .store(in: &cancellables)
-
-        viewModel.isContentReloading = true
-
-        wait(for: [expectation], timeout: 1.0)
-    }
-}
-
-// MARK: - CatalogViewModel Optimistic Loading Tests
-
-@MainActor
-final class CatalogViewModelOptimisticLoadingTests: XCTestCase {
-
-    private var mockRepository: CatalogRepositoryMock!
-    private var testURL: URL!
-
-    override func setUp() {
-        super.setUp()
-        mockRepository = CatalogRepositoryMock()
-        testURL = URL(string: "https://example.com/catalog")!
-    }
-
-    override func tearDown() {
-        mockRepository = nil
-        testURL = nil
         super.tearDown()
     }
 
     private func createViewModel() -> CatalogViewModel {
-        return CatalogViewModel(
-            repository: mockRepository,
-            topLevelURLProvider: { [weak self] in self?.testURL }
-        )
+        CatalogViewModel(repository: mockRepository, topLevelURLProvider: { [testURL] in testURL })
     }
 
-    func testApplyFacet_WithNilHref_DoesNothing() async {
-        let viewModel = createViewModel()
-        let facet = CatalogFilter(id: "1", title: "Test", href: nil, active: false)
+    func testViewModel_InitialState_IsLoading() {
+        let vm = createViewModel()
+        if case .loading = vm.state { } else { XCTFail("Expected .loading") }
+        XCTAssertEqual(vm.scrollGeneration, 0)
+    }
 
-        await viewModel.applyFacet(facet)
-
+    func testLoad_WithNilURL_DoesNotCallRepository() async {
+        let vm = CatalogViewModel(repository: mockRepository, topLevelURLProvider: { nil })
+        await vm.load()
         XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, 0)
     }
 
-    func testApplyEntryPoint_WithNilHref_DoesNothing() async {
-        let viewModel = createViewModel()
-        let entryPoint = CatalogFilter(id: "1", title: "Test", href: nil, active: false)
+    func testLoad_WithError_TransitionsToError() async {
+        mockRepository.loadTopLevelCatalogError = NSError(domain: "test", code: 1)
+        let vm = createViewModel()
+        let exp = XCTestExpectation(description: "error")
+        vm.$state.sink { if case .error = $0 { exp.fulfill() } }.store(in: &cancellables)
+        await vm.load()
+        await fulfillment(of: [exp], timeout: 1.0)
+        guard case .error = vm.state else {
+            return XCTFail("Expected .error state after load failure, got \(vm.state)")
+        }
+    }
 
-        await viewModel.applyEntryPoint(entryPoint)
+    func testLoad_WithNilResult_TransitionsToError() async {
+        mockRepository.loadTopLevelCatalogResult = nil
+        let vm = createViewModel()
+        let exp = XCTestExpectation(description: "error")
+        vm.$state.sink { if case .error = $0 { exp.fulfill() } }.store(in: &cancellables)
+        await vm.load()
+        await fulfillment(of: [exp], timeout: 1.0)
+        guard case .error = vm.state else {
+            return XCTFail("Expected .error state after nil result, got \(vm.state)")
+        }
+    }
 
+    func testSearchRepository_ReturnsMock() {
+        let vm = createViewModel()
+        XCTAssertTrue(vm.searchRepository is CatalogRepositoryMock)
+        XCTAssertEqual(vm.searchBaseURL(), testURL)
+    }
+
+    func testApplyFacet_WithNilHref_NoOp() async {
+        let vm = createViewModel()
+        await vm.applyFacet(CatalogFilter(id: "1", title: "T", href: nil, active: false))
         XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, 0)
     }
 
-    func testApplyFacet_WithValidHref_CallsRepository() async {
-        let viewModel = createViewModel()
-        let facet = CatalogFilter(
-            id: "1",
-            title: "Fiction",
-            href: URL(string: "https://example.com/fiction"),
-            active: false
-        )
-
-        await viewModel.applyFacet(facet)
-
-        XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, 1)
+    func testApplyFacet_RequiresLoadedState() async {
+        let vm = createViewModel()
+        await vm.applyFacet(CatalogFilter(id: "1", title: "F", href: URL(string: "https://a.com"), active: false))
+        XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, 0)
     }
 
-    func testApplyEntryPoint_WithValidHref_CallsRepository() async {
-        let viewModel = createViewModel()
-        let entryPoint = CatalogFilter(
-            id: "1",
-            title: "Audiobooks",
-            href: URL(string: "https://example.com/audiobooks"),
-            active: false
-        )
-
-        await viewModel.applyEntryPoint(entryPoint)
-
-        XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, 1)
+    func testApplyEntryPoint_WithNilHref_NoOp() async {
+        let vm = createViewModel()
+        await vm.applyEntryPoint(CatalogFilter(id: "1", title: "T", href: nil, active: false))
+        XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, 0)
     }
 
-    func testApplyFacet_WithError_RestoresPreviousState() async {
-        let viewModel = createViewModel()
-        mockRepository.loadTopLevelCatalogError = TestError.networkError
+    func testApplyEntryPoint_RequiresLoadedState() async {
+        let vm = createViewModel()
+        await vm.applyEntryPoint(CatalogFilter(id: "1", title: "A", href: URL(string: "https://a.com"), active: false))
+        XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, 0)
+    }
 
-        let facet = CatalogFilter(
-            id: "1",
-            title: "Fiction",
-            href: URL(string: "https://example.com/fiction"),
-            active: false
-        )
+    func testForceRefresh_TransitionsToLoading() async {
+        let vm = createViewModel()
+        let exp = XCTestExpectation(description: "loading")
+        vm.$state.sink { if case .loading = $0 { exp.fulfill() } }.store(in: &cancellables)
+        await vm.forceRefresh()
+        await fulfillment(of: [exp], timeout: 1.0)
+        XCTAssertGreaterThanOrEqual(mockRepository.loadTopLevelCatalogCallCount, 1,
+                                    "forceRefresh must invoke the repository at least once")
+    }
+}
 
-        await viewModel.applyFacet(facet)
+// MARK: - Model Tests
 
-        XCTAssertNotNil(viewModel.errorMessage)
-        XCTAssertFalse(viewModel.isOptimisticLoading)
+final class CatalogFilterTests: XCTestCase {
+    func testCatalogFilter_StoresValues() {
+        let f = CatalogFilter(id: "t", title: "Audiobooks", href: URL(string: "https://a.com"), active: false)
+        XCTAssertEqual(f.id, "t")
+        XCTAssertFalse(f.active)
+    }
+}
+
+final class CatalogLaneModelTests: XCTestCase {
+    func testHasUniqueId() {
+        let l1 = CatalogLaneModel(title: "L", books: [], moreURL: nil)
+        let l2 = CatalogLaneModel(title: "L", books: [], moreURL: nil)
+        XCTAssertNotEqual(l1.id, l2.id)
     }
 }

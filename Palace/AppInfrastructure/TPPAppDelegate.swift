@@ -25,19 +25,20 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         Log.info(#file, "📱 App launch - initializing playback bootstrapper")
         PlaybackBootstrapper.shared.ensureInitialized()
 
-        // Configure Firebase once at startup
+        // Configure Firebase once at startup. The SDK MUST be initialized
+        // (other code paths assume FirebaseApp.app() is non-nil), but the
+        // network-firing parts (Remote Config fetch, analytics endpoints,
+        // Transifex translation pull) are gated below to avoid leaking
+        // dispatch state during tests.
         FirebaseApp.configure()
 
-        // Initialize FirebaseManager (consolidated Firebase access to prevent mutex crashes)
-        // This replaces separate DeviceSpecificErrorMonitor and RemoteFeatureFlags initialization
-        Task {
-            await FirebaseManager.shared.fetchAndActivateRemoteConfig()
-            // Update feature flag cache after Remote Config is fetched
-            // This ensures isCarPlayEnabledCached has the latest value for next app launch
-            _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+        if !TPPProcessInfo.isRunningTests {
+            Task {
+                await FirebaseManager.shared.fetchAndActivateRemoteConfig()
+                _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+            }
+            TPPErrorLogger.configureCrashAnalytics()
         }
-
-        TPPErrorLogger.configureCrashAnalytics()
         TPPErrorLogger.logNewAppLaunch()
 
         GeneralCache<String, Data>.clearCacheOnUpdate()
@@ -73,7 +74,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         logCredentialStateAtLaunch(isFreshInstall: isFreshInstall)
 
         PalaceAuthTokenProvider.tokenResolver = {
-            TPPUserAccount.sharedAccount().authToken
+            AccountsManager.shared.currentUserAccount.authToken
         }
 
         DispatchQueue.main.async {
@@ -83,7 +84,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             // This would prevent iOS from purging downloaded audiobook files
         }
 
-        TransifexManager.setup()
+        if !TPPProcessInfo.isRunningTests {
+            TransifexManager.setup()
+        }
 
         NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil) { [weak self] notification in
             self?.signingIn(notification)
@@ -91,7 +94,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func logCredentialStateAtLaunch(isFreshInstall: Bool) {
-        let account = TPPUserAccount.sharedAccount()
+        let account = AccountsManager.shared.currentUserAccount
         let accountId = AccountsManager.shared.currentAccountId ?? "nil"
         let authDef = account.authDefinition
         let authType = authDef?.authType.rawValue ?? "none"
@@ -144,7 +147,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     private func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: "org.thepalaceproject.palace.refresh", using: nil) { task in
-            self.handleAppRefresh(task: task as! BGAppRefreshTask)
+            guard let refreshTask = task as? BGAppRefreshTask else { return }
+            self.handleAppRefresh(task: refreshTask)
         }
     }
 
@@ -222,7 +226,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
+        TPPErrorLogger.setUserID(AccountsManager.shared.currentUserAccount.barcode)
 
         // Resume Firebase operations when app becomes active
         FirebaseManager.shared.applicationDidBecomeActive()
@@ -241,7 +245,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     /// Syncs the book registry if the user has holds to ensure fresh availability data.
     /// Throttled to prevent excessive network calls on frequent app activation.
     private func syncIfUserHasHolds() {
-        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
             return
         }
 
@@ -360,8 +364,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         // Legacy non-scene setup (fallback)
-        window = UIWindow()
-        configureWindow(window!)
+        let newWindow = UIWindow()
+        window = newWindow
+        configureWindow(newWindow)
     }
 
     /// Configures an existing window with the app's root view controller
@@ -374,7 +379,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     /// Creates and returns the app's root view controller
     func createRootViewController() -> UIViewController {
+        let container = AppContainer()
         let root = AppTabHostView()
+            .environment(\.appContainer, container)
         return UIHostingController(rootView: root)
     }
 
@@ -385,12 +392,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         UINavigationBar.appearance().tintColor = TPPConfiguration.iconColor()
 
-        if let defaultAppearance = TPPConfiguration.defaultAppearance() {
-            UINavigationBar.appearance().standardAppearance = defaultAppearance
-            UINavigationBar.appearance().compactAppearance = defaultAppearance
-            UINavigationBar.appearance().scrollEdgeAppearance = defaultAppearance
-            UINavigationBar.appearance().compactScrollEdgeAppearance = defaultAppearance
-        }
+        let defaultAppearance = TPPConfiguration.defaultAppearance()
+        UINavigationBar.appearance().standardAppearance = defaultAppearance
+        UINavigationBar.appearance().compactAppearance = defaultAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = defaultAppearance
+        UINavigationBar.appearance().compactScrollEdgeAppearance = defaultAppearance
     }
 }
 
@@ -537,20 +543,20 @@ final class MemoryPressureMonitor {
 
     /// Proactively cleans up caches based on severity
     private func proactiveCacheCleanup(severity: CleanupSeverity) async {
-        monitorQueue.async {
-            switch severity {
-            case .high:
-                // Aggressive cleanup
-                URLCache.shared.removeAllCachedResponses()
-                TPPNetworkExecutor.shared.clearCache()
+        switch severity {
+        case .high:
+            // Aggressive cleanup
+            URLCache.shared.removeAllCachedResponses()
+            TPPNetworkExecutor.shared.clearCache()
+            await MainActor.run {
                 MyBooksDownloadCenter.shared.pauseAllDownloads()
-                Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
-
-            case .medium:
-                // Moderate cleanup - just network caches
-                URLCache.shared.removeAllCachedResponses()
-                Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
             }
+            Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
+
+        case .medium:
+            // Moderate cleanup - just network caches
+            URLCache.shared.removeAllCachedResponses()
+            Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
         }
     }
 
@@ -564,10 +570,11 @@ final class MemoryPressureMonitor {
             URLCache.shared.removeAllCachedResponses()
             TPPNetworkExecutor.shared.clearCache()
 
-            MyBooksDownloadCenter.shared.pauseAllDownloads()
+            DispatchQueue.main.async {
+                MyBooksDownloadCenter.shared.pauseAllDownloads()
+            }
 
             self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
-
         }
     }
 

@@ -75,6 +75,9 @@ final class TokenRefreshTests: XCTestCase {
         let request = TokenRequest(url: url, username: "", password: "pass")
 
         XCTAssertEqual(request.username, "")
+        XCTAssertTrue(request.username.isEmpty, "Empty username must be stored as an empty string")
+        // Password should be unaffected by an empty username
+        XCTAssertEqual(request.password, "pass", "Password must be stored independently from username")
     }
 
     func testTokenRequest_EmptyPassword() {
@@ -82,6 +85,9 @@ final class TokenRefreshTests: XCTestCase {
         let request = TokenRequest(url: url, username: "user", password: "")
 
         XCTAssertEqual(request.password, "")
+        XCTAssertTrue(request.password.isEmpty, "Empty password must be stored as an empty string")
+        // Username should be unaffected by an empty password
+        XCTAssertEqual(request.username, "user", "Username must be stored independently from password")
     }
 
     func testTokenRequest_SpecialCharactersInCredentials() {
@@ -172,10 +178,22 @@ final class TokenRefreshTests: XCTestCase {
     func testRequestTimeout_DefaultValue() {
         let mock = TPPRequestExecutorMock()
         XCTAssertEqual(mock.requestTimeout, 60)
+        XCTAssertGreaterThan(mock.requestTimeout, 0, "Request timeout must be positive")
+        // Note: The mock hardcodes 60s for broader test coverage; the global constant is 30s
+        XCTAssertEqual(TPPDefaultRequestTimeout, 30.0,
+                       "Global TPPDefaultRequestTimeout must be 30 seconds")
     }
 
     func testRequestTimeout_StaticDefault() {
         XCTAssertEqual(TPPRequestExecutorMock.defaultRequestTimeout, TPPDefaultRequestTimeout)
+        XCTAssertGreaterThan(TPPRequestExecutorMock.defaultRequestTimeout, 0,
+                             "Default request timeout constant must be positive")
+        // The mock instance overrides requestTimeout to 60; static default follows the protocol (30)
+        let mock = TPPRequestExecutorMock()
+        XCTAssertEqual(mock.requestTimeout, 60,
+                       "Mock instance requestTimeout is hardcoded to 60")
+        XCTAssertEqual(TPPRequestExecutorMock.defaultRequestTimeout, 30,
+                       "Static defaultRequestTimeout must equal TPPDefaultRequestTimeout (30)")
     }
 
     // MARK: - NYPLResult Tests
@@ -345,7 +363,12 @@ final class TokenRefreshTests: XCTestCase {
         var request = URLRequest(url: url)
         request.setValue("Bearer test-token", forHTTPHeaderField: "Authorization")
 
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
+        let authHeader = request.value(forHTTPHeaderField: "Authorization")
+        XCTAssertEqual(authHeader, "Bearer test-token")
+        XCTAssertTrue(authHeader?.starts(with: "Bearer ") == true,
+                      "Authorization header must start with 'Bearer ' prefix")
+        // URL must be unaffected by header mutation
+        XCTAssertEqual(request.url, url, "URL must not change when adding Authorization header")
     }
 
     func testBearerAuthorized_EmptyTokenSetsEmptyHeader() {
@@ -353,7 +376,11 @@ final class TokenRefreshTests: XCTestCase {
         var request = URLRequest(url: url)
         request.setValue("", forHTTPHeaderField: "Authorization")
 
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "")
+        let authHeader = request.value(forHTTPHeaderField: "Authorization")
+        XCTAssertEqual(authHeader, "")
+        XCTAssertTrue(authHeader?.isEmpty == true,
+                      "Empty token should produce an empty Authorization header value")
+        XCTAssertEqual(request.url, url, "URL must not change when adding empty Authorization header")
     }
 }
 
@@ -400,5 +427,9 @@ extension TokenRefreshTests {
         )
 
         XCTAssertEqual(error.domain, TPPErrorLogger.clientDomain)
+        XCTAssertEqual(error.code, TPPErrorCode.invalidCredentials.rawValue,
+                       "NSError code must match the TPPErrorCode raw value")
+        XCTAssertGreaterThan(TPPErrorCode.invalidCredentials.rawValue, 0,
+                             "Error codes should be positive integers")
     }
 }

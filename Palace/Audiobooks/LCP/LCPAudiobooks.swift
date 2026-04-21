@@ -28,6 +28,16 @@ import Foundation
     private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
     private var currentPrefetchTask: Task<Void, Never>?
 
+    /// Once set, the instance is a dead one-shot: no new Publication may be opened
+    /// through contentDictionary, decrypt, or startPrefetch. A previously opened
+    /// Publication held via cachedPublication has already been dropped.
+    ///
+    /// Why: a stale AudiobookManager's decryptor chain could otherwise race the
+    /// next audiobook's publicationOpener.open() on the same .lcpa, which
+    /// deadlocks inside Readium and surfaces as the "opening third audiobook
+    /// hangs" bug.
+    private var isReleased: Bool = false
+
     /// Initialize for an LCP audiobook
     /// - Parameter audiobookUrl: can be a local `.lcpa` package URL OR an `.lcpl` license URL for streaming
     /// - Parameter licenseUrl: optional license URL for streaming authentication (deprecated, use audiobookUrl)
@@ -64,6 +74,12 @@ import Foundation
     }
 
     @objc func contentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> Void) {
+        if isReleasedSnapshot() {
+            DispatchQueue.main.async {
+                completion(nil, Self.releasedError())
+            }
+            return
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             self.loadContentDictionary { json, error in
                 DispatchQueue.main.async {
@@ -73,7 +89,24 @@ import Foundation
         }
     }
 
+    private func isReleasedSnapshot() -> Bool {
+        publicationCacheQueue.sync { isReleased }
+    }
+
+    private static func releasedError() -> NSError {
+        NSError(
+            domain: "Palace.LCPAudiobooks",
+            code: NSUserCancelledError,
+            userInfo: [NSLocalizedDescriptionKey: "LCPAudiobooks instance has been released"]
+        )
+    }
+
     private func loadContentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> Void) {
+        if isReleasedSnapshot() {
+            completion(nil, Self.releasedError())
+            return
+        }
+
         publicationCacheQueue.async {
             self.currentPrefetchTask?.cancel()
         }
@@ -81,6 +114,10 @@ import Foundation
         let task = Task { [weak self] in
             guard let self else { return }
             if Task.isCancelled { return }
+            if self.isReleasedSnapshot() {
+                completion(nil, Self.releasedError())
+                return
+            }
 
             var urlToOpen: AbsoluteURL = audiobookUrl
             if let licenseUrl {
@@ -189,13 +226,26 @@ extension LCPAudiobooks: LCPStreamingProvider {
         guard let streamingPlayer = player as? StreamingCapablePlayer else {
             return false
         }
+        if isReleasedSnapshot() {
+            return false
+        }
         streamingPlayer.setStreamingProvider(self)
 
         let hasPublication = publicationCacheQueue.sync {
             return cachedPublication != nil
         }
 
-        if !hasPublication {
+        if hasPublication {
+            // Publication is already loaded (the loader's contentDictionary call
+            // cached it). Signal the player right away so it doesn't wait on the
+            // 30s "Publication loading timeout" fallback. Without this, every
+            // back-to-back LCP audiobook open creates a fresh LCPStreamingPlayer
+            // whose isLoaded flag can only flip via publicationDidLoad() — which
+            // otherwise only fires from the !hasPublication branch below.
+            DispatchQueue.main.async {
+                streamingPlayer.publicationDidLoad()
+            }
+        } else {
             DispatchQueue.global(qos: .userInteractive).async { [weak self] in
                 self?.loadContentDictionary { _, error in
                     if let error = error {
@@ -237,6 +287,7 @@ extension LCPAudiobooks {
     }
 
     public func startPrefetch() {
+        if isReleasedSnapshot() { return }
         DispatchQueue.global(qos: .userInteractive).async { [weak self] in
             self?.loadContentDictionary { _, _ in
             }
@@ -244,30 +295,18 @@ extension LCPAudiobooks {
     }
 
     func decrypt(url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
+        if isReleasedSnapshot() {
+            completion(Self.releasedError())
+            return
+        }
         if let publication = getPublication() {
             decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
-        } else {
-            Task {
-                let result = await self.assetRetriever.retrieve(url: audiobookUrl)
-                switch result {
-                case .success(let asset):
-                    let publicationResult = await publicationOpener.open(asset: asset, allowUserInteraction: false, sender: nil)
-                    switch publicationResult {
-                    case .success(let publication):
-                        self.publicationCacheQueue.async {
-                            self.cachedPublication = publication
-                        }
-
-                        self.decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
-
-                    case .failure(let error):
-                        completion(error)
-                    }
-                case .failure(let error):
-                    completion(error)
-                }
-            }
+            return
         }
+        // No cached publication means this decryptor's session has ended (either never
+        // opened, or released). Do NOT reopen through publicationOpener — that raced
+        // the next session's open on the same .lcpa and deadlocked Readium.
+        completion(Self.releasedError())
     }
 
     private func decryptWithPublication(_ publication: Publication, url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
@@ -297,10 +336,14 @@ extension LCPAudiobooks {
         }
     }
 
-    /// Release all held resources for the current publication and cancel any background work
+    /// Release all held resources and mark the instance as a dead one-shot.
+    /// After this call, decrypt/contentDictionary/startPrefetch/setupStreamingFor
+    /// all fail fast. Idempotent.
     public func releaseResources() {
-        cancelPrefetch()
         publicationCacheQueue.sync {
+            isReleased = true
+            currentPrefetchTask?.cancel()
+            currentPrefetchTask = nil
             cachedPublication = nil
         }
     }

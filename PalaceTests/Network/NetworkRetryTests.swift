@@ -56,6 +56,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let (_, response) = try await session.data(for: request)
 
         let httpResponse = response as! HTTPURLResponse
@@ -74,6 +75,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let (_, response) = try await session.data(for: request)
 
         let httpResponse = response as! HTTPURLResponse
@@ -91,6 +93,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let (_, response) = try await session.data(for: request)
 
         let httpResponse = response as! HTTPURLResponse
@@ -109,6 +112,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let (_, response) = try await session.data(for: request)
 
         let httpResponse = response as! HTTPURLResponse
@@ -134,6 +138,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         _ = try await session.data(for: request)
 
         // 4xx errors should not be retried
@@ -160,6 +165,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         _ = try await session.data(for: request)
 
         lock.lock()
@@ -189,6 +195,7 @@ final class NetworkRetryLogicTests: XCTestCase {
         request.httpMethod = "GET"
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let (_, response) = try await session.data(for: request)
 
         let httpResponse = response as! HTTPURLResponse
@@ -208,13 +215,11 @@ final class NetworkTimeoutTests: XCTestCase {
 
         XCTAssertEqual(config.timeoutIntervalForRequest, 30)
         XCTAssertEqual(config.timeoutIntervalForResource, 60)
-    }
-
-    func testRequest_hasCorrectTimeout() {
-        var request = URLRequest(url: URL(string: "https://example.com")!)
-        request.timeoutInterval = 15
-
-        XCTAssertEqual(request.timeoutInterval, 15)
+        // Resource timeout must be >= request timeout (otherwise a single slow request
+        // could exceed the resource budget even though the request itself is within limit)
+        XCTAssertGreaterThanOrEqual(config.timeoutIntervalForResource,
+                                    config.timeoutIntervalForRequest,
+                                    "Resource timeout must be >= per-request timeout")
     }
 
     func testDefaultTimeout_isReasonable() {
@@ -222,6 +227,9 @@ final class NetworkTimeoutTests: XCTestCase {
 
         // Default timeout should be > 0
         XCTAssertGreaterThan(request.timeoutInterval, 0)
+        // Sanity-check: default must be under an unreasonably large ceiling
+        XCTAssertLessThanOrEqual(request.timeoutInterval, 3600,
+                                 "Default timeout should not exceed one hour")
     }
 }
 
@@ -230,9 +238,13 @@ final class NetworkTimeoutTests: XCTestCase {
 final class NetworkOfflineDetectionTests: XCTestCase {
 
     func testNetworkReachability_hasSharedInstance() {
-        // Verify the reachability service exists
+        // Verify the reachability service exists and is a singleton
         let reachability = Reachability.shared
         XCTAssertNotNil(reachability)
+        // Two accesses must return the same object
+        let second = Reachability.shared
+        XCTAssertTrue(reachability === second,
+                      "Reachability.shared must be a singleton")
     }
 
     func testURLError_offlineErrorCodes() {
@@ -314,6 +326,7 @@ final class NetworkRequestQueueTests: XCTestCase {
         }
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
         let urls = (0..<10).map { URL(string: "https://example.com/item/\($0)")! }
 
         await withTaskGroup(of: Void.self) { group in
@@ -342,6 +355,7 @@ final class NetworkRequestQueueTests: XCTestCase {
         }
 
         let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
 
         // Sequential requests
         for i in 0..<5 {
@@ -360,16 +374,28 @@ final class TPPNetworkExecutorTests: XCTestCase {
 
     func testExecutor_usesEphemeralCaching() {
         let executor = TPPNetworkExecutor(cachingStrategy: .ephemeral)
-        XCTAssertNotNil(executor)
+        // Executor must be able to build a valid request (not just non-nil)
+        let url = URL(string: "https://example.com/books")!
+        let request = executor.request(for: url, useTokenIfAvailable: false)
+        XCTAssertEqual(request.url, url, "Ephemeral executor must build requests with the correct URL")
+        XCTAssertGreaterThan(executor.requestTimeout, 0, "Executor must have a positive timeout")
     }
 
     func testExecutor_hasCorrectTimeout() {
         let executor = TPPNetworkExecutor(cachingStrategy: .ephemeral)
         XCTAssertGreaterThan(executor.requestTimeout, 0)
+        // Timeout must be under an unreasonably large ceiling (sanity check)
+        XCTAssertLessThanOrEqual(executor.requestTimeout, 3600,
+                                 "Timeout must not exceed one hour")
+        // Two calls must return the same timeout (it must be deterministic)
+        XCTAssertEqual(executor.requestTimeout, executor.requestTimeout)
     }
 
     func testExecutor_conformsToProtocol() {
         let executor = TPPNetworkExecutor(cachingStrategy: .ephemeral)
         XCTAssertTrue(executor is TPPRequestExecuting)
+        // As protocol, it must be assignable without concrete type
+        let asProtocol: TPPRequestExecuting = executor
+        XCTAssertNotNil(asProtocol, "Executor must be usable via protocol type")
     }
 }

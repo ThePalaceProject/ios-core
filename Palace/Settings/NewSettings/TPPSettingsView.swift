@@ -21,7 +21,7 @@ struct TPPSettingsView: View {
     @State private var currentAccounts: [Account] = []
 
     init() {
-        _currentAccounts = State(initialValue: TPPSettings.shared.settingsAccountsList)
+        _currentAccounts = State(initialValue: [])
     }
 
     private var sideBarEnabled: Bool {
@@ -102,9 +102,10 @@ struct TPPSettingsView: View {
             .navigationBarItems(trailing: navButton)
             .id(librariesRefreshToken)
 
-        Section(header: Text(DisplayStrings.libraries)) {
+        Section(header: Text(DisplayStrings.libraries).accessibilityHidden(true)) {
             row(title: DisplayStrings.libraries, index: 1, selection: self.$selectedView, destination: wrapper.anyView())
                 .accessibilityIdentifier(AccessibilityID.Settings.manageLibrariesButton)
+                .accessibilityLabel("Manage Libraries")
         }
     }
 
@@ -114,6 +115,7 @@ struct TPPSettingsView: View {
                 Toggle(DisplayStrings.downloadOnlyOnWiFi, isOn: $downloadOnlyOnWiFi)
                     .tint(.green)
                     .accessibilityIdentifier(AccessibilityID.Settings.downloadOnlyOnWiFiToggle)
+                    .accessibilityLabel(DisplayStrings.downloadOnlyOnWiFi)
                 Text(DisplayStrings.downloadOnlyOnWiFiDescription)
                     .font(.footnote)
                     .foregroundColor(.secondary)
@@ -132,9 +134,12 @@ struct TPPSettingsView: View {
         }
     }
 
+    // swiftlint:disable:next force_unwrapping
+    private static let fallbackURL = URL(string: "https://thepalaceproject.org")!
+
     @ViewBuilder private var aboutRow: some View {
         let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPAboutPalaceURLString)!,
+            URL: URL(string: TPPSettings.TPPAboutPalaceURLString) ?? Self.fallbackURL,
             title: Strings.Settings.aboutApp,
             failureMessage: Strings.Error.loadFailedError
         )
@@ -148,7 +153,7 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var privacyRow: some View {
         let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPPrivacyPolicyURLString)!,
+            URL: URL(string: TPPSettings.TPPPrivacyPolicyURLString) ?? Self.fallbackURL,
             title: Strings.Settings.privacyPolicy,
             failureMessage: Strings.Error.loadFailedError
         )
@@ -162,7 +167,7 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var userAgreementRow: some View {
         let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPUserAgreementURLString)!,
+            URL: URL(string: TPPSettings.TPPUserAgreementURLString) ?? Self.fallbackURL,
             title: Strings.Settings.eula,
             failureMessage: Strings.Error.loadFailedError
         )
@@ -176,7 +181,7 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var softwareLicenseRow: some View {
         let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPSoftwareLicensesURLString)!,
+            URL: URL(string: TPPSettings.TPPSoftwareLicensesURLString) ?? Self.fallbackURL,
             title: Strings.Settings.softwareLicenses,
             failureMessage: Strings.Error.loadFailedError
         )
@@ -190,7 +195,7 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var developerSettingsSection: some View {
         if TPPSettings.shared.customMainFeedURL == nil && showDeveloperSettings {
-            Section(header: Text(DisplayStrings.developerSettings), footer: versionInfo) {
+            Section(header: Text(DisplayStrings.developerSettings).accessibilityHidden(true), footer: versionInfo) {
                 let viewController = TPPDeveloperSettingsTableViewController()
 
                 let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })

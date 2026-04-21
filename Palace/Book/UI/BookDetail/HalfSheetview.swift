@@ -12,6 +12,12 @@ protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
 
     /// Error alert to present via SwiftUI `.alert` on the half sheet.
     var downloadErrorAlert: AlertModel? { get set }
+
+    /// Confirmation alert (return, cancel-hold) that must render ON the
+    /// half-sheet so it is visible and interactive. Previously this was
+    /// only bound to the BookCell behind the sheet, making Cancel Hold
+    /// non-functional (SQ-008).
+    var showAlert: AlertModel? { get set }
 }
 
 extension HalfSheetProvider {
@@ -40,9 +46,15 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     @AccessibilityFocusState private var isBookTitleFocused: Bool
     @State private var originalState: TPPBookState = .unregistered
     @State private var didChangeState: Bool = false
+    let accountsManager: AccountsManager
+    let bookRegistry: TPPBookRegistryProvider
 
-    private var isShowingProgress: Bool {
-        viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful
+    init(viewModel: ViewModel, backgroundColor: Color, coverImage: Binding<UIImage?>, accountsManager: AccountsManager = AccountsManager.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        self.viewModel = viewModel
+        self.backgroundColor = backgroundColor
+        self._coverImage = coverImage
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
     }
 
     var body: some View {
@@ -50,19 +62,17 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
 
             headerView
 
-            Text(AccountsManager.shared.currentAccount?.name ?? "")
+            Text(accountsManager.currentAccount?.name ?? "")
                 .font(.headline)
 
             bookInfoView
             statusInfoView
 
+            // Reserve consistent space for progress bar to prevent layout shifts
             ProgressView(value: viewModel.downloadProgress, total: 1.0)
                 .progressViewStyle(LinearProgressViewStyle())
                 .frame(height: 6)
-                .opacity(isShowingProgress ? 1 : 0)
-                .accessibilityLabel(Strings.DownloadAnnouncements.downloadingTitle(viewModel.book.title))
-                .accessibilityIdentifier(AccessibilityID.BookDetail.downloadProgress)
-                .accessibilityHidden(!isShowingProgress)
+                .opacity(viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful ? 1 : 0)
 
             if viewModel.isFullSize {
                 BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
@@ -119,11 +129,14 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                 })
             }
         }
-        .padding()
+        .padding([.horizontal, .top])
+        .padding(.bottom, 40) // SQ-008: ensure Cancel Hold button clears the home indicator safe area
         .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.bookState)
         .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.buttonState)
         .accessibleAnimation(.easeInOut(duration: 0.15), value: viewModel.downloadProgress)
-        .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
+        .presentationDetents(viewModel.isManagingHold
+            ? [.medium, .large]  // SQ-008: Cancel Hold button needs more room than .medium provides
+            : [UIDevice.current.isIpad ? .height(540) : .medium])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(viewModel.isProcessing(for: .returning))
         .alert(
@@ -154,9 +167,36 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                 )
             }
         }
+        .alert(
+            item: Binding(
+                get: { viewModel.showAlert },
+                set: { viewModel.showAlert = $0 }
+            )
+        ) { confirmAlert in
+            if let secondary = confirmAlert.secondaryButtonTitle {
+                Alert(
+                    title: Text(confirmAlert.title),
+                    message: Text(confirmAlert.message),
+                    primaryButton: .destructive(
+                        Text(confirmAlert.buttonTitle ?? Strings.Generic.ok),
+                        action: confirmAlert.primaryAction
+                    ),
+                    secondaryButton: .cancel(
+                        Text(secondary),
+                        action: confirmAlert.secondaryAction
+                    )
+                )
+            } else {
+                Alert(
+                    title: Text(confirmAlert.title),
+                    message: Text(confirmAlert.message),
+                    dismissButton: .default(Text(confirmAlert.buttonTitle ?? Strings.Generic.ok))
+                )
+            }
+        }
         .accessibilityIdentifier(AccessibilityID.BookDetail.halfSheet)
         .onAppear {
-            originalState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+            originalState = bookRegistry.state(for: viewModel.book.identifier)
             NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 isBookTitleFocused = true
@@ -164,7 +204,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
         }
         .onDisappear {
             // Always sync to latest registry state to avoid reverting the UI after a successful download
-            viewModel.bookState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+            viewModel.bookState = bookRegistry.state(for: viewModel.book.identifier)
             if let cellModel = viewModel as? BookCellModel {
                 cellModel.isManagingHold = false
             }

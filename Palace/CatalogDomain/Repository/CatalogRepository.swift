@@ -3,12 +3,15 @@ import Foundation
 public protocol CatalogRepositoryProtocol {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?
     func search(query: String, baseURL: URL) async throws -> CatalogFeed?
-    /// Search using a known OpenSearch descriptor URL, skipping the groups feed fetch.
     func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed?
-    /// Fetch a groups feed and return its entry-point format facets.
-    func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry]
     func fetchFeed(at url: URL) async throws -> CatalogFeed?
+    func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry]
     func invalidateCache(for url: URL)
+
+    /// Synchronous, memory-only cache lookup. Returns a cached feed if one
+    /// exists and is not too old, without triggering any network activity.
+    /// Used by CatalogViewModel for instant entry point switching.
+    func cachedFeed(for url: URL) -> CatalogFeed?
 }
 
 public final class CatalogRepository: CatalogRepositoryProtocol {
@@ -57,10 +60,13 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         let lastLaunch = UserDefaults.standard.object(forKey: Self.lastAppLaunchKey) as? Date ?? .distantPast
         let daysSinceLastLaunch = Calendar.current.dateComponents([.day], from: lastLaunch, to: now).day ?? 0
 
-        if daysSinceLastLaunch >= 1 {
-            Log.info(#file, "App hasn't been used in \(daysSinceLastLaunch) days - clearing HTTP cache, keeping memory cache for stale-while-revalidate")
-            TPPNetworkExecutor.shared.clearCache()
+        if daysSinceLastLaunch >= 7 {
+            Log.info(#file, "App hasn't been used in \(daysSinceLastLaunch) days - clearing HTTP cache")
+            // Clear URLCache to prevent stale/corrupted HTTP responses from causing parsing crashes
+            // in legacy OPDS code. Our memory cache is preserved for stale-while-revalidate.
             URLCache.shared.removeAllCachedResponses()
+        }
+        if daysSinceLastLaunch >= 1 {
             needsBackgroundRefresh = true
         }
 
@@ -133,6 +139,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
                           userInfo: [NSLocalizedDescriptionKey: "Failed to fetch catalog feed"])
         }
 
+        // Cache the result
         await withCheckedContinuation { continuation in
             cacheQueue.async {
                 self.memoryCache[cacheKey] = CachedFeed(feed: feed, timestamp: Date())
@@ -198,7 +205,10 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
                               userInfo: [NSLocalizedDescriptionKey: "Request timed out after \(seconds) seconds"])
             }
 
-            let result = try await group.next()!
+            guard let result = try await group.next() else {
+                throw NSError(domain: NSURLErrorDomain, code: NSURLErrorUnknown,
+                              userInfo: [NSLocalizedDescriptionKey: "No result from task group"])
+            }
             group.cancelAll()
             return result
         }
@@ -208,8 +218,8 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         try await api.search(query: query, baseURL: baseURL)
     }
 
-    public func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
-        try await api.search(query: query, searchDescriptorURL: searchDescriptorURL)
+    public func fetchFeed(at url: URL) async throws -> CatalogFeed? {
+        try await api.fetchFeed(at: url)
     }
 
     public func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
@@ -236,14 +246,25 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         return entries
     }
 
-    public func fetchFeed(at url: URL) async throws -> CatalogFeed? {
-        try await api.fetchFeed(at: url)
+    public func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
+        try await api.search(query: query, searchDescriptorURL: searchDescriptorURL)
     }
 
     public func invalidateCache(for url: URL) {
         let cacheKey = url.absoluteString
         cacheQueue.async {
             self.memoryCache[cacheKey] = nil
+        }
+    }
+
+    public func cachedFeed(for url: URL) -> CatalogFeed? {
+        let cacheKey = url.absoluteString
+        // Synchronous access — safe because cacheQueue is serial and we
+        // only read. DispatchQueue.sync on a serial queue is deadlock-safe
+        // when called from a different queue (MainActor in our case).
+        return cacheQueue.sync {
+            guard let entry = memoryCache[cacheKey], !entry.isTooOld else { return nil }
+            return entry.feed
         }
     }
 
@@ -255,31 +276,35 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         let facetURLs = links
             .filter { $0.rel == TPPOPDSRelationFacet }
             .compactMap { $0.href }
-            .prefix(5) // Limit preloading to avoid excessive network usage
+            .prefix(5)
 
-        for url in facetURLs {
-            let cacheKey = url.absoluteString
+        // Fetch facets concurrently instead of serially
+        await withTaskGroup(of: Void.self) { group in
+            for url in facetURLs {
+                group.addTask { [weak self] in
+                    guard let self else { return }
+                    let cacheKey = url.absoluteString
 
-            // Check if already cached
-            let isCached = await withCheckedContinuation { continuation in
-                cacheQueue.async {
-                    continuation.resume(returning: self.memoryCache[cacheKey] != nil)
-                }
-            }
-
-            if isCached { continue }
-
-            do {
-                if let preloadedFeed = try await api.fetchFeed(at: url) {
-                    await withCheckedContinuation { continuation in
-                        cacheQueue.async {
-                            self.memoryCache[cacheKey] = CachedFeed(feed: preloadedFeed, timestamp: Date())
-                            continuation.resume()
+                    let isCached = await withCheckedContinuation { continuation in
+                        self.cacheQueue.async {
+                            continuation.resume(returning: self.memoryCache[cacheKey] != nil)
                         }
                     }
+                    guard !isCached else { return }
+
+                    do {
+                        if let preloadedFeed = try await self.api.fetchFeed(at: url) {
+                            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                                self.cacheQueue.async {
+                                    self.memoryCache[cacheKey] = CachedFeed(feed: preloadedFeed, timestamp: Date())
+                                    c.resume()
+                                }
+                            }
+                        }
+                    } catch {
+                        // Silently fail preloading
+                    }
                 }
-            } catch {
-                // Silently fail preloading
             }
         }
     }

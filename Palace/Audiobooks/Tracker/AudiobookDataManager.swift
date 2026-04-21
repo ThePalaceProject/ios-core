@@ -106,28 +106,22 @@ class AudiobookDataManager {
     var store = AudiobookDataManagerStore()
     private let audiobookLogger = AudiobookFileLogger.shared
     private let networkService: TPPNetworkExecutor
-    private var syncTimer: Cancellable?
-
     init(syncTimeInterval: TimeInterval = 60, networkService: TPPNetworkExecutor = TPPNetworkExecutor.shared) {
         self.syncTimeInterval = syncTimeInterval
         self.networkService = networkService
 
         // Use .common RunLoop mode for reliable timer firing during UI interactions
-        syncTimer = Timer.publish(every: syncTimeInterval, on: .main, in: .common)
+        Timer.publish(every: syncTimeInterval, on: .main, in: .common)
             .autoconnect()
-            .sink(receiveValue: syncValues)
-            .store(in: &subscriptions) as? any Cancellable
+            .sink { [weak self] _ in self?.syncValues() }
+            .store(in: &subscriptions)
 
-        NotificationCenter.default.publisher(for: .TPPReachabilityChanged)
-            .receive(on: RunLoop.main)
-            .sink(receiveValue: reachabilityStatusChanged)
+        Reachability.shared.connectivityPublisher
+            .filter { $0 } // Only sync when connected
+            .sink { [weak self] _ in self?.syncValues() }
             .store(in: &subscriptions)
 
         loadStore()
-    }
-
-    deinit {
-        syncTimer?.cancel()
     }
 
     func save(time: AudiobookTimeEntry) {
@@ -189,7 +183,7 @@ class AudiobookDataManager {
                 )
 
                 if let requestUrl = self.store.urls[libraryBook], let requestBody = requestData.jsonRepresentation {
-                    var request = TPPNetworkExecutor.shared.request(for: requestUrl)
+                    var request = self.networkService.request(for: requestUrl)
                     request.httpMethod = "POST"
                     request.httpBody = requestBody
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")

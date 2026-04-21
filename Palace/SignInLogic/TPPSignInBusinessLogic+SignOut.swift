@@ -28,11 +28,20 @@ extension TPPSignInBusinessLogic {
     // while being naturally isolated per library. No global mutable state.
 
     private static var signOutSnapshotKey = 0
+    private static var signOutInProgressKey = 0
 
     /// The signInGeneration captured when performLogOut() was called.
     private var signOutSnapshot: Int {
         get { objc_getAssociatedObject(self, &Self.signOutSnapshotKey) as? Int ?? -1 }
         set { objc_setAssociatedObject(self, &Self.signOutSnapshotKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+
+    /// Guards against re-entrant performLogOut() calls. A second call while
+    /// sign-out is in progress would re-set isLoading=true and potentially
+    /// leave the UI stuck in a "Signing Out..." spinner.
+    private var isSignOutInProgress: Bool {
+        get { objc_getAssociatedObject(self, &Self.signOutInProgressKey) as? Bool ?? false }
+        set { objc_setAssociatedObject(self, &Self.signOutInProgressKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }
 
     /// Called by finalizeSignIn() to invalidate any in-flight sign-out
@@ -45,12 +54,20 @@ extension TPPSignInBusinessLogic {
     ///
     /// - Important: Requires to be called from the main thread.
     func performLogOut() {
+        guard !isSignOutInProgress else {
+            Log.warn(#file, "Sign-out already in progress — ignoring re-entrant call")
+            return
+        }
+        isSignOutInProgress = true
         signOutSnapshot = userAccount.signInGeneration
 
         #if FEATURE_DRM_CONNECTOR
         uiDelegate?.businessLogicWillSignOut(self)
 
         guard var request = self.makeRequest(for: .signOut, context: "Sign Out") else {
+            Log.error(#file, "Unable to create sign-out request — completing with local cleanup")
+            isSignOutInProgress = false
+            completeLogOutProcess()
             return
         }
 
@@ -84,6 +101,7 @@ extension TPPSignInBusinessLogic {
                 title: "SettingsAccountViewControllerCannotLogOutTitle",
                 message: "SettingsAccountViewControllerCannotLogOutMessage")
             uiDelegate?.present(alert, animated: true, completion: nil)
+            isSignOutInProgress = false
         } else {
             completeLogOutProcess()
         }
@@ -101,7 +119,7 @@ extension TPPSignInBusinessLogic {
         do {
             profileDoc = try UserProfileDocument.fromData(data)
         } catch {
-            Log.error(#file, "Unable to parse user profile at sign out (HTTP \(statusCode): Adobe device deauthorization won't be possible.")
+            Log.error(#file, "Unable to parse user profile at sign out (HTTP \(statusCode)): Adobe device deauthorization won't be possible. Proceeding with local cleanup.")
             TPPErrorLogger.logUserProfileDocumentAuthError(
                 error as NSError,
                 summary: "SignOut: unable to parse user profile doc",
@@ -111,9 +129,9 @@ extension TPPSignInBusinessLogic {
                     "Response": response ?? "N/A",
                     "HTTP status code": statusCode
                 ])
-            self.uiDelegate?.businessLogic(self,
-                                           didEncounterSignOutError: error,
-                                           withHTTPStatusCode: statusCode)
+            // Proceed to deauthorize even without a fresh licensor token.
+            // The user's intent is to sign out — don't leave them stuck.
+            self.deauthorizeDevice()
             return
         }
 
@@ -172,6 +190,7 @@ extension TPPSignInBusinessLogic {
         // re-authenticated — in that case we must not wipe their new credentials.
         guard userAccount.signInGeneration == signOutSnapshot else {
             Log.warn(#file, "Stale sign-out for library \(libraryAccountID) — user re-authenticated. Skipping credential cleanup")
+            isSignOutInProgress = false
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
@@ -181,33 +200,49 @@ extension TPPSignInBusinessLogic {
 
         // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
         // Also reset the flag so token re-registers on next sign-in
-        if let account = AccountsManager.shared.account(libraryAccountID) {
+        if let account = libraryAccountsProvider.account(libraryAccountID) {
             NotificationService.shared.deleteToken(for: account)
             account.hasUpdatedToken = false
         }
 
         bookDownloadsCenter.reset(libraryAccountID)
         bookRegistry.reset(libraryAccountID)
+
+        // Capture the access token before removeAll() wipes it.
+        // CM logout endpoints (OIDC and SAML SLO / PP-3452) require
+        // Authorization: Bearer <token>; we need this for the API calls
+        // in performFinalSignOutCleanup.
+        let cmLogoutAccessToken: String? = {
+            let needsToken = selectedAuthentication?.isOidc == true
+                || selectedAuthentication?.samlLogoutHref != nil
+            return needsToken ? userAccount.authToken : nil
+        }()
+
         userAccount.removeAll()
         selectedIDP = nil
+        samlHelper.clearState()
 
         TPPNetworkExecutor.shared.clearCache()
         URLCache.shared.removeAllCachedResponses()
 
         // Clear the IdP session before notifying the UI that sign-out is complete.
         //
-        // SAML/OAuth: patron authenticates via WKWebView, so clearing WKWebView
-        // data invalidates the IdP session on this device.
+        // OAuth: patron authenticates via WKWebView, so clearing WKWebView data
+        // invalidates the IdP session on this device.
         //
-        // OIDC: patron authenticates via ASWebAuthenticationSession which shares
-        // the system Safari cookie store, so we must open the CM's end_session
-        // endpoint in a Safari-backed ASWebAuthenticationSession to clear the
-        // IdP cookies there.
+        // SAML: if the CM advertises a logout link (PP-3452), call the CM's
+        // saml_logout_redirect endpoint with Bearer — this invalidates the
+        // server-side credential and, if the IdP supports SLO, the IdP session.
+        // Then clear WKWebView data to invalidate local cookies.
+        //
+        // OIDC: the CM's logout endpoint is an authenticated REST API — we call
+        // it directly with the captured access token, no browser involved.
         //
         // CRITICAL: all async steps must finish BEFORE notifying the UI delegate.
-        performFinalSignOutCleanup { [weak self] in
+        performFinalSignOutCleanup(cmLogoutAccessToken: cmLogoutAccessToken) { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
+                self.isSignOutInProgress = false
                 self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
             }
         }
@@ -215,12 +250,47 @@ extension TPPSignInBusinessLogic {
 
     /// Routes to the appropriate IdP session-clearing step based on auth type.
     ///
-    /// OIDC hits the CM's end_session endpoint via `ASWebAuthenticationSession`
-    /// then clears WKWebView data. All other types clear WKWebView data directly.
-    private func performFinalSignOutCleanup(completion: @escaping () -> Void) {
+    /// OIDC: authenticated API call to CM end-session endpoint, then WKWebView cleanup.
+    /// SAML + logout link present (PP-3452): authenticated API call to CM
+    ///   saml_logout_redirect, then WKWebView cleanup.
+    /// Everything else: WKWebView cleanup only.
+    private func performFinalSignOutCleanup(cmLogoutAccessToken: String? = nil,
+                                            completion: @escaping () -> Void) {
         if selectedAuthentication?.isOidc == true {
-            oidcLogOut { [weak self] in
-                self?.clearWebViewData(completion: completion)
+            oidcLogOut(accessToken: cmLogoutAccessToken) { [weak self] in
+                guard let self = self else {
+                    // self deallocated — still clear WebView data and call completion
+                    // to ensure the UI state is reset.
+                    DispatchQueue.main.async {
+                        let dataStore = WKWebsiteDataStore.default()
+                        let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+                        dataStore.removeData(ofTypes: dataTypes, modifiedSince: .distantPast) {
+                            if let cookies = HTTPCookieStorage.shared.cookies {
+                                for cookie in cookies { HTTPCookieStorage.shared.deleteCookie(cookie) }
+                            }
+                            completion()
+                        }
+                    }
+                    return
+                }
+                self.clearWebViewData(completion: completion)
+            }
+        } else if selectedAuthentication?.samlLogoutHref != nil {
+            samlLogOut(accessToken: cmLogoutAccessToken) { [weak self] in
+                guard let self = self else {
+                    DispatchQueue.main.async {
+                        let dataStore = WKWebsiteDataStore.default()
+                        let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+                        dataStore.removeData(ofTypes: dataTypes, modifiedSince: .distantPast) {
+                            if let cookies = HTTPCookieStorage.shared.cookies {
+                                for cookie in cookies { HTTPCookieStorage.shared.deleteCookie(cookie) }
+                            }
+                            completion()
+                        }
+                    }
+                    return
+                }
+                self.clearWebViewData(completion: completion)
             }
         } else {
             clearWebViewData(completion: completion)
@@ -245,19 +315,18 @@ extension TPPSignInBusinessLogic {
             let dataStore = WKWebsiteDataStore.default()
             let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
 
-            dataStore.fetchDataRecords(ofTypes: dataTypes) { records in
-                dataStore.removeData(ofTypes: dataTypes, for: records) {
-                    // Also clear shared cookie storage (synchronous)
-                    if let cookies = HTTPCookieStorage.shared.cookies {
-                        for cookie in cookies {
-                            HTTPCookieStorage.shared.deleteCookie(cookie)
-                        }
+            // Use modifiedSince with distantPast to clear ALL data.
+            // This is more reliable than fetch+remove, which may not call
+            // its completion handler when there are no records to remove.
+            dataStore.removeData(ofTypes: dataTypes, modifiedSince: .distantPast) {
+                // Also clear shared cookie storage (synchronous)
+                if let cookies = HTTPCookieStorage.shared.cookies {
+                    for cookie in cookies {
+                        HTTPCookieStorage.shared.deleteCookie(cookie)
                     }
-
-                    // CRITICAL: Only call completion AFTER both WebKit data AND cookies are cleared
-                    // This ensures SAML IdP sessions are fully invalidated before sign-out completes
-                    completion()
                 }
+
+                completion()
             }
         }
     }
@@ -304,16 +373,12 @@ extension TPPSignInBusinessLogic {
                     // Even if self is nil, we need to complete the logout process
                     // Call static/global cleanup methods directly
                     DispatchQueue.main.async {
-                        // Clear WebView data directly
                         let dataStore = WKWebsiteDataStore.default()
                         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
-                        dataStore.fetchDataRecords(ofTypes: dataTypes) { records in
-                            dataStore.removeData(ofTypes: dataTypes, for: records) {
-                                // Clear cookies AFTER WebView data to ensure complete cleanup
-                                if let cookies = HTTPCookieStorage.shared.cookies {
-                                    for cookie in cookies {
-                                        HTTPCookieStorage.shared.deleteCookie(cookie)
-                                    }
+                        dataStore.removeData(ofTypes: dataTypes, modifiedSince: .distantPast) {
+                            if let cookies = HTTPCookieStorage.shared.cookies {
+                                for cookie in cookies {
+                                    HTTPCookieStorage.shared.deleteCookie(cookie)
                                 }
                             }
                         }

@@ -1,0 +1,107 @@
+replay:
+  name: sign-out
+  bundle_id: org.thepalaceproject.palace
+  device_id: booted
+  recorded_at: '2026-04-08T15:39:36'
+  steps:
+  - action: tap
+    element_index: 1
+    element_label: Switch Library
+    x: 32.0
+    y: 69.0
+    expect_elements:
+    - A1QA Test Library
+    - Add Library
+    - Cancel
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 2
+    element_label: Add Library
+    x: 195.0
+    y: 716.5
+    expect_elements:
+    - Switch Library
+    - Search Catalog
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 1
+    element_label: Switch Library
+    x: 32.0
+    y: 69.0
+    expect_elements:
+    - A1QA Test Library
+    - Palace Bookshelf
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 1
+    element_label: A1QA Test Library
+    x: 195.0
+    y: 601.8333333333334
+    expect_elements:
+    - Switch Library
+    - A1QA Test Library
+    - Search Catalog
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 58
+    element_label: Settings
+    x: 341.5
+    y: 786.0
+    expect_elements:
+    - Settings
+    - Libraries
+    - About App
+    - Privacy Policy
+    - User Agreement
+    - Software Licenses
+    - tab.bar.label
+    - Catalog
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 2
+    element_label: Libraries
+    x: 195.0
+    y: 165.0
+    expect_elements:
+    - Settings
+    - Libraries
+    - A1QA Test Library
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: A1QA Test Library
+    x: 208.33333333333334
+    y: 174.5
+    expect_elements:
+    - Libraries
+    - A1QA Test Library
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Sign out
+    x: 195.0
+    y: 337.0
+    expect_elements:
+    - Libraries
+    - A1QA Test Library
+    - tab.bar.label
+    screenshot_threshold: 5.0

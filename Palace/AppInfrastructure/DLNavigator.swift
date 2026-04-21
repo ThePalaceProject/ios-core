@@ -60,8 +60,8 @@ class DLNavigator {
         return Destination(screen: screen, params: params )
     }
 
-    private func login(libraryId: String, barcode: String) {
-        let accountsManager = AccountsManager.shared
+    private func login(libraryId: String, barcode: String, accountsManager: AccountsManager = AccountsManager.shared) {
+        let accountsManager = accountsManager
         guard let topViewController = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController(),
               let newAccount = accountsManager.account(libraryId)
         else {
@@ -79,15 +79,17 @@ class DLNavigator {
             }
             return
         }
-        if TPPUserAccount.sharedAccount(libraryUUID: libraryId).isSignedIn() {
+        if AccountsManager.shared.userAccount(for: libraryId).isSignedIn() {
             return
         }
-        SignInModalPresenter.presentSignInModalForCurrentAccount {
-            let accountList = TPPAccountList { account in
-                MyBooksViewModel().authenticateAndLoad(account: account)
+        Task { @MainActor in
+            SignInModalPresenter.presentSignInModalForCurrentAccount {
+                let accountList = TPPAccountList { account in
+                    MyBooksViewModel().authenticateAndLoad(account: account)
+                }
+                let nav = UINavigationController(rootViewController: accountList)
+                topViewController.present(nav, animated: true)
             }
-            let nav = UINavigationController(rootViewController: accountList)
-            topViewController.present(nav, animated: true)
         }
     }
 
@@ -98,7 +100,9 @@ class DLNavigator {
     private func callOnce(on name: Notification.Name, block: @escaping (_ notification: Notification) -> Void) {
         var token: NSObjectProtocol?
         token = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { notification in
-            NotificationCenter.default.removeObserver(token!, name: name, object: nil)
+            if let token = token {
+                NotificationCenter.default.removeObserver(token, name: name, object: nil)
+            }
             block(notification)
         }
     }

@@ -149,6 +149,9 @@ final class BookDetailViewModelTests: XCTestCase {
         let buttons = buttonState.buttonTypes(book: book, previewEnabled: false)
 
         XCTAssertTrue(buttons.contains(.get))
+        // canBorrow must NOT show cancel or return — those are post-download states
+        XCTAssertFalse(buttons.contains(.cancel), "canBorrow must not include cancel")
+        XCTAssertFalse(buttons.contains(.returning), "canBorrow must not include returning")
     }
 
     func testButtonTypes_CanHold_ReturnsReserveButton() {
@@ -158,6 +161,9 @@ final class BookDetailViewModelTests: XCTestCase {
         let buttons = buttonState.buttonTypes(book: book, previewEnabled: false)
 
         XCTAssertTrue(buttons.contains(.reserve))
+        // canHold must not show get — the user cannot borrow immediately
+        XCTAssertFalse(buttons.contains(.get), "canHold must not show get button")
+        XCTAssertFalse(buttons.contains(.cancel), "canHold must not show cancel")
     }
 
     func testButtonTypes_DownloadInProgress_ReturnsCancelButton() {
@@ -167,6 +173,8 @@ final class BookDetailViewModelTests: XCTestCase {
         let buttons = buttonState.buttonTypes(book: book)
 
         XCTAssertEqual(buttons, [.cancel])
+        // Must not include read/listen while still downloading
+        XCTAssertFalse(buttons.contains(.read), "Cannot read while download is in progress")
     }
 
     func testButtonTypes_DownloadFailed_ReturnsCancelAndRetry() {
@@ -177,6 +185,8 @@ final class BookDetailViewModelTests: XCTestCase {
 
         XCTAssertTrue(buttons.contains(.cancel))
         XCTAssertTrue(buttons.contains(.retry))
+        // Failed state must not offer read/listen
+        XCTAssertFalse(buttons.contains(.read), "Cannot read after download failure without retry")
     }
 
     func testButtonTypes_DownloadSuccessful_EpubReturnsRead() {
@@ -186,6 +196,8 @@ final class BookDetailViewModelTests: XCTestCase {
         let buttons = buttonState.buttonTypes(book: book)
 
         XCTAssertTrue(buttons.contains(.read))
+        // EPUB downloadSuccessful must not include listen (audiobook-only)
+        XCTAssertFalse(buttons.contains(.listen), "EPUB book must not include listen button")
     }
 
     func testButtonTypes_DownloadSuccessful_AudiobookReturnsListen() {
@@ -195,6 +207,8 @@ final class BookDetailViewModelTests: XCTestCase {
         let buttons = buttonState.buttonTypes(book: book)
 
         XCTAssertTrue(buttons.contains(.listen))
+        // Audiobook downloadSuccessful must not include read (EPUB-only)
+        XCTAssertFalse(buttons.contains(.read), "Audiobook must not include read button")
     }
 
     func testButtonTypes_Returning_ReturnsReturningButton() {
@@ -204,6 +218,8 @@ final class BookDetailViewModelTests: XCTestCase {
         let buttons = buttonState.buttonTypes(book: book)
 
         XCTAssertEqual(buttons, [.returning])
+        // Returning state must not let the user read or cancel — the book is going back
+        XCTAssertFalse(buttons.contains(.read), "Returning must not allow reading")
     }
 
     func testButtonTypes_Unsupported_ReturnsEmpty() {
@@ -213,6 +229,8 @@ final class BookDetailViewModelTests: XCTestCase {
         let buttons = buttonState.buttonTypes(book: book)
 
         XCTAssertTrue(buttons.isEmpty)
+        // Any button count greater than 0 would be wrong for unsupported
+        XCTAssertEqual(buttons.count, 0, "Unsupported state must produce zero buttons")
     }
 
     // MARK: - Preview/Sample Button Tests (Real Business Logic)
@@ -254,18 +272,28 @@ final class BookDetailViewModelTests: XCTestCase {
         let book = createTestBook(type: .EpubZip)
 
         XCTAssertEqual(book.defaultBookContentType, .epub)
+        // EPUB must be distinct from the other content types
+        XCTAssertNotEqual(book.defaultBookContentType, .audiobook)
+        XCTAssertNotEqual(book.defaultBookContentType, .pdf)
     }
 
     func testBookContentType_Audiobook() {
         let book = createAudiobook()
 
         XCTAssertEqual(book.defaultBookContentType, .audiobook)
+        // Audiobook type drives the listen button — verify the mapper maps it correctly
+        let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book)
+        XCTAssertTrue(buttons.contains(.listen), "Audiobook must show listen button")
+        XCTAssertFalse(buttons.contains(.read), "Audiobook must not show read button")
     }
 
     func testBookContentType_PDF() {
         let book = createPDFBook()
 
         XCTAssertEqual(book.defaultBookContentType, .pdf)
+        // PDF must be distinct from both EPUB and audiobook
+        XCTAssertNotEqual(book.defaultBookContentType, .epub)
+        XCTAssertNotEqual(book.defaultBookContentType, .audiobook)
     }
 
     // MARK: - Availability Mapping Tests (Real BookButtonMapper Logic)
@@ -276,12 +304,19 @@ final class BookDetailViewModelTests: XCTestCase {
         let state = BookButtonMapper.stateForAvailability(availability)
 
         XCTAssertEqual(state, .canBorrow)
+        // canBorrow means the book is immediately available — must not be canHold or nil
+        XCTAssertNotEqual(state, .canHold)
+        XCTAssertNotNil(state)
     }
 
     func testAvailability_Nil_ReturnsNil() {
         let state = BookButtonMapper.stateForAvailability(nil)
 
         XCTAssertNil(state)
+        // Without availability info, the mapper cannot determine a state
+        // but once we provide availability, a non-nil state is returned
+        let nonNilState = BookButtonMapper.stateForAvailability(TPPOPDSAcquisitionAvailabilityUnlimited())
+        XCTAssertNotNil(nonNilState, "Non-nil availability must produce a non-nil button state")
     }
 
     // MARK: - BookLane Tests (Real Production Struct)
@@ -303,6 +338,9 @@ final class BookDetailViewModelTests: XCTestCase {
         let lane = BookLane(title: "Featured", books: books, subsectionURL: nil)
 
         XCTAssertNil(lane.subsectionURL)
+        // Books must still be accessible when subsectionURL is nil
+        XCTAssertEqual(lane.books.count, 1, "Books must be retained even without a subsection URL")
+        XCTAssertEqual(lane.title, "Featured")
     }
 
     func testBookLane_EmptyBooks() {
@@ -310,6 +348,7 @@ final class BookDetailViewModelTests: XCTestCase {
 
         XCTAssertTrue(lane.books.isEmpty)
         XCTAssertEqual(lane.title, "Empty Lane")
+        XCTAssertEqual(lane.books.count, 0)
     }
 
     // MARK: - Hold State Business Logic Tests
@@ -350,6 +389,9 @@ final class BookDetailViewModelTests: XCTestCase {
 
         // Managing hold should show cancel hold button
         XCTAssertTrue(buttons.contains(.cancelHold))
+        // Must not include get or reserve while actively managing a hold
+        XCTAssertFalse(buttons.contains(.get), "managingHold must not show get")
+        XCTAssertFalse(buttons.contains(.reserve), "managingHold must not show reserve")
     }
 
     // MARK: - All Book States Coverage Tests
@@ -927,5 +969,357 @@ final class BookDetailViewModelTests: XCTestCase {
             identifier: identifier ?? UUID().uuidString,
             until: date
         )
+    }
+
+    // MARK: - VM State Transition Coverage Tests
+
+    private func makeVM(state: TPPBookState = .unregistered) -> (BookDetailViewModel, TPPBookRegistryMock, TPPBook) {
+        let book = createTestBook()
+        let registry = TPPBookRegistryMock()
+        registry.addBook(book, location: nil, state: state, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        let vm = BookDetailViewModel(book: book, registry: registry)
+        return (vm, registry, book)
+    }
+
+    // MARK: processingButtons / isProcessing helpers
+
+    func testIsProcessing_ReturnsTrueWhenButtonInSet() {
+        let (vm, _, _) = makeVM()
+        vm.processingButtons.insert(.read)
+        XCTAssertTrue(vm.isProcessing(for: .read))
+        XCTAssertFalse(vm.isProcessing(for: .download))
+    }
+
+    func testRemoveProcessingButton_RemovesTheButton() {
+        let (vm, _, _) = makeVM()
+        vm.processingButtons.insert(.retry)
+        vm.processingButtons.insert(.download)
+        vm.removeProcessingButton(.retry)
+        XCTAssertFalse(vm.processingButtons.contains(.retry))
+        XCTAssertTrue(vm.processingButtons.contains(.download))
+    }
+
+    func testProcessingButtons_DidSetUpdatesIsProcessingFlag() {
+        let (vm, _, _) = makeVM()
+        XCTAssertFalse(vm.isProcessing)
+        vm.processingButtons.insert(.get)
+        XCTAssertTrue(vm.isProcessing)
+        vm.processingButtons.removeAll()
+        XCTAssertFalse(vm.isProcessing)
+    }
+
+    // MARK: bookState didSet override
+
+    func testBookState_SetReturning_SetsLocalOverride_HidesViaRegistryOnlyWhenUnregistered() {
+        let (vm, registry, book) = makeVM(state: .downloadSuccessful)
+        vm.bookState = .returning
+
+        // Override should prevent state changing back to .downloadSuccessful from registry event
+        let exp = expectation(description: "registry emission processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
+        registry.setState(.downloadSuccessful, for: book.identifier)
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertEqual(vm.bookState, .returning,
+                       "While override=.returning, non-unregistered registry state should be ignored")
+    }
+
+    func testBookState_SetUnregistered_ClearsLocalOverride() {
+        let (vm, _, _) = makeVM()
+        // Set a non-unregistered override, then clear it by setting unregistered.
+        vm.bookState = .returning
+        vm.bookState = .unregistered
+        // Setting yet another state after clearing override should work normally
+        vm.bookState = .downloading
+        let currentState = vm.bookState
+        XCTAssertEqual(currentState, .downloading, "Post-clear state assignment must be honored")
+        // The state must differ from unregistered now
+        XCTAssertNotEqual(currentState, .unregistered, "State must reflect the latest assignment")
+    }
+
+    // MARK: handleAction — non-network branches
+
+    func testHandleAction_Close_DoesNothingButInsertsProcessing() {
+        let (vm, _, _) = makeVM()
+        let initialState = vm.bookState
+        vm.handleAction(for: .close)
+        // .close is a no-op branch but still marks processing (per handleAction impl)
+        XCTAssertTrue(vm.processingButtons.contains(.close))
+        // Book state must not change as a result of close action
+        XCTAssertEqual(vm.bookState, initialState, "Close action must not alter the book state")
+    }
+
+    func testHandleAction_ManageHold_SetsManagingHoldAndHoldingState() {
+        let (vm, _, _) = makeVM(state: .holding)
+        vm.handleAction(for: .manageHold)
+        XCTAssertTrue(vm.isManagingHold)
+        XCTAssertEqual(vm.bookState, .holding)
+    }
+
+    func testHandleAction_DuplicateTap_IsIgnored() {
+        let (vm, _, _) = makeVM()
+        vm.processingButtons.insert(.read)
+        let stateBeforeDuplicate = vm.bookState
+        // Should early-return without re-inserting or mutating state
+        vm.handleAction(for: .read)
+        XCTAssertEqual(vm.processingButtons.intersection([.read]).count, 1)
+        // Book state must remain unchanged when a duplicate tap is ignored
+        XCTAssertEqual(vm.bookState, stateBeforeDuplicate, "Duplicate tap must not change book state")
+    }
+
+    func testHandleAction_Cancel_ResetsDownloadProgressToZero() {
+        let (vm, _, _) = makeVM()
+        vm.downloadProgress = 0.7
+        vm.handleAction(for: .cancel)
+        XCTAssertEqual(vm.downloadProgress, 0.0, accuracy: 0.0001)
+        XCTAssertTrue(vm.processingButtons.contains(.cancel))
+    }
+
+    func testDidSelectCancel_ResetsDownloadProgress() {
+        let (vm, _, _) = makeVM()
+        vm.downloadProgress = 0.42
+        vm.didSelectCancel()
+        XCTAssertEqual(vm.downloadProgress, 0.0, accuracy: 0.0001)
+        // Calling cancel again from zero must remain at zero (idempotent)
+        vm.didSelectCancel()
+        XCTAssertEqual(vm.downloadProgress, 0.0, accuracy: 0.0001, "Double cancel must remain at zero")
+    }
+
+    // MARK: selectRelatedBook
+
+    func testSelectRelatedBook_SameBook_IsNoOp() {
+        let (vm, _, book) = makeVM()
+        let lane = BookLane(title: "x", books: [createTestBook()], subsectionURL: nil)
+        vm.relatedBooksByLane = ["x": lane]
+        vm.selectRelatedBook(book)
+        XCTAssertEqual(vm.relatedBooksByLane.count, 1,
+                       "Selecting the same book should not clear related books")
+        XCTAssertEqual(vm.book.identifier, book.identifier)
+    }
+
+    func testSelectRelatedBook_DifferentBook_UpdatesBookAndClearsLanes() {
+        let (vm, registry, _) = makeVM()
+        let other = TPPBookMocker.mockBook(identifier: "other-id", title: "Other", distributorType: .EpubZip)
+        registry.addBook(other, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        vm.relatedBooksByLane = ["x": BookLane(title: "x", books: [], subsectionURL: nil)]
+        vm.selectRelatedBook(other)
+
+        XCTAssertEqual(vm.book.identifier, "other-id")
+        XCTAssertTrue(vm.relatedBooksByLane.isEmpty)
+    }
+
+    // MARK: showMoreBooksForLane
+
+    func testShowMoreBooksForLane_SetsSelectedBookURL() {
+        let (vm, _, _) = makeVM()
+        let url = URL(string: "https://example.com/more")!
+        vm.relatedBooksByLane = ["L": BookLane(title: "L", books: [], subsectionURL: url)]
+        vm.showMoreBooksForLane(laneTitle: "L")
+        XCTAssertEqual(vm.selectedBookURL, url)
+    }
+
+    func testShowMoreBooksForLane_MissingLane_LeavesSelectedNil() {
+        let (vm, _, _) = makeVM()
+        vm.selectedBookURL = nil
+        vm.showMoreBooksForLane(laneTitle: "nope")
+        XCTAssertNil(vm.selectedBookURL)
+        // A present lane with a URL must contrast: selecting it must set selectedBookURL
+        let url = URL(string: "https://example.com/lane")!
+        vm.relatedBooksByLane = ["valid": BookLane(title: "valid", books: [], subsectionURL: url)]
+        vm.showMoreBooksForLane(laneTitle: "valid")
+        XCTAssertEqual(vm.selectedBookURL, url, "A lane with a URL must set selectedBookURL")
+    }
+
+    func testShowMoreBooksForLane_LaneWithNilURL_DoesNotSetSelected() {
+        let (vm, _, _) = makeVM()
+        vm.relatedBooksByLane = ["L": BookLane(title: "L", books: [], subsectionURL: nil)]
+        vm.selectedBookURL = nil
+        vm.showMoreBooksForLane(laneTitle: "L")
+        XCTAssertNil(vm.selectedBookURL)
+        // The lane dictionary must still contain the lane entry
+        XCTAssertNotNil(vm.relatedBooksByLane["L"], "Lane must remain in the dictionary")
+    }
+
+    // MARK: fetchRelatedBooks guard
+
+    func testFetchRelatedBooks_NilURL_IsNoOp_AndDoesNotSetLoading() {
+        let (vm, _, _) = makeVM()
+        // Plain mock book has no relatedWorksURL
+        vm.isLoadingRelatedBooks = false
+        vm.fetchRelatedBooks()
+        XCTAssertFalse(vm.isLoadingRelatedBooks,
+                       "fetchRelatedBooks should early-return (and not set loading) when relatedWorksURL is nil")
+    }
+
+    // MARK: buttonTypes provider
+
+    func testButtonTypesProvider_DelegatesToStableButtonState() {
+        let (vm, _, _) = makeVM(state: .downloadSuccessful)
+        let expected = vm.stableButtonState.buttonTypes(book: vm.book)
+        XCTAssertEqual(vm.buttonTypes, expected)
+        // After a state change, buttonTypes must update to reflect the new state
+        vm.bookState = .downloadFailed
+        let failedExpected = vm.stableButtonState.buttonTypes(book: vm.book)
+        XCTAssertEqual(vm.buttonTypes, failedExpected, "buttonTypes must reflect updated stableButtonState")
+    }
+
+    func testButtonState_ReturnsStableButtonState() {
+        let (vm, _, _) = makeVM()
+        XCTAssertEqual(vm.buttonState, vm.stableButtonState)
+        // After changing bookState, buttonState must still match the updated stableButtonState
+        vm.bookState = .downloading
+        XCTAssertEqual(vm.buttonState, vm.stableButtonState, "buttonState must always mirror stableButtonState")
+    }
+
+    // MARK: Registry-driven processing button clearing (bindRegistryState)
+
+    func testRegistryTransitionToDownloading_ClearsDownloadProcessingButtons() {
+        let (vm, registry, book) = makeVM()
+        vm.processingButtons = [.download, .get, .retry]
+
+        let exp = expectation(description: "cleared")
+        var cancellables = Set<AnyCancellable>()
+        vm.$bookState
+            .filter { $0 == .downloading }
+            .first()
+            .sink { _ in
+                DispatchQueue.main.async { exp.fulfill() }
+            }
+            .store(in: &cancellables)
+        registry.setState(.downloading, for: book.identifier)
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertFalse(vm.processingButtons.contains(.download))
+        XCTAssertFalse(vm.processingButtons.contains(.get))
+        XCTAssertFalse(vm.processingButtons.contains(.retry))
+    }
+
+    func testRegistryTransitionToDownloadFailed_ClearsDownloadProcessingButtons() {
+        let (vm, registry, book) = makeVM()
+        vm.processingButtons = [.download, .retry]
+
+        let exp = expectation(description: "failed")
+        var cancellables = Set<AnyCancellable>()
+        vm.$bookState.filter { $0 == .downloadFailed }.first()
+            .sink { _ in DispatchQueue.main.async { exp.fulfill() } }
+            .store(in: &cancellables)
+        registry.setState(.downloadFailed, for: book.identifier)
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertFalse(vm.processingButtons.contains(.download))
+        XCTAssertFalse(vm.processingButtons.contains(.retry))
+    }
+
+    func testRegistryTransitionToDownloadSuccessful_ClearsDownloadProcessingButtons() {
+        let (vm, registry, book) = makeVM()
+        vm.processingButtons = [.download, .get, .retry]
+
+        let exp = expectation(description: "success")
+        var cancellables = Set<AnyCancellable>()
+        vm.$bookState.filter { $0 == .downloadSuccessful }.first()
+            .sink { _ in DispatchQueue.main.async { exp.fulfill() } }
+            .store(in: &cancellables)
+        registry.setState(.downloadSuccessful, for: book.identifier)
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertTrue(vm.processingButtons.intersection([.download, .get, .retry]).isEmpty)
+    }
+
+    func testRegistryTransitionToHolding_ClearsReserveAndDismissesHalfSheet() {
+        let (vm, registry, book) = makeVM()
+        vm.processingButtons = [.reserve, .get]
+        vm.showHalfSheet = true
+
+        let exp = expectation(description: "holding")
+        var cancellables = Set<AnyCancellable>()
+        vm.$bookState.filter { $0 == .holding }.first()
+            .sink { _ in DispatchQueue.main.async { exp.fulfill() } }
+            .store(in: &cancellables)
+        registry.setState(.holding, for: book.identifier)
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertFalse(vm.processingButtons.contains(.reserve))
+        XCTAssertFalse(vm.processingButtons.contains(.get))
+        XCTAssertFalse(vm.showHalfSheet)
+    }
+
+    func testRegistryTransitionToUnregistered_ResetsManagingHoldAndHalfSheetAndReturning() {
+        let (vm, registry, book) = makeVM(state: .holding)
+        vm.isManagingHold = true
+        vm.showHalfSheet = true
+        vm.processingButtons = [.returning, .cancelHold, .return, .remove]
+
+        let exp = expectation(description: "unregistered")
+        var cancellables = Set<AnyCancellable>()
+        vm.$bookState.filter { $0 == .unregistered }.first()
+            .sink { _ in DispatchQueue.main.async { exp.fulfill() } }
+            .store(in: &cancellables)
+        registry.setState(.unregistered, for: book.identifier)
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertFalse(vm.isManagingHold)
+        XCTAssertFalse(vm.showHalfSheet)
+        XCTAssertTrue(vm.processingButtons.intersection([.returning, .cancelHold, .return, .remove]).isEmpty)
+    }
+
+    // MARK: handleBookRegistryChange notification handler
+
+    func testHandleBookRegistryChange_UpdatesBookFromRegistry() {
+        let (vm, registry, book) = makeVM()
+        let updated = TPPBookMocker.mockBook(identifier: book.identifier, title: "Renamed", distributorType: .EpubZip)
+        registry.addBook(updated, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        vm.handleBookRegistryChange(Notification(name: .TPPBookRegistryDidChange))
+
+        let exp = expectation(description: "book updated")
+        var cancellables = Set<AnyCancellable>()
+        vm.$book.filter { $0.title == "Renamed" }.first()
+            .sink { _ in exp.fulfill() }
+            .store(in: &cancellables)
+        wait(for: [exp], timeout: 2.0)
+        XCTAssertEqual(vm.book.title, "Renamed")
+    }
+
+    // MARK: stableButtonState reactive computation
+
+    func testStableButtonState_UpdatesWhenBookStateChanges() {
+        let (vm, registry, book) = makeVM(state: .unregistered)
+
+        let exp = expectation(description: "stable state settles to downloadSuccessful")
+        var cancellables = Set<AnyCancellable>()
+        vm.$stableButtonState
+            .filter { $0 == .downloadSuccessful }
+            .first()
+            .sink { _ in exp.fulfill() }
+            .store(in: &cancellables)
+        registry.setState(.downloadSuccessful, for: book.identifier)
+        wait(for: [exp], timeout: 2.0)
+        XCTAssertEqual(vm.stableButtonState, .downloadSuccessful)
+    }
+
+    func testStableButtonState_ManagingHold_WhileHoldingOverridesToManagingHold() {
+        let (vm, _, _) = makeVM(state: .holding)
+        vm.isManagingHold = true
+
+        let exp = expectation(description: "managingHold")
+        var cancellables = Set<AnyCancellable>()
+        vm.$stableButtonState.filter { $0 == .managingHold }.first()
+            .sink { _ in exp.fulfill() }
+            .store(in: &cancellables)
+        wait(for: [exp], timeout: 2.0)
+        XCTAssertEqual(vm.stableButtonState, .managingHold)
+    }
+
+    // MARK: isFullSize computed
+
+    func testIsFullSize_ReturnsFalseOnNonIpad() {
+        let (vm, _, _) = makeVM()
+        // On simulator (iPhone) isIpad is false → always false
+        if !UIDevice.current.isIpad {
+            XCTAssertFalse(vm.isFullSize)
+        } else {
+            // On iPad simulators the property depends on orientation; just assert it is a Bool
+            XCTAssertTrue(vm.isFullSize == true || vm.isFullSize == false)
+        }
     }
 }

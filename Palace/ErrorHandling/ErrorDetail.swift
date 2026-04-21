@@ -64,14 +64,11 @@ struct ErrorDetail {
         error: Error? = nil,
         problemDocument: TPPProblemDocument? = nil,
         bookIdentifier: String? = nil,
-        bookTitle: String? = nil
+        bookTitle: String? = nil,
+        activityTracker: ErrorActivityTracker = .shared,
+        accountsManager: AccountsManager = .shared
     ) async -> ErrorDetail {
-        let trail = await ErrorActivityTracker.shared.recentActivities(seconds: 300)
-
-        // captureDeviceContext() accesses UIDevice.current, which requires the main thread.
-        // Hop to the main actor explicitly so the call is always safe regardless of
-        // which concurrency context `capture()` is awaited from.
-        let deviceContext = await MainActor.run { captureDeviceContext() }
+        let trail = await activityTracker.recentActivities(seconds: 300)
 
         let bookInfo: BookInfo? = bookIdentifier.map {
             BookInfo(identifier: $0, title: bookTitle)
@@ -85,19 +82,17 @@ struct ErrorDetail {
             activityTrail: trail,
             timestamp: Date(),
             bookInfo: bookInfo,
-            deviceContext: deviceContext
+            deviceContext: captureDeviceContext(accountsManager: accountsManager)
         )
     }
 
     /// Captures current device/app context synchronously.
-    /// Must be called on the main thread (UIDevice.current is main-actor-only).
-    @MainActor
-    private static func captureDeviceContext() -> DeviceContext {
+    private static func captureDeviceContext(accountsManager: AccountsManager = .shared) -> DeviceContext {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
         let iosVersion = UIDevice.current.systemVersion
         let deviceModel = UIDevice.current.model
-        let libraryName = AccountsManager.shared.currentAccount?.name ?? "No library"
+        let libraryName = accountsManager.currentAccount?.name ?? "No library"
 
         // Available storage
         let storageString: String

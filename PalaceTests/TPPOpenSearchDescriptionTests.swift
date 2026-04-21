@@ -7,15 +7,15 @@
 //
 
 import XCTest
-// @testable import Palace
+@testable import Palace
 
 class TPPOpenSearchDescriptionTests: XCTestCase {
     var searchDescr: TPPOpenSearchDescription!
 
     override func setUp() {
         super.setUp()
-        searchDescr = TPPOpenSearchDescription(title: "title", books: nil)
-        searchDescr.opdsurlTemplate = "https://circulation.librarysimplified.org/NYNYPL/search/?entrypoint=All&q={searchTerms}"
+        searchDescr = TPPOpenSearchDescription(title: "title", books: [])
+        searchDescr.opdsURLTemplate = "https://circulation.librarysimplified.org/NYNYPL/search/?entrypoint=All&q={searchTerms}"
     }
 
     override func tearDown() {
@@ -23,7 +23,7 @@ class TPPOpenSearchDescriptionTests: XCTestCase {
     }
 
     func testOPDSURLSearch() {
-        let searchURL = searchDescr.opdsurl(forSearching: "Arnold Schönberg & +etc")
+        let searchURL = searchDescr.opdsURL(forSearchingString: "Arnold Schönberg & +etc")
         XCTAssertNotNil(searchURL)
         XCTAssertEqual(searchURL, URL(string: "https://circulation.librarysimplified.org/NYNYPL/search/?entrypoint=All&q=Arnold%20Sch%C3%B6nberg%20%26%20%2Betc")!)
     }

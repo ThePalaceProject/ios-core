@@ -186,10 +186,14 @@ final class MyBooksSimplifiedBearerTokenTests: XCTestCase {
             location: URL(string: "https://example.com")!
         )
 
+        // Capture pre-assignment state to verify mutation is meaningful
+        let before = token.fulfillURL
         let url = URL(string: "https://cm.example.com/fulfill/456")!
         token.fulfillURL = url
+        let after = token.fulfillURL
 
-        XCTAssertEqual(token.fulfillURL, url)
+        XCTAssertNotEqual(before, after, "fulfillURL must change after assignment")
+        XCTAssertEqual(after, url, "fulfillURL must reflect the assigned URL")
     }
 
     // MARK: - Token Refresh (network stubbed)

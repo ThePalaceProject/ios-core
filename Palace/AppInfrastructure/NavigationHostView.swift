@@ -70,6 +70,9 @@ struct NavigationHostView<Content: View>: View {
                                 useIncrementalSpeedSlider: DebugSettings.shared.isIncrementalSpeedSliderEnabled
                             )
                             .toolbar(.hidden, for: .tabBar)
+                            // CarMode prototype — not compiled
+                            // .overlay { CarModeEntryButton ... }
+                            // .fullScreenCover { CarModeView ... }
                         } else {
                             EmptyView()
                         }

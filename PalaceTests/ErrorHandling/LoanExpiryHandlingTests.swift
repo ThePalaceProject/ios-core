@@ -20,18 +20,29 @@ final class ProblemDocumentLoanExpiryTests: XCTestCase {
     /// Changing this value would break silent-cleanup detection in MyBooksDownloadCenter.
     func testDetailLoanTermLimitReached_hasExpectedValue() {
         XCTAssertEqual(TPPProblemDocument.DetailLoanTermLimitReached, "loan_term_limit_reached")
+        XCTAssertFalse(TPPProblemDocument.DetailLoanTermLimitReached.isEmpty,
+                       "DetailLoanTermLimitReached must be a non-empty string")
+        // Must not match the TypeNoActiveLoan string (independent detection paths)
+        XCTAssertFalse(TPPProblemDocument.TypeNoActiveLoan.contains(TPPProblemDocument.DetailLoanTermLimitReached),
+                       "TypeNoActiveLoan and DetailLoanTermLimitReached must be independent strings")
     }
 
     /// A detail string matching the real Feedbooks/LCP server response is detected.
     func testDetailLoanTermLimitReached_detectedInRealServerDetail() {
         let serverDetail = "the license has expired | [\"loan_term_limit_reached\"]"
         XCTAssertTrue(serverDetail.contains(TPPProblemDocument.DetailLoanTermLimitReached))
+        // Substring match must work with the exact substring
+        XCTAssertTrue(serverDetail.contains("loan_term_limit_reached"),
+                      "Server detail must contain the literal loan_term_limit_reached token")
     }
 
     /// A detail string with different content is not falsely detected.
     func testDetailLoanTermLimitReached_notDetectedInUnrelatedDetail() {
         let unrelated = "no-active-loan"
         XCTAssertFalse(unrelated.contains(TPPProblemDocument.DetailLoanTermLimitReached))
+        // Must also not match an empty string
+        XCTAssertFalse("".contains(TPPProblemDocument.DetailLoanTermLimitReached),
+                       "Empty string must not contain DetailLoanTermLimitReached")
     }
 
     /// The error dict pattern used in MyBooksDownloadCenter correctly matches
@@ -72,15 +83,26 @@ final class ExpiredLoanStringsTests: XCTestCase {
 
     func testExpiredLoanTitle_isNonEmpty() {
         XCTAssertFalse(Strings.ExpiredLoan.title.isEmpty)
+        // Title must not be a raw key (i.e. actual localized text was loaded)
+        XCTAssertFalse(Strings.ExpiredLoan.title.hasPrefix("ExpiredLoan"),
+                       "Title must not fall back to the localization key itself")
     }
 
     func testExpiredLoanMessage_isNonEmpty() {
         XCTAssertFalse(Strings.ExpiredLoan.message.isEmpty)
+        // Message should be distinct from the title
+        XCTAssertNotEqual(Strings.ExpiredLoan.message, Strings.ExpiredLoan.title,
+                          "message and title must be different strings")
     }
 
     func testExpiredLoanMessageWithDate_containsFormatSpecifier() {
         XCTAssertTrue(Strings.ExpiredLoan.messageWithDate.contains("%@"),
                       "messageWithDate must contain a %@ format specifier for the end date")
+        // Only one date placeholder is expected
+        let placeholders = Strings.ExpiredLoan.messageWithDate
+            .components(separatedBy: "%@").count - 1
+        XCTAssertEqual(placeholders, 1,
+                       "messageWithDate should have exactly one %@ placeholder, found \(placeholders)")
     }
 
     func testExpiredLoanMessageWithDate_formatsDateCorrectly() {
@@ -95,5 +117,8 @@ final class ExpiredLoanStringsTests: XCTestCase {
     func testExpiredLoanMessage_mentionsRemoval() {
         let message = Strings.ExpiredLoan.message.lowercased()
         XCTAssertTrue(message.contains("removed"), "Expired loan message should tell the user the book was removed")
+        // Message must also be distinct from the title (different UX copy)
+        XCTAssertNotEqual(Strings.ExpiredLoan.message.lowercased(), Strings.ExpiredLoan.title.lowercased(),
+                          "message and title must contain different text")
     }
 }

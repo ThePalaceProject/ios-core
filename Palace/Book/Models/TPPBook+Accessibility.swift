@@ -30,26 +30,23 @@ extension TPPBook {
   @objc var voiceOverLabel: String {
     let cleanedAuthor = authors?.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanedNarrator = narrators?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let hasAuthor = !(cleanedAuthor?.isEmpty ?? true)
-    let hasNarrator = !(cleanedNarrator?.isEmpty ?? true)
-
     if isAudiobook {
-      switch (hasAuthor, hasNarrator) {
-      case (true, true):
+      if let author = cleanedAuthor, !author.isEmpty,
+         let narrator = cleanedNarrator, !narrator.isEmpty {
         return Strings.Generic.audiobookByAuthorNarratedBy(
-          title: title, author: cleanedAuthor!, narrator: cleanedNarrator!
+          title: title, author: author, narrator: narrator
         )
-      case (true, false):
-        return Strings.Generic.audiobookByAuthor(title: title, author: cleanedAuthor!)
-      case (false, true):
-        return Strings.Generic.audiobookNarratedBy(title: title, narrator: cleanedNarrator!)
-      case (false, false):
+      } else if let author = cleanedAuthor, !author.isEmpty {
+        return Strings.Generic.audiobookByAuthor(title: title, author: author)
+      } else if let narrator = cleanedNarrator, !narrator.isEmpty {
+        return Strings.Generic.audiobookNarratedBy(title: title, narrator: narrator)
+      } else {
         return "\(title), \(Strings.Generic.audiobook)"
       }
     }
 
-    if hasAuthor {
-      return Strings.Generic.bookByAuthor(title: title, author: cleanedAuthor!)
+    if let author = cleanedAuthor, !author.isEmpty {
+      return Strings.Generic.bookByAuthor(title: title, author: author)
     }
     return title
   }

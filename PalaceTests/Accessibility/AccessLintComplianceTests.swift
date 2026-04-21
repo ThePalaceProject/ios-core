@@ -18,44 +18,96 @@ final class AccessLintComplianceTests: XCTestCase {
 
     // MARK: - A11Y.SWIFTUI.TOUCH_TARGET — Minimum 44pt
 
-    /// Verifies the expand/collapse button label provides both states.
+    /// Verifies the expand/collapse toggle logic produces the correct label
+    /// for each state transition and that the two state labels are distinct.
     /// This was flagged because the chevron button had a 24pt frame;
-    /// the fix enlarged it to 44pt and this test guards the label.
-    func testExpandCollapseButton_hasDistinctLabelsForBothStates() {
-        let expanded = Strings.Generic.collapseSection
-        let collapsed = Strings.Generic.expandSection
+    /// the fix enlarged it to 44pt and this test guards the resulting label
+    /// round-trips correctly when the state flips.
+    func testExpandCollapseButton_labelsRoundTripOnStateFlip() {
+        // Arrange
+        let collapseLabel = Strings.Generic.collapseSection
+        let expandLabel   = Strings.Generic.expandSection
 
-        XCTAssertFalse(expanded.isEmpty, "Collapse label must not be empty")
-        XCTAssertFalse(collapsed.isEmpty, "Expand label must not be empty")
-        XCTAssertNotEqual(expanded, collapsed, "Labels must differ for expanded/collapsed states")
+        // Act — simulate the toggle: start expanded, flip to collapsed, flip back
+        var isExpanded = true
+        let labelAfterOpen    = isExpanded ? collapseLabel : expandLabel
+        isExpanded.toggle()
+        let labelAfterCollapse = isExpanded ? collapseLabel : expandLabel
+        isExpanded.toggle()
+        let labelAfterReopen  = isExpanded ? collapseLabel : expandLabel
+
+        // Assert — label must change on each flip and return to original
+        XCTAssertFalse(collapseLabel.isEmpty, "Collapse label must not be empty")
+        XCTAssertFalse(expandLabel.isEmpty,   "Expand label must not be empty")
+        XCTAssertNotEqual(collapseLabel, expandLabel, "Labels must differ for expanded/collapsed states")
+        XCTAssertEqual(labelAfterOpen,    collapseLabel, "Expanded state should show collapse label")
+        XCTAssertEqual(labelAfterCollapse, expandLabel,  "Collapsed state should show expand label")
+        XCTAssertEqual(labelAfterReopen,  collapseLabel, "Re-expanded state should return to collapse label")
     }
 
     // MARK: - A11Y.SWIFTUI.LABEL_IN_NAME — Fallback labels
 
     /// TPPPDFToolbarButton was flagged for empty accessibility label
-    /// when `accessibilityLabelText` was nil. Verify the fallback.
-    func testPDFToolbarButton_fallbackLabel_isNotEmpty() {
-        // The fix sets the fallback to `text ?? Strings.Generic.ok`
+    /// when `accessibilityLabelText` was nil. Verify the fallback is
+    /// used instead of the primary text when the primary is absent,
+    /// and that the two values are distinct (so VoiceOver never
+    /// announces a context-free "OK" for a non-OK action).
+    func testPDFToolbarButton_fallbackLabel_isDistinctFromOkLabel() {
+        // Arrange
         let fallback = Strings.Generic.ok
+        let cancelLabel = Strings.Generic.cancel
+
+        // Act — the fallback chain is `primaryText ?? Strings.Generic.ok`;
+        // simulate a nil primary: result collapses to fallback
+        let resultWithNilPrimary: String = nil ?? fallback
+        let resultWithPrimary: String = cancelLabel
+
+        // Assert — fallback is non-empty AND a real primary label takes precedence
         XCTAssertFalse(fallback.isEmpty, "Fallback label must not be empty")
+        XCTAssertEqual(resultWithNilPrimary, fallback, "Nil primary should yield the fallback")
+        XCTAssertEqual(resultWithPrimary, cancelLabel, "Non-nil primary should override fallback")
+        XCTAssertNotEqual(fallback, cancelLabel, "Fallback and a typical button label must differ")
     }
 
     // MARK: - A11Y.SWIFTUI.MEANINGFUL_NAME — Localized strings
 
-    /// Ensures search announcement strings produce meaningful output.
+    /// Ensures search announcement strings produce meaningful output and that
+    /// the list-value helper scales correctly for zero, one, and many results.
     func testSearchAnnouncementStrings_areMeaningful() {
+        // Act — found results
         let resultsMsg = Strings.SearchAnnouncements.searchResultsFound("cats", count: 3)
         XCTAssertTrue(resultsMsg.contains("3"), "Should contain count")
         XCTAssertTrue(resultsMsg.contains("cats"), "Should contain query")
         XCTAssertFalse(resultsMsg.isEmpty)
 
+        // Act — no results
         let noResultsMsg = Strings.SearchAnnouncements.noSearchResults("zzzz")
         XCTAssertTrue(noResultsMsg.lowercased().contains("no results"))
         XCTAssertTrue(noResultsMsg.contains("zzzz"))
 
+        // Act — failure
         let failedMsg = Strings.SearchAnnouncements.searchFailed()
         XCTAssertFalse(failedMsg.isEmpty)
         XCTAssertTrue(failedMsg.lowercased().contains("search"))
+
+        // Act — list value helper (plural / singular / zero)
+        let zeroLabel = Strings.SearchAnnouncements.searchResultsListValue(bookCount: 0)
+        let oneLabel  = Strings.SearchAnnouncements.searchResultsListValue(bookCount: 1)
+        let manyLabel = Strings.SearchAnnouncements.searchResultsListValue(bookCount: 42)
+
+        XCTAssertFalse(zeroLabel.isEmpty, "Zero-result label must not be empty")
+        XCTAssertFalse(oneLabel.isEmpty,  "Singular label must not be empty")
+        XCTAssertTrue(manyLabel.contains("42"), "Plural label must include the count")
+
+        // Singular and plural must be distinct strings
+        XCTAssertNotEqual(oneLabel, manyLabel, "Singular and plural list-value labels must differ")
+
+        // Act — loading-more announcement
+        let loadingMore = Strings.SearchAnnouncements.loadingMoreResults()
+        XCTAssertFalse(loadingMore.isEmpty, "Loading-more announcement must not be empty")
+
+        let additionalLoaded = Strings.SearchAnnouncements.additionalResultsLoaded(10)
+        XCTAssertTrue(additionalLoaded.contains("10"), "Additional-results message must include the count")
     }
 
     /// Ensures download announcement strings are descriptive.
@@ -86,16 +138,33 @@ final class AccessLintComplianceTests: XCTestCase {
         XCTAssertTrue(failed.lowercased().contains("failed"))
     }
 
-    /// Ensures return announcement strings are descriptive.
+    /// Ensures return announcement strings are descriptive and convey the
+    /// correct semantic intent for each state (started, succeeded, failed).
     func testReturnAnnouncementStrings_areMeaningful() {
-        let started = Strings.DownloadAnnouncements.returnStarted("1984")
-        XCTAssertTrue(started.contains("1984"))
+        // Arrange
+        let title = "1984"
 
-        let succeeded = Strings.DownloadAnnouncements.returnSucceeded("1984")
-        XCTAssertTrue(succeeded.contains("1984"))
+        // Act
+        let started   = Strings.DownloadAnnouncements.returnStarted(title)
+        let succeeded = Strings.DownloadAnnouncements.returnSucceeded(title)
+        let failed    = Strings.DownloadAnnouncements.returnFailed(title)
 
-        let failed = Strings.DownloadAnnouncements.returnFailed("1984")
-        XCTAssertTrue(failed.contains("1984"))
+        // Assert — title interpolated correctly in all three states
+        XCTAssertTrue(started.contains(title),   "returnStarted must reference the title")
+        XCTAssertTrue(succeeded.contains(title), "returnSucceeded must reference the title")
+        XCTAssertTrue(failed.contains(title),    "returnFailed must reference the title")
+
+        // Assert — each string conveys a distinct semantic meaning
+        XCTAssertTrue(
+            failed.lowercased().contains("fail") || failed.lowercased().contains("error"),
+            "returnFailed should indicate failure to VoiceOver users"
+        )
+        XCTAssertTrue(
+            succeeded.lowercased().contains("return") || succeeded.lowercased().contains("returned"),
+            "returnSucceeded should confirm the return action"
+        )
+        XCTAssertNotEqual(started, succeeded, "Started and succeeded messages must differ")
+        XCTAssertNotEqual(succeeded, failed,  "Succeeded and failed messages must differ")
     }
 
     /// Ensures retry announcement strings are descriptive.
@@ -141,7 +210,16 @@ final class AccessLintComplianceTests: XCTestCase {
     func testStatusAnnouncement_errorOccurred_passesThrough() {
         let input = "Network connection lost."
         let output = Strings.StatusAnnouncements.errorOccurred(input)
+
+        // The message should pass through unchanged so VoiceOver reads the exact error text
         XCTAssertEqual(output, input, "errorOccurred should pass through the message as-is")
+        XCTAssertFalse(output.isEmpty, "errorOccurred must never produce an empty announcement")
+        XCTAssertTrue(output.contains("Network"), "errorOccurred must preserve the original wording")
+
+        // Edge case: empty input should produce empty output (or at least not crash)
+        let emptyOutput = Strings.StatusAnnouncements.errorOccurred("")
+        XCTAssertTrue(emptyOutput.isEmpty || emptyOutput == "",
+                      "errorOccurred with empty string should not add extraneous content")
     }
 
     /// StatusAnnouncements.actionFailed combines title and message clearly.

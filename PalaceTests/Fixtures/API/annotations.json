@@ -1,0 +1,53 @@
+{
+  "@context": "http://www.w3.org/ns/anno.jsonld",
+  "id": "https://gorgon.staging.palaceproject.io/a1qa-test/annotations/",
+  "type": ["BasicContainer", "AnnotationCollection"],
+  "total": 2,
+  "first": {
+    "id": "https://gorgon.staging.palaceproject.io/a1qa-test/annotations/page/1",
+    "type": "AnnotationPage",
+    "items": [
+      {
+        "id": "https://gorgon.staging.palaceproject.io/a1qa-test/annotations/abc123",
+        "@context": [
+          "http://www.w3.org/ns/oa",
+          {"ls": "http://librarysimplified.org/terms/"}
+        ],
+        "type": "Annotation",
+        "motivation": "http://www.w3.org/ns/oa#idling",
+        "body": {
+          "http://librarysimplified.org/terms/time": "2026-04-10T14:30:00Z",
+          "http://librarysimplified.org/terms/device": "urn:uuid:device-id-1234",
+          "http://librarysimplified.org/terms/chapter": "Chapter 3: The Garden"
+        },
+        "target": {
+          "source": "urn:uuid:b309a3a0-1234-5678-abcd-ef0123456789",
+          "selector": {
+            "type": "oa:FragmentSelector",
+            "value": "{\"idref\":\"chapter3\",\"contentCFI\":\"/4/2/10\",\"progressWithinChapter\":0.45,\"progressWithinBook\":0.23}"
+          }
+        }
+      },
+      {
+        "id": "https://gorgon.staging.palaceproject.io/a1qa-test/annotations/def456",
+        "@context": [
+          "http://www.w3.org/ns/oa",
+          {"ls": "http://librarysimplified.org/terms/"}
+        ],
+        "type": "Annotation",
+        "motivation": "http://www.w3.org/ns/oa#bookmarking",
+        "body": {
+          "http://librarysimplified.org/terms/time": "2026-04-09T08:15:00Z",
+          "http://librarysimplified.org/terms/device": "urn:uuid:device-id-1234"
+        },
+        "target": {
+          "source": "urn:uuid:b309a3a0-1234-5678-abcd-ef0123456789",
+          "selector": {
+            "type": "oa:FragmentSelector",
+            "value": "{\"idref\":\"chapter1\",\"contentCFI\":\"/4/2/4\",\"progressWithinChapter\":0.10,\"progressWithinBook\":0.05}"
+          }
+        }
+      }
+    ]
+  }
+}

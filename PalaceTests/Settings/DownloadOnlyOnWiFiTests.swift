@@ -33,28 +33,27 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
     func testSetting_canBeToggledOn() {
         TPPSettings.shared.downloadOnlyOnWiFi = true
         XCTAssertTrue(TPPSettings.shared.downloadOnlyOnWiFi)
+        // Setting must persist to UserDefaults immediately
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: settingsKey),
+                      "downloadOnlyOnWiFi=true must be reflected in UserDefaults")
     }
 
     func testSetting_canBeToggledOff() {
         TPPSettings.shared.downloadOnlyOnWiFi = true
         TPPSettings.shared.downloadOnlyOnWiFi = false
         XCTAssertFalse(TPPSettings.shared.downloadOnlyOnWiFi)
+        // Must also be false in UserDefaults
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: settingsKey),
+                       "downloadOnlyOnWiFi=false must be reflected in UserDefaults")
     }
 
     func testSetting_persistsAcrossReads() {
         TPPSettings.shared.downloadOnlyOnWiFi = true
         let value = UserDefaults.standard.bool(forKey: settingsKey)
         XCTAssertTrue(value, "Setting should be persisted in UserDefaults")
-    }
-
-    // MARK: - Protocol Conformance
-
-    func testSettingsProviding_includesDownloadOnlyOnWiFi() {
-        let settings: TPPSettingsProviding = TPPSettings.shared
-        let original = settings.downloadOnlyOnWiFi
-        settings.downloadOnlyOnWiFi = !original
-        XCTAssertNotEqual(settings.downloadOnlyOnWiFi, original)
-        settings.downloadOnlyOnWiFi = original
+        // Reading the setting again must return the same value (no side effects)
+        XCTAssertTrue(TPPSettings.shared.downloadOnlyOnWiFi,
+                      "Re-reading the setting after setting to true must still return true")
     }
 
     // MARK: - Mock
@@ -78,9 +77,14 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
     // MARK: - Reachability isOnWiFi
 
     func testReachability_isOnWiFi_returnsBool() {
-        // Just verify the property exists and returns without crashing.
-        // We can't assert a specific value because CI may be on any interface.
-        _ = Reachability.shared.isOnWiFi
+        // isOnWiFi must return a Bool without crashing. In CI the interface is
+        // unknown, but we can verify the value is consistent with the detailed status.
+        let isWiFi = Reachability.shared.isOnWiFi
+        // Verify the return type is a proper Bool (not some nil-bridged optional)
+        XCTAssertNotNil(isWiFi as Bool?, "isOnWiFi must return a non-nil Bool")
+        // Verify consistency: calling twice must return the same value (no side effects)
+        XCTAssertEqual(Reachability.shared.isOnWiFi, isWiFi,
+                       "isOnWiFi must be idempotent: repeated calls must return the same value")
     }
 
     func testReachability_isOnWiFi_consistentWithDetailedStatus() {

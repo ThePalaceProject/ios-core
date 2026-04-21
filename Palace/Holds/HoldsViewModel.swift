@@ -9,7 +9,7 @@ final class HoldsBookViewModel: ObservableObject, Identifiable {
 
     var isReserved: Bool {
         var reservedFlag = false
-        book.defaultAcquisition?.availability.matchUnavailable(
+        book.defaultAcquisition?.availability.match(unavailable: 
             nil,
             limited: nil,
             unlimited: nil,
@@ -35,8 +35,12 @@ final class HoldsViewModel: ObservableObject {
     @Published var showSearchSheet: Bool = false
     @Published var searchQuery: String = ""
     @Published var visibleBooks: [TPPBook] = []
+    var isVisible: Bool = false
     private var cancellables = Set<AnyCancellable>()
     private let bookRegistry: TPPBookRegistryProvider
+    private let accountsManager: AccountsManager
+    private let settings: TPPSettings
+    private let hasCredentials: () -> Bool
 
     struct SyncError: Identifiable {
         let id = UUID()
@@ -47,8 +51,16 @@ final class HoldsViewModel: ObservableObject {
         self.init(bookRegistry: TPPBookRegistry.shared)
     }
 
-    init(bookRegistry: TPPBookRegistryProvider) {
+    init(
+        bookRegistry: TPPBookRegistryProvider,
+        accountsManager: AccountsManager = .shared,
+        settings: TPPSettings = .shared,
+        hasCredentials: (() -> Bool)? = nil
+    ) {
+        self.accountsManager = accountsManager
+        self.settings = settings
         self.bookRegistry = bookRegistry
+        self.hasCredentials = hasCredentials ?? { accountsManager.currentUserAccount.hasCredentials() }
 
         NotificationCenter.default.publisher(for: .TPPSyncBegan)
             .receive(on: DispatchQueue.main)
@@ -82,15 +94,24 @@ final class HoldsViewModel: ObservableObject {
 
     private func handleSyncFailure(_ notification: Notification) {
         isLoading = false
-
+        // Don't show error banner if we already have holds displayed —
+        // the cached data is still useful, no need to alarm the user
+        guard visibleBooks.isEmpty else {
+            Log.debug(#file, "Sync failed but holds are cached — suppressing error banner")
+            return
+        }
+        // Anonymous users can't fetch holds by design. The empty-state text
+        // already explains the Holds tab; an error banner here is noise.
+        guard hasCredentials() else {
+            Log.debug(#file, "Sync failed for anonymous user — suppressing error banner")
+            return
+        }
         if let errorDoc = notification.userInfo?[TPPBookRegistry.syncFailureErrorDocumentKey] as? [AnyHashable: Any],
            let detail = (errorDoc["detail"] as? String) ?? (errorDoc["title"] as? String),
            !detail.isEmpty {
             syncError = SyncError(message: detail)
         } else {
-            syncError = SyncError(
-                message: Strings.HoldsView.syncFailedMessage
-            )
+            syncError = SyncError(message: Strings.HoldsView.syncFailedMessage)
         }
     }
 
@@ -135,17 +156,27 @@ final class HoldsViewModel: ObservableObject {
     }
 
     func refresh() {
-        if TPPUserAccount.sharedAccount().needsAuth {
-            if TPPUserAccount.sharedAccount().hasCredentials() {
-                TPPBookRegistry.shared.sync()
+        if AccountsManager.shared.currentUserAccount.needsAuth {
+            if AccountsManager.shared.currentUserAccount.hasCredentials() {
+                (bookRegistry as? TPPBookRegistry)?.sync()
             } else {
                 SignInModalPresenter.presentSignInModalForCurrentAccount {
                     self.reloadData()
                 }
             }
         } else {
-            TPPBookRegistry.shared.load()
+            (bookRegistry as? TPPBookRegistry)?.load()
         }
+    }
+
+    /// Silent background refresh on appear — syncs without disrupting
+    /// the current display if we already have holds to show.
+    func refreshInBackground() {
+        isVisible = true
+        guard !isLoading else { return }
+        guard AccountsManager.shared.currentUserAccount.hasCredentials() else { return }
+        guard !visibleBooks.isEmpty else { return }
+        (bookRegistry as? TPPBookRegistry)?.sync()
     }
 
     func loadAccount(_ account: Account) {
@@ -157,9 +188,9 @@ final class HoldsViewModel: ObservableObject {
 
     private func updateFeed(_ account: Account) {
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
-        AccountsManager.shared.currentAccount = account
+        accountsManager.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
 

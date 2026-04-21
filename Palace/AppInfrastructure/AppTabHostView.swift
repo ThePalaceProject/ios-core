@@ -4,6 +4,11 @@ import UIKit
 struct AppTabHostView: View {
     @StateObject private var router = AppTabRouter()
     @State private var holdsBadgeCount: Int = 0
+    let bookRegistry: TPPBookRegistryProvider
+
+    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        self.bookRegistry = bookRegistry
+    }
 
     @StateObject private var catalogViewModel: CatalogViewModel = {
         let client = URLSessionNetworkClient()
@@ -42,7 +47,7 @@ struct AppTabHostView: View {
                 .tabItem {
                     VStack {
                         Image("Holds").renderingMode(.template)
-                        Text(Strings.HoldsView.holds)
+                        Text(Strings.HoldsView.reservations)
                     }
                 }
                 .badge(holdsBadgeCount)
@@ -55,7 +60,10 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
         }
         .tint(Color.accentColor)
-        .onAppear { AppTabRouterHub.shared.router = router }
+        .onAppear {
+            AppTabRouterHub.shared.router = router
+            AppTabRouterHub.shared.applyPending()
+        }
         .onChange(of: router.selected) { newTab in
             // Respect reduce motion accessibility setting
             if UIAccessibility.isReduceMotionEnabled {
@@ -70,6 +78,12 @@ struct AppTabHostView: View {
                 top.dismiss(animated: true)
             }
             NotificationCenter.default.post(name: .AppTabSelectionDidChange, object: nil)
+            // F-035: Auto-refresh My Books and Holds when their tabs
+            // become visible so the user doesn't have to pull-to-refresh
+            // to see newly borrowed/returned/held books.
+            if newTab == .myBooks || newTab == .holds {
+                TPPBookRegistry.shared.sync()
+            }
             // Announce the new tab for VoiceOver when tab changes
             if UIAccessibility.isVoiceOverRunning {
                 let message = Self.accessibilityLabel(for: newTab)
@@ -93,35 +107,31 @@ private extension AppTabHostView {
         switch tab {
         case .catalog: return Strings.Settings.catalog
         case .myBooks: return Strings.MyBooksView.navTitle
-        case .holds: return Strings.HoldsView.holds
+        case .holds: return Strings.HoldsView.reservations
         case .settings: return Strings.Settings.settings
+        default: return ""
         }
     }
 
     func updateHoldsBadge() {
-        guard TPPBookRegistry.shared.state == .loaded || TPPBookRegistry.shared.state == .synced else {
+        guard bookRegistry.state == .loaded || bookRegistry.state == .synced else {
             return
         }
 
-        // Snapshot heldBooks on the calling (main) thread before dispatching to a
-        // background queue. TPPBookRegistry is not thread-safe; accessing heldBooks
-        // from a background thread races with registry mutations and can crash via
-        // Swift bridging or ObjC exceptions.
-        #if DEBUG
-        let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? TPPBookRegistry.shared.heldBooks
-        let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
-        #else
-        let held = TPPBookRegistry.shared.heldBooks
-        #endif
-
-        // Move the availability-matching work off main thread; the snapshot is
-        // an immutable copy so no thread-safety issues exist here.
+        // Move heavy registry access off main thread to avoid blocking UI
         DispatchQueue.global(qos: .userInitiated).async {
+            // Use test books if debug configuration is enabled, otherwise use real registry data
+            #if DEBUG
+            let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? bookRegistry.heldBooks
+            let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
+            #else
+            let held = bookRegistry.heldBooks
+            #endif
 
             var readyCount = 0
 
             for book in held {
-                book.defaultAcquisition?.availability.matchUnavailable(nil,
+                book.defaultAcquisition?.availability.match(unavailable: nil,
                                                                        limited: nil,
                                                                        unlimited: nil,
                                                                        reserved: nil,
@@ -132,13 +142,13 @@ private extension AppTabHostView {
             if DebugSettings.shared.isBadgeLoggingEnabled {
                 var reservedCount = 0
                 for book in held {
-                    book.defaultAcquisition?.availability.matchUnavailable(nil, limited: nil, unlimited: nil,
+                    book.defaultAcquisition?.availability.match(unavailable: nil, limited: nil, unlimited: nil,
                                                                            reserved: { _ in reservedCount += 1 }, ready: nil)
                 }
                 Log.info(#file, "[DEBUG-BADGE] updateHoldsBadge: source=\(usingTestBooks ? "TEST BOOKS" : "registry"), totalHeld=\(held.count), reserved=\(reservedCount), ready=\(readyCount)")
                 for (index, book) in held.enumerated() {
                     var status = "unknown"
-                    book.defaultAcquisition?.availability.matchUnavailable(
+                    book.defaultAcquisition?.availability.match(unavailable: 
                         { _ in status = "unavailable" },
                         limited: { _ in status = "limited" },
                         unlimited: { _ in status = "unlimited" },

@@ -1,0 +1,75 @@
+{
+  "metadata": {
+    "identifier": "urn:uuid:c7d8e9f0-1234-5678-abcd-ef0123456789",
+    "type": "http://schema.org/Book",
+    "title": "The Cartographer's Daughter",
+    "author": [
+      {
+        "name": "Sofia Lindqvist"
+      }
+    ],
+    "published": "2024-02-20",
+    "language": ["en"],
+    "subject": [
+      {
+        "scheme": "http://librarysimplified.org/terms/fiction/",
+        "name": "Fiction",
+        "code": "Fiction"
+      },
+      {
+        "scheme": "http://librarysimplified.org/terms/genres/Simplified/",
+        "name": "Historical Fiction",
+        "code": "Historical Fiction"
+      }
+    ],
+    "description": "In 1890s Stockholm, a young woman inherits her father's map shop and discovers that his final, unfinished map holds the key to a hidden treasure."
+  },
+  "images": [
+    {
+      "href": "https://gorgon.staging.palaceproject.io/images/cartographers-daughter-cover.jpg",
+      "type": "image/jpeg",
+      "width": 600,
+      "height": 900
+    },
+    {
+      "href": "https://gorgon.staging.palaceproject.io/images/cartographers-daughter-thumb.jpg",
+      "type": "image/jpeg",
+      "width": 150,
+      "height": 225,
+      "rel": "http://opds-spec.org/image/thumbnail"
+    }
+  ],
+  "links": [
+    {
+      "rel": "http://opds-spec.org/acquisition",
+      "href": "https://gorgon.staging.palaceproject.io/testlib/works/c7d8e9f0/fulfill",
+      "type": "application/vnd.readium.lcp.license.v1.0+json",
+      "properties": {
+        "availability": {
+          "state": "available",
+          "since": "2024-06-01T10:00:00Z",
+          "until": "2024-06-15T10:00:00Z"
+        },
+        "copies": {
+          "total": 5,
+          "available": 3
+        },
+        "indirectAcquisition": [
+          {
+            "type": "application/epub+zip"
+          }
+        ]
+      }
+    },
+    {
+      "rel": "http://librarysimplified.org/terms/rel/revoke",
+      "href": "https://gorgon.staging.palaceproject.io/testlib/works/c7d8e9f0/revoke",
+      "type": "application/atom+xml;type=entry;profile=opds-catalog"
+    },
+    {
+      "rel": "http://www.w3.org/ns/oa#annotationService",
+      "href": "https://gorgon.staging.palaceproject.io/testlib/annotations/c7d8e9f0/",
+      "type": "application/ld+json"
+    }
+  ]
+}

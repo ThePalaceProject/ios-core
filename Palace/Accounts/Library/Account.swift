@@ -80,7 +80,20 @@ protocol AccountLogoDelegate: AnyObject {
 
         let samlIdps: [OPDS2SamlIDP]?
         let oidcAuthenticationUrl: URL?
-        let oidcEndSessionUrl: URL?
+        /// Raw href from the OIDC auth document's "logout" rel link.
+        /// May be a plain URL or an RFC 6570 URI template — check
+        /// `oidcLogoutHrefIsTemplated` before expanding.
+        let oidcLogoutHref: String?
+        /// True when the "logout" link has `"templated": true` in the
+        /// auth document, indicating `oidcLogoutHref` is an RFC 6570
+        /// URI template that must be expanded before use.
+        let oidcLogoutHrefIsTemplated: Bool?
+        /// Raw href from the SAML auth document's "logout" rel link,
+        /// added by CM PP-3452 for SP-initiated Single Logout.
+        let samlLogoutHref: String?
+        /// True when the SAML "logout" link is an RFC 6570 URI template
+        /// (the `{&post_logout_redirect_uri}` form emitted by the CM).
+        let samlLogoutHrefIsTemplated: Bool?
 
         init(auth: OPDS2AuthenticationDocument.Authentication) {
             let authType = AuthType.from(auth.type)
@@ -102,7 +115,10 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
+                samlLogoutHref = nil
+                samlLogoutHrefIsTemplated = nil
 
             case .oauthIntermediary:
                 oauthIntermediaryUrl = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
@@ -111,25 +127,36 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
+                samlLogoutHref = nil
+                samlLogoutHrefIsTemplated = nil
 
             case .saml:
                 samlIdps = auth.links?.filter { $0.rel == "authenticate" }.compactMap { OPDS2SamlIDP(opdsLink: $0) }
+                let samlLogoutLink = auth.links?.first(where: { $0.rel == "logout" })
+                samlLogoutHref = samlLogoutLink?.href
+                samlLogoutHrefIsTemplated = samlLogoutLink?.templated
                 oauthIntermediaryUrl = nil
                 coppaUnderUrl = nil
                 coppaOverUrl = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
 
             case .oidc:
                 oidcAuthenticationUrl = URL(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
-                oidcEndSessionUrl = URL(string: auth.links?.first(where: { $0.rel == "sign-out" })?.href ?? "")
+                let logoutLink = auth.links?.first(where: { $0.rel == "logout" })
+                oidcLogoutHref = logoutLink?.href
+                oidcLogoutHrefIsTemplated = logoutLink?.templated
                 oauthIntermediaryUrl = nil
                 coppaUnderUrl = nil
                 coppaOverUrl = nil
                 samlIdps = nil
                 tokenURL = nil
+                samlLogoutHref = nil
+                samlLogoutHrefIsTemplated = nil
 
             case .none, .basic, .anonymous:
                 oauthIntermediaryUrl = nil
@@ -138,7 +165,10 @@ protocol AccountLogoDelegate: AnyObject {
                 samlIdps = nil
                 tokenURL = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
+                samlLogoutHref = nil
+                samlLogoutHrefIsTemplated = nil
             case .token:
                 tokenURL = URL.init(string: auth.links?.first(where: { $0.rel == "authenticate" })?.href ?? "")
                 oauthIntermediaryUrl = nil
@@ -146,9 +176,22 @@ protocol AccountLogoDelegate: AnyObject {
                 coppaOverUrl = nil
                 samlIdps = nil
                 oidcAuthenticationUrl = nil
-                oidcEndSessionUrl = nil
+                oidcLogoutHref = nil
+                oidcLogoutHrefIsTemplated = nil
+                samlLogoutHref = nil
+                samlLogoutHrefIsTemplated = nil
 
             }
+
+            // Log every link the server sends for this auth type so that rel
+            // values and href formats are visible in the console at parse time.
+            // This makes server contract mismatches (wrong rel, URI templates,
+            // unexpected fields) immediately observable during development.
+            let linkSummary = auth.links?
+                .map { "[\($0.rel ?? "no-rel"): \($0.href ?? "no-href")]" }
+                .joined(separator: ", ")
+                ?? "none"
+            Log.debug(#file, "Authentication[\(auth.type ?? "unknown")] links: \(linkSummary)")
         }
 
         var needsAuth: Bool {
@@ -183,6 +226,33 @@ protocol AccountLogoDelegate: AnyObject {
             authType == .oidc
         }
 
+        /// Describes how the app should re-authenticate when credentials expire.
+        /// Use this instead of checking individual auth type booleans for re-auth decisions.
+        enum ReauthStrategy {
+            /// Present a browser-based sign-in flow (SAML IdP, OIDC provider)
+            case browser
+            /// Refresh the token programmatically via tokenURL (OAuth, basic-token)
+            case tokenRefresh
+            /// Show a credential prompt (username/password)
+            case credentialPrompt
+            /// No re-auth possible (anonymous, COPPA, unknown)
+            case none
+        }
+
+        /// The re-authentication strategy for this auth type.
+        var reauthStrategy: ReauthStrategy {
+            switch authType {
+            case .saml, .oidc:
+                return .browser
+            case .oauthIntermediary, .token:
+                return .tokenRefresh
+            case .basic:
+                return .credentialPrompt
+            case .anonymous, .coppa, .none:
+                return .none
+            }
+        }
+
         var catalogRequiresAuthentication: Bool {
             // you need an oauth token in order to access catalogs if authentication type is either oauth with intermediary (ex. Clever), or SAML
             authType == .oauthIntermediary
@@ -214,7 +284,10 @@ protocol AccountLogoDelegate: AnyObject {
             samlIdps = authentication.samlIdps
             tokenURL = authentication.tokenURL
             oidcAuthenticationUrl = authentication.oidcAuthenticationUrl
-            oidcEndSessionUrl = authentication.oidcEndSessionUrl
+            oidcLogoutHref = authentication.oidcLogoutHref
+            oidcLogoutHrefIsTemplated = authentication.oidcLogoutHrefIsTemplated
+            samlLogoutHref = authentication.samlLogoutHref
+            samlLogoutHrefIsTemplated = authentication.samlLogoutHrefIsTemplated
         }
     }
 
@@ -470,7 +543,7 @@ protocol AccountLogoDelegate: AnyObject {
             }
         }
         authenticationDocumentUrl = publication.links.first(where: { $0.type == "application/vnd.opds.authentication.v1.0+json" })?.href
-        logo = UIImage(named: "LibraryLogoMagic")!
+        logo = UIImage(named: "LibraryLogoMagic") ?? UIImage()
         homePageUrl = publication.links.first(where: { $0.rel == "alternate" })?.href
         logoUrl = publication.thumbnailURL
         self.imageCache = imageCache
@@ -561,15 +634,25 @@ protocol AccountLogoDelegate: AnyObject {
         }
     }
 
+    /// Loads the logo image from network or cache.
+    /// Only call for accounts that are visible to the user (current account,
+    /// configured accounts in settings, visible cells in library picker).
+    /// Do NOT call in bulk for all accounts — 700+ concurrent logo fetches
+    /// saturate the connection pool and starve critical API requests.
     func loadLogo() {
         guard let url = self.logoUrl else { return }
+        guard !isLoadingLogo else { return }
+        isLoadingLogo = true
 
-        self.fetchImage(from: url, completion: {
-            guard let image = $0 else { return }
+        self.fetchImage(from: url, completion: { [weak self] in
+            self?.isLoadingLogo = false
+            guard let image = $0, let self else { return }
             self.logo = image
             self.logoDelegate?.logoDidUpdate(in: self, to: image)
         })
     }
+
+    private var isLoadingLogo = false
 
     private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> Void) {
         if let cachedImage = imageCache.get(for: self.uuid) {

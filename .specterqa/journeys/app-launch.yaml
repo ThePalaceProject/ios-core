@@ -1,0 +1,43 @@
+scenario:
+  id: app-launch
+  name: "App Launch and Filter Tabs"
+  description: "Verify app launches with catalog loaded and filter tabs (All/Ebooks/Audiobooks) are functional."
+  tags: [smoke, ios, critical_path]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: onboard_app
+      description: "Dismiss first-launch alerts and open the catalog"
+      goal: >
+        If a SpringBoard "Would Like to Send You Notifications" alert is on
+        screen, tap "Don't Allow" to dismiss it. If the Add Library picker
+        appears, select any listed library (e.g. "Palace Bookshelf" or
+        "Allin Township Library"). Wait for the Catalog screen to appear
+        with at least one lane of book covers before proceeding.
+      checkpoint: app_ready
+      max_iterations: 10
+
+    - id: verify_catalog_loads
+      description: "App launches to Catalog with navigation and filter tabs visible"
+      goal: >
+        Confirm Switch Library, Search Catalog, and All/Ebooks/Audiobooks filter tabs
+        are present on the Catalog screen.
+
+    - id: tap_ebooks_filter
+      description: "Tap Ebooks filter tab"
+      goal: >
+        Tap the Ebooks filter. Verify the filter tabs remain visible and the catalog
+        reloads with ebook-only content.
+
+    - id: tap_audiobooks_filter
+      description: "Tap Audiobooks filter tab"
+      goal: >
+        Tap the Audiobooks filter. Verify the filter tabs remain visible.
+
+    - id: return_to_all
+      description: "Tap All filter to restore full catalog"
+      goal: >
+        Tap the All filter. Verify the full catalog with all content types is restored.

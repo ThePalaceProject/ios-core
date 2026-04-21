@@ -34,11 +34,29 @@ enum Group: Int {
     var activeFacetSort: Facet
     let facetViewModel: FacetViewModel
     private var observers = Set<AnyCancellable>()
-    private var bookRegistry: TPPBookRegistry { TPPBookRegistry.shared }
+    private let bookRegistry: TPPBookRegistryProvider
+    private let accountsManager: AccountsManager
+    private let settings: TPPSettings
     private var allBooks: [TPPBook] = []
 
+    /// Tracks whether the My Books tab is currently visible. When false,
+    /// notification-driven reloads are deferred until the tab reappears,
+    /// avoiding unnecessary sort + diff work while the user is on another tab.
+    var isVisible: Bool = false {
+        didSet {
+            if isVisible && needsReloadOnAppear {
+                needsReloadOnAppear = false
+                loadData()
+            }
+        }
+    }
+    private var needsReloadOnAppear = false
+
     // MARK: - Initialization
-    override init() {
+    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
+        self.bookRegistry = bookRegistry
+        self.accountsManager = accountsManager
+        self.settings = settings
         self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
             groupName: DisplayStrings.sortBy,
@@ -63,7 +81,7 @@ enum Group: Int {
 
         // If the account requires authentication and user is not logged in,
         // don't show any books from the registry (they may be stale from a previous session)
-        let account = TPPUserAccount.sharedAccount()
+        let account = AccountsManager.shared.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
             Log.info(#file, "User not logged in - showing empty My Books")
             self.allBooks = []
@@ -108,13 +126,25 @@ enum Group: Int {
     func reloadData() {
         guard !isLoading else { return }
 
-        if TPPUserAccount.sharedAccount().needsAuth, !TPPUserAccount.sharedAccount().hasCredentials() {
+        if AccountsManager.shared.currentUserAccount.needsAuth, !AccountsManager.shared.currentUserAccount.hasCredentials() {
             SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
         } else {
             bookRegistry.sync { [weak self] _, _ in
                 self?.loadData()
             }
         }
+    }
+
+    /// Silent background refresh on appear — syncs without showing loading
+    /// spinner if we already have cached books to display. The UI updates
+    /// smoothly via registry notification → loadData() when sync completes.
+    func refreshInBackground() {
+        guard !isLoading else { return }
+        guard AccountsManager.shared.currentUserAccount.hasCredentials() else { return }
+        // Only do a silent sync if we already have books displayed —
+        // if empty, the user sees the empty state and can pull to refresh
+        guard !books.isEmpty else { return }
+        bookRegistry.sync(completion: nil)
     }
 
     @MainActor
@@ -144,8 +174,8 @@ enum Group: Int {
         account.loadAuthenticationDocument { [weak self] success in
             guard let self = self, success else { return }
 
-            if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-                TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+            if !settings.settingsAccountIdsList.contains(account.uuid) {
+                settings.settingsAccountIdsList.append(account.uuid)
             }
             self.loadAccount(account)
         }
@@ -177,15 +207,15 @@ enum Group: Int {
     }
 
     private func updateFeed(_ account: Account) {
-        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-            TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+        if !settings.settingsAccountIdsList.contains(account.uuid) {
+            settings.settingsAccountIdsList.append(account.uuid)
         }
 
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
 
-        AccountsManager.shared.currentAccount = account
+        accountsManager.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
 
@@ -203,7 +233,14 @@ enum Group: Int {
             .merge(with: syncEnd)
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.loadData()
+                guard let self else { return }
+                if self.isVisible {
+                    self.loadData()
+                } else {
+                    // Defer reload until the tab becomes visible again.
+                    // Avoids sorting + diffing the book list while offscreen.
+                    self.needsReloadOnAppear = true
+                }
             }
             .store(in: &observers)
     }

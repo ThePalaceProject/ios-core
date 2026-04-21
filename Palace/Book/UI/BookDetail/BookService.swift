@@ -3,12 +3,21 @@ import SwiftUI
 import Combine
 import PalaceAudiobookToolkit
 
+/// Dispatches book-open requests to the right reader/player. Owns only the
+/// EPUB and PDF paths directly; audiobook opens delegate to
+/// `AudiobookSessionManager.openAudiobook`, which is the sole owner of the
+/// audiobook lifecycle (manager, decryptor, playback, navigation).
+///
+/// Before this refactor, BookService was a static god-utility that built
+/// audiobook managers and handed them off via AudiobookEvents.managerCreated.
+/// That handoff ran the new open's DRM pipeline while the previous
+/// AudiobookManager was still alive, which caused Readium's
+/// publicationOpener.open() to hang after a few back-to-back audiobook opens.
+/// See AudiobookLoader + AudiobookSessionManager for the new ownership model.
 enum BookService {
     private static var openingBooks = Set<String>()
 
-    static func open(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
-
-        // Prevent multiple simultaneous opens of the same book
+    static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, onFinish: (() -> Void)? = nil) {
         guard !openingBooks.contains(book.identifier) else {
             Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
             onFinish?()
@@ -16,64 +25,12 @@ enum BookService {
         }
 
         openingBooks.insert(book.identifier)
-        let resolvedBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) ?? book
+        let resolvedBook = bookRegistry.book(forIdentifier: book.identifier) ?? book
 
-        openAfterTokenRefresh(resolvedBook, onFinish: onFinish)
+        dispatchOpen(resolvedBook, onFinish: onFinish)
     }
 
-    private static func openAfterTokenRefresh(_ book: TPPBook, onFinish: (() -> Void)?) {
-        let userAccount = TPPUserAccount.sharedAccount()
-
-        if book.defaultBookContentType == .audiobook && userAccount.authTokenHasExpired {
-            Log.info(#file, "🔄 Auth token expired for audiobook - refreshing before opening")
-
-            let authDef = userAccount.authDefinition
-            let authType = authDef?.authType.rawValue ?? "none"
-            let authState = userAccount.authState
-            let hasBarcode = userAccount.barcode != nil
-            let hasPin = userAccount.PIN != nil
-            let hasToken = userAccount.authToken != nil
-            let hasTokenURL = authDef?.tokenURL != nil
-            Log.info(#file, "  📋 Account diagnostics for audiobook open:")
-            Log.info(#file, "    authType=\(authType), authState=\(authState)")
-            Log.info(#file, "    hasBarcode=\(hasBarcode), hasPin=\(hasPin), hasToken=\(hasToken), hasTokenURL=\(hasTokenURL)")
-            Log.info(#file, "    tokenExpired=\(userAccount.authTokenHasExpired), tokenNearExpiry=\(userAccount.authTokenNearExpiry)")
-            Log.info(#file, "    book.distributor=\(book.distributor ?? "nil"), book.hasBearerToken=\(book.bearerToken != nil)")
-            if let barcode = userAccount.barcode {
-                let barcodeShape = barcode.allSatisfy({ $0.isNumber }) ? "numeric" : (barcode.count > 50 ? "token-like" : "alphanumeric")
-                Log.info(#file, "    barcodeShape=\(barcodeShape), barcodeLen=\(barcode.count)")
-            }
-
-            guard let username = userAccount.username, !username.isEmpty,
-                  let password = userAccount.PIN, !password.isEmpty,
-                  let tokenURL = userAccount.authDefinition?.tokenURL else {
-                Log.error(#file, "Cannot refresh token: missing or empty credentials (usernameLen=\(userAccount.username?.count ?? -1), pinLen=\(userAccount.PIN?.count ?? -1), tokenURL=\(authDef?.tokenURL?.absoluteString ?? "nil"))")
-                openingBooks.remove(book.identifier)
-                showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                onFinish?()
-                return
-            }
-
-            TPPNetworkExecutor.shared.refreshTokenAndResume(task: nil, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
-                switch result {
-                case .success:
-                    Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
-                    // Route through presentAudiobook so each book type gets proper handling:
-                    // LCP books go through the LCP pipeline, bearer token books through the
-                    // two-step fulfill flow, and open access books through fetchOpenAccessManifest.
-                    presentAudiobook(book, onFinish: onFinish)
-
-                case .failure(let error, _):
-                    Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription) - cannot open audiobook")
-                    openingBooks.remove(book.identifier)
-                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                    onFinish?()
-                }
-            }
-            return
-        }
-
-        // For non-audiobooks or valid tokens, proceed normally
+    private static func dispatchOpen(_ book: TPPBook, onFinish: (() -> Void)?) {
         switch book.defaultBookContentType {
         case .epub:
             Task { @MainActor in
@@ -89,7 +46,12 @@ enum BookService {
                 }
             }
         case .audiobook:
-            presentAudiobook(book) {
+            // Route through the single audiobook owner. The session manager
+            // stops the previous session (releasing its DRM decryptor) before
+            // loading the new audiobook — the ordering invariant that prevents
+            // a stale LCP Publication from hanging publicationOpener.open().
+            Task { @MainActor in
+                _ = await AudiobookSessionManager.shared.openAudiobook(book, startPlaying: true)
                 openingBooks.remove(book.identifier)
                 onFinish?()
             }
@@ -111,709 +73,12 @@ enum BookService {
         completion?()
     }
 
-    private static func presentAudiobook(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
-        Log.debug(#file, "🎵 [AUDIOBOOK] Attempting to present audiobook: \(book.title) (ID: \(book.identifier))")
-        Log.debug(#file, "  Distributor: \(book.distributor ?? "nil")")
-
-        #if LCP
-        Log.debug(#file, "  Checking LCP audiobook support...")
-        if LCPAudiobooks.canOpenBook(book) {
-            Log.debug(#file, "  ✅ LCP audiobook detected")
-
-            if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
-                Log.debug(#file, "  → Using LOCAL LCP file: \(localURL.path)")
-                buildAndPresentAudiobook(book: book, lcpSourceURL: localURL, onFinish: onFinish)
-                return
-            } else {
-                Log.debug(#file, "  No local LCP file found")
-            }
-
-            if let license = licenseURL(forBookIdentifier: book.identifier) {
-                Log.debug(#file, "  → Using LCP LICENSE file: \(license.path)")
-                buildAndPresentAudiobook(book: book, lcpSourceURL: license, onFinish: onFinish)
-                return
-            } else {
-                Log.debug(#file, "  No LCP license file found")
-            }
-
-            Log.info(#file, "  LCP audiobook with no local files - re-downloading LCP license from fulfill URL")
-            redownloadLCPLicenseAndPresent(book, onFinish: onFinish)
-            return
-        } else {
-            Log.debug(#file, "  Not an LCP audiobook")
-        }
-        #else
-        Log.debug(#file, "  LCP not compiled in this build")
-        #endif
-
-        Log.debug(#file, "  Checking for local audiobook manifest...")
-        if let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
-           FileManager.default.fileExists(atPath: url.path) {
-            Log.debug(#file, "  Local file exists at: \(url.path)")
-
-            guard let data = try? Data(contentsOf: url) else {
-                Log.error(#file, "  ❌ Failed to read local file data")
-                showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                openingBooks.remove(book.identifier)
-                onFinish?()
-                return
-            }
-
-            guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
-                Log.error(#file, "  ❌ Failed to parse local file as JSON")
-                showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                openingBooks.remove(book.identifier)
-                onFinish?()
-                return
-            }
-
-            Log.debug(#file, "  ✅ Successfully parsed local manifest JSON")
-
-            if let fulfillURL = book.bearerTokenFulfillURL {
-                Log.debug(#file, "  🔑 Bearer token book - refreshing token before playback")
-                MyBooksSimplifiedBearerToken.refreshToken(from: fulfillURL) { newToken in
-                    Task { @MainActor in
-                        if let newToken = newToken {
-                            Log.info(#file, "  ✅ Bearer token refreshed before playback")
-                            book.bearerToken = newToken.accessToken
-                        } else {
-                            Log.warn(#file, "  ⚠️ Bearer token refresh failed - proceeding with existing token")
-                        }
-                        presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
-                    }
-                }
-            } else {
-                presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
-            }
-            return
-        } else {
-            Log.debug(#file, "  No local audiobook file found")
-        }
-
-        Log.debug(#file, "  → Fetching open access manifest from network...")
-        fetchOpenAccessManifest(for: book) { json in
-            guard let json else {
-                Log.error(#file, "  ❌ Failed to fetch or parse open access manifest")
-                showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                openingBooks.remove(book.identifier)
-                onFinish?()
-                return
-            }
-            Log.debug(#file, "  ✅ Successfully fetched and parsed open access manifest")
-            presentAudiobookFrom(book: book, json: json, decryptor: nil, onFinish: onFinish)
-        }
-    }
-
-    #if LCP
-    private static func buildAndPresentAudiobook(book: TPPBook, lcpSourceURL: URL, onFinish: (() -> Void)?) {
-        Log.debug(#file, "🔐 [LCP AUDIOBOOK] Building LCP-protected audiobook")
-        Log.debug(#file, "  LCP source: \(lcpSourceURL.path)")
-
-        guard let lcpAudiobooks = LCPAudiobooks(for: lcpSourceURL) else {
-            Log.error(#file, "  ❌ Failed to create LCPAudiobooks instance from URL")
-            Log.error(#file, "    This could indicate license parsing failure or invalid LCP file")
-            showAudiobookTryAgainError(book: book, onFinish: onFinish)
-            openingBooks.remove(book.identifier)
-            onFinish?()
-            return
-        }
-
-        Log.debug(#file, "  ✅ LCPAudiobooks instance created")
-
-        if let cached = lcpAudiobooks.cachedContentDictionary() as? [String: Any] {
-            Log.debug(#file, "  → Using CACHED content dictionary from LCP")
-            presentAudiobookFrom(book: book, json: cached, decryptor: lcpAudiobooks, onFinish: onFinish)
-            return
-        }
-
-        Log.debug(#file, "  → Fetching content dictionary from LCP...")
-        lcpAudiobooks.contentDictionary { dict, error in
-            Task { @MainActor in
-                if let error = error {
-                    Log.error(#file, "  ❌ Error fetching LCP content dictionary: \(error.localizedDescription)")
-                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                    openingBooks.remove(book.identifier)
-                    onFinish?()
-                    return
-                }
-
-                guard let json = dict as? [String: Any] else {
-                    Log.error(#file, "  ❌ LCP content dictionary is not a valid JSON dictionary")
-                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                    openingBooks.remove(book.identifier)
-                    onFinish?()
-                    return
-                }
-
-                Log.debug(#file, "  ✅ Successfully retrieved LCP content dictionary")
-                Log.debug(#file, "    Dictionary keys: \(json.keys.joined(separator: ", "))")
-                presentAudiobookFrom(book: book, json: json, decryptor: lcpAudiobooks, onFinish: onFinish)
-            }
-        }
-    }
-
-    /// Re-downloads the LCP license from the CM fulfill URL and processes it through the LCP pipeline.
-    /// Called when an LCP audiobook's local files are missing (cache cleared, storage pressure, etc.)
-    /// but the book still appears as downloaded in the registry.
-    private static func redownloadLCPLicenseAndPresent(_ book: TPPBook, onFinish: (() -> Void)?) {
-        guard let fulfillURL = book.defaultAcquisition?.hrefURL else {
-            Log.error(#file, "  ❌ No fulfill URL for LCP audiobook re-download")
-            showAudiobookTryAgainError(book: book, onFinish: onFinish)
-            openingBooks.remove(book.identifier)
-            onFinish?()
-            return
-        }
-
-        guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else {
-            Log.error(#file, "  ❌ Cannot determine content directory for LCP license")
-            showAudiobookTryAgainError(book: book, onFinish: onFinish)
-            openingBooks.remove(book.identifier)
-            onFinish?()
-            return
-        }
-
-        let licenseFileURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
-        Log.info(#file, "  📡 Fetching LCP license from: \(fulfillURL.host ?? "unknown")")
-
-        let _ = TPPNetworkExecutor.shared.GET(fulfillURL) { data, response, error in
-            if let error = error {
-                Log.error(#file, "  ❌ Network error re-downloading LCP license: \(error.localizedDescription)")
-                showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                openingBooks.remove(book.identifier)
-                onFinish?()
-                return
-            }
-
-            guard let data = data, !data.isEmpty else {
-                Log.error(#file, "  ❌ No data received for LCP license re-download")
-                showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                openingBooks.remove(book.identifier)
-                onFinish?()
-                return
-            }
-
-            if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
-                Log.error(#file, "  ❌ LCP license re-download failed with HTTP \(httpResponse.statusCode)")
-                showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                openingBooks.remove(book.identifier)
-                onFinish?()
-                return
-            }
-
-            do {
-                let directory = licenseFileURL.deletingLastPathComponent()
-                if !FileManager.default.fileExists(atPath: directory.path) {
-                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                }
-                try data.write(to: licenseFileURL, options: .atomic)
-                Log.info(#file, "  ✅ LCP license saved to: \(licenseFileURL.lastPathComponent) (\(data.count) bytes)")
-            } catch {
-                Log.error(#file, "  ❌ Failed to save LCP license: \(error.localizedDescription)")
-                showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                openingBooks.remove(book.identifier)
-                onFinish?()
-                return
-            }
-
-            buildAndPresentAudiobook(book: book, lcpSourceURL: licenseFileURL, onFinish: onFinish)
-        }
-    }
-    #endif
-
-    private static func presentAudiobookFrom(
-        book: TPPBook,
-        json: [String: Any],
-        decryptor: DRMDecryptor?,
-        onFinish: (() -> Void)? = nil
-    ) {
-        Log.debug(#file, "🏗️ [AUDIOBOOK FACTORY] Building audiobook from manifest")
-        Log.debug(#file, "  Book: \(book.title) (ID: \(book.identifier))")
-        Log.debug(#file, "  Has decryptor: \(decryptor != nil)")
-        Log.debug(#file, "  Has bearer token: \(book.bearerToken != nil)")
-
-        // Pre-serialize JSON on the calling thread to avoid capturing the
-        // [String: Any] dictionary (which contains reference-typed values)
-        // across an async boundary. Capturing `Any` existentials in closures
-        // was causing EXC_BREAKPOINT in block_destroy_helper.
-        var jsonDict = json
-        jsonDict["id"] = book.identifier
-
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []) else {
-            Log.error(#file, "  ❌ Failed to serialize JSON dictionary to Data")
-            showAudiobookTryAgainError(book: book, onFinish: onFinish)
-            openingBooks.remove(book.identifier)
-            onFinish?()
-            return
-        }
-
-        // Capture only the serialized Data (value type) instead of the raw dictionary
-        let vendorCompletion: (Foundation.NSError?) -> Void = { (error: Foundation.NSError?) in
-            Task { @MainActor in
-                if let error = error {
-                    Log.error(#file, "  ❌ Vendor completion failed with error: \(error.localizedDescription)")
-                    Log.error(#file, "    Domain: \(error.domain), Code: \(error.code)")
-                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                    openingBooks.remove(book.identifier)
-                    onFinish?()
-                    return
-                }
-
-                Log.debug(#file, "  Creating audiobook with bearerToken: '\(book.bearerToken ?? "nil")'")
-                Log.debug(#file, "  JSON data size: \(jsonData.count) bytes")
-
-                let manifest: Manifest
-                do {
-                    manifest = try Manifest.customDecoder().decode(Manifest.self, from: jsonData)
-                } catch {
-                    Log.error(#file, "  ❌ Failed to decode Manifest from JSON")
-                    Log.error(#file, "    Decoding error: \(error)")
-
-                    if let decodingError = error as? DecodingError {
-                        switch decodingError {
-                        case .keyNotFound(let key, let context):
-                            Log.error(#file, "    Missing key: '\(key.stringValue)' at path: \(context.codingPath.map { $0.stringValue }.joined(separator: " → "))")
-                        case .typeMismatch(let type, let context):
-                            Log.error(#file, "    Type mismatch: expected \(type) at path: \(context.codingPath.map { $0.stringValue }.joined(separator: " → "))")
-                            Log.error(#file, "    Debug description: \(context.debugDescription)")
-                        case .valueNotFound(let type, let context):
-                            Log.error(#file, "    Value not found: \(type) at path: \(context.codingPath.map { $0.stringValue }.joined(separator: " → "))")
-                        case .dataCorrupted(let context):
-                            Log.error(#file, "    Data corrupted at path: \(context.codingPath.map { $0.stringValue }.joined(separator: " → "))")
-                            Log.error(#file, "    Description: \(context.debugDescription)")
-                        @unknown default:
-                            Log.error(#file, "    Unknown decoding error")
-                        }
-                    }
-
-                    if let jsonString = String(data: jsonData, encoding: .utf8) {
-                        Log.error(#file, "    Full manifest JSON: \(jsonString)")
-                    }
-                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                    openingBooks.remove(book.identifier)
-                    onFinish?()
-                    return
-                }
-
-                Log.debug(#file, "  ✅ Manifest decoded successfully")
-                Log.debug(#file, "    Manifest metadata: \(manifest.metadata?.title ?? "no title")")
-
-                guard let audiobook = AudiobookFactory.audiobook(
-                    for: manifest,
-                    bookIdentifier: book.identifier,
-                    decryptor: decryptor,
-                    token: book.bearerToken,
-                    fulfillURL: book.bearerTokenFulfillURL
-                ) else {
-                    Log.error(#file, "  ❌ AudiobookFactory failed to create audiobook")
-                    Log.error(#file, "    This likely means no suitable player could be created for this manifest")
-                    Log.error(#file, "    Manifest type: \(manifest.metadata?.type ?? "unknown")")
-                    showAudiobookTryAgainError(book: book, onFinish: onFinish)
-                    openingBooks.remove(book.identifier)
-                    onFinish?()
-                    return
-                }
-
-                Log.debug(#file, "  ✅ Audiobook created successfully by factory")
-
-                let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
-                var timeTracker: AudiobookTimeTracker?
-                if
-                    let libraryId = AccountsManager.shared.currentAccount?.uuid,
-                    let url = book.timeTrackingURL {
-                    timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: url)
-                }
-
-                let networkService: DefaultAudiobookNetworkService = DefaultAudiobookNetworkService(
-                    tracks: audiobook.tableOfContents.allTracks,
-                    decryptor: decryptor
-                )
-                networkService.downloadOnlyOnWiFi = TPPSettings.shared.downloadOnlyOnWiFi
-
-                let manager = DefaultAudiobookManager(
-                    metadata: metadata,
-                    audiobook: audiobook,
-                    networkService: networkService,
-                    playbackTrackerDelegate: timeTracker
-                )
-
-                // Notify CarPlay and other observers that an audiobook manager was created
-                AudiobookEvents.managerCreated.send(manager)
-
-                let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book)
-                manager.bookmarkDelegate = bookmarkLogic
-
-                manager.playbackCompletionHandler = { [weak book, weak manager] in
-                    guard let book = book, let manager = manager else { return }
-
-                    // Save beginning position immediately (book just finished)
-                    if let firstTrack = manager.audiobook.tableOfContents.allTracks.first {
-                        let beginningPosition = TrackPosition(
-                            track: firstTrack,
-                            timestamp: 0.0,
-                            tracks: manager.audiobook.tableOfContents.tracks
-                        )
-                        manager.saveLocation(beginningPosition)
-                    }
-
-                    // Show the keep or return dialog
-                    BookDetailViewModel.presentEndOfBookAlert(for: book)
-                }
-
-                let playbackModel = AudiobookPlaybackModel(audiobookManager: manager)
-
-                // Show any already-cached image immediately so the player isn't blank,
-                // then upgrade to full-resolution in the background and cross-fade it in.
-                if let lowRes = book.coverImage ?? book.thumbnailImage {
-                    playbackModel.updateCoverImage(lowRes)
-                    AudiobookSessionManager.shared.updateCoverImage(lowRes)
-                }
-                Task {
-                    guard let img = await TPPBookCoverRegistry.shared.playerCoverImage(for: book) else { return }
-                    await MainActor.run {
-                        playbackModel.updateCoverImageAnimated(img)
-                        AudiobookSessionManager.shared.updateCoverImage(img)
-                    }
-                }
-
-                // Present the AudiobookPlayerView and start playback
-                // Note: For CarPlay, coordinator may be nil - that's OK, we still start playback
-                let route = BookRoute(id: book.identifier)
-
-                if let coordinator = NavigationCoordinatorHub.shared.coordinator {
-                    Log.debug(#file, "  🎉 Successfully presenting audiobook player to user")
-                    coordinator.storeAudioModel(playbackModel, forBookId: route.id)
-                    // Use pushAudioRoute to clear any existing audio routes first (prevents stack accumulation)
-                    coordinator.pushAudioRoute(route)
-                } else {
-                    Log.info(#file, "  📱 No coordinator available (CarPlay background launch?) - proceeding with playback only")
-                }
-
-                // Get local position IMMEDIATELY for fast startup
-                let shouldRestorePosition = shouldRestoreBookmarkPosition(for: book)
-                let localPosition = shouldRestorePosition ? getValidLocalPosition(book: book, audiobook: audiobook) : nil
-
-                // Determine initial position - use local or start from beginning
-                let initialPosition: TrackPosition
-                if let local = localPosition {
-                    Log.debug(#file, "Starting playback immediately with local position: track=\(local.track.key), timestamp=\(local.timestamp)")
-                    initialPosition = local
-                } else if let firstTrack = audiobook.tableOfContents.allTracks.first {
-                    Log.debug(#file, "Starting \(book.title) from beginning - no saved position")
-                    initialPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: audiobook.tableOfContents.tracks)
-                } else {
-                    Log.error(#file, "No tracks available in audiobook")
-                    openingBooks.remove(book.identifier)
-                    onFinish?()
-                    return
-                }
-
-                // START PLAYBACK IMMEDIATELY - don't wait for remote sync
-                Task { @MainActor in
-                    playbackModel.currentLocation = initialPosition
-                    playbackModel.beginSaveSuppression(for: 3.0)
-                    manager.audiobook.player.play(at: initialPosition) { error in
-                        if let error = error {
-                            Log.error(#file, "Playback start error: \(error)")
-                        } else {
-                            Log.info(#file, "🎵 Playback started immediately at local position")
-                        }
-                    }
-                }
-
-                // Sync remote position ASYNCHRONOUSLY - update playback if remote is newer
-                TPPBookRegistry.shared.syncLocation(for: book) { [weak playbackModel, weak manager] (remoteBookmark: AudioBookmark?) in
-                    guard let playbackModel = playbackModel, let manager = manager else { return }
-
-                    // Check if remote position is newer than what we started with
-                    guard let remoteBookmark = remoteBookmark,
-                          let remote = TrackPosition(
-                            audioBookmark: remoteBookmark,
-                            toc: audiobook.tableOfContents.toc,
-                            tracks: audiobook.tableOfContents.tracks
-                          ) else {
-                        Log.debug(#file, "No remote position found - continuing with local position")
-                        return
-                    }
-
-                    // Compare timestamps to see if remote is newer
-                    let formatter = ISO8601DateFormatter()
-                    let localSaveDate = localPosition.flatMap { formatter.date(from: $0.lastSavedTimeStamp) }
-                    let remoteSaveDate = formatter.date(from: remote.lastSavedTimeStamp)
-
-                    // Only seek to remote if it's significantly newer (more than 5 seconds difference)
-                    // to avoid unnecessary seeks during normal playback
-                    if let remoteDate = remoteSaveDate {
-                        let shouldUseRemote: Bool
-                        if let localDate = localSaveDate {
-                            shouldUseRemote = remoteDate.timeIntervalSince(localDate) > 5.0
-                        } else {
-                            shouldUseRemote = true
-                        }
-
-                        if shouldUseRemote {
-                            Log.info(#file, "📡 Remote position is newer - seeking to remote: track=\(remote.track.key), timestamp=\(remote.timestamp)")
-                            Task { @MainActor in
-                                playbackModel.currentLocation = remote
-                                manager.audiobook.player.play(at: remote) { error in
-                                    if let error = error {
-                                        Log.error(#file, "Failed to seek to remote position: \(error)")
-                                    }
-                                }
-                            }
-                        } else {
-                            Log.debug(#file, "Local position is current - keeping local position")
-                        }
-                    }
-                }
-
-                // Save initial position after suppression period ends
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 3_500_000_000) // 3.5 seconds
-                    playbackModel.persistLocation()
-                }
-
-                openingBooks.remove(book.identifier)
-                onFinish?()
-            }
-        }
-
-        AudioBookVendorsHelper.updateVendorKey(book: jsonDict) { error in
-            Task { @MainActor in
-                vendorCompletion(error)
-            }
-        }
-    }
-
-    private static func fetchOpenAccessManifest(for book: TPPBook, completion: @escaping ([String: Any]?) -> Void) {
-        guard let url = book.defaultAcquisition?.hrefURL else {
-            Log.error(#file, "  ❌ No default acquisition URL for fetching manifest")
-            Log.error(#file, "    Book: \(book.title) (ID: \(book.identifier))")
-            Log.error(#file, "    Default acquisition: \(book.defaultAcquisition?.type ?? "nil")")
-            completion(nil)
-            return
-        }
-
-        Log.debug(#file, "  📡 Fetching manifest from URL: \(url.absoluteString)")
-
-        let _ = TPPNetworkExecutor.shared.GET(url) { data, response, error in
-            if let error = error {
-                Log.error(#file, "  ❌ Network error fetching manifest: \(error.localizedDescription)")
-                if let httpResponse = response as? HTTPURLResponse {
-                    Log.error(#file, "    HTTP status: \(httpResponse.statusCode)")
-                    Log.error(#file, "    Content-Type: \(httpResponse.allHeaderFields["Content-Type"] ?? "unknown")")
-                }
-                completion(nil)
-                return
-            }
-
-            guard let data = data else {
-                Log.error(#file, "  ❌ No data received from manifest fetch")
-                completion(nil)
-                return
-            }
-
-            Log.debug(#file, "  ✅ Received \(data.count) bytes of manifest data")
-
-            if let httpResponse = response as? HTTPURLResponse {
-                Log.debug(#file, "    HTTP status: \(httpResponse.statusCode)")
-                Log.debug(#file, "    Content-Type: \(httpResponse.allHeaderFields["Content-Type"] ?? "unknown")")
-            }
-
-            guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
-                Log.error(#file, "  ❌ Failed to parse manifest data as JSON dictionary")
-                if let httpResponse = response as? HTTPURLResponse {
-                    Log.error(#file, "    HTTP status: \(httpResponse.statusCode)")
-                    Log.error(#file, "    Content-Type: \(httpResponse.allHeaderFields["Content-Type"] ?? "unknown")")
-                    let isHTML = (httpResponse.allHeaderFields["Content-Type"] as? String)?.contains("html") == true
-                    if isHTML {
-                        Log.error(#file, "    ⚠️ Server returned HTML instead of JSON - likely a redirect to login page or error page")
-                    }
-                    if httpResponse.statusCode != 200 {
-                        Log.error(#file, "    ⚠️ Non-200 status but data was still returned (\(data.count) bytes)")
-                    }
-                }
-                if let dataString = String(data: data, encoding: .utf8) {
-                    let preview = String(dataString.prefix(500))
-                    Log.error(#file, "    Data preview (\(data.count) bytes): \(preview)")
-                } else {
-                    Log.error(#file, "    Data is not UTF-8 decodable (\(data.count) bytes)")
-                }
-                completion(nil)
-                return
-            }
-
-            // The CM fulfill endpoint for bearer-token audiobooks returns a bearer
-            // token response (with access_token/location), not the manifest itself.
-            // Detect this and follow the two-step flow: fulfill -> bearer token -> manifest.
-            if let bearerToken = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: json) {
-                Log.info(#file, "  🔑 Received bearer token response from fulfill URL - fetching actual manifest")
-                bearerToken.fulfillURL = url
-                book.bearerToken = bearerToken.accessToken
-                book.bearerTokenFulfillURL = url
-                fetchManifestWithBearerToken(bearerToken, for: book, completion: completion)
-                return
-            }
-
-            Log.debug(#file, "  ✅ Successfully parsed manifest JSON")
-            Log.debug(#file, "    JSON keys: \(json.keys.joined(separator: ", "))")
-            completion(json)
-        }
-    }
-
-    /// Fetches the actual audiobook manifest using a book-specific bearer token.
-    /// Called when the fulfill URL returns a bearer token response instead of the manifest directly.
-    static func fetchManifestWithBearerToken(
-        _ token: MyBooksSimplifiedBearerToken,
-        for book: TPPBook,
-        session: URLSession = .shared,
-        completion: @escaping ([String: Any]?) -> Void
-    ) {
-        var request = URLRequest(url: token.location)
-        request.setValue("Bearer \(token.accessToken)", forHTTPHeaderField: "Authorization")
-        request.applyCustomUserAgent()
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-
-        Log.info(#file, "  📡 Fetching manifest from bearer token location: \(token.location.host ?? "unknown")")
-
-        let task = session.dataTask(with: request) { data, response, error in
-            if let error = error {
-                Log.error(#file, "  ❌ Network error fetching manifest via bearer token: \(error.localizedDescription)")
-                completion(nil)
-                return
-            }
-
-            guard let data = data, !data.isEmpty else {
-                Log.error(#file, "  ❌ No data received from bearer token manifest fetch")
-                completion(nil)
-                return
-            }
-
-            if let httpResponse = response as? HTTPURLResponse {
-                Log.debug(#file, "  Bearer token manifest response: HTTP \(httpResponse.statusCode)")
-                if !httpResponse.isSuccess() {
-                    Log.error(#file, "  ❌ Bearer token manifest fetch failed with HTTP \(httpResponse.statusCode)")
-                    completion(nil)
-                    return
-                }
-            }
-
-            guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
-                Log.error(#file, "  ❌ Failed to parse bearer token manifest as JSON")
-                if let preview = String(data: data, encoding: .utf8).map({ String($0.prefix(500)) }) {
-                    Log.error(#file, "    Data preview (\(data.count) bytes): \(preview)")
-                }
-                completion(nil)
-                return
-            }
-
-            Log.info(#file, "  ✅ Successfully fetched manifest via bearer token (\(data.count) bytes)")
-            Log.debug(#file, "    JSON keys: \(json.keys.joined(separator: ", "))")
-            completion(json)
-        }
-        task.resume()
-    }
-
-    private static func licenseURL(forBookIdentifier identifier: String) -> URL? {
-        #if LCP
-        guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else { return nil }
-        let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
-        return FileManager.default.fileExists(atPath: license.path) ? license : nil
-        #else
-        return nil
-        #endif
-    }
-
-    /// Determines if bookmark position should be restored for this book
-    private static func shouldRestoreBookmarkPosition(for book: TPPBook) -> Bool {
-        let bookState = TPPBookRegistry.shared.state(for: book.identifier)
-        let hasLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier) != nil
-
-        Log.debug(#file, "Position check for \(book.title): state=\(bookState), hasLocation=\(hasLocation)")
-
-        // If there's no saved location, always start from beginning
-        guard hasLocation else {
-            Log.debug(#file, "No saved location found - starting from beginning")
-            return false
-        }
-
-        // Always restore saved positions unless explicitly a new download
-        if bookState == .downloadSuccessful {
-            // Even for newly downloaded books, restore position if one exists
-            // This handles cases where user previously started reading
-            Log.debug(#file, "Book is downloadSuccessful but has saved location - restoring position")
-            return true
-        }
-
-        Log.debug(#file, "Restoring saved position for book")
-        return true
-    }
-
-    /// Gets valid local position if available
-    private static func getValidLocalPosition(book: TPPBook, audiobook: Audiobook) -> TrackPosition? {
-        guard let dict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary(),
-              let localBookmark = AudioBookmark.create(locatorData: dict),
-              let localPosition = TrackPosition(
-                audioBookmark: localBookmark,
-                toc: audiobook.tableOfContents.toc,
-                tracks: audiobook.tableOfContents.tracks
-              ),
-              isValidPosition(localPosition, in: audiobook.tableOfContents) else {
-            return nil
-        }
-        return localPosition
-    }
-
-    /// Validates that a position is reasonable and not corrupted
-    private static func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
-        Log.debug(#file, "Validating position: track=\(position.track.index), timestamp=\(position.timestamp)")
-
-        // Check if position is within reasonable bounds
-        guard position.timestamp >= 0 && position.timestamp.isFinite else {
-            Log.warn(#file, "Invalid position timestamp: \(position.timestamp)")
-            return false
-        }
-
-        // Check if track exists in table of contents
-        guard tableOfContents.tracks.track(forKey: position.track.key) != nil else {
-            Log.warn(#file, "Position references non-existent track: \(position.track.key)")
-            return false
-        }
-
-        // Check if position is within reasonable bounds (basic validation)
-        let totalDuration = tableOfContents.tracks.totalDuration
-        let positionDuration = position.durationToSelf()
-
-        // FIXED: If durations aren't available yet (common for Overdrive), skip validation
-        if totalDuration <= 0 {
-            Log.debug(#file, "Position validation: Total duration not available yet, accepting position")
-            return true
-        }
-
-        let percentageThrough = positionDuration / totalDuration
-
-        Log.debug(#file, "Position validation: \(Int(percentageThrough * 100))% through book")
-
-        // More lenient validation - only reject if position is clearly invalid
-        if positionDuration > totalDuration * 1.1 { // Allow 10% overflow for timing variations
-            Log.warn(#file, "Position is beyond book duration (\(Int(percentageThrough * 100))%), starting from beginning")
-            return false
-        }
-
-        Log.debug(#file, "Position validation passed")
-        return true
-    }
-
-    /// Gets download date for a book (placeholder - would integrate with download tracking)
-    private static func getDownloadDate(for bookId: String) -> Date? {
-        // This would integrate with MyBooksDownloadCenter to get actual download date
-        // For now, return nil to be conservative
-        return nil
-    }
-
-    private static func showAudiobookTryAgainError(book: TPPBook? = nil, onFinish: (() -> Void)? = nil) {
+    /// Shown when an audiobook open fails. Invoked by
+    /// `AudiobookSessionManager` after a loader failure, and by the PP-3707
+    /// retry path below.
+    static func showAudiobookTryAgainError(book: TPPBook? = nil, onFinish: (() -> Void)? = nil) {
         Log.warn(#file, "⚠️ [ERROR ALERT] Showing 'An error was encountered while trying to open this book' alert to user")
 
-        // Log the error so it can be captured by enhanced logging
         let error = NSError(
             domain: "AudiobookOpenError",
             code: TPPErrorCode.audiobookCorrupted.rawValue,
@@ -822,13 +87,10 @@ enum BookService {
                 "error_type": "audiobook_open_failure"
             ]
         )
-
         TPPErrorLogger.logError(
             error,
             summary: "Audiobook failed to open - showing try again error",
-            metadata: [
-                "user_message": Strings.Error.tryAgain
-            ]
+            metadata: ["user_message": Strings.Error.tryAgain]
         )
 
         // PP-3707: Offer retry for audiobook open failures (may be transient)
@@ -861,5 +123,49 @@ enum BookService {
             let alert = TPPAlertUtils.alert(title: Strings.Error.openFailedError, message: message)
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
         }
+    }
+
+    /// Two-step fulfill flow: once we have a book-specific bearer token from
+    /// the CM fulfill endpoint, fetch the actual audiobook manifest from the
+    /// token's `location` URL. Called by AudiobookLoader and covered by
+    /// ManifestFetchTests / FetchManifestWithBearerTokenLCPSafetyTests.
+    static func fetchManifestWithBearerToken(
+        _ token: MyBooksSimplifiedBearerToken,
+        for book: TPPBook,
+        session: URLSession = .shared,
+        completion: @escaping ([String: Any]?) -> Void
+    ) {
+        var request = URLRequest(url: token.location)
+        request.setValue("Bearer \(token.accessToken)", forHTTPHeaderField: "Authorization")
+        request.applyCustomUserAgent()
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        Log.info(#file, "  📡 Fetching manifest from bearer token location: \(token.location.host ?? "unknown")")
+
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                Log.error(#file, "  ❌ Network error fetching manifest via bearer token: \(error.localizedDescription)")
+                completion(nil)
+                return
+            }
+            guard let data = data, !data.isEmpty else {
+                Log.error(#file, "  ❌ No data received from bearer token manifest fetch")
+                completion(nil)
+                return
+            }
+            if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
+                Log.error(#file, "  ❌ Bearer token manifest fetch failed with HTTP \(httpResponse.statusCode)")
+                completion(nil)
+                return
+            }
+            guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
+                Log.error(#file, "  ❌ Failed to parse bearer token manifest as JSON")
+                completion(nil)
+                return
+            }
+            Log.info(#file, "  ✅ Successfully fetched manifest via bearer token (\(data.count) bytes)")
+            completion(json)
+        }
+        task.resume()
     }
 }

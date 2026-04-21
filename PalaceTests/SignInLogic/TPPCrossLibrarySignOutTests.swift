@@ -63,6 +63,12 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
         super.setUp()
         TPPMultiLibraryAccountMock.resetAccounts()
         libraryMock = TPPLibraryAccountMock()
+        // Route business-logic userAccount reads through the multi-library
+        // mock so each library gets its own mock instance — required for
+        // cross-library sign-out isolation assertions.
+        libraryMock.userAccountResolver = { libraryUUID in
+            TPPMultiLibraryAccountMock.sharedAccount(libraryUUID: libraryUUID)
+        }
         targetLibraryUUID = libraryMock.tppAccountUUID
         activeUIDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
         targetUIDelegate = TPPSignInOutBusinessLogicUIDelegateMock()

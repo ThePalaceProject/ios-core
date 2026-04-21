@@ -47,6 +47,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     var businessLogic: TPPSignInBusinessLogic
     var frontEndValidator: TPPUserAccountFrontEndValidation?
     private let libraryAccountID: String
+    private let accountsManager: AccountsManager
+    private let bookRegistry: TPPBookRegistryProvider
+    private let downloadCenter: MyBooksDownloadCenter
     private var cancellables = Set<AnyCancellable>()
     var forceEditability = false
 
@@ -63,6 +66,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     @Published var isSignedIn: Bool = false
 
     var canSignIn: Bool {
+        // Browser-based auths don't collect credentials on-device — the Sign In
+        // button just kicks off the WebView / ASWebAuthenticationSession, so
+        // canSignIn must be true unconditionally. Missing `.isOidc` here is
+        // what silently blocked OIDC sign-in after PP-4020; the symmetric miss
+        // is in AccountDetailView.shouldShowSignInPrompt.
         if businessLogic.selectedAuthentication?.isOauth == true ||
             businessLogic.selectedAuthentication?.isSaml == true ||
             businessLogic.selectedAuthentication?.isOidc == true {
@@ -89,20 +97,28 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
-    init(libraryAccountID: String) {
+    /// When true, signIn() proceeds even if the user has stale credentials
+    /// (instead of showing sign-out confirmation). Set by SignInModalView for
+    /// re-auth flows triggered by 401 responses.
+    var forceReauthMode: Bool = false
+
+    init(libraryAccountID: String, accountsManager: AccountsManager = .shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared) {
         self.libraryAccountID = libraryAccountID
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
+        self.downloadCenter = downloadCenter
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
-            libraryAccountsProvider: AccountsManager.shared,
+            libraryAccountsProvider: accountsManager,
             urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookRegistry: (bookRegistry as? TPPBookRegistrySyncing) ?? { preconditionFailure("bookRegistry must conform to TPPBookRegistrySyncing") }(),
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
         )
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
+        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
         self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         super.init()
@@ -122,10 +138,10 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
-            libraryAccountsProvider: AccountsManager.shared,
+            libraryAccountsProvider: accountsManager,
             urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookRegistry: (bookRegistry as? TPPBookRegistrySyncing) ?? { preconditionFailure("bookRegistry must conform to TPPBookRegistrySyncing") }(),
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             networkExecutor: networkExecutor,
             uiDelegate: self,
@@ -163,6 +179,24 @@ class AccountDetailViewModel: NSObject, ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        // Belt-and-suspenders refresh signals. The `.TPPUserAccountDidChange`
+        // path depends on the full sign-out/sign-in pipeline completing; if
+        // that pipeline hiccups (or lengthens — e.g. SAML SLO), the view can
+        // miss the state change. These two channels guarantee a refresh:
+        //   1. .TPPDidSignOut is posted synchronously by removeAll().
+        //   2. UserAccountPublisher.$hasCredentials is the authoritative
+        //      @Published source of truth for credential state.
+        NotificationCenter.default.publisher(for: .TPPDidSignOut)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.accountDidChange() }
+            .store(in: &cancellables)
+
+        UserAccountPublisher.shared.$hasCredentials
+            .receive(on: RunLoop.main)
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.accountDidChange() }
+            .store(in: &cancellables)
     }
 
     private func loadInitialData() {
@@ -196,6 +230,10 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     private func setupViews() {
         isSyncEnabled = selectedAccount?.details?.syncPermissionGranted ?? false
+        // For multi-auth libraries (e.g. SAML + basic-auth fallback), prefer
+        // the WebView-based auth as the default so the sign-in prompt shows
+        // the single IdP button instead of inline credential fields.
+        businessLogic.selectPreferredAuthIfNeeded()
         setupTableData()
         loadBarcodeIfNeeded()
     }
@@ -297,6 +335,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func cellsForAuthMethod(_ auth: AccountDetails.Authentication) -> [CellType] {
+        // Browser-based auths (OAuth, OIDC): no on-device credentials to show.
+        // Sign-in happens in a WebView / ASWebAuthenticationSession; the
+        // account detail list only needs the Sign In / Sign Out button.
+        // OIDC was missing here, so signed-in OIDC accounts were rendering
+        // the barcode/PIN/sign-in cells inappropriately.
         if auth.isOauth || auth.isOidc {
             return [.logInSignOut]
         }
@@ -319,12 +362,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     // MARK: - Actions
 
     func signIn() {
-        let needsReauth = selectedUserAccount.authState == .credentialsStale
-        // Only treat as a sign-in intent when not signed in, or when explicitly
-        // re-authenticating stale credentials from the sign-in prompt / forceReauthMode.
-        // The logInSignOut cell routes sign-out via signOut() directly, so the
-        // "isSignedIn && !needsReauth → show sign-out alert" branch is a safety net only.
-        guard !isSignedIn || needsReauth else {
+        // Allow re-auth when credentials are stale (e.g., OIDC token expired).
+        // Without forceReauthMode, tapping "Sign In" with stale credentials
+        // would show sign-out confirmation instead of the auth flow.
+        let isReauth = forceReauthMode && selectedUserAccount.authState == .credentialsStale
+        guard !isSignedIn || isReauth else {
             isSigningOut = true
             presentSignOutAlert()
             return
@@ -332,6 +374,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
         isSigningOut = false
 
+        // Browser-based auth (OAuth, OIDC) opens directly without
+        // on-device credential collection. SAML goes through samlHelper
+        // (also a WebView, but routed via the default logIn() switch).
         if businessLogic.selectedAuthentication?.isOauth == true ||
            businessLogic.selectedAuthentication?.isOidc == true {
             businessLogic.logIn()
@@ -421,15 +466,15 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func performAgeCheck() {
         guard let account = selectedAccount else { return }
 
-        AccountsManager.shared.ageCheck.verifyCurrentAccountAgeRequirement(
+        accountsManager.ageCheck.verifyCurrentAccountAgeRequirement(
             userAccountProvider: selectedUserAccount,
             currentLibraryAccountProvider: businessLogic
         ) { [weak self] aboveAgeLimit in
             Task { @MainActor in
                 account.details?.userAboveAgeLimit = aboveAgeLimit
                 if !aboveAgeLimit {
-                    MyBooksDownloadCenter.shared.reset(account.uuid)
-                    TPPBookRegistry.shared.reset(account.uuid)
+                    self?.downloadCenter.reset(account.uuid)
+                    (self?.bookRegistry as? TPPBookRegistry)?.reset(account.uuid)
                 }
                 self?.setupTableData()
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
@@ -481,7 +526,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func accountDidChange() {
-        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
+        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
 
         let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
@@ -512,7 +557,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func refreshSignInState() {
         let wasSignedIn = isSignedIn
 
-        let snapshot = TPPUserAccount.credentialSnapshot(for: libraryAccountID)
+        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
         isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         if wasSignedIn != isSignedIn {
@@ -612,13 +657,14 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
         signInTimeoutTask?.cancel()
         signInTimeoutTask = nil
 
-        // For SAML/OAuth/OIDC, don't start a timeout here - the user will be in a WebView
-        // The timeout will start when the WebView dismisses (in startDRMProcessingTimeout)
-        let isSAMLOrOAuth = businessLogic.selectedAuthentication?.isSaml == true ||
+        // For browser-based auth (SAML, OAuth, OIDC), don't start a timeout here -
+        // the user will be in a WebView / ASWebAuthenticationSession.
+        // The timeout starts when the browser session dismisses.
+        let isBrowserBasedAuth = businessLogic.selectedAuthentication?.isSaml == true ||
             businessLogic.selectedAuthentication?.isOauth == true ||
             businessLogic.selectedAuthentication?.isOidc == true
 
-        if !isSAMLOrOAuth {
+        if !isBrowserBasedAuth {
             startDRMProcessingTimeout()
         }
     }

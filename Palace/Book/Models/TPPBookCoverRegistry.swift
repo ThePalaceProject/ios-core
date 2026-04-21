@@ -69,7 +69,10 @@ actor HostFailureTracker {
 
 // MARK: - Swift Concurrency Actor
 actor TPPBookCoverRegistry {
-    let imageCache: ImageCacheType
+    /// nonisolated(unsafe) because ImageCacheType is not Sendable but the underlying
+    /// NSCache-backed implementation handles its own synchronization, so reading the
+    /// reference from any context is safe.
+    nonisolated(unsafe) let imageCache: ImageCacheType
 
     static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared)
 
@@ -170,7 +173,7 @@ actor TPPBookCoverRegistry {
         let neededPixels = min(displayPoints * scale * 1.5, 1200) // 1.5× for sharp rendering
         let key = "\(book.identifier)_\(Int(neededPixels))px" as NSString
 
-        if let cached = imageCache.get(for: key as String) { return cached }
+        if let cached = await imageCache.getAsync(for: key as String) { return cached }
 
         // No network image — fall back directly to a size-aware placeholder so TenPrint
         // renders at the display size rather than the fixed 80×120 thumbnail size.
@@ -178,10 +181,10 @@ actor TPPBookCoverRegistry {
         if await hostFailureTracker.isHostFailing(url.host) { return await coverImage(for: book, displayHeight: displayPoints) }
 
         await acquireFetchSlot()
-        defer { Task { await self.releaseFetchSlot() } }
+        defer { Task { self.releaseFetchSlot() } }
 
         do {
-            let (data, _) = try await Self.imageSession.data(from: url)
+            let (data, _) = try await Self.imageSession.data(for: URLRequest.withoutHTTP3Assumption(url: url))
             await hostFailureTracker.recordSuccess(for: url.host)
             guard let image = Self.downsampleImage(data: data, maxDimension: neededPixels) else {
                 return await coverImage(for: book, displayHeight: displayPoints)
@@ -207,7 +210,7 @@ actor TPPBookCoverRegistry {
         let playerDimension = min(screenPixelWidth, 1200)
         let key = "\(book.identifier)_player" as NSString
 
-        if let cached = imageCache.get(for: key as String) {
+        if let cached = await imageCache.getAsync(for: key as String) {
             return cached
         }
 
@@ -216,10 +219,10 @@ actor TPPBookCoverRegistry {
         }
 
         await acquireFetchSlot()
-        defer { Task { await self.releaseFetchSlot() } }
+        defer { Task { self.releaseFetchSlot() } }
 
         do {
-            let (data, _) = try await Self.imageSession.data(from: url)
+            let (data, _) = try await Self.imageSession.data(for: URLRequest.withoutHTTP3Assumption(url: url))
             await hostFailureTracker.recordSuccess(for: url.host)
 
             guard let image = Self.downsampleImage(data: data, maxDimension: playerDimension) else {
@@ -235,7 +238,7 @@ actor TPPBookCoverRegistry {
 
     private func fetchImage(from url: URL, for book: TPPBook, isCover: Bool) async -> UIImage? {
         let key = cacheKey(for: book, isCover: isCover)
-        if let img = imageCache.get(for: key as String) {
+        if let img = await imageCache.getAsync(for: key as String) {
             return img
         }
 
@@ -255,7 +258,7 @@ actor TPPBookCoverRegistry {
             defer { Task { await self.releaseFetchSlot() } }
 
             do {
-                let (data, _) = try await Self.imageSession.data(from: url)
+                let (data, _) = try await Self.imageSession.data(for: URLRequest.withoutHTTP3Assumption(url: url))
 
                 // Host is reachable — clear any failure record
                 await self.hostFailureTracker.recordSuccess(for: url.host)
@@ -361,6 +364,32 @@ actor TPPBookCoverRegistry {
         }
     }
 
+    /// Renders a TenPrint cover at the given display height (or the default 120 pt if nil).
+    /// The view scale and aspect ratio are kept proportional to the original 80x120 design.
+    /// Must be called on the MainActor.
+    @MainActor
+    private func tenPrintImage(title: String, authors: String?, displayHeight: CGFloat?) -> UIImage? {
+        let baseHeight: CGFloat = 120
+        let height = displayHeight ?? baseHeight
+        let width = height * (80.0 / baseHeight)       // maintain 2:3 aspect ratio
+        let viewScale = 0.4 * (height / baseHeight)    // keep strokes/fonts proportional
+
+        let size = CGSize(width: width, height: height)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = UIScreen.main.scale
+        return UIGraphicsImageRenderer(size: size, format: format)
+            .image { ctx in
+                if let view = NYPLTenPrintCoverView(
+                    frame: CGRect(origin: .zero, size: size),
+                    withTitle: title,
+                    withAuthor: authors ?? "Unknown Author",
+                    withScale: Float(viewScale)
+                ) {
+                    view.layer.render(in: ctx.cgContext)
+                }
+            }
+    }
+
     private func cost(for image: UIImage) -> Int {
         Int(image.size.width * image.size.height * 4)
     }
@@ -376,8 +405,8 @@ actor TPPBookCoverRegistry {
     func fetchImageByURL(_ url: URL, identifier: String, isCover: Bool) async -> UIImage? {
         let key = "\(identifier)_\(isCover ? "cover" : "thumbnail")"
 
-        // Check cache first
-        if let img = imageCache.get(for: key) {
+        // Check cache first (async to avoid blocking actor on disk I/O)
+        if let img = await imageCache.getAsync(for: key) {
             return img
         }
 
@@ -398,7 +427,7 @@ actor TPPBookCoverRegistry {
             defer { Task { await self.releaseFetchSlot() } }
 
             do {
-                let (data, _) = try await Self.imageSession.data(from: url)
+                let (data, _) = try await Self.imageSession.data(for: URLRequest.withoutHTTP3Assumption(url: url))
 
                 // Host is reachable — clear any failure record
                 await self.hostFailureTracker.recordSuccess(for: url.host)
@@ -443,31 +472,6 @@ actor TPPBookCoverRegistry {
         }
     }
 
-    /// Renders a TenPrint cover at the given display height (or the default 120 pt if nil).
-    /// The view scale and aspect ratio are kept proportional to the original 80×120 design.
-    /// Must be called on the MainActor.
-    @MainActor
-    private func tenPrintImage(title: String, authors: String?, displayHeight: CGFloat?) -> UIImage? {
-        let baseHeight: CGFloat = 120
-        let height = displayHeight ?? baseHeight
-        let width = height * (80.0 / baseHeight)       // maintain 2:3 aspect ratio
-        let viewScale = 0.4 * (height / baseHeight)    // keep strokes/fonts proportional
-
-        let size = CGSize(width: width, height: height)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = UIScreen.main.scale
-        return UIGraphicsImageRenderer(size: size, format: format)
-            .image { ctx in
-                if let view = NYPLTenPrintCoverView(
-                    frame: CGRect(origin: .zero, size: size),
-                    withTitle: title,
-                    withAuthor: authors ?? "Unknown Author",
-                    withScale: Float(viewScale)
-                ) {
-                    view.layer.render(in: ctx.cgContext)
-                }
-            }
-    }
 }
 
 // MARK: - Objective-C Bridge
@@ -511,12 +515,14 @@ public class TPPBookCoverRegistryBridge: NSObject {
             }
 
             // Use main actor for UI-related cache operations
+            let finalImg = img
+            let capturedBook = book
             await MainActor.run {
-                if let img = img {
-                    sharedImageCache.set(img, for: coverKey)
-                    book?.imageCache.set(img, for: coverKey)
+                if let finalImg {
+                    sharedImageCache.set(finalImg, for: coverKey)
+                    capturedBook?.imageCache.set(finalImg, for: coverKey)
                 }
-                completion(img)
+                completion(finalImg)
             }
         }
     }
@@ -545,12 +551,14 @@ public class TPPBookCoverRegistryBridge: NSObject {
             }
 
             // Use main actor for UI-related cache operations
+            let finalImg = img
+            let capturedBook = book
             await MainActor.run {
-                if let img = img {
-                    sharedImageCache.set(img, for: thumbnailKey)
-                    book?.imageCache.set(img, for: thumbnailKey)
+                if let finalImg {
+                    sharedImageCache.set(finalImg, for: thumbnailKey)
+                    capturedBook?.imageCache.set(finalImg, for: thumbnailKey)
                 }
-                completion(img)
+                completion(finalImg)
             }
         }
     }

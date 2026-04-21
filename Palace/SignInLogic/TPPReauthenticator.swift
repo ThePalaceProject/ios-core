@@ -27,6 +27,13 @@ protocol Reauthenticator: NSObject {
 /// the hood when no user input is needed.
 @objc class TPPReauthenticator: NSObject, Reauthenticator {
 
+    /// Test-observable counter of how many times `authenticateIfNeeded`
+    /// has been invoked on this instance. Used by security tests to
+    /// verify single-flight behavior at upstream call sites
+    /// (e.g. `TokenRefreshInterceptor.isRequestingCredentials` dedupe).
+    /// Not used for any production logic.
+    public private(set) var authenticateCallCount: Int = 0
+
     /// Re-authenticates the user. This may involve presenting the sign-in
     /// modal UI or not, depending on the sign-in business logic.
     ///
@@ -38,7 +45,8 @@ protocol Reauthenticator: NSObject {
     @objc func authenticateIfNeeded(_ user: TPPUserAccount,
                                     usingExistingCredentials: Bool,
                                     authenticationCompletion: (() -> Void)?) {
-        TPPMainThreadRun.asyncIfNeeded {
+        authenticateCallCount += 1
+        Task { @MainActor in
             Log.info(#file, "TPPReauthenticator: Re-authentication requested, using existing credentials: \(usingExistingCredentials)")
 
             // Use new SwiftUI sign-in modal

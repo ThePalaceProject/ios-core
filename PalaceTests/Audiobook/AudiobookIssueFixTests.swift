@@ -45,6 +45,14 @@ final class PositionPersistenceLogicTests: XCTestCase {
 
         XCTAssertFalse(saved,
                        "Old behavior: active suppression should block regular saves")
+        // Boundary: just before expiry also blocks
+        let almostExpired = Date(timeIntervalSinceNow: 1)
+        XCTAssertFalse(oldSaveLocation(suppressUntil: almostExpired),
+                       "1-second-remaining suppression must still block")
+        // And just after expiry allows
+        let justExpired = Date(timeIntervalSinceNow: -0.001)
+        XCTAssertTrue(oldSaveLocation(suppressUntil: justExpired),
+                      "Expired suppression (< now) must allow save")
     }
 
     func testNewPersistLocation_bypassesSuppression() {
@@ -64,12 +72,18 @@ final class PositionPersistenceLogicTests: XCTestCase {
         let saved = oldSaveLocation(suppressUntil: suppressUntil)
 
         XCTAssertTrue(saved, "Expired suppression should allow saves")
+        // Contrast: an active suppression for 1s blocks
+        XCTAssertFalse(oldSaveLocation(suppressUntil: Date(timeIntervalSinceNow: 1)),
+                       "Active 1s suppression must block")
     }
 
     func testNoSuppression_allowsSave() {
         let saved = oldSaveLocation(suppressUntil: nil)
 
         XCTAssertTrue(saved, "No suppression should allow saves")
+        // Also verify at a synthetic 'now' well in the past
+        XCTAssertTrue(oldSaveLocation(suppressUntil: nil, now: Date(timeIntervalSince1970: 0)),
+                      "No suppression must allow save regardless of 'now'")
     }
 
     func testSuppressionWindow_threeSeconds_blocksAndThenAllows() {
@@ -94,6 +108,8 @@ final class PositionPersistenceLogicTests: XCTestCase {
 
         XCTAssertTrue(saved,
                       "Termination save MUST succeed regardless of suppression state")
+        XCTAssertNil(suppressUntil,
+                     "persistLocation must clear suppression timer on termination")
     }
 }
 
@@ -116,12 +132,22 @@ final class AudioInterruptionLogicTests: XCTestCase {
             shouldResumeAfterInterruption(wasPlayingBefore: true, interruptionOptions: .shouldResume),
             "Should resume when both shouldResume and wasPlaying are true"
         )
+        // Contrast: no options AND not playing must not resume
+        XCTAssertFalse(
+            shouldResumeAfterInterruption(wasPlayingBefore: false, interruptionOptions: []),
+            "Must not resume when neither condition is met"
+        )
     }
 
     func testResume_whenShouldResumeSet_butWasNotPlaying() {
         XCTAssertTrue(
             shouldResumeAfterInterruption(wasPlayingBefore: false, interruptionOptions: .shouldResume),
             "Should resume when system says shouldResume even if wasn't playing"
+        )
+        // shouldResume alone is sufficient — wasPlaying=false doesn't veto it
+        XCTAssertTrue(
+            shouldResumeAfterInterruption(wasPlayingBefore: false, interruptionOptions: .shouldResume),
+            "shouldResume flag must be sufficient regardless of wasPlayingBefore"
         )
     }
 
@@ -132,12 +158,22 @@ final class AudioInterruptionLogicTests: XCTestCase {
             shouldResumeAfterInterruption(wasPlayingBefore: true, interruptionOptions: []),
             "Should resume when player was playing, even without .shouldResume flag"
         )
+        // Contrast: wasPlaying=false without shouldResume must not resume
+        XCTAssertFalse(
+            shouldResumeAfterInterruption(wasPlayingBefore: false, interruptionOptions: []),
+            "wasPlaying=false without shouldResume must not resume"
+        )
     }
 
     func testNoResume_whenNoShouldResume_andWasNotPlaying() {
         XCTAssertFalse(
             shouldResumeAfterInterruption(wasPlayingBefore: false, interruptionOptions: []),
             "Should NOT resume when player wasn't playing and no shouldResume"
+        )
+        // Either condition alone suffices for resuming
+        XCTAssertTrue(
+            shouldResumeAfterInterruption(wasPlayingBefore: true, interruptionOptions: []),
+            "wasPlaying=true alone must trigger resume"
         )
     }
 
@@ -151,6 +187,11 @@ final class AudioInterruptionLogicTests: XCTestCase {
             shouldResumeAfterInterruption(wasPlayingBefore: wasPlaying, interruptionOptions: siriOptions),
             "Siri interruption should resume because player was playing"
         )
+        // If user had paused before Siri, we must NOT auto-resume
+        XCTAssertFalse(
+            shouldResumeAfterInterruption(wasPlayingBefore: false, interruptionOptions: siriOptions),
+            "Siri interruption of paused playback must not auto-resume"
+        )
     }
 
     func testResume_phoneCallDeclinedScenario() {
@@ -161,6 +202,11 @@ final class AudioInterruptionLogicTests: XCTestCase {
         XCTAssertTrue(
             shouldResumeAfterInterruption(wasPlayingBefore: wasPlaying, interruptionOptions: declinedCallOptions),
             "Declined phone call should resume because player was playing"
+        )
+        // A call the user answered and then ended — shouldResume may be set by system
+        XCTAssertTrue(
+            shouldResumeAfterInterruption(wasPlayingBefore: false, interruptionOptions: .shouldResume),
+            "System-triggered shouldResume must honor resume even if user was paused"
         )
     }
 }
@@ -181,14 +227,21 @@ final class SyncDeletionGuardTests: XCTestCase {
 
     func testVersionComparison_equal_returnsFalse() {
         XCTAssertFalse(TPPMigrationManager.version([2, 2, 0], isLessThan: [2, 2, 0]))
+        // Reflexive: no version is less than itself
+        XCTAssertFalse(TPPMigrationManager.version([1, 0, 0], isLessThan: [1, 0, 0]))
+        XCTAssertFalse(TPPMigrationManager.version([0, 0, 0], isLessThan: [0, 0, 0]))
     }
 
     func testVersionComparison_shorterIsLess() {
         XCTAssertTrue(TPPMigrationManager.version([1, 2], isLessThan: [1, 2, 1]))
+        // Padding semantics: [1, 2] treated as [1, 2, 0], so [1, 2, 1] > [1, 2, 0]
+        XCTAssertFalse(TPPMigrationManager.version([1, 2, 1], isLessThan: [1, 2]))
     }
 
     func testVersionComparison_shorterIsNotLess_ifZero() {
         XCTAssertFalse(TPPMigrationManager.version([1, 2], isLessThan: [1, 2, 0]))
+        // [1, 2] == [1, 2, 0] so neither is less than the other
+        XCTAssertFalse(TPPMigrationManager.version([1, 2, 0], isLessThan: [1, 2]))
     }
 }
 
@@ -235,11 +288,23 @@ final class PostUpdateMigrationTests: XCTestCase {
         let isUpdate = lastBuild != nil
 
         XCTAssertFalse(isUpdate, "First launch (no stored build) should not be treated as update")
+        XCTAssertNil(lastBuild, "No build should be stored on first launch")
+        // Contrast: after storing a value, it should be detectable
+        UserDefaults.standard.set("1", forKey: buildKey)
+        XCTAssertNotNil(UserDefaults.standard.string(forKey: buildKey),
+                        "After storing a build, it must be retrievable")
     }
 
     func testMigrate_doesNotCrash() {
         // Running migrate() in test environment should complete without errors
         TPPMigrationManager.migrate()
+        // After migration the app version must be set to the current bundle version
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        XCTAssertNotNil(currentVersion, "Bundle must expose a short version string")
+        // Running migrate again must be idempotent
+        TPPMigrationManager.migrate()
+        XCTAssertEqual(TPPSettings.shared.appVersion, currentVersion,
+                       "Repeated migration must not change the stored version")
     }
 
     func testMigrate_updatesStoredVersion() {
@@ -249,6 +314,7 @@ final class PostUpdateMigrationTests: XCTestCase {
 
         XCTAssertEqual(TPPSettings.shared.appVersion, expectedVersion,
                        "After migration, stored version should match current bundle version")
+        XCTAssertNotNil(expectedVersion, "Bundle must declare a short version string")
     }
 }
 
@@ -396,20 +462,23 @@ final class ReturnFlowTests: XCTestCase {
     func testRetryTracker_limitsRetries() {
         let operationId = "test-return-\(UUID().uuidString)"
 
-        // Record multiple retries
+        // Exhaust retries by recording until the tracker stops allowing them
+        var allowedCount = 0
         for _ in 0..<10 {
             if UserRetryTracker.shared.canRetry(operationId: operationId) {
+                allowedCount += 1
                 UserRetryTracker.shared.recordRetry(operationId: operationId)
             }
         }
 
         // After enough retries, should be blocked
-        // (default limit is 5 in UserRetryTracker)
         let canStillRetry = UserRetryTracker.shared.canRetry(operationId: operationId)
 
-        // Just verify the tracker doesn't crash and eventually limits
-        // The exact limit may vary, but it should not be infinite
-        XCTAssertNotNil(canStillRetry, "Retry tracker should return a definitive answer")
+        // The tracker must eventually block retries (not infinite), and the total
+        // allowed must be less than the 10 attempts we tried.
+        XCTAssertFalse(canStillRetry, "Retry tracker must block further retries after limit is reached")
+        XCTAssertLessThan(allowedCount, 10, "Tracker must not allow unlimited retries")
+        XCTAssertGreaterThan(allowedCount, 0, "Tracker must allow at least one retry before blocking")
     }
 }
 
@@ -486,8 +555,12 @@ final class NavigationFreezePreventionTests: XCTestCase {
     }
 
     func testNavigation_notNavigating_seekIsAllowed() {
-        let state = NavigationState()
+        var state = NavigationState()
         XCTAssertTrue(state.canSeek(), "Seek should be allowed when not navigating")
+        // After a begin/complete cycle it must also be allowed
+        state.beginNavigation()
+        state.isNavigating = false
+        XCTAssertTrue(state.canSeek(), "Seek must be allowed after navigation completes")
     }
 }
 
@@ -522,11 +595,13 @@ final class StopPositionSaveTests: XCTestCase {
 
     func testStop_savesEvenDuringActiveSuppression() {
         var suppressUntil: Date? = Date(timeIntervalSinceNow: 60.0)
+        XCTAssertNotNil(suppressUntil, "Pre-condition: suppression must be active")
 
-        // persistLocation path
+        // persistLocation path clears suppression unconditionally
         suppressUntil = nil
         let saved = (suppressUntil == nil)
         XCTAssertTrue(saved, "Position must be saved on stop regardless of suppression timer")
+        XCTAssertNil(suppressUntil, "Suppression timer must be nil after persistLocation")
     }
 }
 

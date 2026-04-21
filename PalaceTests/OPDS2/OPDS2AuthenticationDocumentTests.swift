@@ -45,12 +45,18 @@ final class OPDS2AuthenticationDocumentTests: XCTestCase {
         let invalidJSON = Data("{ invalid json }".utf8)
 
         XCTAssertThrowsError(try OPDS2AuthenticationDocument.fromData(invalidJSON))
+        // A non-JSON payload must also throw
+        XCTAssertThrowsError(try OPDS2AuthenticationDocument.fromData(Data("not json at all".utf8)),
+                             "Non-JSON bytes must throw a parsing error")
     }
 
     func testFromData_withEmptyData_throwsError() {
         let emptyData = Data()
 
         XCTAssertThrowsError(try OPDS2AuthenticationDocument.fromData(emptyData))
+        // Single whitespace is also invalid
+        XCTAssertThrowsError(try OPDS2AuthenticationDocument.fromData(Data(" ".utf8)),
+                             "Whitespace-only data must throw a parsing error")
     }
 
     func testFromData_withMissingRequiredFields_throwsError() {
@@ -62,6 +68,10 @@ final class OPDS2AuthenticationDocumentTests: XCTestCase {
     """.utf8)
 
         XCTAssertThrowsError(try OPDS2AuthenticationDocument.fromData(incompleteJSON))
+        // Missing only title (id present) must also fail
+        XCTAssertThrowsError(try OPDS2AuthenticationDocument.fromData(Data("""
+    {"id": "test-id", "authentication": []}
+    """.utf8)), "JSON with id but missing title must throw a parsing error")
     }
 
     // MARK: - Authentication Methods Tests
@@ -196,8 +206,14 @@ final class OPDS2AuthenticationDocumentTests: XCTestCase {
         let data = try Data(contentsOf: url)
         let doc = try OPDS2AuthenticationDocument.fromData(data)
 
-        // Features are optional
-        XCTAssertTrue(true) // Just verify it doesn't crash
+        // Document must parse without throwing
+        XCTAssertFalse(doc.id.isEmpty, "Document id must be non-empty even when features are absent")
+        XCTAssertFalse(doc.title.isEmpty, "Document title must be non-empty")
+        // If features exist they must have at least one of enabled/disabled populated
+        if let features = doc.features {
+            let hasEnabledOrDisabled = features.enabled != nil || features.disabled != nil
+            XCTAssertTrue(hasEnabledOrDisabled, "Features object must contain enabled or disabled list")
+        }
     }
 
     // MARK: - Links Tests
@@ -228,12 +244,21 @@ final class OPDS2AuthenticationDocumentTests: XCTestCase {
         let data = try Data(contentsOf: url)
         let doc = try OPDS2AuthenticationDocument.fromData(data)
 
-        let passwordResetLink = doc.links?.first { link in
-            link.rel == OPDS2LinkRel.passwordReset.rawValue
+        // Every link in the document must have a non-empty href
+        if let links = doc.links {
+            XCTAssertFalse(links.isEmpty, "NYPL auth document should have at least one link")
+            for link in links {
+                XCTAssertFalse(link.href.isEmpty, "Each link must have a non-empty href")
+            }
         }
 
-        // May or may not be present
-        XCTAssertTrue(passwordResetLink != nil || passwordResetLink == nil)
+        // If a password-reset link exists, verify it has the correct rel and a valid URL
+        let passwordResetLink = doc.links?.first { $0.rel == OPDS2LinkRel.passwordReset.rawValue }
+        if let resetLink = passwordResetLink {
+            XCTAssertFalse(resetLink.href.isEmpty, "Password reset link must have a non-empty href")
+            XCTAssertEqual(resetLink.rel, OPDS2LinkRel.passwordReset.rawValue,
+                           "Rel must match the expected password-reset constant")
+        }
     }
 
     // MARK: - Announcements Tests
@@ -267,8 +292,13 @@ final class OPDS2AuthenticationDocumentTests: XCTestCase {
         let data = try Data(contentsOf: url)
         let doc = try OPDS2AuthenticationDocument.fromData(data)
 
-        // Color scheme is optional
-        XCTAssertTrue(doc.colorScheme != nil || doc.colorScheme == nil)
+        // Document must round-trip through JSON successfully regardless of color scheme presence
+        XCTAssertFalse(doc.id.isEmpty, "Document id must survive parsing")
+        XCTAssertFalse(doc.title.isEmpty, "Document title must survive parsing")
+        // If a color scheme is present, its values must be non-empty strings
+        if let colorScheme = doc.colorScheme {
+            XCTAssertFalse(colorScheme.isEmpty, "Color scheme string must not be empty when present")
+        }
     }
 
     // MARK: - Service Description Tests
@@ -282,8 +312,13 @@ final class OPDS2AuthenticationDocumentTests: XCTestCase {
         let data = try Data(contentsOf: url)
         let doc = try OPDS2AuthenticationDocument.fromData(data)
 
-        // Service description is optional
-        XCTAssertTrue(doc.serviceDescription != nil || doc.serviceDescription == nil)
+        // The document itself must always have required top-level fields
+        XCTAssertFalse(doc.id.isEmpty, "Document id is required")
+        XCTAssertFalse(doc.title.isEmpty, "Document title is required")
+        // If a service description is present it must be a non-empty string
+        if let description = doc.serviceDescription {
+            XCTAssertFalse(description.isEmpty, "serviceDescription must not be an empty string when present")
+        }
     }
 }
 
@@ -313,6 +348,9 @@ final class AnnouncementTests: XCTestCase {
     """.utf8)
 
         XCTAssertThrowsError(try JSONDecoder().decode(Announcement.self, from: json))
+        // An empty JSON object must also fail (missing both id and content)
+        XCTAssertThrowsError(try JSONDecoder().decode(Announcement.self, from: Data("{}".utf8)),
+                             "Empty JSON object must throw for missing id and content")
     }
 
     func testAnnouncement_withMissingContent_throwsError() {
@@ -323,6 +361,10 @@ final class AnnouncementTests: XCTestCase {
     """.utf8)
 
         XCTAssertThrowsError(try JSONDecoder().decode(Announcement.self, from: json))
+        // id with null content must also fail
+        XCTAssertThrowsError(try JSONDecoder().decode(Announcement.self, from: Data("""
+    {"id": "test-id", "content": null}
+    """.utf8)), "JSON with null content must throw a decoding error")
     }
 }
 
@@ -333,5 +375,9 @@ final class OPDS2LinkRelTests: XCTestCase {
     func testPasswordReset_hasCorrectRawValue() {
         let rel = OPDS2LinkRel.passwordReset
         XCTAssertEqual(rel.rawValue, "http://librarysimplified.org/terms/rel/patron-password-reset")
+        // The raw value must be a valid URL-like string (contains scheme and path)
+        XCTAssertTrue(rel.rawValue.contains("://"), "passwordReset rel must contain a scheme separator")
+        // Verify it's distinguishable from other rels (not empty or a generic string)
+        XCTAssertTrue(rel.rawValue.contains("password-reset"), "raw value must reference 'password-reset'")
     }
 }

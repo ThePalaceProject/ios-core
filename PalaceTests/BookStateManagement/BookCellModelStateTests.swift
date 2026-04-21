@@ -130,63 +130,126 @@ final class BookCellModelStateTests: XCTestCase {
 
     // MARK: - BookCellState Tests
 
+    // Verifies that a registry transition to .downloading causes the BookCellModel
+    // to expose a .downloading cell state and a .downloadInProgress button state.
     func testBookCellStateForDownloadInProgress() {
-        let state = BookCellState(.downloadInProgress)
-        if case .downloading = state {
-            // Expected
+        let book = createTestBook()
+        mockRegistry.addBook(book, state: .downloading)
+
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry)
+
+        // Allow the throttle (50 ms) to settle
+        let exp = XCTestExpectation(description: "stableButtonState settles")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertEqual(model.stableButtonState, .downloadInProgress,
+            "Registry state .downloading must expose .downloadInProgress button state")
+        if case .downloading = model.state {
+            // Correct mapping
         } else {
-            XCTFail("downloadInProgress should map to .downloading cell state")
+            XCTFail("BookCellState for .downloadInProgress must be .downloading, got \(model.state)")
         }
     }
 
+    // Verifies that a registry .downloadFailed state surfaces as .downloadFailed cell state.
     func testBookCellStateForDownloadFailed() {
-        let state = BookCellState(.downloadFailed)
-        if case .downloadFailed = state {
-            // Expected
+        let book = createTestBook()
+        mockRegistry.addBook(book, state: .downloadFailed)
+
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry)
+
+        let exp = XCTestExpectation(description: "stableButtonState settles")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertEqual(model.stableButtonState, .downloadFailed,
+            "Registry state .downloadFailed must expose .downloadFailed button state")
+        if case .downloadFailed = model.state {
+            // Correct mapping
         } else {
-            XCTFail("downloadFailed should map to .downloadFailed cell state")
+            XCTFail("BookCellState for .downloadFailed must be .downloadFailed, got \(model.state)")
         }
     }
 
+    // Verifies that .downloadSuccessful maps to the .normal cell state.
     func testBookCellStateForDownloadSuccessful() {
-        let state = BookCellState(.downloadSuccessful)
-        if case .normal = state {
-            // Expected
+        let book = createTestBook()
+        mockRegistry.addBook(book, state: .downloadSuccessful)
+
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry)
+
+        let exp = XCTestExpectation(description: "stableButtonState settles")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertEqual(model.stableButtonState, .downloadSuccessful,
+            "Registry state .downloadSuccessful must expose .downloadSuccessful button state")
+        if case .normal = model.state {
+            // Correct mapping
         } else {
-            XCTFail("downloadSuccessful should map to .normal cell state")
+            XCTFail("BookCellState for .downloadSuccessful must be .normal, got \(model.state)")
         }
     }
 
-    func testBookCellStateButtonState() {
+    // Verifies that each BookCellState's buttonState matches the underlying BookButtonState,
+    // and that the three distinct cell states each carry a distinct button state.
+    func testBookCellStateButtonState_MapsThroughCorrectly() {
         let downloadingState = BookCellState(.downloadInProgress)
-        XCTAssertEqual(downloadingState.buttonState, .downloadInProgress)
-
         let failedState = BookCellState(.downloadFailed)
-        XCTAssertEqual(failedState.buttonState, .downloadFailed)
-
         let normalState = BookCellState(.downloadSuccessful)
-        XCTAssertEqual(normalState.buttonState, .downloadSuccessful)
+
+        XCTAssertEqual(downloadingState.buttonState, .downloadInProgress,
+            ".downloading cell state must carry .downloadInProgress button state")
+        XCTAssertEqual(failedState.buttonState, .downloadFailed,
+            ".downloadFailed cell state must carry .downloadFailed button state")
+        XCTAssertEqual(normalState.buttonState, .downloadSuccessful,
+            ".normal cell state must carry .downloadSuccessful button state")
+
+        // All three button states must be distinct
+        XCTAssertNotEqual(downloadingState.buttonState, failedState.buttonState)
+        XCTAssertNotEqual(failedState.buttonState, normalState.buttonState)
     }
 
     // MARK: - Loading State Tests
 
-    func testIsLoadingDefaultsFalse() {
+    // isLoading is driven by image-fetching and download-center events.
+    // After init with a pre-cached image (mockRegistry returns image synchronously),
+    // isLoading should settle to false once the image fetch callback completes.
+    func testIsLoading_SettlesFalseAfterImageFetchCompletes() {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadSuccessful)
 
         let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry)
 
-        XCTAssertFalse(model.isLoading)
+        // Give the image-fetch callback time to complete
+        let exp = XCTestExpectation(description: "isLoading clears after image fetch")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
+        wait(for: [exp], timeout: 1.0)
+
+        XCTAssertFalse(model.isLoading,
+            "isLoading must settle to false once the image-fetch callback completes")
     }
 
-    func testIsLoadingCanBeSet() {
+    // statePublisher emits when isLoading changes, letting the UI react.
+    func testIsLoading_EmitsViaStatePublisher_WhenChanged() {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadSuccessful)
-
         let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry)
-        model.isLoading = true
 
-        XCTAssertTrue(model.isLoading)
+        var emissions: [Bool] = []
+        let cancel = model.statePublisher.sink { emissions.append($0) }
+
+        // Act: toggle isLoading (simulates a UI-triggered action like .download)
+        model.isLoading = true
+        model.isLoading = false
+
+        // Assert: both emissions arrived
+        XCTAssertTrue(emissions.contains(true),
+            "statePublisher must emit true when isLoading is set to true")
+        XCTAssertTrue(emissions.contains(false),
+            "statePublisher must emit false when isLoading is cleared")
+        cancel.cancel()
     }
 
     // MARK: - Download Error Routing

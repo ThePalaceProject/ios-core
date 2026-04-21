@@ -18,8 +18,8 @@ extension TPPConfiguration {
     static let betaUrlHash = betaUrl.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
     static let prodUrlHash = prodUrl.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
 
-    static func customUrl() -> URL? {
-        guard let server = TPPSettings.shared.customLibraryRegistryServer else { return nil }
+    static func customUrl(settings: TPPSettings = TPPSettings.shared) -> URL? {
+        guard let server = settings.customLibraryRegistryServer else { return nil }
         return URL(string: "https://\(server)/libraries/qa")
     }
 
@@ -39,6 +39,11 @@ extension TPPConfiguration {
         customUrl()?.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
     }
 
+    /// Converts a base registry URL to the crawlable endpoint URL.
+    static func crawlableURL(from baseURL: URL) -> URL {
+        LibraryRegistryCrawler.crawlableURL(from: baseURL)
+    }
+
     @objc static func mainColor() -> UIColor {
         UIColor.defaultLabelColor()
     }
@@ -54,11 +59,11 @@ extension TPPConfiguration {
     }
 
     @objc static func iconLogoBlueColor() -> UIColor {
-        UIColor(named: "ColorIconLogoBlue")!
+        UIColor(named: "ColorIconLogoBlue") ?? .systemBlue
     }
 
     @objc static func audiobookIconColor() -> UIColor {
-        UIColor(named: "ColorAudiobookBackground")!
+        UIColor(named: "ColorAudiobookBackground") ?? .systemGray
     }
 
     @objc static func iconLogoGreenColor() -> UIColor {
@@ -71,7 +76,7 @@ extension TPPConfiguration {
 
     @objc static func iconColor() -> UIColor {
         if #available(iOS 13, *) {
-            return UIColor(named: "ColorIcon")!
+            return UIColor(named: "ColorIcon") ?? .black
         } else {
             return .black
         }
@@ -87,7 +92,7 @@ extension TPPConfiguration {
 
     @objc static func compatibleTextColor() -> UIColor {
         if #available(iOS 13, *) {
-            return UIColor(named: "ColorInverseLabel")!
+            return UIColor(named: "ColorInverseLabel") ?? .white
         } else {
             return .white
         }

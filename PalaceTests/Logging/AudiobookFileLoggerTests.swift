@@ -24,7 +24,10 @@ final class AudiobookFileLoggerTests: XCTestCase {
     // MARK: - Shared Instance
 
     func testShared_isNotNil() {
-        XCTAssertNotNil(AudiobookFileLogger.shared)
+        XCTAssertNotNil(AudiobookFileLogger.shared, "AudiobookFileLogger.shared must not be nil")
+        // Singleton identity: accessing shared twice must return the same object
+        XCTAssertTrue(AudiobookFileLogger.shared === AudiobookFileLogger.shared,
+                      "AudiobookFileLogger.shared must always return the same instance")
     }
 
     // MARK: - Logs Directory
@@ -32,6 +35,10 @@ final class AudiobookFileLoggerTests: XCTestCase {
     func testGetLogsDirectoryUrl_returnsURL() {
         let url = AudiobookFileLogger.shared.getLogsDirectoryUrl()
         XCTAssertNotNil(url, "Logs directory URL should not be nil")
+        if let url = url {
+            XCTAssertTrue(url.isFileURL, "Logs directory URL must be a file URL")
+            XCTAssertTrue(url.hasDirectoryPath, "Logs directory URL must reference a directory path")
+        }
     }
 
     func testGetLogsDirectoryUrl_directoryExists() {
@@ -71,8 +78,13 @@ final class AudiobookFileLoggerTests: XCTestCase {
     // MARK: - Retrieve Logs
 
     func testRetrieveLog_nonexistentBook_returnsNil() {
-        let log = AudiobookFileLogger.shared.retrieveLog(forBookId: "nonexistent-book-\(UUID().uuidString)")
+        let nonExistentId = "nonexistent-book-\(UUID().uuidString)"
+        let log = AudiobookFileLogger.shared.retrieveLog(forBookId: nonExistentId)
         XCTAssertNil(log)
+        // Retrieving a second unknown id must also return nil (no shared state between IDs)
+        let anotherMissingId = "another-nonexistent-\(UUID().uuidString)"
+        XCTAssertNil(AudiobookFileLogger.shared.retrieveLog(forBookId: anotherMissingId),
+                     "Any unknown book ID must return nil log")
     }
 
     func testRetrieveLogs_multipleBooks() {
@@ -98,7 +110,8 @@ final class AudiobookFileLoggerTests: XCTestCase {
 
     func testRetrieveLogs_emptyBookIds_returnsEmptyDict() {
         let logs = AudiobookFileLogger.shared.retrieveLogs(forBookIds: [])
-        XCTAssertTrue(logs.isEmpty)
+        XCTAssertTrue(logs.isEmpty, "Empty ID list must produce empty result dictionary")
+        XCTAssertEqual(logs.count, 0, "Result must have zero entries for empty input")
     }
 
     // MARK: - Log Content Format

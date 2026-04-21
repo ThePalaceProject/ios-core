@@ -14,6 +14,8 @@ class TPPUserAccountProviderMock: NSObject, TPPUserAccountProvider {
 
     var needsAuth: Bool
 
+    /// Test-only helper. No longer part of `TPPUserAccountProvider` — kept
+    /// so callers that lean on the old static entry point compile unchanged.
     static func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
         return userAccountMock
     }

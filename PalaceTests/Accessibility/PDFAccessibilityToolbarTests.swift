@@ -24,16 +24,24 @@ final class PDFAccessibilityToolbarTests: XCTestCase {
 
     toolbar.goForward()
 
-    XCTAssertEqual(page, 1)
+    XCTAssertEqual(page, 1, "Forward from page 0 should advance to page 1")
+    XCTAssertGreaterThan(page, 0, "Page must be positive after forward navigation")
+    XCTAssertLessThan(page, 10, "Page must remain within pageCount after one step")
   }
 
   func testToolbar_goForward_clampsAtLastPage() {
     var page = 9
-    let toolbar = makeToolbar(currentPage: { page }, setCurrentPage: { page = $0 }, pageCount: 10)
+    let setCount = 0
+    var setCallCount = setCount
+    let toolbar = makeToolbar(currentPage: { page }, setCurrentPage: { newPage in
+        page = newPage
+        setCallCount += 1
+    }, pageCount: 10)
 
     toolbar.goForward()
 
-    XCTAssertEqual(page, 9, "Forward must not advance past the last page")
+    XCTAssertEqual(page, 9, "Forward must not advance past the last page (index 9 of 10)")
+    XCTAssertLessThan(page, 10, "Page index must remain below pageCount after clamped forward")
   }
 
   // MARK: - Backward navigation
@@ -44,7 +52,8 @@ final class PDFAccessibilityToolbarTests: XCTestCase {
 
     toolbar.goBackward()
 
-    XCTAssertEqual(page, 4)
+    XCTAssertEqual(page, 4, "Backward from page 5 should decrement to page 4")
+    XCTAssertGreaterThanOrEqual(page, 0, "Page must remain non-negative after backward navigation")
   }
 
   func testToolbar_goBackward_clampsAtFirstPage() {
@@ -54,6 +63,7 @@ final class PDFAccessibilityToolbarTests: XCTestCase {
     toolbar.goBackward()
 
     XCTAssertEqual(page, 0, "Backward must not decrement below the first page")
+    XCTAssertGreaterThanOrEqual(page, 0, "Page must never go negative regardless of backward calls")
   }
 
   // MARK: - Helpers

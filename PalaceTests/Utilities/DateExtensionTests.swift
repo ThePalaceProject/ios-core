@@ -18,6 +18,9 @@ final class DateExtensionTests: XCTestCase {
 
         XCTAssertNotNil(rfc339)
         XCTAssertTrue(rfc339.contains("1970"))
+        XCTAssertFalse(rfc339.isEmpty)
+        // Should contain separators typical of date-time format
+        XCTAssertTrue(rfc339.contains("-") || rfc339.contains(":"))
     }
 
     func testRfc339String_includesTimezone() {
@@ -26,6 +29,9 @@ final class DateExtensionTests: XCTestCase {
 
         // RFC339 should include timezone indicator
         XCTAssertTrue(rfc339.contains("Z") || rfc339.contains("+") || rfc339.contains("-"))
+        // The string should be non-trivially long (at least "YYYY-MM-DD")
+        XCTAssertGreaterThanOrEqual(rfc339.count, 10)
+        XCTAssertFalse(rfc339.isEmpty)
     }
 
     // MARK: - ISO8601 Tests
@@ -76,6 +82,9 @@ final class DateExtensionTests: XCTestCase {
         let futureDate = calendar.date(byAdding: .day, value: 7, to: date)!
 
         XCTAssertGreaterThan(futureDate, date)
+        // Difference should be approximately 7 days (604800 seconds)
+        let diff = futureDate.timeIntervalSince(date)
+        XCTAssertEqual(diff, 604800, accuracy: 3600, "7 days should be ~604800 seconds")
     }
 
     func testSubtractingDays_decreasesDate() {
@@ -84,6 +93,10 @@ final class DateExtensionTests: XCTestCase {
         let pastDate = calendar.date(byAdding: .day, value: -7, to: date)!
 
         XCTAssertLessThan(pastDate, date)
+        // Difference should be approximately -7 days
+        let diff = pastDate.timeIntervalSince(date)
+        XCTAssertLessThan(diff, 0, "Subtracting days should produce a past date")
+        XCTAssertEqual(abs(diff), 604800, accuracy: 3600)
     }
 
     // MARK: - Relative Date Tests
@@ -91,11 +104,15 @@ final class DateExtensionTests: XCTestCase {
     func testTimeIntervalSinceNow_positive() {
         let futureDate = Date(timeIntervalSinceNow: 3600) // 1 hour from now
         XCTAssertGreaterThan(futureDate.timeIntervalSinceNow, 0)
+        // Should be close to 3600 seconds (allow a few seconds for test execution)
+        XCTAssertGreaterThan(futureDate.timeIntervalSinceNow, 3590)
     }
 
     func testTimeIntervalSinceNow_negative() {
         let pastDate = Date(timeIntervalSinceNow: -3600) // 1 hour ago
         XCTAssertLessThan(pastDate.timeIntervalSinceNow, 0)
+        // Should be close to -3600 seconds
+        XCTAssertLessThan(pastDate.timeIntervalSinceNow, -3590)
     }
 }
 
@@ -110,6 +127,9 @@ final class DateFormattingTests: XCTestCase {
 
         let formatted = formatter.string(from: date)
         XCTAssertFalse(formatted.isEmpty)
+        // Short format should be parseable back to a date
+        let reparsed = formatter.date(from: formatted)
+        XCTAssertNotNil(reparsed)
     }
 
     func testLongDateFormat() {
@@ -119,6 +139,11 @@ final class DateFormattingTests: XCTestCase {
 
         let formatted = formatter.string(from: date)
         XCTAssertFalse(formatted.isEmpty)
+        // Long format should be longer than short format
+        let shortFormatter = DateFormatter()
+        shortFormatter.dateStyle = .short
+        let short = shortFormatter.string(from: date)
+        XCTAssertGreaterThanOrEqual(formatted.count, short.count)
     }
 
     func testTimeFormat() {
@@ -128,6 +153,8 @@ final class DateFormattingTests: XCTestCase {
 
         let formatted = formatter.string(from: date)
         XCTAssertFalse(formatted.isEmpty)
+        // Time string should contain a colon separating hours and minutes
+        XCTAssertTrue(formatted.contains(":"), "Short time format should contain ':'")
     }
 
     func testCustomFormat() {
@@ -137,7 +164,9 @@ final class DateFormattingTests: XCTestCase {
 
         let formatted = formatter.string(from: date)
         XCTAssertTrue(formatted.contains("-"))
-
+        // Must have exactly two dashes (YYYY-MM-DD pattern)
+        let dashCount = formatted.filter { $0 == "-" }.count
+        XCTAssertEqual(dashCount, 2, "yyyy-MM-dd format should produce exactly 2 dashes")
         // Parse back
         let parsed = formatter.date(from: formatted)
         XCTAssertNotNil(parsed)

@@ -44,6 +44,11 @@ final class BookDetailViewModel: ObservableObject {
     /// that would otherwise execute immediately without a second confirmation step.
     @Published var confirmationAlert: AlertModel?
 
+    /// SQ-008: Alert surfaced by the HalfSheetProvider protocol so that
+    /// cancel-hold and return confirmations render ON the half-sheet
+    /// (not behind it on the parent BookCell).
+    @Published var showAlert: AlertModel?
+
     @Published var relatedBooksByLane: [String: BookLane] = [:]
     @Published var isLoadingRelatedBooks = false
 
@@ -78,7 +83,8 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Dependencies
 
     let registry: TPPBookRegistryProvider
-    let downloadCenter = MyBooksDownloadCenter.shared
+    let downloadCenter: MyBooksDownloadCenter
+    private let accountsManager: AccountsManager
     private var cancellables = Set<AnyCancellable>()
 
     // Note: audiobook management moved to BookService
@@ -106,9 +112,11 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     /// Initializer with dependency injection for testing
-    init(book: TPPBook, registry: TPPBookRegistryProvider) {
+    init(book: TPPBook, registry: TPPBookRegistryProvider, downloadCenter: MyBooksDownloadCenter = .shared, accountsManager: AccountsManager = .shared) {
         self.book = book
         self.registry = registry
+        self.downloadCenter = downloadCenter
+        self.accountsManager = accountsManager
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
@@ -135,7 +143,7 @@ final class BookDetailViewModel: ObservableObject {
         #if LCP
         if let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) {
             var lcpAudiobooks: LCPAudiobooks?
-            if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: bookIdentifier),
+            if let localURL = downloadCenter.fileUrl(for: bookIdentifier),
                FileManager.default.fileExists(atPath: localURL.path) {
                 lcpAudiobooks = LCPAudiobooks(for: localURL)
             } else {
@@ -236,8 +244,22 @@ final class BookDetailViewModel: ObservableObject {
 
         // Subscribe to download errors so we can present them via SwiftUI .alert
         // instead of UIKit (which can fail when a SwiftUI sheet is topmost).
+        // Filter by error kind so borrow errors only show when the user initiated
+        // a borrow (Get), and download errors only show for downloads/retries.
         downloadCenter.downloadErrorPublisher
             .filter { [weak self] in $0.bookId == self?.book.identifier }
+            .filter { [weak self] errorInfo in
+                guard let self else { return true }
+                switch errorInfo.kind {
+                case .borrow:
+                    return self.processingButtons.contains(.get) || self.bookState == .unregistered
+                case .download:
+                    return self.processingButtons.contains(.download) || self.processingButtons.contains(.retry)
+                        || self.bookState == .downloading || self.bookState == .downloadFailed || self.bookState == .downloadNeeded
+                case .general:
+                    return true
+                }
+            }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] errorInfo in
                 if let retryAction = errorInfo.retryAction {
@@ -340,33 +362,38 @@ final class BookDetailViewModel: ObservableObject {
 
         isLoadingRelatedBooks = true
 
-        TPPOPDSFeed.withURL(url, shouldResetCache: false, useTokenIfAvailable: TPPUserAccount.sharedAccount().hasAdobeToken()) { [weak self] feed, _ in
+        Task { [weak self] in
             guard let self else { return }
+            do {
+                let feed = try await OPDSFeedService.shared.fetchFeed(from: url, useToken: AccountsManager.shared.currentUserAccount.hasAdobeToken())
 
-            DispatchQueue.main.async {
-                // Verify we're still on the same book (user might have navigated away)
-                guard self.book.identifier == currentBookId else {
-                    self.isLoadingRelatedBooks = false
-                    return
-                }
+                await MainActor.run {
+                    guard self.book.identifier == currentBookId else {
+                        self.isLoadingRelatedBooks = false
+                        return
+                    }
 
-                if feed?.type == .acquisitionGrouped {
-                    var groupTitleToBooks: [String: [TPPBook]] = [:]
-                    var groupTitleToMoreURL: [String: URL?] = [:]
-                    if let entries = feed?.entries as? [TPPOPDSEntry] {
-                        for entry in entries {
-                            guard let group = entry.groupAttributes else { continue }
-                            let groupTitle = group.title ?? ""
-                            if let b = CatalogViewModel.makeBook(from: entry) {
-                                groupTitleToBooks[groupTitle, default: []].append(b)
-                                if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+                    if feed.type == .acquisitionGrouped {
+                        var groupTitleToBooks: [String: [TPPBook]] = [:]
+                        var groupTitleToMoreURL: [String: URL?] = [:]
+                        if let entries = feed.entries as? [TPPOPDSEntry] {
+                            for entry in entries {
+                                guard let group = entry.groupAttributes else { continue }
+                                let groupTitle = group.title ?? ""
+                                if let b = CatalogViewModel.makeBook(from: entry) {
+                                    groupTitleToBooks[groupTitle, default: []].append(b)
+                                    if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
+                                }
                             }
                         }
+                        self.createRelatedBooksCells(groupedBooks: groupTitleToBooks, moreURLs: groupTitleToMoreURL)
+                    } else {
+                        self.isLoadingRelatedBooks = false
                     }
-                    self.createRelatedBooksCells(groupedBooks: groupTitleToBooks, moreURLs: groupTitleToMoreURL)
-                } else {
-                    self.isLoadingRelatedBooks = false
                 }
+            } catch {
+                Log.warn(#file, "Failed to fetch related books: \(error.localizedDescription)")
+                await MainActor.run { self.isLoadingRelatedBooks = false }
             }
         }
     }
@@ -463,7 +490,7 @@ final class BookDetailViewModel: ObservableObject {
         }
     }
 
-    private func removeProcessingButton(_ button: BookButtonType) {
+    func removeProcessingButton(_ button: BookButtonType) {
         self.processingButtons.remove(button)
     }
 
@@ -476,11 +503,11 @@ final class BookDetailViewModel: ObservableObject {
     /// Ensures authentication document is loaded and handles sign-in if needed.
     private func ensureAuthAndExecute(_ action: @escaping () -> Void) {
         let businessLogic = TPPSignInBusinessLogic(
-            libraryAccountID: AccountsManager.shared.currentAccount?.uuid ?? "",
-            libraryAccountsProvider: AccountsManager.shared,
+            libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
+            libraryAccountsProvider: accountsManager,
             urlSettingsProvider: TPPSettings.shared,
-            bookRegistry: TPPBookRegistry.shared,
-            bookDownloadsCenter: MyBooksDownloadCenter.shared,
+            bookRegistry: (registry as? TPPBookRegistrySyncing) ?? { preconditionFailure("registry must conform to TPPBookRegistrySyncing") }(),
+            bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
             drmAuthorizer: nil
@@ -490,13 +517,13 @@ final class BookDetailViewModel: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
-                let account = TPPUserAccount.sharedAccount()
+                let account = AccountsManager.shared.currentUserAccount
                 if account.needsAuth && !account.hasCredentials() {
                     self.showHalfSheet = false
                     SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
                         guard let self else { return }
                         // Only proceed if user successfully logged in, not if they cancelled
-                        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+                        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
                             Log.info(#file, "Sign-in cancelled or failed, not proceeding with action")
                             // Clear any processing state for download-related buttons
                             self.processingButtons.remove(.download)
@@ -573,7 +600,7 @@ final class BookDetailViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self = self else { return }
                 #if FEATURE_DRM_CONNECTOR
-                let user = TPPUserAccount.sharedAccount()
+                let user = AccountsManager.shared.currentUserAccount
 
                 if user.hasCredentials() {
                     if user.hasAuthToken() {
@@ -581,15 +608,14 @@ final class BookDetailViewModel: ObservableObject {
                         return
                     } else if AdobeCertificate.isDRMAvailable &&
                                 !AdobeDRMService.shared.isUserAuthorized(user.userID, deviceID: user.deviceID) {
-                        let reauthenticator = TPPReauthenticator()
-                        reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: true) {
-                            Task { @MainActor in
-                                // Only proceed if user successfully re-authenticated
-                                guard user.hasCredentials() else {
-                                    completion?()
-                                    return
-                                }
-                                self.openBook(book, completion: completion)
+                        // On-demand DRM activation instead of showing sign-in modal
+                        Task {
+                            do {
+                                try await AdobeDRMService.shared.ensureDeviceActivated()
+                                await MainActor.run { self.openBook(book, completion: completion) }
+                            } catch {
+                                Log.error(#file, "Adobe DRM activation failed for open: \(error.localizedDescription)")
+                                await MainActor.run { completion?() }
                             }
                         }
                         return
@@ -750,7 +776,7 @@ final class BookDetailViewModel: ObservableObject {
         } else {
             let webController = BundledHTMLViewController(
                 fileURL: url,
-                title: AccountsManager.shared.currentAccount?.name ?? ""
+                title: accountsManager.currentAccount?.name ?? ""
             )
             top.present(webController, animated: true)
         }
@@ -901,10 +927,10 @@ extension BookDetailViewModel {
         }
     }
 
-    static func presentEndOfBookAlert(for book: TPPBook) {
+    static func presentEndOfBookAlert(for book: TPPBook, downloadCenter: MyBooksDownloadCenter = .shared) {
         let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
             forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-            allowedRelations: [.borrow, .generic],
+            allowedRelations: TPPOPDSAcquisitionRelationSetBorrow | TPPOPDSAcquisitionRelationSetGeneric,
             acquisitions: book.acquisitions
         )
 
@@ -912,7 +938,7 @@ extension BookDetailViewModel {
             let alert = TPPReturnPromptHelper.audiobookPrompt { returnWasChosen in
                 if returnWasChosen {
                     NavigationCoordinatorHub.shared.coordinator?.pop()
-                    MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+                    downloadCenter.returnBook(withIdentifier: book.identifier)
                 }
                 TPPAppStoreReviewPrompt.presentIfAvailable()
             }

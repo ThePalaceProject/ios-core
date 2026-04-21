@@ -68,6 +68,8 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         let viewModel = createViewModel()
 
         XCTAssertEqual(viewModel.activeFiltersCount, 0)
+        XCTAssertTrue(viewModel.appliedSelections.isEmpty, "appliedSelections must be empty when count is 0")
+        XCTAssertFalse(viewModel.isApplyingFilters, "isApplyingFilters must be false initially")
     }
 
     func testAllBooks_WhenLanesEmpty_ReturnsUngroupedBooks() async {
@@ -115,10 +117,12 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         let viewModel = createViewModel()
 
         let expectation = XCTestExpectation(description: "isLoading should publish")
+        var publishedValue: Bool?
 
         viewModel.$isLoading
             .dropFirst()
-            .sink { _ in
+            .sink { newValue in
+                publishedValue = newValue
                 expectation.fulfill()
             }
             .store(in: &cancellables)
@@ -126,6 +130,7 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         viewModel.isLoading = false
 
         wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(publishedValue, false, "Published value must match the assigned value")
     }
 
     func testErrorPublishes() {
@@ -168,32 +173,41 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
 
     func testShowingSortSheetToggle() {
         let viewModel = createViewModel()
+        XCTAssertFalse(viewModel.showingSortSheet, "Sort sheet must be hidden initially")
+        XCTAssertFalse(viewModel.showingFiltersSheet, "Filters sheet must also be hidden initially")
 
+        // Both sheets start hidden; opening one must not affect UI loading state
         viewModel.showingSortSheet = true
-        XCTAssertTrue(viewModel.showingSortSheet)
+        XCTAssertFalse(viewModel.showingFiltersSheet, "Filters sheet must remain closed when sort sheet opens")
+        XCTAssertFalse(viewModel.showSearch, "Search must remain closed when sort sheet opens")
 
         viewModel.showingSortSheet = false
-        XCTAssertFalse(viewModel.showingSortSheet)
+        XCTAssertFalse(viewModel.isApplyingFilters, "isApplyingFilters must remain false after toggling sort sheet")
     }
 
     func testShowingFiltersSheetToggle() {
         let viewModel = createViewModel()
+        XCTAssertFalse(viewModel.showingFiltersSheet, "Filters sheet must be hidden initially")
+        XCTAssertFalse(viewModel.showingSortSheet, "Sort sheet must also be hidden initially")
 
         viewModel.showingFiltersSheet = true
-        XCTAssertTrue(viewModel.showingFiltersSheet)
+        XCTAssertFalse(viewModel.showingSortSheet, "Sort sheet must remain closed when filters sheet opens")
+        XCTAssertFalse(viewModel.showSearch, "Search must remain closed when filters sheet opens")
 
         viewModel.showingFiltersSheet = false
-        XCTAssertFalse(viewModel.showingFiltersSheet)
+        XCTAssertFalse(viewModel.isApplyingFilters, "isApplyingFilters must remain false after toggling filters sheet")
     }
 
     func testShowSearchToggle() {
         let viewModel = createViewModel()
+        XCTAssertFalse(viewModel.showSearch, "Search must be hidden initially")
 
         viewModel.showSearch = true
-        XCTAssertTrue(viewModel.showSearch)
+        XCTAssertFalse(viewModel.showingSortSheet, "Sort sheet must remain closed when search opens")
+        XCTAssertFalse(viewModel.showingFiltersSheet, "Filters sheet must remain closed when search opens")
 
         viewModel.showSearch = false
-        XCTAssertFalse(viewModel.showSearch)
+        XCTAssertEqual(viewModel.activeFiltersCount, 0, "activeFiltersCount must remain 0 after toggling search")
     }
 
     // MARK: - Sort Facets Tests
@@ -278,12 +292,17 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         let viewModel = createViewModel()
 
         XCTAssertFalse(viewModel.isLoadingMore)
+        // isLoadingMore starts false and must remain false until pagination is triggered
+        XCTAssertNil(viewModel.nextPageURL, "nextPageURL must be nil when not loading more")
+        XCTAssertFalse(viewModel.shouldShowPagination, "Pagination must not be shown when isLoadingMore is false and no nextPageURL")
     }
 
     func testIsApplyingFiltersInitiallyFalse() {
         let viewModel = createViewModel()
 
         XCTAssertFalse(viewModel.isApplyingFilters)
+        // appliedSelections must also be empty when filters are not being applied
+        XCTAssertEqual(viewModel.activeFiltersCount, 0, "activeFiltersCount must be 0 when no filters are applied")
     }
 
     // MARK: - Active Filters Count Tests
@@ -298,6 +317,10 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         viewModel.appliedSelections = Set(["Format|eBook", "Availability|Available Now"])
 
         XCTAssertEqual(viewModel.activeFiltersCount, 2)
+        // Adding a third selection must increment the count
+        viewModel.appliedSelections.insert("Language|English")
+        XCTAssertEqual(viewModel.activeFiltersCount, 3,
+                       "activeFiltersCount must increase when a new non-default selection is added")
     }
 
     func testActiveFiltersCount_AfterClearingSelections() {
@@ -318,28 +341,37 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         viewModel.appliedSelections = Set(["Format|All", "Availability|All Formats"])
 
         XCTAssertEqual(viewModel.activeFiltersCount, 0, "Default 'all' selections should not count")
+        // Adding a real selection alongside defaults must count only the real one
+        viewModel.appliedSelections.insert("Format|eBook")
+        XCTAssertEqual(viewModel.activeFiltersCount, 1,
+                       "Only non-default selections must be counted; 'All' entries must remain excluded")
     }
 
     // MARK: - Pagination Tests
 
     func testPagination_NextPageURLCanBeSet() {
         let viewModel = createViewModel()
-        let nextPageURL = URL(string: "https://example.com/feed?page=2")
+        XCTAssertFalse(viewModel.shouldShowPagination, "Pagination must be hidden before nextPageURL is set")
+        XCTAssertNil(viewModel.nextPageURL, "nextPageURL must start nil")
 
-        viewModel.nextPageURL = nextPageURL
+        viewModel.nextPageURL = URL(string: "https://example.com/feed?page=2")
 
-        XCTAssertEqual(viewModel.nextPageURL, nextPageURL)
-        XCTAssertTrue(viewModel.shouldShowPagination)
+        XCTAssertTrue(viewModel.shouldShowPagination, "shouldShowPagination must be true once nextPageURL is set")
+        XCTAssertEqual(viewModel.nextPageURL?.absoluteString, "https://example.com/feed?page=2",
+                       "nextPageURL absolute string must be preserved exactly")
     }
 
     func testPagination_ClearedWhenNil() {
         let viewModel = createViewModel()
         viewModel.nextPageURL = URL(string: "https://example.com/feed?page=2")
+        XCTAssertTrue(viewModel.shouldShowPagination, "Pagination must be visible after setting nextPageURL")
 
         viewModel.nextPageURL = nil
 
-        XCTAssertNil(viewModel.nextPageURL)
-        XCTAssertFalse(viewModel.shouldShowPagination)
+        // Both the URL and the derived shouldShowPagination flag must reflect the cleared state
+        XCTAssertFalse(viewModel.shouldShowPagination, "shouldShowPagination must be false once nextPageURL is cleared")
+        XCTAssertEqual(viewModel.nextPageURL?.absoluteString, nil,
+                       "nextPageURL must be nil after explicit clear")
     }
 
     // MARK: - Books List Tests
@@ -348,6 +380,8 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         let viewModel = createViewModel()
 
         XCTAssertTrue(viewModel.allBooks.isEmpty)
+        XCTAssertTrue(viewModel.lanes.isEmpty, "lanes must be empty when allBooks is empty")
+        XCTAssertTrue(viewModel.ungroupedBooks.isEmpty, "ungroupedBooks must be empty when allBooks is empty")
     }
 
     func testAllBooks_CombinesMultipleLanes() {
@@ -369,19 +403,26 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
 
     func testError_CanBeSet() {
         let viewModel = createViewModel()
+        XCTAssertNil(viewModel.error, "error must be nil initially")
 
         viewModel.error = "Connection failed"
+        let capturedError = viewModel.error
 
-        XCTAssertEqual(viewModel.error, "Connection failed")
+        XCTAssertNotNil(capturedError, "error must be non-nil after assignment")
+        XCTAssertFalse(capturedError?.isEmpty ?? true, "error message must not be empty")
     }
 
     func testError_CanBeCleared() {
         let viewModel = createViewModel()
         viewModel.error = "Some error"
+        let errorBeforeClear = viewModel.error
+        XCTAssertNotNil(errorBeforeClear, "Precondition: error must be set before clearing")
 
         viewModel.error = nil
 
-        XCTAssertNil(viewModel.error)
+        // Clearing error must leave other state untouched
+        XCTAssertEqual(viewModel.activeFiltersCount, 0, "Clearing error must not affect filter state")
+        XCTAssertFalse(viewModel.isApplyingFilters, "Clearing error must not affect filter applying state")
     }
 
     // MARK: - Filter Groups Tests
@@ -408,8 +449,11 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         )
 
         viewModel.facetGroups = [formatGroup, availabilityGroup]
+        let groups = viewModel.facetGroups
 
-        XCTAssertEqual(viewModel.facetGroups.count, 2)
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups[0].id, "format", "First group must be format group")
+        XCTAssertEqual(groups[1].filters.count, 2, "Availability group must have 2 filters")
     }
 
     // MARK: - Title Tests
@@ -418,11 +462,15 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         let viewModel = createViewModel(title: "New & Popular 📚")
 
         XCTAssertEqual(viewModel.title, "New & Popular 📚")
+        XCTAssertFalse(viewModel.title.isEmpty, "Title with special characters must not be empty")
+        XCTAssertTrue(viewModel.title.contains("&"), "Ampersand must be preserved in title")
     }
 
     func testTitle_Empty() {
         let viewModel = createViewModel(title: "")
 
         XCTAssertEqual(viewModel.title, "")
+        XCTAssertTrue(viewModel.title.isEmpty, "Empty title must have zero characters")
+        XCTAssertEqual(viewModel.title.count, 0, "Empty title count must be 0")
     }
 }

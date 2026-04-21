@@ -45,18 +45,40 @@ struct SignInModalView: View {
     }
 }
 
-/// Bridge class to present SignInModalView from Objective-C
+/// Bridge class to present SignInModalView from Objective-C.
+/// @MainActor ensures `isPresenting` reads/writes are serialized — prevents
+/// duplicate modals from concurrent 401 responses on different threads.
+@MainActor
 @objcMembers
 class SignInModalPresenter: NSObject {
+
+    /// Guards against presenting multiple sign-in modals simultaneously.
+    /// Without this, each 401 response from concurrent network requests
+    /// (catalog refresh, bookmark sync, user profile fetch) would stack
+    /// another modal, trapping the user in an infinite loop.
+    private static var isPresenting = false
 
     /// Presents the SwiftUI sign-in modal
     /// - Parameters:
     ///   - libraryAccountID: The library account to sign into
     ///   - completion: Called when sign-in completes successfully
     static func presentSignInModal(libraryAccountID: String, completion: (() -> Void)?) {
+        guard !isPresenting else {
+            Log.debug(#file, "Sign-in modal already presented — suppressing duplicate")
+            return
+        }
+        guard !AccountsManager.shared.isAccountSwitching else {
+            Log.debug(#file, "Account switch in progress — suppressing sign-in modal (F-032)")
+            return
+        }
+        isPresenting = true
+
         let view = SignInModalView(
             libraryAccountID: libraryAccountID,
-            completion: completion
+            completion: {
+                isPresenting = false
+                completion?()
+            }
         )
 
         let vc = UIHostingController(rootView: view)
@@ -67,8 +89,21 @@ class SignInModalPresenter: NSObject {
 
     /// Convenience method for current account
     /// - Parameter completion: Called when sign-in completes successfully
-    static func presentSignInModalForCurrentAccount(completion: (() -> Void)?) {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+    static func presentSignInModalForCurrentAccount(accountsManager: AccountsManager = AccountsManager.shared, completion: (() -> Void)?) {
+        guard let libraryID = accountsManager.currentAccountId else {
+            completion?()
+            return
+        }
+
+        // Anonymous and COPPA libraries (e.g. Palace Bookshelf) have no credential
+        // form to render — presenting the modal would show an empty sheet with no
+        // fields and no continue button (SQ-005). Skip the modal and call the
+        // completion so the calling flow proceeds without sign-in. This is an
+        // architectural invariant: the sign-in modal MUST NOT be presented for
+        // an auth method that has no form to render.
+        let userAccount = accountsManager.userAccount(for: libraryID)
+        if !userAccount.needsAuth {
+            Log.info(#file, "Skipping sign-in modal — library \(libraryID) does not require authentication")
             completion?()
             return
         }

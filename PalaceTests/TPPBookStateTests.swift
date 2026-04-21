@@ -41,5 +41,11 @@ class TPPBookStateTests: XCTestCase {
 
     func testAllBookState() {
         XCTAssertEqual(TPPBookStateHelper.allBookStates(), TPPBookState.allCases.map { $0.rawValue })
+        // allBookStates should be non-empty (there are valid states)
+        XCTAssertFalse(TPPBookStateHelper.allBookStates().isEmpty,
+                       "allBookStates should return a non-empty array of raw values")
+        // Count should match allCases count
+        XCTAssertEqual(TPPBookStateHelper.allBookStates().count, TPPBookState.allCases.count,
+                       "allBookStates count should equal the number of TPPBookState cases")
     }
 }

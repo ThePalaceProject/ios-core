@@ -98,7 +98,29 @@ public final class AudiobookSessionManager: ObservableObject {
     private(set) var playbackModel: AudiobookPlaybackModel?
     private(set) var nowPlayingCoordinator: NowPlayingCoordinator?
 
-    private var cancellables = Set<AnyCancellable>()
+    /// DRM decryptor tied to the currently loaded audiobook. Owned atomically
+    /// alongside manager/audiobook/playbackModel so stopPlayback can release
+    /// all four together — preventing the previous LCP Publication from
+    /// keeping Readium file handles open while a new audiobook opens.
+    private var decryptor: DRMDecryptor?
+
+    /// The loader for the in-flight open, if any. Cancelled when a new open
+    /// supersedes it or when stopPlayback is called mid-load.
+    private var currentLoader: AudiobookLoader?
+
+    /// Monotonically-increasing token that makes sure late completions from
+    /// a superseded loader can't bind their manager onto the session.
+    private var loadGeneration: UInt64 = 0
+
+    /// True once `.playbackBegan` has fired at least once during the current
+    /// session. Used to distinguish a cold-load failure (first chapter never
+    /// became ready — book is broken) from a mid-playback failure (chapter
+    /// boundary error — user is already listening, can scrub back). Cold-
+    /// load failures dismiss the dead player UI and show an OK-only
+    /// "unavailable" alert; mid-playback failures keep the player open with
+    /// the toolkit's toast.
+    private var hasEverStartedPlayback: Bool = false
+
     private var managerCancellables = Set<AnyCancellable>()
 
     // MARK: - Publishers for External Observers
@@ -112,20 +134,31 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Emits errors for UI display
     public let errorPublisher = PassthroughSubject<AudiobookSessionError, Never>()
 
+    private let bookRegistry: TPPBookRegistryProvider
+    private let accountsManager: AccountsManager
+
     // MARK: - Initialization
 
-    private init() {
+    private init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, accountsManager: AccountsManager = AccountsManager.shared) {
+        self.bookRegistry = bookRegistry
+        self.accountsManager = accountsManager
         Log.info(#file, "AudiobookSessionManager initialized")
         nowPlayingCoordinator = NowPlayingCoordinator()
-        // Note: Remote commands are handled by the toolkit's MediaControlPublisher
-        // NowPlayingCoordinator only manages Now Playing info updates
-        subscribeToGlobalEvents()
+        // Note: Remote commands are handled by the toolkit's MediaControlPublisher.
+        // This manager now owns the full audiobook lifecycle (load → bind → play)
+        // directly via AudiobookLoader; no pub/sub handoff is needed.
     }
 
     // MARK: - Public API
 
     /// Opens and starts playing an audiobook.
     /// This is the single entry point for playback from both phone and CarPlay.
+    ///
+    /// Ordering invariant: the previous session (if any) is stopped — which
+    /// releases its DRM decryptor and tears down its manager — BEFORE the
+    /// new load begins. This is what prevents the "opening third audiobook
+    /// hangs" bug: a stale LCP Publication can no longer race the new
+    /// publicationOpener.open().
     ///
     /// - Parameters:
     ///   - book: The book to play
@@ -135,21 +168,17 @@ public final class AudiobookSessionManager: ObservableObject {
     public func openAudiobook(_ book: TPPBook, startPlaying: Bool = true) async -> Result<Void, AudiobookSessionError> {
         Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))")
 
-        // Check if already loading this book
         if case .loading(let loadingId) = state, loadingId == book.identifier {
             Log.warn(#file, "Audiobook already loading: \(book.identifier)")
             return .failure(.alreadyLoading)
         }
 
-        // Check if this is the same book that's currently playing
         let isSameBook = currentBook?.identifier == book.identifier
 
-        // Stop any current playback (don't dismiss phone UI if reopening same book)
         if state.isActive {
             await stopPlayback(dismissPhoneUI: !isSameBook)
         }
 
-        // Validate requirements
         if let error = validateRequirements(for: book) {
             Log.error(#file, "Validation failed: \(error)")
             state = .error(bookId: book.identifier, message: error.localizedDescription)
@@ -157,35 +186,72 @@ public final class AudiobookSessionManager: ObservableObject {
             return .failure(error)
         }
 
-        // Update state
         state = .loading(bookId: book.identifier)
         currentBook = book
+        hasEverStartedPlayback = false
         playbackStatePublisher.send(state)
 
-        // Use continuation to bridge completion-based BookService to async
-        return await withCheckedContinuation { continuation in
-            // Open the book using existing BookService infrastructure
-            // This handles DRM, manifest fetching, position restoration, etc.
-            openBookWithService(book, startPlaying: startPlaying) { [weak self] result in
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        let loader = AudiobookLoader()
+        currentLoader = loader
+
+        return await withCheckedContinuation { [weak self] (continuation: CheckedContinuation<Result<Void, AudiobookSessionError>, Never>) in
+            loader.load(book) { [weak self] result in
                 Task { @MainActor in
                     guard let self = self else {
                         continuation.resume(returning: .failure(.unknown("Session manager deallocated")))
                         return
                     }
+                    // If a newer openAudiobook has started, drop this completion.
+                    guard self.loadGeneration == generation else {
+                        Log.info(#file, "Superseded audiobook load completion — ignoring")
+                        continuation.resume(returning: .failure(.alreadyLoading))
+                        return
+                    }
+                    self.currentLoader = nil
 
                     switch result {
-                    case .success:
-                        Log.info(#file, "Audiobook opened successfully: '\(book.title)'")
+                    case .success(let loaded):
+                        Log.info(#file, "Audiobook loaded successfully: '\(book.title)'")
+                        self.bind(loaded: loaded, for: book, startPlaying: startPlaying)
                         continuation.resume(returning: .success(()))
 
-                    case .failure(let error):
-                        Log.error(#file, "Failed to open audiobook: \(error)")
-                        self.state = .error(bookId: book.identifier, message: error.localizedDescription)
-                        self.errorPublisher.send(error)
-                        continuation.resume(returning: .failure(error))
+                    case .failure(let loadError):
+                        Log.error(#file, "Failed to load audiobook: \(loadError)")
+                        let sessionError = Self.mapLoadError(loadError)
+                        self.state = .error(bookId: book.identifier, message: sessionError.localizedDescription)
+                        self.errorPublisher.send(sessionError)
+                        // Surface the retry-with-dialog UX (PP-3707) for user-visible
+                        // load failures. Skip for cancellation so a superseded open
+                        // doesn't flash an error on screen.
+                        if case .cancelled = loadError {
+                            // no-op
+                        } else {
+                            BookService.showAudiobookTryAgainError(book: book, onFinish: nil)
+                        }
+                        continuation.resume(returning: .failure(sessionError))
                     }
                 }
             }
+        }
+    }
+
+    static func mapLoadError(_ error: AudiobookLoadError) -> AudiobookSessionError {
+        switch error {
+        case .cancelled:
+            return .unknown("Load cancelled")
+        case .tokenRefreshFailed, .missingCredentialsForTokenRefresh:
+            return .notAuthenticated
+        case .manifestFetchFailed, .manifestParseFailed, .manifestSerializationFailed, .manifestDecodingFailed:
+            return .manifestLoadFailed
+        case .lcpNotAvailable, .lcpInstantiationFailed, .lcpDecryptionFailed,
+             .licenseDownloadFailed, .licenseSaveFailed, .missingFulfillURL, .missingContentDirectory:
+            return .manifestLoadFailed
+        case .vendorKeyUpdateFailed(let nsError):
+            return .unknown(nsError.localizedDescription)
+        case .factoryFailed:
+            return .playerCreationFailed
         }
     }
 
@@ -231,7 +297,7 @@ public final class AudiobookSessionManager: ObservableObject {
         let chapter = currentChapters[index]
         manager.audiobook.player.play(at: chapter.position, completion: nil)
 
-        Log.debug(#file, "Skipping to chapter: '\(chapter.title ?? "Unknown")'")
+        Log.debug(#file, "Skipping to chapter: '\(chapter.title)'")
     }
 
     /// Cycles through playback rates
@@ -252,12 +318,17 @@ public final class AudiobookSessionManager: ObservableObject {
         return newRate
     }
 
-    /// Stops playback and clears current session
+    /// Stops playback and clears current session, atomically releasing the
+    /// DRM decryptor alongside the manager/audiobook/playbackModel. This is
+    /// the only place the previous LCP Publication's file handles are dropped.
     /// - Parameter dismissPhoneUI: Whether to dismiss the player UI on the phone (default: true)
     public func stopPlayback(dismissPhoneUI: Bool = true) async {
         Log.info(#file, "Stopping playback (dismissPhoneUI: \(dismissPhoneUI))")
 
-        // Capture book ID before clearing state
+        // Cancel any in-flight loader so its completion is ignored.
+        currentLoader?.cancel()
+        currentLoader = nil
+
         let bookId = currentBook?.identifier
 
         // Prefer the live position from the player over the cached value, which
@@ -267,19 +338,22 @@ public final class AudiobookSessionManager: ObservableObject {
             manager?.saveLocation(position)
         }
 
-        // Clear subscriptions first
         managerCancellables.removeAll()
 
-        // Pause and unload
         manager?.pause()
         manager?.unload()
 
-        // Dismiss phone UI if requested (e.g., when switching books from CarPlay)
+        // Release DRM decryptor BEFORE nil-ing the manager so there is no window
+        // where the decryptor could be asked to open a new Publication.
+        #if LCP
+        (decryptor as? LCPAudiobooks)?.releaseResources()
+        #endif
+        decryptor = nil
+
         if dismissPhoneUI, let bookId = bookId {
             dismissPlayerOnPhone(bookId: bookId)
         }
 
-        // Clear state
         manager = nil
         audiobook = nil
         playbackModel = nil
@@ -290,7 +364,6 @@ public final class AudiobookSessionManager: ObservableObject {
         isPlaying = false
         coverImage = nil
 
-        // Clear Now Playing
         nowPlayingCoordinator?.clearNowPlaying()
 
         state = .idle
@@ -314,26 +387,25 @@ public final class AudiobookSessionManager: ObservableObject {
         nowPlayingCoordinator?.updateArtwork(image)
     }
 
-    // MARK: - Manager Binding (Called by AudiobookEvents)
+    // MARK: - Manager Binding (Direct, post-load)
 
-    /// Binds to an AudiobookManager created by BookService.
-    /// This is called via AudiobookEvents.managerCreated subscription.
-    func bindToManager(_ newManager: AudiobookManager) {
-        Log.info(#file, "Binding to AudiobookManager")
-        let hadExistingManager = manager != nil
-        let existingBookId = currentBook?.identifier ?? "none"
+    /// Binds a freshly-loaded audiobook: takes ownership of the manager,
+    /// decryptor, audiobook, and playback model; pushes navigation; loads
+    /// cover art; restores position; starts playback; and kicks off remote
+    /// position sync. The previous session must already have been stopped
+    /// via `stopPlayback` — the openAudiobook flow guarantees this.
+    private func bind(loaded: LoadedAudiobook, for book: TPPBook, startPlaying: Bool) {
+        Log.info(#file, "Binding loaded audiobook manager")
 
-        if hadExistingManager {
-        }
-
-        // Clear previous subscriptions
         managerCancellables.removeAll()
+        let newManager = loaded.manager
 
-        manager = newManager
-        audiobook = newManager.audiobook
-        currentChapters = newManager.audiobook.tableOfContents.toc
+        self.manager = newManager
+        self.audiobook = loaded.audiobook
+        self.decryptor = loaded.decryptor
+        self.playbackModel = loaded.playbackModel
+        self.currentChapters = loaded.audiobook.tableOfContents.toc
 
-        // Subscribe to manager state changes
         newManager.statePublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] managerState in
@@ -341,7 +413,6 @@ public final class AudiobookSessionManager: ObservableObject {
             }
             .store(in: &managerCancellables)
 
-        // Subscribe to position updates via player's fast publisher
         newManager.audiobook.player.positionPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] position in
@@ -349,30 +420,162 @@ public final class AudiobookSessionManager: ObservableObject {
             }
             .store(in: &managerCancellables)
 
-        // Initialize Now Playing with current state
+        currentChapter = newManager.currentChapter
+        chapterUpdatePublisher.send((chapters: currentChapters, current: currentChapter))
+
+        presentCoverArtAndNavigation(for: book, loaded: loaded)
+
+        if startPlaying {
+            startPlaybackAndSyncPosition(for: book, loaded: loaded)
+        }
+
+        if newManager.audiobook.player.isPlaying {
+            isPlaying = true
+            state = .playing(bookId: book.identifier)
+        } else {
+            state = .paused(bookId: book.identifier)
+        }
+        playbackStatePublisher.send(state)
+
         if let position = newManager.audiobook.player.currentTrackPosition {
             updateNowPlayingInfo(position: position)
         }
 
-        // Set initial chapter using manager's public property
-        currentChapter = newManager.currentChapter
+        Log.info(#file, "Bound audiobook - chapters: \(currentChapters.count), isPlaying: \(isPlaying)")
+    }
 
-        // Notify observers
-        chapterUpdatePublisher.send((chapters: currentChapters, current: currentChapter))
-
-        // Update state based on player state
-        if newManager.audiobook.player.isPlaying {
-            isPlaying = true
-            if let bookId = currentBook?.identifier {
-                state = .playing(bookId: bookId)
+    private func presentCoverArtAndNavigation(for book: TPPBook, loaded: LoadedAudiobook) {
+        if let lowRes = book.coverImage ?? book.thumbnailImage {
+            loaded.playbackModel.updateCoverImage(lowRes)
+            updateCoverImage(lowRes)
+        }
+        Task { [weak self, weak playbackModel = loaded.playbackModel] in
+            guard let img = await TPPBookCoverRegistry.shared.coverImage(for: book) else { return }
+            await MainActor.run {
+                playbackModel?.updateCoverImageAnimated(img)
+                self?.updateCoverImage(img)
             }
-        } else if let bookId = currentBook?.identifier {
-            state = .paused(bookId: bookId)
         }
 
-        playbackStatePublisher.send(state)
+        let route = BookRoute(id: book.identifier)
+        if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+            Log.debug(#file, "Presenting audiobook player route for \(book.identifier)")
+            coordinator.storeAudioModel(loaded.playbackModel, forBookId: route.id)
+            coordinator.pushAudioRoute(route)
+        } else {
+            Log.info(#file, "No navigation coordinator (CarPlay background launch?) — playback will start without phone UI")
+        }
+    }
 
-        Log.info(#file, "Bound to AudiobookManager - chapters: \(currentChapters.count), isPlaying: \(isPlaying)")
+    private func startPlaybackAndSyncPosition(for book: TPPBook, loaded: LoadedAudiobook) {
+        let shouldRestore = shouldRestoreBookmarkPosition(for: book)
+        let localPosition = shouldRestore ? getValidLocalPosition(book: book, audiobook: loaded.audiobook) : nil
+
+        let initialPosition: TrackPosition
+        if let local = localPosition {
+            Log.debug(#file, "Starting playback with local position: track=\(local.track.key), timestamp=\(local.timestamp)")
+            initialPosition = local
+        } else if let firstTrack = loaded.audiobook.tableOfContents.allTracks.first {
+            Log.debug(#file, "Starting '\(book.title)' from beginning - no saved position")
+            initialPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: loaded.audiobook.tableOfContents.tracks)
+        } else {
+            Log.error(#file, "No tracks available in audiobook")
+            return
+        }
+
+        Task { @MainActor in
+            loaded.playbackModel.currentLocation = initialPosition
+            loaded.playbackModel.beginSaveSuppression(for: 3.0)
+            loaded.manager.audiobook.player.play(at: initialPosition) { error in
+                if let error = error {
+                    Log.error(#file, "Playback start error: \(error)")
+                } else {
+                    Log.info(#file, "🎵 Playback started at initial position")
+                }
+            }
+        }
+
+        let bookId = book.identifier
+        let audiobookRef = loaded.audiobook
+        let playbackModelRef = loaded.playbackModel
+        TPPBookRegistry.shared.syncLocation(for: book) { [weak self, weak playbackModel = playbackModelRef, localPosition] (remoteBookmark: AudioBookmark?) in
+            guard let remoteBookmark = remoteBookmark,
+                  let remote = TrackPosition(
+                    audioBookmark: remoteBookmark,
+                    toc: audiobookRef.tableOfContents.toc,
+                    tracks: audiobookRef.tableOfContents.tracks
+                  ) else {
+                Log.debug(#file, "No remote position found - continuing with local position")
+                return
+            }
+            let formatter = ISO8601DateFormatter()
+            let localSaveDate = localPosition.flatMap { formatter.date(from: $0.lastSavedTimeStamp) }
+            let remoteSaveDate = formatter.date(from: remote.lastSavedTimeStamp)
+            guard let remoteDate = remoteSaveDate else { return }
+            let shouldUseRemote: Bool
+            if let localDate = localSaveDate {
+                shouldUseRemote = remoteDate.timeIntervalSince(localDate) > 5.0
+            } else {
+                shouldUseRemote = true
+            }
+            guard shouldUseRemote else {
+                Log.debug(#file, "Local position is current - keeping local position")
+                return
+            }
+            Log.info(#file, "📡 Remote position is newer - seeking to remote: track=\(remote.track.key), timestamp=\(remote.timestamp)")
+            Task { @MainActor in
+                // Route through session manager so we seek the CURRENT manager,
+                // not a stale one if the user switched books mid-sync.
+                guard let self = self,
+                      let currentMgr = self.manager,
+                      self.currentBook?.identifier == bookId else {
+                    return
+                }
+                playbackModel?.currentLocation = remote
+                currentMgr.audiobook.player.play(at: remote) { error in
+                    if let error = error {
+                        Log.error(#file, "Failed to seek to remote position: \(error)")
+                    }
+                }
+            }
+        }
+
+        Task { @MainActor [weak playbackModel = loaded.playbackModel] in
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            playbackModel?.persistLocation()
+        }
+    }
+
+    // MARK: - Position restoration helpers
+
+    private func shouldRestoreBookmarkPosition(for book: TPPBook) -> Bool {
+        let hasLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier) != nil
+        guard hasLocation else { return false }
+        return true
+    }
+
+    private func getValidLocalPosition(book: TPPBook, audiobook: Audiobook) -> TrackPosition? {
+        guard let dict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary(),
+              let localBookmark = AudioBookmark.create(locatorData: dict),
+              let localPosition = TrackPosition(
+                audioBookmark: localBookmark,
+                toc: audiobook.tableOfContents.toc,
+                tracks: audiobook.tableOfContents.tracks
+              ),
+              isValidPosition(localPosition, in: audiobook.tableOfContents) else {
+            return nil
+        }
+        return localPosition
+    }
+
+    private func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
+        guard position.timestamp >= 0 && position.timestamp.isFinite else { return false }
+        guard tableOfContents.tracks.track(forKey: position.track.key) != nil else { return false }
+        let totalDuration = tableOfContents.tracks.totalDuration
+        if totalDuration <= 0 { return true }
+        let positionDuration = position.durationToSelf()
+        if positionDuration > totalDuration * 1.1 { return false }
+        return true
     }
 
     // MARK: - Private Methods
@@ -393,17 +596,6 @@ public final class AudiobookSessionManager: ObservableObject {
     private static let openAccessPlayerErrorDomain = "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer"
     private static let openAccessPlayerErrorAuthenticationRequiredCode = 5 // OpenAccessPlayerError.authenticationRequired
 
-    private func subscribeToGlobalEvents() {
-        // Subscribe to manager creation events
-        AudiobookEvents.managerCreated
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] manager in
-                Log.info(#file, "Received AudiobookEvents.managerCreated")
-                self?.bindToManager(manager)
-            }
-            .store(in: &cancellables)
-    }
-
     private func validateRequirements(for book: TPPBook) -> AudiobookSessionError? {
         // Check authentication
         let isAuthenticated = isUserAuthenticated()
@@ -412,7 +604,7 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         // Check book state
-        let bookState = TPPBookRegistry.shared.state(for: book.identifier)
+        let bookState = bookRegistry.state(for: book.identifier)
         if bookState == .unregistered || bookState == .downloadNeeded {
             return .notDownloaded
         }
@@ -428,7 +620,7 @@ public final class AudiobookSessionManager: ObservableObject {
     }
 
     private func isUserAuthenticated() -> Bool {
-        guard let account = AccountsManager.shared.currentAccount else {
+        guard let account = accountsManager.currentAccount else {
             return false
         }
 
@@ -441,58 +633,7 @@ public final class AudiobookSessionManager: ObservableObject {
             return true
         }
 
-        return TPPUserAccount.sharedAccount().hasCredentials()
-    }
-
-    private func openBookWithService(
-        _ book: TPPBook,
-        startPlaying: Bool,
-        completion: @escaping (Result<Void, AudiobookSessionError>) -> Void
-    ) {
-
-        // Set up timeout
-        var didComplete = false
-        let timeoutWorkItem = DispatchWorkItem { [weak self] in
-            guard !didComplete else { return }
-            didComplete = true
-
-            Task { @MainActor in
-                self?.state = .error(bookId: book.identifier, message: "Timeout loading audiobook")
-            }
-            completion(.failure(.unknown("Timeout loading audiobook")))
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20.0, execute: timeoutWorkItem)
-
-        // Use BookService to handle the complex opening logic
-        BookService.open(book) { [weak self] in
-            guard !didComplete else {
-                return
-            }
-            didComplete = true
-            timeoutWorkItem.cancel()
-
-            Task { @MainActor in
-                guard let self = self else {
-                    completion(.failure(.unknown("Session manager deallocated")))
-                    return
-                }
-
-                // Manager should be bound by now via AudiobookEvents
-                if self.manager != nil {
-                    completion(.success(()))
-                } else {
-                    // Give a brief moment for the event to propagate
-                    try? await Task.sleep(nanoseconds: 200_000_000) // 0.2s
-
-                    if self.manager != nil {
-                        completion(.success(()))
-                    } else {
-                        self.state = .error(bookId: book.identifier, message: "Failed to initialize player")
-                        completion(.failure(.playerCreationFailed))
-                    }
-                }
-            }
-        }
+        return AccountsManager.shared.currentUserAccount.hasCredentials()
     }
 
     private func handleManagerState(_ managerState: AudiobookManagerState) {
@@ -502,6 +643,7 @@ public final class AudiobookSessionManager: ObservableObject {
         case .playbackBegan(let position):
             Log.debug(#file, "Playback began at: \(position.timestamp)")
             isPlaying = true
+            hasEverStartedPlayback = true
             state = .playing(bookId: bookId)
             currentPosition = position
             updateNowPlayingInfo(position: position)
@@ -523,7 +665,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
             // PP-3703: When BiblioBoard bearer token refresh fails due to SAML session expiration
             // (401 on CM fulfill link), trigger SAML re-login and then re-fetch fulfill to resume playback.
-            let userAccount = TPPUserAccount.sharedAccount()
+            let userAccount = AccountsManager.shared.currentUserAccount
             if Self.shouldTriggerSAMLReauthForPlaybackFailure(error: error, userAccount: userAccount, currentBook: currentBook),
                let book = currentBook {
                 Log.info(#file, "SAML + BiblioBoard: Bearer token refresh failed (session expired) - triggering re-auth, will re-open audiobook after login")
@@ -533,7 +675,7 @@ public final class AudiobookSessionManager: ObservableObject {
                     Task { @MainActor in
                         guard let self else { return }
                         guard self.currentBook?.identifier == book.identifier else { return }
-                        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+                        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
                             Log.info(#file, "SAML re-auth cancelled or failed - not re-opening audiobook")
                             self.errorPublisher.send(.notAuthenticated)
                             return
@@ -546,6 +688,30 @@ public final class AudiobookSessionManager: ObservableObject {
             }
 
             errorPublisher.send(.unknown("Playback failed"))
+
+            // Cold-load failure: playback never started for this session, so
+            // the player UI is just a stuck slider showing 0:00 over a dead
+            // AVPlayerItem. Dismiss the player and surface an honest "not
+            // playable right now" alert — NOT a retry offer, since these
+            // failures are typically persistent (distributor auth issues,
+            // yanked content, etc.) and a retry button would just invite
+            // rage-tapping for no outcome. If the problem was truly
+            // transient the user can re-tap the book themselves; that's
+            // natural UX, not a fake recovery affordance.
+            if !hasEverStartedPlayback, currentBook != nil {
+                Log.info(#file, "Cold-load failure detected — dismissing player UI and showing unavailable alert")
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.stopPlayback(dismissPhoneUI: true)
+                    await MainActor.run {
+                        let alert = TPPAlertUtils.alert(
+                            title: NSLocalizedString("Audiobook Unavailable", comment: "Title when a cold-load playback failure dismisses the player"),
+                            message: NSLocalizedString("This audiobook couldn't be played right now. The content may be temporarily unavailable — please try again later or contact your library.", comment: "Message when a cold-load playback failure dismisses the player")
+                        )
+                        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+                    }
+                }
+            }
 
         case .playbackCompleted(let position):
             Log.info(#file, "Playback completed at: \(position.timestamp)")
@@ -573,7 +739,7 @@ public final class AudiobookSessionManager: ObservableObject {
                 currentChapter?.title != newChapter.title {
                 currentChapter = newChapter
                 chapterUpdatePublisher.send((chapters: currentChapters, current: currentChapter))
-                Log.debug(#file, "Chapter changed to: '\(newChapter.title ?? "Unknown")'")
+                Log.debug(#file, "Chapter changed to: '\(newChapter.title)'")
             }
         }
 

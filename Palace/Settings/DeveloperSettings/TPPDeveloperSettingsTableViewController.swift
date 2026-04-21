@@ -1,21 +1,26 @@
 import MessageUI
+import SwiftUI
 
 @objcMembers
 class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, MFMailComposeViewControllerDelegate {
 
     weak var tableView: UITableView!
     var loadingView: UIView?
-
     enum Section: Int, CaseIterable {
         case librarySettings = 0
         case libraryRegistryDebugging
         case dataManagement
         case developerTools
+        case pushNotificationTesting
         case featurePreviews
         case badgeTesting
         case errorSimulation
+        #if DEBUG
+        case mockBackend
+        #endif
     }
 
+    private let fcmTokenCellIdentifier = "fcmTokenCell"
     private let betaLibraryCellIdentifier = "betaLibraryCell"
     private let lcpPassphraseCellIdentifier = "lcpPassphraseCell"
     private let clearCacheCellIdentifier = "clearCacheCell"
@@ -27,8 +32,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let testHoldsCellIdentifier = "testHoldsCell"
 
     private var pushNotificationsStatus = false
+    private let settings: TPPSettings
+    private let accountsManager: AccountsManager
 
-    required init() {
+    required init(settings: TPPSettings = TPPSettings.shared, accountsManager: AccountsManager = AccountsManager.shared) {
+        self.settings = settings
+        self.accountsManager = accountsManager
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -38,11 +47,11 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     func librarySwitchDidChange(sender: UISwitch!) {
-        TPPSettings.shared.useBetaLibraries = sender.isOn
+        settings.useBetaLibraries = sender.isOn
     }
 
     func enterLCPPassphraseSwitchDidChange(sender: UISwitch) {
-        TPPSettings.shared.enterLCPPassphraseManually = sender.isOn
+        settings.enterLCPPassphraseManually = sender.isOn
     }
 
     // MARK: - UIViewController
@@ -70,9 +79,11 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     // MARK: - UITableViewDataSource
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        switch Section(rawValue: section)! {
+        guard let sectionType = Section(rawValue: section) else { return 0 }
+        switch sectionType {
         case .librarySettings: return 2
         case .developerTools: return 2
+        case .pushNotificationTesting: return 3
         case .featurePreviews: return 1
         case .badgeTesting:
             #if DEBUG
@@ -86,6 +97,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             #else
             return 2  // Simulate Borrow Error + Simulate Sync Failure (available in TestFlight for QA)
             #endif
+        #if DEBUG
+        case .mockBackend: return 1
+        #endif
         default: return 1
         }
     }
@@ -95,7 +109,10 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        switch Section(rawValue: indexPath.section)! {
+        guard let sectionType = Section(rawValue: indexPath.section) else {
+            return UITableViewCell()
+        }
+        switch sectionType {
         case .librarySettings:
             switch indexPath.row {
             case 0: return cellForBetaLibraries()
@@ -107,6 +124,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             switch indexPath.row {
             case 0: return cellForSendErrorLogs()
             default: return cellForEmailAudiobookLogs()
+            }
+        case .pushNotificationTesting:
+            switch indexPath.row {
+            case 0: return cellForFCMToken()
+            case 1: return cellForTestHoldNotification()
+            default: return cellForTestLoanExpiryNotification()
             }
         case .featurePreviews:
             return cellForIncrementalSpeedSlider()
@@ -130,11 +153,16 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 return UITableViewCell()
                 #endif
             }
+        #if DEBUG
+        case .mockBackend:
+            return cellForMockBackend()
+        #endif
         }
     }
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        switch Section(rawValue: section)! {
+        guard let sectionType = Section(rawValue: section) else { return nil }
+        switch sectionType {
         case .librarySettings:
             return "Library Settings"
         case .libraryRegistryDebugging:
@@ -143,6 +171,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             return "Data Management"
         case .developerTools:
             return "Developer Tools"
+        case .pushNotificationTesting:
+            return "Push Notification Testing"
         case .featurePreviews:
             return "Feature Previews"
         case .badgeTesting:
@@ -153,6 +183,10 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             #endif
         case .errorSimulation:
             return "Error Simulation (Testing)"
+        #if DEBUG
+        case .mockBackend:
+            return "Mock Backend"
+        #endif
         }
     }
 
@@ -164,20 +198,24 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     private func cellForBetaLibraries() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: betaLibraryCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: betaLibraryCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(betaLibraryCellIdentifier)")
+        }
         cell.selectionStyle = .none
         cell.textLabel?.text = "Enable Hidden Libraries"
-        cell.accessoryView = createSwitch(isOn: TPPSettings.shared.useBetaLibraries, action: #selector(librarySwitchDidChange))
+        cell.accessoryView = createSwitch(isOn: settings.useBetaLibraries, action: #selector(librarySwitchDidChange))
         return cell
     }
 
     private func cellForLCPPassphrase() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: lcpPassphraseCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: lcpPassphraseCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(lcpPassphraseCellIdentifier)")
+        }
         cell.selectionStyle = .none
         cell.textLabel?.text = "Enter LCP Passphrase Manually"
         cell.textLabel?.adjustsFontSizeToFitWidth = true
         cell.textLabel?.minimumScaleFactor = 0.5
-        cell.accessoryView = createSwitch(isOn: TPPSettings.shared.enterLCPPassphraseManually, action: #selector(enterLCPPassphraseSwitchDidChange))
+        cell.accessoryView = createSwitch(isOn: settings.enterLCPPassphraseManually, action: #selector(enterLCPPassphraseSwitchDidChange))
         return cell
     }
 
@@ -188,14 +226,18 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     private func cellForClearCache() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: clearCacheCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: clearCacheCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(clearCacheCellIdentifier)")
+        }
         cell.selectionStyle = .none
         cell.textLabel?.text = "Clear Cached Data"
         return cell
     }
 
     private func cellForSendErrorLogs() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: sendErrorLogsCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: sendErrorLogsCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(sendErrorLogsCellIdentifier)")
+        }
         cell.selectionStyle = .default
         cell.textLabel?.text = "Send Error Logs"
 
@@ -215,19 +257,24 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     private func cellForEmailAudiobookLogs() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: emailLogsCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: emailLogsCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(emailLogsCellIdentifier)")
+        }
         cell.selectionStyle = .default
         cell.textLabel?.text = "Email Audiobook Logs"
         cell.accessoryType = .disclosureIndicator
         return cell
     }
 
+    #if DEBUG
     @objc func incrementalSpeedSliderSwitchDidChange(sender: UISwitch) {
         DebugSettings.shared.isIncrementalSpeedSliderEnabled = sender.isOn
     }
 
     private func cellForIncrementalSpeedSlider() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(incrementalSpeedSliderCellIdentifier)")
+        }
         cell.selectionStyle = .none
         cell.textLabel?.text = "Incremental Speed Slider"
         cell.textLabel?.adjustsFontSizeToFitWidth = true
@@ -238,13 +285,14 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
 
-    #if DEBUG
     @objc func badgeLoggingSwitchDidChange(sender: UISwitch) {
         DebugSettings.shared.isBadgeLoggingEnabled = sender.isOn
     }
 
     private func cellForBadgeLogging() -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: badgeLoggingCellIdentifier)!
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: badgeLoggingCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(badgeLoggingCellIdentifier)")
+        }
         cell.selectionStyle = .none
         cell.textLabel?.text = "Enable Badge Logging"
         cell.accessoryView = createSwitch(
@@ -267,6 +315,21 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
     #else
+    private func cellForIncrementalSpeedSlider() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(incrementalSpeedSliderCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "Incremental Speed Slider"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        // In non-DEBUG builds, the switch reads the same DebugSettings property
+        let switchControl = UISwitch()
+        switchControl.isOn = DebugSettings.shared.isIncrementalSpeedSliderEnabled
+        switchControl.isEnabled = false
+        cell.accessoryView = switchControl
+        return cell
+    }
+
     private func cellForBadgeLogging() -> UITableViewCell {
         return UITableViewCell()
     }
@@ -275,6 +338,173 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return UITableViewCell()
     }
     #endif
+
+    private func cellForFCMToken() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: fcmTokenCellIdentifier)
+        cell.selectionStyle = .default
+        cell.textLabel?.text = "FCM Token"
+        cell.detailTextLabel?.text = "Loading..."
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.detailTextLabel?.numberOfLines = 1
+        cell.detailTextLabel?.lineBreakMode = .byTruncatingMiddle
+        cell.accessoryType = .none
+
+        Task {
+            let token = await NotificationService.shared.currentFCMToken()
+            await MainActor.run {
+                cell.detailTextLabel?.text = token ?? "No token"
+            }
+        }
+        return cell
+    }
+
+    private func copyFCMToken() {
+        Task {
+            let token = await NotificationService.shared.currentFCMToken()
+            await MainActor.run {
+                if let token {
+                    UIPasteboard.general.string = token
+                    let alert = TPPAlertUtils.alert(
+                        title: "FCM Token Copied",
+                        message: "Token copied to clipboard.\n\n\(token.prefix(20))...\(token.suffix(20))"
+                    )
+                    self.present(alert, animated: true)
+                } else {
+                    let alert = TPPAlertUtils.alert(
+                        title: "No FCM Token",
+                        message: "Push notifications may not be configured. Check that notification permissions are granted."
+                    )
+                    self.present(alert, animated: true)
+                }
+            }
+        }
+    }
+
+    private func cellForTestHoldNotification() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "testHoldNotificationCell")
+        cell.selectionStyle = .default
+        cell.textLabel?.text = "Send Hold Available"
+        cell.detailTextLabel?.text = "Schedules a test notification with delay"
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+
+    private func cellForTestLoanExpiryNotification() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "testLoanExpiryCell")
+        cell.selectionStyle = .default
+        cell.textLabel?.text = "Send Loan Expiry Warning"
+        cell.detailTextLabel?.text = "Schedules a test notification with delay"
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+
+    enum TestNotificationType {
+        case holdAvailable
+        case loanExpiry
+
+        var title: String {
+            switch self {
+            case .holdAvailable: return "Your hold is ready"
+            case .loanExpiry: return "Loan expiring soon"
+            }
+        }
+
+        var body: String {
+            switch self {
+            case .holdAvailable: return "The title you reserved is available for checkout."
+            case .loanExpiry: return "Your loan expires in 3 days. Return or renew to keep reading."
+            }
+        }
+
+        var categoryIdentifier: String {
+            switch self {
+            case .holdAvailable: return HoldNotificationCategoryIdentifier
+            case .loanExpiry: return "NYPLLoanExpiryNotificationCategory"
+            }
+        }
+
+        var userInfo: [String: String] {
+            switch self {
+            case .holdAvailable: return ["type": "hold_available"]
+            case .loanExpiry: return ["type": "loan_expiry"]
+            }
+        }
+    }
+
+    private func scheduleTestNotification(type: TestNotificationType) {
+        let alert = UIAlertController(
+            title: "Schedule \(type.title)",
+            message: "Choose a delay. Background the app before the notification fires to test tap-to-navigate.",
+            preferredStyle: .actionSheet
+        )
+
+        for delay in [5, 10, 15, 30] {
+            alert.addAction(UIAlertAction(title: "\(delay) seconds", style: .default) { [weak self] _ in
+                self?.fireTestNotification(type: type, delay: TimeInterval(delay))
+            })
+        }
+
+        alert.addAction(UIAlertAction(title: "Immediately", style: .default) { [weak self] _ in
+            self?.fireTestNotification(type: type, delay: 1)
+        })
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = tableView
+            let row = type.categoryIdentifier == HoldNotificationCategoryIdentifier ? 1 : 2
+            popover.sourceRect = tableView.rectForRow(at: IndexPath(row: row, section: Section.pushNotificationTesting.rawValue))
+        }
+
+        present(alert, animated: true)
+    }
+
+    private func fireTestNotification(type: TestNotificationType, delay: TimeInterval) {
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { [weak self] settings in
+            guard settings.authorizationStatus == .authorized else {
+                DispatchQueue.main.async {
+                    let alert = TPPAlertUtils.alert(
+                        title: "Notifications Disabled",
+                        message: "Enable notifications in Settings → Palace to test push notifications."
+                    )
+                    self?.present(alert, animated: true)
+                }
+                return
+            }
+
+            let content = UNMutableNotificationContent()
+            content.title = type.title
+            content.body = type.body
+            content.sound = .default
+            content.categoryIdentifier = type.categoryIdentifier
+            content.userInfo = type.userInfo
+
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+            let request = UNNotificationRequest(
+                identifier: "palace-test-\(type.categoryIdentifier)-\(Date().timeIntervalSince1970)",
+                content: content,
+                trigger: trigger
+            )
+
+            center.add(request) { error in
+                DispatchQueue.main.async {
+                    if let error {
+                        let alert = TPPAlertUtils.alert(title: "Error", message: error.localizedDescription)
+                        self?.present(alert, animated: true)
+                    } else {
+                        let alert = TPPAlertUtils.alert(
+                            title: "Notification Scheduled",
+                            message: "Firing in \(Int(delay))s. Background the app now to test tap-to-navigate."
+                        )
+                        self?.present(alert, animated: true)
+                    }
+                }
+            }
+        }
+    }
 
     private func cellForErrorSimulation() -> UITableViewCell {
         let currentError = DebugSettings.shared.simulatedBorrowError
@@ -303,6 +533,25 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     #if DEBUG
+    private func cellForMockBackend() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "mockBackendCell")
+        cell.selectionStyle = .default
+        cell.accessoryType = .disclosureIndicator
+
+        let service = MockBackendService.shared
+        if service.isActive, let scenario = service.currentScenario {
+            cell.textLabel?.text = "Mock Backend: \(scenario.displayName)"
+            cell.textLabel?.textColor = .systemGreen
+            cell.detailTextLabel?.text = "Active — \(scenario.routes.count) routes"
+        } else {
+            cell.textLabel?.text = "Mock Backend"
+            cell.textLabel?.textColor = .label
+            cell.detailTextLabel?.text = "Tap to configure"
+        }
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        return cell
+    }
+
     private func cellForPreviewErrorDetails() -> UITableViewCell {
         let cell = UITableViewCell(style: .default, reuseIdentifier: "previewErrorDetailsCell")
         cell.selectionStyle = .default
@@ -364,7 +613,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
         switch Section(rawValue: indexPath.section) {
         case .dataManagement:
-            AccountsManager.shared.clearCache()
+            accountsManager.clearCache()
             ImageCache.shared.clear()
             let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
             self.present(alert, animated: true, completion: nil)
@@ -375,6 +624,13 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 sendErrorLogs()
             default:
                 emailAudiobookLogs()
+            }
+
+        case .pushNotificationTesting:
+            switch indexPath.row {
+            case 0: copyFCMToken()
+            case 1: scheduleTestNotification(type: .holdAvailable)
+            default: scheduleTestNotification(type: .loanExpiry)
             }
 
         case .badgeTesting:
@@ -396,10 +652,23 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 #endif
             }
 
+        #if DEBUG
+        case .mockBackend:
+            showMockBackendPicker()
+        #endif
+
         default:
             break
         }
     }
+
+    #if DEBUG
+    private func showMockBackendPicker() {
+        let hostingController = UIHostingController(rootView: MockBackendPickerView())
+        hostingController.title = "Mock Backend"
+        navigationController?.pushViewController(hostingController, animated: true)
+    }
+    #endif
 
     #if DEBUG
     private func showTestHoldsPicker() {
@@ -412,7 +681,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         for config in DebugSettings.TestHoldsConfiguration.allCases {
             let isSelected = DebugSettings.shared.testHoldsConfiguration == config
             let checkmark = isSelected ? " ✓" : ""
-            let expectedBadge = config.expectedBadgeCount >= 0 ? " (badge=\(config.expectedBadgeCount))" : ""
 
             alert.addAction(UIAlertAction(title: config.displayName + checkmark, style: .default) { [weak self] _ in
                 DebugSettings.shared.testHoldsConfiguration = config
@@ -424,7 +692,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 if config != .none {
                     let confirmAlert = TPPAlertUtils.alert(
                         title: "Test Holds Enabled",
-                        message: "Badge should show: \(config.expectedBadgeCount)\n\nGo to the Holds tab to see the test books. Remember to disable when done testing."
+                        message: "Badge should show: \(config.expectedBadgeCount)\n\nGo to the Reservations tab to see the test books. Remember to disable when done testing."
                     )
                     self?.present(confirmAlert, animated: true)
                 }
@@ -486,7 +754,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
         for failureType in DebugSettings.SimulatedSyncFailure.allCases {
             let isSelected = DebugSettings.shared.simulatedSyncFailure == failureType
-            let checkmark = isSelected ? " ✓" : ""
+            let checkmark = isSelected ? " \u{2713}" : ""
 
             alert.addAction(UIAlertAction(title: failureType.displayName + checkmark, style: .default) { [weak self] _ in
                 DebugSettings.shared.simulatedSyncFailure = failureType

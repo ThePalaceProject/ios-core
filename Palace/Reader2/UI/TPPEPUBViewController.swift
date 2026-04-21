@@ -15,6 +15,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     private let systemUserInterfaceStyle: UIUserInterfaceStyle
     private let searchButton: UIBarButtonItem
     private var preferences: EPUBPreferences
+    private let navigationHub: NavigationCoordinatorHub
     private var highlights: [Decoration] = []
     private var highlightGroup = "highlights"
     private var keyboardInput: GCKeyboardInput?
@@ -29,10 +30,12 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
          initialLocation: Locator?,
          resourcesServer: HTTPServer,
          preferences: EPUBPreferences = TPPReaderPreferencesLoad(),
-         forSample: Bool = false) throws {
+         forSample: Bool = false,
+         navigationHub: NavigationCoordinatorHub = .shared) throws {
 
         self.systemUserInterfaceStyle = UITraitCollection.current.userInterfaceStyle
         self.preferences = preferences
+        self.navigationHub = navigationHub
 
         self.searchButton = UIBarButtonItem(barButtonSystemItem: .search, target: nil, action: #selector(presentEPUBSearch))
         self.searchButton.accessibilityLabel = Strings.Generic.searchInBook
@@ -102,7 +105,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     }
 
     var epubNavigator: EPUBNavigatorViewController {
-        self.navigator as! EPUBNavigatorViewController
+        guard let epub = self.navigator as? EPUBNavigatorViewController else {
+            fatalError("TPPEPUBViewController.navigator must be an EPUBNavigatorViewController")
+        }
+        return epub
     }
 
     override func willMove(toParent parent: UIViewController?) {
@@ -445,7 +451,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             tabBarController.tabBar.isTranslucent = true
         }
 
-        NavigationCoordinatorHub.shared.coordinator?.pop()
+        navigationHub.coordinator?.pop()
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -458,11 +464,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     }
 
     private func resetNavigationAppearance() {
-        if let appearance = TPPConfiguration.defaultAppearance() {
-            navigationController?.navigationBar.isTranslucent = false
-            navigationController?.navigationBar.setAppearance(appearance)
-            navigationController?.navigationBar.forceUpdateAppearance(style: systemUserInterfaceStyle)
-        }
+        let appearance = TPPConfiguration.defaultAppearance()
+        navigationController?.navigationBar.isTranslucent = false
+        navigationController?.navigationBar.setAppearance(appearance)
+        navigationController?.navigationBar.forceUpdateAppearance(style: systemUserInterfaceStyle)
         navigationController?.navigationBar.tintColor = TPPConfiguration.iconColor()
         tabBarController?.tabBar.tintColor = TPPConfiguration.iconColor()
     }
@@ -477,6 +482,18 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         buttons.insert(userSettingsButton, at: 1)
         popoverUserconfigurationAnchor = userSettingsButton
         buttons.append(searchButton)
+
+        // Advanced Typography (feature-flagged)
+        if ReaderTypographyButton.isEnabled {
+            let typoButton = ReaderTypographyButtonUIKit()
+            typoButton.onTap = { [weak self] in
+                guard let self = self else { return }
+                let sheet = ReaderTypographyButtonUIKit.makeTypographySheet()
+                self.present(sheet, animated: true)
+            }
+            buttons.append(UIBarButtonItem(customView: typoButton))
+        }
+
         return buttons
     }
 

@@ -1,0 +1,63 @@
+{
+  "id": "happy_path",
+  "displayName": "Happy Path",
+  "description": "All endpoints return successful responses. Catalog loads, auth works, borrow succeeds.",
+  "routes": [
+    {
+      "pathPattern": ".*/libraries.*",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/opds+json"
+    },
+    {
+      "pathPattern": ".*/authentication_document",
+      "fixtureName": "auth_document",
+      "statusCode": 200,
+      "contentType": "application/vnd.opds.authentication+json"
+    },
+    {
+      "pathPattern": ".*/a1qa-test/?$",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/opds+json"
+    },
+    {
+      "pathPattern": ".*/search.*",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/opds+json"
+    },
+    {
+      "pathPattern": ".*/annotations.*",
+      "fixtureName": "annotations",
+      "statusCode": 200,
+      "contentType": "application/ld+json"
+    },
+    {
+      "pathPattern": ".*/loans.*",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/opds+json"
+    },
+    {
+      "pathPattern": ".*/borrow",
+      "method": "POST",
+      "fixtureName": "opds2_feed",
+      "statusCode": 201,
+      "contentType": "application/opds+json"
+    },
+    {
+      "pathPattern": ".*/revoke",
+      "method": "PUT",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/opds+json"
+    },
+    {
+      "pathPattern": ".*",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/json"
+    }
+  ]
+}

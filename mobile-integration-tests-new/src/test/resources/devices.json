@@ -1,0 +1,19 @@
+{
+  "devices": [
+    {
+      "name": "iPhone 16 Pro",
+      "platformVersion": "18.4",
+      "udid": "DF4A2A27-9888-429D-A749-2E157A049A37",
+      "type": "simulator",
+      "isDefault": true
+    },
+    {
+      "name": "iPhone 14 Pro Max",
+      "platformVersion": "16.0",
+      "udid": "",
+      "type": "simulator",
+      "isDefault": false,
+      "notes": "Legacy device — may not be available on all machines"
+    }
+  ]
+}

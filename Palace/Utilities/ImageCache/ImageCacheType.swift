@@ -3,6 +3,7 @@ import UIKit
 public protocol ImageCacheType {
     func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?)
     func get(for key: String) -> UIImage?
+    func getAsync(for key: String) async -> UIImage?
     func remove(for key: String)
     func clear()
 }
@@ -34,20 +35,25 @@ public final class ImageCache: ImageCacheType {
         let cacheMemoryMB: Int
         let maxConcurrentProcessing: Int
 
+        // Cover art in catalog lanes displays at ~100pt (300px @3x).
+        // Each 300x300 RGBA decoded = ~360KB. A typical catalog has 15 lanes
+        // × 7 visible books = ~105 covers across All/Ebooks/Audiobooks.
+        // The NSCache must hold enough to avoid re-fetching on entry point
+        // switches. Memory is reclaimed on library switch via evictAllDecodedImages().
         if deviceMemoryMB < 2048 {
-            cacheMemoryMB = 25
-            memoryImages.countLimit = 100
-            maxDimension = 512
+            cacheMemoryMB = 15
+            memoryImages.countLimit = 60
+            maxDimension = 200
             maxConcurrentProcessing = 2
         } else if deviceMemoryMB < 4096 {
-            cacheMemoryMB = 40
-            memoryImages.countLimit = 150
-            maxDimension = 768
+            cacheMemoryMB = 25
+            memoryImages.countLimit = 100
+            maxDimension = 300
             maxConcurrentProcessing = 3
         } else {
-            cacheMemoryMB = 60
-            memoryImages.countLimit = 200
-            maxDimension = 1024
+            cacheMemoryMB = 40
+            memoryImages.countLimit = 150
+            maxDimension = 300
             maxConcurrentProcessing = 4
         }
 
@@ -168,9 +174,12 @@ public final class ImageCache: ImageCacheType {
             return img
         }
 
-        // Skip disk I/O on main thread to prevent hangs
-        // Callers should use async fetch paths which will eventually populate memory cache
+        // Skip disk I/O on main thread to prevent hangs.
+        // Schedule a background promotion so the NEXT synchronous call hits
+        // the memory cache. This bridges the gap between "disk has it" and
+        // "memory has it" without blocking the UI thread.
         if Thread.isMainThread {
+            scheduleMemoryPromotion(for: key)
             return nil
         }
 
@@ -185,6 +194,65 @@ public final class ImageCache: ImageCacheType {
         return img
     }
 
+    /// Async version: checks memory first (instant), then promotes from disk
+    /// on the processing queue. Use this in async contexts (registry, view model)
+    /// to get disk-cached images without blocking any thread.
+    public func getAsync(for key: String) async -> UIImage? {
+        if let img = memoryImages.object(forKey: key as NSString) {
+            return img
+        }
+        return await withCheckedContinuation { continuation in
+            processingQueue.addOperation { [weak self] in
+                guard let self else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                // Double-check memory (another task may have promoted it)
+                if let img = self.memoryImages.object(forKey: key as NSString) {
+                    continuation.resume(returning: img)
+                    return
+                }
+                guard let data = self.dataCache.get(for: key) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                guard let img = UIImage(data: data) else {
+                    self.remove(for: key)
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let cost = self.imageCost(img)
+                self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
+                continuation.resume(returning: img)
+            }
+        }
+    }
+
+    /// Batch warm-up: promotes multiple disk-cached images into the memory
+    /// cache concurrently. Call before displaying a screen full of covers.
+    public func warmMemoryCache(for keys: [String]) async {
+        await withTaskGroup(of: Void.self) { group in
+            for key in keys {
+                group.addTask { [weak self] in
+                    _ = await self?.getAsync(for: key)
+                }
+            }
+        }
+    }
+
+    /// Schedules a background disk→memory promotion for a key.
+    /// Called when get() is invoked on the main thread and misses the memory cache.
+    private func scheduleMemoryPromotion(for key: String) {
+        processingQueue.addOperation { [weak self] in
+            guard let self else { return }
+            if self.memoryImages.object(forKey: key as NSString) != nil { return }
+            guard let data = self.dataCache.get(for: key) else { return }
+            guard let img = UIImage(data: data) else { return }
+            let cost = self.imageCost(img)
+            self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
+        }
+    }
+
     public func remove(for key: String) {
         memoryImages.removeObject(forKey: key as NSString)
         dataCache.remove(for: key)
@@ -193,6 +261,14 @@ public final class ImageCache: ImageCacheType {
     public func clear() {
         memoryImages.removeAllObjects()
         dataCache.clear()
+    }
+
+    /// Evict decoded in-memory images without touching the compressed disk
+    /// cache. The disk cache retains JPEG data, so the next fetchCoverImage
+    /// call promotes from disk (~5ms) instead of hitting the network.
+    /// NSCache also auto-evicts under memory pressure independently.
+    public func evictDecodedImages() {
+        memoryImages.removeAllObjects()
     }
 
     private func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage? {

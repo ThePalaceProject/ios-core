@@ -16,9 +16,10 @@ final class ReaderService {
     private var redownloadObservers: [String: AnyCancellable] = [:]
     private var redownloadTimeouts: [String: Task<Void, Never>] = [:]
 
-    private func topPresenter() -> UIViewController {
+    private func topPresenter() -> UIViewController? {
         guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
-            return UIViewController()
+            Log.warn(#file, "No root view controller available — cannot present reader")
+            return nil
         }
         var base: UIViewController = root
         while let presented = base.presentedViewController { base = presented }
@@ -32,7 +33,8 @@ final class ReaderService {
 
     @MainActor
     private func openEPUBInternal(_ book: TPPBook, isRetry: Bool) {
-        r3Owner.libraryService.openBook(book, sender: topPresenter()) { result in
+        guard let presenter = topPresenter() else { return }
+        r3Owner.libraryService.openBook(book, sender: presenter) { result in
             switch result {
             case .success(let publication):
                 if let coordinator = NavigationCoordinatorHub.shared.coordinator {
@@ -52,7 +54,8 @@ final class ReaderService {
 
     @MainActor
     func openSample(_ book: TPPBook, url: URL) {
-        r3Owner.libraryService.openSample(book, sampleURL: url, sender: topPresenter()) { result in
+        guard let presenter = topPresenter() else { return }
+        r3Owner.libraryService.openSample(book, sampleURL: url, sender: presenter) { result in
             switch result {
             case .success(let publication):
                 if let coordinator = NavigationCoordinatorHub.shared.coordinator {
@@ -178,16 +181,16 @@ final class ReaderService {
 
     /// Creates an EPUB view controller from a publication (used by EPUBReaderView)
     @MainActor
-    func makeEPUBViewController(for publication: Publication, book: TPPBook, forSample: Bool) async throws -> UIViewController {
-        let bookRegistry = TPPBookRegistry.shared
+    func makeEPUBViewController(for publication: Publication, book: TPPBook, forSample: Bool, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) async throws -> UIViewController {
+        let bookRegistry = bookRegistry
 
         // Sync reading position with server before opening (shows "Stay or Move"
         // dialog when the server has a different position from another device).
         // Samples don't need sync since they have no persisted position.
         if !forSample {
             let synchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
-            let drmDeviceID = TPPUserAccount.sharedAccount().deviceID
-            await synchronizer.sync(for: publication, book: book, drmDeviceID: drmDeviceID)
+            let deviceID = AccountsManager.shared.currentUserAccount.deviceID
+            await synchronizer.sync(for: publication, book: book, drmDeviceID: deviceID)
         }
 
         // Re-read location after sync — it may have been updated if user chose "Move"

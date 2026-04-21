@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import Combine
 import Network
 import SystemConfiguration
 
@@ -16,8 +17,24 @@ class Reachability: NSObject {
 
     private let connectionMonitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "NetworkMonitor")
+    private let stateLock = NSLock()
 
-    private(set) var isConnected = false
+    /// Publishes connectivity changes (replaces `.TPPReachabilityChanged` notification)
+    private let connectivitySubject = CurrentValueSubject<Bool, Never>(false)
+
+    /// Publisher for connectivity state. Use instead of observing `.TPPReachabilityChanged`.
+    var connectivityPublisher: AnyPublisher<Bool, Never> {
+        connectivitySubject
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
+
+    private var _isConnected = false
+    private(set) var isConnected: Bool {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return _isConnected }
+        set { stateLock.lock(); _isConnected = newValue; stateLock.unlock() }
+    }
 
     func startMonitoring() {
         connectionMonitor.pathUpdateHandler = { [weak self] path in
@@ -26,6 +43,9 @@ class Reachability: NSObject {
 
             guard newStatus != self.isConnected else { return }
             self.isConnected = newStatus
+            DispatchQueue.main.async {
+                self.connectivitySubject.send(newStatus)
+            }
 
             DispatchQueue.main.async {
                 NotificationCenter.default.post(

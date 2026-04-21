@@ -35,12 +35,14 @@ class TPPBookCreationTests: XCTestCase {
             "title": "The Lord of the Rings",
             "updated": "2020-09-08T09:22:45Z"
         ])
-        XCTAssertNotNil(book)
-        XCTAssertNotNil(book?.acquisitions)
-        XCTAssertNotNil(book?.categoryStrings)
-        XCTAssertNotNil(book?.identifier)
-        XCTAssertNotNil(book?.title)
-        XCTAssertNotNil(book?.updated)
+        XCTAssertEqual(book?.identifier, "666",
+                       "Dictionary init must preserve 'id' as book identifier")
+        XCTAssertEqual(book?.title, "The Lord of the Rings",
+                       "Dictionary init must preserve 'title'")
+        XCTAssertEqual(book?.categoryStrings, ["Fantasy"],
+                       "Dictionary init must preserve 'categories'")
+        XCTAssertFalse(book?.acquisitions.isEmpty ?? true,
+                       "Dictionary init must preserve 'acquisitions'")
         XCTAssertNoThrow(book?.loggableShortString())
         XCTAssertNoThrow(book?.loggableDictionary())
 
@@ -88,13 +90,14 @@ class TPPBookCreationTests: XCTestCase {
     }
 
     func testBookCreationViaFactoryMethod() {
-        let bookWithNoCategories = TPPBook(entry: opdsEntryMinimal)
-        XCTAssertNotNil(bookWithNoCategories)
-        XCTAssertNotNil(bookWithNoCategories?.acquisitions)
-        XCTAssertNotNil(bookWithNoCategories?.categoryStrings)
-        XCTAssertNotNil(bookWithNoCategories?.identifier)
-        XCTAssertNotNil(bookWithNoCategories?.title)
-        XCTAssertNotNil(bookWithNoCategories?.updated)
+        let book = TPPBook(entry: opdsEntryMinimal)
+        // categoryStrings should be an empty array (not nil) even when entry has no categories
+        XCTAssertEqual(book?.categoryStrings, [],
+                       "Factory init with no-category entry must default to empty array, not nil")
+        XCTAssertFalse(book?.identifier.isEmpty ?? true,
+                       "Factory init must populate identifier from entry")
+        XCTAssertFalse(book?.title.isEmpty ?? true,
+                       "Factory init must populate title from entry")
     }
 
     // for completeness only. This test is not strictly necessary because the

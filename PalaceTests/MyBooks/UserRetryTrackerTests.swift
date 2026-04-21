@@ -32,18 +32,23 @@ final class UserRetryTrackerTests: XCTestCase {
 
     func testCanRetry_newOperation_returnsTrue() {
         XCTAssertTrue(tracker.canRetry(operationId: "test-op"))
+        // A different operation ID must independently return true
+        XCTAssertTrue(tracker.canRetry(operationId: "other-op"), "Independent op must also allow retry")
     }
 
     func testCanRetry_afterOneRetry_returnsTrue() {
-        tracker.recordRetry(operationId: "test-op")
+        let remaining = tracker.recordRetry(operationId: "test-op")
         XCTAssertTrue(tracker.canRetry(operationId: "test-op"))
+        XCTAssertEqual(remaining, 4, "After 1 retry, 4 attempts must remain")
     }
 
     func testCanRetry_afterFourRetries_returnsTrue() {
+        var remaining = 0
         for _ in 0..<4 {
-            tracker.recordRetry(operationId: "test-op")
+            remaining = tracker.recordRetry(operationId: "test-op")
         }
         XCTAssertTrue(tracker.canRetry(operationId: "test-op"))
+        XCTAssertEqual(remaining, 1, "After 4 retries, exactly 1 attempt must remain")
     }
 
     func testCanRetry_afterFiveRetries_returnsFalse() {
@@ -51,6 +56,8 @@ final class UserRetryTrackerTests: XCTestCase {
             tracker.recordRetry(operationId: "test-op")
         }
         XCTAssertFalse(tracker.canRetry(operationId: "test-op"))
+        XCTAssertEqual(tracker.recordRetry(operationId: "test-op"), 0,
+                       "Recording beyond max must return 0 remaining")
     }
 
     // MARK: - recordRetry
@@ -69,6 +76,9 @@ final class UserRetryTrackerTests: XCTestCase {
         }
         // Sixth attempt still returns 0
         XCTAssertEqual(tracker.recordRetry(operationId: "test-op"), 0)
+        // Seventh attempt must also return 0 (not go negative)
+        XCTAssertEqual(tracker.recordRetry(operationId: "test-op"), 0,
+                       "Repeated calls beyond max must clamp to 0, not go negative")
     }
 
     // MARK: - clearRetries
@@ -123,6 +133,10 @@ final class UserRetryTrackerTests: XCTestCase {
         }
 
         wait(for: [expectation], timeout: 5.0)
+
+        // After concurrent ops, tracker must remain functional — canRetry must not crash
+        let postConcurrencyResult = tracker.canRetry(operationId: "new-op-after-concurrency")
+        XCTAssertTrue(postConcurrencyResult, "Fresh operation must still be retryable after concurrent access")
 
         // Cleanup
         for i in 0..<3 {

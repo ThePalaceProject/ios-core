@@ -31,6 +31,8 @@ class CatalogSearchViewModel: ObservableObject {
     private var entryPointLoadTask: Task<Void, Never>?
     private let debounceInterval: TimeInterval
     private let announcements: TPPAccessibilityAnnouncementCenter
+    private let bookRegistry: TPPBookRegistry
+    private let bookCellModelCache: BookCellModelCache
 
     /// Cache mapping groupsFeedURL.absoluteString → OpenSearch descriptor URL.
     /// Avoids re-fetching the groups feed on repeated searches with the same format.
@@ -49,12 +51,16 @@ class CatalogSearchViewModel: ObservableObject {
         repository: CatalogRepositoryProtocol,
         baseURL: @escaping () -> URL?,
         debounceInterval: TimeInterval = 0.1,
-        announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter()
+        announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
+        bookRegistry: TPPBookRegistry = .shared,
+        bookCellModelCache: BookCellModelCache = .shared
     ) {
         self.repository = repository
         self.baseURL = baseURL
         self.debounceInterval = debounceInterval
         self.announcements = announcements
+        self.bookRegistry = bookRegistry
+        self.bookCellModelCache = bookCellModelCache
     }
 
     deinit {
@@ -281,14 +287,32 @@ class CatalogSearchViewModel: ObservableObject {
                 guard !Task.isCancelled else { return }
 
                 if let feed = feed {
-                    let feedObjc = feed.opdsFeed
                     var searchResults: [TPPBook] = []
-                    if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-                        searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0) }
+                    if let opds2 = feed.opds2Feed {
+                        // OPDS 2 path
+                        let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
+                        searchResults = pubs.compactMap { $0.toBook() }
+                        self.nextPageURL = opds2.nextPageURL
+                        // Extract post-search facets from OPDS2
+                        if let facets = opds2.facets {
+                            for group in facets {
+                                for link in group.links {
+                                    if let url = link.hrefURL {
+                                        self.postSearchFacets[link.title.lowercased()] = url
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // OPDS 1 path
+                        let feedObjc = feed.opdsFeed
+                        if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
+                            searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0) }
+                        }
+                        self.extractNextPageURL(from: feedObjc)
+                        self.extractPostSearchFacets(from: feedObjc)
                     }
                     self.filteredBooks = searchResults
-                    self.extractNextPageURL(from: feedObjc)
-                    self.extractPostSearchFacets(from: feedObjc)
                     self.announcements.announceSearchResults(query: query, count: searchResults.count)
                 } else {
                     self.filteredBooks = []
@@ -333,15 +357,20 @@ class CatalogSearchViewModel: ObservableObject {
                 return
             }
 
-            let feedObjc = feed.opdsFeed
-            extractNextPageURL(from: feedObjc)
-
-            if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-                let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
-                filteredBooks.append(contentsOf: newBooks)
-
-                announcements.announceAdditionalResultsLoaded(count: newBooks.count)
+            var newBooks: [TPPBook] = []
+            if let opds2 = feed.opds2Feed {
+                let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
+                newBooks = pubs.compactMap { $0.toBook() }
+                nextPageURL = opds2.nextPageURL
+            } else {
+                let feedObjc = feed.opdsFeed
+                extractNextPageURL(from: feedObjc)
+                if let entries = feedObjc.entries as? [TPPOPDSEntry] {
+                    newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+                }
             }
+            filteredBooks.append(contentsOf: newBooks)
+            announcements.announceAdditionalResultsLoaded(count: newBooks.count)
         } catch {
             Log.error(#file, "Failed to load next page of search results: \(error.localizedDescription)")
         }
@@ -357,8 +386,8 @@ class CatalogSearchViewModel: ObservableObject {
         guard let links = feed.links as? [TPPOPDSLink] else { return }
         for link in links {
             guard link.rel == TPPOPDSRelationFacet,
-                  let href = link.href,
                   let title = link.title else { continue }
+            let href = link.href
             var isEntryPoint = false
             for (key, _) in link.attributes {
                 if let keyStr = key as? String, TPPOPDSAttributeKeyStringIsFacetGroupType(keyStr) {
@@ -388,14 +417,14 @@ class CatalogSearchViewModel: ObservableObject {
             let book = books[idx]
             if let changedIdentifier, book.identifier != changedIdentifier { continue }
 
-            if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+            if let registryBook = bookRegistry.book(forIdentifier: book.identifier) {
                 books[idx] = registryBook
                 anyChanged = true
             } else {
                 if let originalBook = allBooks.first(where: { $0.identifier == book.identifier }) {
                     books[idx] = originalBook
                 }
-                BookCellModelCache.shared.invalidate(for: book.identifier)
+                bookCellModelCache.invalidate(for: book.identifier)
                 anyChanged = true
             }
         }
