@@ -132,8 +132,8 @@ public final class PlaybackBootstrapper {
         // 2. Set up remote command handlers
         setupRemoteCommands()
 
-        // 3. Ensure AudiobookSessionManager exists
-        // This guarantees it's subscribed to AudiobookEvents.managerCreated
+        // 3. Ensure AudiobookSessionManager exists so it can receive open
+        //    requests from either phone UI or CarPlay bridge.
         _ = AudiobookSessionManager.shared
 
         isInitialized = true
@@ -324,8 +324,8 @@ public final class PlaybackBootstrapper {
     /// Returns .noActionableNowPlayingItem if no playback is active.
     ///
     /// Note: These handlers must work even when the phone UI has never been opened.
-    /// The AudiobookSessionManager.shared.manager will be nil until a book is opened,
-    /// at which point AudiobookEvents.managerCreated fires and binds the manager.
+    /// `AudiobookSessionManager.shared.manager` is nil until a book is opened;
+    /// opening the book binds the manager directly on the session.
 
     private func handlePlay() -> MPRemoteCommandHandlerStatus {
         let hasManager = AudiobookSessionManager.shared.manager != nil

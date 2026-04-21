@@ -181,23 +181,6 @@ class CarPlayTests: XCTestCase {
         XCTAssertTrue(chapter10.contains("10"), "Chapter 10 should include the number")
     }
 
-    // MARK: - Notification Tests
-
-    // Note: TPPAudiobookManagerCreated notification is not yet defined; using AudiobookEvents instead
-    func testCarPlay_AudiobookManagerCreatedNotification() {
-        // Verify that the AudiobookEvents publisher exists and is observable (the
-        // intended notification mechanism for manager-created events).
-        var receivedCount = 0
-        let cancellable = AudiobookEvents.managerCreated.sink { _ in
-            receivedCount += 1
-        }
-        // A new subscriber must start with zero received events (PassthroughSubject has no buffer)
-        XCTAssertEqual(receivedCount, 0, "No events must be received immediately after subscription")
-        // Publisher must be non-nil (subscription must succeed)
-        XCTAssertNotNil(cancellable, "Must be able to subscribe to AudiobookEvents.managerCreated")
-        cancellable.cancel()
-    }
-
     // MARK: - Book State Tests
 
     func testCarPlay_BookDownloadedState() {

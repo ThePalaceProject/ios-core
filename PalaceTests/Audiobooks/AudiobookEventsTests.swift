@@ -2,36 +2,16 @@
 //  AudiobookEventsTests.swift
 //  PalaceTests
 //
-//  Tests for AudiobookEvents publish/subscribe and AudiobookDataManager save logic.
+//  AudiobookDataManager save-queue tests. The former AudiobookEvents
+//  publish/subscribe tests were removed alongside the AudiobookEvents
+//  global pub/sub — audiobook lifecycle is now owned directly by
+//  AudiobookSessionManager (see AudiobookLoader + AudiobookSessionManager).
+//
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
 
-import Combine
 import XCTest
 @testable import Palace
-
-// MARK: - AudiobookEvents Tests
-
-/// SRS: AUDIO-002 -- AudiobookEvents publishes manager lifecycle events
-final class AudiobookEventsTests: XCTestCase {
-
-    /// SRS: AUDIO-002 -- AudiobookEvents publishes manager lifecycle events
-    func testManagerCreated_isPassthroughSubject() {
-        // AudiobookEvents.managerCreated is a PassthroughSubject
-        // We verify it exists and can be subscribed to without crash
-        var cancellable: AnyCancellable?
-        var received = false
-
-        cancellable = AudiobookEvents.managerCreated
-            .sink { _ in
-                received = true
-            }
-
-        // We cannot easily send a real AudiobookManager, but we verify subscription works
-        XCTAssertNotNil(cancellable)
-        cancellable?.cancel()
-    }
-}
 
 // MARK: - AudiobookDataManager Save Tests
 

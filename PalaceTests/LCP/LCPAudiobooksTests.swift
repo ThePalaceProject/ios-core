@@ -337,6 +337,92 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertTrue(true, "LCP not enabled - test skipped")
         #endif
     }
+
+    // MARK: - One-Shot Semantics (regression: audiobook open hang after multiple opens)
+
+    /// After releaseResources(), contentDictionary must fail-fast instead of reopening
+    /// a second Publication on the same .lcpa. Reopening races the new session's
+    /// publicationOpener.open() inside Readium and deadlocks — this is the root cause
+    /// of the "opening third audiobook hangs" bug.
+    func testContentDictionary_afterRelease_failsFast() {
+        #if LCP
+        let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
+        guard let audiobook = LCPAudiobooks(for: testURL) else {
+            XCTAssertTrue(true, "LCP not fully initialized")
+            return
+        }
+
+        audiobook.releaseResources()
+
+        let exp = expectation(description: "contentDictionary completes after release")
+        var receivedError: NSError?
+        var receivedDict: NSDictionary?
+        audiobook.contentDictionary { dict, error in
+            receivedDict = dict
+            receivedError = error
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertNil(receivedDict, "contentDictionary must not return a dictionary after release")
+        XCTAssertNotNil(receivedError, "contentDictionary must report an error after release")
+        XCTAssertEqual(receivedError?.domain, "Palace.LCPAudiobooks")
+        #else
+        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        #endif
+    }
+
+    /// After releaseResources(), decrypt must fail-fast. The previous behavior reopened
+    /// the Publication via assetRetriever+publicationOpener — running concurrently with
+    /// the new audiobook's publicationOpener.open() on the same .lcpa caused the hang.
+    func testDecrypt_afterRelease_failsFast() {
+        #if LCP
+        let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
+        guard let audiobook = LCPAudiobooks(for: testURL) else {
+            XCTAssertTrue(true, "LCP not fully initialized")
+            return
+        }
+
+        audiobook.releaseResources()
+
+        let exp = expectation(description: "decrypt completes after release")
+        var receivedError: Error?
+        let src = URL(fileURLWithPath: "/tmp/any-track.mp3")
+        let dst = URL(fileURLWithPath: "/tmp/decrypted.mp3")
+        audiobook.decrypt(url: src, to: dst) { error in
+            receivedError = error
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertNotNil(receivedError, "decrypt must error after release — must not reopen Publication")
+        let nsError = receivedError as NSError?
+        XCTAssertEqual(nsError?.domain, "Palace.LCPAudiobooks")
+        #else
+        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        #endif
+    }
+
+    /// startPrefetch is a no-op once released so stale managers can't kick the
+    /// publication lifecycle back on.
+    func testStartPrefetch_afterRelease_isNoOp() {
+        #if LCP
+        let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
+        guard let audiobook = LCPAudiobooks(for: testURL) else {
+            XCTAssertTrue(true, "LCP not fully initialized")
+            return
+        }
+
+        audiobook.releaseResources()
+        audiobook.startPrefetch()
+
+        XCTAssertNil(audiobook.getPublication(),
+                     "startPrefetch after release must not create a new publication")
+        XCTAssertNil(audiobook.cachedContentDictionary())
+        #else
+        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        #endif
+    }
 }
 
 // MARK: - LCP Audiobook URL Scheme Tests

@@ -2,8 +2,8 @@
 //  AudiobookTimeEntryTests.swift
 //  PalaceTests
 //
-//  Tests for AudiobookTimeEntry, AudiobookEvents, LatestAudiobookLocation,
-//  DataManager protocol, and NotificationService.TokenData.
+//  Tests for AudiobookTimeEntry, LatestAudiobookLocation, DataManager protocol,
+//  and NotificationService.TokenData.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -87,26 +87,6 @@ final class AudiobookTimeEntryTests: XCTestCase {
         let entry60 = AudiobookTimeEntry(id: "2", bookId: "b", libraryId: "l", timeTrackingUrl: url, duringMinute: "m", duration: 60)
         XCTAssertEqual(entry60.duration, 60, "Duration of 60 must be stored as-is")
         XCTAssertNotEqual(entry.duration, entry60.duration, "120 must not equal 60")
-    }
-}
-
-// MARK: - AudiobookEvents Tests
-
-final class AudiobookEventsCoverageTests: XCTestCase {
-
-    // SRS: AudiobookEvents.managerCreated is a PassthroughSubject
-    func testManagerCreated_isPassthroughSubject() {
-        // Verify we can subscribe without crashing and that the subject
-        // does NOT replay previous values (PassthroughSubject has no buffer).
-        var receivedValues = 0
-        let cancellable = AudiobookEvents.managerCreated.sink { _ in
-            receivedValues += 1
-        }
-        // A new subscriber to a PassthroughSubject must receive nothing immediately
-        XCTAssertNotNil(cancellable, "Must be able to subscribe to AudiobookEvents.managerCreated")
-        XCTAssertEqual(receivedValues, 0,
-                       "PassthroughSubject must not replay historic events to new subscribers")
-        cancellable.cancel()
     }
 }
 
