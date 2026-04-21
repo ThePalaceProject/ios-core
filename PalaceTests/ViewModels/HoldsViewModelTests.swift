@@ -441,10 +441,20 @@ final class HoldsSyncFailureTests: XCTestCase {
         super.tearDown()
     }
 
+    /// All tests in this suite exercise the sign-in-required error-banner
+    /// path, which `HoldsViewModel.handleSyncFailure(_:)` guards behind
+    /// `hasCredentials()`. The default closure reads from
+    /// `AccountsManager.shared.currentUserAccount`, which is not populated
+    /// in the test harness, so inject `hasCredentials: { true }` to exercise
+    /// the authenticated-user branch under test.
+    private func makeSignedInViewModel() -> HoldsViewModel {
+        HoldsViewModel(bookRegistry: mockRegistry, hasCredentials: { true })
+    }
+
     // MARK: - Error State Tests
 
     func testSyncFailure_SetsSyncError() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
+        let viewModel = makeSignedInViewModel()
         XCTAssertNil(viewModel.syncError, "No error initially")
 
         let errorExpectation = XCTestExpectation(description: "syncError is set")
@@ -462,7 +472,7 @@ final class HoldsSyncFailureTests: XCTestCase {
     }
 
     func testSyncFailure_WithProblemDocument_ShowsServerMessage() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
+        let viewModel = makeSignedInViewModel()
 
         let errorExpectation = XCTestExpectation(description: "syncError is set with server detail")
         viewModel.$syncError
@@ -491,7 +501,7 @@ final class HoldsSyncFailureTests: XCTestCase {
     }
 
     func testSyncFailure_WithoutProblemDocument_ShowsGenericMessage() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
+        let viewModel = makeSignedInViewModel()
 
         let errorExpectation = XCTestExpectation(description: "syncError is set")
         viewModel.$syncError
@@ -511,7 +521,7 @@ final class HoldsSyncFailureTests: XCTestCase {
     }
 
     func testSyncFailure_StopsLoading() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
+        let viewModel = makeSignedInViewModel()
         viewModel.isLoading = true
 
         let errorExpectation = XCTestExpectation(description: "syncError is set")
@@ -530,7 +540,7 @@ final class HoldsSyncFailureTests: XCTestCase {
     // MARK: - Error Dismissal & Retry Tests
 
     func testSyncBegan_ClearsPreviousSyncError() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
+        let viewModel = makeSignedInViewModel()
 
         // First, set an error
         let errorSet = XCTestExpectation(description: "Error set")
@@ -629,7 +639,7 @@ final class HoldsSyncFailureTests: XCTestCase {
     }
 
     func testSyncFailure_WithTitleOnly_UsesTitle() async {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
+        let viewModel = makeSignedInViewModel()
 
         let errorExpectation = XCTestExpectation(description: "syncError uses title")
         viewModel.$syncError
