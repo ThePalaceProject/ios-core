@@ -361,27 +361,17 @@ private extension CatalogLaneMoreView {
 
     @ViewBuilder
     var booksView: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                BookListView(
-                    books: viewModel.ungroupedBooks,
-                    isLoading: $viewModel.isLoading,
-                    onSelect: { book in presentBookDetail(book) },
-                    onLoadMore: viewModel.shouldShowPagination ? { @MainActor in await viewModel.loadNextPage() } : nil,
-                    isLoadingMore: viewModel.isLoadingMore
-                )
-                .id("books-list-top")
-            }
-            .refreshable {
-                await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
-            }
-            .onChange(of: viewModel.feedId) { _ in
-                // PP-4065: scroll to top only when a new feed is loaded
-                // (search/filter/sort). Watching `ungroupedBooks` also fired
-                // on borrow/return registry updates and pagination appends,
-                // causing the list to jump to the top on every Borrow tap.
-                proxy.scrollTo("books-list-top", anchor: .top)
-            }
+        ScrollView {
+            BookListView(
+                books: viewModel.ungroupedBooks,
+                isLoading: $viewModel.isLoading,
+                onSelect: { book in presentBookDetail(book) },
+                onLoadMore: viewModel.shouldShowPagination ? { @MainActor in await viewModel.loadNextPage() } : nil,
+                isLoadingMore: viewModel.isLoadingMore
+            )
+        }
+        .refreshable {
+            await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
         }
     }
 }
