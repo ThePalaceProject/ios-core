@@ -44,6 +44,13 @@ class BookRegistrySync {
     store.mutateRegistry { [weak self] registry in
       guard let self else { return }
 
+      // PP-4129: books whose registry state says "downloaded" but whose content file
+      // has vanished. After the load settles on main we schedule a silent background
+      // re-download so the user doesn't end up on the helpspot #17669 "can't open,
+      // can't delete, loops on missing file" path.
+      var lcpBooksNeedingBackgroundRedownload = [TPPBook]()
+      var orphanedBooksNeedingRedownload = [TPPBook]()
+
       var newRegistry = [String: TPPBookRegistryRecord]()
       if FileManager.default.fileExists(atPath: url.path),
          let data = try? Data(contentsOf: url),
@@ -81,8 +88,25 @@ class BookRegistrySync {
                 Log.error(#file, "  '\(record.book.title)' marked as downloaded but FILE MISSING - marking as download needed")
                 Log.error(#file, "     This suggests the file was deleted or the path is wrong")
                 record.state = .downloadNeeded
+                orphanedBooksNeedingRedownload.append(record.book)
               } else {
+                #if LCP
+                // LCP audiobooks pass checkIfBookFileExists as soon as the .lcpl
+                // license exists (playable via streaming). If the .lcpa content
+                // file is missing, schedule a silent background re-download so
+                // subsequent opens use the local copy instead of ranged reads
+                // from GCS (PP-3704).
+                if LCPAudiobooks.canOpenBook(record.book),
+                   let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: record.book, account: account),
+                   !FileManager.default.fileExists(atPath: bookURL.path) {
+                  Log.warn(#file, "  '\(record.book.title)' LCP audiobook playable via streaming but .lcpa MISSING - scheduling background re-download")
+                  lcpBooksNeedingBackgroundRedownload.append(record.book)
+                } else {
+                  Log.debug(#file, "  '\(record.book.title)' downloaded and file verified")
+                }
+                #else
                 Log.debug(#file, "  '\(record.book.title)' downloaded and file verified")
+                #endif
               }
             }
 
@@ -121,6 +145,38 @@ class BookRegistrySync {
 
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
         Log.info(#file, "  Registry loaded with \(bookCount) books")
+
+        // PP-4129: schedule recovery for orphaned downloads. Each scheduled block
+        // re-checks that the account that ran the load is still current before
+        // firing downloads — switching libraries during the wait would otherwise
+        // kick off a re-download with the wrong auth context.
+        #if LCP
+        if !lcpBooksNeedingBackgroundRedownload.isEmpty {
+          Log.info(#file, "  Scheduling background .lcpa re-download for \(lcpBooksNeedingBackgroundRedownload.count) orphaned LCP audiobook(s)")
+          DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            guard AccountsManager.shared.currentAccountId == loadedAccount else {
+              Log.info(#file, "  Skipping LCP background re-download — account changed during wait")
+              return
+            }
+            for book in lcpBooksNeedingBackgroundRedownload {
+              MyBooksDownloadCenter.shared.redownloadLCPContentFile(for: book)
+            }
+          }
+        }
+        #endif
+
+        if !orphanedBooksNeedingRedownload.isEmpty {
+          Log.info(#file, "  Scheduling auto-restart for \(orphanedBooksNeedingRedownload.count) orphaned download(s)")
+          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            guard AccountsManager.shared.currentAccountId == loadedAccount else {
+              Log.info(#file, "  Skipping orphan auto-restart — account changed during wait")
+              return
+            }
+            for book in orphanedBooksNeedingRedownload {
+              MyBooksDownloadCenter.shared.startDownload(for: book)
+            }
+          }
+        }
       }
     }
   }
@@ -128,10 +184,16 @@ class BookRegistrySync {
   func sync(
     currentState: TPPBookRegistry.RegistryState,
     setState: @escaping (TPPBookRegistry.RegistryState) -> Void,
-    save: @escaping () -> Void,
     completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil
   ) {
-    guard let loansUrl = AccountsManager.shared.currentAccount?.loansUrl else { return }
+    // Capture the syncing account at the top so that if the user switches
+    // libraries while the feed fetch is in flight, we persist the result to
+    // the account that was syncing — not the one that happens to be current
+    // when the save commits (PP-4129 regression).
+    guard let currentAccount = AccountsManager.shared.currentAccount,
+          let loansUrl = currentAccount.loansUrl
+    else { return }
+    let accountUUID = currentAccount.uuid
 
     if currentState == .syncing { return }
 
@@ -233,7 +295,16 @@ class BookRegistrySync {
               changesMade = true
             }
           }
-          save()
+          // NOTE: do NOT call save(for:) inside the mutateRegistrySync barrier —
+          // save() reads the store's snapshot via performSync, which tries to
+          // re-enter registry access while this barrier still holds the `inout`
+          // on it. That triggers a Swift exclusivity trap ("Simultaneous
+          // accesses to registry, but modification requires exclusive access").
+          // The save call lives below, after the barrier has released.
+        }
+
+        if changesMade {
+          self.save(for: accountUUID)
         }
 
         setState(.synced)
@@ -243,10 +314,15 @@ class BookRegistrySync {
     }
   }
 
-  func save() {
-    guard let account = AccountsManager.shared.currentAccount?.uuid,
-          let registryUrl = registryUrl(for: account)
-    else { return }
+  /// Persist the registry for the given account. The caller MUST pass the account
+  /// that owns the mutation being persisted (captured synchronously at the moment
+  /// of dispatch), not `AccountsManager.shared.currentAccount` looked up at save
+  /// time. In async flows, a mutation queued on account A can execute after the
+  /// user has switched to account B; looking up the current account inside `save()`
+  /// would persist A's state to B's registry file and cause cross-account
+  /// contamination (PP-4129 regression).
+  func save(for account: String) {
+    guard let registryUrl = registryUrl(for: account) else { return }
 
     let snapshot = store.registrySnapshot()
     let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
@@ -268,10 +344,10 @@ class BookRegistrySync {
     }
   }
 
-  func saveSync() {
-    guard let account = AccountsManager.shared.currentAccount?.uuid,
-          let registryUrl = registryUrl(for: account)
-    else { return }
+  /// Blocking save — used on teardown (scene disconnect, last-read-position) where
+  /// the caller cannot yield. Same account-capture contract as `save(for:)`.
+  func saveSync(for account: String) {
+    guard let registryUrl = registryUrl(for: account) else { return }
 
     let snapshot = store.registrySnapshot()
     let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
@@ -305,7 +381,7 @@ class BookRegistrySync {
       }
     }
     if didChange {
-      save()
+      save(for: account)
       DispatchQueue.main.async {
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
       }
