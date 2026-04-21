@@ -5,11 +5,11 @@ import XCTest
 
 private final class MockFeedPreloader: CatalogFeedPreloading {
     var preloadedURLs: [URL] = []
-    var shouldFail = false
+    var urlsThatShouldFail: Set<URL> = []
 
     func preloadFeed(from url: URL) async throws {
         preloadedURLs.append(url)
-        if shouldFail {
+        if urlsThatShouldFail.contains(url) {
             throw URLError(.notConnectedToInternet)
         }
     }
@@ -50,15 +50,20 @@ final class CatalogPreloaderTests: XCTestCase {
 
     func testPreloader_PreloadsRecentlyUsedAccounts_UpToLimit() async {
         let feedPreloader = MockFeedPreloader()
-        // maxPreload=3 means up to 3 recent accounts + current
         let preloader = CatalogPreloader(feedPreloader: feedPreloader, maxPreload: 3)
 
-        let current = makeAccount(uuid: "current", catalogUrl: "https://example.com/current/catalog")
+        let currentURL = URL(string: "https://example.com/current/catalog")!
+        let urlA = URL(string: "https://example.com/a/catalog")!
+        let urlB = URL(string: "https://example.com/b/catalog")!
+        let urlC = URL(string: "https://example.com/c/catalog")!
+        let urlD = URL(string: "https://example.com/d/catalog")!
+
+        let current = makeAccount(uuid: "current", catalogUrl: currentURL.absoluteString)
         let accounts: [String: Account] = [
-            "a": makeAccount(uuid: "a", catalogUrl: "https://example.com/a/catalog"),
-            "b": makeAccount(uuid: "b", catalogUrl: "https://example.com/b/catalog"),
-            "c": makeAccount(uuid: "c", catalogUrl: "https://example.com/c/catalog"),
-            "d": makeAccount(uuid: "d", catalogUrl: "https://example.com/d/catalog"),
+            "a": makeAccount(uuid: "a", catalogUrl: urlA.absoluteString),
+            "b": makeAccount(uuid: "b", catalogUrl: urlB.absoluteString),
+            "c": makeAccount(uuid: "c", catalogUrl: urlC.absoluteString),
+            "d": makeAccount(uuid: "d", catalogUrl: urlD.absoluteString),
         ]
 
         await preloader.preloadCatalogs(
@@ -67,9 +72,12 @@ final class CatalogPreloaderTests: XCTestCase {
             accountProvider: { accounts[$0] }
         )
 
-        // Verify we preloaded at least some accounts (exact count depends on Account.catalogUrl resolution)
-        XCTAssertGreaterThan(feedPreloader.preloadedURLs.count, 0, "Should preload at least one account")
-        XCTAssertLessThanOrEqual(feedPreloader.preloadedURLs.count, 5, "Should cap at maxPreload + current")
+        // maxPreload=3 caps the recents list at 3, plus the current account = 4 total.
+        // The fourth recent (urlD) must be dropped. Assertions are exact so mutations
+        // to the guard (`<` → `<=`, break → continue, etc.) actually fail.
+        let preloaded = Set(feedPreloader.preloadedURLs)
+        XCTAssertEqual(preloaded, [currentURL, urlA, urlB, urlC])
+        XCTAssertFalse(preloaded.contains(urlD), "Fourth recent must be skipped by the maxPreload cap")
     }
 
     func testPreloader_SkipsAccountsWithNoCatalogURL() async {
@@ -107,20 +115,32 @@ final class CatalogPreloaderTests: XCTestCase {
 
     func testPreloader_ContinuesOnFailure() async {
         let feedPreloader = MockFeedPreloader()
-        feedPreloader.shouldFail = true
-        let preloader = CatalogPreloader(feedPreloader: feedPreloader)
+        let preloader = CatalogPreloader(feedPreloader: feedPreloader, maxPreload: 3)
 
-        let current = makeAccount(uuid: "current", catalogUrl: "https://example.com/current/catalog")
+        let currentURL = URL(string: "https://example.com/current/catalog")!
+        let flakyURL = URL(string: "https://example.com/flaky/catalog")!
+        let healthyURL = URL(string: "https://example.com/healthy/catalog")!
 
-        // Should not throw — failures are silently logged
+        feedPreloader.urlsThatShouldFail = [flakyURL]
+
+        let current = makeAccount(uuid: "current", catalogUrl: currentURL.absoluteString)
+        let accounts: [String: Account] = [
+            "flaky": makeAccount(uuid: "flaky", catalogUrl: flakyURL.absoluteString),
+            "healthy": makeAccount(uuid: "healthy", catalogUrl: healthyURL.absoluteString),
+        ]
+
+        // One recent preload throws; the others must still be attempted and the
+        // whole call must return normally. If the catch inside the TaskGroup were
+        // removed (re-throwing), `preloadCatalogs` would become throws — which
+        // would be a compile error rather than a runtime one — and the healthy
+        // sibling wouldn't be reached.
         await preloader.preloadCatalogs(
             currentAccount: current,
-            recentAccountUUIDs: [],
-            accountProvider: { _ in nil }
+            recentAccountUUIDs: ["flaky", "healthy"],
+            accountProvider: { accounts[$0] }
         )
 
-        // Attempted the preload even though it failed
-        XCTAssertEqual(feedPreloader.preloadedURLs.count, 1)
+        XCTAssertEqual(Set(feedPreloader.preloadedURLs), [currentURL, flakyURL, healthyURL])
     }
 
     func testPreloader_NilCurrentAccount_StillPreloadsRecent() async {

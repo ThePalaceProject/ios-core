@@ -5,11 +5,18 @@ protocol CatalogFeedPreloading {
     func preloadFeed(from url: URL) async throws
 }
 
-/// Default implementation using OPDSFeedService.
+/// Must use `UnifiedOPDSService` rather than `OPDSFeedService`: some library
+/// roots (e.g. Lyrasis Reads) redirect to `application/opds+json`, which the
+/// OPDS1-only path rejects and surfaces as a "Failed to preload catalog"
+/// error even though the Catalog tab's OPDS2 parser loads it fine.
 struct OPDSFeedPreloader: CatalogFeedPreloading {
     func preloadFeed(from url: URL) async throws {
-        // Fetch without resetting cache — leverages HTTP cache
-        _ = try await OPDSFeedService.shared.fetchFeed(from: url, resetCache: false, useToken: false)
+        _ = try await UnifiedOPDSService.shared.fetchFeed(
+            from: url,
+            preferOPDS2: true,
+            useToken: false,
+            forceRefresh: false
+        )
     }
 }
 
