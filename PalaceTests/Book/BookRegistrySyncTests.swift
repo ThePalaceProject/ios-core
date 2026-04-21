@@ -589,24 +589,28 @@ final class BookRegistrySyncTests: XCTestCase {
         var received: [TPPBookRegistry.RegistryState] = []
         let setState: (TPPBookRegistry.RegistryState) -> Void = { received.append($0) }
 
-        syncManager.sync(currentState: .syncing, setState: setState, save: {}, completion: nil)
+        syncManager.sync(currentState: .syncing, setState: setState, completion: nil)
 
         XCTAssertTrue(received.isEmpty,
                       "sync() called while already .syncing must not invoke setState")
         XCTAssertNil(syncManager.syncUrl)
     }
 
-    func test_sync_withNoCurrentAccount_isNoOp() {
-        // AccountsManager.shared.currentAccount?.loansUrl is nil in unit tests,
-        // so the guard at top of sync() returns early without setState.
+    func test_sync_withNoCurrentAccount_isNoOp() throws {
+        // This test is sensitive to simulator sign-in state: when A1QA is signed in
+        // on the host simulator, AccountsManager.shared.currentAccount?.loansUrl is
+        // set (not nil), so sync() proceeds instead of short-circuiting. Skip in
+        // environments where a current account is present — the no-op behavior is
+        // only observable in a clean environment.
+        try XCTSkipIf(AccountsManager.shared.currentAccount?.loansUrl != nil,
+                      "Skipping: simulator has an active currentAccount; this test requires a clean environment")
+
         var received: [TPPBookRegistry.RegistryState] = []
         let setState: (TPPBookRegistry.RegistryState) -> Void = { received.append($0) }
-        var saveCalled = false
 
-        syncManager.sync(currentState: .loaded, setState: setState, save: { saveCalled = true }, completion: nil)
+        syncManager.sync(currentState: .loaded, setState: setState, completion: nil)
 
         XCTAssertTrue(received.isEmpty)
-        XCTAssertFalse(saveCalled)
         XCTAssertNil(syncManager.syncUrl)
     }
 }

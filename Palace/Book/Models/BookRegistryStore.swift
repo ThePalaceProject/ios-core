@@ -65,12 +65,35 @@ class BookRegistryStore {
   }
 
   /// Provides direct write access to the registry dictionary within a barrier block.
-  func mutateRegistrySync(_ block: (_ registry: inout [String: TPPBookRegistryRecord]) -> Void) {
+  ///
+  /// `onComplete` runs on the barrier queue AFTER `block(&self.registry)` has
+  /// fully completed — it is dispatched as a separate barrier job so Swift's
+  /// exclusivity tracking does NOT consider the `inout` access still open during
+  /// `onComplete`. Use `onComplete` for snapshot-and-save work (reading the
+  /// registry) that cannot be done inside the mutation block itself without
+  /// triggering "Simultaneous accesses to registry, but modification requires
+  /// exclusive access" (PP-4129 crash fix).
+  func mutateRegistrySync(
+    _ block: (_ registry: inout [String: TPPBookRegistryRecord]) -> Void,
+    onComplete: (() -> Void)? = nil
+  ) {
     performBarrierSync { block(&self.registry) }
+    // Second barrier dispatch: inout access from `block` has fully ended before
+    // `onComplete` runs. onComplete can safely read `self.registry` (e.g. to
+    // snapshot it for save) without tripping exclusivity.
+    if let onComplete = onComplete {
+      performBarrierSync { onComplete() }
+    }
   }
 
-  func mutateRegistry(_ block: @escaping (_ registry: inout [String: TPPBookRegistryRecord]) -> Void) {
+  func mutateRegistry(
+    _ block: @escaping (_ registry: inout [String: TPPBookRegistryRecord]) -> Void,
+    onComplete: (() -> Void)? = nil
+  ) {
     performBarrier { block(&self.registry) }
+    if let onComplete = onComplete {
+      performBarrier { onComplete() }
+    }
   }
 
   // MARK: - Query

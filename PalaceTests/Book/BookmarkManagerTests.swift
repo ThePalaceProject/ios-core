@@ -18,16 +18,26 @@ final class BookmarkManagerTests: XCTestCase {
     private var manager: BookmarkManager!
     private var saveCallCount: Int!
     private var saveSyncCallCount: Int!
+    private var lastSavedAccount: String?
+
+    private let testAccount = "urn:uuid:bookmark-mgr-test"
 
     override func setUp() {
         super.setUp()
         store = BookRegistryStore()
         saveCallCount = 0
         saveSyncCallCount = 0
+        lastSavedAccount = nil
         manager = BookmarkManager(
             store: store,
-            save: { [weak self] in self?.saveCallCount += 1 },
-            saveSync: { [weak self] in self?.saveSyncCallCount += 1 }
+            save: { [weak self] account in
+                self?.saveCallCount += 1
+                self?.lastSavedAccount = account
+            },
+            saveSync: { [weak self] account in
+                self?.saveSyncCallCount += 1
+                self?.lastSavedAccount = account
+            }
         )
     }
 
@@ -132,7 +142,7 @@ final class BookmarkManagerTests: XCTestCase {
         addBookToStore(book)
 
         let location = makeLocation(page: 42)
-        manager.setLocation(location, forIdentifier: book.identifier)
+        manager.setLocation(location, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let retrieved = manager.location(forIdentifier: book.identifier)
@@ -144,7 +154,7 @@ final class BookmarkManagerTests: XCTestCase {
 
     func test_setLocation_emptyIdentifier_doesNothing() {
         let location = makeLocation()
-        manager.setLocation(location, forIdentifier: "")
+        manager.setLocation(location, forIdentifier: "", account: testAccount)
         waitForBarrier()
 
         XCTAssertEqual(saveCallCount, 0, "save should not be called for empty identifier")
@@ -155,10 +165,10 @@ final class BookmarkManagerTests: XCTestCase {
         addBookToStore(book)
 
         let location = makeLocation(page: 10)
-        manager.setLocation(location, forIdentifier: book.identifier)
+        manager.setLocation(location, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
-        manager.setLocation(nil, forIdentifier: book.identifier)
+        manager.setLocation(nil, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let retrieved = manager.location(forIdentifier: book.identifier)
@@ -175,7 +185,7 @@ final class BookmarkManagerTests: XCTestCase {
         addBookToStore(book)
 
         let location = makeLocation(page: 7)
-        manager.setLocationSync(location, forIdentifier: book.identifier)
+        manager.setLocationSync(location, forIdentifier: book.identifier, account: testAccount)
 
         XCTAssertEqual(saveSyncCallCount, 1, "saveSync should be called")
         XCTAssertEqual(saveCallCount, 0, "async save should NOT be called")
@@ -185,7 +195,7 @@ final class BookmarkManagerTests: XCTestCase {
     }
 
     func test_setLocationSync_emptyIdentifier_doesNothing() {
-        manager.setLocationSync(makeLocation(), forIdentifier: "")
+        manager.setLocationSync(makeLocation(), forIdentifier: "", account: testAccount)
         XCTAssertEqual(saveSyncCallCount, 0)
     }
 
@@ -196,7 +206,7 @@ final class BookmarkManagerTests: XCTestCase {
         addBookToStore(book)
 
         let bookmark = makeReadiumBookmark(annotationId: "ann-1")
-        manager.addReadiumBookmark(bookmark, forIdentifier: book.identifier)
+        manager.addReadiumBookmark(bookmark, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let bookmarks = manager.readiumBookmarks(forIdentifier: book.identifier)
@@ -213,11 +223,11 @@ final class BookmarkManagerTests: XCTestCase {
         let bm2 = makeReadiumBookmark(annotationId: "b", progressWithinBook: 0.1)
         let bm3 = makeReadiumBookmark(annotationId: "c", progressWithinBook: 0.5)
 
-        manager.addReadiumBookmark(bm1, forIdentifier: book.identifier)
+        manager.addReadiumBookmark(bm1, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
-        manager.addReadiumBookmark(bm2, forIdentifier: book.identifier)
+        manager.addReadiumBookmark(bm2, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
-        manager.addReadiumBookmark(bm3, forIdentifier: book.identifier)
+        manager.addReadiumBookmark(bm3, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let bookmarks = manager.readiumBookmarks(forIdentifier: book.identifier)
@@ -235,12 +245,12 @@ final class BookmarkManagerTests: XCTestCase {
         let bm1 = makeReadiumBookmark(annotationId: "keep", href: "/ch1", progressWithinBook: 0.1)
         let bm2 = makeReadiumBookmark(annotationId: "delete", href: "/ch2", progressWithinBook: 0.5)
 
-        manager.addReadiumBookmark(bm1, forIdentifier: book.identifier)
+        manager.addReadiumBookmark(bm1, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
-        manager.addReadiumBookmark(bm2, forIdentifier: book.identifier)
+        manager.addReadiumBookmark(bm2, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
-        manager.deleteReadiumBookmark(bm2, forIdentifier: book.identifier)
+        manager.deleteReadiumBookmark(bm2, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let bookmarks = manager.readiumBookmarks(forIdentifier: book.identifier)
@@ -253,11 +263,11 @@ final class BookmarkManagerTests: XCTestCase {
         addBookToStore(book)
 
         let original = makeReadiumBookmark(annotationId: "orig", progressWithinBook: 0.3)
-        manager.addReadiumBookmark(original, forIdentifier: book.identifier)
+        manager.addReadiumBookmark(original, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let replacement = makeReadiumBookmark(annotationId: "replaced", progressWithinBook: 0.6)
-        manager.replaceReadiumBookmark(original, with: replacement, forIdentifier: book.identifier)
+        manager.replaceReadiumBookmark(original, with: replacement, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let bookmarks = manager.readiumBookmarks(forIdentifier: book.identifier)
@@ -273,7 +283,7 @@ final class BookmarkManagerTests: XCTestCase {
 
     func test_addReadiumBookmark_toMissingBook_doesNotCrash() {
         let bookmark = makeReadiumBookmark()
-        manager.addReadiumBookmark(bookmark, forIdentifier: "nonexistent")
+        manager.addReadiumBookmark(bookmark, forIdentifier: "nonexistent", account: testAccount)
         waitForBarrier()
         // Guard must fail: no bookmark stored, no save triggered
         XCTAssertTrue(manager.readiumBookmarks(forIdentifier: "nonexistent").isEmpty,
@@ -289,7 +299,7 @@ final class BookmarkManagerTests: XCTestCase {
         addBookToStore(book)
 
         let location = makeLocation(page: 10)
-        manager.addGenericBookmark(location, forIdentifier: book.identifier)
+        manager.addGenericBookmark(location, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let bookmarks = manager.genericBookmarks(forIdentifier: book.identifier)
@@ -299,7 +309,7 @@ final class BookmarkManagerTests: XCTestCase {
 
     func test_addGenericBookmark_toMissingBook_doesNotCrash() {
         let location = makeLocation(page: 10)
-        manager.addGenericBookmark(location, forIdentifier: "nonexistent")
+        manager.addGenericBookmark(location, forIdentifier: "nonexistent", account: testAccount)
         waitForBarrier()
         XCTAssertTrue(manager.genericBookmarks(forIdentifier: "nonexistent").isEmpty,
                       "Generic bookmarks for a missing book must remain empty")
@@ -314,13 +324,13 @@ final class BookmarkManagerTests: XCTestCase {
         let loc1 = makeLocation(page: 10, renderer: "r1")
         let loc2 = makeLocation(page: 20, renderer: "r1")
 
-        manager.addGenericBookmark(loc1, forIdentifier: book.identifier)
+        manager.addGenericBookmark(loc1, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
-        manager.addGenericBookmark(loc2, forIdentifier: book.identifier)
+        manager.addGenericBookmark(loc2, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         // Delete loc1
-        manager.deleteGenericBookmark(loc1, forIdentifier: book.identifier)
+        manager.deleteGenericBookmark(loc1, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let remaining = manager.genericBookmarks(forIdentifier: book.identifier)
@@ -332,12 +342,12 @@ final class BookmarkManagerTests: XCTestCase {
         addBookToStore(book)
 
         let loc = makeLocation(page: 10, annotationId: "ann-42")
-        manager.addGenericBookmark(loc, forIdentifier: book.identifier)
+        manager.addGenericBookmark(loc, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         // Create a deletion target with matching annotationId but different page
         let deleteTarget = makeLocation(page: 99, annotationId: "ann-42")
-        manager.deleteGenericBookmark(deleteTarget, forIdentifier: book.identifier)
+        manager.deleteGenericBookmark(deleteTarget, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let remaining = manager.genericBookmarks(forIdentifier: book.identifier)
@@ -349,11 +359,11 @@ final class BookmarkManagerTests: XCTestCase {
         addBookToStore(book)
 
         let original = makeLocation(page: 5, renderer: "r1")
-        manager.addGenericBookmark(original, forIdentifier: book.identifier)
+        manager.addGenericBookmark(original, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let replacement = makeLocation(page: 50, renderer: "r1")
-        manager.replaceGenericBookmark(original, with: replacement, forIdentifier: book.identifier)
+        manager.replaceGenericBookmark(original, with: replacement, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let bookmarks = manager.genericBookmarks(forIdentifier: book.identifier)
@@ -366,7 +376,7 @@ final class BookmarkManagerTests: XCTestCase {
         addBookToStore(book)
 
         let loc = makeLocation(page: 10)
-        manager.addOrReplaceGenericBookmark(loc, forIdentifier: book.identifier)
+        manager.addOrReplaceGenericBookmark(loc, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let bookmarks = manager.genericBookmarks(forIdentifier: book.identifier)
@@ -378,12 +388,12 @@ final class BookmarkManagerTests: XCTestCase {
         addBookToStore(book)
 
         let loc1 = makeLocation(page: 10, renderer: "r1")
-        manager.addGenericBookmark(loc1, forIdentifier: book.identifier)
+        manager.addGenericBookmark(loc1, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         // addOrReplace with same-ish location (same renderer, same content)
         let loc2 = makeLocation(page: 10, renderer: "r1")
-        manager.addOrReplaceGenericBookmark(loc2, forIdentifier: book.identifier)
+        manager.addOrReplaceGenericBookmark(loc2, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let bookmarks = manager.genericBookmarks(forIdentifier: book.identifier)
@@ -407,16 +417,16 @@ final class BookmarkManagerTests: XCTestCase {
         let loc1 = makeLocation(page: 1)
         let loc2 = makeLocation(page: 2)
 
-        manager.addGenericBookmark(loc1, forIdentifier: "book-1")
+        manager.addGenericBookmark(loc1, forIdentifier: "book-1", account: testAccount)
         waitForBarrier()
-        manager.addGenericBookmark(loc2, forIdentifier: "book-2")
+        manager.addGenericBookmark(loc2, forIdentifier: "book-2", account: testAccount)
         waitForBarrier()
 
         XCTAssertEqual(manager.genericBookmarks(forIdentifier: "book-1").count, 1)
         XCTAssertEqual(manager.genericBookmarks(forIdentifier: "book-2").count, 1)
 
         // Deleting from book-1 should not affect book-2
-        manager.deleteGenericBookmark(loc1, forIdentifier: "book-1")
+        manager.deleteGenericBookmark(loc1, forIdentifier: "book-1", account: testAccount)
         waitForBarrier()
 
         XCTAssertEqual(manager.genericBookmarks(forIdentifier: "book-1").count, 0)
@@ -431,16 +441,16 @@ final class BookmarkManagerTests: XCTestCase {
 
         // Set location
         let location = makeLocation(page: 42)
-        manager.setLocation(location, forIdentifier: book.identifier)
+        manager.setLocation(location, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         // Add bookmarks
         let bookmark = makeReadiumBookmark()
-        manager.addReadiumBookmark(bookmark, forIdentifier: book.identifier)
+        manager.addReadiumBookmark(bookmark, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let genericLoc = makeLocation(page: 99)
-        manager.addGenericBookmark(genericLoc, forIdentifier: book.identifier)
+        manager.addGenericBookmark(genericLoc, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         // All three should coexist
@@ -449,7 +459,7 @@ final class BookmarkManagerTests: XCTestCase {
         XCTAssertEqual(manager.genericBookmarks(forIdentifier: book.identifier).count, 1)
 
         // Clearing location should not affect bookmarks
-        manager.setLocation(nil, forIdentifier: book.identifier)
+        manager.setLocation(nil, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         XCTAssertNil(manager.location(forIdentifier: book.identifier))
@@ -469,23 +479,23 @@ final class BookmarkManagerTests: XCTestCase {
         let genericLoc = makeLocation(page: 2)
 
         // 1. setLocation
-        manager.setLocation(location, forIdentifier: book.identifier)
+        manager.setLocation(location, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         // 2. addReadiumBookmark
-        manager.addReadiumBookmark(readiumBm, forIdentifier: book.identifier)
+        manager.addReadiumBookmark(readiumBm, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         // 3. deleteReadiumBookmark
-        manager.deleteReadiumBookmark(readiumBm, forIdentifier: book.identifier)
+        manager.deleteReadiumBookmark(readiumBm, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         // 4. addGenericBookmark
-        manager.addGenericBookmark(genericLoc, forIdentifier: book.identifier)
+        manager.addGenericBookmark(genericLoc, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         // 5. deleteGenericBookmark
-        manager.deleteGenericBookmark(genericLoc, forIdentifier: book.identifier)
+        manager.deleteGenericBookmark(genericLoc, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         XCTAssertEqual(saveCallCount, 5,
@@ -503,7 +513,7 @@ final class BookmarkManagerTests: XCTestCase {
         waitForBarrier()
 
         let bookmark = makeReadiumBookmark(annotationId: "first")
-        manager.addReadiumBookmark(bookmark, forIdentifier: book.identifier)
+        manager.addReadiumBookmark(bookmark, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let bookmarks = manager.readiumBookmarks(forIdentifier: book.identifier)
@@ -520,7 +530,7 @@ final class BookmarkManagerTests: XCTestCase {
         waitForBarrier()
 
         let loc = makeLocation(page: 1)
-        manager.addGenericBookmark(loc, forIdentifier: book.identifier)
+        manager.addGenericBookmark(loc, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let bookmarks = manager.genericBookmarks(forIdentifier: book.identifier)
@@ -535,7 +545,7 @@ final class BookmarkManagerTests: XCTestCase {
         waitForBarrier()
 
         let loc = makeLocation(page: 5)
-        manager.addOrReplaceGenericBookmark(loc, forIdentifier: book.identifier)
+        manager.addOrReplaceGenericBookmark(loc, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
         let bookmarks = manager.genericBookmarks(forIdentifier: book.identifier)
