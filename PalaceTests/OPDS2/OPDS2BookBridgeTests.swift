@@ -54,6 +54,64 @@ final class OPDS2BookBridgeTests: XCTestCase {
         XCTAssertNil(book?.summary)
     }
 
+    // MARK: - Unsupported Acquisition Filter
+    //
+    // The Palace Bookshelf CM returns books whose only acquisition is
+    // application/opds-publication+json with a text/html streaming-media
+    // indirect (a web-reader format iOS doesn't render). Pre-fix, those
+    // books appeared in the catalog with no buttons and crashed into a
+    // "format not supported" alert. Filter them out at parse time so the
+    // catalog only shows openable content.
+
+    func testToBook_dropsPublicationWhenOnlyAcquisitionIsStreamingHTMLIndirect() {
+        let links = [
+            OPDS2Link(
+                href: "https://gorgon.example.com/lib/works/URI/abc/borrow",
+                type: "application/opds-publication+json",
+                rel: "http://opds-spec.org/acquisition/borrow",
+                properties: OPDS2LinkProperties(
+                    indirectAcquisition: [
+                        OPDS2IndirectAcquisition(type: "text/html;profile=http://librarysimplified.org/terms/profiles/streaming-media")
+                    ]
+                )
+            )
+        ]
+        let pub = makePublication(id: "abc", title: "Streaming-Only Book", links: links)
+
+        XCTAssertNil(
+            pub.toBook(),
+            "Books whose only acquisition path leads to an unsupported leaf type (e.g. streaming HTML) must be dropped at parse time so they never reach the catalog as button-less ghosts."
+        )
+    }
+
+    func testToBook_keepsPublicationWhenAtLeastOneAcquisitionIsSupported() {
+        let links = [
+            OPDS2Link(
+                href: "https://gorgon.example.com/lib/works/URI/abc/borrow",
+                type: "application/opds-publication+json",
+                rel: "http://opds-spec.org/acquisition/borrow",
+                properties: OPDS2LinkProperties(
+                    indirectAcquisition: [
+                        OPDS2IndirectAcquisition(type: "text/html;profile=http://librarysimplified.org/terms/profiles/streaming-media")
+                    ]
+                )
+            ),
+            OPDS2Link(
+                href: "https://gorgon.example.com/lib/works/URI/abc/borrow.epub",
+                type: "application/epub+zip",
+                rel: "http://opds-spec.org/acquisition/borrow"
+            )
+        ]
+        let pub = makePublication(id: "abc", title: "Mixed-Format Book", links: links)
+
+        let book = pub.toBook()
+        XCTAssertNotNil(
+            book,
+            "If at least one acquisition resolves to a supported format, the book must be kept — even when other acquisitions are unsupported."
+        )
+        XCTAssertEqual(book?.acquisitions.count, 2, "Both acquisitions must be retained on the book; the filter is publication-level only.")
+    }
+
     // MARK: - Acquisition Link Mapping
 
     func testToBook_mapsBorrowLink() {
@@ -104,7 +162,15 @@ final class OPDS2BookBridgeTests: XCTestCase {
     }
 
     func testToBook_mapsSampleLink() {
+        // Include a borrow link too — sample-only publications are filtered
+        // at parse time because they have no openable path. The sample link
+        // is still parsed and attached to the resulting book.
         let links = [
+            OPDS2Link(
+                href: "https://example.com/borrow",
+                type: "application/epub+zip",
+                rel: "http://opds-spec.org/acquisition/borrow"
+            ),
             OPDS2Link(
                 href: "https://example.com/sample.epub",
                 type: "application/epub+zip",
@@ -114,7 +180,12 @@ final class OPDS2BookBridgeTests: XCTestCase {
         let pub = makePublication(id: "book1", title: "Test", links: links)
         let book = pub.toBook()
 
-        XCTAssertEqual(book?.acquisitions.first?.relation, .sample)
+        XCTAssertNotNil(book)
+        XCTAssertEqual(book?.acquisitions.count, 2)
+        XCTAssertEqual(
+            book?.acquisitions.first(where: { $0.relation == .sample })?.type,
+            "application/epub+zip"
+        )
     }
 
     func testToBook_mapsBuyLink() {

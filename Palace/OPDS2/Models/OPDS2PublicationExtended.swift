@@ -259,6 +259,26 @@ extension OPDS2Publication {
             return nil
         }
 
+        // Drop publications whose only formats this client can't render
+        // (e.g. Palace Bookshelf books offered solely as text/html
+        // streaming-media — iOS has no in-app web reader). Other Palace
+        // clients can show these; a future "Open in browser" action could
+        // bring them back in. For now they would otherwise appear in the
+        // catalog with no actionable buttons.
+        let supportedTypes = TPPOPDSAcquisitionPath.supportedTypes()
+        let hasOpenablePath = acquisitions.contains { acq in
+            !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+                forAllowedTypes: supportedTypes,
+                allowedRelations: TPPOPDSAcquisitionRelationSetDefaultAcquisition,
+                acquisitions: [acq]
+            ).isEmpty
+        }
+        guard hasOpenablePath else {
+            let acqDump = Self.summarize(acquisitions: acquisitions)
+            Log.info(#file, "[OPDS2-DIAG] Publication '\(metadata.title)' (\(identifier)) — no supported acquisition path, skipping. \(acqDump)")
+            return nil
+        }
+
         Log.info(#file, "[OPDS2-DIAG] Converting publication '\(metadata.title)' (\(identifier)) — " +
             "\(acquisitions.count) acquisitions, " +
             "relations=[\(acquisitions.map { NYPLOPDSAcquisitionRelationString($0.relation) }.joined(separator: ", "))]")
@@ -296,6 +316,15 @@ extension OPDS2Publication {
             bookDuration: nil,
             imageCache: ImageCache.shared
         )
+    }
+
+    /// One-line dump of an acquisition list for diagnostic logs.
+    static func summarize(acquisitions: [TPPOPDSAcquisition]) -> String {
+        let entries = acquisitions.map { acq -> String in
+            let indirects = acq.indirectAcquisitions.map { $0.type }.joined(separator: ", ")
+            return "{type=\(acq.type), rel=\(NYPLOPDSAcquisitionRelationString(acq.relation)), indirects=[\(indirects)]}"
+        }.joined(separator: "; ")
+        return "acquisitions=[\(entries)]"
     }
 }
 
@@ -391,6 +420,22 @@ struct OPDS2FullPublication: Codable, Equatable, Sendable, Identifiable {
 
         guard !acquisitions.isEmpty else {
             Log.info(#file, "[OPDS2-DIAG] Full publication '\(metadata.title)' (\(identifier)) — no acquisition links, skipping")
+            return nil
+        }
+
+        // See note in OPDS2Publication.toBook() — drop publications whose
+        // only formats this client cannot render.
+        let supportedTypes = TPPOPDSAcquisitionPath.supportedTypes()
+        let hasOpenablePath = acquisitions.contains { acq in
+            !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+                forAllowedTypes: supportedTypes,
+                allowedRelations: TPPOPDSAcquisitionRelationSetDefaultAcquisition,
+                acquisitions: [acq]
+            ).isEmpty
+        }
+        guard hasOpenablePath else {
+            let acqDump = OPDS2Publication.summarize(acquisitions: acquisitions)
+            Log.info(#file, "[OPDS2-DIAG] Full publication '\(metadata.title)' (\(identifier)) — no supported acquisition path, skipping. \(acqDump)")
             return nil
         }
 
