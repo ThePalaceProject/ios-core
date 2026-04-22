@@ -29,53 +29,23 @@ final class LicensesServiceTests: XCTestCase {
 
     // MARK: - pathInZip Tests
 
-    func testPathInZip_ForEpubZipType_ReturnsMetaInfPath() {
-        let link = TPPLCPLicenseLink(rel: nil, href: nil, type: ContentTypeEpubZip as String, title: nil, length: nil, hash: nil)
+    func testPathInZip_mapsEveryContentTypeToTheCorrectPath() {
+        let cases: [(type: String?, expected: String?)] = [
+            (ContentTypeEpubZip as String,       "META-INF/license.lcpl"),
+            (ContentTypeReadiumLCP as String,    "license.lcpl"),
+            (ContentTypeReadiumLCPPDF as String, "license.lcpl"),
+            (ContentTypePDFLCP as String,        "license.lcpl"),
+            (ContentTypeAudiobookLCP as String,  "license.lcpl"),
+            (nil,                                nil),
+            ("application/octet-stream",         nil),
+        ]
 
-        let path = sut.pathInZip(for: link)
-        XCTAssertEqual(path, "META-INF/license.lcpl")
-    }
-
-    func testPathInZip_ForReadiumLCPType_ReturnsLicensePath() {
-        let link = TPPLCPLicenseLink(rel: nil, href: nil, type: ContentTypeReadiumLCP as String, title: nil, length: nil, hash: nil)
-
-        let path = sut.pathInZip(for: link)
-        XCTAssertEqual(path, "license.lcpl")
-    }
-
-    func testPathInZip_ForReadiumLCPPDFType_ReturnsLicensePath() {
-        let link = TPPLCPLicenseLink(rel: nil, href: nil, type: ContentTypeReadiumLCPPDF as String, title: nil, length: nil, hash: nil)
-
-        let path = sut.pathInZip(for: link)
-        XCTAssertEqual(path, "license.lcpl")
-    }
-
-    func testPathInZip_ForPDFLCPType_ReturnsLicensePath() {
-        let link = TPPLCPLicenseLink(rel: nil, href: nil, type: ContentTypePDFLCP as String, title: nil, length: nil, hash: nil)
-
-        let path = sut.pathInZip(for: link)
-        XCTAssertEqual(path, "license.lcpl")
-    }
-
-    func testPathInZip_ForAudiobookLCPType_ReturnsLicensePath() {
-        let link = TPPLCPLicenseLink(rel: nil, href: nil, type: ContentTypeAudiobookLCP as String, title: nil, length: nil, hash: nil)
-
-        let path = sut.pathInZip(for: link)
-        XCTAssertEqual(path, "license.lcpl")
-    }
-
-    func testPathInZip_ForNilType_ReturnsNil() {
-        let link = TPPLCPLicenseLink(rel: nil, href: nil, type: nil, title: nil, length: nil, hash: nil)
-
-        let path = sut.pathInZip(for: link)
-        XCTAssertNil(path)
-    }
-
-    func testPathInZip_ForUnknownType_ReturnsNil() {
-        let link = TPPLCPLicenseLink(rel: nil, href: nil, type: "application/octet-stream", title: nil, length: nil, hash: nil)
-
-        let path = sut.pathInZip(for: link)
-        XCTAssertNil(path)
+        for (type, expected) in cases {
+            let link = TPPLCPLicenseLink(rel: nil, href: nil, type: type,
+                                          title: nil, length: nil, hash: nil)
+            XCTAssertEqual(sut.pathInZip(for: link), expected,
+                           "pathInZip(for: type=\(type ?? "nil")) should map to \(expected ?? "nil")")
+        }
     }
 
     // MARK: - acquirePublication Tests
@@ -120,19 +90,18 @@ final class LicensesServiceTests: XCTestCase {
 
     // MARK: - TPPLicensesServiceError Tests
 
-    func testLicensesServiceError_HasDescription() {
-        let error = TPPLicensesServiceError.licenseError(message: "Test error message")
-        XCTAssertEqual(error.description, "Test error message")
-    }
-}
-
-#else
-
-// Stub test to register the test class even when LCP is not enabled
-final class LicensesServiceStubTests: XCTestCase {
-
-    func testLCPNotEnabled_SkipLicensesServiceTests() throws {
-        throw XCTSkip("LCP is not enabled in this build configuration")
+    func testLicensesServiceError_licenseError_exposesMessageViaDescriptionVerbatim() {
+        // .description must return the caller's message unchanged — used by
+        // UI alerts and Crashlytics. Guards against mutations that prefix,
+        // trim, or otherwise mangle the error text on its way to the user.
+        XCTAssertEqual(TPPLicensesServiceError.licenseError(message: "simple").description,
+                       "simple")
+        XCTAssertEqual(TPPLicensesServiceError.licenseError(message: "").description,
+                       "")
+        let multiline = "line one\nline two\twith tab"
+        XCTAssertEqual(TPPLicensesServiceError.licenseError(message: multiline).description,
+                       multiline,
+                       "whitespace inside the message must be preserved verbatim")
     }
 }
 
