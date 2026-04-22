@@ -732,13 +732,25 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
     }
 
     func testValidateCredentials_withoutSelectedAuth_doesNotCrash() {
-        // Test that validateCredentials handles nil auth gracefully
+        // validateCredentials must handle nil selectedAuthentication
+        // defensively — a caller that kicks off validation without first
+        // selecting an auth method should not poison signed-in state, emit
+        // a "signing in" notification (which would mislead observers), or
+        // mutate userAccount.
         businessLogic.selectedAuthentication = nil
+
+        var signInNotificationPosted = false
+        let observer = NotificationCenter.default.addObserver(
+            forName: .TPPIsSigningIn, object: nil, queue: nil
+        ) { _ in signInNotificationPosted = true }
+        defer { NotificationCenter.default.removeObserver(observer) }
 
         businessLogic.validateCredentials()
 
-        // After validating with nil auth, signed-in state must still be false
-        XCTAssertFalse(businessLogic.isSignedIn(), "Validate with nil auth must not result in signed-in state")
+        XCTAssertFalse(businessLogic.isSignedIn(),
+                       "Validate with nil auth must not result in signed-in state")
+        XCTAssertFalse(signInNotificationPosted,
+                       "Validate with nil auth must not post TPPIsSigningIn notification")
         // Note: validateCredentials sets isValidatingCredentials=true but the early-exit
         // error path does not reset it. This is a known production bug (not tested here).
     }

@@ -644,15 +644,20 @@ final class TPPSAMLSignInTests: XCTestCase {
   
   /// Tests that refreshCredentialsFromKeychain returns false when no credentials.
   func testRefreshCredentialsFromKeychain_returnsFalseWhenNoCredentials() {
-    // Setup: Ensure no credentials
+    // Setup: wipe every credential surface (not just one field) so the test
+    // is unambiguous. refreshCredentialsFromKeychain returning true here
+    // would mean stale state survived removeAll — a real cross-session
+    // contamination risk.
     businessLogic.userAccount.removeAll()
-    
-    // Act
+
     let hasCredentials = businessLogic.userAccount.refreshCredentialsFromKeychain()
-    
-    // Assert
+
     XCTAssertFalse(hasCredentials,
                    "refreshCredentialsFromKeychain should return false when no credentials")
+    XCTAssertNil(businessLogic.userAccount.credentials,
+                 "userAccount.credentials must be nil after removeAll — refresh must not resurrect them")
+    XCTAssertFalse(businessLogic.userAccount.hasCredentials(),
+                   "hasCredentials() must agree with refreshCredentialsFromKeychain — both should be false")
   }
   
   // MARK: - Token Refresh Tests

@@ -116,11 +116,21 @@ final class TPPPreferredAuthSelectionTests: XCTestCase {
 
     // Regression guard: the view's `shouldShowSignInPrompt` reads
     // `selectedAuthentication?.isSaml`. After the fix, this must be true
-    // for a multi-auth library that includes SAML.
+    // for a multi-auth library that includes SAML. Also verify the state
+    // transition: selectedAuthentication is nil before auto-selection and
+    // non-nil after (a mutation that made auto-selection a no-op would
+    // pass a looser "isSaml == true" check if the default happened to be
+    // SAML, but would fail the nil-to-non-nil transition check).
     func testAfterAutoSelection_SelectedAuthIsSaml_forMultiAuthLibrary() {
+        XCTAssertNil(businessLogic.selectedAuthentication,
+                     "precondition: selectedAuthentication must be nil before auto-selection")
+
         businessLogic.selectPreferredAuthIfNeeded()
+
+        XCTAssertNotNil(businessLogic.selectedAuthentication,
+                        "auto-selection must populate selectedAuthentication")
         XCTAssertEqual(businessLogic.selectedAuthentication?.isSaml, true,
-                       "After auto-selection, selectedAuthentication.isSaml must be true so shouldShowSignInPrompt renders the SAML prompt")
+                       "selectedAuthentication.isSaml must be true so shouldShowSignInPrompt renders the SAML prompt")
     }
 
     // The Sign In button is a silent no-op if `selectedIDP` is nil when

@@ -142,9 +142,20 @@ final class SAMLLogoutLinkParsingTests: XCTestCase {
     }
 
     func testRegression_OIDCLogoutHref_StillPopulated() {
+        // Guards against a parser regression: when samlLogoutHref parsing was
+        // added, oidcLogoutHref on the OIDC auth path must still populate.
+        // Assert BOTH fields are present on the OIDC branch AND that the SAML
+        // branch's samlLogoutHref is not bleeding into OIDC's field.
         let libraryMock = TPPLibraryAccountMock()
-        XCTAssertNotNil(libraryMock.oidcAuthentication.oidcLogoutHref,
-                        "Adding samlLogoutHref must not regress oidcLogoutHref parsing")
+        let oidc = libraryMock.oidcAuthentication
+        let saml = libraryMock.samlAuthentication
+
+        XCTAssertNotNil(oidc.oidcLogoutHref,
+                        "OIDC auth must still expose oidcLogoutHref after samlLogoutHref was added")
+        XCTAssertNil(oidc.samlLogoutHref,
+                     "OIDC auth must NOT expose samlLogoutHref — SAML-specific field")
+        XCTAssertNotNil(saml.samlLogoutHref,
+                        "SAML auth must expose samlLogoutHref (precondition this test guards against)")
     }
 }
 

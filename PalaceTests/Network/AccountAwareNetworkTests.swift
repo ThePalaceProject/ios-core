@@ -158,12 +158,29 @@ final class AccountAwareNetworkTests: XCTestCase {
 
     // MARK: - Cancel Non-Essential Tasks
 
-    func testCancelNonEssentialTasks_DoesNotCrash() {
+    func testCancelNonEssentialTasks_DoesNotCrash_andLeavesExecutorFullyUsable() {
+        // cancelNonEssentialTasks is called on account switch and during
+        // memory pressure. After it runs, the executor must still produce
+        // valid requests for new URLs (next-account preloads land here
+        // within milliseconds of the switch).
         TPPNetworkExecutor.shared.cancelNonEssentialTasks()
-        // Verify the executor remains usable after cancellation
-        let url = URL(string: "https://example.com/")!
-        let request = TPPNetworkExecutor.shared.request(for: url, useTokenIfAvailable: false)
-        XCTAssertEqual(request.url, url, "Executor must still build requests after cancel")
+
+        let urlA = URL(string: "https://example.com/a")!
+        let urlB = URL(string: "https://example.com/b/with/path?q=1")!
+
+        let requestA = TPPNetworkExecutor.shared.request(for: urlA, useTokenIfAvailable: false)
+        let requestB = TPPNetworkExecutor.shared.request(for: urlB, useTokenIfAvailable: true)
+
+        XCTAssertEqual(requestA.url, urlA,
+                       "Executor must still build requests for URL A after cancel")
+        XCTAssertEqual(requestB.url, urlB,
+                       "Executor must also produce requests for URL B with a different token strategy")
+
+        // Second cancel must also be safe (observed under rapid account swaps).
+        TPPNetworkExecutor.shared.cancelNonEssentialTasks()
+        let requestC = TPPNetworkExecutor.shared.request(for: urlA, useTokenIfAvailable: false)
+        XCTAssertEqual(requestC.url, urlA,
+                       "Executor must survive back-to-back cancels")
     }
 
     func testCancelNonEssentialTasks_CancelsActiveTasks() {

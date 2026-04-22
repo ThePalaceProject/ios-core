@@ -85,9 +85,21 @@ final class AudiobookSessionErrorExtTests: XCTestCase {
         XCTAssertFalse(AudiobookSessionError.alreadyLoading.localizedDescription.isEmpty)
     }
 
-    func testUnknownErrorDescription() {
-        let error = AudiobookSessionError.unknown("Custom error message")
-        XCTAssertEqual(error.localizedDescription, "Custom error message")
+    func testUnknownErrorDescription_preservesCallerMessageVerbatim() {
+        // .unknown forwards the caller's message to the UI unchanged. Covers
+        // simple strings, empty strings (still a valid payload, not nil), and
+        // multi-line content that shows up in Crashlytics breadcrumbs.
+        let cases = [
+            "Custom error message",
+            "",
+            "line one\nline two\t\"quoted\"",
+            "emoji 📚 and unicode é"
+        ]
+        for message in cases {
+            XCTAssertEqual(AudiobookSessionError.unknown(message).localizedDescription,
+                           message,
+                           ".unknown must return the input message verbatim for '\(message)'")
+        }
     }
 
     func testUnknownErrorEquality() {
