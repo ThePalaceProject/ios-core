@@ -6,6 +6,7 @@
 
 import Foundation
 import UIKit
+import SafariServices
 import PalaceAudiobookToolkit
 
 /// Encapsulates book action handling (download, return, read, reserve, etc.)
@@ -285,14 +286,22 @@ final class BookActionHandler {
 
     private func presentWebView(_ url: URL?) {
         guard let url = url else { return }
-        let webController = BundledHTMLViewController(
-            fileURL: url,
+        guard let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else { return }
+        let controller = Self.previewController(
+            for: url,
             title: AccountsManager.shared.currentAccount?.name ?? ""
         )
+        top.present(controller, animated: true)
+    }
 
-        if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
-            top.present(webController, animated: true)
+    // Remote URLs require SFSafariViewController — third-party preview readers
+    // depend on Web APIs our embedded WKWebView doesn't expose. Local file://
+    // previews stay in BundledHTMLViewController.
+    static func previewController(for url: URL, title: String) -> UIViewController {
+        if url.scheme == "http" || url.scheme == "https" {
+            return SFSafariViewController(url: url)
         }
+        return BundledHTMLViewController(fileURL: url, title: title)
     }
 
     func presentUnsupportedItemError() {

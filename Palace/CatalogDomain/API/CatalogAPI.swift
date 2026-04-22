@@ -12,6 +12,7 @@ public protocol CatalogAPI {
 public final class DefaultCatalogAPI: CatalogAPI {
     public let client: NetworkClient
     public let parser: OPDSParser
+    private let inflight = InflightFeedFetches()
 
     public init(client: NetworkClient, parser: OPDSParser) {
         self.client = client
@@ -19,6 +20,15 @@ public final class DefaultCatalogAPI: CatalogAPI {
     }
 
     public func fetchFeed(at url: URL) async throws -> CatalogFeed? {
+        // Concurrent callers for the same URL share one network request.
+        // Prevents N-way fan-out when search fires while the initial catalog
+        // is still loading (each keystroke used to re-fetch /groups/).
+        try await inflight.run(url: url) { [self] in
+            try await self.fetchFeedFromNetwork(at: url)
+        }
+    }
+
+    private func fetchFeedFromNetwork(at url: URL) async throws -> CatalogFeed? {
         let acceptHeader = RemoteFeatureFlags.shared.isOPDS2Enabled
             ? "application/opds+json, application/atom+xml;q=0.9, */*;q=0.1"
             : "application/atom+xml, */*;q=0.1"
@@ -184,5 +194,26 @@ public final class DefaultCatalogAPI: CatalogAPI {
             }
         }
         return entries
+    }
+}
+
+/// Deduplicates concurrent feed fetches keyed by URL. Callers arriving while
+/// a fetch is in flight share the existing task. The creator clears the
+/// entry inline after the task resolves, so a subsequent sequential caller
+/// always fires a fresh request (no fire-and-forget cleanup race).
+actor InflightFeedFetches {
+    private var tasks: [URL: Task<CatalogFeed?, Error>] = [:]
+
+    func run(
+        url: URL,
+        _ work: @Sendable @escaping () async throws -> CatalogFeed?
+    ) async throws -> CatalogFeed? {
+        if let existing = tasks[url] {
+            return try await existing.value
+        }
+        let task = Task<CatalogFeed?, Error> { try await work() }
+        tasks[url] = task
+        defer { tasks.removeValue(forKey: url) }
+        return try await task.value
     }
 }

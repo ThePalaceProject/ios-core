@@ -213,4 +213,45 @@ final class BookCellModelActionTests: XCTestCase {
         XCTAssertNil(model.showAlert,
             "Remove (local delete) should not show a confirmation alert")
     }
+
+    // MARK: - Reader presentation debounce (PP-4116)
+    //
+    // Rapidly tapping Read used to stack two reader presentations because
+    // didSelectRead set isLoading=true then cleared it synchronously, leaving
+    // no window for the second tap to detect an in-progress presentation.
+
+    func testAcquireReaderPresentationLock_FirstCall_Succeeds() {
+        let model = makeModel()
+
+        XCTAssertTrue(model.acquireReaderPresentationLock(),
+            "First acquisition must succeed — no presentation in flight yet")
+        XCTAssertTrue(model.isPresentingReader,
+            "Lock must flip isPresentingReader on successful acquisition")
+    }
+
+    func testAcquireReaderPresentationLock_SecondRapidCall_IsBlocked() {
+        let model = makeModel()
+
+        _ = model.acquireReaderPresentationLock()
+        let secondResult = model.acquireReaderPresentationLock()
+
+        XCTAssertFalse(secondResult,
+            "Second rapid acquisition must be blocked while the first is still in flight")
+    }
+
+    func testAcquireReaderPresentationLock_ReleasesAfterDelay() {
+        let model = makeModel()
+        _ = model.acquireReaderPresentationLock()
+        XCTAssertTrue(model.isPresentingReader)
+
+        let released = expectation(description: "Lock releases after debounce window")
+        // 0.5s lock window + 0.3s buffer — the async dispatch must clear the flag.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            if !model.isPresentingReader { released.fulfill() }
+        }
+        wait(for: [released], timeout: 2.0)
+
+        XCTAssertTrue(model.acquireReaderPresentationLock(),
+            "After the debounce window expires, a fresh tap must be able to re-acquire")
+    }
 }

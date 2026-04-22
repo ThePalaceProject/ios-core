@@ -405,3 +405,78 @@ extension CatalogRepositoryTests {
         }
     }
 }
+
+// MARK: - In-flight fetch deduplication
+//
+// Regression guard: search-before-load used to fan out to 5 concurrent /groups/
+// requests because every keystroke-triggered search needed the base feed to
+// resolve the OPDS2 search URL. These tests pin the invariant that concurrent
+// callers share one network fetch.
+
+final class CatalogAPIDedupeTests: XCTestCase {
+
+    private var networkClient: NetworkClientMock!
+    private var api: DefaultCatalogAPI!
+    private let feedURL = URL(string: "https://library.example.com/groups/")!
+    private let otherURL = URL(string: "https://library.example.com/other/")!
+
+    override func setUp() {
+        super.setUp()
+        networkClient = NetworkClientMock()
+        api = DefaultCatalogAPI(client: networkClient, parser: OPDSParser())
+        networkClient.stubOPDSResponse(
+            for: feedURL,
+            xml: NetworkClientMock.makeOPDSFeedXML(title: "Base")
+        )
+        networkClient.stubOPDSResponse(
+            for: otherURL,
+            xml: NetworkClientMock.makeOPDSFeedXML(title: "Other")
+        )
+        // Hold the first in-flight request long enough for concurrent callers
+        // to arrive and observe the in-flight task rather than starting their own.
+        networkClient.simulatedDelay = 0.1
+    }
+
+    override func tearDown() {
+        networkClient = nil
+        api = nil
+        super.tearDown()
+    }
+
+    func testFetchFeed_ConcurrentCallersForSameURL_ShareOneNetworkRequest() async throws {
+        async let a = api.fetchFeed(at: feedURL)
+        async let b = api.fetchFeed(at: feedURL)
+        async let c = api.fetchFeed(at: feedURL)
+        async let d = api.fetchFeed(at: feedURL)
+        async let e = api.fetchFeed(at: feedURL)
+
+        _ = try await (a, b, c, d, e)
+
+        XCTAssertEqual(
+            networkClient.sendCallCount, 1,
+            "Five concurrent fetchFeed calls for the same URL must collapse to a single network request."
+        )
+    }
+
+    func testFetchFeed_ConcurrentCallersForDifferentURLs_DoNotDedupe() async throws {
+        async let a = api.fetchFeed(at: feedURL)
+        async let b = api.fetchFeed(at: otherURL)
+
+        _ = try await (a, b)
+
+        XCTAssertEqual(
+            networkClient.sendCallCount, 2,
+            "Fetches for different URLs must NOT be deduped — each URL gets its own request."
+        )
+    }
+
+    func testFetchFeed_SequentialCallsAfterCompletion_FireFreshRequests() async throws {
+        _ = try await api.fetchFeed(at: feedURL)
+        _ = try await api.fetchFeed(at: feedURL)
+
+        XCTAssertEqual(
+            networkClient.sendCallCount, 2,
+            "Once the first fetch completes the in-flight slot must clear so a later caller fires a fresh request."
+        )
+    }
+}

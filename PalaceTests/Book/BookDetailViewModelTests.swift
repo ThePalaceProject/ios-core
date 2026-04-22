@@ -9,6 +9,7 @@
 
 import XCTest
 import Combine
+import SafariServices
 @testable import Palace
 
 @MainActor
@@ -771,6 +772,48 @@ final class BookDetailViewModelUnitTests: XCTestCase {
 
     // Assert - Should end up in final state
     XCTAssertEqual(viewModel.bookState, .downloadSuccessful)
+  }
+}
+
+// MARK: - Preview Routing (PP-2979 regression pin)
+//
+// PP-2979 (commit 384b6aef9) added SFSafariViewController routing because
+// third-party preview readers (e.g. Cantook) need Web APIs that the embedded
+// WKWebView doesn't expose. The routing was dropped when BookActionHandler
+// was extracted from BookDetailViewModel — these tests pin the invariant so
+// the next refactor can't silently regress it.
+
+@MainActor
+final class BookActionHandlerPreviewRoutingTests: XCTestCase {
+
+  func testPreviewController_ForHTTPSURL_ReturnsSafariViewController() {
+    let url = URL(string: "https://marketplace.example.com/preview/abc")!
+
+    let controller = BookActionHandler.previewController(for: url, title: "Lib")
+
+    XCTAssertTrue(
+      controller is SFSafariViewController,
+      "Remote https previews must use SFSafariViewController — third-party readers rely on full Safari Web APIs."
+    )
+  }
+
+  func testPreviewController_ForHTTPURL_ReturnsSafariViewController() {
+    let url = URL(string: "http://marketplace.example.com/preview/abc")!
+
+    let controller = BookActionHandler.previewController(for: url, title: "Lib")
+
+    XCTAssertTrue(controller is SFSafariViewController)
+  }
+
+  func testPreviewController_ForFileURL_ReturnsBundledHTMLViewController() {
+    let url = URL(fileURLWithPath: "/tmp/sample.html")
+
+    let controller = BookActionHandler.previewController(for: url, title: "Lib")
+
+    XCTAssertTrue(
+      controller is BundledHTMLViewController,
+      "Local file:// previews must stay in BundledHTMLViewController — SFSafariViewController cannot load file URLs."
+    )
   }
 }
 
