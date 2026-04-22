@@ -7628,9 +7628,8 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 463;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
