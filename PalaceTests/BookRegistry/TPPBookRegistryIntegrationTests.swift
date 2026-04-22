@@ -496,8 +496,7 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
         registry.removeBook(forIdentifier: book.identifier)
     }
 
-    func testAddOrReplaceGenericBookmark_ReplacesExisting() throws {
-        try XCTSkipIf(true, "TEST-BLOCKED: pre-existing test pollution from upstream singleton state; pre-fixes the request count is off-by-one or async wait times out. Needs deeper trace of polluter.")
+    func testAddOrReplaceGenericBookmark_ReplacesExisting() {
         let registry = TPPBookRegistry.shared
         let book = TPPBookMocker.mockBook(identifier: "add-or-replace-\(UUID().uuidString)",
                                           title: "Add Or Replace",
@@ -510,7 +509,8 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
         let similar = TPPBookLocation(locationString: "{\"chapter\": 1}", renderer: "R1")!
         registry.addOrReplaceGenericBookmark(similar, forIdentifier: book.identifier)
 
-        XCTAssertEqual(registry.genericBookmarksForIdentifier(book.identifier).count, 1)
+        XCTAssertEqual(registry.genericBookmarksForIdentifier(book.identifier).count, 1,
+                       "addOrReplace should leave the count unchanged when the new bookmark matches an existing one")
 
         registry.removeBook(forIdentifier: book.identifier)
     }
