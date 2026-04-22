@@ -130,24 +130,26 @@ final class SignInModalSAMLOIDCTests: XCTestCase {
         }
     }
 
-    // MARK: - SignInModalPresenter guard: SAML/OIDC not blocked
+    // MARK: - SignInModalPresenter guard: needsAuth classification
 
     /// Simulates what SignInModalPresenter checks:
     /// if !userAccount.needsAuth → skip modal.
-    /// For SAML/OIDC, needsAuth must be true so the modal IS presented.
-    func testSignInModalGuard_samlNotBlocked() {
-        let needsAuth = UserAccountAuthHelper.needsAuth(authType: .saml)
-        XCTAssertTrue(needsAuth, "SAML must pass the needsAuth check — sign-in modal should NOT be skipped")
-    }
+    /// Credential auth types must pass needsAuth so the modal IS presented;
+    /// anonymous must fail it so no empty sign-in modal pops up for open-access
+    /// libraries (SQ-005 regression).
+    func testSignInModalGuard_needsAuth_classifiesAuthTypesCorrectly() {
+        let requireAuth: [AccountDetails.AuthType] = [.basic, .oauthIntermediary, .saml, .token, .oidc]
+        let skipAuth: [AccountDetails.AuthType] = [.anonymous]
 
-    func testSignInModalGuard_oidcNotBlocked() {
-        let needsAuth = UserAccountAuthHelper.needsAuth(authType: .oidc)
-        XCTAssertTrue(needsAuth, "OIDC must pass the needsAuth check — sign-in modal should NOT be skipped")
-    }
+        for type in requireAuth {
+            XCTAssertTrue(UserAccountAuthHelper.needsAuth(authType: type),
+                          "\(type) must pass needsAuth — sign-in modal should NOT be skipped for credential flows")
+        }
 
-    func testSignInModalGuard_anonymousBlocked() {
-        let needsAuth = UserAccountAuthHelper.needsAuth(authType: .anonymous)
-        XCTAssertFalse(needsAuth, "Anonymous auth should be blocked by the needsAuth guard (SQ-005)")
+        for type in skipAuth {
+            XCTAssertFalse(UserAccountAuthHelper.needsAuth(authType: type),
+                           "\(type) must fail needsAuth — sign-in modal should be skipped (SQ-005: no empty modal on open-access libraries)")
+        }
     }
 
     // MARK: - Helpers
