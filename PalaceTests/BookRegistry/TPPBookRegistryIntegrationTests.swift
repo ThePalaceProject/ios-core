@@ -804,6 +804,12 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
     }
 
     func testCrashlytics30c41d7e_RapidRegistryMutations_DoNotCrashPublisher() {
+        // Regression test for Crashlytics 30c41d7e (EXC_BAD_ACCESS during concurrent
+        // publisher reads and registry writes). The subscription stays live throughout
+        // rapid addBook/removeBook bursts so the race window stays open; assertions
+        // check the final registry state rather than publisher emission *counts*, which
+        // are scheduling-dependent under load and cause flakes (the publisher may
+        // coalesce rapid emissions or the main-thread sink may drop behind the writes).
         let registry = TPPBookRegistry.shared
         let count = 20
         let books = (0..<count).map { i in
@@ -811,36 +817,50 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
                                    title: "Thread Safety Book \(i)",
                                    distributorType: .EpubZip)
         }
+        let bookIds = Set(books.map { $0.identifier })
 
-        var snapshotCount = 0
-        let addExpectation = self.expectation(description: "Publisher emits at least \(count) snapshots")
-        addExpectation.assertForOverFulfill = false
-
+        // Keep a subscription live to force concurrent reads from the publisher side
+        // against the writes about to be issued. Side-effect the records accessor so
+        // the compiler can't optimize the read away.
         registry.registryPublisher
             .sink { records in
                 _ = records.count
                 _ = records.keys.map { $0 }
-                snapshotCount += 1
-                if snapshotCount >= count { addExpectation.fulfill() }
             }
             .store(in: &cancellables)
 
-        for book in books { registry.addBook(book, state: .downloadNeeded) }
-
-        waitForExpectations(timeout: 5.0)
-        XCTAssertGreaterThanOrEqual(snapshotCount, count)
-
-        // Rapidly remove while still subscribed — should not crash
-        let lastBook = books.last!
-        let removeExpectation = self.expectation(description: "Registry no longer contains last book")
+        // Burst of concurrent adds.
+        let addExpectation = self.expectation(description: "All \(count) books present in registry")
         registry.registryPublisher
-            .filter { $0[lastBook.identifier] == nil }
+            .filter { records in bookIds.isSubset(of: Set(records.keys)) }
+            .first()
+            .sink { _ in addExpectation.fulfill() }
+            .store(in: &cancellables)
+
+        for book in books { registry.addBook(book, state: .downloadNeeded) }
+        waitForExpectations(timeout: 10.0)
+
+        // Verify the state we waited for.
+        for book in books {
+            XCTAssertNotNil(registry.book(forIdentifier: book.identifier),
+                            "Book \(book.identifier) should be in registry after addBook burst")
+        }
+
+        // Burst of concurrent removes — must not crash, and all 20 must be gone.
+        let removeExpectation = self.expectation(description: "All \(count) books removed from registry")
+        registry.registryPublisher
+            .filter { records in bookIds.isDisjoint(with: Set(records.keys)) }
             .first()
             .sink { _ in removeExpectation.fulfill() }
             .store(in: &cancellables)
 
         for book in books { registry.removeBook(forIdentifier: book.identifier) }
-        waitForExpectations(timeout: 3.0)
+        waitForExpectations(timeout: 10.0)
+
+        for book in books {
+            XCTAssertNil(registry.book(forIdentifier: book.identifier),
+                         "Book \(book.identifier) should be absent after removeBook burst")
+        }
     }
 
     func testCrashlytics30c41d7e_ConcurrentAddAndUpdate_DoNotCrash() {
