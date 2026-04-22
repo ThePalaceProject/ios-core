@@ -78,11 +78,20 @@ final class TPPSaveDRMCredentialsTests: XCTestCase {
     }
 
     func testSaveDRMCredentials_savesAuthorizationIdentifier() {
+        // saveDRMCredentials parses a patron-profile JSON blob and persists
+        // BOTH the authorization identifier (for loan sync) and the licensor
+        // payload (for Adobe DRM). A regression that dropped either would
+        // leave the account half-signed-in — loans show up but DRM activation
+        // fails on first open.
         let data = TPPFake.validUserProfileJson.data(using: .utf8)!
 
         businessLogic.saveDRMCredentials(data, loggingContext: [:])
 
-        XCTAssertEqual(businessLogic.userAccount.authorizationIdentifier, "23333999999915")
+        XCTAssertEqual(businessLogic.userAccount.authorizationIdentifier,
+                       "23333999999915",
+                       "authorization_identifier from profile JSON must be persisted")
+        XCTAssertNotNil(businessLogic.userAccount.licensor,
+                        "licensor payload must also be saved alongside authorization identifier")
     }
 
     func testSaveDRMCredentials_succeedsWithNoDRMInfo() {
@@ -324,11 +333,34 @@ final class TPPBookRequiresAdobeDRMTests: XCTestCase {
                        "Open access book should NOT require Adobe DRM")
     }
 
-    /// Book with no acquisitions should NOT require Adobe DRM
-    func testRequiresAdobeDRM_falseWhenNoAcquisitions() {
-        let book = makeBook(identifier: "test-no-acquisitions", title: "No Acquisitions Book", acquisitions: [])
-        XCTAssertFalse(book.requiresAdobeDRM,
-                       "Book with no acquisitions should NOT require Adobe DRM")
+    /// Books that don't require Adobe DRM: no acquisitions, or acquisitions
+    /// that carry non-DRM indirect types (LCP, open-access).
+    func testRequiresAdobeDRM_falseWhenNoAdobeAcquisitionsPresent() {
+        // A `requiresAdobeDRM == true` on a non-DRM book would trigger an
+        // Adobe activation prompt on open for a book that doesn't need it —
+        // the exact over-activation UX the deferred-activation work exists
+        // to prevent.
+        let empty = makeBook(identifier: "no-acquisitions-\(UUID().uuidString)",
+                             title: "No Acquisitions Book",
+                             acquisitions: [])
+        XCTAssertFalse(empty.requiresAdobeDRM,
+                       "Book with no acquisitions must not require Adobe DRM")
+
+        let lcpAcquisition = TPPOPDSAcquisition(
+            relation: .borrow,
+            type: "application/opds+json",
+            hrefURL: URL(string: "https://example.com/borrow")!,
+            indirectAcquisitions: [
+                TPPOPDSIndirectAcquisition(type: "application/vnd.readium.lcp.license.v1.0+json",
+                                           indirectAcquisitions: [])
+            ],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let lcpBook = makeBook(identifier: "lcp-only-\(UUID().uuidString)",
+                               title: "LCP Only Book",
+                               acquisitions: [lcpAcquisition])
+        XCTAssertFalse(lcpBook.requiresAdobeDRM,
+                       "Book with only LCP indirect acquisitions must not require Adobe DRM")
     }
 
     /// Book from the existing OPDS test fixture (contains Adobe DRM links)

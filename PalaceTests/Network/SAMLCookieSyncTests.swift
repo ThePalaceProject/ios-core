@@ -127,21 +127,39 @@ final class SAMLCookieSyncTests: XCTestCase {
 
 final class SignOutCacheClearingTests: XCTestCase {
 
-    func testClearCache_doesNotCrash() {
+    func testClearCache_doesNotCrash_andExecutorStaysReusable() {
+        // Sign-out path clears both the executor's own cache and URLCache.shared,
+        // then the executor must still be reusable (the app keeps running after
+        // sign-out). Regression: a cache-clear that also tore down the executor
+        // would silently break every subsequent request with no error.
         TPPNetworkExecutor.shared.clearCache()
         URLCache.shared.removeAllCachedResponses()
-        // Executor must remain functional after cache is cleared
+
         XCTAssertNotNil(TPPNetworkExecutor.shared,
                         "Executor must remain valid after clearCache")
+
+        // Second clear must also be safe (sign-in → sign-out → sign-in flow).
+        TPPNetworkExecutor.shared.clearCache()
+        XCTAssertNotNil(TPPNetworkExecutor.shared,
+                        "Executor must survive two clearCache calls in a row")
     }
 
-    func testURLCacheShared_clearDoesNotCrash() {
+    func testURLCacheShared_clearIsIdempotentAndPreservesCapacity() {
+        // URLCache.shared is used by Readium, image loading, etc. Clearing must
+        // not drop its configured capacity (which is set at app launch) —
+        // otherwise subsequent cached fetches silently degrade.
+        let memoryCapacityBefore = URLCache.shared.memoryCapacity
+        let diskCapacityBefore = URLCache.shared.diskCapacity
+
         URLCache.shared.removeAllCachedResponses()
-        // Clearing twice in a row must be safe (idempotent)
         URLCache.shared.removeAllCachedResponses()
-        // URLCache.shared must still be accessible after clearing
+
         XCTAssertNotNil(URLCache.shared,
                         "URLCache.shared must remain non-nil after removeAllCachedResponses")
+        XCTAssertEqual(URLCache.shared.memoryCapacity, memoryCapacityBefore,
+                       "memoryCapacity must survive cache clear")
+        XCTAssertEqual(URLCache.shared.diskCapacity, diskCapacityBefore,
+                       "diskCapacity must survive cache clear")
     }
 
     func testNetworkExecutorAndSharedCache_areSeparate() {

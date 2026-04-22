@@ -93,9 +93,23 @@ final class BearerTokenResponseDetectionTests: XCTestCase {
         XCTAssertNotNil(token, "Bearer token JSON with 'expiration' key (instead of 'expires_in') should be detected")
     }
 
-    func testEmptyJSON_isNotBearerToken() {
-        let token = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: [:])
-        XCTAssertNil(token, "Empty JSON should not be detected as bearer token")
+    func testNonBearerJSONShapes_areRejected() {
+        // Guards against false positives in bearer-token detection: an
+        // incorrectly-classified LCP license, OPDS problem doc, or empty
+        // response would cause the app to treat the content as an auth
+        // token and pass it to the reader stack — which silently fails with
+        // "content couldn't be opened" rather than a clear error.
+        let shapes: [(name: String, json: [String: Any])] = [
+            ("empty", [:]),
+            ("only unrelated keys", ["foo": "bar", "baz": 42]),
+            ("missing token field", ["expires_in": 3600, "token_type": "Bearer"]),
+            ("missing expiration + type", ["access_token": "abc"]),
+        ]
+        for (name, json) in shapes {
+            let token = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: json)
+            XCTAssertNil(token,
+                         "'\(name)' JSON must not be classified as a bearer token")
+        }
     }
 
     func testProblemDocumentJSON_isNotBearerToken() {
@@ -966,12 +980,27 @@ final class LCPLicenseFilePathTests: XCTestCase {
             "License path must be derived by replacing .lcpa with .lcpl")
     }
 
-    func testLCPLicensePath_fromEpubExtension() {
-        let contentURL = URL(fileURLWithPath: "/data/content/abc123.epub")
-        let licenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
-
-        XCTAssertEqual(licenseURL.pathExtension, "lcpl",
-            "Even non-lcpa extensions should produce .lcpl license path")
+    func testLCPLicensePath_everyContentExtensionProducesLcplSibling() {
+        // The .lcpl license must live next to the content file regardless of
+        // the content extension (.lcpa, .epub, audiobook, PDF). A mutation that
+        // hardcoded the mapping for one extension would break download for
+        // the others — users would hit "license not found" on open.
+        let cases: [(contentPath: String, expectedLicensePath: String)] = [
+            ("/data/content/abc123.lcpa",  "/data/content/abc123.lcpl"),
+            ("/data/content/abc123.epub",  "/data/content/abc123.lcpl"),
+            ("/data/content/pdf-book.pdf", "/data/content/pdf-book.lcpl"),
+            ("/data/content/nested/dir/audio.audiobook",
+                                           "/data/content/nested/dir/audio.lcpl"),
+        ]
+        for (content, expected) in cases {
+            let contentURL = URL(fileURLWithPath: content)
+            let licenseURL = contentURL.deletingPathExtension()
+                                        .appendingPathExtension("lcpl")
+            XCTAssertEqual(licenseURL.path, expected,
+                "content '\(content)' must yield license '\(expected)'")
+            XCTAssertEqual(licenseURL.pathExtension, "lcpl",
+                "license file must always use .lcpl extension")
+        }
     }
 }
 
