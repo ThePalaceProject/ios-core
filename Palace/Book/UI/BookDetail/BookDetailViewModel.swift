@@ -85,7 +85,10 @@ final class BookDetailViewModel: ObservableObject {
     let registry: TPPBookRegistryProvider
     let downloadCenter: MyBooksDownloadCenter
     private let accountsManager: AccountsManager
+    private let metadataHydrator: BookMetadataHydrator
     private var cancellables = Set<AnyCancellable>()
+
+    typealias BookMetadataHydrator = (URL) async throws -> TPPBook?
 
     // Note: audiobook management moved to BookService
     // private var audiobookViewController: UIViewController? // No longer used
@@ -112,11 +115,18 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     /// Initializer with dependency injection for testing
-    init(book: TPPBook, registry: TPPBookRegistryProvider, downloadCenter: MyBooksDownloadCenter = .shared, accountsManager: AccountsManager = .shared) {
+    init(
+        book: TPPBook,
+        registry: TPPBookRegistryProvider,
+        downloadCenter: MyBooksDownloadCenter = .shared,
+        accountsManager: AccountsManager = .shared,
+        metadataHydrator: @escaping BookMetadataHydrator = BookDetailViewModel.defaultMetadataHydrator
+    ) {
         self.book = book
         self.registry = registry
         self.downloadCenter = downloadCenter
         self.accountsManager = accountsManager
+        self.metadataHydrator = metadataHydrator
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
@@ -339,6 +349,81 @@ final class BookDetailViewModel: ObservableObject {
                 #endif
             }
         }
+    }
+
+    // MARK: - Metadata Hydration
+
+    /// Some OPDS servers serve lightweight `<entry>` blocks inside grouped-lane
+    /// feeds — they omit `<dcterms:issued>`, `<bibframe:publisher>`,
+    /// `<distribution>`, and `<category>`. When the user lands on the detail
+    /// view from a swimlane, the INFORMATION section would render empty rows.
+    /// Re-fetching the single-entry feed at `alternateURL` returns the full
+    /// metadata; we merge the missing fields in without disturbing navigational
+    /// state (acquisitions, related/revoke/report URLs) that the lane entry
+    /// does populate.
+    func hydrateMetadataIfNeeded() async {
+        guard Self.needsMetadataHydration(book) else { return }
+        guard let url = book.alternateURL else { return }
+
+        let targetIdentifier = book.identifier
+        do {
+            guard let fresh = try await metadataHydrator(url) else { return }
+            guard book.identifier == targetIdentifier else { return }
+            guard Self.needsMetadataHydration(book) else { return }
+
+            let merged = Self.mergeHydratedMetadata(into: book, fresh: fresh)
+            book = merged
+            _ = registry.updatedBookMetadata(merged)
+        } catch {
+            Log.warn(#file, "Failed to hydrate book metadata: \(error.localizedDescription)")
+        }
+    }
+
+    static let defaultMetadataHydrator: BookMetadataHydrator = { url in
+        let feed = try await OPDSFeedService.shared.fetchFeed(
+            from: url,
+            useToken: AccountsManager.shared.currentUserAccount.hasAdobeToken()
+        )
+        guard let entries = feed.entries as? [TPPOPDSEntry],
+              let entry = entries.first else { return nil }
+        return TPPBook(entry: entry)
+    }
+
+    private static func needsMetadataHydration(_ book: TPPBook) -> Bool {
+        book.published == nil
+            && (book.publisher?.isEmpty ?? true)
+            && (book.distributor?.isEmpty ?? true)
+            && (book.categoryStrings?.isEmpty ?? true)
+    }
+
+    private static func mergeHydratedMetadata(into current: TPPBook, fresh: TPPBook) -> TPPBook {
+        TPPBook(
+            acquisitions: current.acquisitions,
+            authors: current.bookAuthors,
+            categoryStrings: (current.categoryStrings?.isEmpty ?? true) ? fresh.categoryStrings : current.categoryStrings,
+            distributor: (current.distributor?.isEmpty ?? true) ? fresh.distributor : current.distributor,
+            identifier: current.identifier,
+            imageURL: current.imageURL ?? fresh.imageURL,
+            imageThumbnailURL: current.imageThumbnailURL ?? fresh.imageThumbnailURL,
+            published: current.published ?? fresh.published,
+            publisher: (current.publisher?.isEmpty ?? true) ? fresh.publisher : current.publisher,
+            subtitle: current.subtitle ?? fresh.subtitle,
+            summary: (current.summary?.isEmpty ?? true) ? fresh.summary : current.summary,
+            title: current.title,
+            updated: current.updated,
+            annotationsURL: current.annotationsURL,
+            analyticsURL: current.analyticsURL,
+            alternateURL: current.alternateURL,
+            relatedWorksURL: current.relatedWorksURL,
+            previewLink: current.previewLink ?? fresh.previewLink,
+            seriesURL: current.seriesURL,
+            revokeURL: current.revokeURL,
+            reportURL: current.reportURL,
+            timeTrackingURL: current.timeTrackingURL,
+            contributors: current.contributors,
+            bookDuration: (current.bookDuration?.isEmpty ?? true) ? fresh.bookDuration : current.bookDuration,
+            imageCache: current.imageCache
+        )
     }
 
     // MARK: - Related Books

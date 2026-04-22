@@ -96,6 +96,7 @@ struct BookDetailView: View {
                 lastOffset = 0
 
                 viewModel.fetchRelatedBooks()
+                Task { await viewModel.hydrateMetadataIfNeeded() }
                 self.descriptionText = viewModel.book.summary ?? ""
                 accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                     pulseSkeleton = true
