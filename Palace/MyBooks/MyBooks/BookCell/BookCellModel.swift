@@ -9,6 +9,7 @@
 import Foundation
 import Combine
 import SwiftUI
+import SafariServices
 import PalaceAudiobookToolkit
 
 enum BookCellState {
@@ -51,6 +52,12 @@ class BookCellModel: ObservableObject {
             statePublisher.send(isLoading)
         }
     }
+
+    // Debounce guard for the Read/Listen button. Rapid taps used to stack two
+    // reader presentations (PP-4116) because isLoading flips back to false
+    // synchronously after the presentation trigger.
+    @Published private(set) var isPresentingReader: Bool = false
+    private static let readerPresentationLockWindow: TimeInterval = 0.5
 
     @Published private var currentBookIdentifier: String?
 
@@ -437,6 +444,10 @@ extension BookCellModel {
     }
 
     func didSelectRead() {
+        guard acquireReaderPresentationLock() else {
+            Log.debug(#file, "didSelectRead ignored — reader presentation already in flight")
+            return
+        }
         isLoading = true
         switch book.defaultBookContentType {
         case .epub:
@@ -457,6 +468,19 @@ extension BookCellModel {
         default:
             self.isLoading = false
         }
+    }
+
+    /// Returns `true` if the caller may proceed with reader presentation.
+    /// Returns `false` if a presentation is already in flight (rapid repeat tap).
+    /// The lock auto-releases after `readerPresentationLockWindow` so the button
+    /// stays usable for legitimate re-entry.
+    func acquireReaderPresentationLock() -> Bool {
+        guard !isPresentingReader else { return false }
+        isPresentingReader = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.readerPresentationLockWindow) { [weak self] in
+            self?.isPresentingReader = false
+        }
+        return true
     }
 
     private func openAudiobookFromCell() {
@@ -566,14 +590,10 @@ extension BookCellModel {
         if book.defaultBookContentType == .audiobook {
             if book.sampleAcquisition?.type == "text/html" {
                 SamplePreviewManager.shared.close()
-                if let url = book.sampleAcquisition?.hrefURL {
-                    let webController = BundledHTMLViewController(
-                        fileURL: url,
-                        title: accountsManager.currentAccount?.name ?? ""
-                    )
-                    if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
-                        top.present(webController, animated: true)
-                    }
+                if let url = book.sampleAcquisition?.hrefURL,
+                   let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
+                    let safari = SFSafariViewController(url: url)
+                    top.present(safari, animated: true)
                 }
             } else {
                 SamplePreviewManager.shared.toggle(for: book)
@@ -589,9 +609,9 @@ extension BookCellModel {
                 return
             }
             if let sampleWebURL = sampleURL as? EpubSampleWebURL {
-                let web = BundledHTMLViewController(fileURL: sampleWebURL.url, title: self.book.title)
                 if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
-                    top.present(web, animated: true)
+                    let safari = SFSafariViewController(url: sampleWebURL.url)
+                    top.present(safari, animated: true)
                 }
                 return
             }

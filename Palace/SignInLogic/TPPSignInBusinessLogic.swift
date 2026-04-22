@@ -384,20 +384,52 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                                      problemDocument: problemDoc,
                                      metadata: loggingContext)
 
-        let title, message: String?
-        if let problemDoc = problemDoc {
-            title = problemDoc.title
-            message = problemDoc.detail
-        } else {
-            title = Strings.Error.invalidCredentialsErrorTitle
-            message = Strings.Error.invalidCredentialsErrorMessage
-        }
+        let (title, message) = Self.userFacingSignInError(for: error, problemDocument: problemDoc)
 
         TPPMainThreadRun.asyncIfNeeded {
             self.uiDelegate?.businessLogic(self,
                                            didEncounterValidationError: error,
                                            userFriendlyErrorTitle: title,
                                            andMessage: message)
+        }
+    }
+
+    /// Classifies a sign-in failure into a user-facing (title, message) pair.
+    /// Precedence: server-supplied problem document > network-connectivity
+    /// error > default "invalid credentials". Without the connectivity check,
+    /// a dropped Wi-Fi or LTE during sign-in was misreported as bad creds.
+    static func userFacingSignInError(
+        for error: NSError,
+        problemDocument: TPPProblemDocument?
+    ) -> (title: String?, message: String?) {
+        if let problemDocument {
+            return (problemDocument.title, problemDocument.detail)
+        }
+        if isNetworkConnectivityError(error) {
+            return (Strings.Error.networkUnavailableErrorTitle,
+                    Strings.Error.networkUnavailableErrorMessage)
+        }
+        return (Strings.Error.invalidCredentialsErrorTitle,
+                Strings.Error.invalidCredentialsErrorMessage)
+    }
+
+    /// True when the error is from URLSession indicating the request never
+    /// reached the server (lost connection, DNS failure, TLS handshake, etc).
+    static func isNetworkConnectivityError(_ error: NSError) -> Bool {
+        guard error.domain == NSURLErrorDomain else { return false }
+        switch error.code {
+        case NSURLErrorNotConnectedToInternet,
+             NSURLErrorTimedOut,
+             NSURLErrorNetworkConnectionLost,
+             NSURLErrorCannotFindHost,
+             NSURLErrorCannotConnectToHost,
+             NSURLErrorDNSLookupFailed,
+             NSURLErrorDataNotAllowed,
+             NSURLErrorInternationalRoamingOff,
+             NSURLErrorSecureConnectionFailed:
+            return true
+        default:
+            return false
         }
     }
 

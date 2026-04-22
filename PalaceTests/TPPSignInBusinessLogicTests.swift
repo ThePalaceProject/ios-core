@@ -182,4 +182,79 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         XCTAssertNotNil(user)
         XCTAssertNotNil(drmAuthorizer)
     }
+
+    // MARK: - Network-vs-credentials error classification (PP-4117)
+    //
+    // Network loss during sign-in used to render as "Invalid Credentials"
+    // because the fallback path ran unconditionally when no problem document
+    // was attached. These tests pin the precedence:
+    //   1. problem document > 2. network connectivity > 3. invalid credentials.
+
+    private func urlError(_ code: Int) -> NSError {
+        NSError(domain: NSURLErrorDomain, code: code)
+    }
+
+    func testUserFacingSignInError_NoInternet_ReturnsNetworkMessage() {
+        let error = urlError(NSURLErrorNotConnectedToInternet)
+
+        let (title, message) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: nil)
+
+        XCTAssertEqual(title, Strings.Error.networkUnavailableErrorTitle)
+        XCTAssertEqual(message, Strings.Error.networkUnavailableErrorMessage)
+        XCTAssertNotEqual(title, Strings.Error.invalidCredentialsErrorTitle,
+                          "Connectivity error must not surface as invalid credentials.")
+    }
+
+    func testUserFacingSignInError_Timeout_ReturnsNetworkMessage() {
+        let error = urlError(NSURLErrorTimedOut)
+
+        let (title, _) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: nil)
+
+        XCTAssertEqual(title, Strings.Error.networkUnavailableErrorTitle)
+    }
+
+    func testUserFacingSignInError_ConnectionLost_ReturnsNetworkMessage() {
+        let error = urlError(NSURLErrorNetworkConnectionLost)
+
+        let (title, _) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: nil)
+
+        XCTAssertEqual(title, Strings.Error.networkUnavailableErrorTitle)
+    }
+
+    func testUserFacingSignInError_NonURLErrorDomain_ReturnsInvalidCredentials() {
+        // Server returned 401 with no problem doc — not URLErrorDomain, so
+        // the fallback (invalid credentials) is the correct message here.
+        let error = NSError(domain: "TPPErrorDomain", code: 401)
+
+        let (title, message) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: nil)
+
+        XCTAssertEqual(title, Strings.Error.invalidCredentialsErrorTitle)
+        XCTAssertEqual(message, Strings.Error.invalidCredentialsErrorMessage)
+    }
+
+    func testUserFacingSignInError_ProblemDocument_TakesPrecedenceOverNetworkError() throws {
+        // If the server did respond with a problem document, its message wins
+        // even if the underlying NSError code happens to match a network code.
+        let error = urlError(NSURLErrorTimedOut)
+        let json = #"{"type":"about:blank","title":"Account Locked","detail":"Too many attempts."}"#
+        let problemDoc = try TPPProblemDocument.fromData(Data(json.utf8))
+
+        let (title, message) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: problemDoc)
+
+        XCTAssertEqual(title, "Account Locked")
+        XCTAssertEqual(message, "Too many attempts.")
+    }
+
+    func testIsNetworkConnectivityError_OnlyRecognizesURLErrorDomain() {
+        XCTAssertTrue(TPPSignInBusinessLogic.isNetworkConnectivityError(urlError(NSURLErrorNotConnectedToInternet)))
+        XCTAssertTrue(TPPSignInBusinessLogic.isNetworkConnectivityError(urlError(NSURLErrorCannotFindHost)))
+        XCTAssertTrue(TPPSignInBusinessLogic.isNetworkConnectivityError(urlError(NSURLErrorSecureConnectionFailed)))
+
+        XCTAssertFalse(TPPSignInBusinessLogic.isNetworkConnectivityError(
+            NSError(domain: NSURLErrorDomain, code: NSURLErrorUserAuthenticationRequired)),
+            "HTTP auth failures surfaced as URLErrors must NOT be classified as connectivity errors.")
+        XCTAssertFalse(TPPSignInBusinessLogic.isNetworkConnectivityError(
+            NSError(domain: "TPPErrorDomain", code: NSURLErrorNotConnectedToInternet)),
+            "Same code under a different domain is not a URLSession connectivity error.")
+    }
 }

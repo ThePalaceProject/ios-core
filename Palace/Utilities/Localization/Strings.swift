@@ -34,6 +34,8 @@ struct Strings {
         static let loadFailedError = NSLocalizedString("The page could not load due to a conection error.", comment: "")
         static let invalidCredentialsErrorTitle = NSLocalizedString("Invalid Credentials", comment: "")
         static let invalidCredentialsErrorMessage = NSLocalizedString("Please check your username and password and try again.", comment: "")
+        static let networkUnavailableErrorTitle = NSLocalizedString("No Internet Connection", comment: "Title shown when sign-in fails because the device lost connectivity")
+        static let networkUnavailableErrorMessage = NSLocalizedString("Check your connection and try again.", comment: "Message shown when sign-in fails because the device lost connectivity")
         static let sessionExpiredTitle = NSLocalizedString("Session Expired", comment: "Title for session expired alert")
         static let sessionExpiredMessage = NSLocalizedString("Your session has expired. Please sign in again to continue.", comment: "Message explaining that the user's session has expired")
         static let unknownRequestError = NSLocalizedString("An unknown error occurred. Please check your connection or try again later.", comment: "A generic error message for when a network request fails")
