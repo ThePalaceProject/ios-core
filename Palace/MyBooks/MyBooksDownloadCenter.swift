@@ -405,20 +405,6 @@ import OverdriveProcessor
             return
         }
 
-        if TPPSettings.shared.downloadOnlyOnWiFi && !Reachability.shared.isOnWiFi {
-            Log.info(#file, "Download blocked for '\(book.title)' — Wi-Fi only mode is enabled and device is not on Wi-Fi")
-            runOnMainAsync {
-                self.publishAndAnnounceError(
-                    DownloadErrorInfo(
-                        bookId: book.identifier,
-                        title: DisplayStrings.wifiRequired,
-                        message: DisplayStrings.downloadRestrictedToWiFi
-                    )
-                )
-            }
-            return
-        }
-
         let canStart = await downloadCoordinator.canStartDownload(maxConcurrent: maxConcurrentDownloads)
         let activeCount = await downloadCoordinator.activeCount
 
@@ -496,6 +482,24 @@ import OverdriveProcessor
         }
     }
 
+    private var isWifiOnlyEnforced: Bool {
+        TPPSettings.shared.downloadOnlyOnWiFi && !Reachability.shared.isOnWiFi
+    }
+
+    private func failWithWifiRequired(for book: TPPBook) {
+        Log.info(#file, "Download blocked for '\(book.title)' — Wi-Fi only mode is enabled and device is not on Wi-Fi")
+        runOnMainAsync {
+            self.publishAndAnnounceError(
+                DownloadErrorInfo(
+                    bookId: book.identifier,
+                    title: DisplayStrings.wifiRequired,
+                    message: DisplayStrings.downloadRestrictedToWiFi
+                )
+            )
+        }
+        Task { await self.downloadCoordinator.registerCompletion(identifier: book.identifier) }
+    }
+
     private func processDownloadWithCredentials(
         for book: TPPBook,
         withState state: TPPBookState,
@@ -551,6 +555,11 @@ import OverdriveProcessor
 
     #if FEATURE_OVERDRIVE
     private func processOverdriveDownload(for book: TPPBook, withState state: TPPBookState) {
+        if isWifiOnlyEnforced {
+            failWithWifiRequired(for: book)
+            return
+        }
+
         guard let url = book.defaultAcquisition?.hrefURL else { return }
 
         let completion: ([AnyHashable: Any]?, Error?) -> Void = { [weak self] responseHeaders, error in
@@ -643,6 +652,11 @@ import OverdriveProcessor
                     Log.warn(#file, "Auto-borrow completed but book is not downloadable, state: \(newState)")
                 }
             }
+            return
+        }
+
+        if isWifiOnlyEnforced {
+            failWithWifiRequired(for: currentBook)
             return
         }
 
