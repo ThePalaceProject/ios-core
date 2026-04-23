@@ -213,10 +213,23 @@ public class TPPBook: NSObject, ObservableObject {
     }
 
     @objc convenience init?(dictionary: [String: Any]) {
-        guard let categoryStrings = dictionary[CategoriesKey] as? [String],
-              let identifier = dictionary[IdentifierKey] as? String,
-              let title = dictionary[TitleKey] as? String else {
+        // Hard requirements: a book is meaningless without id + title. Everything
+        // else has a sensible default — be forgiving on read so a single malformed
+        // field doesn't wipe a downloaded book from the registry on reload.
+        // Log each missing field separately so we can diagnose registry drift.
+        guard let identifier = dictionary[IdentifierKey] as? String, !identifier.isEmpty else {
+            Log.error(#file, "TPPBook(dictionary:): missing or empty IdentifierKey — dropping")
             return nil
+        }
+        guard let title = dictionary[TitleKey] as? String, !title.isEmpty else {
+            Log.error(#file, "TPPBook(dictionary:): missing or empty TitleKey for id='\(identifier)' — dropping")
+            return nil
+        }
+
+        // Optional fields: salvage the book if these are missing or malformed.
+        let categoryStrings = dictionary[CategoriesKey] as? [String] ?? []
+        if dictionary[CategoriesKey] != nil, !(dictionary[CategoriesKey] is [String]) {
+            Log.warn(#file, "TPPBook(dictionary:): CategoriesKey present but not [String] for id='\(identifier)' — defaulting to []")
         }
 
         let acquisitions: [TPPOPDSAcquisition] = (dictionary[AcquisitionsKey] as? [[String: Any]] ?? []).compactMap {
@@ -253,7 +266,25 @@ public class TPPBook: NSObject, ObservableObject {
         let revokeURL = URL(string: dictionary[RevokeURLKey] as? String ?? "")
         let reportURL = URL(string: dictionary[ReportURLKey] as? String ?? "")
 
-        guard let updated = NSDate.date(withISO8601DateString: dictionary[UpdatedKey] as? String ?? "") as Date? else { return nil }
+        // UpdatedKey is written by `dictionaryRepresentation()` via `updated.rfc339String`
+        // (full RFC 3339 datetime). Parse via RFC 3339 first (matches the writer),
+        // then fall back to ISO 8601 date-only for legacy records or OPDS feeds that
+        // store a bare "2024-09-15". If both fail, log the malformed value and fall
+        // through to Date.distantPast so the book still loads — losing the timestamp
+        // is preferable to losing the downloaded book.
+        let updatedString = dictionary[UpdatedKey] as? String ?? ""
+        let updated: Date
+        if let parsed = (NSDate.date(withRFC3339String: updatedString)
+                         ?? NSDate.date(withISO8601DateString: updatedString)) as Date? {
+            updated = parsed
+        } else {
+            if updatedString.isEmpty {
+                Log.warn(#file, "TPPBook(dictionary:): UpdatedKey missing or empty for id='\(identifier)' — using .distantPast")
+            } else {
+                Log.warn(#file, "TPPBook(dictionary:): UpdatedKey value '\(updatedString)' matched neither RFC 3339 nor ISO 8601 date-only for id='\(identifier)' — using .distantPast")
+            }
+            updated = .distantPast
+        }
 
         self.init(
             acquisitions: acquisitions,

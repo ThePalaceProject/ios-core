@@ -60,6 +60,7 @@
 		0AE0A02A9BFC49CE91440D55 /* AccountDetailView+Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23EE1204A0914891AF2B954A /* AccountDetailView+Constants.swift */; };
 		0B461FFD655EC35ED6C3990A /* OPDSFeedCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE8017D2ECF7E0FEBFAAB1A /* OPDSFeedCache.swift */; };
 		0B72C5306C699DBCB586DBE7 /* MyBooksDownloadCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 317C8F0150303A9AC53BC44F /* MyBooksDownloadCenterTests.swift */; };
+		6BD196ABF46912E87D2F0001 /* MyBooksDownloadCenterEvictionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95095FF0B6661C2AE8B60001 /* MyBooksDownloadCenterEvictionTests.swift */; };
 		0BA6FB95DCAA1F825A1F1C8A /* LatestAudiobookLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8546AFA58326C427D8BC2C5 /* LatestAudiobookLocation.swift */; };
 		0C7E90F84AEBADCA01E4D4BB /* String+TPPStringAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A969BA0D39ABD4285F6F211 /* String+TPPStringAdditions.swift */; };
 		0CE51471A7664B7995B5C8A0 /* AudiobookDataManagerSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE7BD91AF3E14990B745A0AA /* AudiobookDataManagerSyncTests.swift */; };
@@ -1856,6 +1857,7 @@
 		30B163B18C48334A913B2CCA /* URLRequestNYPLAdditionsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = URLRequestNYPLAdditionsTests.swift; sourceTree = "<group>"; };
 		3161E6681E76B60E308FB896 /* CrossFormatMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossFormatMapping.swift; sourceTree = "<group>"; };
 		317C8F0150303A9AC53BC44F /* MyBooksDownloadCenterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyBooksDownloadCenterTests.swift; sourceTree = "<group>"; };
+		95095FF0B6661C2AE8B60001 /* MyBooksDownloadCenterEvictionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksDownloadCenterEvictionTests.swift; sourceTree = "<group>"; };
 		31CC0A3CFA3E9E20C65B5C01 /* PlaybackRateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PlaybackRateTests.swift; sourceTree = "<group>"; };
 		3260782E24602A4B3FF7E20B /* FontManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontManagerTests.swift; sourceTree = "<group>"; };
 		34BD75A5447FB7BD0DA90F57 /* SendableSubject.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SendableSubject.swift; sourceTree = "<group>"; };
@@ -4597,6 +4599,7 @@
 				CB9CA89B135C85E23F0D907B /* MyBooksViewModelTests.swift */,
 				317C8F0150303A9AC53BC44F /* MyBooksDownloadCenterTests.swift */,
 				673C77C2D01F4E0AB1787C9D /* MyBooksDownloadCenterIntegrationTests.swift */,
+				95095FF0B6661C2AE8B60001 /* MyBooksDownloadCenterEvictionTests.swift */,
 				2C4E96DEEFAA4607B343D65D /* DownloadErrorRecoveryTests.swift */,
 				978A163EF2834D9087A9CDEB /* UserRetryTrackerTests.swift */,
 				E3FF91DFB962417EA742080A /* RetryClassificationTests.swift */,
@@ -6003,6 +6006,7 @@
 				836F74C400A5DA94F8B453D2 /* CatalogModelsTests.swift in Sources */,
 				0B72C5306C699DBCB586DBE7 /* MyBooksDownloadCenterTests.swift in Sources */,
 				9C82824015F64C8597A3E7B2 /* MyBooksDownloadCenterIntegrationTests.swift in Sources */,
+				6BD196ABF46912E87D2F0001 /* MyBooksDownloadCenterEvictionTests.swift in Sources */,
 				AF890D5839204832223A2287 /* OPDSParsingTests.swift in Sources */,
 				BED408AC57A5DB39579B5FEA /* TPPBookRegistryTests.swift in Sources */,
 				E18A0DC8C00A41B8841DBBE7 /* TPPBookRegistryIntegrationTests.swift in Sources */,
@@ -7627,9 +7631,9 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 466;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
