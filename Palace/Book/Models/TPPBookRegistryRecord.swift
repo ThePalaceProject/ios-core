@@ -100,15 +100,35 @@ class TPPBookRegistryRecord: NSObject {
     }
 
     init?(record: TPPBookRegistryData) {
-        guard let bookObject = record.object(for: .book),
-              let book = TPPBook(dictionary: bookObject),
-              let stateString = record.value(for: .state) as? String,
-              let state = TPPBookState(stateString)
-
-        else {
+        // Log which specific field is missing so we can diagnose why a record
+        // silently disappears from the in-memory registry during load.
+        // Silent drops caused "Found N books in registry / Registry loaded with M books"
+        // gaps after the OPDS2 migration, manifesting as downloaded books
+        // re-appearing as .downloadNeeded on the next sync.
+        let bookObject = record.object(for: .book)
+        if bookObject == nil {
+            Log.error(#file, "TPPBookRegistryRecord: record missing 'metadata' key — dropping")
             return nil
         }
-        self.book = book
+        let book = TPPBook(dictionary: bookObject!)
+        if book == nil {
+            let identifier = bookObject?["id"] as? String
+                ?? bookObject?["identifier"] as? String
+                ?? "<no identifier>"
+            let title = bookObject?["title"] as? String ?? "<no title>"
+            Log.error(#file, "TPPBookRegistryRecord: TPPBook(dictionary:) returned nil for id='\(identifier)' title='\(title)' — check CategoriesKey/IdentifierKey/TitleKey/UpdatedKey in the record")
+            return nil
+        }
+        let stateString = record.value(for: .state) as? String
+        if stateString == nil {
+            Log.error(#file, "TPPBookRegistryRecord: record missing 'state' field for book '\(book!.title)'")
+            return nil
+        }
+        guard let state = TPPBookState(stateString!) else {
+            Log.error(#file, "TPPBookRegistryRecord: state='\(stateString!)' not a recognized TPPBookState for book '\(book!.title)'")
+            return nil
+        }
+        self.book = book!
         self.state = state
         self.fulfillmentId = record.value(for: .fulfillmentId) as? String
         if let location = record.object(for: .location) {

@@ -250,6 +250,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
 /// These rules decide whether a user's attempt to open an audiobook is refused
 /// before the loader runs — the surface that fires the WiFi-required alert on
 /// open (parallel to MyBooksDownloadCenter's download-site gate added in PR #851).
+@MainActor
 final class AudiobookNetworkValidationTests: XCTestCase {
 
     private func validate(
@@ -336,6 +337,7 @@ final class AudiobookNetworkValidationTests: XCTestCase {
 /// through `errorPublisher`, and which are intentionally suppressed because
 /// they have another dedicated presentation path (BookService.
 /// showAudiobookTryAgainError or the cold-load alert branch).
+@MainActor
 final class AudiobookPhoneAlertContentTests: XCTestCase {
 
     func testWifiRequired_producesAlertContent() {
