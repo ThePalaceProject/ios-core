@@ -72,7 +72,7 @@ class BookRegistrySync {
           let originalState = record.state
 
           // Validate file existence for download states
-          if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful {
+          if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful || record.state == .downloadNeeded {
             let fileExists = self.checkIfBookFileExists(for: record.book, account: account)
 
             if record.state == .downloading {
@@ -90,6 +90,19 @@ class BookRegistrySync {
               } else {
                 Log.warn(#file, "  '\(record.book.title)' was in SAML flow but file missing - marking as failed")
                 record.state = .downloadFailed
+              }
+            } else if record.state == .downloadNeeded {
+              // Migration heal: the pre-PR-#856 sync-before-load race (plus the
+              // UpdatedKey parse regression that silently dropped records during
+              // load) could leave a downloaded book persisted as .downloadNeeded
+              // even though its content file was still on disk. If we see that
+              // combination now, promote to .downloadSuccessful so the user
+              // doesn't get a spurious "Download" button for a book they already
+              // have locally. No-op for the normal case where .downloadNeeded
+              // genuinely has no file.
+              if fileExists {
+                Log.info(#file, "  '\(record.book.title)' state was .downloadNeeded but file present — healing to .downloadSuccessful")
+                record.state = .downloadSuccessful
               }
             } else if record.state == .downloadSuccessful {
               if !fileExists {
