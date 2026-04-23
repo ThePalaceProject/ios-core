@@ -81,11 +81,9 @@ class LocalBookContentService {
                 } else {
                     Log.info(#file, "Content file already missing (nothing to delete): \(bookURL.lastPathComponent)")
                 }
-                #if LCP
-                if book.defaultBookContentType == .pdf {
-                    try LCPPDFs.deletePdfContent(url: bookURL)
-                }
-                #endif
+                // Historical cleanup of the LCPPDFs-extracted temp PDF is
+                // obsolete post-migration to Readium PDFNavigator — pages
+                // stream on demand and there is no temp extract to delete.
             case .audiobook:
                 try deleteLocalAudiobookContent(forAudiobook: book, at: bookURL)
             case .unsupported:

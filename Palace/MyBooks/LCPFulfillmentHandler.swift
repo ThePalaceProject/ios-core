@@ -171,14 +171,12 @@ final class LCPFulfillmentHandler {
                 Log.info(#file, "Audiobook content stored successfully, offline playback now available")
             }
 
-            Task { [weak self] in
-                guard let self else { return }
-                if book.defaultBookContentType == .pdf,
-                   let bookURL = self.bookFileManager.fileUrl(for: book.identifier) {
-                    self.bookRegistry.setState(.downloading, for: book.identifier)
-                    _ = try? await LCPPDFs(url: bookURL)?.extract(url: bookURL)
-                    self.delegate?.markDownloadSuccessful(for: book)
-                }
+            // PDF fulfillment: Readium's PDFNavigator streams decrypted
+            // pages on demand via the shared GCDHTTPServer, so no eager
+            // zip→temp extract is needed here. Just mark the book
+            // successful once the LCP container + license are on disk.
+            if book.defaultBookContentType == .pdf {
+                self.delegate?.markDownloadSuccessful(for: book)
             }
         }
 

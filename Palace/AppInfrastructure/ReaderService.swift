@@ -1,6 +1,7 @@
 import UIKit
 import Combine
 import ReadiumShared
+import ReadiumAdapterGCDWebServer
 import PalaceLogging
 #if LCP
 import ReadiumLCP
@@ -26,9 +27,40 @@ final class ReaderService {
         return base
     }
 
+    /// Exposes the shared `GCDHTTPServer` so the PDF navigator (and any other
+    /// Readium-backed view) can serve decrypted publication resources through
+    /// the same server the EPUB path already uses — one server, one endpoint
+    /// registry, one lifecycle.
+    var httpServer: ReadiumAdapterGCDWebServer.GCDHTTPServer? {
+        r3Owner.libraryService.httpServer
+    }
+
     @MainActor
     func openEPUB(_ book: TPPBook) {
         openEPUBInternal(book, isRetry: false)
+    }
+
+    /// Opens an LCP-protected PDF through the Readium pipeline:
+    /// `AssetRetriever` + `PublicationOpener` → `Publication` served by
+    /// `httpServer` → `PDFNavigatorViewController`. No temp-extract step.
+    @MainActor
+    func openPDF(_ book: TPPBook) {
+        guard let presenter = topPresenter() else { return }
+        r3Owner.libraryService.openBook(book, sender: presenter) { result in
+            switch result {
+            case .success(let publication):
+                if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
+                    coordinator.store(book: book)
+                    let metadata = TPPPDFDocumentMetadata(with: book)
+                    coordinator.storeReadiumPDF(publication: publication, metadata: metadata, forBookId: book.identifier)
+                    coordinator.push(.pdf(BookRoute(id: book.identifier)))
+                } else {
+                    Log.error(#file, "📄 [Readium PDF] No NavigationCoordinator — cannot push route")
+                }
+            case .failure(let error):
+                self.presentOpenFailureAlert(for: error, book: book, isRetry: false)
+            }
+        }
     }
 
     @MainActor

@@ -82,6 +82,7 @@ final class NavigationCoordinator: ObservableObject {
 
     private var audioModelById: [String: AudiobookPlaybackModel] = [:]
     private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
+    private var readiumPDFById: [String: (Publication, TPPPDFDocumentMetadata)] = [:]
     private var catalogFilterStatesByURL: [String: CatalogLaneFilterState] = [:]
 
     private let maxStoredItems = 100
@@ -310,6 +311,18 @@ final class NavigationCoordinator: ObservableObject {
 
     func resolvePDF(for route: BookRoute) -> (TPPPDFDocument, TPPPDFDocumentMetadata)? {
         pdfContentById[route.id]
+    }
+
+    /// Stores a Readium `Publication` + its metadata for LCP-protected PDFs.
+    /// The `.pdf` route resolver prefers the Readium path when a publication
+    /// is present, falling back to the legacy PDFKit path otherwise.
+    func storeReadiumPDF(publication: Publication, metadata: TPPPDFDocumentMetadata, forBookId id: String) {
+        readiumPDFById[id] = (publication, metadata)
+        scheduleCleanupIfNeeded()
+    }
+
+    func resolveReadiumPDF(for route: BookRoute) -> (Publication, TPPPDFDocumentMetadata)? {
+        readiumPDFById[route.id]
     }
 
     // MARK: - Catalog Filter State Management
