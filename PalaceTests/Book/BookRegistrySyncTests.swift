@@ -274,59 +274,58 @@ final class BookRegistrySyncTests: XCTestCase {
     }
 
     // MARK: - Bulk Deletion Protection
+    //
+    // shouldSkipBulkDeletion must trip whenever the feed comes back empty and
+    // we have ANY local books — regardless of local count. The old `localCount > 2`
+    // floor let small libraries fall through and nuked every downloaded book when
+    // a transient feed response was empty.
 
-    func test_bulkDeletionProtection_emptyFeedWithLocalBooks() {
-        // Simulates the logic: if server returns empty feed but we have local books,
-        // we should NOT delete them (protection against server errors).
-
-        // This tests the logic condition directly rather than calling sync()
-        // because sync() requires a real OPDS feed network call.
-
+    func test_bulkDeletionProtection_emptyFeedWithLargeLibrary_skipsDeletion() {
         let localCount = 5
         let feedCount = 0
         let deletionCount = 5
-        let deletionRatio = Double(deletionCount) / Double(localCount)
-
-        let shouldSkipBulkDeletion = localCount > 2
-            && feedCount == 0
-            && deletionCount > 0
-
+        let shouldSkipBulkDeletion = BookRegistrySync.shouldSkipBulkDeletion(
+            localCount: localCount, feedCount: feedCount, deletionCount: deletionCount
+        )
         XCTAssertTrue(shouldSkipBulkDeletion,
-                      "Should skip deletion when server returns empty feed with \(localCount) local books")
-
-        // Verify the warning threshold
-        let shouldWarnLargeDeletion = localCount > 4
-            && deletionRatio > 0.5
-            && deletionCount > 2
-
-        XCTAssertTrue(shouldWarnLargeDeletion,
-                      "Should warn when deleting more than 50% of books")
+                      "Empty feed with \(localCount) local books must be treated as a server error and skip deletion")
     }
 
     func test_bulkDeletionProtection_normalFeedDoesNotSkip() {
-        let localCount = 5
-        let feedCount = 4
-        let deletionCount = 1
-
-        let shouldSkipBulkDeletion = localCount > 2
-            && feedCount == 0
-            && deletionCount > 0
-
+        let shouldSkipBulkDeletion = BookRegistrySync.shouldSkipBulkDeletion(
+            localCount: 5, feedCount: 4, deletionCount: 1
+        )
         XCTAssertFalse(shouldSkipBulkDeletion,
-                       "Should NOT skip deletion when feed has entries")
+                       "A non-empty feed must proceed through normal reconciliation, not skip")
     }
 
-    func test_bulkDeletionProtection_smallLibraryDoesNotSkip() {
-        let localCount = 2
-        let feedCount = 0
-        let deletionCount = 2
+    func test_bulkDeletionProtection_emptyFeedWithSingleLocalBook_skipsDeletion() {
+        // This is the regression we're fixing: a 1-book shelf with a transient
+        // empty feed must not delete that book.
+        let shouldSkipBulkDeletion = BookRegistrySync.shouldSkipBulkDeletion(
+            localCount: 1, feedCount: 0, deletionCount: 1
+        )
+        XCTAssertTrue(shouldSkipBulkDeletion,
+                      "1-book shelf + empty feed must skip deletion — losing a single downloaded book is still a data-loss regression")
+    }
 
-        let shouldSkipBulkDeletion = localCount > 2
-            && feedCount == 0
-            && deletionCount > 0
+    func test_bulkDeletionProtection_emptyFeedWithTwoLocalBooks_skipsDeletion() {
+        // Matches the user-reported scenario: 2 test books, transient empty feed response,
+        // previously-downloaded book shows Download button after relaunch.
+        let shouldSkipBulkDeletion = BookRegistrySync.shouldSkipBulkDeletion(
+            localCount: 2, feedCount: 0, deletionCount: 2
+        )
+        XCTAssertTrue(shouldSkipBulkDeletion,
+                      "2-book shelf + empty feed must skip deletion")
+    }
 
+    func test_bulkDeletionProtection_zeroLocalBooks_doesNotSkip() {
+        // Nothing to protect — skip flag only exists to guard non-empty local state.
+        let shouldSkipBulkDeletion = BookRegistrySync.shouldSkipBulkDeletion(
+            localCount: 0, feedCount: 0, deletionCount: 0
+        )
         XCTAssertFalse(shouldSkipBulkDeletion,
-                       "Should NOT skip deletion for very small libraries (<=2 books)")
+                       "No local books means no deletion to skip")
     }
 
     func test_largeDeletionWarning_notTriggeredForSmallRatio() {
@@ -594,6 +593,51 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertTrue(received.isEmpty,
                       "sync() called while already .syncing must not invoke setState")
         XCTAssertNil(syncManager.syncUrl)
+    }
+
+    // MARK: - sync: load-completion guard
+    //
+    // These guards prevent the cold-launch race where sync() runs before load()
+    // populates the in-memory registry. Without the guard, every loan in the feed
+    // would be written as a fresh .downloadNeeded record, overwriting the on-disk
+    // state and wiping location/bookmarks. The guard MUST run before any other
+    // check in sync() — specifically before the currentAccount lookup — so this
+    // test is deterministic regardless of simulator sign-in state.
+
+    func test_sync_whenStateIsUnloaded_shortCircuitsBeforeTouchingAccounts() {
+        var received: [TPPBookRegistry.RegistryState] = []
+        var completed = false
+        let setState: (TPPBookRegistry.RegistryState) -> Void = { received.append($0) }
+
+        syncManager.sync(currentState: .unloaded, setState: setState) { _, _ in
+            completed = true
+        }
+
+        XCTAssertTrue(received.isEmpty,
+                      "sync() with .unloaded state must not invoke setState — the in-memory registry is empty and sync would overwrite the disk file with fresh .downloadNeeded records")
+        XCTAssertNil(syncManager.syncUrl,
+                     "syncUrl must not be captured for a short-circuited sync — a stale syncUrl would cause a later feed response to be applied to the wrong account")
+        XCTAssertFalse(completed,
+                       "completion must not fire for a short-circuited sync — callers should not observe side-effects of a no-op")
+    }
+
+    func test_sync_whenStateIsLoading_shortCircuitsBeforeTouchingAccounts() {
+        // The account-change observer sets state to .loading, calls load(), and
+        // schedules sync() 1 second later. If load's disk I/O runs slow (large
+        // registry, older device), sync fires while state is still .loading.
+        // Without this guard, sync would overwrite the still-loading disk state.
+        var received: [TPPBookRegistry.RegistryState] = []
+        var completed = false
+        let setState: (TPPBookRegistry.RegistryState) -> Void = { received.append($0) }
+
+        syncManager.sync(currentState: .loading, setState: setState) { _, _ in
+            completed = true
+        }
+
+        XCTAssertTrue(received.isEmpty,
+                      "sync() with .loading state must not invoke setState — load is in progress and sync would race against it")
+        XCTAssertNil(syncManager.syncUrl)
+        XCTAssertFalse(completed)
     }
 
     func test_sync_withNoCurrentAccount_isNoOp() throws {

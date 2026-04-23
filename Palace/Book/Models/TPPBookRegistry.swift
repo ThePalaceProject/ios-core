@@ -132,8 +132,13 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 // the subject) to see an empty list until the new load completes.
                 self.store.registrySubject.send([:])
                 self.state = .loading
-                self.load()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                // Chain sync() off load's completion so it never runs against an
+                // empty in-memory store. Previously this used an `asyncAfter(+1s)`
+                // heuristic, which raced on slow disks: if load's disk I/O hadn't
+                // finished when sync() fired, sync would rebuild the registry from
+                // feed-only data and save it to disk, wiping every previously-
+                // downloaded book's state back to .downloadNeeded.
+                self.load { [weak self] in
                     self?.sync()
                 }
             }
@@ -232,13 +237,13 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         return syncEngine.registryUrl(for: account)
     }
 
-    func load(account: String? = nil) {
-        syncEngine.load(account: account) { [weak self] newState in
+    func load(account: String? = nil, completion: (() -> Void)? = nil) {
+        syncEngine.load(account: account, setState: { [weak self] newState in
             self?.state = newState
-        }
+        }, completion: completion)
     }
 
-    func load() { load(account: nil) }
+    func load() { load(account: nil, completion: nil) }
 
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
         let priorState = state

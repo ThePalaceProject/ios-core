@@ -24,14 +24,22 @@ class BookRegistrySync {
       .appendingPathComponent(registryFileName)
   }
 
-  func load(account: String?, setState: @escaping (TPPBookRegistry.RegistryState) -> Void) {
+  func load(
+    account: String?,
+    setState: @escaping (TPPBookRegistry.RegistryState) -> Void,
+    completion: (() -> Void)? = nil
+  ) {
     guard let account = account ?? AccountsManager.shared.currentAccountId,
           let url = registryUrl(for: account)
-    else { return }
+    else {
+      completion?()
+      return
+    }
 
     // Prevent re-entrant loads for the same account
     if loadingAccount == account {
       Log.debug(#file, "Skipping duplicate load for account: \(account) (already loading)")
+      completion?()
       return
     }
 
@@ -130,7 +138,10 @@ class BookRegistrySync {
       let loadedAccount = account
 
       DispatchQueue.main.async { [weak self] in
-        guard let self else { return }
+        guard let self else {
+          completion?()
+          return
+        }
 
         if self.loadingAccount == loadedAccount {
           self.loadingAccount = nil
@@ -145,6 +156,12 @@ class BookRegistrySync {
 
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
         Log.info(#file, "  Registry loaded with \(bookCount) books")
+
+        // Fire the completion AFTER state is .loaded and subscribers have been
+        // notified — callers that chain sync() off load (e.g. the account-change
+        // observer, AppDelegate cold-launch) need the store populated before
+        // sync's reconciliation runs.
+        completion?()
 
         // PP-4129: schedule recovery for orphaned downloads. Each scheduled block
         // re-checks that the account that ran the load is still current before
@@ -186,6 +203,20 @@ class BookRegistrySync {
     setState: @escaping (TPPBookRegistry.RegistryState) -> Void,
     completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil
   ) {
+    // Guard against running sync() before load() has populated the in-memory
+    // registry. If we reach the reconciliation block below with an empty store,
+    // every loan in the feed is written as a fresh .downloadNeeded record —
+    // overwriting the on-disk file and destroying location/bookmarks for every
+    // previously-downloaded book. On cold launches the only path that calls
+    // load() is the account-change observer; if its notification is missed
+    // (race with singleton init on a background queue) or if load's disk I/O
+    // is still in flight when a view triggers sync(), this guard is the last
+    // line of defence.
+    if currentState == .unloaded || currentState == .loading {
+      Log.warn(#file, "sync() called before load completed (state=\(currentState)) — skipping to protect on-disk state")
+      return
+    }
+
     // Capture the syncing account at the top so that if the user switches
     // libraries while the feed fetch is in flight, we persist the result to
     // the account that was syncing — not the one that happens to be current
@@ -265,9 +296,9 @@ class BookRegistrySync {
           let deletionCount = recordsToDelete.count
           let deletionRatio = localCount > 0 ? Double(deletionCount) / Double(localCount) : 0
 
-          let shouldSkipBulkDeletion = localCount > 2
-            && feedCount == 0
-            && deletionCount > 0
+          let shouldSkipBulkDeletion = BookRegistrySync.shouldSkipBulkDeletion(
+            localCount: localCount, feedCount: feedCount, deletionCount: deletionCount
+          )
 
           let shouldWarnLargeDeletion = localCount > 4
             && deletionRatio > 0.5
@@ -398,6 +429,22 @@ class BookRegistrySync {
         Log.error(#file, "Error deleting registry data: \(error.localizedDescription)")
       }
     }
+  }
+
+  /// Decides whether a sync() reconciliation should skip deleting books that
+  /// are absent from the feed response.
+  ///
+  /// Any empty feed paired with any non-empty local registry is treated as a
+  /// transient server/CDN error rather than a legitimate "all loans returned".
+  /// The prior `localCount > 2` floor let 1- and 2-book shelves fall through
+  /// and delete every downloaded book on a single bad response — the pattern
+  /// that caused previously-downloaded books to show "Download" again after
+  /// relaunch across a wifi→cellular→wifi transition.
+  ///
+  /// Static + internal so tests can call it directly without mocking the full
+  /// feed-fetch pipeline.
+  static func shouldSkipBulkDeletion(localCount: Int, feedCount: Int, deletionCount: Int) -> Bool {
+    return localCount >= 1 && feedCount == 0 && deletionCount > 0
   }
 
   func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {
