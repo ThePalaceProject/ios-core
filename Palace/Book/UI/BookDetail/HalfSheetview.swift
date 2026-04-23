@@ -139,58 +139,44 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
             : [UIDevice.current.isIpad ? .height(540) : .medium])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(viewModel.isProcessing(for: .returning))
+        // Single .alert(item:) — stacking two .alert modifiers on the same
+        // view silently suppresses whichever was added first (SwiftUI bug /
+        // quirk), which is why the Wi-Fi-required downloadErrorAlert was
+        // never rendering on the half-sheet. Priority: downloadErrorAlert
+        // takes precedence over showAlert so a late-arriving download error
+        // can't be hidden behind a stale confirmation alert.
         .alert(
             item: Binding(
-                get: { viewModel.downloadErrorAlert },
-                set: { viewModel.downloadErrorAlert = $0 }
+                get: { viewModel.downloadErrorAlert ?? viewModel.showAlert },
+                set: { _ in
+                    viewModel.downloadErrorAlert = nil
+                    viewModel.showAlert = nil
+                }
             )
-        ) { errorAlert in
-            if errorAlert.secondaryButtonTitle != nil {
+        ) { alertModel in
+            if let secondary = alertModel.secondaryButtonTitle {
                 Alert(
-                    title: Text(errorAlert.title),
-                    message: Text(errorAlert.message),
-                    primaryButton: .default(
-                        Text(errorAlert.buttonTitle ?? Strings.MyDownloadCenter.retry),
-                        action: errorAlert.primaryAction
-                    ),
-                    secondaryButton: .cancel(
-                        Text(errorAlert.secondaryButtonTitle ?? Strings.Generic.cancel),
-                        action: errorAlert.secondaryAction
-                    )
-                )
-            } else {
-                // Non-retryable or max retries exceeded — show OK only
-                Alert(
-                    title: Text(errorAlert.title),
-                    message: Text(errorAlert.message),
-                    dismissButton: .default(Text(errorAlert.buttonTitle ?? Strings.Generic.ok))
-                )
-            }
-        }
-        .alert(
-            item: Binding(
-                get: { viewModel.showAlert },
-                set: { viewModel.showAlert = $0 }
-            )
-        ) { confirmAlert in
-            if let secondary = confirmAlert.secondaryButtonTitle {
-                Alert(
-                    title: Text(confirmAlert.title),
-                    message: Text(confirmAlert.message),
-                    primaryButton: .destructive(
-                        Text(confirmAlert.buttonTitle ?? Strings.Generic.ok),
-                        action: confirmAlert.primaryAction
-                    ),
+                    title: Text(alertModel.title),
+                    message: Text(alertModel.message),
+                    primaryButton: alertModel.isPrimaryDestructive
+                        ? .destructive(
+                            Text(alertModel.buttonTitle ?? Strings.Generic.ok),
+                            action: alertModel.primaryAction
+                        )
+                        : .default(
+                            Text(alertModel.buttonTitle ?? Strings.MyDownloadCenter.retry),
+                            action: alertModel.primaryAction
+                        ),
                     secondaryButton: .cancel(
                         Text(secondary),
-                        action: confirmAlert.secondaryAction
+                        action: alertModel.secondaryAction
                     )
                 )
             } else {
                 Alert(
-                    title: Text(confirmAlert.title),
-                    message: Text(confirmAlert.message),
-                    dismissButton: .default(Text(confirmAlert.buttonTitle ?? Strings.Generic.ok))
+                    title: Text(alertModel.title),
+                    message: Text(alertModel.message),
+                    dismissButton: .default(Text(alertModel.buttonTitle ?? Strings.Generic.ok))
                 )
             }
         }
