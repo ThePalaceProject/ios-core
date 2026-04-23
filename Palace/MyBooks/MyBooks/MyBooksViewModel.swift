@@ -93,16 +93,6 @@ enum Group: Int {
 
         let registryBooks = bookRegistry.myBooks
 
-        // PP-RESET: log each book and the registry state the UI will render.
-        // If a user reports a button flipping Listen → Download after reselect,
-        // these lines show whether the registry returned .downloadNeeded vs
-        // .downloadSuccessful at the moment the cells were rebuilt.
-        Log.info(#file, "[RESET-DEBUG] MyBooksViewModel.loadData source-of-truth snapshot: \(registryBooks.count) book(s) from registry")
-        for b in registryBooks {
-            let s = bookRegistry.state(for: b.identifier)
-            Log.info(#file, "[RESET-DEBUG]   '\(b.title)' id=\(b.identifier) state=\(s.stringValue()) isExpired=\(b.isExpired)")
-        }
-
         // Always filter out expired books. Previously this only happened offline,
         // relying on sync to remove expired books when online. But if sync hasn't
         // run yet (or is delayed), expired books would remain visible with stale UI.
