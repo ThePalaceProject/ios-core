@@ -676,9 +676,13 @@ import OverdriveProcessor
             return
         }
 
-        // Ensure we are within disk budget before proceeding
+        // Reclaim space only when free disk is genuinely low. The previous
+        // unconditional `enforceContentDiskBudgetIfNeeded(adding: 0)` ran on
+        // every new download against a tight 2.5 GB budget, silently evicting
+        // older books to make room — the root cause of "titles revert to
+        // Download Needed after quits/library changes." The reclaim call
+        // below handles actual low-disk scenarios without that collateral.
         MemoryPressureMonitor.shared.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
-        enforceContentDiskBudgetIfNeeded(adding: 0)
 
         if state == .SAMLStarted, let cookies = userAccount.cookies {
             Log.info(#file, "SAML authentication flow for '\(currentBook.title)'")
@@ -2179,31 +2183,96 @@ extension MyBooksDownloadCenter {
 
     /// Enforces a soft content disk budget. If `adding` is >0, assumes that many bytes will be added
     /// and makes room accordingly, deleting least-recently-used content first.
+    ///
+    /// Delegates to `performDiskBudgetEviction(in:adding:budgetOverrideBytes:)` against the current
+    /// account's content directory. The inner method is the unit-test seam.
     @objc func enforceContentDiskBudgetIfNeeded(adding bytesToAdd: Int64) {
-        let smallDevice = UIScreen.main.nativeBounds.height <= 1334 // iPhone 6/7/8 size and below
-        // Relax budgets: give small devices ~1.2GB, others ~2.5GB before eviction
-        let budgetBytes: Int64 = smallDevice ? (1_200 * 1024 * 1024) : (2_500 * 1024 * 1024)
+        guard let dir = contentDirectoryURL(accountsManager.currentAccountId) else { return }
+        performDiskBudgetEviction(in: dir, adding: bytesToAdd, budgetOverrideBytes: nil)
+    }
 
-        let currentUsage = contentDirectoryUsageBytes()
+    /// Evicts least-recently-used content files from `dir` until total usage + `bytesToAdd`
+    /// fits under the budget. For every evicted file that maps to a book in `bookRegistry`,
+    /// flips that book's state to `.downloadNeeded` atomically with the deletion so the UI
+    /// doesn't keep showing a "Read" button for content that's no longer on disk.
+    ///
+    /// Before this was wired to the registry, eviction was silent — the registry kept
+    /// `.downloadSuccessful` in memory and on disk until the next `BookRegistrySync.load()`
+    /// ran file-existence reconciliation on cold launch or library switch. That's why
+    /// previously-downloaded titles only flipped to "Download Needed" on quit/relaunch.
+    ///
+    /// `budgetOverrideBytes` is a test seam. Production calls pass `nil`, which defaults to
+    /// 1.2 GB on small devices (iPhone 8-class) and 2.5 GB elsewhere.
+    internal func performDiskBudgetEviction(
+        in dir: URL,
+        adding bytesToAdd: Int64,
+        budgetOverrideBytes: Int64?
+    ) {
+        let budgetBytes: Int64 = budgetOverrideBytes ?? defaultDiskBudgetBytes()
+
+        let currentUsage = directoryUsageBytes(at: dir)
         var neededFree = (currentUsage + bytesToAdd) - budgetBytes
         guard neededFree > 0 else { return }
 
-        let files = listContentFilesSortedByLRU()
+        // Build a hashedIdentifier → bookIdentifier map from the registry so we can flip
+        // each evicted book's state in the same pass as the file deletion. Without this,
+        // the registry keeps .downloadSuccessful and the user only sees the revert on the
+        // next cold launch (BookRegistrySync.load() file-existence reconciliation).
+        var hashToIdentifier = [String: String]()
+        for book in bookRegistry.myBooks {
+            hashToIdentifier[book.identifier.sha256()] = book.identifier
+        }
+
+        let files = listContentFilesSortedByLRU(in: dir)
         let fm = FileManager.default
+        var evictedCount = 0
+        var evictedBytesTotal: Int64 = 0
         for url in files {
             if neededFree <= 0 { break }
             // Never delete LCP license/content files during eviction
             let ext = url.pathExtension.lowercased()
             if ext == "lcpl" || ext == "lcpa" { continue }
-            if let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize {
-                try? fm.removeItem(at: url)
-                neededFree -= Int64(size)
+            guard let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize else { continue }
+            do {
+                try fm.removeItem(at: url)
+            } catch {
+                Log.error(#file, "LRU eviction: failed to remove \(url.lastPathComponent): \(error.localizedDescription)")
+                continue
+            }
+            neededFree -= Int64(size)
+            evictedCount += 1
+            evictedBytesTotal += Int64(size)
+
+            // Reverse-lookup the book from the filename. File naming is
+            // `book.identifier.sha256() + "." + pathExtension(for: book)`
+            // (see fileUrl(for:account:)), so the base name without extension
+            // is the hashed identifier.
+            let hashedIdentifier = url.deletingPathExtension().lastPathComponent
+            if let identifier = hashToIdentifier[hashedIdentifier] {
+                bookRegistry.setState(.downloadNeeded, for: identifier)
+                Log.warn(#file, "LRU eviction: removed '\(identifier)' (\(size) bytes) — registry flipped to .downloadNeeded")
+            } else {
+                Log.warn(#file, "LRU eviction: removed orphan file \(url.lastPathComponent) (\(size) bytes) — no matching registry record")
             }
         }
+
+        if evictedCount > 0 {
+            Log.info(#file, "LRU eviction complete: \(evictedCount) file(s), \(evictedBytesTotal) bytes reclaimed")
+        }
+    }
+
+    private func defaultDiskBudgetBytes() -> Int64 {
+        let smallDevice = UIScreen.main.nativeBounds.height <= 1334 // iPhone 6/7/8 size and below
+        // Relax budgets: give small devices ~1.2GB, others ~2.5GB before eviction
+        return smallDevice ? (1_200 * 1024 * 1024) : (2_500 * 1024 * 1024)
     }
 
     private func contentDirectoryUsageBytes() -> Int64 {
         guard let dir = contentDirectoryURL(accountsManager.currentAccountId) else { return 0 }
+        return directoryUsageBytes(at: dir)
+    }
+
+    private func directoryUsageBytes(at dir: URL) -> Int64 {
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles]) else { return 0 }
         var total: Int64 = 0
@@ -2215,6 +2284,10 @@ extension MyBooksDownloadCenter {
 
     private func listContentFilesSortedByLRU() -> [URL] {
         guard let dir = contentDirectoryURL(accountsManager.currentAccountId) else { return [] }
+        return listContentFilesSortedByLRU(in: dir)
+    }
+
+    private func listContentFilesSortedByLRU(in dir: URL) -> [URL] {
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentAccessDateKey, .contentModificationDateKey], options: [.skipsHiddenFiles]) else { return [] }
         return contents.sorted { a, b in

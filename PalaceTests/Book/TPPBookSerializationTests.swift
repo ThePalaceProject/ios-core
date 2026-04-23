@@ -94,7 +94,12 @@ class TPPBookSerializationTests: XCTestCase {
     _ = bookEmptyTitle
   }
 
-  func test_initFromDictionary_missingUpdated_returnsNil() {
+  /// Previously, a missing or malformed 'updated' field dropped the entire book
+  /// from the in-memory registry — the root cause of the library-reselect
+  /// book-state reset. The reader now falls back to .distantPast and keeps the
+  /// book, because losing the downloaded title is far worse than losing the
+  /// timestamp.
+  func test_initFromDictionary_missingUpdated_fallsBackToDistantPast() {
     let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
     let book = TPPBook(dictionary: [
       "acquisitions": acquisitions,
@@ -102,8 +107,9 @@ class TPPBookSerializationTests: XCTestCase {
       "id": "123",
       "title": "Title"
     ])
-    XCTAssertNil(book, "Missing 'updated' key must produce nil")
-    // With an invalid date string the result should also be nil
+    XCTAssertNotNil(book, "Missing 'updated' must not drop the book — fall back to .distantPast")
+    XCTAssertEqual(book?.updated, .distantPast, "Missing 'updated' falls back to .distantPast")
+
     let bookBadDate = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories": ["Test"],
@@ -111,7 +117,95 @@ class TPPBookSerializationTests: XCTestCase {
       "title": "Title",
       "updated": "not-a-date"
     ])
-    XCTAssertNil(bookBadDate, "Invalid 'updated' date string must produce nil")
+    XCTAssertNotNil(bookBadDate, "Malformed 'updated' must not drop the book")
+    XCTAssertEqual(bookBadDate?.updated, .distantPast, "Unparseable 'updated' falls back to .distantPast")
+  }
+
+  /// Missing `categories` used to drop the book. The reader now accepts an
+  /// absent or malformed Categories array and defaults to []. Only `id` and
+  /// `title` remain hard requirements.
+  func test_initFromDictionary_missingCategories_usesEmptyArray() {
+    let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
+    let book = TPPBook(dictionary: [
+      "acquisitions": acquisitions,
+      "id": "no-categories",
+      "title": "Title",
+      "updated": "2024-01-01T00:00:00Z"
+    ])
+    XCTAssertNotNil(book, "Missing 'categories' must not drop the book")
+    XCTAssertEqual(book?.categoryStrings ?? [], [], "Missing 'categories' defaults to []")
+  }
+
+  // MARK: - UpdatedKey parsing (registry reload bug)
+
+  /// Guards against the silent-drop regression where `dictionaryRepresentation()`
+  /// writes `updated` as an RFC 3339 datetime but the reader only accepted the
+  /// ISO 8601 date-only format — every downloaded book vanished from the in-memory
+  /// registry on the next reload and was re-added as .downloadNeeded by sync.
+  func test_initFromDictionary_updatedFullRFC3339Datetime_parsesSuccessfully() {
+    let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
+    let book = TPPBook(dictionary: [
+      "acquisitions": acquisitions,
+      "categories": ["Test"],
+      "id": "rfc3339-book",
+      "title": "Title",
+      "updated": "2024-09-15T14:32:07Z"
+    ])
+    XCTAssertNotNil(book, "Full RFC 3339 datetime must parse — this is what dictionaryRepresentation() writes")
+
+    let components = Calendar(identifier: .iso8601).dateComponents(
+      in: TimeZone(secondsFromGMT: 0)!,
+      from: book!.updated
+    )
+    XCTAssertEqual(components.year, 2024)
+    XCTAssertEqual(components.month, 9)
+    XCTAssertEqual(components.day, 15)
+    XCTAssertEqual(components.hour, 14, "Time component must survive — the old date-only parser silently dropped it")
+    XCTAssertEqual(components.minute, 32)
+    XCTAssertEqual(components.second, 7)
+  }
+
+  /// Legacy OPDS feeds and very old registry records may store `updated` as a
+  /// bare date (no time). The reader must still accept those.
+  func test_initFromDictionary_updatedBareDate_parsesSuccessfully() {
+    let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
+    let book = TPPBook(dictionary: [
+      "acquisitions": acquisitions,
+      "categories": ["Test"],
+      "id": "bare-date-book",
+      "title": "Title",
+      "updated": "2024-09-15"
+    ])
+    XCTAssertNotNil(book, "Bare ISO 8601 date must still parse for legacy/OPDS compatibility")
+    let components = Calendar(identifier: .iso8601).dateComponents(
+      in: TimeZone(secondsFromGMT: 0)!,
+      from: book!.updated
+    )
+    XCTAssertEqual(components.year, 2024)
+    XCTAssertEqual(components.month, 9)
+    XCTAssertEqual(components.day, 15)
+  }
+
+  /// End-to-end: the output of `dictionaryRepresentation()` must round-trip
+  /// through `TPPBook(dictionary:)` without losing the `updated` timestamp.
+  /// This is the exact disk write/read cycle the registry performs.
+  func test_dictionaryRoundTrip_preservesUpdatedTimestamp() {
+    let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
+    let original = TPPBook(dictionary: [
+      "acquisitions": acquisitions,
+      "categories": ["Test"],
+      "id": "roundtrip",
+      "title": "Title",
+      "updated": "2024-09-15T14:32:07Z"
+    ])!
+    let serialized = original.dictionaryRepresentation()
+    let restored = TPPBook(dictionary: serialized as! [String: Any])
+    XCTAssertNotNil(restored, "Round-trip through dictionaryRepresentation() must not drop the book")
+    XCTAssertEqual(
+      restored?.updated.timeIntervalSince1970,
+      original.updated.timeIntervalSince1970,
+      "Updated timestamp must survive write-then-read to the second"
+    )
   }
 
   // MARK: - Content type
