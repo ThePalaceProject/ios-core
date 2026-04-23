@@ -71,8 +71,14 @@ class BookRegistrySync {
           guard let record = TPPBookRegistryRecord(record: obj) else { continue }
           let originalState = record.state
 
-          // Validate file existence for download states
-          if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful || record.state == .downloadNeeded {
+          // Validate file existence for download states. `.used` is included
+          // because a book that has been opened at least once transitions from
+          // .downloadSuccessful to .used, and if its file was evicted pre-fix
+          // the reader otherwise shows "unable to load PDF/EPUB" instead of
+          // the correct "Download" affordance. Treat missing-file the same
+          // as .downloadSuccessful: flip to .downloadNeeded and schedule
+          // auto-restart.
+          if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful || record.state == .downloadNeeded || record.state == .used {
             let fileExists = self.checkIfBookFileExists(for: record.book, account: account)
 
             if record.state == .downloading {
@@ -103,6 +109,18 @@ class BookRegistrySync {
               if fileExists {
                 Log.info(#file, "  '\(record.book.title)' state was .downloadNeeded but file present — healing to .downloadSuccessful")
                 record.state = .downloadSuccessful
+              }
+            } else if record.state == .used {
+              // A book the user has opened at least once. If its content file
+              // was evicted by the LRU budget (pre-fix) the reader fails to
+              // load with "unable to open PDF/EPUB". Same heal as
+              // .downloadSuccessful: flip to .downloadNeeded + auto-restart.
+              if !fileExists {
+                Log.error(#file, "  '\(record.book.title)' was .used but FILE MISSING — marking as download needed")
+                record.state = .downloadNeeded
+                orphanedBooksNeedingRedownload.append(record.book)
+              } else {
+                Log.debug(#file, "  '\(record.book.title)' used and file verified")
               }
             } else if record.state == .downloadSuccessful {
               if !fileExists {
