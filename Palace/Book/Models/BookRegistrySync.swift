@@ -462,34 +462,10 @@ class BookRegistrySync {
 
   func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {
     guard let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: book, account: account) else {
-      Log.warn(#file, "[RESET-DEBUG] checkIfBookFileExists: fileUrl returned nil for id='\(book.identifier)' title='\(book.title)'")
       return false
     }
 
     let fileExists = FileManager.default.fileExists(atPath: bookURL.path)
-
-    // PP-RESET: verbose diagnostic for the library-reselect state-loss bug.
-    // Logs the EXACT path we're checking + parent dir listing when a file is
-    // reported missing, so we can tell whether the file was actually deleted
-    // or whether the path is being computed differently between write and read.
-    if !fileExists {
-      let parent = bookURL.deletingLastPathComponent()
-      let parentExists = FileManager.default.fileExists(atPath: parent.path)
-      var siblingCount = 0
-      var sampleSiblings: [String] = []
-      if parentExists,
-         let contents = try? FileManager.default.contentsOfDirectory(atPath: parent.path) {
-        siblingCount = contents.count
-        sampleSiblings = Array(contents.prefix(5))
-      }
-      Log.warn(#file, """
-        [RESET-DEBUG] checkIfBookFileExists MISS for '\(book.title)':
-          identifier=\(book.identifier)
-          expected path=\(bookURL.path)
-          parent dir exists=\(parentExists), sibling count=\(siblingCount)
-          sample siblings=\(sampleSiblings)
-        """)
-    }
 
     #if LCP
     if LCPAudiobooks.canOpenBook(book) {
