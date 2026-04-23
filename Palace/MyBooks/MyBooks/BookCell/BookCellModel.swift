@@ -404,7 +404,8 @@ extension BookCellModel {
                     self?.didSelectReturn()
                 },
                 secondaryButtonTitle: Strings.Generic.cancel,
-                secondaryAction: { [weak self] in self?.isLoading = false }
+                secondaryAction: { [weak self] in self?.isLoading = false },
+                isPrimaryDestructive: true
             )
         case .cancelHold:
             showAlert = AlertModel(
@@ -417,7 +418,8 @@ extension BookCellModel {
                     self?.didSelectReturn()
                 },
                 secondaryButtonTitle: Strings.Generic.cancel,
-                secondaryAction: { [weak self] in self?.isLoading = false }
+                secondaryAction: { [weak self] in self?.isLoading = false },
+                isPrimaryDestructive: true
             )
         case .remove, .returning:
             // Local delete and in-progress indicator: no confirmation needed

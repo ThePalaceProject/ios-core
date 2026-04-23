@@ -272,15 +272,32 @@ final class BookDetailViewModel: ObservableObject {
             }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] errorInfo in
+                guard let self else { return }
+
                 if let retryAction = errorInfo.retryAction {
-                    self?.downloadErrorAlert = .retryable(
+                    self.downloadErrorAlert = .retryable(
                         title: errorInfo.title,
                         message: errorInfo.message,
                         retryAction: retryAction
                     )
                 } else {
-                    self?.downloadErrorAlert = AlertModel(title: errorInfo.title, message: errorInfo.message)
+                    self.downloadErrorAlert = AlertModel(title: errorInfo.title, message: errorInfo.message)
                 }
+
+                // BookActionHandler.startDownloadAfterAuth sets bookState =
+                // .downloading and shows a Cancel button in the half-sheet
+                // before the download task even runs. When the download is
+                // refused (Wi-Fi-only on cellular, auth issue, etc.), nothing
+                // reverts that local UI state, so the sheet gets stuck on
+                // "Cancel" forever and the user thinks the download is in
+                // flight. Re-sync bookState and the processing buttons to the
+                // registry's truth so the UI reflects the failure.
+                self.bookState = self.registry.state(for: self.book.identifier)
+                self.processingButtons.remove(.download)
+                self.processingButtons.remove(.get)
+                self.processingButtons.remove(.retry)
+                self.processingButtons.remove(.reserve)
+                self.downloadProgress = 0
             }
             .store(in: &cancellables)
     }

@@ -17,6 +17,11 @@ import PalaceAudiobookToolkit
 enum BookService {
     private static var openingBooks = Set<String>()
 
+    /// Safety cap: if the open pipeline never reports completion (hang, timeout,
+    /// unhandled throw inside a Task), releasing after this window prevents the
+    /// lock from latching permanently and silently swallowing every retry.
+    private static let openLockSafetyRelease: TimeInterval = 30
+
     static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, onFinish: (() -> Void)? = nil) {
         guard !openingBooks.contains(book.identifier) else {
             Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
@@ -25,18 +30,29 @@ enum BookService {
         }
 
         openingBooks.insert(book.identifier)
+        scheduleOpenLockSafetyRelease(for: book.identifier)
         let resolvedBook = bookRegistry.book(forIdentifier: book.identifier) ?? book
 
         dispatchOpen(resolvedBook, onFinish: onFinish)
+    }
+
+    private static func scheduleOpenLockSafetyRelease(for identifier: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + openLockSafetyRelease) {
+            if openingBooks.remove(identifier) != nil {
+                Log.warn(#file, "⏱️ Open lock for \(identifier) auto-released after \(Int(openLockSafetyRelease))s — pipeline never reported completion")
+            }
+        }
     }
 
     private static func dispatchOpen(_ book: TPPBook, onFinish: (() -> Void)?) {
         switch book.defaultBookContentType {
         case .epub:
             Task { @MainActor in
+                defer {
+                    openingBooks.remove(book.identifier)
+                    onFinish?()
+                }
                 ReaderService.shared.openEPUB(book)
-                openingBooks.remove(book.identifier)
-                onFinish?()
             }
         case .pdf:
             Task { @MainActor in
@@ -51,9 +67,11 @@ enum BookService {
             // loading the new audiobook — the ordering invariant that prevents
             // a stale LCP Publication from hanging publicationOpener.open().
             Task { @MainActor in
+                defer {
+                    openingBooks.remove(book.identifier)
+                    onFinish?()
+                }
                 _ = await AudiobookSessionManager.shared.openAudiobook(book, startPlaying: true)
-                openingBooks.remove(book.identifier)
-                onFinish?()
             }
         default:
             openingBooks.remove(book.identifier)

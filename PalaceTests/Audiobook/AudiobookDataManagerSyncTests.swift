@@ -543,10 +543,21 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
         dataManager.store.queue.removeAll { $0.id == uniqueId }
     }
 
-    func testAudiobookDataManagerStoreInit_withInvalidData_returnsNil() {
-        let invalidData = Data("not json at all".utf8)
-        let store = AudiobookDataManagerStore(data: invalidData)
-        XCTAssertNil(store, "Should return nil for invalid JSON")
+    func testAudiobookDataManagerStoreInit_rejectsMalformedPayloads() {
+        // Covers every malformed shape observed from a bad disk read or a
+        // truncated download. A regression that returned a partially-
+        // populated store (instead of nil) would produce audiobook reads
+        // against garbage state later — better to fail at init.
+        let malformedCases: [(label: String, data: Data)] = [
+            ("not JSON at all", Data("not json at all".utf8)),
+            ("empty data", Data()),
+            ("JSON array instead of object", Data("[]".utf8)),
+            ("truncated JSON", Data("{\"urls\":".utf8)),
+        ]
+        for (label, data) in malformedCases {
+            XCTAssertNil(AudiobookDataManagerStore(data: data),
+                         "init must return nil for malformed payload: \(label)")
+        }
     }
 
     func testAudiobookDataManagerStoreInit_withPartialData_returnsNil() {

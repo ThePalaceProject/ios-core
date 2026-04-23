@@ -45,6 +45,7 @@ public enum AudiobookSessionError: Error, Equatable {
     case notAuthenticated
     case notDownloaded
     case networkUnavailable
+    case wifiRequired
     case manifestLoadFailed
     case playerCreationFailed
     case alreadyLoading
@@ -58,6 +59,8 @@ public enum AudiobookSessionError: Error, Equatable {
             return "This audiobook needs to be downloaded first."
         case .networkUnavailable:
             return "No network connection. Please try again when online."
+        case .wifiRequired:
+            return Strings.Settings.downloadRestrictedToWiFi
         case .manifestLoadFailed:
             return "Failed to load audiobook data. Please try again."
         case .playerCreationFailed:
@@ -123,6 +126,11 @@ public final class AudiobookSessionManager: ObservableObject {
 
     private var managerCancellables = Set<AnyCancellable>()
 
+    /// Cancellables tied to the manager's lifetime (singleton) — NOT cleared
+    /// on stopPlayback. Used for the phone-side error subscriber that presents
+    /// alerts for user-actionable session errors.
+    private var lifecycleCancellables = Set<AnyCancellable>()
+
     // MARK: - Publishers for External Observers
 
     /// Emits when playback state changes (for CarPlay UI updates)
@@ -147,6 +155,56 @@ public final class AudiobookSessionManager: ObservableObject {
         // Note: Remote commands are handled by the toolkit's MediaControlPublisher.
         // This manager now owns the full audiobook lifecycle (load → bind → play)
         // directly via AudiobookLoader; no pub/sub handoff is needed.
+        subscribeToPhoneSideErrorAlerts()
+    }
+
+    /// Presents user-facing alerts for validation errors published to
+    /// `errorPublisher`. Before this subscriber existed, only CarPlay listened
+    /// to `errorPublisher` — so phone users got no feedback when an open
+    /// failed at the validation stage (WiFi-only+cellular, not-authenticated,
+    /// not-downloaded, offline+streaming). Loader failures and cold-load
+    /// playback failures have their own alert paths (BookService.
+    /// showAudiobookTryAgainError and the .playbackFailed cold-load branch);
+    /// those are explicitly skipped here to avoid double-alerting.
+    private func subscribeToPhoneSideErrorAlerts() {
+        errorPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { error in
+                Self.presentPhoneSideAlert(for: error)
+            }
+            .store(in: &lifecycleCancellables)
+    }
+
+    static func presentPhoneSideAlert(for error: AudiobookSessionError) {
+        guard let alertContent = phoneAlertContent(for: error) else { return }
+        let alert = TPPAlertUtils.alert(title: alertContent.title, message: alertContent.message)
+        TPPAlertUtils.presentFromViewControllerOrNil(
+            alertController: alert,
+            viewController: nil,
+            animated: true,
+            completion: nil
+        )
+    }
+
+    /// Maps session errors to phone-alert (title, message) pairs. Returns nil
+    /// for errors that have other dedicated presentation paths — keep this
+    /// switch aligned with those paths so no case is alerted twice.
+    static func phoneAlertContent(for error: AudiobookSessionError) -> (title: String, message: String)? {
+        switch error {
+        case .wifiRequired:
+            return (Strings.Settings.wifiRequired, Strings.Settings.downloadRestrictedToWiFi)
+        case .notAuthenticated:
+            return (Strings.Error.signInErrorTitle, error.localizedDescription)
+        case .notDownloaded:
+            return (Strings.Generic.error, error.localizedDescription)
+        case .networkUnavailable:
+            return (Strings.Error.networkUnavailableErrorTitle, error.localizedDescription)
+        case .manifestLoadFailed, .playerCreationFailed, .alreadyLoading, .unknown:
+            // Loader failures → BookService.showAudiobookTryAgainError.
+            // Cold-load .unknown("Playback failed") → cold-load alert branch.
+            // .alreadyLoading is a programmer-facing signal, not user-facing.
+            return nil
+        }
     }
 
     // MARK: - Public API
@@ -597,25 +655,46 @@ public final class AudiobookSessionManager: ObservableObject {
     private static let openAccessPlayerErrorAuthenticationRequiredCode = 5 // OpenAccessPlayerError.authenticationRequired
 
     private func validateRequirements(for book: TPPBook) -> AudiobookSessionError? {
-        // Check authentication
-        let isAuthenticated = isUserAuthenticated()
-        if !isAuthenticated {
+        if !isUserAuthenticated() {
             return .notAuthenticated
         }
 
-        // Check book state
         let bookState = bookRegistry.state(for: book.identifier)
         if bookState == .unregistered || bookState == .downloadNeeded {
             return .notDownloaded
         }
 
-        // Check network for streaming content
+        return Self.networkValidationError(
+            bookState: bookState,
+            isConnectedToNetwork: Reachability.shared.isConnectedToNetwork(),
+            isOnWiFi: Reachability.shared.isOnWiFi,
+            downloadOnlyOnWiFi: TPPSettings.shared.downloadOnlyOnWiFi
+        )
+    }
+
+    /// Pure network-rules validator. Extracted for deterministic testing against
+    /// every combination of connectivity + user WiFi-only preference. The rules:
+    ///   - Fully-downloaded books never need the network → no error
+    ///   - Streaming books with no network at all → .networkUnavailable
+    ///   - Streaming books on cellular when the user has WiFi-only enabled
+    ///     → .wifiRequired (refusing to burn their cell data against their
+    ///     stated preference, and surfacing the same "connect to Wi-Fi or
+    ///     change settings" alert the download path uses)
+    static func networkValidationError(
+        bookState: TPPBookState,
+        isConnectedToNetwork: Bool,
+        isOnWiFi: Bool,
+        downloadOnlyOnWiFi: Bool
+    ) -> AudiobookSessionError? {
         let isFullyDownloaded = bookState == .downloadSuccessful || bookState == .used
-        let hasNetwork = Reachability.shared.isConnectedToNetwork()
-        if !isFullyDownloaded && !hasNetwork {
+        guard !isFullyDownloaded else { return nil }
+
+        if !isConnectedToNetwork {
             return .networkUnavailable
         }
-
+        if downloadOnlyOnWiFi && !isOnWiFi {
+            return .wifiRequired
+        }
         return nil
     }
 

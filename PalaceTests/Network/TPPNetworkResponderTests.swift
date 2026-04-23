@@ -51,12 +51,25 @@ class TPPNetworkResponderTests: XCTestCase {
                        "canRetry(url: nil) must consistently return false")
     }
 
-    func testMarkRetriedWithNilURLDoesNotCrash() {
-        responder.markRetried(url: nil) // Should not crash
-        // After a nil markRetried call, a real URL must still be retryable
-        let url = URL(string: "https://example.com")!
-        XCTAssertTrue(responder.canRetry(url: url),
-                      "markRetried(nil) must not corrupt tracking for real URLs")
+    func testMarkRetriedWithNilURL_isNoOp_andLeavesRealURLTrackingIntact() {
+        // A nil URL can reach markRetried from a task whose originalRequest
+        // has been torn down. Must be a silent no-op — not a crash, and
+        // not a corruption of the retry map that affects real URLs.
+        let urlA = URL(string: "https://example.com/a")!
+        let urlB = URL(string: "https://example.com/b")!
+
+        responder.markRetried(url: nil)
+
+        XCTAssertTrue(responder.canRetry(url: urlA),
+                      "unrelated URL must still be retryable after nil call")
+        XCTAssertTrue(responder.canRetry(url: urlB),
+                      "second unrelated URL must also be retryable after nil call")
+
+        responder.markRetried(url: urlA)
+        XCTAssertFalse(responder.canRetry(url: urlA),
+                       "after markRetried(urlA), canRetry(urlA) must be false")
+        XCTAssertTrue(responder.canRetry(url: urlB),
+                      "urlB must remain retryable — markRetried(urlA) must not affect siblings")
     }
 
     func testClearRetryResetsURL() {

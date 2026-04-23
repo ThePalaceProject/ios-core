@@ -70,24 +70,41 @@ final class AudiobookSessionErrorExtTests: XCTestCase {
         XCTAssertEqual(AudiobookSessionError.notAuthenticated, AudiobookSessionError.notAuthenticated)
         XCTAssertEqual(AudiobookSessionError.notDownloaded, AudiobookSessionError.notDownloaded)
         XCTAssertEqual(AudiobookSessionError.networkUnavailable, AudiobookSessionError.networkUnavailable)
+        XCTAssertEqual(AudiobookSessionError.wifiRequired, AudiobookSessionError.wifiRequired)
         XCTAssertEqual(AudiobookSessionError.manifestLoadFailed, AudiobookSessionError.manifestLoadFailed)
         XCTAssertEqual(AudiobookSessionError.playerCreationFailed, AudiobookSessionError.playerCreationFailed)
         XCTAssertEqual(AudiobookSessionError.alreadyLoading, AudiobookSessionError.alreadyLoading)
         XCTAssertNotEqual(AudiobookSessionError.notAuthenticated, AudiobookSessionError.notDownloaded)
+        XCTAssertNotEqual(AudiobookSessionError.networkUnavailable, AudiobookSessionError.wifiRequired,
+                          "wifiRequired must be distinguishable from networkUnavailable — they map to different alert titles")
     }
 
     func testErrorDescriptions() {
         XCTAssertFalse(AudiobookSessionError.notAuthenticated.localizedDescription.isEmpty)
         XCTAssertFalse(AudiobookSessionError.notDownloaded.localizedDescription.isEmpty)
         XCTAssertFalse(AudiobookSessionError.networkUnavailable.localizedDescription.isEmpty)
+        XCTAssertFalse(AudiobookSessionError.wifiRequired.localizedDescription.isEmpty,
+                       "wifiRequired must carry a non-empty message so the alert layer has something to display")
         XCTAssertFalse(AudiobookSessionError.manifestLoadFailed.localizedDescription.isEmpty)
         XCTAssertFalse(AudiobookSessionError.playerCreationFailed.localizedDescription.isEmpty)
         XCTAssertFalse(AudiobookSessionError.alreadyLoading.localizedDescription.isEmpty)
     }
 
-    func testUnknownErrorDescription() {
-        let error = AudiobookSessionError.unknown("Custom error message")
-        XCTAssertEqual(error.localizedDescription, "Custom error message")
+    func testUnknownErrorDescription_preservesCallerMessageVerbatim() {
+        // .unknown forwards the caller's message to the UI unchanged. Covers
+        // simple strings, empty strings (still a valid payload, not nil), and
+        // multi-line content that shows up in Crashlytics breadcrumbs.
+        let cases = [
+            "Custom error message",
+            "",
+            "line one\nline two\t\"quoted\"",
+            "emoji 📚 and unicode é"
+        ]
+        for message in cases {
+            XCTAssertEqual(AudiobookSessionError.unknown(message).localizedDescription,
+                           message,
+                           ".unknown must return the input message verbatim for '\(message)'")
+        }
     }
 
     func testUnknownErrorEquality() {
@@ -224,5 +241,148 @@ final class AudiobookSAMLReauthTests: XCTestCase {
         }
 
         return nil
+    }
+}
+
+// MARK: - Network Validation Tests
+
+/// Covers every combination of (bookState, connected, onWiFi, downloadOnlyOnWiFi).
+/// These rules decide whether a user's attempt to open an audiobook is refused
+/// before the loader runs — the surface that fires the WiFi-required alert on
+/// open (parallel to MyBooksDownloadCenter's download-site gate added in PR #851).
+final class AudiobookNetworkValidationTests: XCTestCase {
+
+    private func validate(
+        _ state: TPPBookState,
+        connected: Bool,
+        onWiFi: Bool,
+        wifiOnly: Bool
+    ) -> AudiobookSessionError? {
+        AudiobookSessionManager.networkValidationError(
+            bookState: state,
+            isConnectedToNetwork: connected,
+            isOnWiFi: onWiFi,
+            downloadOnlyOnWiFi: wifiOnly
+        )
+    }
+
+    // MARK: Fully-downloaded books — network rules must not apply
+
+    func testFullyDownloaded_neverNeedsNetwork_offline() {
+        XCTAssertNil(validate(.downloadSuccessful, connected: false, onWiFi: false, wifiOnly: true),
+                     "Downloaded audiobook must play offline regardless of Wi-Fi-only preference")
+        XCTAssertNil(validate(.used, connected: false, onWiFi: false, wifiOnly: true),
+                     ".used state (already-opened downloaded book) must also play offline")
+    }
+
+    func testFullyDownloaded_onCellularWithWifiOnly_isAllowed() {
+        XCTAssertNil(validate(.downloadSuccessful, connected: true, onWiFi: false, wifiOnly: true),
+                     "Downloaded audiobook must play on cellular even with Wi-Fi-only on — no bytes going over the wire")
+    }
+
+    // MARK: Streaming books — the bug this fix addresses
+
+    func testStreaming_onCellularWithWifiOnly_returnsWifiRequired() {
+        XCTAssertEqual(validate(.downloading, connected: true, onWiFi: false, wifiOnly: true),
+                       .wifiRequired,
+                       "Streaming on cellular with Wi-Fi-only ON must surface .wifiRequired — the exact alert the open path was silently skipping before this fix")
+        XCTAssertEqual(validate(.downloadFailed, connected: true, onWiFi: false, wifiOnly: true),
+                       .wifiRequired,
+                       ".downloadFailed is also a non-downloaded state — Wi-Fi-only gate must still fire")
+    }
+
+    func testStreaming_onWifi_isAllowed() {
+        XCTAssertNil(validate(.downloading, connected: true, onWiFi: true, wifiOnly: true),
+                     "Streaming on Wi-Fi must be allowed — the setting name is 'download only on Wi-Fi', not 'block streaming'")
+    }
+
+    func testStreaming_onCellularWithoutWifiOnly_isAllowed() {
+        XCTAssertNil(validate(.downloading, connected: true, onWiFi: false, wifiOnly: false),
+                     "Without the Wi-Fi-only preference, cellular streaming is the user's choice — no gate")
+    }
+
+    func testStreaming_offline_returnsNetworkUnavailable() {
+        XCTAssertEqual(validate(.downloading, connected: false, onWiFi: false, wifiOnly: false),
+                       .networkUnavailable,
+                       "No network + streaming content must return the generic offline error, not the Wi-Fi-specific one")
+    }
+
+    func testStreaming_offline_preemptsWifiOnlyCheck() {
+        // If the device is fully offline, .networkUnavailable is more accurate
+        // than .wifiRequired — the user can't solve it by toggling a setting.
+        XCTAssertEqual(validate(.downloading, connected: false, onWiFi: false, wifiOnly: true),
+                       .networkUnavailable,
+                       "Offline must report .networkUnavailable even with Wi-Fi-only on — connect-to-Wi-Fi wording would be misleading")
+    }
+
+    // MARK: Boundary / sanity
+
+    func testRulesAreIndependentOfAuthAndRegistration() {
+        // networkValidationError is a pure function — it doesn't touch auth or
+        // registration state, because validateRequirements already gated those
+        // separately. A mutation that added an auth check here would silently
+        // break the downloaded-offline path (fully-downloaded books must play
+        // without reaching out to the auth stack).
+        for state in [TPPBookState.downloadSuccessful, .used] {
+            XCTAssertNil(validate(state, connected: false, onWiFi: false, wifiOnly: true),
+                         "Downloaded state \(state) must return nil regardless of network/wifi state")
+        }
+    }
+}
+
+// MARK: - Phone-side Alert Content Tests
+
+/// Covers which errors surface a user-facing alert on the phone when emitted
+/// through `errorPublisher`, and which are intentionally suppressed because
+/// they have another dedicated presentation path (BookService.
+/// showAudiobookTryAgainError or the cold-load alert branch).
+final class AudiobookPhoneAlertContentTests: XCTestCase {
+
+    func testWifiRequired_producesAlertContent() {
+        guard let content = AudiobookSessionManager.phoneAlertContent(for: .wifiRequired) else {
+            XCTFail(".wifiRequired must produce phone alert content — it's the primary bug this fix addresses")
+            return
+        }
+        XCTAssertFalse(content.title.isEmpty, "title cannot be empty")
+        XCTAssertFalse(content.message.isEmpty, "message cannot be empty")
+        XCTAssertTrue(content.title.localizedCaseInsensitiveContains("Wi-Fi") ||
+                      content.title.localizedCaseInsensitiveContains("wifi"),
+                      ".wifiRequired title must mention Wi-Fi so users understand the gate")
+    }
+
+    func testValidationErrors_allProduceAlertContent() {
+        // Every validation-failure error must have phone alert content — if any
+        // returned nil, the user would get no feedback after tapping Listen and
+        // that's the original "no alert" bug.
+        let validationErrors: [AudiobookSessionError] = [
+            .wifiRequired,
+            .notAuthenticated,
+            .notDownloaded,
+            .networkUnavailable,
+        ]
+        for error in validationErrors {
+            XCTAssertNotNil(AudiobookSessionManager.phoneAlertContent(for: error),
+                            "\(error) is a validation-failure error and MUST produce phone alert content")
+        }
+    }
+
+    func testLoaderAndUnknownErrors_returnNil_toAvoidDoubleAlerts() {
+        // These errors are already alerted through other paths:
+        //   - .manifestLoadFailed / .playerCreationFailed → loader path calls
+        //     BookService.showAudiobookTryAgainError
+        //   - .unknown("Playback failed") → cold-load branch in
+        //     handleManagerState(.playbackFailed)
+        //   - .alreadyLoading → programmer-facing signal, not user-facing
+        let suppressed: [AudiobookSessionError] = [
+            .manifestLoadFailed,
+            .playerCreationFailed,
+            .alreadyLoading,
+            .unknown("anything"),
+            .unknown(""),
+        ]
+        for error in suppressed {
+            XCTAssertNil(AudiobookSessionManager.phoneAlertContent(for: error),
+                         "\(error) must return nil so the subscriber does not double-alert with existing paths")
+        }
     }
 }

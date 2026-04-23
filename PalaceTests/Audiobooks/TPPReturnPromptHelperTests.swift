@@ -21,11 +21,21 @@ final class TPPReturnPromptHelperTests: XCTestCase {
     }
 
     /// SRS: AUDIO-006 -- Return prompt displays correctly after audiobook completion
-    func testAudiobookPrompt_hasTwoActions() {
+    func testAudiobookPrompt_hasExactlyKeepAndReturnActionsWithTitles() {
+        // Two actions must be present and each tagged with a non-empty title —
+        // a regression that collapsed them into one (or added a third) would
+        // hide Return or confuse users with a stray action; a blank title
+        // would strand VoiceOver users with no readable label.
         let alert = TPPReturnPromptHelper.audiobookPrompt { _ in }
 
         XCTAssertEqual(alert.actions.count, 2,
-                        "Alert should have keep and return actions")
+                        "Alert should have exactly two actions (keep + return)")
+        for action in alert.actions {
+            XCTAssertFalse(action.title?.isEmpty ?? true,
+                           "Every action must have a non-empty title for VoiceOver")
+        }
+        XCTAssertNotNil(alert.title,
+                        "Alert must have a title so the prompt is self-describing")
     }
 
     /// SRS: AUDIO-006 -- Return prompt displays correctly after audiobook completion

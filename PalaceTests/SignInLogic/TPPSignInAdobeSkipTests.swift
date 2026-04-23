@@ -58,9 +58,17 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
 
     /// SRS: DRM-004 - When auth state is not credentialsStale, never skip activation
     func testShouldSkipAdobeActivation_falseWhenNotStale() {
-        // Default state is not credentialsStale
-        XCTAssertFalse(businessLogic.shouldSkipAdobeActivation(),
-                       "Should not skip activation when auth state is not credentialsStale")
+        // Every non-stale auth state must refuse the skip. If this regressed
+        // (e.g. .loggedIn started skipping), fresh sign-ins would silently
+        // reuse stale Adobe credentials and the user would see DRM errors on
+        // every book open until the device was re-authorized.
+        let userAccountMock = businessLogic.userAccount as! TPPUserAccountMock
+
+        for state in [TPPAccountAuthState.loggedOut, .loggedIn] {
+            userAccountMock.setAuthState(state)
+            XCTAssertFalse(businessLogic.shouldSkipAdobeActivation(),
+                           "Must not skip activation in \(state) state (only credentialsStale may skip)")
+        }
     }
 
     /// SRS: DRM-004 - Without existing Adobe credentials, cannot skip activation
@@ -181,10 +189,23 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
     // MARK: - logIn with different auth types
 
     func testLogIn_withNoSelectedAuth_doesNotCrash() {
+        // logIn must early-return when no auth method is selected — attempting
+        // a login without knowing which method to use would send blank creds.
+        // Verify both the early-return contract (no validation kicked off) and
+        // that no sign-in notification was posted downstream.
+        var signInNotificationPosted = false
+        let observer = NotificationCenter.default.addObserver(
+            forName: .TPPIsSigningIn, object: nil, queue: nil
+        ) { _ in signInNotificationPosted = true }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
         businessLogic.selectedAuthentication = nil
         businessLogic.logIn()
-        // Should return early without crash
-        XCTAssertFalse(businessLogic.isValidatingCredentials)
+
+        XCTAssertFalse(businessLogic.isValidatingCredentials,
+                       "logIn without a selected auth must not enter the validating state")
+        XCTAssertFalse(signInNotificationPosted,
+                       "logIn without a selected auth must not post TPPIsSigningIn")
     }
 
     func testLogIn_postsSigningInNotification() {

@@ -77,10 +77,15 @@ final class AudiobookLoaderTests: XCTestCase {
 final class AudiobookSessionManagerErrorMappingTests: XCTestCase {
 
     func testMap_cancelled_isUnknown() {
+        // .cancelled must land in .unknown (no dedicated session-error case) and
+        // the surfaced message must be non-empty so the retry UX has something
+        // to display instead of a blank alert.
         let mapped = AudiobookSessionManager.mapLoadError(.cancelled)
-        guard case .unknown = mapped else {
+        guard case .unknown(let message) = mapped else {
             XCTFail("expected .unknown for .cancelled, got \(mapped)"); return
         }
+        XCTAssertFalse(message.isEmpty,
+                       ".unknown for .cancelled must carry a non-empty message for the alert layer")
     }
 
     func testMap_tokenRefresh_isNotAuthenticated() {
@@ -129,7 +134,15 @@ final class AudiobookSessionManagerErrorMappingTests: XCTestCase {
     }
 
     func testMap_factoryFailed_isPlayerCreationFailed() {
-        let mapped = AudiobookSessionManager.mapLoadError(.factoryFailed(manifestType: "audiobook"))
-        XCTAssertEqual(mapped, .playerCreationFailed)
+        // The manifestType payload is opaque to the mapping — every factory
+        // failure must land on .playerCreationFailed regardless of format,
+        // so the retry UX shows a consistent "player couldn't start" message.
+        let manifestTypes = ["audiobook", "audiobook+json", "readium-lcp",
+                             "readium+lcp+audiobook", "unknown-format", ""]
+        for manifestType in manifestTypes {
+            let mapped = AudiobookSessionManager.mapLoadError(.factoryFailed(manifestType: manifestType))
+            XCTAssertEqual(mapped, .playerCreationFailed,
+                           ".factoryFailed(manifestType: '\(manifestType)') must map to .playerCreationFailed")
+        }
     }
 }

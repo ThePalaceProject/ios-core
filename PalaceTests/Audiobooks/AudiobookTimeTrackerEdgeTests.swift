@@ -89,12 +89,17 @@ final class AudiobookTimeTrackerEdgeTests: XCTestCase {
     // MARK: - Duration Cap Tests
 
     /// SRS: AUDIO-003 -- Time tracking accumulates and persists correctly
-    func testTimeEntry_durationCappedAt60() {
+    func testTimeEntry_durationCappedAt60_andIsNonNegativeAtInit() {
+        // The cap exists so a single entry can't represent more than a minute
+        // of listening — the backend counts minutes and rejects oversized
+        // entries. Duration must also be >= 0 at init; a negative entry would
+        // slip past the cap but would corrupt aggregate totals downstream.
         let entry = tracker.timeEntry
-        // timeEntry uses min(60, Int(duration))
-        // At init, duration is 0
+
         XCTAssertLessThanOrEqual(entry.duration, 60,
-                                  "Duration should never exceed 60 seconds")
+                                  "Duration must never exceed 60 seconds — CM rejects longer entries")
+        XCTAssertGreaterThanOrEqual(entry.duration, 0,
+                                     "Duration must be non-negative at init (negative would poison aggregates)")
     }
 
     /// SRS: AUDIO-003 -- Time tracking accumulates and persists correctly

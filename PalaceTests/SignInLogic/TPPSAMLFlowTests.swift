@@ -34,13 +34,18 @@ final class TPPSAMLFlowTests: XCTestCase {
 
     // MARK: - Test 1: Init requires context (no force-unwrap)
 
-    func testSAMLHelper_initRequiresContext() {
-        // The new init(context:presenter:) is non-optional — if this compiles,
-        // the force-unwrap businessLogic! is gone. Verify the helper holds refs.
-        XCTAssertNotNil(samlHelper)
-        // The fact that TPPSAMLHelper(context:presenter:) compiles with non-optional
-        // params proves the force-unwrap is eliminated. This test exists to catch
-        // regressions if someone re-introduces an implicitly unwrapped optional.
+    func testSAMLHelper_initRequiresContext_andStartsWithCleanCookieState() {
+        // init(context:presenter:) is non-optional — this test locks in that
+        // non-optional signature at the behavior level (not just compilation):
+        // if a later refactor re-introduces an implicit unwrap, this test
+        // still passes but a separate force-unwrap-scanner test would catch
+        // it. Also guards the invariant that a freshly-initialised helper
+        // carries no cookies — a regression that pre-populated cookies from
+        // some shared cache would leak SAML session state between flows.
+        XCTAssertNotNil(samlHelper,
+                        "SAML helper must be created from non-optional init")
+        XCTAssertNil(samlHelper.cookies,
+                     "freshly-initialised helper must have no cookies")
     }
 
     // MARK: - Test 2: Login calls presenter, not UIKit
@@ -560,22 +565,35 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
     // MARK: - Test 24: Cookies stored on helper, not businessLogic
 
     func testSAMLCookies_storedOnHelper_notBusinessLogic() {
+        // SAML cookies live on the helper so they stay scoped to the one
+        // auth attempt (and are released with the helper when the flow
+        // ends). If businessLogic started hoarding them, cookies from
+        // account A's SAML session would leak into account B's requests.
         let mockContext = MockSAMLAuthContext()
         let mockPresenter = MockSAMLWebViewPresenter()
         let helper = TPPSAMLHelper(context: mockContext, presenter: mockPresenter)
 
-        let testCookies = [HTTPCookie(properties: [
-            .name: "saml_session",
-            .value: "token123",
-            .domain: "idp.example.com",
-            .path: "/",
-        ])].compactMap { $0 }
+        let testCookies = [
+            HTTPCookie(properties: [
+                .name: "saml_session", .value: "token123",
+                .domain: "idp.example.com", .path: "/",
+            ]),
+            HTTPCookie(properties: [
+                .name: "saml_csrf", .value: "csrf-abc",
+                .domain: "idp.example.com", .path: "/",
+            ]),
+        ].compactMap { $0 }
 
         helper.cookies = testCookies
+        let stored = helper.cookies ?? []
 
-        XCTAssertEqual(helper.cookies?.count, 1,
+        XCTAssertEqual(stored.count, 2,
                        "SAML cookies should be stored on the helper")
-        XCTAssertEqual(helper.cookies?.first?.value, "token123")
+        XCTAssertEqual(stored.first?.value, "token123",
+                       "first cookie value must round-trip unchanged")
+        XCTAssertEqual(stored.map(\.name).sorted(),
+                       ["saml_csrf", "saml_session"],
+                       "every cookie name assigned must be retrievable by name")
     }
 
     // MARK: - Test 25: Sign-out clears SAML state

@@ -34,10 +34,19 @@ final class TPPReauthenticatorTests: XCTestCase {
     // MARK: - Initialization Tests
 
     func testInit_createsDistinctInstances() {
-        // The type is not a singleton — each init must produce a distinct object
+        // The type is not a singleton — each init must produce a distinct
+        // object. This matters because TPPReauthenticator holds per-call
+        // presentation state; a shared instance would leak cookies/context
+        // between reauth attempts that happen close together.
         let second = TPPReauthenticator()
+        let third = TPPReauthenticator()
+
         XCTAssertFalse(reauthenticator === second,
-                       "Two TPPReauthenticator instances must be distinct objects")
+                       "first and second instances must be distinct")
+        XCTAssertFalse(reauthenticator === third,
+                       "first and third instances must be distinct")
+        XCTAssertFalse(second === third,
+                       "second and third instances must be distinct")
     }
 
     func testInit_isNSObjectSubclass() {
@@ -56,13 +65,19 @@ final class TPPReauthenticatorTests: XCTestCase {
     }
 
     func testAuthenticateIfNeeded_withNilCompletion_doesNotCrash() {
-        // Should not crash when completion is nil
-        // Note: This triggers UI presentation which won't complete in tests
+        // Background auth-refresh paths (e.g. token expiry mid-sync) call
+        // authenticateIfNeeded with a nil completion because they don't need
+        // to observe the result. Must not crash, must not corrupt shared state
+        // (the userAccount instance must remain usable for the main flow).
+        let userAccountBefore = userAccount
+
         reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true, authenticationCompletion: nil)
-        // Calling a second time with nil must also not crash (no stale state)
         reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false, authenticationCompletion: nil)
+
         XCTAssertNotNil(reauthenticator,
                         "Reauthenticator must remain valid after authenticateIfNeeded calls")
+        XCTAssertTrue(userAccount === userAccountBefore,
+                      "authenticateIfNeeded must not swap out the caller's userAccount reference")
     }
 }
 
