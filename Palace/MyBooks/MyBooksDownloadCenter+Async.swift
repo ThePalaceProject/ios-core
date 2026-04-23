@@ -44,6 +44,41 @@ extension MyBooksDownloadCenter {
         borrowReauthAttempted.removeAll()
     }
 
+    // MARK: - Borrow Response Evaluation (PP-4178)
+
+    /// Maps a book returned from a Borrow request to the resulting registry state and
+    /// any error that should be surfaced to the user.
+    ///
+    /// When the CM circulation dispatcher loses the Loan→Hold race (another patron
+    /// consumes the copy between the HoldAvailable push and this patron's borrow tap),
+    /// CM returns 201 with a `reserved`/`unavailable` OPDS entry instead of a loan.
+    /// This helper flags that case so the caller can surface an explicit error instead
+    /// of silently reverting state.
+    static func borrowResponseState(for book: TPPBook) -> (state: TPPBookState, error: PalaceError?) {
+        guard let availability = book.defaultAcquisition?.availability else {
+            return (.downloadNeeded, nil)
+        }
+
+        var state: TPPBookState = .downloadNeeded
+        var error: PalaceError?
+
+        availability.match(
+            unavailable: { _ in
+                state = .holding
+                error = .bookRegistry(.holdCopyUnavailable)
+            },
+            limited: { _ in state = .downloadNeeded },
+            unlimited: { _ in state = .downloadNeeded },
+            reserved: { _ in
+                state = .holding
+                error = .bookRegistry(.holdCopyUnavailable)
+            },
+            ready: { _ in state = .downloadNeeded }
+        )
+
+        return (state, error)
+    }
+
     // MARK: - Async Borrow Operations
 
     /// Borrows a book asynchronously using modern async/await pattern
@@ -123,35 +158,39 @@ extension MyBooksDownloadCenter {
             // Preserve existing location
             let location = self.bookRegistry.location(forIdentifier: borrowedBook.identifier)
 
-            // Determine correct registry state based on availability
-            var newState: TPPBookState = .downloadNeeded
-            borrowedBook.defaultAcquisition?.availability.match(unavailable: 
-                { _ in newState = .holding },
-                limited: { _ in newState = .downloadNeeded },
-                unlimited: { _ in newState = .downloadNeeded },
-                reserved: { _ in newState = .holding },
-                ready: { _ in newState = .downloadNeeded }
-            )
+            // PP-4178: Evaluate the borrow response. If CM returned a Hold (race where
+            // another patron consumed the copy between the ready-push and this tap),
+            // update the registry with the true hold state so the UI is accurate, then
+            // throw so the user sees an explicit error instead of a silent revert.
+            let mapping = Self.borrowResponseState(for: borrowedBook)
 
-            // Add to registry
             self.bookRegistry.addBook(
                 borrowedBook,
                 location: location,
-                state: newState,
+                state: mapping.state,
                 fulfillmentId: nil as String?,
                 readiumBookmarks: nil as [TPPReadiumBookmark]?,
                 genericBookmarks: nil as [TPPBookLocation]?
             )
 
             // Emit explicit state update so SwiftUI lists refresh immediately
-            self.bookRegistry.setState(newState, for: borrowedBook.identifier)
+            self.bookRegistry.setState(mapping.state, for: borrowedBook.identifier)
 
-            Task { await ErrorActivityTracker.shared.log("Borrow succeeded for '\(borrowedBook.title)', state: \(newState)", category: .borrow) }
+            if let raceError = mapping.error {
+                Task { await ErrorActivityTracker.shared.log(
+                    "Borrow for '\(borrowedBook.title)' returned \(mapping.state) — CM Loan→Hold race (PP-4178)",
+                    category: .borrow
+                ) }
+                TPPErrorLogger.logError(raceError, summary: "Borrow race: CM returned hold for '\(borrowedBook.title)'")
+                throw raceError
+            }
+
+            Task { await ErrorActivityTracker.shared.log("Borrow succeeded for '\(borrowedBook.title)', state: \(mapping.state)", category: .borrow) }
 
             announceBorrowSucceeded(for: borrowedBook)
 
             // Optionally start download
-            if attemptDownload && newState == .downloadNeeded {
+            if attemptDownload && mapping.state == .downloadNeeded {
                 await MainActor.run {
                     startDownload(for: borrowedBook)
                 }
@@ -161,7 +200,7 @@ extension MyBooksDownloadCenter {
             // holdPosition=0 for holds. The real position is only available from
             // the shelf/loans feed. Trigger a sync after a short delay so the UI
             // can update with the correct hold position.
-            if newState == .holding {
+            if mapping.state == .holding {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                     (self.bookRegistry as? TPPBookRegistry)?.sync()
