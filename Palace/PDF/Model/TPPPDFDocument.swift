@@ -17,6 +17,7 @@ protocol TPPPDFDocumentDelegate {
 /// Wrapper class for PDF docuument in general
 @objcMembers class TPPPDFDocument: NSObject {
     let data: Data
+    let fileURL: URL?
     let decryptor: ((_ data: Data, _ start: UInt, _ end: UInt) -> Data)?
     let isEncrypted: Bool
 
@@ -26,6 +27,18 @@ protocol TPPPDFDocumentDelegate {
     /// - Parameter data: PDF document data
     init(data: Data) {
         self.data = data
+        self.fileURL = nil
+        self.decryptor = nil
+        self.isEncrypted = false
+    }
+
+    /// Initialize with a non-encrypted PDF file on disk. `PDFDocument(url:)` mmaps
+    /// the file and pages in on demand, so opening a 500 MB textbook doesn't
+    /// pin the whole buffer in RAM or block the main thread on a synchronous
+    /// read — both of which `Data(contentsOf:)` + `init(data:)` does.
+    init(url: URL) {
+        self.data = Data()
+        self.fileURL = url
         self.decryptor = nil
         self.isEncrypted = false
     }
@@ -36,6 +49,7 @@ protocol TPPPDFDocumentDelegate {
     ///   - decryptor: Decryptor function
     init(encryptedData: Data, decryptor: @escaping (_ data: Data, _ start: UInt, _ end: UInt) -> Data) {
         self.data = encryptedData
+        self.fileURL = nil
         self.decryptor = decryptor
         self.isEncrypted = true
     }
@@ -52,6 +66,9 @@ protocol TPPPDFDocumentDelegate {
     lazy var document: PDFDocument? = {
         guard !isEncrypted else {
             return nil
+        }
+        if let fileURL {
+            return PDFDocument(url: fileURL)
         }
         return PDFDocument(data: data)
     }()

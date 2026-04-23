@@ -455,9 +455,8 @@ extension BookCellModel {
             self.isLoading = false
         case .pdf:
             guard let url = downloadCenter.fileUrl(for: book.identifier) else { self.isLoading = false; return }
-            let data = try? Data(contentsOf: url)
             let metadata = TPPPDFDocumentMetadata(with: book)
-            let document = TPPPDFDocument(data: data ?? Data())
+            let document = TPPPDFDocument(url: url)
             if let coordinator = NavigationCoordinatorHub.shared.coordinator {
                 coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
                 coordinator.push(.pdf(BookRoute(id: book.identifier)))
