@@ -2621,6 +2621,15 @@ extension MyBooksDownloadCenter {
 
         let fileManager = FileManager.default
 
+        // PP-RESET: record exactly which path we're writing to so we can diff
+        // it against the read-side path later if the file "disappears".
+        Log.info(#file, """
+            [RESET-DEBUG] replaceBook WRITE for '\(book.title)':
+              identifier=\(book.identifier)
+              account=\(accountsManager.currentAccountId ?? "nil")
+              destination path=\(destURL.path)
+            """)
+
         do {
             // Ensure parent directory exists
             let parentDir = destURL.deletingLastPathComponent()
