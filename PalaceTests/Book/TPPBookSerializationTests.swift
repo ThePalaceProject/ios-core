@@ -94,7 +94,12 @@ class TPPBookSerializationTests: XCTestCase {
     _ = bookEmptyTitle
   }
 
-  func test_initFromDictionary_missingUpdated_returnsNil() {
+  /// Previously, a missing or malformed 'updated' field dropped the entire book
+  /// from the in-memory registry — the root cause of the library-reselect
+  /// book-state reset. The reader now falls back to .distantPast and keeps the
+  /// book, because losing the downloaded title is far worse than losing the
+  /// timestamp.
+  func test_initFromDictionary_missingUpdated_fallsBackToDistantPast() {
     let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
     let book = TPPBook(dictionary: [
       "acquisitions": acquisitions,
@@ -102,8 +107,9 @@ class TPPBookSerializationTests: XCTestCase {
       "id": "123",
       "title": "Title"
     ])
-    XCTAssertNil(book, "Missing 'updated' key must produce nil")
-    // With an invalid date string the result should also be nil
+    XCTAssertNotNil(book, "Missing 'updated' must not drop the book — fall back to .distantPast")
+    XCTAssertEqual(book?.updated, .distantPast, "Missing 'updated' falls back to .distantPast")
+
     let bookBadDate = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories": ["Test"],
@@ -111,7 +117,23 @@ class TPPBookSerializationTests: XCTestCase {
       "title": "Title",
       "updated": "not-a-date"
     ])
-    XCTAssertNil(bookBadDate, "Invalid 'updated' date string must produce nil")
+    XCTAssertNotNil(bookBadDate, "Malformed 'updated' must not drop the book")
+    XCTAssertEqual(bookBadDate?.updated, .distantPast, "Unparseable 'updated' falls back to .distantPast")
+  }
+
+  /// Missing `categories` used to drop the book. The reader now accepts an
+  /// absent or malformed Categories array and defaults to []. Only `id` and
+  /// `title` remain hard requirements.
+  func test_initFromDictionary_missingCategories_usesEmptyArray() {
+    let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
+    let book = TPPBook(dictionary: [
+      "acquisitions": acquisitions,
+      "id": "no-categories",
+      "title": "Title",
+      "updated": "2024-01-01T00:00:00Z"
+    ])
+    XCTAssertNotNil(book, "Missing 'categories' must not drop the book")
+    XCTAssertEqual(book?.categoryStrings ?? [], [], "Missing 'categories' defaults to []")
   }
 
   // MARK: - UpdatedKey parsing (registry reload bug)
