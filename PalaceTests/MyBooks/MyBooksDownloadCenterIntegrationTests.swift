@@ -426,35 +426,118 @@ final class DownloadStateMachineIntegrationTests: XCTestCase {
         XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadSuccessful)
     }
 
-    // MARK: - Hold State Tests
+    // MARK: - Borrow Response Mapping (PP-4178)
 
-    func testState_borrowResultsInHold_setsHoldingState() {
-        // Given an unregistered book
-        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        mockBookRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+    /// CM race case: borrow request loses the copy to another patron, CM falls back to
+    /// a Hold and returns 201 with a `reserved` OPDS entry. The iOS client must treat
+    /// this as a borrow failure, not a silent state revert.
+    func testBorrowResponseState_reserved_returnsHoldingAndHoldCopyUnavailableError() {
+        let book = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReserved(
+            holdPosition: 2,
+            copiesTotal: 3,
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 7)
+        ))
 
-        // When borrow results in hold (book not available)
-        mockBookRegistry.setState(.holding, for: book.identifier)
+        let result = MyBooksDownloadCenter.borrowResponseState(for: book)
 
-        // Then book should be in holding state
-        XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .holding)
+        XCTAssertEqual(result.state, .holding, "Registry should reflect the hold state so the UI shows correct queue position")
+        guard case .bookRegistry(.holdCopyUnavailable) = result.error else {
+            XCTFail("Expected holdCopyUnavailable error for reserved response, got \(String(describing: result.error))")
+            return
+        }
     }
 
-    func testState_holdReadyToDownload_transitionsCorrectly() {
-        // Given a book on hold that becomes ready
-        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        mockBookRegistry.addBook(book, location: nil, state: .holding, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+    /// When the license pool has no copies and the patron has no slot, the server returns
+    /// `unavailable` — same class of failure as `reserved`: the borrow did not grant a loan.
+    func testBorrowResponseState_unavailable_returnsHoldingAndHoldCopyUnavailableError() {
+        let book = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
+            copiesHeld: 3,
+            copiesTotal: 3
+        ))
 
-        // When hold becomes ready, transition to downloadNeeded
-        mockBookRegistry.setState(.downloadNeeded, for: book.identifier)
-        XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadNeeded)
+        let result = MyBooksDownloadCenter.borrowResponseState(for: book)
 
-        // Then can proceed with download
-        mockBookRegistry.setState(.downloading, for: book.identifier)
-        XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloading)
+        XCTAssertEqual(result.state, .holding)
+        guard case .bookRegistry(.holdCopyUnavailable) = result.error else {
+            XCTFail("Expected holdCopyUnavailable error for unavailable response, got \(String(describing: result.error))")
+            return
+        }
+    }
 
-        mockBookRegistry.setState(.downloadSuccessful, for: book.identifier)
-        XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadSuccessful)
+    func testBorrowResponseState_limited_returnsDownloadNeededWithNoError() {
+        let book = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityLimited(
+            copiesAvailable: 2,
+            copiesTotal: 3,
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 21)
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: book)
+
+        XCTAssertEqual(result.state, .downloadNeeded)
+        XCTAssertNil(result.error, "Limited availability indicates a successful loan; no error expected")
+    }
+
+    func testBorrowResponseState_unlimited_returnsDownloadNeededWithNoError() {
+        let book = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnlimited())
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: book)
+
+        XCTAssertEqual(result.state, .downloadNeeded)
+        XCTAssertNil(result.error)
+    }
+
+    func testBorrowResponseState_ready_returnsDownloadNeededWithNoError() {
+        let book = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReady(
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 3)
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: book)
+
+        XCTAssertEqual(result.state, .downloadNeeded)
+        XCTAssertNil(result.error)
+    }
+
+    // MARK: Helpers
+
+    private static func makeBook(withAvailability availability: TPPOPDSAcquisitionAvailability) -> TPPBook {
+        let url = URL(string: "https://example.com/pp-4178-test")!
+        let acquisition = TPPOPDSAcquisition(
+            relation: .generic,
+            type: "application/epub+zip",
+            hrefURL: url,
+            indirectAcquisitions: [],
+            availability: availability
+        )
+        return TPPBook(
+            acquisitions: [acquisition],
+            authors: [TPPBookAuthor(authorName: "Author", relatedBooksURL: nil)],
+            categoryStrings: ["Fiction"],
+            distributor: "Test",
+            identifier: "pp-4178-\(UUID().uuidString)",
+            imageURL: url,
+            imageThumbnailURL: url,
+            published: Date(),
+            publisher: "Test",
+            subtitle: nil,
+            summary: "Test book",
+            title: "Test Title",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: url,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: ImageCache.shared
+        )
     }
 }
 
