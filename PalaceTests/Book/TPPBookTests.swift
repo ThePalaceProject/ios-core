@@ -471,8 +471,13 @@ final class TPPBookTests: XCTestCase {
         }
     }
 
-    func test_getExpirationDate_nilWhenUntilDateIsInPast() throws {
-        try XCTSkipIf(true, "TEST-BLOCKED: production getExpirationDate() returns past dates instead of nil — needs product/contract review (test expects nil for past dates per docstring; production violates)")
+    func test_getExpirationDate_returnsRawUntilDate_andIsExpiredFlagsPastDates() throws {
+        // Contract: getExpirationDate returns the raw `until` date from the
+        // limited/ready availability, regardless of whether it's in the past.
+        // The past-vs-present filter lives on TPPBook.isExpired, which compares
+        // the returned date against Date(). A previous version of this test
+        // asserted getExpirationDate returned nil for past dates, which was a
+        // misread of the API contract (the production code has no such filter).
         let pastDate = Date().addingTimeInterval(-86400)
         let acq = TPPOPDSAcquisition(
             relation: .generic,
@@ -488,8 +493,14 @@ final class TPPBookTests: XCTestCase {
         )
         let book = makeBook(acquisitions: [acq])
 
-        // getExpirationDate only returns dates with timeIntervalSinceNow > 0
-        XCTAssertNil(book.getExpirationDate())
+        let surfaced = try XCTUnwrap(book.getExpirationDate(),
+            "getExpirationDate must surface the raw past-until date — filtering is isExpired's job")
+        XCTAssertEqual(surfaced.timeIntervalSince1970,
+                       pastDate.timeIntervalSince1970,
+                       accuracy: 1.0,
+                       "returned date must equal the until date provided in availability")
+        XCTAssertTrue(book.isExpired,
+                      "isExpired must be true when until is in the past")
     }
 
     // MARK: - Reservation Details

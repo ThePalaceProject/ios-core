@@ -3,12 +3,24 @@ import XCTest
 
 // MARK: - Mock Feed Preloader
 
-private final class MockFeedPreloader: CatalogFeedPreloading {
-    var preloadedURLs: [URL] = []
+private final class MockFeedPreloader: CatalogFeedPreloading, @unchecked Sendable {
+    // CatalogPreloader fans out via withTaskGroup, so preloadFeed can be called
+    // concurrently from multiple threads. Without this lock the append race loses
+    // records and a URL can go missing from `preloadedURLs` even though preload
+    // actually ran — which is exactly the flake that made testPreloader_
+    // ContinuesOnFailure fail intermittently.
+    private let lock = NSLock()
+    private var _preloadedURLs: [URL] = []
+    var preloadedURLs: [URL] {
+        lock.lock(); defer { lock.unlock() }
+        return _preloadedURLs
+    }
     var urlsThatShouldFail: Set<URL> = []
 
     func preloadFeed(from url: URL) async throws {
-        preloadedURLs.append(url)
+        lock.lock()
+        _preloadedURLs.append(url)
+        lock.unlock()
         if urlsThatShouldFail.contains(url) {
             throw URLError(.notConnectedToInternet)
         }

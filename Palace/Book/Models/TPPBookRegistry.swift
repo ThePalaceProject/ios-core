@@ -132,8 +132,13 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 // the subject) to see an empty list until the new load completes.
                 self.store.registrySubject.send([:])
                 self.state = .loading
-                self.load()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                // Chain sync() off load's completion so it never runs against an
+                // empty in-memory store. Previously this used an `asyncAfter(+1s)`
+                // heuristic, which raced on slow disks: if load's disk I/O hadn't
+                // finished when sync() fired, sync would rebuild the registry from
+                // feed-only data and save it to disk, wiping every previously-
+                // downloaded book's state back to .downloadNeeded.
+                self.load { [weak self] in
                     self?.sync()
                 }
             }
@@ -232,13 +237,13 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         return syncEngine.registryUrl(for: account)
     }
 
-    func load(account: String? = nil) {
-        syncEngine.load(account: account) { [weak self] newState in
+    func load(account: String? = nil, completion: (() -> Void)? = nil) {
+        syncEngine.load(account: account, setState: { [weak self] newState in
             self?.state = newState
-        }
+        }, completion: completion)
     }
 
-    func load() { load(account: nil) }
+    func load() { load(account: nil, completion: nil) }
 
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
         let priorState = state
@@ -474,14 +479,20 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 extension TPPBookRegistry: TPPBookRegistryProvider {
     var registryState: RegistryState { state }
 
+    // Bookmark/location mutations mirror the addBook pattern in the main class:
+    // capture `currentAccount?.uuid` synchronously (so a library switch mid-flight
+    // can't retarget the save to the wrong account — PP-4129), then pass it
+    // through to the collaborator. BookmarkManager performs the in-memory mutation
+    // unconditionally and skips save-to-disk when account is nil.
+
     func setLocation(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
-        guard let account = accountsManager.currentAccount?.uuid else { return }
-        bookmarks.setLocation(location, forIdentifier: bookIdentifier, account: account)
+        bookmarks.setLocation(location, forIdentifier: bookIdentifier,
+                               account: accountsManager.currentAccount?.uuid)
     }
 
     func setLocationSync(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
-        guard let account = accountsManager.currentAccount?.uuid else { return }
-        bookmarks.setLocationSync(location, forIdentifier: bookIdentifier, account: account)
+        bookmarks.setLocationSync(location, forIdentifier: bookIdentifier,
+                                   account: accountsManager.currentAccount?.uuid)
     }
 
     func location(forIdentifier bookIdentifier: String) -> TPPBookLocation? {
@@ -493,18 +504,19 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     }
 
     func add(_ bookmark: TPPReadiumBookmark, forIdentifier bookIdentifier: String) {
-        guard let account = accountsManager.currentAccount?.uuid else { return }
-        bookmarks.addReadiumBookmark(bookmark, forIdentifier: bookIdentifier, account: account)
+        bookmarks.addReadiumBookmark(bookmark, forIdentifier: bookIdentifier,
+                                      account: accountsManager.currentAccount?.uuid)
     }
 
     func delete(_ bookmark: TPPReadiumBookmark, forIdentifier bookIdentifier: String) {
-        guard let account = accountsManager.currentAccount?.uuid else { return }
-        bookmarks.deleteReadiumBookmark(bookmark, forIdentifier: bookIdentifier, account: account)
+        bookmarks.deleteReadiumBookmark(bookmark, forIdentifier: bookIdentifier,
+                                         account: accountsManager.currentAccount?.uuid)
     }
 
     func replace(_ oldBookmark: TPPReadiumBookmark, with newBookmark: TPPReadiumBookmark, forIdentifier bookIdentifier: String) {
-        guard let account = accountsManager.currentAccount?.uuid else { return }
-        bookmarks.replaceReadiumBookmark(oldBookmark, with: newBookmark, forIdentifier: bookIdentifier, account: account)
+        bookmarks.replaceReadiumBookmark(oldBookmark, with: newBookmark,
+                                          forIdentifier: bookIdentifier,
+                                          account: accountsManager.currentAccount?.uuid)
     }
 
     func genericBookmarksForIdentifier(_ bookIdentifier: String) -> [TPPBookLocation] {
@@ -512,23 +524,24 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     }
 
     func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-        guard let account = accountsManager.currentAccount?.uuid else { return }
-        bookmarks.addOrReplaceGenericBookmark(location, forIdentifier: bookIdentifier, account: account)
+        bookmarks.addOrReplaceGenericBookmark(location, forIdentifier: bookIdentifier,
+                                               account: accountsManager.currentAccount?.uuid)
     }
 
     func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-        guard let account = accountsManager.currentAccount?.uuid else { return }
-        bookmarks.addGenericBookmark(location, forIdentifier: bookIdentifier, account: account)
+        bookmarks.addGenericBookmark(location, forIdentifier: bookIdentifier,
+                                      account: accountsManager.currentAccount?.uuid)
     }
 
     func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
-        guard let account = accountsManager.currentAccount?.uuid else { return }
-        bookmarks.deleteGenericBookmark(location, forIdentifier: bookIdentifier, account: account)
+        bookmarks.deleteGenericBookmark(location, forIdentifier: bookIdentifier,
+                                         account: accountsManager.currentAccount?.uuid)
     }
 
     func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
-        guard let account = accountsManager.currentAccount?.uuid else { return }
-        bookmarks.replaceGenericBookmark(oldLocation, with: newLocation, forIdentifier: bookIdentifier, account: account)
+        bookmarks.replaceGenericBookmark(oldLocation, with: newLocation,
+                                          forIdentifier: bookIdentifier,
+                                          account: accountsManager.currentAccount?.uuid)
     }
 }
 

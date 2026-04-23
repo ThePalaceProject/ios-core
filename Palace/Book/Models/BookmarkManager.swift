@@ -23,19 +23,19 @@ class BookmarkManager {
 
   // MARK: - Location tracking
 
-  func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String) {
+  func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String?) {
     guard !identifier.isEmpty else { return }
     store.mutateRegistry({ registry in
       registry[identifier]?.location = location
-    }, onComplete: { [save] in save(account) })
+    }, onComplete: { [save] in if let account { save(account) } })
   }
 
-  func setLocationSync(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String) {
+  func setLocationSync(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String?) {
     guard !identifier.isEmpty else { return }
     store.mutateRegistrySync({ registry in
       registry[identifier]?.location = location
       Log.debug(#function, "Synchronously set location for \(identifier)")
-    }, onComplete: { [saveSync] in saveSync(account) })
+    }, onComplete: { [saveSync] in if let account { saveSync(account) } })
   }
 
   func location(forIdentifier identifier: String) -> TPPBookLocation? {
@@ -51,7 +51,7 @@ class BookmarkManager {
     }
   }
 
-  func addReadiumBookmark(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String, account: String) {
+  func addReadiumBookmark(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String, account: String?) {
     // Capture by reference via a class box so the onComplete barrier sees the
     // value set inside the mutation barrier. Swift auto-boxes a local var
     // captured mutably by multiple closures; we rely on that.
@@ -63,20 +63,20 @@ class BookmarkManager {
       }
       registry[identifier]?.readiumBookmarks?.append(bookmark)
       didMutate = true
-    }, onComplete: { [save] in if didMutate { save(account) } })
+    }, onComplete: { [save] in if didMutate, let account { save(account) } })
   }
 
-  func deleteReadiumBookmark(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String, account: String) {
+  func deleteReadiumBookmark(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String, account: String?) {
     store.mutateRegistry({ registry in
       registry[identifier]?.readiumBookmarks?.removeAll { $0 == bookmark }
-    }, onComplete: { [save] in save(account) })
+    }, onComplete: { [save] in if let account { save(account) } })
   }
 
-  func replaceReadiumBookmark(_ oldBookmark: TPPReadiumBookmark, with newBookmark: TPPReadiumBookmark, forIdentifier identifier: String, account: String) {
+  func replaceReadiumBookmark(_ oldBookmark: TPPReadiumBookmark, with newBookmark: TPPReadiumBookmark, forIdentifier identifier: String, account: String?) {
     store.mutateRegistry({ registry in
       registry[identifier]?.readiumBookmarks?.removeAll { $0 == oldBookmark }
       registry[identifier]?.readiumBookmarks?.append(newBookmark)
-    }, onComplete: { [save] in save(account) })
+    }, onComplete: { [save] in if let account { save(account) } })
   }
 
   // MARK: - Generic bookmarks
@@ -89,7 +89,7 @@ class BookmarkManager {
     }
   }
 
-  func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier identifier: String, account: String) {
+  func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier identifier: String, account: String?) {
     store.mutateRegistry({ [weak self] registry in
       guard let self, registry[identifier] != nil else { return }
       if registry[identifier]?.genericBookmarks == nil {
@@ -97,10 +97,10 @@ class BookmarkManager {
       }
       self.deleteGenericBookmarkInline(location, forIdentifier: identifier, registry: &registry)
       self.addGenericBookmarkInline(location, forIdentifier: identifier, registry: &registry)
-    }, onComplete: { [save] in save(account) })
+    }, onComplete: { [save] in if let account { save(account) } })
   }
 
-  func addGenericBookmark(_ location: TPPBookLocation, forIdentifier identifier: String, account: String) {
+  func addGenericBookmark(_ location: TPPBookLocation, forIdentifier identifier: String, account: String?) {
     var didMutate = false
     store.mutateRegistry({ [weak self] registry in
       guard registry[identifier] != nil else {
@@ -109,20 +109,20 @@ class BookmarkManager {
       }
       self?.addGenericBookmarkInline(location, forIdentifier: identifier, registry: &registry)
       didMutate = true
-    }, onComplete: { [save] in if didMutate { save(account) } })
+    }, onComplete: { [save] in if didMutate, let account { save(account) } })
   }
 
-  func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier identifier: String, account: String) {
+  func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier identifier: String, account: String?) {
     store.mutateRegistry({ [weak self] registry in
       self?.deleteGenericBookmarkInline(location, forIdentifier: identifier, registry: &registry)
-    }, onComplete: { [save] in save(account) })
+    }, onComplete: { [save] in if let account { save(account) } })
   }
 
-  func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier identifier: String, account: String) {
+  func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier identifier: String, account: String?) {
     store.mutateRegistry({ [weak self] registry in
       self?.deleteGenericBookmarkInline(oldLocation, forIdentifier: identifier, registry: &registry)
       self?.addGenericBookmarkInline(newLocation, forIdentifier: identifier, registry: &registry)
-    }, onComplete: { [save] in save(account) })
+    }, onComplete: { [save] in if let account { save(account) } })
   }
 
   // MARK: - Inline helpers (called within mutateRegistry barrier)

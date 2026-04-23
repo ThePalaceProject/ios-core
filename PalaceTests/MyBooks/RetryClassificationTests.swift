@@ -121,10 +121,21 @@ final class RetryClassificationTests: XCTestCase {
     // MARK: - Authentication Errors
 
     func testAuthErrors_retryable() {
-        XCTAssertTrue(
-            DownloadErrorRecovery.isRetryableForUser(PalaceError.authentication(.networkError)),
-            "Auth network error should be retryable"
-        )
+        // Kept as a list (not a single assertion) to stay symmetric with
+        // testAuthErrors_notRetryable below and to make it obvious where a
+        // new retryable auth case would be added. Transient network blips
+        // during auth (connection dropped mid-token-refresh) are retryable;
+        // every credential/token *state* error is not.
+        let retryableErrors: [PalaceError] = [
+            .authentication(.networkError),
+        ]
+
+        for error in retryableErrors {
+            XCTAssertTrue(
+                DownloadErrorRecovery.isRetryableForUser(error),
+                "\(error) should be retryable"
+            )
+        }
     }
 
     func testAuthErrors_notRetryable() {
@@ -184,10 +195,20 @@ final class RetryClassificationTests: XCTestCase {
     // MARK: - Book Registry Errors
 
     func testBookRegistryErrors_retryable() {
-        XCTAssertTrue(
-            DownloadErrorRecovery.isRetryableForUser(PalaceError.bookRegistry(.syncFailed)),
-            "Sync failure should be retryable"
-        )
+        // List form stays parallel with testBookRegistryErrors_notRetryable.
+        // Sync-against-the-CM failures are transient; structural state errors
+        // (invalidState, alreadyBorrowed, bookNotFound) are user-facing facts
+        // that another tap won't change.
+        let retryableErrors: [PalaceError] = [
+            .bookRegistry(.syncFailed),
+        ]
+
+        for error in retryableErrors {
+            XCTAssertTrue(
+                DownloadErrorRecovery.isRetryableForUser(error),
+                "\(error) should be retryable"
+            )
+        }
     }
 
     func testBookRegistryErrors_notRetryable() {
@@ -208,10 +229,19 @@ final class RetryClassificationTests: XCTestCase {
     // MARK: - Audiobook Errors
 
     func testAudiobookErrors_retryable() {
-        XCTAssertTrue(
-            DownloadErrorRecovery.isRetryableForUser(PalaceError.audiobook(.streamingError)),
-            "Streaming error should be retryable"
-        )
+        // List form stays parallel with testAudiobookErrors_notRetryable.
+        // Streaming drops are transient; manifest/audio-file/decoding errors
+        // are permanent until the download is re-acquired.
+        let retryableErrors: [PalaceError] = [
+            .audiobook(.streamingError),
+        ]
+
+        for error in retryableErrors {
+            XCTAssertTrue(
+                DownloadErrorRecovery.isRetryableForUser(error),
+                "\(error) should be retryable"
+            )
+        }
     }
 
     func testAudiobookErrors_notRetryable() {

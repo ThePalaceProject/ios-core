@@ -15,29 +15,18 @@ final class URLRequestNYPLAdditionsTests: XCTestCase {
 
     // MARK: - postRequest(withProblemDocument:url:)
 
-    func testPostProblemDocument_setsHTTPMethod() {
+    func testPostProblemDocument_producesCompliantProblemJSONRequest() {
         let problemDoc: NSDictionary = ["type": "about:blank", "title": "Error", "status": 400]
 
         let request = NSURLRequest.postRequest(withProblemDocument: problemDoc, url: testURL)
 
-        XCTAssertEqual(request.httpMethod, "POST")
-    }
-
-    func testPostProblemDocument_setsContentType() {
-        let problemDoc: NSDictionary = ["type": "about:blank"]
-
-        let request = NSURLRequest.postRequest(withProblemDocument: problemDoc, url: testURL)
-
-        let contentType = request.value(forHTTPHeaderField: "Content-Type")
-        XCTAssertEqual(contentType, "application/problem+json")
-    }
-
-    func testPostProblemDocument_setsURL() {
-        let problemDoc: NSDictionary = ["type": "about:blank"]
-
-        let request = NSURLRequest.postRequest(withProblemDocument: problemDoc, url: testURL)
-
-        XCTAssertEqual(request.url, testURL)
+        XCTAssertEqual(request.httpMethod, "POST",
+                       "problem document must be POSTed")
+        XCTAssertEqual(request.url, testURL,
+                       "request URL must match the caller's URL verbatim")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"),
+                       "application/problem+json",
+                       "content-type must conform to RFC 7807 (application/problem+json)")
     }
 
     func testPostProblemDocument_setsBody() {
@@ -71,57 +60,37 @@ final class URLRequestNYPLAdditionsTests: XCTestCase {
         }
     }
 
-    func testPostProblemDocument_cachePolicyIsReloadIgnoring() {
+    func testPostProblemDocument_usesTransportDefaultsForReporting() {
+        // Reports must bypass the cache (fresh network pass), not share cookies
+        // (error reports are diagnostic, not a user session), and time out in
+        // 30 seconds so a stalled endpoint can't wedge the caller.
         let problemDoc: NSDictionary = ["type": "about:blank"]
 
         let request = NSURLRequest.postRequest(withProblemDocument: problemDoc, url: testURL)
 
         XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
-    }
-
-    func testPostProblemDocument_doesNotHandleCookies() {
-        let problemDoc: NSDictionary = ["type": "about:blank"]
-
-        let request = NSURLRequest.postRequest(withProblemDocument: problemDoc, url: testURL)
-
         XCTAssertFalse(request.httpShouldHandleCookies)
-    }
-
-    func testPostProblemDocument_timeoutIs30() {
-        let problemDoc: NSDictionary = ["type": "about:blank"]
-
-        let request = NSURLRequest.postRequest(withProblemDocument: problemDoc, url: testURL)
-
         XCTAssertEqual(request.timeoutInterval, 30)
     }
 
     // MARK: - postRequest(withParams:imageOrNil:url:)
 
-    func testPostParams_setsHTTPMethod() {
+    func testPostParams_producesMultipartFormPOSTRequest() {
         let params: NSDictionary = ["key": "value"]
 
         let request = NSURLRequest.postRequest(withParams: params, imageOrNil: nil, url: testURL)
 
-        XCTAssertEqual(request.httpMethod, "POST")
-    }
-
-    func testPostParams_setsMultipartContentType() {
-        let params: NSDictionary = ["key": "value"]
-
-        let request = NSURLRequest.postRequest(withParams: params, imageOrNil: nil, url: testURL)
-
-        let contentType = request.value(forHTTPHeaderField: "Content-Type")
-        XCTAssertNotNil(contentType)
-        XCTAssertTrue(contentType!.contains("multipart/form-data"))
-        XCTAssertTrue(contentType!.contains("boundary="))
-    }
-
-    func testPostParams_setsURL() {
-        let params: NSDictionary = ["key": "value"]
-
-        let request = NSURLRequest.postRequest(withParams: params, imageOrNil: nil, url: testURL)
-
-        XCTAssertEqual(request.url, testURL)
+        XCTAssertEqual(request.httpMethod, "POST",
+                       "multipart params must be POSTed")
+        XCTAssertEqual(request.url, testURL,
+                       "request URL must match the caller's URL verbatim")
+        let contentType = request.value(forHTTPHeaderField: "Content-Type") ?? ""
+        XCTAssertTrue(contentType.contains("multipart/form-data"),
+                      "content-type must be multipart/form-data, got: '\(contentType)'")
+        XCTAssertTrue(contentType.contains("boundary="),
+                      "multipart content-type must declare a boundary, got: '\(contentType)'")
+        XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData,
+                       "multipart POST must bypass the cache (fresh upload, not replay)")
     }
 
     func testPostParams_bodyContainsParams() {
@@ -191,14 +160,6 @@ final class URLRequestNYPLAdditionsTests: XCTestCase {
 
         XCTAssertNotNil(request.httpBody)
         XCTAssertEqual(request.httpMethod, "POST")
-    }
-
-    func testPostParams_cachePolicyIsReloadIgnoring() {
-        let params: NSDictionary = ["key": "value"]
-
-        let request = NSURLRequest.postRequest(withParams: params, imageOrNil: nil, url: testURL)
-
-        XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
     }
 
     // MARK: - Multipart Boundary

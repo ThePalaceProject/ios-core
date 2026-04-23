@@ -136,9 +136,20 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func setupBookRegistryAndNotifications() {
-        DispatchQueue.global(qos: .background).async {
-            _ = TPPBookRegistry.shared
-        }
+        // Populate the in-memory registry from disk BEFORE any view path can
+        // trigger sync(). Previously this did a fire-and-forget singleton poke
+        // on a background queue and never called load() — so sync() calls from
+        // AppTabHostView tab switches, applicationDidBecomeActive, or the
+        // background refresh task ran against an empty in-memory store, rebuilt
+        // the registry from feed-only data, and overwrote the on-disk file.
+        // Every previously-downloaded book came back as .downloadNeeded with no
+        // location or bookmarks, showing "Download" again on relaunch.
+        //
+        // load() returns immediately — the disk I/O is dispatched onto the
+        // store's own queue — but it primes the `loadingAccount` guard and
+        // queues the state transition to .loaded. Any sync() that races it is
+        // caught by the .unloaded/.loading guard in BookRegistrySync.sync.
+        TPPBookRegistry.shared.load()
 
         NotificationService.shared.setupPushNotifications()
     }

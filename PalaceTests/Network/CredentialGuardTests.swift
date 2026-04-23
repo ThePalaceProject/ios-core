@@ -455,39 +455,6 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
         wait(for: [expectation], timeout: 15.0)
     }
 
-    // PP-4045: empty password is now VALID for pinless libraries. Production
-    // code (`TPPNetworkExecutor.executeTokenRefresh`) only guards against
-    // empty username. This test's expectation that empty password fails
-    // locally is obsolete — request proceeds and the server decides.
-    // TODO: convert to testing that empty username still fails locally.
-    func _obsolete_testExecuteTokenRefresh_EmptyPassword_FailsViaTokenRequestGuard() {
-        let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Refresh completes")
-
-        HTTPStubURLProtocol.register { _ in
-            XCTFail("Should not reach the network with empty password")
-            return nil
-        }
-
-        let tokenURL = URL(string: "https://example.com/token")!
-        executor.executeTokenRefresh(
-            username: "12345",
-            password: "",
-            tokenURL: tokenURL
-        ) { result in
-            switch result {
-            case .failure(let error):
-                XCTAssertTrue(error.localizedDescription.contains("empty") || error.localizedDescription.contains("credentials"),
-                              "Should fail with empty credentials error, got: \(error.localizedDescription)")
-            case .success:
-                XCTFail("Expected failure for empty password")
-            }
-            expectation.fulfill()
-        }
-
-        wait(for: [expectation], timeout: 15.0)
-    }
-
     func testExecuteTokenRefresh_BothEmpty_FailsViaTokenRequestGuard() {
         let executor = makeExecutor()
         let expectation = XCTestExpectation(description: "Refresh completes")
@@ -876,17 +843,40 @@ final class CredentialEdgeCaseTests: XCTestCase {
                        "The base64 is non-empty, so it looks like a valid header but contains no actual credentials")
     }
 
-    func testBarcodeAndPin_ValidCredentials_ProducesNonTrivialBasicAuthHeader() {
-        let loginString = "12345:1234"
-        let base64 = Data(loginString.utf8).base64EncodedString()
-        XCTAssertTrue(base64.count > 10,
-                      "Valid credentials produce a reasonably long base64 string")
+    func testCredentials_BarcodeAndPin_RoundTripsThroughCodable() throws {
+        let original = TPPCredentials.barcodeAndPin(barcode: "23160026460829", pin: "1234")
+
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(TPPCredentials.self, from: encoded)
+
+        guard case let .barcodeAndPin(barcode, pin) = decoded else {
+            XCTFail("Expected .barcodeAndPin after Codable round-trip, got \(decoded)")
+            return
+        }
+        XCTAssertEqual(barcode, "23160026460829")
+        XCTAssertEqual(pin, "1234")
     }
 
-    func testBarcodeAndPin_SingleCharEach_StillValidButShort() {
-        let loginString = "a:b"
-        let base64 = Data(loginString.utf8).base64EncodedString()
-        XCTAssertEqual(base64, "YTpi", "Single-char credentials still produce valid base64")
+    // Covers decodeIfPresent on lines 68-69 of TPPCredentials.swift: legacy
+    // keychain entries may have been written with nil barcode/pin and must
+    // still decode cleanly after Codable was hardened.
+    func testCredentials_TokenWithNilBarcodeAndPin_SurvivesCodableRoundTrip() throws {
+        let original = TPPCredentials.token(authToken: "oauth-abc-123",
+                                            barcode: nil,
+                                            pin: nil,
+                                            expirationDate: nil)
+
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(TPPCredentials.self, from: encoded)
+
+        guard case let .token(token, barcode, pin, expiration) = decoded else {
+            XCTFail("Expected .token after Codable round-trip, got \(decoded)")
+            return
+        }
+        XCTAssertEqual(token, "oauth-abc-123")
+        XCTAssertNil(barcode)
+        XCTAssertNil(pin)
+        XCTAssertNil(expiration)
     }
 }
 
@@ -976,31 +966,6 @@ final class TokenRefreshIntegrationTests: XCTestCase {
                        "Empty username must be caught before any network I/O")
     }
 
-    // PP-4045: see note above. Empty password is valid for pinless libraries.
-    func _obsolete_testExecuteTokenRefresh_EmptyPassword_NeverHitsNetwork() {
-        let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Token refresh completes")
-        var networkCallMade = false
-
-        HTTPStubURLProtocol.register { _ in
-            networkCallMade = true
-            return HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data())
-        }
-
-        let tokenURL = URL(string: "https://example.com/token")!
-        executor.executeTokenRefresh(
-            username: "barcode",
-            password: "",
-            tokenURL: tokenURL
-        ) { _ in
-            expectation.fulfill()
-        }
-
-        wait(for: [expectation], timeout: 15.0)
-
-        XCTAssertFalse(networkCallMade,
-                       "Empty password must be caught before any network I/O")
-    }
 }
 
 // MARK: - Thread-safe Counter Helper

@@ -10,28 +10,27 @@ import XCTest
 
 final class ReachabilityTests: XCTestCase {
 
-    // MARK: - Shared Instance
+    // Removed testShared_isNotNil and testShared_returnsSameInstance: both
+    // tested `static let shared` non-nil / identity, which Swift guarantees.
 
-    func testShared_isNotNil() {
-        XCTAssertNotNil(Reachability.shared)
-    }
+    // MARK: - Connection API (non-asserting on value — CI has variable connectivity)
 
-    func testShared_returnsSameInstance() {
-        let a = Reachability.shared
-        let b = Reachability.shared
-        XCTAssertTrue(a === b)
-    }
+    func testIsConnected_methodAndPropertyAgreeAndAreStable() {
+        // Reachability exposes both isConnected (property) and isConnectedToNetwork()
+        // (method). They MUST return the same bool, and back-to-back reads of the
+        // property must be stable (connectivity can't flip in the microsecond between
+        // two reads; if it did, the publisher machinery would be broken). A mutation
+        // that returned different values from the two accessors would cause callers
+        // that sample one to drift from callers that sample the other — silent
+        // split-brain state in the offline-queue retry path.
+        let method = Reachability.shared.isConnectedToNetwork()
+        let property1 = Reachability.shared.isConnected
+        let property2 = Reachability.shared.isConnected
 
-    // MARK: - Connection Check (non-asserting — CI may have variable connectivity)
-
-    func testIsConnectedToNetwork_returnsBool() {
-        // Verify the method returns without crashing.
-        // We cannot assert a specific value because CI runners may or may not have network.
-        let connected = Reachability.shared.isConnectedToNetwork()
-        // Result must be Bool (compile-time checked), and must match the isConnected property
-        let connectedProperty = Reachability.shared.isConnected
-        XCTAssertEqual(connected, connectedProperty,
-                       "isConnectedToNetwork() and isConnected must agree")
+        XCTAssertEqual(method, property1,
+                       "isConnectedToNetwork() and isConnected must agree on the same tick")
+        XCTAssertEqual(property1, property2,
+                       "isConnected must be stable across immediate sequential reads")
     }
 
     // MARK: - Detailed Status
@@ -42,16 +41,5 @@ final class ReachabilityTests: XCTestCase {
         // connectionType and details should always be populated (even "None" / "Unknown")
         XCTAssertFalse(status.connectionType.isEmpty, "Connection type should not be empty")
         XCTAssertFalse(status.details.isEmpty, "Details should not be empty")
-    }
-
-    // MARK: - isConnected Property
-
-    func testIsConnected_property_returnsBool() {
-        // Verify it returns without crashing and is consistent across back-to-back reads
-        let first = Reachability.shared.isConnected
-        let second = Reachability.shared.isConnected
-        // Connectivity can't flip in the microsecond between two reads
-        XCTAssertEqual(first, second,
-                       "isConnected should be stable across immediate sequential reads")
     }
 }
