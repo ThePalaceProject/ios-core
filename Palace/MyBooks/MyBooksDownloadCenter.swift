@@ -380,23 +380,6 @@ import OverdriveProcessor
             return
         }
 
-        // Wi-Fi-only gate must run BEFORE registerStart so the coordinator slot
-        // never gets locked by a download intent we're about to refuse. Placing
-        // the gate deeper (inside processRegularDownload / processOverdriveDownload)
-        // leaves the .unregistered-borrow-then-download path unchecked: the first
-        // pass routes to startBorrow via processDownloadWithCredentials, the
-        // borrow succeeds on cellular, then the follow-up startDownload can't
-        // acquire a slot because the first pass never released it — the book
-        // appears stuck in "downloading" with no alert.
-        //
-        // Pure borrow / hold / return paths never enter startDownloadAsync (they
-        // call borrowAsync/returnBook directly), so this gate doesn't regress
-        // PR #851's intent of keeping OPDS-only actions unblocked on cellular.
-        if isWifiOnlyEnforced {
-            failWithWifiRequired(for: book)
-            return
-        }
-
         var state = bookRegistry.state(for: book.identifier)
         let location = bookRegistry.location(forIdentifier: book.identifier)
         let loginRequired = (userAccount.authDefinition?.needsAuth ?? false) && !userAccount.hasCredentials()
