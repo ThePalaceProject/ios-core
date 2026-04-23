@@ -19,58 +19,50 @@ final class TPPKeychainSwiftTests: XCTestCase {
 
   // MARK: - Roundtrip
 
-  func test_setAndGet_roundtripsStringValue() {
+  func test_setObject_roundtripsStringAndNumber() {
     TPPKeychain.shared.setObject("hello", forKey: testKey1)
-    let result = TPPKeychain.shared.object(forKey: testKey1) as? String
-    XCTAssertEqual(result, "hello")
+    TPPKeychain.shared.setObject(NSNumber(value: 42), forKey: testKey2)
+
+    XCTAssertEqual(TPPKeychain.shared.object(forKey: testKey1) as? String,
+                   "hello",
+                   "String set-then-get should round-trip unchanged")
+    XCTAssertEqual(TPPKeychain.shared.object(forKey: testKey2) as? NSNumber,
+                   NSNumber(value: 42),
+                   "NSNumber set-then-get should round-trip unchanged")
   }
 
-  func test_setAndGet_roundtripsNumberValue() {
-    let number = NSNumber(value: 42)
-    TPPKeychain.shared.setObject(number, forKey: testKey1)
-    let result = TPPKeychain.shared.object(forKey: testKey1) as? NSNumber
-    XCTAssertEqual(result, number)
-  }
-
-  func test_setObject_overwritesPreviousValue() {
+  func test_setObject_overwritesPreviousValueAndRemoveClearsIt() {
     TPPKeychain.shared.setObject("first", forKey: testKey1)
     TPPKeychain.shared.setObject("second", forKey: testKey1)
-    let result = TPPKeychain.shared.object(forKey: testKey1) as? String
-    XCTAssertEqual(result, "second")
-  }
+    XCTAssertEqual(TPPKeychain.shared.object(forKey: testKey1) as? String,
+                   "second",
+                   "second setObject must replace, not append or no-op")
 
-  // MARK: - Removal
-
-  func test_removeObjectForKey_removesEntry() {
-    TPPKeychain.shared.setObject("value", forKey: testKey1)
     TPPKeychain.shared.removeObject(forKey: testKey1)
-    let result = TPPKeychain.shared.object(forKey: testKey1)
-    XCTAssertNil(result, "Object should be nil after removal")
+    XCTAssertNil(TPPKeychain.shared.object(forKey: testKey1),
+                 "remove after overwrite should leave no residue")
   }
 
-  func test_removeObjectForKey_doesNotAffectOtherKeys() {
+  // MARK: - Absence (missing, removed, cross-key)
+
+  func test_keyAbsence_behavesConsistentlyAcrossMissingRemovedAndCrossKey() {
+    // Never-written key: get should return nil, remove should be a safe no-op.
+    let neverWritten = "never_written_\(UUID().uuidString)"
+    XCTAssertNil(TPPKeychain.shared.object(forKey: neverWritten),
+                 "never-set key must read back nil")
+    TPPKeychain.shared.removeObject(forKey: neverWritten)
+    XCTAssertNil(TPPKeychain.shared.object(forKey: neverWritten),
+                 "remove-then-get on a never-set key must still be nil")
+
+    // Cross-key: removing one key must not affect siblings.
     TPPKeychain.shared.setObject("value1", forKey: testKey1)
     TPPKeychain.shared.setObject("value2", forKey: testKey2)
     TPPKeychain.shared.removeObject(forKey: testKey1)
-
-    XCTAssertNil(TPPKeychain.shared.object(forKey: testKey1))
-    XCTAssertEqual(TPPKeychain.shared.object(forKey: testKey2) as? String, "value2")
-  }
-
-  func test_removeObjectForKey_nonexistentKey_doesNotCrash() {
-    // Should not throw or crash
-    let nonExistentKey = "nonexistent_key_\(UUID().uuidString)"
-    TPPKeychain.shared.removeObject(forKey: nonExistentKey)
-    // After removing a nonexistent key, reading it should still return nil
-    let result = TPPKeychain.shared.object(forKey: nonExistentKey)
-    XCTAssertNil(result, "Reading a nonexistent (just-removed) key should return nil")
-  }
-
-  // MARK: - Missing Keys
-
-  func test_objectForKey_missingKey_returnsNil() {
-    let result = TPPKeychain.shared.object(forKey: "missing_key_\(UUID().uuidString)")
-    XCTAssertNil(result)
+    XCTAssertNil(TPPKeychain.shared.object(forKey: testKey1),
+                 "removed key should read back nil")
+    XCTAssertEqual(TPPKeychain.shared.object(forKey: testKey2) as? String,
+                   "value2",
+                   "removing testKey1 must not disturb testKey2")
   }
 
   // MARK: - Thread Safety
