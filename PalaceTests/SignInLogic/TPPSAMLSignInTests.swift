@@ -725,31 +725,6 @@ final class TPPSAMLSignInTests: XCTestCase {
                    "setAuthToken alone should not change auth state from stale")
   }
   
-  /// Tests that markLoggedIn properly transitions from any state to loggedIn.
-  func testMarkLoggedIn_transitionsToLoggedIn() throws {
-    try XCTSkipIf(true, "TEST-BLOCKED: production setAuthToken transitions authState to .loggedIn immediately; test assumes it stays .loggedOut. Test was written against an older API contract.")
-    let account = businessLogic.userAccount
-    businessLogic.selectedAuthentication = libraryAccountMock.basicAuthentication
-    
-    // Setup some credentials first
-    account.setAuthToken("test-token", barcode: "user", pin: "pass", expirationDate: nil)
-    
-    // Test transition from loggedOut
-    XCTAssertEqual(account.authState, .loggedOut,
-                   "Initial state should be loggedOut")
-    account.markLoggedIn()
-    XCTAssertEqual(account.authState, .loggedIn,
-                   "Should transition from loggedOut to loggedIn")
-    
-    // Test transition from credentialsStale
-    account.markCredentialsStale()
-    XCTAssertEqual(account.authState, .credentialsStale,
-                   "Should be stale after markCredentialsStale")
-    account.markLoggedIn()
-    XCTAssertEqual(account.authState, .loggedIn,
-                   "Should transition from credentialsStale to loggedIn")
-  }
-  
   /// Tests that the Settings screen would show signed-in after token refresh.
   /// This simulates the check that AccountDetailViewModel performs.
   func testTokenRefresh_settingsScreenShowsSignedIn() {

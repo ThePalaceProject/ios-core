@@ -455,39 +455,6 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
         wait(for: [expectation], timeout: 15.0)
     }
 
-    // PP-4045: empty password is now VALID for pinless libraries. Production
-    // code (`TPPNetworkExecutor.executeTokenRefresh`) only guards against
-    // empty username. This test's expectation that empty password fails
-    // locally is obsolete — request proceeds and the server decides.
-    // TODO: convert to testing that empty username still fails locally.
-    func _obsolete_testExecuteTokenRefresh_EmptyPassword_FailsViaTokenRequestGuard() {
-        let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Refresh completes")
-
-        HTTPStubURLProtocol.register { _ in
-            XCTFail("Should not reach the network with empty password")
-            return nil
-        }
-
-        let tokenURL = URL(string: "https://example.com/token")!
-        executor.executeTokenRefresh(
-            username: "12345",
-            password: "",
-            tokenURL: tokenURL
-        ) { result in
-            switch result {
-            case .failure(let error):
-                XCTAssertTrue(error.localizedDescription.contains("empty") || error.localizedDescription.contains("credentials"),
-                              "Should fail with empty credentials error, got: \(error.localizedDescription)")
-            case .success:
-                XCTFail("Expected failure for empty password")
-            }
-            expectation.fulfill()
-        }
-
-        wait(for: [expectation], timeout: 15.0)
-    }
-
     func testExecuteTokenRefresh_BothEmpty_FailsViaTokenRequestGuard() {
         let executor = makeExecutor()
         let expectation = XCTestExpectation(description: "Refresh completes")
@@ -999,31 +966,6 @@ final class TokenRefreshIntegrationTests: XCTestCase {
                        "Empty username must be caught before any network I/O")
     }
 
-    // PP-4045: see note above. Empty password is valid for pinless libraries.
-    func _obsolete_testExecuteTokenRefresh_EmptyPassword_NeverHitsNetwork() {
-        let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Token refresh completes")
-        var networkCallMade = false
-
-        HTTPStubURLProtocol.register { _ in
-            networkCallMade = true
-            return HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data())
-        }
-
-        let tokenURL = URL(string: "https://example.com/token")!
-        executor.executeTokenRefresh(
-            username: "barcode",
-            password: "",
-            tokenURL: tokenURL
-        ) { _ in
-            expectation.fulfill()
-        }
-
-        wait(for: [expectation], timeout: 15.0)
-
-        XCTAssertFalse(networkCallMade,
-                       "Empty password must be caught before any network I/O")
-    }
 }
 
 // MARK: - Thread-safe Counter Helper
