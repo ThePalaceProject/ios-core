@@ -76,6 +76,12 @@ final class MyBooksDownloadCenterEvictionTests: XCTestCase {
     private func seedRegistered(_ book: TPPBook) {
         registry.addBook(book, location: nil, state: .downloadSuccessful,
                          fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        // TPPBookRegistryMock.myBooks is a standalone stored property (not derived
+        // from the registry dict) to preserve compatibility with other tests that
+        // assign it directly. Our eviction code under test reads myBooks to build
+        // the hashedIdentifier → bookIdentifier lookup, so we mirror the addBook
+        // side-effect here.
+        registry.myBooks.append(book)
     }
 
     // MARK: - Tests
