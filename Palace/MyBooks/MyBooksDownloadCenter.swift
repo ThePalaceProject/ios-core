@@ -1032,11 +1032,8 @@ extension MyBooksDownloadCenter {
                 } else {
                     Log.info(#file, "Content file already missing (nothing to delete): \(bookURL.lastPathComponent)")
                 }
-                #if LCP
-                if book.defaultBookContentType == .pdf {
-                    try LCPPDFs.deletePdfContent(url: bookURL)
-                }
-                #endif
+                // Historical cleanup of the LCPPDFs-extracted temp PDF is
+                // obsolete post-migration (no temp extract anymore).
             case .audiobook:
                 try deleteLocalAudiobookContent(forAudiobook: book, at: bookURL)
             case .unsupported:
@@ -2380,13 +2377,12 @@ extension MyBooksDownloadCenter {
                 }
             }
 
-            Task {
-                if book.defaultBookContentType == .pdf,
-                   let bookURL = self.fileUrl(for: book.identifier) {
-                    self.bookRegistry.setState(.downloading, for: book.identifier)
-                    _ = try? await LCPPDFs(url: bookURL)?.extract(url: bookURL)
-                    self.markDownloadSuccessful(for: book)
-                }
+            // PDF fulfillment: Readium's PDFNavigator streams decrypted
+            // pages on demand via the shared GCDHTTPServer, so no eager
+            // zip→temp extract is needed. Just mark the book successful
+            // once the license is on disk.
+            if book.defaultBookContentType == .pdf {
+                self.markDownloadSuccessful(for: book)
             }
         }
 

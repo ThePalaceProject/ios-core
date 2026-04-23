@@ -62,6 +62,18 @@ enum BookService {
     }
 
     @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
+        // LCP-protected PDFs go through Readium's PDFNavigator — no temp
+        // extract, pages stream on demand via the shared httpServer.
+        #if LCP
+        if LCPPDFs.canOpenBook(book) {
+            ReaderService.shared.openPDF(book)
+            completion?()
+            return
+        }
+        #endif
+
+        // Plain (non-LCP) PDFs keep the PDFKit path: PDFDocument(url:) mmaps
+        // the file and pages in on demand without the HTTP-server hop.
         guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { completion?(); return }
         let metadata = TPPPDFDocumentMetadata(with: book)
         let document = TPPPDFDocument(url: url)

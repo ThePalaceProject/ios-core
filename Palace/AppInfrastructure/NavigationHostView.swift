@@ -43,7 +43,15 @@ struct NavigationHostView<Content: View>: View {
                             }
                         )
                     case .pdf(let bookRoute):
-                        if let (document, metadata) = coordinator.resolvePDF(for: bookRoute) {
+                        // Readium-backed LCP PDF path takes precedence when a
+                        // Publication has been stored for this book.
+                        if let (publication, metadata) = coordinator.resolveReadiumPDF(for: bookRoute),
+                           let book = coordinator.resolveBook(for: bookRoute),
+                           let httpServer = ReaderService.shared.httpServer {
+                            ReadiumPDFReaderView(publication: publication, book: book, httpServer: httpServer)
+                                .environmentObject(metadata)
+                                .toolbar(.hidden, for: .tabBar)
+                        } else if let (document, metadata) = coordinator.resolvePDF(for: bookRoute) {
                             TPPPDFReaderView(document: document)
                                 .environmentObject(metadata)
                                 .toolbar(.hidden, for: .tabBar)

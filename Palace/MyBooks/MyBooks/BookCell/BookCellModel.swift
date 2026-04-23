@@ -454,6 +454,13 @@ extension BookCellModel {
             ReaderService.shared.openEPUB(book)
             self.isLoading = false
         case .pdf:
+            #if LCP
+            if LCPPDFs.canOpenBook(book) {
+                ReaderService.shared.openPDF(book)
+                self.isLoading = false
+                return
+            }
+            #endif
             guard let url = downloadCenter.fileUrl(for: book.identifier) else { self.isLoading = false; return }
             let metadata = TPPPDFDocumentMetadata(with: book)
             let document = TPPPDFDocument(url: url)

@@ -53,18 +53,10 @@ struct TPPPDFReaderView: View {
     @ViewBuilder
     /// Document renderer
     var documentView: some View {
-        if document.isEncrypted {
-            if let encryptedDocument = document.encryptedDocument {
-                TPPEncryptedPDFView(encryptedPDF: encryptedDocument)
-            } else {
-                unableToLoadView
-            }
+        if let renderable = document.document {
+            TPPPDFView(document: renderable)
         } else {
-            if let document = document.document {
-                TPPPDFView(document: document)
-            } else {
-                unableToLoadView
-            }
+            unableToLoadView
         }
     }
 
