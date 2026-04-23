@@ -253,7 +253,20 @@ public class TPPBook: NSObject, ObservableObject {
         let revokeURL = URL(string: dictionary[RevokeURLKey] as? String ?? "")
         let reportURL = URL(string: dictionary[ReportURLKey] as? String ?? "")
 
-        guard let updated = NSDate.date(withISO8601DateString: dictionary[UpdatedKey] as? String ?? "") as Date? else { return nil }
+        // UpdatedKey is written by `dictionaryRepresentation()` via `updated.rfc339String`
+        // — a full RFC 3339 datetime ("yyyy-MM-dd'T'HH:mm:ss'Z'"). The ObjC original
+        // read it back through `dateWithRFC3339String:`, which handled that format.
+        // The Swift port initially used `date(withISO8601DateString:)`, whose formatter
+        // is configured with `.withFullDate` (date-only) — silently rejecting every
+        // record the writer produced. Books disappeared from the registry on reload.
+        //
+        // Parse via RFC 3339 first (matches the writer), then fall back to ISO 8601
+        // date-only so legacy records and OPDS feeds that store a bare "2024-09-15"
+        // still deserialize.
+        let updatedString = dictionary[UpdatedKey] as? String ?? ""
+        guard let updated = (NSDate.date(withRFC3339String: updatedString)
+                             ?? NSDate.date(withISO8601DateString: updatedString)) as Date?
+        else { return nil }
 
         self.init(
             acquisitions: acquisitions,
