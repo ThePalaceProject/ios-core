@@ -222,7 +222,22 @@ class BookRegistryStore {
     var result: TPPBook?
     let block = {
       guard let bookRecord = self.registry[book.identifier] else { return }
-      let updatedBook = bookRecord.book.bookWithMetadata(from: book)
+      // Previously used `bookWithMetadata(from:)`, which unconditionally takes
+      // every metadata field from the incoming catalog entry. That works when
+      // the catalog feed is always richer than the registry record, but the
+      // Palace Circulation Manager's OPDS responses can return lean entries
+      // for a subset of books on a given call (missing authors / summary /
+      // categories). In that case the catalog enrichment path would wipe the
+      // registry's already-populated authors, MyBooks would reload with a
+      // blank author line, and the visible "flicker" we're chasing would
+      // return on the next reload.
+      //
+      // `mergingPreservingMetadata(from:)` takes the fresh state-carrying
+      // fields (acquisitions, updated) from the catalog entry but prefers
+      // self's metadata wherever the incoming one is empty. Catalog-enriched
+      // fields still flow through when they're present; previously-enriched
+      // fields are retained when they're not.
+      let updatedBook = bookRecord.book.mergingPreservingMetadata(from: book)
       self.registry[book.identifier]?.book = updatedBook
       result = updatedBook
     }
