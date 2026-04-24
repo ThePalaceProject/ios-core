@@ -10,7 +10,56 @@ import subprocess
 import sys
 import os
 import re
+import fnmatch
 from typing import Dict, List, Any, Optional
+
+
+def load_exclude_patterns() -> List[str]:
+    """Load path patterns from scripts/coverage-exclude.json.
+    Paths matched here are excluded from 'testable coverage' — the metric we
+    gate on — but still counted in 'total coverage'. See the file's _comment
+    for criteria on when to add an entry.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    exclude_path = os.path.join(here, 'coverage-exclude.json')
+    if not os.path.exists(exclude_path):
+        return []
+    try:
+        with open(exclude_path) as f:
+            data = json.load(f)
+        return list(data.get('paths', []))
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Warning: could not read {exclude_path}: {e}", file=sys.stderr)
+        return []
+
+
+def is_path_excluded(file_path: str, patterns: List[str]) -> bool:
+    """Match a file path against fnmatch-style patterns.
+    ** is expanded to match across path segments; a single * matches within
+    one segment (standard fnmatch semantics). The xccov `path` field is an
+    absolute path — we anchor matching to the Palace/ repo substring so
+    patterns can be written relative to the repo root.
+    """
+    if not file_path:
+        return False
+    # Anchor to the repo-relative path starting at Palace/
+    rel = file_path
+    idx = rel.find('Palace/')
+    if idx >= 0:
+        rel = rel[idx:]
+    for pattern in patterns:
+        # fnmatch does not treat ** specially — translate **/ to a regex-like
+        # wildcard before passing to fnmatch via a simple substitution loop.
+        # fnmatch.fnmatchcase with a pattern containing * already matches '/'
+        # in most implementations, so ** and * are effectively equivalent for
+        # path matching; keep the distinction for readability.
+        if fnmatch.fnmatchcase(rel, pattern):
+            return True
+        # Also try matching the original path in case someone wrote an
+        # absolute-style pattern.
+        if fnmatch.fnmatchcase(file_path, pattern):
+            return True
+    return False
 
 def run_command(cmd: List[str], timeout: int = 120) -> Optional[str]:
     """Run a command and return stdout."""
@@ -51,12 +100,25 @@ def extract_value(obj: Any, *keys) -> Any:
     return obj if obj else None
 
 def parse_coverage_data(data: Dict) -> Dict:
-    """Parse coverage JSON into simplified structure."""
+    """Parse coverage JSON into simplified structure.
+
+    Emits two coverage numbers:
+      - `total_coverage` — every executable line in included targets. Preserved
+        for continuity with historical CI reports.
+      - `testable_coverage` — denominator excludes files matched by
+        scripts/coverage-exclude.json (SwiftUI views, UIKit VCs, lifecycle).
+        This is the honest 'lines we can actually unit-test' metric we gate on.
+    """
     result = {
         'total_coverage': 0.0,
         'line_coverage': 0.0,
         'covered_lines': 0,
         'executable_lines': 0,
+        'testable_coverage': 0.0,
+        'testable_covered_lines': 0,
+        'testable_executable_lines': 0,
+        'excluded_file_count': 0,
+        'excluded_executable_lines': 0,
         'targets': [],
         'files': []
     }
@@ -106,18 +168,23 @@ def parse_coverage_data(data: Dict) -> Dict:
     # Calculate coverage from filtered targets only
     total_covered = 0
     total_executable = 0
+    testable_covered = 0
+    testable_executable = 0
+    excluded_file_count = 0
+    excluded_executable_lines = 0
+    exclude_patterns = load_exclude_patterns()
     included_targets = []
     excluded_targets = []
-    
+
     for target in targets:
         target_name = target.get('name', 'Unknown')
         target_coverage = target.get('lineCoverage', 0.0) * 100
         covered = target.get('coveredLines', 0)
         executable = target.get('executableLines', 0)
-        
+
         # Check if this target should be included
         include_in_total = should_include_target(target_name)
-        
+
         if include_in_total:
             total_covered += covered
             total_executable += executable
@@ -133,7 +200,7 @@ def parse_coverage_data(data: Dict) -> Dict:
             'coverage_formatted': f"{target_coverage:.1f}%",
             'included_in_total': include_in_total
         })
-        
+
         # Parse files in target (only for included targets)
         if include_in_total:
             files = target.get('files', [])
@@ -143,11 +210,22 @@ def parse_coverage_data(data: Dict) -> Dict:
                 file_coverage = file_data.get('lineCoverage', 0.0) * 100
                 file_covered = file_data.get('coveredLines', 0)
                 file_executable = file_data.get('executableLines', 0)
-                
+
                 # Skip files with no executable lines
                 if file_executable == 0:
                     continue
-                
+
+                # Files matched by the exclude list still count toward
+                # `total_coverage` (via the target rollup above) but are
+                # subtracted from the testable denominator.
+                excluded = is_path_excluded(file_path, exclude_patterns)
+                if excluded:
+                    excluded_file_count += 1
+                    excluded_executable_lines += file_executable
+                else:
+                    testable_covered += file_covered
+                    testable_executable += file_executable
+
                 result['files'].append({
                     'name': file_name,
                     'path': file_path,
@@ -155,7 +233,8 @@ def parse_coverage_data(data: Dict) -> Dict:
                     'coverage': file_coverage,
                     'covered_lines': file_covered,
                     'executable_lines': file_executable,
-                    'coverage_formatted': f"{file_coverage:.1f}%"
+                    'coverage_formatted': f"{file_coverage:.1f}%",
+                    'excluded_from_testable': excluded
                 })
     
     # Debug output
@@ -174,10 +253,22 @@ def parse_coverage_data(data: Dict) -> Dict:
         result['line_coverage'] = (total_covered / total_executable) * 100
     else:
         result['line_coverage'] = 0.0
-    
+
     result['covered_lines'] = total_covered
     result['executable_lines'] = total_executable
     result['total_coverage'] = result['line_coverage']
+
+    # Testable coverage: denominator excludes UI/lifecycle files listed in
+    # scripts/coverage-exclude.json. When no files are excluded this collapses
+    # to the same number as total_coverage.
+    if testable_executable > 0:
+        result['testable_coverage'] = (testable_covered / testable_executable) * 100
+    else:
+        result['testable_coverage'] = result['total_coverage']
+    result['testable_covered_lines'] = testable_covered
+    result['testable_executable_lines'] = testable_executable
+    result['excluded_file_count'] = excluded_file_count
+    result['excluded_executable_lines'] = excluded_executable_lines
     
     # Sort targets by name, showing included targets first
     result['targets'].sort(key=lambda t: (not t.get('included_in_total', False), t['name']))
@@ -193,8 +284,13 @@ def format_coverage_summary(coverage: Dict) -> str:
     lines.append("=" * 60)
     lines.append("CODE COVERAGE REPORT")
     lines.append("=" * 60)
-    lines.append(f"Palace App Coverage: {coverage['total_coverage']:.1f}%")
-    lines.append(f"Lines Covered: {coverage['covered_lines']} / {coverage['executable_lines']}")
+    lines.append(f"Testable Coverage: {coverage['testable_coverage']:.1f}%  "
+                 f"({coverage['testable_covered_lines']} / {coverage['testable_executable_lines']} lines)")
+    lines.append(f"Total Coverage:    {coverage['total_coverage']:.1f}%  "
+                 f"({coverage['covered_lines']} / {coverage['executable_lines']} lines, incl. UI surfaces)")
+    if coverage.get('excluded_file_count'):
+        lines.append(f"Excluded from testable: {coverage['excluded_file_count']} files, "
+                     f"{coverage['excluded_executable_lines']} lines (see scripts/coverage-exclude.json)")
     lines.append("")
     
     if coverage['targets']:
@@ -228,11 +324,19 @@ def format_coverage_summary(coverage: Dict) -> str:
 def output_github_actions(coverage: Dict, output_file: str):
     """Write coverage results in GitHub Actions output format."""
     with open(output_file, 'a') as f:
-        f.write(f"coverage={coverage['total_coverage']:.1f}\n")
-        f.write(f"coverage_formatted={coverage['total_coverage']:.1f}%\n")
-        f.write(f"covered_lines={coverage['covered_lines']}\n")
-        f.write(f"executable_lines={coverage['executable_lines']}\n")
-        
+        # `coverage` is the headline metric — testable coverage is what we gate
+        # on. total_coverage is preserved as a secondary field for continuity.
+        f.write(f"coverage={coverage['testable_coverage']:.1f}\n")
+        f.write(f"coverage_formatted={coverage['testable_coverage']:.1f}%\n")
+        f.write(f"covered_lines={coverage['testable_covered_lines']}\n")
+        f.write(f"executable_lines={coverage['testable_executable_lines']}\n")
+        f.write(f"total_coverage={coverage['total_coverage']:.1f}\n")
+        f.write(f"total_coverage_formatted={coverage['total_coverage']:.1f}%\n")
+        f.write(f"total_covered_lines={coverage['covered_lines']}\n")
+        f.write(f"total_executable_lines={coverage['executable_lines']}\n")
+        f.write(f"excluded_file_count={coverage.get('excluded_file_count', 0)}\n")
+        f.write(f"excluded_executable_lines={coverage.get('excluded_executable_lines', 0)}\n")
+
         # Target summary for PR comment - only show included targets
         included_targets = [t for t in coverage['targets'] if t.get('included_in_total', False)]
         if included_targets:

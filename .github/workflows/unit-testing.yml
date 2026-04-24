@@ -316,6 +316,8 @@ jobs:
           PASS_RATE="${{ steps.parse_results.outputs.pass_rate }}"
           CLASS_SUMMARY="${{ steps.parse_results.outputs.class_summary }}"
           COVERAGE="${{ steps.coverage.outputs.coverage_formatted }}"
+          TOTAL_COVERAGE="${{ steps.coverage.outputs.total_coverage_formatted }}"
+          EXCLUDED_FILES="${{ steps.coverage.outputs.excluded_file_count }}"
           COVERAGE_TARGETS="${{ steps.coverage.outputs.coverage_targets }}"
           NEW_FAILURES="${{ steps.history.outputs.new_failures }}"
           FIXED_TESTS="${{ steps.history.outputs.fixed_tests }}"
@@ -415,9 +417,15 @@ jobs:
           echo "### 📊 Testing Coverage Breakdown" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Unit test line coverage
+          # Unit test line coverage — testable = denominator excludes UI/lifecycle
+          # files listed in scripts/coverage-exclude.json; total = every executable
+          # line. We gate on testable; total is shown for continuity.
           if [ "$COVERAGE" != "N/A" ] && [ -n "$COVERAGE" ]; then
-            echo "**Unit Test Line Coverage: $COVERAGE**" >> $GITHUB_STEP_SUMMARY
+            echo "**Unit Test Line Coverage (testable surfaces): $COVERAGE**" >> $GITHUB_STEP_SUMMARY
+            if [ -n "$TOTAL_COVERAGE" ] && [ "$TOTAL_COVERAGE" != "N/A" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "_Total coverage incl. UI/lifecycle: $TOTAL_COVERAGE ($EXCLUDED_FILES files excluded from testable denominator — see \`scripts/coverage-exclude.json\`)_" >> $GITHUB_STEP_SUMMARY
+            fi
             echo "" >> $GITHUB_STEP_SUMMARY
             if [ -n "$COVERAGE_TARGETS" ]; then
               echo "| Target | Lines Covered |" >> $GITHUB_STEP_SUMMARY
@@ -431,11 +439,16 @@ jobs:
             fi
           fi
 
-          # SpecterQA E2E journey coverage
+          # SpecterQA E2E journey coverage: count journeys that have a recorded
+          # replay with the matching filename. Note this measures recording
+          # coverage, not execution pass/fail — replays are not run in this job.
           JOURNEY_COUNT=$(find .specterqa/journeys -name "*.yaml" 2>/dev/null | wc -l | tr -d ' ')
-          REPLAY_COUNT=$(find .specterqa/replays -name "*.yaml" 2>/dev/null | wc -l | tr -d ' ')
+          RECORDED_COUNT=0
           if [ "$JOURNEY_COUNT" -gt 0 ] 2>/dev/null; then
-            echo "**E2E Journey Coverage (SpecterQA): ${REPLAY_COUNT}/${JOURNEY_COUNT} journeys passing**" >> $GITHUB_STEP_SUMMARY
+            for j in $(ls .specterqa/journeys/*.yaml 2>/dev/null | sed 's|.*/||;s|\.yaml||' | sort); do
+              [ -f ".specterqa/replays/$j.yaml" ] && RECORDED_COUNT=$((RECORDED_COUNT + 1))
+            done
+            echo "**E2E Journey Recording Coverage (SpecterQA): ${RECORDED_COUNT}/${JOURNEY_COUNT} journeys have recorded replays**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "<details>" >> $GITHUB_STEP_SUMMARY
             echo "<summary>Journey inventory</summary>" >> $GITHUB_STEP_SUMMARY
@@ -455,10 +468,11 @@ jobs:
 
           # Coverage context note
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> **Why two metrics?** Unit tests cover business logic, parsing, and state management " >> $GITHUB_STEP_SUMMARY
-          echo "> (~37% line coverage). The remaining ~63% is primarily SwiftUI/UIKit views, DRM integration, " >> $GITHUB_STEP_SUMMARY
-          echo "> Firebase/analytics, and AppDelegate lifecycle — code that requires a running app to exercise. " >> $GITHUB_STEP_SUMMARY
-          echo "> SpecterQA E2E journeys cover those paths by driving the real app on a simulator." >> $GITHUB_STEP_SUMMARY
+          echo "> **Why two coverage numbers + SpecterQA?** Testable coverage subtracts files that " >> $GITHUB_STEP_SUMMARY
+          echo "> can't be exercised from xcodebuild — SwiftUI views, UIKit VCs, AppDelegate/SceneDelegate " >> $GITHUB_STEP_SUMMARY
+          echo "> lifecycle (see \`scripts/coverage-exclude.json\`) — so raising it means more _testable_ " >> $GITHUB_STEP_SUMMARY
+          echo "> logic is tested, not that we shipped less UI. Total coverage is kept for continuity. " >> $GITHUB_STEP_SUMMARY
+          echo "> The excluded paths are covered by SpecterQA E2E journeys driving the real app on a simulator." >> $GITHUB_STEP_SUMMARY
           
           # History/Trends
           if [ -n "$NEW_FAILURES" ] || [ -n "$FIXED_TESTS" ] || [ -n "$FLAKY_TESTS" ] || [ -n "$TEST_COUNT_CHANGE" ]; then
@@ -667,6 +681,8 @@ jobs:
             const classSummary = `${{ steps.parse_results.outputs.class_summary }}`;
             const snapshotCount = '${{ steps.snapshots.outputs.count }}';
             const coverage = '${{ steps.coverage.outputs.coverage_formatted }}';
+            const totalCoverage = '${{ steps.coverage.outputs.total_coverage_formatted }}';
+            const excludedFiles = '${{ steps.coverage.outputs.excluded_file_count }}';
             const coverageTargets = `${{ steps.coverage.outputs.coverage_targets }}`;
             const newFailures = `${{ steps.history.outputs.new_failures }}`;
             const fixedTests = `${{ steps.history.outputs.fixed_tests }}`;
@@ -747,9 +763,13 @@ jobs:
             // Testing Coverage Breakdown
             body += `### 📊 Testing Coverage Breakdown\n\n`;
 
-            // Unit test line coverage
+            // Unit test line coverage — testable excludes UI/lifecycle per
+            // scripts/coverage-exclude.json; we gate on testable.
             if (coverage && coverage !== 'N/A' && coverage !== '') {
-              body += `**Unit Test Line Coverage: ${coverage}**\n\n`;
+              body += `**Unit Test Line Coverage (testable surfaces): ${coverage}**\n\n`;
+              if (totalCoverage && totalCoverage !== 'N/A' && totalCoverage !== '') {
+                body += `_Total coverage incl. UI/lifecycle: ${totalCoverage} (${excludedFiles} files excluded from testable denominator — see \`scripts/coverage-exclude.json\`)_\n\n`;
+              }
               if (coverageTargets && coverageTargets.trim()) {
                 body += `| Target | Lines Covered |\n`;
                 body += `|--------|---------------|\n`;
@@ -763,14 +783,17 @@ jobs:
               }
             }
 
-            // SpecterQA E2E journey coverage
+            // SpecterQA E2E journey recording coverage: count only journeys
+            // that have a replay with the matching filename. Measures recording
+            // coverage, not execution pass/fail — replays are not run here.
             const journeyDir = '.specterqa/journeys';
             const replayDir = '.specterqa/replays';
             try {
               const journeys = fs.readdirSync(journeyDir).filter(f => f.endsWith('.yaml')).sort();
-              const replays = new Set(fs.readdirSync(replayDir).filter(f => f.endsWith('.yaml')).map(f => f));
+              const replays = new Set(fs.readdirSync(replayDir).filter(f => f.endsWith('.yaml')));
               if (journeys.length > 0) {
-                body += `**E2E Journey Coverage (SpecterQA): ${replays.size}/${journeys.length} journeys passing**\n\n`;
+                const recorded = journeys.filter(j => replays.has(j)).length;
+                body += `**E2E Journey Recording Coverage (SpecterQA): ${recorded}/${journeys.length} journeys have recorded replays**\n\n`;
                 body += `<details>\n<summary>Journey inventory</summary>\n\n`;
                 body += `| Journey | Replay |\n`;
                 body += `|---------|--------|\n`;
@@ -783,10 +806,11 @@ jobs:
               }
             } catch (e) { /* no journeys dir */ }
 
-            body += `> **Why two metrics?** Unit tests cover business logic, parsing, and state management. `;
-            body += `The remaining ~63% is primarily SwiftUI/UIKit views, DRM integration, `;
-            body += `Firebase/analytics, and AppDelegate lifecycle — code that requires a running app. `;
-            body += `SpecterQA E2E journeys cover those paths by driving the real app on a simulator.\n\n`;
+            body += `> **Why two coverage numbers + SpecterQA?** Testable coverage subtracts files that `;
+            body += `can't be exercised from xcodebuild — SwiftUI views, UIKit VCs, lifecycle `;
+            body += `(see \`scripts/coverage-exclude.json\`) — so raising it means more _testable_ logic is tested, `;
+            body += `not that we shipped less UI. Total coverage is kept for continuity. `;
+            body += `The excluded paths are covered by SpecterQA E2E journeys driving the real app on a simulator.\n\n`;
             
             // Trends
             if (newFailures || fixedTests || flakyTests || testCountChange) {
