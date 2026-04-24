@@ -10,6 +10,13 @@ final class TPPCredentialIsolationE2ETests: XCTestCase {
     private let uuidB = "urn:uuid:e2e-isolation-library-b"
     private let uuidC = "urn:uuid:e2e-isolation-library-c"
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // E2E sign-in scenarios round-trip credentials through the keychain.
+        // Skip on CI hosts where SecItem returns -34018.
+        try KeychainAvailability.skipIfUnavailable()
+    }
+
     override func tearDown() {
         AccountsManager.shared.userAccount(for: uuidA).removeAll()
         AccountsManager.shared.userAccount(for: uuidB).removeAll()

@@ -616,8 +616,12 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 @MainActor
 final class AccountDetailPINVisibilityTests: XCTestCase {
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Tests that exercise sign-in / sign-out state transitions round-trip
+        // credentials through TPPKeychain. Skip on CI hosts where SecItem
+        // returns -34018 (same env-gate as TPPKeychainTests).
+        try KeychainAvailability.skipIfUnavailable()
         // Reset shared user account state to prevent test pollution from
         // previous tests (in this class or elsewhere) that set credentials.
         if let libraryID = AccountsManager.shared.currentAccountId {
