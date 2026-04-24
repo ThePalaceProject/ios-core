@@ -367,7 +367,7 @@ public class TPPBook: NSObject, ObservableObject {
             return b
         }
 
-        return TPPBook(
+        let merged = TPPBook(
             acquisitions: fresh.acquisitions,
             authors: preferNonEmpty(fresh.bookAuthors, self.bookAuthors),
             categoryStrings: preferNonEmpty(fresh.categoryStrings, self.categoryStrings),
@@ -391,9 +391,17 @@ public class TPPBook: NSObject, ObservableObject {
             reportURL: fresh.reportURL ?? self.reportURL,
             timeTrackingURL: fresh.timeTrackingURL ?? self.timeTrackingURL,
             contributors: fresh.contributors ?? self.contributors,
-            bookDuration: preferNonEmpty(fresh.bookDuration, self.bookDuration),
+            bookDuration: fresh.bookDuration ?? self.bookDuration,
             imageCache: self.imageCache
         )
+        // Carry the resolved images onto the merged instance so the view
+        // doesn't flash a skeleton for one frame while fetchCoverImage
+        // re-hydrates them asynchronously — TPPBook.init dispatches the
+        // cache-hit assignment through DispatchQueue.main.async, which is
+        // just late enough for SwiftUI to render a nil image first.
+        merged.coverImage = self.coverImage ?? fresh.coverImage
+        merged.thumbnailImage = self.thumbnailImage ?? fresh.thumbnailImage
+        return merged
     }
 
     @objc func dictionaryRepresentation() -> [String: Any] {

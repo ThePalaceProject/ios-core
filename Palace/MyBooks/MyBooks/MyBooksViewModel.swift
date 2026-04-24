@@ -115,12 +115,48 @@ enum Group: Int {
 
         let newBooks = active
 
+        // Skip re-publish when nothing visible changed. The registry fires
+        // TPPBookRegistryDidChange on every sync — even when the response is
+        // structurally identical to what we already have — and each such
+        // reload forces a new allBooks assignment, which in turn swaps the
+        // TPPBook instances in BookCellModelCache. SwiftUI sees new object
+        // identity and re-evaluates every cell; any book whose coverImage is
+        // not yet assigned on the new instance shows a skeleton flash before
+        // the cache lookup resolves. Gate on a content signature so pure
+        // no-op refreshes don't touch the UI at all.
+        if !isLoading && Self.contentSignature(for: newBooks, registry: bookRegistry)
+            == Self.contentSignature(for: allBooks, registry: bookRegistry)
+        {
+            self.isLoading = false
+            return
+        }
+
         // Update published properties
         self.allBooks = newBooks
         self.books = newBooks
         self.showInstructionsLabel = newBooks.isEmpty || bookRegistry.state == .unloaded
         self.sortData()
         self.isLoading = false
+    }
+
+    /// Stable per-book signature for deciding whether a registry update is
+    /// actually worth re-publishing to the view. Includes only the fields
+    /// that visibly affect a MyBooks cell — identifier (for ordering +
+    /// identity), registry state (drives the action button), and the two
+    /// metadata fields we currently render in the cell body.
+    ///
+    /// Intentionally excludes fields like `updated` and `acquisitions` that
+    /// can change on the registry record without altering the visible row —
+    /// we want no-op sync responses to be invisible to SwiftUI.
+    private static func contentSignature(
+        for books: [TPPBook],
+        registry: TPPBookRegistryProvider
+    ) -> [String] {
+        books.map { book in
+            let state = registry.state(for: book.identifier).rawValue
+            let authors = book.authors ?? ""
+            return "\(book.identifier)|\(state)|\(book.title)|\(authors)"
+        }
     }
 
     func reloadData() {
