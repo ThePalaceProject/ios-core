@@ -135,6 +135,22 @@ final class DownloadWatchdogTests: XCTestCase {
         XCTAssertEqual(config.checkInterval, 10.0)
     }
 
+    func testStartAndStop() {
+        let watchdog = DownloadWatchdog(configuration: .default)
+
+        watchdog.start()
+        XCTAssertTrue(watchdog.status.isEmpty)
+        watchdog.stop()
+
+        // Regression guard: the pre-fix DownloadWatchdog strong-rebound `self`
+        // at the top of its monitoring Task, so `stop()` returned while the
+        // Task was still alive and holding the instance. deinit firing at
+        // scope exit raced the still-pending `queue.async(flags: .barrier)`
+        // cleanup and crashed the process ~20s after this test asserted.
+        // With stop() now fully synchronous (barrier-sync) and the Task
+        // weak-only, the instance must be safe to drop at scope exit.
+        XCTAssertTrue(watchdog.status.isEmpty, "stop() must leave status cleared")
+    }
 }
 
 // MARK: - Download Persistence Store Tests
