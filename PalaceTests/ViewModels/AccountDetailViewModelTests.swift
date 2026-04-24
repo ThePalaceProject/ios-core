@@ -499,11 +499,6 @@ final class AccountDetailCredentialStateTests: XCTestCase {
         account.removeAll()
     }
 
-    /// When user is logged out, isSignedIn should be FALSE regardless of auth type
-    func testIsSignedIn_falseWhenLoggedOut() async throws {
-        throw XCTSkip("Test isolation issue — residual keychain state from other tests in the singleton-backed suite causes false positives. Our credentialSnapshot() cache-coherence fix doesn't reach legacy keychain keys written by unrelated test cases. Tracking: AccountDetailViewModel DI migration will let this test use a scoped account instance with a synthetic library UUID.")
-    }
-
     /// For SAML/Basic: Transition from loggedIn to credentialsStale should update isSignedIn to false
     func testIsSignedIn_SAMLUpdatesWhenStateBecomesStale() async {
         guard let libraryID = AccountsManager.shared.currentAccountId else {

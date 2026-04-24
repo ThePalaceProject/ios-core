@@ -424,28 +424,45 @@ final class BookCellModelCacheTests: XCTestCase {
         XCTAssertEqual(model1.book.identifier, originalBook.identifier)
     }
 
-    /// Tests that older book versions don't trigger updates
-    func testModelUpdate_WithOlderBook_DoesNotUpdate() async throws {
-        let oldDate = Date(timeIntervalSince1970: 1000)
-        let newDate = Date(timeIntervalSince1970: 2000)
+    /// The cache swaps in any new TPPBook instance regardless of `updated`
+    /// timestamp. Historically this was guarded by `fresh.updated >= cached.updated`
+    /// but sub-second disk round-trip drift and catalog-vs-loans merge order
+    /// made that guard drop legitimate registry updates — leaving cells with
+    /// stale author lines until a library reselect wiped the cache. The guard
+    /// is gone; identity alone is authoritative. See BookCellModelCache.model(for:).
+    func testModelUpdate_SwapsInstance_IgnoringTimestamp() async throws {
+        let newerDate = Date(timeIntervalSince1970: 2000)
+        let olderDate = Date(timeIntervalSince1970: 1000)
 
-        let newBook = makeTestBook(identifier: "older-test", title: "New Title", updated: newDate)
-        let oldBook = makeTestBook(identifier: "older-test", title: "Old Title", updated: oldDate)
+        let firstBook = makeTestBook(identifier: "identity-swap", title: "First", updated: newerDate)
+        let model = sut.model(for: firstBook)
+        XCTAssertEqual(model.book.title, "First")
+        XCTAssertEqual(model.book.updated, newerDate)
 
-        // Cache the newer book first
-        let model = sut.model(for: newBook)
-        XCTAssertEqual(model.book.title, "New Title")
+        // A different instance with an OLDER timestamp — registry says this is
+        // now the authoritative record. The cache must accept the swap.
+        let secondBook = makeTestBook(identifier: "identity-swap", title: "Second", updated: olderDate)
+        let sameModel = sut.model(for: secondBook)
+        XCTAssertTrue(model === sameModel, "cache returns the same BookCellModel; only `book` is swapped")
 
-        // Request with older book - should not update
-        let sameModel = sut.model(for: oldBook)
-        XCTAssertTrue(model === sameModel)
-
-        // Yield to allow any deferred Task { @MainActor } a chance to run (it shouldn't update)
+        // Drain the deferred Task { @MainActor } that actually applies the swap.
         await Task.yield(); await Task.yield(); await Task.yield()
 
-        // Book should still be the newer version
-        XCTAssertEqual(model.book.title, "New Title")
-        XCTAssertEqual(model.book.updated, newDate)
+        XCTAssertEqual(model.book.title, "Second", "older-timestamp registry instance must still replace the cached book")
+        XCTAssertEqual(model.book.updated, olderDate)
+    }
+
+    /// Passing the identical TPPBook instance must not trigger the swap path —
+    /// that would churn @Published updates and cause needless re-renders.
+    func testModelUpdate_SameInstance_DoesNotMutateBook() async throws {
+        let book = makeTestBook(identifier: "identity-nop", title: "Only", updated: Date(timeIntervalSince1970: 1000))
+        let model = sut.model(for: book)
+        XCTAssertTrue(model.book === book)
+
+        _ = sut.model(for: book)
+        await Task.yield(); await Task.yield(); await Task.yield()
+
+        XCTAssertTrue(model.book === book, "same-instance lookup must not swap the book pointer")
     }
 
     // MARK: - Helpers

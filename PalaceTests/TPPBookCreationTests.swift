@@ -46,13 +46,9 @@ class TPPBookCreationTests: XCTestCase {
         XCTAssertNoThrow(book?.loggableShortString())
         XCTAssertNoThrow(book?.loggableDictionary())
 
-        let bookNoUpdatedDate = TPPBook(dictionary: [
-            "acquisitions": acquisitions,
-            "categories": ["Fantasy"],
-            "id": "666",
-            "title": "The Lord of the Rings"
-        ])
-        XCTAssertNil(bookNoUpdatedDate)
+        // Hard requirements: id + title must be present. Everything else has
+        // a sensible default so the registry does not drop downloaded books
+        // when a single field goes missing on disk. See TPPBook.init(dictionary:).
 
         let bookNoTitle = TPPBook(dictionary: [
             "acquisitions": acquisitions,
@@ -60,7 +56,16 @@ class TPPBookCreationTests: XCTestCase {
             "id": "666",
             "updated": "2020-09-08T09:22:45Z"
         ])
-        XCTAssertNil(bookNoTitle)
+        XCTAssertNil(bookNoTitle, "missing title is a hard failure")
+
+        let bookEmptyTitle = TPPBook(dictionary: [
+            "acquisitions": acquisitions,
+            "categories": ["Fantasy"],
+            "id": "666",
+            "title": "",
+            "updated": "2020-09-08T09:22:45Z"
+        ])
+        XCTAssertNil(bookEmptyTitle, "empty title is a hard failure")
 
         let bookNoId = TPPBook(dictionary: [
             "acquisitions": acquisitions,
@@ -68,7 +73,19 @@ class TPPBookCreationTests: XCTestCase {
             "title": "The Lord of the Rings",
             "updated": "2020-09-08T09:22:45Z"
         ])
-        XCTAssertNil(bookNoId)
+        XCTAssertNil(bookNoId, "missing id is a hard failure")
+
+        // Optional fields: missing "updated" or "categories" must be salvaged,
+        // not dropped. The dictionary init is forgiving by design so registry
+        // drift on a single optional field does not wipe a downloaded book.
+        let bookNoUpdatedDate = TPPBook(dictionary: [
+            "acquisitions": acquisitions,
+            "categories": ["Fantasy"],
+            "id": "666",
+            "title": "The Lord of the Rings"
+        ])
+        XCTAssertNotNil(bookNoUpdatedDate, "missing 'updated' must not drop the book")
+        XCTAssertEqual(bookNoUpdatedDate?.identifier, "666")
 
         let bookNoCategories = TPPBook(dictionary: [
             "acquisitions": acquisitions,
@@ -76,17 +93,19 @@ class TPPBookCreationTests: XCTestCase {
             "title": "The Lord of the Rings",
             "updated": "2020-09-08T09:22:45Z"
         ])
-        XCTAssertNil(bookNoCategories)
+        XCTAssertNotNil(bookNoCategories, "missing 'categories' must not drop the book")
+        XCTAssertEqual(bookNoCategories?.categoryStrings, [], "missing categories defaults to empty")
 
-        /*
-         Note that we do not test the absence of acquisitions. The current code
-         for the dictionary initializer *allows* object creation for a dictionary
-         with no acquisitions. However this is not something we must necessarily
-         ensure because
-         (1) the TPPBook(entry:) initializer does NOT allow it,
-         (2) a book with no acquisitions is a book the user won't be able to read,
-         so useful only to look at the metadata
-         */
+        // Acquisitions are also optional by design — a metadata-only book
+        // (no playable/readable link) still carries useful information.
+        let bookNoAcquisitions = TPPBook(dictionary: [
+            "categories": ["Fantasy"],
+            "id": "666",
+            "title": "The Lord of the Rings",
+            "updated": "2020-09-08T09:22:45Z"
+        ])
+        XCTAssertNotNil(bookNoAcquisitions, "missing 'acquisitions' must not drop the book")
+        XCTAssertTrue(bookNoAcquisitions?.acquisitions.isEmpty ?? false)
     }
 
     func testBookCreationViaFactoryMethod() {

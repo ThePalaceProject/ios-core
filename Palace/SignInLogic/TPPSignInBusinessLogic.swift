@@ -439,6 +439,11 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
     /// Initiates process of signing in with the server.
     @objc func logIn(with tokenURL: URL? = nil) {
+        // Nothing to do without a selected auth method. Posting TPPIsSigningIn
+        // here would leave downstream observers stuck in a "signing in" state
+        // while we silently bail.
+        guard let wrapped = selectedAuthentication else { return }
+
         NotificationCenter.default.post(name: .TPPIsSigningIn, object: true)
 
         capturedBarcode = uiDelegate?.username
@@ -448,32 +453,27 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             self.uiDelegate?.businessLogicWillSignIn(self)
         }
 
-        switch selectedAuthentication {
-        case .none:
-            return
-        case .some(let wrapped):
-            switch wrapped.authType {
-            case .oauthIntermediary:
-                oauthLogIn()
-            case .saml:
-                samlHelper.logIn {
-                    self.uiDelegate?.businessLogicDidCancelSignIn(self)
-                }
-            case .oidc:
-                oidcLogIn()
-            case .token:
-                guard let username = self.uiDelegate?.username,
-                      let password = self.uiDelegate?.pin,
-                      let tokenURL = tokenURL ?? userAccount.authDefinition?.tokenURL
-                else {
-                    validateCredentials()
-                    return
-                }
-
-                getBearerToken(username: username, password: password, tokenURL: tokenURL)
-            default:
-                validateCredentials()
+        switch wrapped.authType {
+        case .oauthIntermediary:
+            oauthLogIn()
+        case .saml:
+            samlHelper.logIn {
+                self.uiDelegate?.businessLogicDidCancelSignIn(self)
             }
+        case .oidc:
+            oidcLogIn()
+        case .token:
+            guard let username = self.uiDelegate?.username,
+                  let password = self.uiDelegate?.pin,
+                  let tokenURL = tokenURL ?? userAccount.authDefinition?.tokenURL
+            else {
+                validateCredentials()
+                return
+            }
+
+            getBearerToken(username: username, password: password, tokenURL: tokenURL)
+        default:
+            validateCredentials()
         }
     }
 
