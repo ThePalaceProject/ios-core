@@ -15,6 +15,16 @@ final class AccountDetailViewModelTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Tests in this class write credentials via
+        // TPPUserAccount.sharedAccount(libraryUUID:).setBarcode(...) which
+        // round-trips through TPPKeychain. Skip on CI hosts where SecItem
+        // returns -34018 (missing entitlement) — same env-gate used by
+        // TPPKeychainTests + TPPKeychainSwiftTests.
+        try KeychainAvailability.skipIfUnavailable()
+    }
+
     override func setUp() {
         super.setUp()
         cancellables = []
@@ -397,6 +407,15 @@ final class AccountDetailViewModelTests: XCTestCase {
 final class AccountDetailCredentialStateTests: XCTestCase {
 
     private var userAccount: TPPUserAccountMock!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // setUp() below constructs TPPUserAccountMock, but the individual
+        // tests pull the real TPPUserAccount.sharedAccount(libraryUUID:) and
+        // drive it via setBarcode / setAuthState — both hit TPPKeychain.
+        // Skip on CI hosts missing the keychain entitlement.
+        try KeychainAvailability.skipIfUnavailable()
+    }
 
     override func setUp() {
         super.setUp()

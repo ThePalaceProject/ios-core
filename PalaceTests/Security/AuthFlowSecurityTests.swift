@@ -15,6 +15,16 @@ final class AuthFlowSecurityTests: XCTestCase {
 
     private var session: URLSession!
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // testSession_identifierRotatedOnSignIn exercises TPPUserAccount.
+        // sharedAccount().setBarcode(...) which round-trips through
+        // TPPKeychain; the other tests in this class use the stub URLSession
+        // only but setUp is class-scoped. Skip on CI hosts missing the
+        // keychain entitlement.
+        try KeychainAvailability.skipIfUnavailable()
+    }
+
     override func setUp() {
         super.setUp()
         HTTPStubURLProtocol.reset()
