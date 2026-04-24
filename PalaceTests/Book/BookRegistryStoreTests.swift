@@ -545,4 +545,66 @@ final class BookRegistryStoreTests: XCTestCase {
         let result = store.updatedBookMetadata(book)
         XCTAssertNil(result)
     }
+
+    /// Regression guard for the "authors disappear on reload" bug. The
+    /// catalog enrichment path must no longer wipe previously-populated
+    /// author data when the catalog feed comes back with a lean entry.
+    func test_updatedBookMetadata_preservesExistingAuthorsWhenIncomingIsEmpty() {
+        let rich = bookWithAuthors([TPPBookAuthor(authorName: "Original Author", relatedBooksURL: nil)])
+        store.addBook(rich, state: .downloadSuccessful)
+
+        let lean = bookWithAuthors([])
+        let merged = store.updatedBookMetadata(lean)
+
+        XCTAssertEqual(merged?.bookAuthors?.first?.name, "Original Author",
+                       "A lean catalog refresh must not overwrite previously-populated authors")
+        XCTAssertEqual(store.book(forIdentifier: "book-1")?.bookAuthors?.first?.name, "Original Author",
+                       "The registry's stored record must also retain the original author")
+    }
+
+    /// Complement to the above: when the catalog entry has richer data,
+    /// the merge must adopt it so new metadata still flows into the
+    /// registry in the normal, non-degraded case.
+    func test_updatedBookMetadata_takesIncomingAuthorsWhenPresent() {
+        let existing = bookWithAuthors([TPPBookAuthor(authorName: "Old Author", relatedBooksURL: nil)])
+        store.addBook(existing, state: .downloadSuccessful)
+
+        let fresh = bookWithAuthors([TPPBookAuthor(authorName: "Enriched Author", relatedBooksURL: nil)])
+        let merged = store.updatedBookMetadata(fresh)
+
+        XCTAssertEqual(merged?.bookAuthors?.first?.name, "Enriched Author")
+    }
+
+    /// Helper producing a TPPBook with the given author list, with
+    /// everything else held constant. Keeps identifier = "book-1" so it
+    /// matches the default helper used across this file.
+    private func bookWithAuthors(_ authors: [TPPBookAuthor]?) -> TPPBook {
+        TPPBook(
+            acquisitions: [TPPFake.genericAcquisition],
+            authors: authors,
+            categoryStrings: ["Fiction"],
+            distributor: nil,
+            identifier: "book-1",
+            imageURL: nil,
+            imageThumbnailURL: nil,
+            published: nil,
+            publisher: nil,
+            subtitle: nil,
+            summary: nil,
+            title: "Test Book",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: nil,
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
+    }
 }
