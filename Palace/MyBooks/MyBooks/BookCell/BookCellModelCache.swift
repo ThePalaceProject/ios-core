@@ -131,10 +131,14 @@ final class BookCellModelCache: ObservableObject {
             updateAccessOrder(key)
 
             // Defer book update to avoid "Publishing changes from within view updates" warning.
-            // Use identity check (not just `updated` timestamp) because sync can update
-            // availability data (e.g. holdPosition) without changing the timestamp.
-            // Guard against replacing a newer book with an older one.
-            if entry.model.book !== book && book.updated >= entry.model.book.updated {
+            // Trust identity over timestamp: if the registry produced a different
+            // TPPBook instance than what we cached, the registry's is authoritative.
+            // The previous `book.updated >= entry.model.book.updated` guard failed for
+            // cells whose cached book had a slightly-newer `updated` (sub-second disk
+            // round-trip drift, or catalog-merged timestamp beating loans-feed
+            // timestamp), leaving the MyBooks cell rendering with stale metadata like
+            // a missing author line until the cache was wiped on library reselect.
+            if entry.model.book !== book {
                 let model = entry.model
                 let updatedBook = book
                 Task { @MainActor in
