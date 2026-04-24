@@ -970,7 +970,7 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 final class FacetViewModelLogoDelegateTests: XCTestCase {
 
     func testLogoDidUpdate_SetsLogo() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title], accountsManager: .shared)
         let testImage = UIImage(systemName: "book.fill")!
 
         // Directly test the delegate method
@@ -981,7 +981,7 @@ final class FacetViewModelLogoDelegateTests: XCTestCase {
     }
 
     func testAccountScreenURL_WithValidHomePageURL() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title], accountsManager: .shared)
 
         // currentAccountURL depends on currentAccount's homePageUrl — verify nil account yields nil URL
         viewModel.currentAccount = nil
@@ -993,14 +993,14 @@ final class FacetViewModelLogoDelegateTests: XCTestCase {
     }
 
     func testActiveSort_DefaultsToFirstFacet_TitleFirst() {
-        let viewModel = FacetViewModel(groupName: "Sort", facets: [.title, .author])
+        let viewModel = FacetViewModel(groupName: "Sort", facets: [.title, .author], accountsManager: .shared)
         XCTAssertEqual(viewModel.activeSort, .title)
         XCTAssertNotEqual(viewModel.activeSort, .author, "When title is first, author must not be the active sort")
         XCTAssertEqual(viewModel.facets.first, .title, "First facet in the list must be title")
     }
 
     func testActiveSort_DefaultsToFirstFacet_AuthorFirst() {
-        let viewModel = FacetViewModel(groupName: "Sort", facets: [.author, .title])
+        let viewModel = FacetViewModel(groupName: "Sort", facets: [.author, .title], accountsManager: .shared)
         XCTAssertEqual(viewModel.activeSort, .author)
         XCTAssertNotEqual(viewModel.activeSort, .title, "When author is first, title must not be the active sort")
         XCTAssertEqual(viewModel.facets.first, .author, "First facet in the list must be author")

@@ -60,7 +60,8 @@ enum Group: Int {
         self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
             groupName: DisplayStrings.sortBy,
-            facets: [.title, .author]
+            facets: [.title, .author],
+            accountsManager: accountsManager
         )
         super.init()
 
