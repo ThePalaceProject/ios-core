@@ -87,16 +87,14 @@ jobs:
           echo "Building model..."
           ./tools/bin/ledger update
           
-          # Always enable QAAtlas - the secret is configured in the repo
-          # OPENAI_API_KEY is passed via env above and Ledger will use it
-          DOMAINS="arch,reach,a11y,qa"
-          
-          # Debug: Confirm key is available (show only first 4 chars for security)
-          if [[ -n "$OPENAI_API_KEY" ]]; then
-            echo "✅ OPENAI_API_KEY is set (starts with: ${OPENAI_API_KEY:0:4}...)"
-          else
-            echo "⚠️ OPENAI_API_KEY not found in environment"
-          fi
+          # QAAtlas (qa domain) is disabled — the AI test-matching step cannot
+          # correlate our XCTest methods to production functions and emits
+          # self-contradictory metrics (e.g. `Functions with Tests: 0 / 2344`
+          # with a `Coverage Estimate: 44.9%` on the same panel). The
+          # instrumented line-coverage produced by scripts/coverage-report.py
+          # from xccov is ground truth and replaces the QAAtlas estimate.
+          # Re-add `qa` to DOMAINS if upstream QAAtlas matching improves.
+          DOMAINS="arch,reach,a11y"
           
           # Run ledger observe for CI-friendly JSON output
           echo "Running ledger observe with domains: $DOMAINS"
