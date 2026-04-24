@@ -221,7 +221,7 @@ final class SettingsViewModelGapTests: XCTestCase {
     /// Coverage Gap: SettingsViewModel function missing tests — refreshAccountsList
     func testSettingsViewModel_refreshAccountsList_updatesProperty() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
 
         // The settingsAccountsList should be readable after refresh
         viewModel.refreshAccountsList()

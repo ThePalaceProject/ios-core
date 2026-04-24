@@ -19,12 +19,12 @@ import SwiftUI
 ///
 /// Usage:
 /// ```swift
-/// // Production
-/// let viewModel = SettingsViewModel()
+/// // Production — composition root
+/// let viewModel = SettingsViewModel(appContainer: .production())
 ///
 /// // Testing
 /// let mockSettings = TPPSettingsMock()
-/// let viewModel = SettingsViewModel(settings: mockSettings)
+/// let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: stubManager)
 /// ```
 @MainActor
 final class SettingsViewModel: ObservableObject {
@@ -123,14 +123,22 @@ final class SettingsViewModel: ObservableObject {
 
     // MARK: - Initialization
 
-    /// Creates a SettingsViewModel with the given dependencies.
+    /// Convenience: build from an `AppContainer` (the standard composition path).
+    convenience init(appContainer: AppContainer) {
+        self.init(
+            settings: appContainer.settings,
+            accountsManager: appContainer.accountsManager
+        )
+    }
+
+    /// Creates a SettingsViewModel with explicit dependencies.
     ///
     /// - Parameters:
-    ///   - settings: Settings provider (defaults to `TPPSettings.shared`).
-    ///   - accountsManager: Accounts manager (defaults to `AccountsManager.shared`).
+    ///   - settings: Settings provider.
+    ///   - accountsManager: Accounts manager.
     init(
-        settings: TPPSettingsProviding = TPPSettings.shared,
-        accountsManager: AccountsManager = AccountsManager.shared
+        settings: TPPSettingsProviding,
+        accountsManager: AccountsManager
     ) {
         self.settings = settings
         self.accountsManager = accountsManager

@@ -915,7 +915,7 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 
     func testAccountCount_ReflectsSettingsAccountsList() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
 
         // accountCount is derived from settingsAccountsList.count
         XCTAssertEqual(viewModel.accountCount, viewModel.settingsAccountsList.count)
@@ -923,14 +923,14 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 
     func testShowDeveloperSettings_DefaultsFalse() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
 
         XCTAssertFalse(viewModel.showDeveloperSettings)
     }
 
     func testShowDeveloperSettings_CanBeToggled() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
 
         // Verify default before any toggle
         XCTAssertFalse(viewModel.showDeveloperSettings, "Developer settings must default to false")
@@ -941,7 +941,7 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 
     func testIsUsingCustomFeed_AfterClear_ReturnsFalse() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
 
         viewModel.setCustomFeedURL("https://example.com/feed")
         XCTAssertTrue(viewModel.isUsingCustomFeed)
@@ -952,7 +952,7 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 
     func testIsUsingCustomRegistry_AfterClear_ReturnsFalse() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
 
         viewModel.setCustomRegistryServer("https://registry.example.com")
         XCTAssertTrue(viewModel.isUsingCustomRegistry)
@@ -964,7 +964,7 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
     /// SRS: Verifies the guard clause that prevents duplicate writes to settings
     func testDuplicateWrite_DoesNotTriggerSettingsUpdate() {
         let mockSettings = TPPSettingsMock(useBetaLibraries: true)
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
 
         // Setting the same value should be guarded
         viewModel.useBetaLibraries = true
