@@ -244,11 +244,21 @@ final class BookCellModelActionTests: XCTestCase {
         _ = model.acquireReaderPresentationLock()
         XCTAssertTrue(model.isPresentingReader)
 
-        let released = expectation(description: "Lock releases after debounce window")
-        // 0.5s lock window + 0.3s buffer — the async dispatch must clear the flag.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            if !model.isPresentingReader { released.fulfill() }
-        }
+        // Observe `isPresentingReader` via its @Published publisher instead
+        // of sleeping a fixed duration. The previous implementation used a
+        // 0.3s cushion (0.5s production timer + 0.8s test check), which was
+        // too tight under full-suite load — the test would time out when
+        // the main queue's scheduled block slipped by more than 300ms.
+        // Observing the publisher fulfills the moment the flag flips,
+        // regardless of dispatch jitter.
+        let released = expectation(description: "isPresentingReader flips to false")
+        model.$isPresentingReader
+            .dropFirst()
+            .filter { $0 == false }
+            .first()
+            .sink { _ in released.fulfill() }
+            .store(in: &cancellables)
+
         wait(for: [released], timeout: 2.0)
 
         XCTAssertTrue(model.acquireReaderPresentationLock(),

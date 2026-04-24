@@ -113,6 +113,15 @@ class MockNetworkExecutorForSync: TPPNetworkExecutor {
 
 // MARK: - Network Sync Tests
 
+// Test methods must run on the main thread: setUp schedules a drain block
+// via `DispatchQueue.main.asyncAfter` and then calls `wait(for:)` to pump
+// until the block fires. Without `@MainActor` XCTest is free to hop the
+// method onto a background queue; the asyncAfter block never fires because
+// nothing is pumping the main runloop, and the wait times out at 3s —
+// producing the unrelated-looking "drain initial sync" failure in
+// testAudiobookDataManager_Sync_InitializesCorrectly and
+// testSyncValues_withSuccessfulResponse_removesEntriesFromQueue.
+@MainActor
 final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
 
     private var mockNetworkExecutor: MockNetworkExecutorForSync!

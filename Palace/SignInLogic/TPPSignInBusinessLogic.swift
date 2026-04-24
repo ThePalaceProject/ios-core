@@ -439,6 +439,12 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
     /// Initiates process of signing in with the server.
     @objc func logIn(with tokenURL: URL? = nil) {
+        // Bail out BEFORE posting TPPIsSigningIn. Without a selected auth
+        // method we have nothing to actually send; firing the notification
+        // would leave observers (UI progress indicators, tests) in a
+        // sign-in-in-progress state that never resolves.
+        guard selectedAuthentication != nil else { return }
+
         NotificationCenter.default.post(name: .TPPIsSigningIn, object: true)
 
         capturedBarcode = uiDelegate?.username
