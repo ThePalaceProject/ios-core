@@ -129,7 +129,7 @@ final class SettingsViewModel: ObservableObject {
     ///   - settings: Settings provider (defaults to `TPPSettings.shared`).
     ///   - accountsManager: Accounts manager (defaults to `AccountsManager.shared`).
     init(
-        settings: TPPSettingsProviding = AppContainer.shared.settings,
+        settings: TPPSettingsProviding = TPPSettings.shared,
         accountsManager: AccountsManager = AccountsManager.shared
     ) {
         self.settings = settings

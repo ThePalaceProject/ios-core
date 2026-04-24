@@ -401,7 +401,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     /// Creates and returns the app's root view controller
     func createRootViewController() -> UIViewController {
-        let container = AppContainer()
+        let container = AppContainer.production()
         let root = AppTabHostView()
             .environment(\.appContainer, container)
         return UIHostingController(rootView: root)
