@@ -308,8 +308,15 @@ class BookRegistrySync {
                 )
               }
               NotificationService.compareAvailability(cachedRecord: record, andNewBook: book)
+              // Preserve metadata already in the registry if the loans feed's
+              // entry for this book came back lean (authors / summary /
+              // categories missing). The CM's loans endpoint has been observed
+              // to omit those fields intermittently — without this guard, a
+              // later sync overwrites a previously-enriched record and MyBooks
+              // cells lose their author line until a catalog visit refills it.
+              let mergedBook = record.book.mergingPreservingMetadata(from: book)
               registry[book.identifier] = TPPBookRegistryRecord(
-                book: book,
+                book: mergedBook,
                 location: record.location,
                 state: nextState,
                 fulfillmentId: record.fulfillmentId,

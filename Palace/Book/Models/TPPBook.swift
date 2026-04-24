@@ -345,6 +345,57 @@ public class TPPBook: NSObject, ObservableObject {
         )
     }
 
+    /// Returns a book that adopts `fresh`'s state-carrying fields (acquisitions,
+    /// availability-driven `updated`) but keeps `self`'s metadata wherever
+    /// `fresh`'s is empty. Designed for the sync() reconciliation path, where
+    /// the Palace Circulation Manager's loans feed has been observed to return
+    /// entries with missing `<author>`/`<summary>`/`<category>` elements for
+    /// some books on some calls — without this guard, a lean response would
+    /// overwrite a previously-enriched registry record and the MyBooks cell
+    /// would lose its author line until a catalog visit re-filled it.
+    ///
+    /// - Parameter fresh: The incoming book from the loans feed (authoritative
+    ///                    for availability and acquisitions).
+    /// - Returns: A book with fresh state and preserved-non-empty metadata.
+    @objc func mergingPreservingMetadata(from fresh: TPPBook) -> TPPBook {
+        func preferNonEmpty(_ a: String?, _ b: String?) -> String? {
+            if let a, !a.isEmpty { return a }
+            return b
+        }
+        func preferNonEmpty<T>(_ a: [T]?, _ b: [T]?) -> [T]? {
+            if let a, !a.isEmpty { return a }
+            return b
+        }
+
+        return TPPBook(
+            acquisitions: fresh.acquisitions,
+            authors: preferNonEmpty(fresh.bookAuthors, self.bookAuthors),
+            categoryStrings: preferNonEmpty(fresh.categoryStrings, self.categoryStrings),
+            distributor: preferNonEmpty(fresh.distributor, self.distributor),
+            identifier: self.identifier,
+            imageURL: fresh.imageURL ?? self.imageURL,
+            imageThumbnailURL: fresh.imageThumbnailURL ?? self.imageThumbnailURL,
+            published: fresh.published ?? self.published,
+            publisher: preferNonEmpty(fresh.publisher, self.publisher),
+            subtitle: preferNonEmpty(fresh.subtitle, self.subtitle),
+            summary: preferNonEmpty(fresh.summary, self.summary),
+            title: fresh.title.isEmpty ? self.title : fresh.title,
+            updated: fresh.updated,
+            annotationsURL: fresh.annotationsURL ?? self.annotationsURL,
+            analyticsURL: fresh.analyticsURL ?? self.analyticsURL,
+            alternateURL: fresh.alternateURL ?? self.alternateURL,
+            relatedWorksURL: fresh.relatedWorksURL ?? self.relatedWorksURL,
+            previewLink: fresh.previewLink ?? self.previewLink,
+            seriesURL: fresh.seriesURL ?? self.seriesURL,
+            revokeURL: fresh.revokeURL ?? self.revokeURL,
+            reportURL: fresh.reportURL ?? self.reportURL,
+            timeTrackingURL: fresh.timeTrackingURL ?? self.timeTrackingURL,
+            contributors: fresh.contributors ?? self.contributors,
+            bookDuration: preferNonEmpty(fresh.bookDuration, self.bookDuration),
+            imageCache: self.imageCache
+        )
+    }
+
     @objc func dictionaryRepresentation() -> [String: Any] {
         let acquisitions = self.acquisitions.map { $0.dictionaryRepresentation() }
 
