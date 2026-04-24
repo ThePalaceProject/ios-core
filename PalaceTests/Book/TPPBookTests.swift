@@ -172,22 +172,29 @@ final class TPPBookTests: XCTestCase {
         XCTAssertNil(book)
     }
 
-    func test_dictionaryInit_nilWhenMissingCategories() {
+    /// `TPPBook(dictionary:)` was intentionally relaxed (PR #859,
+    /// `c2908d9b0`) so that a single malformed/missing optional field no
+    /// longer silently drops a downloaded book from the registry on
+    /// reload. Categories default to `[]`; updated defaults to
+    /// `.distantPast`. Only identifier + title remain hard requirements.
+    func test_dictionaryInit_salvagesWhenCategoriesMissing() {
         let book = TPPBook(dictionary: [
             "id": "123",
             "title": "Test",
             "updated": "2024-01-01T00:00:00Z"
         ])
-        XCTAssertNil(book)
+        XCTAssertNotNil(book)
+        XCTAssertEqual(book?.categoryStrings ?? [], [])
     }
 
-    func test_dictionaryInit_nilWhenMissingUpdated() {
+    func test_dictionaryInit_salvagesWhenUpdatedMissing() {
         let book = TPPBook(dictionary: [
             "categories": ["Fiction"],
             "id": "123",
             "title": "Test"
         ])
-        XCTAssertNil(book)
+        XCTAssertNotNil(book)
+        XCTAssertEqual(book?.updated, .distantPast)
     }
 
     func test_dictionaryInit_handlesNestedAuthorArrayFormat() {
@@ -650,6 +657,118 @@ final class TPPBookTests: XCTestCase {
                        "bookWithMetadata must preserve self's identifier, not the metadata book's")
         XCTAssertNotEqual(merged.imageURL?.absoluteString, selfBook.imageURL?.absoluteString,
                           "Image URL from selfBook must have been replaced by the metadata book's URL")
+    }
+
+    // MARK: - mergingPreservingMetadata
+    //
+    // Sibling of `bookWithMetadata(from:)` with inverted semantics: self is
+    // the richer/cached record, fresh is the incoming possibly-lean one.
+    // Result takes fresh's state-carrying fields (acquisitions, updated)
+    // but prefers self's metadata wherever fresh's is nil/empty.
+
+    func test_mergingPreservingMetadata_preservesSelfAuthorsWhenFreshIsEmpty() {
+        let selfBook = makeBook(
+            identifier: "shared-id",
+            authors: [TPPBookAuthor(authorName: "Existing Author", relatedBooksURL: nil)]
+        )
+        let fresh = makeBook(identifier: "shared-id", authors: [])
+
+        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+
+        XCTAssertEqual(merged.bookAuthors?.first?.name, "Existing Author",
+                       "Lean fresh entry must not wipe previously-enriched authors")
+    }
+
+    func test_mergingPreservingMetadata_preservesSelfAuthorsWhenFreshIsNil() {
+        let selfBook = makeBook(
+            authors: [TPPBookAuthor(authorName: "Existing Author", relatedBooksURL: nil)]
+        )
+        let fresh = makeBook(authors: nil)
+
+        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+
+        XCTAssertEqual(merged.bookAuthors?.first?.name, "Existing Author")
+    }
+
+    func test_mergingPreservingMetadata_takesFreshAuthorsWhenPresent() {
+        let selfBook = makeBook(
+            authors: [TPPBookAuthor(authorName: "Old Author", relatedBooksURL: nil)]
+        )
+        let fresh = makeBook(
+            authors: [TPPBookAuthor(authorName: "New Author", relatedBooksURL: nil)]
+        )
+
+        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+
+        XCTAssertEqual(merged.bookAuthors?.first?.name, "New Author")
+    }
+
+    func test_mergingPreservingMetadata_preservesSelfSummaryWhenFreshIsEmpty() {
+        let selfBook = makeBook(summary: "A rich summary from an earlier catalog hit.")
+        let fresh = makeBook(summary: "")
+
+        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+
+        XCTAssertEqual(merged.summary, "A rich summary from an earlier catalog hit.")
+    }
+
+    func test_mergingPreservingMetadata_preservesSelfCategoriesWhenFreshIsEmpty() {
+        let selfBook = makeBook(categoryStrings: ["Fiction", "Adventure"])
+        let fresh = makeBook(categoryStrings: [])
+
+        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+
+        XCTAssertEqual(merged.categoryStrings ?? [], ["Fiction", "Adventure"])
+    }
+
+    func test_mergingPreservingMetadata_usesFreshUpdatedTimestamp() {
+        let oldDate = Date(timeIntervalSince1970: 1_000_000)
+        let newDate = Date(timeIntervalSince1970: 2_000_000)
+        let selfBook = makeBook(updated: oldDate)
+        let fresh = makeBook(updated: newDate)
+
+        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+
+        XCTAssertEqual(merged.updated, newDate,
+                       "Merged book must adopt fresh's updated timestamp — it's a state-carrying field")
+    }
+
+    func test_mergingPreservingMetadata_preservesSelfIdentifier() {
+        let selfBook = makeBook(identifier: "self-id")
+        let fresh = makeBook(identifier: "fresh-id")
+
+        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+
+        XCTAssertEqual(merged.identifier, "self-id",
+                       "Identifier must come from self — fresh is paired with self by identifier already")
+    }
+
+    func test_mergingPreservingMetadata_carriesCoverImageFromSelf() {
+        let selfBook = makeBook()
+        let fresh = makeBook()
+        let placeholder = UIImage()
+        selfBook.coverImage = placeholder
+        selfBook.thumbnailImage = placeholder
+
+        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+
+        XCTAssertTrue(merged.coverImage === placeholder,
+                      "Merged instance must inherit self's coverImage to avoid a skeleton flash on refresh")
+        XCTAssertTrue(merged.thumbnailImage === placeholder,
+                      "Merged instance must inherit self's thumbnailImage")
+    }
+
+    func test_mergingPreservingMetadata_fallsBackToFreshCoverImage() {
+        let selfBook = makeBook()
+        let fresh = makeBook()
+        let placeholder = UIImage()
+        // self has no image yet (new download). Fresh has one (from a recent catalog pass).
+        fresh.coverImage = placeholder
+
+        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+
+        XCTAssertTrue(merged.coverImage === placeholder,
+                      "When self has no image, the merge should adopt fresh's image rather than leaving nil")
     }
 
     // MARK: - Comparable

@@ -62,7 +62,7 @@ private extension CatalogContentView {
         switch content.feed {
         case .grouped(let lanes):
             LazyVStack(alignment: .leading, spacing: 24) {
-                ForEach(lanes) { lane in
+                ForEach(Array(lanes.enumerated()), id: \.element.id) { idx, lane in
                     CatalogLaneRowView(
                         title: lane.title,
                         books: lane.books.map { bookRegistry.updatedBookMetadata($0) ?? $0 },
@@ -72,6 +72,18 @@ private extension CatalogContentView {
                         showHeader: true,
                         isLoading: lane.isLoading || isOptimisticLoading
                     )
+                    .onAppear {
+                        // When a lane scrolls into view, warm the first few covers of
+                        // the next lane so its cells don't have to wait on the network
+                        // when the user scrolls further. fetchCoverImage is a no-op if
+                        // the image is already cached (or in flight), so repeat calls
+                        // are safe and cheap.
+                        guard idx + 1 < lanes.count else { return }
+                        let nextLane = lanes[idx + 1]
+                        for book in nextLane.books.prefix(3) {
+                            book.fetchCoverImage(forDisplayHeight: 150)
+                        }
+                    }
                 }
             }
             .opacity(isOptimisticLoading ? 0.6 : 1.0)
