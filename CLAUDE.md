@@ -176,7 +176,10 @@ Never commit: `APIKeys.swift`, `GoogleService-Info.plist`, `TPPSecrets.swift`, `
 
 ## SpecterQA E2E Testing
 
-29 journey YAMLs in `.specterqa/journeys/`, 29 replay YAMLs in `.specterqa/replays/`.
+25 canonical journey YAMLs in `.specterqa/journeys/` (plus `_GAP_ANALYSIS.md`), 46 replay YAMLs in `.specterqa/replays/`. Only 19 of the 25 journeys have a matching-name replay; the other 27 replays are historical captures (SQ-005/007/008 fix iterations, version-specific snapshots, dogfood runs, regression variants) with no corresponding journey.
+
+Recording coverage is reported as `<journeys-with-matching-replay> / <total-journeys>` (see `.github/workflows/unit-testing.yml`). Do NOT divide total replay files by total journeys — that ratio is meaningless and was the bug behind the "46/25 passing" mislabel.
+
 MCP server: `specterqa-ios==7.0.0`. Preferred sim: iPhone 12 (`31CF5C43-DD55-4889-B3B2-9A6810B4E98F`, iOS 26).
 
 ### MCP Tool Rules — MANDATORY

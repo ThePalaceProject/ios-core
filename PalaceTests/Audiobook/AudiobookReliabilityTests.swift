@@ -136,22 +136,20 @@ final class DownloadWatchdogTests: XCTestCase {
     }
 
     func testStartAndStop() {
-        // Use a checkInterval far larger than the test lifetime so the
-        // periodic monitoring Task never actually fires its body before we
-        // tear down. The default 10s interval races the test scope exit
-        // and crashes when the AsyncStream Task and the deinit-triggered
-        // stop() collide on the internal barrier queue.
-        let config = DownloadWatchdog.Configuration(
-            stallTimeout: 3600,
-            maxRetries: 0,
-            retryDelay: 3600,
-            checkInterval: 3600
-        )
-        let watchdog = DownloadWatchdog(configuration: config)
+        let watchdog = DownloadWatchdog(configuration: .default)
 
         watchdog.start()
         XCTAssertTrue(watchdog.status.isEmpty)
         watchdog.stop()
+
+        // Regression guard: the pre-fix DownloadWatchdog strong-rebound `self`
+        // at the top of its monitoring Task, so `stop()` returned while the
+        // Task was still alive and holding the instance. deinit firing at
+        // scope exit raced the still-pending `queue.async(flags: .barrier)`
+        // cleanup and crashed the process ~20s after this test asserted.
+        // With stop() now fully synchronous (barrier-sync) and the Task
+        // weak-only, the instance must be safe to drop at scope exit.
+        XCTAssertTrue(watchdog.status.isEmpty, "stop() must leave status cleared")
     }
 }
 

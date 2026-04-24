@@ -2114,7 +2114,20 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
 
     private func addDownloadTask(with request: URLRequest, book: TPPBook) {
         var modifiableRequest = request
-        let task = self.session.downloadTask(with: modifiableRequest.applyCustomUserAgent())
+        // `downloadTask(with:)` throws NSGenericException("Task created in a session
+        // that has been invalidated") if the session has been torn down between the
+        // enclosing detached-Task scheduling and this call. That path is reachable
+        // whenever app lifecycle (or test teardown) invalidates the session while a
+        // start-download Task is still queued. Catch it and bail cleanly instead
+        // of crashing the process.
+        var task: URLSessionDownloadTask?
+        let exception = TPPObjCExceptionCatcher.catchException {
+            task = self.session.downloadTask(with: modifiableRequest.applyCustomUserAgent())
+        }
+        guard let task, exception == nil else {
+            Log.warn(#file, "addDownloadTask: session unavailable, skipping download of '\(book.title)' (\(exception?.name.rawValue ?? "task=nil"))")
+            return
+        }
 
         let downloadInfo = MyBooksDownloadInfo(
             downloadProgress: 0.0,

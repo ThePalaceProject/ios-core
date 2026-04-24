@@ -33,8 +33,13 @@ final class TPPCredentialSnapshotCoherenceTests: XCTestCase {
     private var writer: TPPUserAccount!
     private var reader: TPPUserAccount!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Whole suite exercises keychain round-tripping between peer
+        // TPPUserAccount instances. Skip in CI where SecItem calls return
+        // -34018 (missing entitlement) — same env-gate as
+        // TPPKeychainTests + TPPKeychainSwiftTests.
+        try KeychainAvailability.skipIfUnavailable()
         writer = TPPUserAccount(libraryUUID: testLibraryUUID)
         reader = TPPUserAccount(libraryUUID: testLibraryUUID)
         writer.removeAll()

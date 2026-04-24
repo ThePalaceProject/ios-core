@@ -57,23 +57,6 @@ final class CredentialPrivacyTests: XCTestCase {
         }
     }
 
-    // MARK: - Crashlytics breadcrumb sanitization
-
-    func testCrashlyticsBreadcrumb_sanitizesURLAuthorizationParameters() throws {
-        // A URL containing credentials in query params must be redacted before
-        // it ever lands in a Crashlytics breadcrumb.
-        let unsafe = "https://example.org/login?barcode=\(barcode)&pin=\(pin)"
-
-        // SECURITY-GAP: needs a pure URL-redaction helper exposed from the
-        // logging layer (e.g. TPPErrorLogger.redact(_:)). Currently the
-        // sanitization is inlined inside Firebase init paths.
-        // Until that lands, assert the structural property: the raw URL DOES
-        // contain credentials, so any logger must transform it.
-        XCTAssertTrue(unsafe.contains(barcode))
-        XCTAssertTrue(unsafe.contains(pin))
-        throw XCTSkip("SECURITY-GAP: needs TPPErrorLogger.redact URL helper to assert breadcrumb sanitization.")
-    }
-
     // MARK: - Exception messages
 
     func testException_messageDoesNotEmbedCredentials() {

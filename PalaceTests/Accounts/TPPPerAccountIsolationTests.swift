@@ -8,6 +8,17 @@ final class TPPPerAccountIsolationTests: XCTestCase {
     private let uuidA = "urn:uuid:isolation-test-library-a"
     private let uuidB = "urn:uuid:isolation-test-library-b"
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Every test in this class writes via TPPUserAccount → TPPKeychain.
+        // On CI simulator runners the keychain returns -34018
+        // errSecMissingEntitlement; without a real keychain the writes silently
+        // drop and every read returns nil. Skip rather than report false
+        // failures — the same env-gate pattern used by TPPKeychainTests +
+        // TPPKeychainSwiftTests via KeychainAvailability.
+        try KeychainAvailability.skipIfUnavailable()
+    }
+
     override func tearDown() {
         // Clean up any keychain data written during tests
         AccountsManager.shared.userAccount(for: uuidA).removeAll()

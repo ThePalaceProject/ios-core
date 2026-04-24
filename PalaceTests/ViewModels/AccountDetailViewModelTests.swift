@@ -15,6 +15,16 @@ final class AccountDetailViewModelTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Tests in this class write credentials via
+        // TPPUserAccount.sharedAccount(libraryUUID:).setBarcode(...) which
+        // round-trips through TPPKeychain. Skip on CI hosts where SecItem
+        // returns -34018 (missing entitlement) — same env-gate used by
+        // TPPKeychainTests + TPPKeychainSwiftTests.
+        try KeychainAvailability.skipIfUnavailable()
+    }
+
     override func setUp() {
         super.setUp()
         cancellables = []
@@ -398,6 +408,15 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     private var userAccount: TPPUserAccountMock!
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // setUp() below constructs TPPUserAccountMock, but the individual
+        // tests pull the real TPPUserAccount.sharedAccount(libraryUUID:) and
+        // drive it via setBarcode / setAuthState — both hit TPPKeychain.
+        // Skip on CI hosts missing the keychain entitlement.
+        try KeychainAvailability.skipIfUnavailable()
+    }
+
     override func setUp() {
         super.setUp()
         userAccount = TPPUserAccountMock()
@@ -497,11 +516,6 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
         // Cleanup
         account.removeAll()
-    }
-
-    /// When user is logged out, isSignedIn should be FALSE regardless of auth type
-    func testIsSignedIn_falseWhenLoggedOut() async throws {
-        throw XCTSkip("Test isolation issue — residual keychain state from other tests in the singleton-backed suite causes false positives. Our credentialSnapshot() cache-coherence fix doesn't reach legacy keychain keys written by unrelated test cases. Tracking: AccountDetailViewModel DI migration will let this test use a scoped account instance with a synthetic library UUID.")
     }
 
     /// For SAML/Basic: Transition from loggedIn to credentialsStale should update isSignedIn to false
@@ -621,8 +635,12 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 @MainActor
 final class AccountDetailPINVisibilityTests: XCTestCase {
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Tests that exercise sign-in / sign-out state transitions round-trip
+        // credentials through TPPKeychain. Skip on CI hosts where SecItem
+        // returns -34018 (same env-gate as TPPKeychainTests).
+        try KeychainAvailability.skipIfUnavailable()
         // Reset shared user account state to prevent test pollution from
         // previous tests (in this class or elsewhere) that set credentials.
         if let libraryID = AccountsManager.shared.currentAccountId {
