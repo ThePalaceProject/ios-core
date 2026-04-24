@@ -43,6 +43,7 @@ protocol TPPBookRegistryProvider {
     // Image loading methods
     func cachedThumbnailImage(for book: TPPBook) -> UIImage?
     func thumbnailImage(for book: TPPBook?, handler: @escaping (_ image: UIImage?) -> Void)
+    func thumbnailImages(forBooks books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void)
 }
 
 // TPPBookRegistryData and TPPBookRegistryKey defined in TPPBookRegistryRecord.swift

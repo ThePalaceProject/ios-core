@@ -4,6 +4,7 @@ import UIKit
 struct BookDetailView: View {
     @Environment(\.presentationMode) var presentationMode
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appContainer) private var appContainer
 
     private var coordinator: NavigationCoordinator? {
         NavigationCoordinatorHub.shared.coordinator
@@ -472,7 +473,7 @@ struct BookDetailView: View {
                                     .font(.headline)
                                 Spacer()
                                 if let url = lane.subsectionURL {
-                                    NavigationLink(destination: CatalogLaneMoreView(url: url)) {
+                                    NavigationLink(destination: CatalogLaneMoreView(url: url, appContainer: appContainer)) {
                                         Text(DisplayStrings.more.capitalized)
                                             .foregroundColor(.primary)
                                     }

@@ -307,7 +307,7 @@ class CatalogSearchViewModel: ObservableObject {
                         // OPDS 1 path
                         let feedObjc = feed.opdsFeed
                         if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-                            searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0) }
+                            searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: TPPBookRegistry.shared) }
                         }
                         self.extractNextPageURL(from: feedObjc)
                         self.extractPostSearchFacets(from: feedObjc)
@@ -366,7 +366,7 @@ class CatalogSearchViewModel: ObservableObject {
                 let feedObjc = feed.opdsFeed
                 extractNextPageURL(from: feedObjc)
                 if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-                    newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+                    newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: TPPBookRegistry.shared) }
                 }
             }
             filteredBooks.append(contentsOf: newBooks)

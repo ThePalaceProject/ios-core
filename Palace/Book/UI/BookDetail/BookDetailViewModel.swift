@@ -482,7 +482,7 @@ final class BookDetailViewModel: ObservableObject {
                             for entry in entries {
                                 guard let group = entry.groupAttributes else { continue }
                                 let groupTitle = group.title ?? ""
-                                if let b = CatalogViewModel.makeBook(from: entry) {
+                                if let b = CatalogViewModel.makeBook(from: entry, bookRegistry: TPPBookRegistry.shared) {
                                     groupTitleToBooks[groupTitle, default: []].append(b)
                                     if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
                                 }

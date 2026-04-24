@@ -6,6 +6,7 @@ public protocol ImageCacheType {
     func getAsync(for key: String) async -> UIImage?
     func remove(for key: String)
     func clear()
+    func warmMemoryCache(for keys: [String]) async
 }
 
 public extension ImageCacheType {

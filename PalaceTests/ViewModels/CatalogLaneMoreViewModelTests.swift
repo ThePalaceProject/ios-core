@@ -28,7 +28,12 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
 
     private func createViewModel(title: String = "Test", urlString: String = "https://example.com/feed") -> CatalogLaneMoreViewModel {
         let url = URL(string: urlString)!
-        return CatalogLaneMoreViewModel(title: title, url: url)
+        return CatalogLaneMoreViewModel(
+            title: title,
+            url: url,
+            bookRegistry: TPPBookRegistry.shared,
+            bookCellModelCache: .shared
+        )
     }
 
     // MARK: - Initialization Tests

@@ -625,7 +625,12 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
     }
 
     private func createViewModel(urlString: String = "https://example.com/feed") -> CatalogLaneMoreViewModel {
-        CatalogLaneMoreViewModel(title: "Test", url: URL(string: urlString)!)
+        CatalogLaneMoreViewModel(
+            title: "Test",
+            url: URL(string: urlString)!,
+            bookRegistry: TPPBookRegistry.shared,
+            bookCellModelCache: .shared
+        )
     }
 
     // MARK: - restoreFilterState
@@ -764,7 +769,12 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
 
     func testURL_MatchesInitializer() {
         let url = URL(string: "https://catalog.example.com/lane/fiction")!
-        let viewModel = CatalogLaneMoreViewModel(title: "Fiction", url: url)
+        let viewModel = CatalogLaneMoreViewModel(
+            title: "Fiction",
+            url: url,
+            bookRegistry: TPPBookRegistry.shared,
+            bookCellModelCache: .shared
+        )
 
         XCTAssertEqual(viewModel.url, url)
         XCTAssertEqual(viewModel.url.host, "catalog.example.com", "URL host must match")

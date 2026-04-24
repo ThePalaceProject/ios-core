@@ -15,9 +15,13 @@ struct AppTabHostView: View {
         let parser = OPDSParser()
         let api = DefaultCatalogAPI(client: client, parser: parser)
         let repository = CatalogRepository(api: api)
-        return CatalogViewModel(repository: repository) {
-            TPPSettings.shared.accountMainFeedURL
-        }
+        let container = AppContainer.production()
+        return CatalogViewModel(
+            repository: repository,
+            topLevelURLProvider: { container.settings.accountMainFeedURL },
+            bookRegistry: container.bookRegistry,
+            imageCache: container.imageCache
+        )
     }()
 
     var body: some View {
