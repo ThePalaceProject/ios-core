@@ -11,96 +11,137 @@
   },
   "focus_area": {
     "CA": [],
-    "US": ["New York, NY"]
+    "US": [
+      "New York, NY"
+    ]
   },
-  "links": [{
-    "href": "https://librarysimplified.org/EULA/",
-    "type": "text/html",
-    "rel": "terms-of-service"
-  }, {
-    "href": "https://www.nypl.org/help/about-nypl/legal-notices/privacy-policy",
-    "type": "text/html",
-    "rel": "privacy-policy"
-  }, {
-    "href": "https://librarysimplified.org/about/",
-    "type": "text/html",
-    "rel": "about"
-  }, {
-    "href": "https://librarysimplified.org/licenses/",
-    "type": "text/html",
-    "rel": "license"
-  }, {
-    "href": "nypl.card-creator:https://patrons.librarysimplified.org/",
-    "rel": "register"
-  }, {
-    "href": "https://circulation.librarysimplified.org/NYNYPL/",
-    "type": "application/atom+xml;profile=opds-catalog;kind=acquisition",
-    "rel": "start"
-  }, {
-    "href": "https://circulation.librarysimplified.org/NYNYPL/loans/",
-    "type": "application/atom+xml;profile=opds-catalog;kind=acquisition",
-    "rel": "http://opds-spec.org/shelf"
-  }, {
-    "href": "https://circulation.librarysimplified.org/NYNYPL/patrons/me/",
-    "type": "vnd.librarysimplified/user-profile+json",
-    "rel": "http://librarysimplified.org/terms/rel/user-profile"
-  }, {
-    "href": "mailto:gethelp@nypl.org",
-    "rel": "http://librarysimplified.org/rel/designated-agent/copyright"
-  }, {
-    "href": "mailto:gethelp@nypl.org",
-    "type": null,
-    "rel": "help"
-  }, {
-    "href": "https://www.nypl.org/",
-    "type": "text/html",
-    "rel": "alternate"
-  }],
+  "links": [
+    {
+      "href": "https://librarysimplified.org/EULA/",
+      "type": "text/html",
+      "rel": "terms-of-service"
+    },
+    {
+      "href": "https://www.nypl.org/help/about-nypl/legal-notices/privacy-policy",
+      "type": "text/html",
+      "rel": "privacy-policy"
+    },
+    {
+      "href": "https://librarysimplified.org/about/",
+      "type": "text/html",
+      "rel": "about"
+    },
+    {
+      "href": "https://librarysimplified.org/licenses/",
+      "type": "text/html",
+      "rel": "license"
+    },
+    {
+      "href": "nypl.card-creator:https://patrons.librarysimplified.org/",
+      "rel": "register"
+    },
+    {
+      "href": "https://circulation.librarysimplified.org/NYNYPL/",
+      "type": "application/atom+xml;profile=opds-catalog;kind=acquisition",
+      "rel": "start"
+    },
+    {
+      "href": "https://circulation.librarysimplified.org/NYNYPL/loans/",
+      "type": "application/atom+xml;profile=opds-catalog;kind=acquisition",
+      "rel": "http://opds-spec.org/shelf"
+    },
+    {
+      "href": "https://circulation.librarysimplified.org/NYNYPL/patrons/me/",
+      "type": "vnd.librarysimplified/user-profile+json",
+      "rel": "http://librarysimplified.org/terms/rel/user-profile"
+    },
+    {
+      "href": "mailto:gethelp@nypl.org",
+      "rel": "http://librarysimplified.org/rel/designated-agent/copyright"
+    },
+    {
+      "href": "mailto:gethelp@nypl.org",
+      "type": null,
+      "rel": "help"
+    },
+    {
+      "href": "https://www.nypl.org/",
+      "type": "text/html",
+      "rel": "alternate"
+    }
+  ],
   "title": "The New York Public Library",
   "service_area": {
     "CA": [],
     "US": []
   },
-  "authentication": [{
-    "inputs": {
-      "login": {
-        "barcode_format": "Codabar",
-        "keyboard": "Default"
+  "authentication": [
+    {
+      "inputs": {
+        "login": {
+          "barcode_format": "Codabar",
+          "keyboard": "Default"
+        },
+        "password": {
+          "maximum_length": 12,
+          "keyboard": "Default"
+        }
       },
-      "password": {
-        "maximum_length": 12,
-        "keyboard": "Default"
-      }
+      "labels": {
+        "login": "Barcode",
+        "password": "PIN"
+      },
+      "type": "http://opds-spec.org/auth/basic",
+      "description": "Library Barcode"
     },
-    "labels": {
-      "login": "Barcode",
-      "password": "PIN"
+    {
+      "type": "http://librarysimplified.org/authtype/OAuth-with-intermediary",
+      "description": "Clever authentication"
     },
-    "type": "http://opds-spec.org/auth/basic",
-    "description": "Library Barcode"
-  }, {
-    "type": "http://librarysimplified.org/authtype/OAuth-with-intermediary",
-    "description": "Clever authentication"
-  }, {
-    "type": "http://librarysimplified.org/authtype/SAML-2.0",
-    "description": "SAML authentication"
-  }, {
-    "type": "http://palaceproject.io/authtype/OpenIDConnect",
-    "description": "OpenID Connect",
-    "links": [{
-      "href": "https://circulation.example.com/NYNYPL/oidc/authenticate?provider=OpenID+Connect",
-      "rel": "authenticate"
-    }, {
-      "href": "https://circulation.example.com/NYNYPL/oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}",
-      "rel": "logout",
-      "templated": true
-    }]
-  }],
+    {
+      "type": "http://librarysimplified.org/authtype/SAML-2.0",
+      "description": "SAML authentication",
+      "links": [
+        {
+          "rel": "authenticate",
+          "href": "https://circulation.example.com/NYNYPL/saml_authenticate?provider=SAML+2.0+Web+SSO&idp_entity_id=https://idp.example.com/saml",
+          "display_names": [
+            {
+              "language": "en",
+              "value": "SAML IdP"
+            }
+          ]
+        },
+        {
+          "rel": "logout",
+          "href": "https://circulation.example.com/NYNYPL/saml/logout?provider=SAML+2.0+Web+SSO{&post_logout_redirect_uri}",
+          "templated": true
+        }
+      ]
+    },
+    {
+      "type": "http://palaceproject.io/authtype/OpenIDConnect",
+      "description": "OpenID Connect",
+      "links": [
+        {
+          "href": "https://circulation.example.com/NYNYPL/oidc/authenticate?provider=OpenID+Connect",
+          "rel": "authenticate"
+        },
+        {
+          "href": "https://circulation.example.com/NYNYPL/oidc/logout?provider=OpenID+Connect{&post_logout_redirect_uri}",
+          "rel": "logout",
+          "templated": true
+        }
+      ]
+    }
+  ],
   "announcements": [],
   "color_scheme": "red",
   "id": "https://circulation.librarysimplified.org/NYNYPL/authentication_document",
   "features": {
     "disabled": [],
-    "enabled": ["https://librarysimplified.org/rel/policy/reservations"]
+    "enabled": [
+      "https://librarysimplified.org/rel/policy/reservations"
+    ]
   }
 }

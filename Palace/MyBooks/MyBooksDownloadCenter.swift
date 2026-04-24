@@ -1035,10 +1035,23 @@ extension MyBooksDownloadCenter {
     }
 
     func deleteLocalContent(for identifier: String, account: String? = nil) {
-        let current_account: String? = account ?? accountsManager.currentAccountId
-        guard let book = bookRegistry.book(forIdentifier: identifier),
-              let bookURL = fileUrl(for: identifier, account: current_account) else {
+        guard let book = bookRegistry.book(forIdentifier: identifier) else {
             Log.warn(#file, "Could not find book to delete local content \(identifier)")
+            return
+        }
+        deleteLocalContent(forBook: book, account: account)
+    }
+
+    /// Delete local content using a book reference directly, without reading the
+    /// book registry. Use this from callers that already hold the book (or that
+    /// are running inside a registry write barrier — looking up the identifier
+    /// through `bookRegistry` there would re-enter the barrier and trip Swift's
+    /// exclusivity check, e.g. BookRegistrySync.sync()'s reconciliation pass
+    /// deleting expired/returned downloads.
+    func deleteLocalContent(forBook book: TPPBook, account: String? = nil) {
+        let current_account: String? = account ?? accountsManager.currentAccountId
+        guard let bookURL = fileUrl(for: book, account: current_account) else {
+            Log.warn(#file, "Could not resolve fileUrl to delete local content \(book.identifier)")
             return
         }
 
@@ -1061,7 +1074,7 @@ extension MyBooksDownloadCenter {
                 Log.warn(#file, "Unsupported content type for deletion.")
             }
         } catch {
-            Log.error(#file, "Failed to remove local content for book with identifier \(identifier): \(error.localizedDescription)")
+            Log.error(#file, "Failed to remove local content for book with identifier \(book.identifier): \(error.localizedDescription)")
         }
     }
 
