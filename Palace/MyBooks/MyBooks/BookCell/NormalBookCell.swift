@@ -201,6 +201,8 @@ struct NormalBookCell: View {
                 .accessibilityLabel(model.book.defaultBookContentType == .audiobook ? "\(model.book.title). Audiobook." : model.book.title)
             Text(model.authors)
                 .palaceFont(size: 12)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

@@ -289,9 +289,13 @@ extension OPDS2Publication {
         // Extract special links
         let specialLinks = OPDS2BookBridge.extractSpecialLinks(from: links)
 
+        let authors = metadata.author?.map {
+            TPPBookAuthor(authorName: $0.name, relatedBooksURL: $0.links?.first?.hrefURL)
+        }
+
         return TPPBook(
             acquisitions: acquisitions,
-            authors: nil,
+            authors: authors,
             categoryStrings: nil,
             distributor: nil,
             identifier: identifier,

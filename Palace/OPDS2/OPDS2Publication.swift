@@ -14,18 +14,20 @@ struct OPDS2Publication: Codable, Equatable, Sendable {
         let description: String?
         let id: String
         let title: String
+        let author: [OPDS2Contributor]?
 
         private enum CodingKeys: String, CodingKey {
-            case updated, description, id, title
+            case updated, description, id, title, author
             case atId = "@id"
             case identifier
         }
 
-        init(updated: Date? = nil, description: String? = nil, id: String, title: String) {
+        init(updated: Date? = nil, description: String? = nil, id: String, title: String, author: [OPDS2Contributor]? = nil) {
             self.updated = updated
             self.description = description
             self.id = id
             self.title = title
+            self.author = author
         }
 
         init(from decoder: Decoder) throws {
@@ -33,6 +35,18 @@ struct OPDS2Publication: Codable, Equatable, Sendable {
             title = try container.decode(String.self, forKey: .title)
             description = try container.decodeIfPresent(String.self, forKey: .description)
             updated = try container.decodeIfPresent(Date.self, forKey: .updated)
+
+            // CM feeds send `author` as either a JSON array or a single
+            // object/string. Try array first, then fall back to a single
+            // contributor so lean lane publications don't silently lose the
+            // author name.
+            if let list = try? container.decodeIfPresent([OPDS2Contributor].self, forKey: .author) {
+                author = list
+            } else if let single = try? container.decodeIfPresent(OPDS2Contributor.self, forKey: .author) {
+                author = [single]
+            } else {
+                author = nil
+            }
 
             // id can come as "id", "@id", or "identifier"
             if let val = try? container.decode(String.self, forKey: .id) {
@@ -52,6 +66,7 @@ struct OPDS2Publication: Codable, Equatable, Sendable {
             try container.encode(title, forKey: .title)
             try container.encodeIfPresent(updated, forKey: .updated)
             try container.encodeIfPresent(description, forKey: .description)
+            try container.encodeIfPresent(author, forKey: .author)
         }
     }
 

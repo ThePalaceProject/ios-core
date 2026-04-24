@@ -201,6 +201,87 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         XCTAssertEqual(mapped.facetGroups.first?.filters.count, 2)
     }
 
+    // Current-URL matching is the only reliable "active sort" signal the CM
+    // sends on OPDS 2 feeds: when a sort option is selected, the feed is
+    // reloaded at that facet's href. `numberOfItems` is a count hint, not an
+    // active-state marker.
+    func testExtractOPDS2Facets_marksFacetActiveWhenHrefMatchesCurrentURL() throws {
+        let facets = [
+            OPDS2FacetGroup(
+                metadata: OPDS2FacetGroupMetadata(title: "Sort By"),
+                links: [
+                    OPDS2FacetLink(href: "https://example.com/fiction?sort=title", title: "Title"),
+                    OPDS2FacetLink(href: "https://example.com/fiction?sort=author", title: "Author"),
+                    OPDS2FacetLink(href: "https://example.com/fiction?sort=added", title: "Recently Added")
+                ]
+            )
+        ]
+        let opds2 = OPDS2Feed(
+            metadata: OPDS2FeedMetadata(title: "All Fiction"),
+            facets: facets
+        )
+
+        let currentURL = URL(string: "https://example.com/fiction?sort=author")!
+        let (groups, _) = CatalogViewModel.extractOPDS2Facets(from: opds2, currentURL: currentURL)
+
+        let sortGroup = try XCTUnwrap(groups.first)
+        let active = sortGroup.filters.filter { $0.active }
+        XCTAssertEqual(active.count, 1, "Exactly one sort facet must be marked active")
+        XCTAssertEqual(active.first?.title, "Author")
+    }
+
+    // URL matching must ignore query-parameter order — the CM is free to
+    // reorder params between the sort-facet href it advertises and the
+    // actual URL the feed resolves to. If we're strict about order we break
+    // the radio-button state in the sort sheet.
+    func testExtractOPDS2Facets_urlMatchIgnoresQueryOrder() throws {
+        let facets = [
+            OPDS2FacetGroup(
+                metadata: OPDS2FacetGroupMetadata(title: "Sort By"),
+                links: [
+                    OPDS2FacetLink(href: "https://example.com/fiction?entrypoint=All&sort=title", title: "Title"),
+                    OPDS2FacetLink(href: "https://example.com/fiction?entrypoint=All&sort=author", title: "Author")
+                ]
+            )
+        ]
+        let opds2 = OPDS2Feed(metadata: OPDS2FeedMetadata(title: "All Fiction"), facets: facets)
+
+        // Same logical URL, params in a different order.
+        let currentURL = URL(string: "https://example.com/fiction?sort=title&entrypoint=All")!
+        let (groups, _) = CatalogViewModel.extractOPDS2Facets(from: opds2, currentURL: currentURL)
+
+        XCTAssertEqual(try XCTUnwrap(groups.first).filters.first(where: { $0.active })?.title, "Title")
+    }
+
+    // When we have no URL to compare against (unusual, but possible in tests
+    // or early-init flows), fall back to the existing count-based hint so we
+    // don't regress feeds that still rely on it.
+    func testExtractOPDS2Facets_fallsBackToNumberOfItemsHintWhenNoURLMatch() throws {
+        let facets = [
+            OPDS2FacetGroup(
+                metadata: OPDS2FacetGroupMetadata(title: "Sort By"),
+                links: [
+                    OPDS2FacetLink(href: "https://example.com/fiction?sort=title", title: "Title"),
+                    OPDS2FacetLink(
+                        href: "https://example.com/fiction?sort=added",
+                        title: "Recently Added",
+                        properties: OPDS2FacetProperties(numberOfItems: 150)
+                    )
+                ]
+            )
+        ]
+        let opds2 = OPDS2Feed(
+            metadata: OPDS2FeedMetadata(title: "All Fiction"),
+            facets: facets
+        )
+
+        let unrelatedURL = URL(string: "https://other.example.com/feed")!
+        let (groups, _) = CatalogViewModel.extractOPDS2Facets(from: opds2, currentURL: unrelatedURL)
+
+        let sortGroup = try XCTUnwrap(groups.first)
+        XCTAssertEqual(sortGroup.filters.first(where: { $0.active })?.title, "Recently Added")
+    }
+
     // MARK: - End-to-End: JSON → Parser → CatalogFeed → mapFeed
 
     func testEndToEnd_jsonToLanes() throws {
