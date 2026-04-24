@@ -238,7 +238,12 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.sortFacets.count, 2)
     }
 
-    func testActiveSortTitle_WhenNoActiveFacet_ReturnsNil() {
+    // When the feed doesn't explicitly mark a sort facet active (typical for
+    // OPDS 2 feeds, where the CM sends only hrefs and relies on URL match),
+    // the toolbar should still show a sort pill labeled with the first
+    // option — otherwise the pill disappears entirely and the user has no
+    // way to change the sort order.
+    func testActiveSortTitle_WhenNoActiveFacet_FallsBackToFirstFilterTitle() {
         let viewModel = createViewModel()
 
         viewModel.facetGroups = [
@@ -248,7 +253,20 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
             ])
         ]
 
-        XCTAssertNil(viewModel.activeSortTitle)
+        XCTAssertEqual(viewModel.activeSortTitle, "Title")
+    }
+
+    func testActiveSortTitle_WhenSortGroupEmpty_ReturnsNil() {
+        let viewModel = createViewModel()
+
+        viewModel.facetGroups = [
+            CatalogFilterGroup(id: "format", name: "Format", filters: [
+                CatalogFilter(id: "ebook", title: "eBook", href: nil, active: false)
+            ])
+        ]
+
+        XCTAssertNil(viewModel.activeSortTitle,
+                     "Without a Sort By group the pill must not render")
     }
 
     func testActiveSortTitle_WhenActiveFacetExists_ReturnsTitle() {
@@ -262,6 +280,145 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         ]
 
         XCTAssertEqual(viewModel.activeSortTitle, "Author")
+    }
+
+    // MARK: - Displayed Sort Facets (default + pending)
+
+    // The sort sheet and the toolbar pill both read from displayedSortFacets
+    // so their selected-state stays consistent. When the feed hasn't marked
+    // any facet active (typical on first load), the first one must be
+    // treated as the default — otherwise the pill has a label but the
+    // sheet shows no radio selected.
+    func testDisplayedSortFacets_WhenNoneActive_MarksFirstAsDefault() {
+        let viewModel = createViewModel()
+
+        viewModel.facetGroups = [
+            CatalogFilterGroup(id: "sort", name: "Sort By", filters: [
+                CatalogFilter(id: "title", title: "Title", href: nil, active: false),
+                CatalogFilter(id: "author", title: "Author", href: nil, active: false)
+            ])
+        ]
+
+        let displayed = viewModel.displayedSortFacets
+        XCTAssertEqual(displayed.count, 2)
+        XCTAssertTrue(displayed[0].active,
+                      "First sort filter must be active by default so the pill label and sheet radio agree")
+        XCTAssertFalse(displayed[1].active)
+    }
+
+    func testDisplayedSortFacets_WhenOneActive_Unchanged() {
+        let viewModel = createViewModel()
+
+        viewModel.facetGroups = [
+            CatalogFilterGroup(id: "sort", name: "Sort By", filters: [
+                CatalogFilter(id: "title", title: "Title", href: nil, active: false),
+                CatalogFilter(id: "author", title: "Author", href: nil, active: true)
+            ])
+        ]
+
+        let displayed = viewModel.displayedSortFacets
+        XCTAssertFalse(displayed[0].active)
+        XCTAssertTrue(displayed[1].active,
+                      "When the feed already marks a facet active, displayedSortFacets must not rewrite it")
+    }
+
+    // pendingSortFacetID is how the sheet highlights a newly-tapped facet
+    // before the network roundtrip. Without this override the radio only
+    // flips after the refetched feed arrives, which feels laggy.
+    func testDisplayedSortFacets_WhenPendingSet_HighlightsOnlyPendingFacet() {
+        let viewModel = createViewModel()
+
+        viewModel.facetGroups = [
+            CatalogFilterGroup(id: "sort", name: "Sort By", filters: [
+                CatalogFilter(id: "title", title: "Title", href: nil, active: true),
+                CatalogFilter(id: "author", title: "Author", href: nil, active: false),
+                CatalogFilter(id: "added", title: "Recently Added", href: nil, active: false)
+            ])
+        ]
+        viewModel.pendingSortFacetID = "author"
+
+        let displayed = viewModel.displayedSortFacets
+        XCTAssertFalse(displayed[0].active, "Previous selection must yield to the pending tap")
+        XCTAssertTrue(displayed[1].active, "Pending facet must be the only active one")
+        XCTAssertFalse(displayed[2].active)
+    }
+
+    func testDisplayedSortFacets_WhenPendingIDUnknown_FallsBackNormally() {
+        let viewModel = createViewModel()
+
+        viewModel.facetGroups = [
+            CatalogFilterGroup(id: "sort", name: "Sort By", filters: [
+                CatalogFilter(id: "title", title: "Title", href: nil, active: false),
+                CatalogFilter(id: "author", title: "Author", href: nil, active: false)
+            ])
+        ]
+        viewModel.pendingSortFacetID = "bogus-id-no-longer-in-feed"
+
+        let displayed = viewModel.displayedSortFacets
+        XCTAssertTrue(displayed[0].active,
+                      "Stale pending ID must not consume the selection — fall back to first-is-default")
+    }
+
+    // MARK: - Feed URL Threading (regression guard)
+    //
+    // The second bug we had to fix was processOPDS2*Feed extracting facets
+    // against self.url (the original lane URL) instead of the URL of the
+    // feed that was actually fetched. After applying a sort, no facet
+    // matched and every radio read as inactive. These tests pin the
+    // call-site contract so that regression can't land again silently.
+
+    func testProcessOPDS2GroupedFeed_UsesFeedURLForActiveDetection() {
+        let viewModel = createViewModel(urlString: "https://example.com/fiction")
+
+        let feed = OPDS2Feed(
+            metadata: OPDS2FeedMetadata(title: "Fiction (Sort: Author)"),
+            groups: [
+                OPDS2Group(
+                    metadata: OPDS2GroupMetadata(title: "All"),
+                    links: [],
+                    publications: []
+                )
+            ],
+            facets: [
+                OPDS2FacetGroup(
+                    metadata: OPDS2FacetGroupMetadata(title: "Sort By"),
+                    links: [
+                        OPDS2FacetLink(href: "https://example.com/fiction?sort=title", title: "Title"),
+                        OPDS2FacetLink(href: "https://example.com/fiction?sort=author", title: "Author")
+                    ]
+                )
+            ]
+        )
+
+        // Feed was fetched at the "sort=author" URL, not the lane's original URL.
+        viewModel.processOPDS2GroupedFeed(feed, feedURL: URL(string: "https://example.com/fiction?sort=author")!)
+
+        let active = viewModel.facetGroups.first?.filters.first(where: { $0.active })
+        XCTAssertEqual(active?.title, "Author",
+                       "Facets must be matched against the fetched feedURL, not the view-model's original url")
+    }
+
+    func testProcessOPDS2PublicationFeed_UsesFeedURLForActiveDetection() {
+        let viewModel = createViewModel(urlString: "https://example.com/fiction")
+
+        let feed = OPDS2Feed(
+            metadata: OPDS2FeedMetadata(title: "Fiction"),
+            publications: [],
+            facets: [
+                OPDS2FacetGroup(
+                    metadata: OPDS2FacetGroupMetadata(title: "Sort By"),
+                    links: [
+                        OPDS2FacetLink(href: "https://example.com/fiction?sort=title", title: "Title"),
+                        OPDS2FacetLink(href: "https://example.com/fiction?sort=author", title: "Author")
+                    ]
+                )
+            ]
+        )
+
+        viewModel.processOPDS2PublicationFeed(feed, feedURL: URL(string: "https://example.com/fiction?sort=title")!)
+
+        let active = viewModel.facetGroups.first?.filters.first(where: { $0.active })
+        XCTAssertEqual(active?.title, "Title")
     }
 
     // MARK: - Filter Selection Tests

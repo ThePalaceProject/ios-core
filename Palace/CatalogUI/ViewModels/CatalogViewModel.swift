@@ -77,7 +77,7 @@ final class CatalogViewModel: ObservableObject {
         guard !Task.isCancelled else { return }
 
         let mapped = await Task.detached(priority: .userInitiated) { () -> MappedCatalog in
-          return await Self.mapFeed(feed)
+          return await Self.mapFeed(feed, currentURL: url)
         }.value
 
         let t2 = CFAbsoluteTimeGetCurrent()
@@ -366,9 +366,9 @@ extension CatalogViewModel {
     let entryPoints: [CatalogFilter]
   }
 
-  static func mapFeed(_ feed: CatalogFeed) -> MappedCatalog {
+  static func mapFeed(_ feed: CatalogFeed, currentURL: URL? = nil) -> MappedCatalog {
     if let opds2 = feed.opds2Feed {
-      return mapOPDS2Feed(opds2, title: feed.title, entries: feed.entries)
+      return mapOPDS2Feed(opds2, title: feed.title, entries: feed.entries, currentURL: currentURL)
     }
 
     let title = feed.title
@@ -397,17 +397,17 @@ extension CatalogViewModel {
     }
   }
 
-  private static func mapOPDS2Feed(_ feed: OPDS2Feed, title: String, entries: [CatalogEntry]) -> MappedCatalog {
+  private static func mapOPDS2Feed(_ feed: OPDS2Feed, title: String, entries: [CatalogEntry], currentURL: URL? = nil) -> MappedCatalog {
     Log.info(#file, "[OPDS2-DIAG] Mapping OPDS2 feed: \"\(feed.title)\", grouped=\(feed.isGroupedFeed), publications=\(feed.isPublicationFeed), navigation=\(feed.isNavigationFeed)")
 
     if feed.isGroupedFeed {
       let lanes = buildOPDS2GroupedContent(from: feed)
-      let (facetGroups, entryPoints) = extractOPDS2Facets(from: feed)
+      let (facetGroups, entryPoints) = extractOPDS2Facets(from: feed, currentURL: currentURL)
       return MappedCatalog(title: title, entries: entries, lanes: lanes, ungroupedBooks: [], facetGroups: facetGroups, entryPoints: entryPoints)
     } else if feed.isPublicationFeed {
       let books = feed.publications?.compactMap { $0.toBook() } ?? []
       Log.info(#file, "[OPDS2-DIAG] Mapped \(books.count) books from publication feed")
-      let (facetGroups, entryPoints) = extractOPDS2Facets(from: feed)
+      let (facetGroups, entryPoints) = extractOPDS2Facets(from: feed, currentURL: currentURL)
       return MappedCatalog(title: title, entries: entries, lanes: [], ungroupedBooks: books, facetGroups: facetGroups, entryPoints: entryPoints)
     } else {
       return MappedCatalog(title: title, entries: entries, lanes: [], ungroupedBooks: [], facetGroups: [], entryPoints: [])
@@ -426,14 +426,18 @@ extension CatalogViewModel {
     return lanes
   }
 
-  static func extractOPDS2Facets(from feed: OPDS2Feed) -> ([CatalogFilterGroup], [CatalogFilter]) {
+  static func extractOPDS2Facets(
+    from feed: OPDS2Feed,
+    currentURL: URL? = nil
+  ) -> ([CatalogFilterGroup], [CatalogFilter]) {
     var entryPoints: [CatalogFilter] = []
     if let links = feed.links {
       for link in links {
         if let href = link.hrefURL,
            (link.href.contains("entrypoint=") || link.rel == "http://opds-spec.org/facet"),
            let title = link.title, !title.isEmpty {
-          let isActive = link.properties?.numberOfItems != nil
+          let urlMatch = currentURL.map { urlsMatchForFacet(href, $0) } ?? false
+          let isActive = urlMatch || link.properties?.numberOfItems != nil
           entryPoints.append(CatalogFilter(id: link.href, title: title, href: href, active: isActive))
         }
       }
@@ -444,7 +448,8 @@ extension CatalogViewModel {
     for facetGroup in feedFacets {
       let filters = facetGroup.links.compactMap { link -> CatalogFilter? in
         guard let url = link.hrefURL else { return nil }
-        return CatalogFilter(id: link.href, title: link.title, href: url, active: link.isActive)
+        let isActive = isFacetActive(href: url, link: link, currentURL: currentURL)
+        return CatalogFilter(id: link.href, title: link.title, href: url, active: isActive)
       }
       guard !filters.isEmpty else { continue }
       if entryPointGroupNames.contains(facetGroup.title.lowercased()) {
@@ -454,6 +459,30 @@ extension CatalogViewModel {
       }
     }
     return (groups, entryPoints)
+  }
+
+  /// OPDS 2 has no standard "active facet" flag. The CM reloads the feed at
+  /// the chosen facet's href, so a URL match is the authoritative signal.
+  /// When no facet href matches the current URL, we fall back to the
+  /// weaker `numberOfItems` hint so feeds that still rely on it continue
+  /// to highlight something.
+  private static func isFacetActive(href: URL, link: OPDS2FacetLink, currentURL: URL?) -> Bool {
+    if let currentURL, urlsMatchForFacet(href, currentURL) {
+      return true
+    }
+    return link.isActive
+  }
+
+  private static func urlsMatchForFacet(_ a: URL, _ b: URL) -> Bool {
+    guard let aComps = URLComponents(url: a, resolvingAgainstBaseURL: false),
+          let bComps = URLComponents(url: b, resolvingAgainstBaseURL: false) else {
+      return a == b
+    }
+    if aComps.host != bComps.host { return false }
+    if aComps.path != bComps.path { return false }
+    let aItems = Set(aComps.queryItems ?? [])
+    let bItems = Set(bComps.queryItems ?? [])
+    return aItems == bItems
   }
 
   private static func buildGroupedContent(from feed: TPPOPDSFeed) -> ([CatalogLaneModel], [TPPBook]) {

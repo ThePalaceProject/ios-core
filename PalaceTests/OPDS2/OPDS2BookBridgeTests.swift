@@ -54,6 +54,58 @@ final class OPDS2BookBridgeTests: XCTestCase {
         XCTAssertNil(book?.summary)
     }
 
+    // Catalog swim lanes use the lean OPDS2Publication path; without an
+    // explicit `author` field on Metadata the decoder dropped it and every
+    // book appeared author-less. This guards the common array form.
+    func testToBook_mapsAuthorsFromArrayMetadata() {
+        let pub = OPDS2Publication(
+            links: [
+                OPDS2Link(
+                    href: "https://example.com/borrow",
+                    type: "application/epub+zip",
+                    rel: "http://opds-spec.org/acquisition/borrow"
+                )
+            ],
+            metadata: OPDS2Publication.Metadata(
+                id: "book1",
+                title: "Moby-Dick",
+                author: [OPDS2Contributor(name: "Herman Melville")]
+            ),
+            images: nil
+        )
+
+        let book = pub.toBook()
+        XCTAssertEqual(book?.bookAuthors?.count, 1)
+        XCTAssertEqual(book?.bookAuthors?.first?.name, "Herman Melville")
+    }
+
+    // OPDS 2 feeds from the Palace CM also emit `author` as a single JSON
+    // string or object for works with one contributor. The custom decoder
+    // should normalize both shapes into [OPDS2Contributor] so toBook()
+    // doesn't have to care which form arrived.
+    func testMetadata_decodesAuthorFromSingleStringAndArray() throws {
+        let arrayJSON = Data("""
+        {
+          "id": "book1",
+          "title": "Test",
+          "author": [{"name": "Author A"}, {"name": "Author B"}]
+        }
+        """.utf8)
+        let stringJSON = Data("""
+        {
+          "id": "book2",
+          "title": "Test",
+          "author": "Single Author"
+        }
+        """.utf8)
+
+        let arrayMeta = try JSONDecoder().decode(OPDS2Publication.Metadata.self, from: arrayJSON)
+        let stringMeta = try JSONDecoder().decode(OPDS2Publication.Metadata.self, from: stringJSON)
+
+        XCTAssertEqual(arrayMeta.author?.map { $0.name }, ["Author A", "Author B"])
+        XCTAssertEqual(stringMeta.author?.map { $0.name }, ["Single Author"])
+    }
+
     // MARK: - Unsupported Acquisition Filter
     //
     // The Palace Bookshelf CM returns books whose only acquisition is

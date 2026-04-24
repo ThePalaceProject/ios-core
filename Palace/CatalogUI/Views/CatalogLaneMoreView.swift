@@ -214,7 +214,7 @@ struct CatalogLaneMoreView: View {
                 .padding(.top, 12)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(viewModel.sortFacets, id: \.id) { facet in
+                    ForEach(viewModel.displayedSortFacets, id: \.id) { facet in
                         Button(action: {
                             Task {
                                 await viewModel.applyOPDSFacet(facet, coordinator: coordinator)
