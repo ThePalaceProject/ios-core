@@ -21,6 +21,12 @@ class CatalogLaneMoreViewModel: ObservableObject {
   @Published var showingSortSheet = false
   @Published var showingFiltersSheet = false
   @Published var showSearch = false
+
+  /// Identifier of the sort facet the user just tapped but whose feed
+  /// hasn't finished loading yet. Set synchronously on tap so the radio
+  /// button highlights instantly; cleared when the refetched feed arrives
+  /// and the real `active` flags take over.
+  @Published var pendingSortFacetID: String?
   
   // Filter State
   @Published var facetGroups: [CatalogFilterGroup] = []
@@ -143,9 +149,9 @@ class CatalogLaneMoreViewModel: ObservableObject {
         if let opds2 = feed.opds2Feed {
           nextPageURL = opds2.nextPageURL
           if opds2.isGroupedFeed {
-            processOPDS2GroupedFeed(opds2)
+            processOPDS2GroupedFeed(opds2, feedURL: url)
           } else if opds2.isPublicationFeed {
-            processOPDS2PublicationFeed(opds2)
+            processOPDS2PublicationFeed(opds2, feedURL: url)
           }
         } else {
           // OPDS 1 path
@@ -218,7 +224,11 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   // MARK: - OPDS 2 Processing
 
-  private func processOPDS2GroupedFeed(_ feed: OPDS2Feed) {
+  // Exposed at internal scope so tests can directly assert that call-site
+  // URL threading is correct — the regression that broke the sort sheet
+  // was extracting facets against self.url instead of the just-fetched
+  // feed URL, and a unit test at this level catches that exact slip.
+  func processOPDS2GroupedFeed(_ feed: OPDS2Feed, feedURL: URL) {
     guard let groups = feed.groups else { return }
     var newLanes: [CatalogLaneModel] = []
     for group in groups {
@@ -233,14 +243,14 @@ class CatalogLaneMoreViewModel: ObservableObject {
     }
     lanes = newLanes
     storeOriginalCatalogBooks(newLanes.flatMap { $0.books })
-    facetGroups = CatalogViewModel.extractOPDS2Facets(from: feed).0
+    facetGroups = CatalogViewModel.extractOPDS2Facets(from: feed, currentURL: feedURL).0
   }
 
-  private func processOPDS2PublicationFeed(_ feed: OPDS2Feed) {
+  func processOPDS2PublicationFeed(_ feed: OPDS2Feed, feedURL: URL) {
     let books = (feed.publications ?? []).compactMap { $0.toBook() }
     ungroupedBooks = books
     storeOriginalCatalogBooks(books)
-    facetGroups = CatalogViewModel.extractOPDS2Facets(from: feed).0
+    facetGroups = CatalogViewModel.extractOPDS2Facets(from: feed, currentURL: feedURL).0
   }
 
   // MARK: - Pagination
@@ -402,7 +412,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
             if let opds2 = feed.opds2Feed {
               let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
               ungroupedBooks = pubs.compactMap { $0.toBook() }
-              currentFacetGroups = CatalogViewModel.extractOPDS2Facets(from: opds2).0
+              currentFacetGroups = CatalogViewModel.extractOPDS2Facets(from: opds2, currentURL: filterURL).0
             } else {
               if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
                 ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
@@ -447,11 +457,15 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   func applyOPDSFacet(_ facet: CatalogFilter, coordinator: NavigationCoordinator) async {
     guard let href = facet.href else { return }
-    
+
+    pendingSortFacetID = facet.id
     isLoading = true
     error = nil
-    defer { isLoading = false }
-    
+    defer {
+      isLoading = false
+      pendingSortFacetID = nil
+    }
+
     await fetchAndApplyFeed(at: href)
     saveFilterState(coordinator: coordinator)
   }
@@ -476,9 +490,33 @@ class CatalogLaneMoreViewModel: ObservableObject {
       .first { $0.name.lowercased().contains("sort") }?
       .filters ?? []
   }
-  
-  /// Get the currently active sort facet title (for display)
+
+  /// Sort facets with a defaulted active state: when the feed hasn't marked
+  /// any facet active (typical for OPDS 2 landing feeds before the user has
+  /// chosen a sort), treat the first one as the selected default so the
+  /// sort sheet's radio buttons match the label shown on the toolbar pill.
+  /// A pending tap (`pendingSortFacetID`) overrides everything so the
+  /// radio highlights immediately on touch, before the network roundtrip.
+  var displayedSortFacets: [CatalogFilter] {
+    let facets = sortFacets
+    if let pending = pendingSortFacetID, facets.contains(where: { $0.id == pending }) {
+      return facets.map { facet in
+        CatalogFilter(id: facet.id, title: facet.title, href: facet.href, active: facet.id == pending)
+      }
+    }
+    guard !facets.contains(where: { $0.active }) else { return facets }
+    return facets.enumerated().map { idx, facet in
+      idx == 0
+        ? CatalogFilter(id: facet.id, title: facet.title, href: facet.href, active: true)
+        : facet
+    }
+  }
+
+  /// Title shown on the sort pill. OPDS 2 feeds often don't mark any facet
+  /// active (the CM relies on URL match), so we fall back to the first
+  /// filter's title — otherwise the pill disappears and the user loses the
+  /// sort control entirely.
   var activeSortTitle: String? {
-    return sortFacets.first { $0.active }?.title
+    displayedSortFacets.first(where: { $0.active })?.title
   }
 }
