@@ -9,7 +9,7 @@ final class HoldsBookViewModel: ObservableObject, Identifiable {
 
     var isReserved: Bool {
         var reservedFlag = false
-        book.defaultAcquisition?.availability.match(unavailable: 
+        book.defaultAcquisition?.availability.match(unavailable:
             nil,
             limited: nil,
             unlimited: nil,
@@ -36,38 +36,78 @@ final class HoldsViewModel: ObservableObject {
     @Published var searchQuery: String = ""
     @Published var visibleBooks: [TPPBook] = []
     var isVisible: Bool = false
-    private var cancellables = Set<AnyCancellable>()
+
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
     private let settings: TPPSettings
+    private let debugSettings: DebugSettings
     private let hasCredentials: () -> Bool
+    private let presentSignIn: (@escaping () -> Void) -> Void
+    private let store: Store<HoldsState, HoldsAction, HoldsEnvironment>
+    private var cancellables = Set<AnyCancellable>()
 
     struct SyncError: Identifiable {
         let id = UUID()
         let message: String
     }
 
-    convenience init() {
-        self.init(bookRegistry: TPPBookRegistry.shared)
+    convenience init(appContainer: AppContainer) {
+        self.init(
+            bookRegistry: appContainer.bookRegistry,
+            accountsManager: appContainer.accountsManager,
+            settings: appContainer.settings,
+            debugSettings: appContainer.debugSettings
+        )
     }
 
     init(
         bookRegistry: TPPBookRegistryProvider,
-        accountsManager: AccountsManager = .shared,
-        settings: TPPSettings = .shared,
-        hasCredentials: (() -> Bool)? = nil
+        accountsManager: AccountsManager,
+        settings: TPPSettings,
+        debugSettings: DebugSettings,
+        hasCredentials: (() -> Bool)? = nil,
+        presentSignIn: ((@escaping () -> Void) -> Void)? = nil
     ) {
+        self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.settings = settings
-        self.bookRegistry = bookRegistry
-        self.hasCredentials = hasCredentials ?? { accountsManager.currentUserAccount.hasCredentials() }
+        self.debugSettings = debugSettings
+        self.hasCredentials = hasCredentials ?? { [accountsManager] in
+            accountsManager.currentUserAccount.hasCredentials()
+        }
+        self.presentSignIn = presentSignIn ?? { [accountsManager] completion in
+            SignInModalPresenter.presentSignInModalForCurrentAccount(
+                accountsManager: accountsManager,
+                completion: completion
+            )
+        }
+
+        let environment = HoldsEnvironment(filterBooks: { query, books in
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let filtered = books.filter {
+                        $0.title.localizedCaseInsensitiveContains(query) ||
+                            ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
+                    }
+                    continuation.resume(returning: filtered)
+                }
+            }
+        })
+        self.store = Store(
+            initialState: HoldsState(),
+            environment: environment,
+            reduce: HoldsReducer.reduce
+        )
+
+        store.$state
+            .sink { [weak self] state in
+                self?.applyStateUpdate(state)
+            }
+            .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: .TPPSyncBegan)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.isLoading = true
-                self?.syncError = nil
-            }
+            .sink { [weak self] _ in self?.store.send(.syncBegan) }
             .store(in: &cancellables)
 
         let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
@@ -77,46 +117,65 @@ final class HoldsViewModel: ObservableObject {
             .merge(with: registryChange)
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.isLoading = false
-                self?.reloadData()
+                guard let self else { return }
+                self.store.send(.syncEnded)
+                self.reloadData()
             }
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: .TPPSyncFailed)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
-                self?.handleSyncFailure(notification)
+                self?.dispatchSyncFailure(notification)
             }
             .store(in: &cancellables)
 
         reloadData()
     }
 
-    private func handleSyncFailure(_ notification: Notification) {
-        isLoading = false
-        // Don't show error banner if we already have holds displayed —
-        // the cached data is still useful, no need to alarm the user
-        guard visibleBooks.isEmpty else {
-            Log.debug(#file, "Sync failed but holds are cached — suppressing error banner")
-            return
-        }
-        // Anonymous users can't fetch holds by design. The empty-state text
-        // already explains the Holds tab; an error banner here is noise.
-        guard hasCredentials() else {
-            Log.debug(#file, "Sync failed for anonymous user — suppressing error banner")
-            return
-        }
-        if let errorDoc = notification.userInfo?[TPPBookRegistry.syncFailureErrorDocumentKey] as? [AnyHashable: Any],
-           let detail = (errorDoc["detail"] as? String) ?? (errorDoc["title"] as? String),
-           !detail.isEmpty {
-            syncError = SyncError(message: detail)
+    private func applyStateUpdate(_ state: HoldsState) {
+        isLoading = state.isLoading
+        if let message = state.syncErrorMessage {
+            if syncError?.message != message {
+                syncError = SyncError(message: message)
+            }
         } else {
-            syncError = SyncError(message: Strings.HoldsView.syncFailedMessage)
+            syncError = nil
         }
+        // Only rebuild HoldsBookViewModel wrappers when the underlying book
+        // identifiers change; otherwise Identifiable diffing in LazyVGrid
+        // would thrash and the UI would re-animate on every sync tick.
+        let newReservedIds = state.reservedBooks.map { $0.identifier }
+        if newReservedIds != reservedBookVMs.map({ $0.id }) {
+            reservedBookVMs = state.reservedBooks.map { HoldsBookViewModel(book: $0) }
+        }
+        let newHeldIds = state.heldBooks.map { $0.identifier }
+        if newHeldIds != heldBookVMs.map({ $0.id }) {
+            heldBookVMs = state.heldBooks.map { HoldsBookViewModel(book: $0) }
+        }
+        visibleBooks = state.visibleBooks
+    }
+
+    private func dispatchSyncFailure(_ notification: Notification) {
+        let detail: String? = {
+            guard let errorDoc = notification.userInfo?[TPPBookRegistry.syncFailureErrorDocumentKey] as? [AnyHashable: Any],
+                  let text = (errorDoc["detail"] as? String) ?? (errorDoc["title"] as? String),
+                  !text.isEmpty
+            else { return nil }
+            return text
+        }()
+        let cached = !visibleBooks.isEmpty
+        let anonymous = !hasCredentials()
+        if cached {
+            Log.debug(#file, "Sync failed but holds are cached — suppressing error banner")
+        } else if anonymous {
+            Log.debug(#file, "Sync failed for anonymous user — suppressing error banner")
+        }
+        store.send(.syncFailed(errorMessage: detail, cached: cached, anonymous: anonymous))
     }
 
     func dismissSyncError() {
-        syncError = nil
+        store.send(.dismissSyncError)
     }
 
     private var allBooks: [TPPBook] {
@@ -124,48 +183,29 @@ final class HoldsViewModel: ObservableObject {
     }
 
     func reloadData() {
-        // Use test books if debug configuration is enabled, otherwise use injected registry data
         #if DEBUG
-        let allHeld: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? bookRegistry.heldBooks
+        let allHeld: [TPPBook] = debugSettings.createTestHoldBooks() ?? bookRegistry.heldBooks
         #else
         let allHeld = bookRegistry.heldBooks
         #endif
 
-        var reservedVMs: [HoldsBookViewModel] = []
-        var heldVMs: [HoldsBookViewModel] = []
+        store.send(.registryChanged(held: allHeld))
 
-        for book in allHeld {
-            let vm = HoldsBookViewModel(book: book)
-            if vm.isReserved {
-                reservedVMs.append(vm)
-            } else {
-                heldVMs.append(vm)
-            }
-        }
-
-        // PP-3811: Don't wrap in withAnimation — animating @Published array
-        // changes while a child view is pushed on the NavigationStack can cause
-        // SwiftUI to unexpectedly pop the navigation (known NavigationStack issue).
-        // SwiftUI still animates insertions/removals in LazyVGrid naturally.
-        self.reservedBookVMs = reservedVMs
-        self.heldBookVMs = heldVMs
-        self.visibleBooks = self.allBooks
-
-        // Trigger badge update via notification (badge is now centrally managed by AppTabHostView)
+        // Badge update — centrally managed by AppTabHostView
         NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
     }
 
     func refresh() {
-        if AccountsManager.shared.currentUserAccount.needsAuth {
-            if AccountsManager.shared.currentUserAccount.hasCredentials() {
-                (bookRegistry as? TPPBookRegistry)?.sync()
+        if accountsManager.currentUserAccount.needsAuth {
+            if accountsManager.currentUserAccount.hasCredentials() {
+                bookRegistry.sync()
             } else {
-                SignInModalPresenter.presentSignInModalForCurrentAccount {
-                    self.reloadData()
+                presentSignIn { [weak self] in
+                    self?.reloadData()
                 }
             }
         } else {
-            (bookRegistry as? TPPBookRegistry)?.load()
+            bookRegistry.load()
         }
     }
 
@@ -174,9 +214,9 @@ final class HoldsViewModel: ObservableObject {
     func refreshInBackground() {
         isVisible = true
         guard !isLoading else { return }
-        guard AccountsManager.shared.currentUserAccount.hasCredentials() else { return }
+        guard accountsManager.currentUserAccount.hasCredentials() else { return }
         guard !visibleBooks.isEmpty else { return }
-        (bookRegistry as? TPPBookRegistry)?.sync()
+        bookRegistry.sync()
     }
 
     func loadAccount(_ account: Account) {
@@ -205,20 +245,6 @@ final class HoldsViewModel: ObservableObject {
 
     @MainActor
     func filterBooks(query: String) async {
-        if query.isEmpty {
-            self.visibleBooks = self.allBooks
-        } else {
-            let sourceBooks = self.allBooks
-            let filtered = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let result = sourceBooks.filter {
-                        $0.title.localizedCaseInsensitiveContains(query) ||
-                            ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
-                    }
-                    continuation.resume(returning: result)
-                }
-            }
-            self.visibleBooks = filtered
-        }
+        await store.sendAwait(.searchQueryChanged(query))
     }
 }

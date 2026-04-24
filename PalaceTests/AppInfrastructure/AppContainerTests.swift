@@ -36,7 +36,8 @@ final class AppContainerTests: XCTestCase {
             networkExecutor: .shared,
             accountsManager: .shared,
             settings: .shared,
-            downloadCenter: .shared
+            downloadCenter: .shared,
+            debugSettings: .shared
         )
         XCTAssertTrue(
             container.bookRegistry as AnyObject === mock,
@@ -61,7 +62,8 @@ final class AppContainerTests: XCTestCase {
             networkExecutor: .shared,
             accountsManager: .shared,
             settings: .shared,
-            downloadCenter: .shared
+            downloadCenter: .shared,
+            debugSettings: .shared
         )
         let containerB = AppContainer.production()
         XCTAssertFalse(

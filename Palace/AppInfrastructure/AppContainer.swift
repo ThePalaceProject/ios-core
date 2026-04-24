@@ -15,19 +15,22 @@ struct AppContainer {
     let accountsManager: AccountsManager
     let settings: TPPSettings
     let downloadCenter: MyBooksDownloadCenter
+    let debugSettings: DebugSettings
 
     init(
         bookRegistry: TPPBookRegistryProvider,
         networkExecutor: TPPNetworkExecutor,
         accountsManager: AccountsManager,
         settings: TPPSettings,
-        downloadCenter: MyBooksDownloadCenter
+        downloadCenter: MyBooksDownloadCenter,
+        debugSettings: DebugSettings
     ) {
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
         self.accountsManager = accountsManager
         self.settings = settings
         self.downloadCenter = downloadCenter
+        self.debugSettings = debugSettings
     }
 
     /// The single composition root. App entry points (AppDelegate,
@@ -39,7 +42,8 @@ struct AppContainer {
             networkExecutor: .shared,
             accountsManager: .shared,
             settings: .shared,
-            downloadCenter: .shared
+            downloadCenter: .shared,
+            debugSettings: .shared
         )
     }
 }

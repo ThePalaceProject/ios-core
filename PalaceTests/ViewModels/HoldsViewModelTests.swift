@@ -30,7 +30,12 @@ final class HoldsViewModelTests: XCTestCase {
     }
 
     private func createViewModel() -> HoldsViewModel {
-        HoldsViewModel(bookRegistry: mockRegistry)
+        HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: .shared,
+            settings: .shared,
+            debugSettings: .shared
+        )
     }
 
     private func addHeldBook(identifier: String = "held-book", title: String = "Test Book") -> TPPBook {
@@ -448,7 +453,13 @@ final class HoldsSyncFailureTests: XCTestCase {
     /// in the test harness, so inject `hasCredentials: { true }` to exercise
     /// the authenticated-user branch under test.
     private func makeSignedInViewModel() -> HoldsViewModel {
-        HoldsViewModel(bookRegistry: mockRegistry, hasCredentials: { true })
+        HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: .shared,
+            settings: .shared,
+            debugSettings: .shared,
+            hasCredentials: { true }
+        )
     }
 
     // MARK: - Error State Tests
@@ -567,9 +578,27 @@ final class HoldsSyncFailureTests: XCTestCase {
         XCTAssertNil(viewModel.syncError, "Error should be cleared when new sync begins (retry)")
     }
 
-    func testDismissSyncError_ClearsError() {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
-        viewModel.syncError = HoldsViewModel.SyncError(message: "Test error")
+    func testDismissSyncError_ClearsError() async {
+        // With the Store-backed VM, dismissSyncError flows through the reducer,
+        // so we first put the reducer state into the error condition via the
+        // real code path (TPPSyncFailed for an authenticated, uncached user).
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: .shared,
+            settings: .shared,
+            debugSettings: .shared,
+            hasCredentials: { true }
+        )
+
+        let errorSet = XCTestExpectation(description: "syncError set")
+        viewModel.$syncError
+            .dropFirst()
+            .first { $0 != nil }
+            .sink { _ in errorSet.fulfill() }
+            .store(in: &cancellables)
+        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        await fulfillment(of: [errorSet], timeout: 1.0)
+        XCTAssertNotNil(viewModel.syncError, "Precondition: error surfaced")
 
         viewModel.dismissSyncError()
 
@@ -585,7 +614,12 @@ final class HoldsSyncFailureTests: XCTestCase {
         )
         mockRegistry.addBook(staleBook, state: .holding)
 
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: .shared,
+            settings: .shared,
+            debugSettings: .shared
+        )
         XCTAssertEqual(viewModel.reservedBookVMs.count, 1)
 
         // Sync fails, but cached holds are visible — error is intentionally suppressed
@@ -608,7 +642,13 @@ final class HoldsSyncFailureTests: XCTestCase {
         // Anonymous user on a library that requires auth — sync fails because
         // we can't fetch holds without credentials. The empty-state text already
         // handles the anonymous case; an error banner here is noise.
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry, hasCredentials: { false })
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: .shared,
+            settings: .shared,
+            debugSettings: .shared,
+            hasCredentials: { false }
+        )
         XCTAssertTrue(viewModel.visibleBooks.isEmpty, "Precondition: no cached holds")
 
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
@@ -623,7 +663,13 @@ final class HoldsSyncFailureTests: XCTestCase {
 
     func testSyncFailure_AuthenticatedUser_ShowsErrorBanner() async {
         // Authenticated user — sync failed for a real reason. Banner still appears.
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry, hasCredentials: { true })
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: .shared,
+            settings: .shared,
+            debugSettings: .shared,
+            hasCredentials: { true }
+        )
 
         let errorExpectation = XCTestExpectation(description: "syncError surfaced")
         viewModel.$syncError

@@ -43,7 +43,7 @@ struct AppTabHostView: View {
                 .tag(AppTab.myBooks)
                 .accessibilityIdentifier(AccessibilityID.TabBar.myBooksTab)
 
-            NavigationHostView(rootView: HoldsView())
+            NavigationHostView(rootView: HoldsView(appContainer: .production()))
                 .tabItem {
                     VStack {
                         Image("Holds").renderingMode(.template)

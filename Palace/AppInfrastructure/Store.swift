@@ -59,4 +59,17 @@ final class Store<State, Action, Environment>: ObservableObject {
             self?.send(nextAction)
         }
     }
+
+    /// Awaitable variant: mutates state synchronously through the reducer,
+    /// then runs the effect chain to completion before returning. Use this
+    /// from ViewModel methods whose callers must observe the post-effect
+    /// state (e.g. an `async` search filter where the test asserts on
+    /// visibleBooks after `await filterBooks(...)`).
+    func sendAwait(_ action: Action) async {
+        var current: Action? = action
+        while let action = current {
+            let effect = reduce(&state, action)
+            current = await effect.run(environment)
+        }
+    }
 }

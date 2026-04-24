@@ -98,6 +98,24 @@ final class StoreTests: XCTestCase {
                        "Effect's .setTo(env.yield) action must flow back through the reducer")
     }
 
+    // MARK: - Awaitable send
+
+    /// `sendAwait(_:)` exists for VM flows that need the effect chain to
+    /// complete before the caller returns — e.g. a search filter where the
+    /// test and UI both assume visibleBooks has settled before asserting.
+    /// Fire-and-forget `send(_:)` can't satisfy that without test-side polling.
+    @MainActor
+    func testSendAwait_runsEffectChainToCompletionBeforeReturning() async {
+        let store = Store(
+            initialState: TestState(),
+            environment: TestEnvironment(yield: 7),
+            reduce: Self.makeReducer()
+        )
+        await store.sendAwait(.triggerEffect)
+        XCTAssertEqual(store.state.counter, 7,
+                       "sendAwait must not return until the effect's follow-up action has been reduced")
+    }
+
     // MARK: - Environment injection
 
     @MainActor
