@@ -284,6 +284,12 @@ class BookRegistrySync {
         if self.syncUrl != loansUrl { return }
 
         var changesMade = false
+        // Collected inside the barrier; the filesystem deletes (which resolve
+        // the content file URL and touch audiobook manifests on disk) run AFTER
+        // the barrier releases. Calling deleteLocalContent inside the barrier
+        // re-enters the registry via bookRegistry.book(forIdentifier:) and trips
+        // Swift's exclusivity trap — same class of bug as the save() note below.
+        var booksToDeleteLocally: [TPPBook] = []
         self.store.mutateRegistrySync { registry in
           var recordsToDelete = Set<String>(registry.keys)
           for entry in feed.entries {
@@ -295,7 +301,7 @@ class BookRegistrySync {
             if let record = registry[book.identifier] {
               var nextState = record.state
               if record.state == .unregistered {
-                book.defaultAcquisition?.availability.match(unavailable: 
+                book.defaultAcquisition?.availability.match(unavailable:
                   nil, limited: nil, unlimited: nil,
                   reserved: { _ in nextState = .holding },
                   ready: { _ in nextState = .holding }
@@ -349,7 +355,7 @@ class BookRegistrySync {
 
               if wasDownloaded {
                 Log.info(#file, "Removing expired/returned book '\(record.book.title)' (not in server feed)")
-                MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
+                booksToDeleteLocally.append(record.book)
               }
 
               registry[identifier]?.state = .unregistered
@@ -363,6 +369,13 @@ class BookRegistrySync {
           // on it. That triggers a Swift exclusivity trap ("Simultaneous
           // accesses to registry, but modification requires exclusive access").
           // The save call lives below, after the barrier has released.
+        }
+
+        // Run the filesystem deletes outside the barrier. Using the book-based
+        // overload so the call never re-enters the registry to look up the book
+        // by identifier (the record is already gone at this point anyway).
+        for book in booksToDeleteLocally {
+          MyBooksDownloadCenter.shared.deleteLocalContent(forBook: book, account: accountUUID)
         }
 
         if changesMade {
