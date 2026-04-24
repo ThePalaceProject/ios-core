@@ -1048,6 +1048,9 @@
 		E544A1A02DF0BB6C008679D6 /* HoldsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544A19E2DF0BB59008679D6 /* HoldsView.swift */; };
 		E544A1A12DF0BBF1008679D6 /* HoldsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544A19D2DF0BB4B008679D6 /* HoldsViewModel.swift */; };
 		E544A1A22DF0BBF1008679D6 /* HoldsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544A19D2DF0BB4B008679D6 /* HoldsViewModel.swift */; };
+		HOLDSRED01BUILDFILE0001P /* HoldsReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = HOLDSRED01FILEREF000001Z /* HoldsReducer.swift */; };
+		HOLDSRED01BUILDFILE0002N /* HoldsReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = HOLDSRED01FILEREF000001Z /* HoldsReducer.swift */; };
+		HOLDSREDTESTSBUILDFILE01 /* HoldsReducerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HOLDSREDTESTSFILEREF001Z /* HoldsReducerTests.swift */; };
 		E544A1E32DF35040008679D6 /* BookButtonMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544A1E22DF35039008679D6 /* BookButtonMapper.swift */; };
 		E544A1E42DF35040008679D6 /* BookButtonMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544A1E22DF35039008679D6 /* BookButtonMapper.swift */; };
 		E544C4E92A395BE000B2DC9D /* MyBooksDownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4E82A395BE000B2DC9D /* MyBooksDownloadCenter.swift */; };
@@ -2425,6 +2428,8 @@
 		E541812E2C004923005ED059 /* snowcrash_manifest.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = snowcrash_manifest.json; sourceTree = "<group>"; };
 		E544A19D2DF0BB4B008679D6 /* HoldsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoldsViewModel.swift; sourceTree = "<group>"; };
 		E544A19E2DF0BB59008679D6 /* HoldsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoldsView.swift; sourceTree = "<group>"; };
+		HOLDSRED01FILEREF000001Z /* HoldsReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoldsReducer.swift; sourceTree = "<group>"; };
+		HOLDSREDTESTSFILEREF001Z /* HoldsReducerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HoldsReducerTests.swift; sourceTree = "<group>"; };
 		E544A1E22DF35039008679D6 /* BookButtonMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonMapper.swift; sourceTree = "<group>"; };
 		E544C4E82A395BE000B2DC9D /* MyBooksDownloadCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksDownloadCenter.swift; sourceTree = "<group>"; };
 		E544C4EB2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksDownloadInfo.swift; sourceTree = "<group>"; };
@@ -3204,6 +3209,7 @@
 				4C73660492C45AC4EDF27B6E /* BookDetailViewModelTests.swift */,
 				BDDA22B0012345CAFEBABE02 /* BookDetailMetadataHydrationTests.swift */,
 				8ADE8A45C4B4AAE67143A272 /* HoldsViewModelTests.swift */,
+				HOLDSREDTESTSFILEREF001Z /* HoldsReducerTests.swift */,
 				9BFF70FF762C60CE8CD8D811 /* CatalogSearchViewModelTests.swift */,
 				F5CBFE0B23AFFE343E256AE1 /* AccountDetailViewModelTests.swift */,
 				44E59F675A3E4419BE1E24BB /* FacetViewModelTests.swift */,
@@ -3776,6 +3782,7 @@
 			children = (
 				E544A19E2DF0BB59008679D6 /* HoldsView.swift */,
 				E544A19D2DF0BB4B008679D6 /* HoldsViewModel.swift */,
+				HOLDSRED01FILEREF000001Z /* HoldsReducer.swift */,
 			);
 			path = Holds;
 			sourceTree = "<group>";
@@ -5952,6 +5959,7 @@
 				3F950AC5136B638265B1AB87 /* BookDetailViewModelTests.swift in Sources */,
 				BDDA11B0012345CAFEBABE01 /* BookDetailMetadataHydrationTests.swift in Sources */,
 				612FD8DA16387F71EB3CA398 /* HoldsViewModelTests.swift in Sources */,
+				HOLDSREDTESTSBUILDFILE01 /* HoldsReducerTests.swift in Sources */,
 				SETVM002T260955EF008E1DC3 /* SettingsViewModelTests.swift in Sources */,
 				2F987E6CCC6642EAADAFC965 /* ViewModelComputedPropertyTests.swift in Sources */,
 				4E664E6EC32C604AFBC8A623 /* CatalogSearchViewModelTests.swift in Sources */,
@@ -6586,6 +6594,7 @@
 				73C3CF5825C8EB6B00CA8166 /* TPPUserAccount.swift in Sources */,
 				UAAS00010001SIMPLYE001 /* UserAccountAuthState.swift in Sources */,
 				E544A1A22DF0BBF1008679D6 /* HoldsViewModel.swift in Sources */,
+				HOLDSRED01BUILDFILE0001P /* HoldsReducer.swift in Sources */,
 				21E4178A292810F600A78606 /* TPPPDFPreviewGridCell.swift in Sources */,
 				E7862A1E277391E200BE8AB8 /* TPPSettingsView.swift in Sources */,
 				E58EB2932ECF76FC00CDA626 /* EPUBReaderView.swift in Sources */,
@@ -6806,6 +6815,7 @@
 				E52E3C0928C19BAD0073DC4D /* SamplePlayerError.swift in Sources */,
 				732F929323ECB51F0099244C /* TPPBackgroundExecutor.swift in Sources */,
 				E544A1A12DF0BBF1008679D6 /* HoldsViewModel.swift in Sources */,
+				HOLDSRED01BUILDFILE0002N /* HoldsReducer.swift in Sources */,
 				5D1B141522CBE3570006C964 /* TPPProblemDocument.swift in Sources */,
 				E706F6092863831F000B7431 /* TPPPDFPage+serialization.swift in Sources */,
 				E5CD879B2EC2897A0043468C /* ActionButtonView.swift in Sources */,
