@@ -1,5 +1,7 @@
 import Foundation
 import FirebaseCore
+import FirebaseAnalytics
+import FirebaseCrashlytics
 import FirebaseDynamicLinks
 import BackgroundTasks
 import SwiftUI
@@ -26,13 +28,22 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         PlaybackBootstrapper.shared.ensureInitialized()
 
         // Configure Firebase once at startup. The SDK MUST be initialized
-        // (other code paths assume FirebaseApp.app() is non-nil), but the
-        // network-firing parts (Remote Config fetch, analytics endpoints,
-        // Transifex translation pull) are gated below to avoid leaking
-        // dispatch state during tests.
+        // (other code paths assume FirebaseApp.app() is non-nil and call
+        // Analytics.logEvent directly), but when running under XCTest we
+        // disable the network-firing subsystems so:
+        //   - no LocalUploadTask requests to app-analytics-services.com
+        //     build up behind suite-wide DNS timeouts (~30s each), which
+        //     were wedging the simulator partway through long runs.
+        //   - no Crashlytics uploads race test tearDown and post from a
+        //     half-torn-down process.
+        //   - no Remote Config fetch, which was already gated but left
+        //     other subsystems firing.
         FirebaseApp.configure()
 
-        if !TPPProcessInfo.isRunningTests {
+        if TPPProcessInfo.isRunningTests {
+            Analytics.setAnalyticsCollectionEnabled(false)
+            Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(false)
+        } else {
             Task {
                 await FirebaseManager.shared.fetchAndActivateRemoteConfig()
                 _ = RemoteFeatureFlags.shared.isCarPlayEnabled
