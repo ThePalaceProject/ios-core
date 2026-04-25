@@ -7,7 +7,7 @@ struct BookDetailView: View {
     @Environment(\.appContainer) private var appContainer
 
     private var coordinator: NavigationCoordinator? {
-        NavigationCoordinatorHub.shared.coordinator
+        appContainer.navigationCoordinatorHub.coordinator
     }
 
     typealias DisplayStrings = Strings.BookDetailView
@@ -225,16 +225,16 @@ struct BookDetailView: View {
             guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
             let action = (info["action"] as? String) ?? "toggle"
             if action == "close" {
-                SamplePreviewManager.shared.close()
+                appContainer.samplePreviewManager.close()
                 return
             }
             if let book = viewModel.registry.book(forIdentifier: identifier) ?? (viewModel.relatedBooksByLane.values.flatMap { $0.books }).first(where: { $0.identifier == identifier }) {
-                SamplePreviewManager.shared.toggle(for: book)
+                appContainer.samplePreviewManager.toggle(for: book)
             } else if viewModel.book.identifier == identifier {
-                SamplePreviewManager.shared.toggle(for: viewModel.book)
+                appContainer.samplePreviewManager.toggle(for: viewModel.book)
             }
         }
-        .onDisappear { SamplePreviewManager.shared.close() }
+        .onDisappear { appContainer.samplePreviewManager.close() }
     }
 
     // MARK: - View Components
@@ -651,19 +651,19 @@ struct BookDetailView: View {
 
     private func resetSampleToolbar() {
         viewModel.showSampleToolbar = false
-        SamplePreviewManager.shared.close()
+        appContainer.samplePreviewManager.close()
     }
 
     private func setupSampleToolbarIfNeeded() {
         let bookID = viewModel.book.identifier
 
-        if !SamplePreviewManager.shared.isShowingPreview(for: viewModel.book) || bookID != currentBookID {
+        if !appContainer.samplePreviewManager.isShowingPreview(for: viewModel.book) || bookID != currentBookID {
             currentBookID = bookID
         }
     }
 
     private func handleButtonAction(_ buttonType: BookButtonType) {
-        let account = AccountsManager.shared.currentUserAccount
+        let account = appContainer.accountsManager.currentUserAccount
         let needsAuth = account.needsAuth && !account.hasCredentials()
 
         switch buttonType {
@@ -793,9 +793,10 @@ private struct BookStateModifier: ViewModifier {
     @ObservedObject var viewModel: BookDetailViewModel
     @Binding var showHalfSheet: Bool
     @Environment(\.presentationMode) var presentationMode
+    @Environment(\.appContainer) private var appContainer
 
     private var coordinator: NavigationCoordinator? {
-        NavigationCoordinatorHub.shared.coordinator
+        appContainer.navigationCoordinatorHub.coordinator
     }
 
     func body(content: Content) -> some View {
