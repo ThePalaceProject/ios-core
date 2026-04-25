@@ -61,20 +61,52 @@ struct AppContainer {
     /// The single composition root. App entry points (AppDelegate,
     /// SceneDelegate, the SwiftUI `@Environment` default) call this and
     /// only this to construct the live service graph.
+    ///
+    /// Constructs `BookCellModelCache` directly from already-resolved
+    /// partner singletons rather than reading `BookCellModelCache.shared`.
+    /// That removes the historical init cycle in which a re-entrant
+    /// `\.appContainer` access during `BookCellModelCache.shared`'s
+    /// factory deadlocked the static-let init lock — `production()` no
+    /// longer touches `BookCellModelCache.shared`, so the cycle is closed.
+    /// `BookCellModelCache.shared` itself stays alive for legacy
+    /// default-arg callers; it will be removed once those migrate.
     static func production() -> AppContainer {
-        AppContainer(
-            bookRegistry: TPPBookRegistry.shared,
+        let imageCache: ImageCacheType = ImageCache.shared
+        let bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
+        let downloadCenter = MyBooksDownloadCenter.shared
+        let accountsManager = AccountsManager.shared
+        let samplePreviewManager = SamplePreviewManager.shared
+        let readerService = ReaderService.shared
+
+        // BookCellModelCache is `@MainActor`-isolated. `production()` is
+        // called either from app init (main thread) or via SwiftUI's
+        // EnvironmentKey defaultValue (also main thread), so the
+        // assumeIsolated assertion is sound. Without it, the constructor
+        // call would be an isolation-crossing error.
+        let bookCellModelCache = MainActor.assumeIsolated {
+            BookCellModelCache(
+                imageCache: imageCache,
+                bookRegistry: bookRegistry,
+                downloadCenter: downloadCenter,
+                accountsManager: accountsManager,
+                samplePreviewManager: samplePreviewManager,
+                readerService: readerService
+            )
+        }
+
+        return AppContainer(
+            bookRegistry: bookRegistry,
             networkExecutor: .shared,
-            accountsManager: .shared,
+            accountsManager: accountsManager,
             settings: .shared,
-            downloadCenter: .shared,
+            downloadCenter: downloadCenter,
             debugSettings: .shared,
-            bookCellModelCache: .shared,
-            imageCache: ImageCache.shared,
+            bookCellModelCache: bookCellModelCache,
+            imageCache: imageCache,
             userAccountPublisher: .shared,
             opdsFeedService: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared,
+            samplePreviewManager: samplePreviewManager,
+            readerService: readerService,
             drmAuthorizerProvider: {
                 #if FEATURE_DRM_CONNECTOR
                 return AdobeCertificate.isDRMAvailable ? AdobeDRMService.shared.adeptInstance : nil

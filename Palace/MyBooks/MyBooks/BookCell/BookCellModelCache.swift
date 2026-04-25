@@ -70,10 +70,14 @@ final class BookCellModelCache: ObservableObject {
 
     // MARK: - Singleton
 
-    /// The shared instance is built from individual `.shared` singletons
-    /// rather than from `AppContainer.production()` to avoid an
-    /// initialization cycle: AppContainer.production() reads
-    /// `BookCellModelCache.shared`, which would re-enter this initializer.
+    /// Convenience singleton retained for default-arg callers (e.g.
+    /// `CatalogSearchViewModel.init(bookCellModelCache: = .shared)`).
+    /// The historical AppContainer.production() ↔ .shared init cycle is
+    /// gone — `production()` now constructs its own cache directly from
+    /// already-resolved partner singletons, so this static-let no longer
+    /// participates in any cycle. Phase 4 follow-up will migrate
+    /// remaining default-arg call sites to AppContainer-based DI and
+    /// then this static-let can be deleted.
     public static let shared: BookCellModelCache = {
         BookCellModelCache(
             configuration: .default,
