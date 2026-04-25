@@ -75,7 +75,7 @@ class DLNavigator {
                 self?.login(libraryId: libraryId, barcode: barcode)
             }
             DispatchQueue.main.async {
-                MyBooksViewModel().authenticateAndLoad(account: newAccount)
+                MyBooksViewModel(appContainer: .production()).authenticateAndLoad(account: newAccount)
             }
             return
         }
@@ -85,7 +85,7 @@ class DLNavigator {
         Task { @MainActor in
             SignInModalPresenter.presentSignInModalForCurrentAccount {
                 let accountList = TPPAccountList { account in
-                    MyBooksViewModel().authenticateAndLoad(account: account)
+                    MyBooksViewModel(appContainer: .production()).authenticateAndLoad(account: account)
                 }
                 let nav = UINavigationController(rootViewController: accountList)
                 topViewController.present(nav, animated: true)

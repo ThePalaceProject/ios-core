@@ -82,7 +82,7 @@ struct TPPSettingsView: View {
             UIViewControllerWrapper(
                 TPPAccountList { account in
                     DispatchQueue.main.async {
-                        MyBooksViewModel().loadAccount(account)
+                        MyBooksViewModel(appContainer: .production()).loadAccount(account)
                         showAddLibrarySheet = false
                     }
                 },

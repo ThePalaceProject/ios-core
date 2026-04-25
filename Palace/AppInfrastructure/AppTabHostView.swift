@@ -37,7 +37,7 @@ struct AppTabHostView: View {
                 .tag(AppTab.catalog)
                 .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
 
-            NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel()))
+            NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel(appContainer: .production())))
                 .tabItem {
                     VStack {
                         Image("MyBooks").renderingMode(.template)

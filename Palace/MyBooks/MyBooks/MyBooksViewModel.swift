@@ -37,6 +37,7 @@ enum Group: Int {
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
     private let settings: TPPSettings
+    private let downloadCenter: MyBooksDownloadCenter
     private var allBooks: [TPPBook] = []
 
     /// Tracks whether the My Books tab is currently visible. When false,
@@ -53,10 +54,26 @@ enum Group: Int {
     private var needsReloadOnAppear = false
 
     // MARK: - Initialization
-    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
+
+    convenience init(appContainer: AppContainer) {
+        self.init(
+            bookRegistry: appContainer.bookRegistry,
+            accountsManager: appContainer.accountsManager,
+            settings: appContainer.settings,
+            downloadCenter: appContainer.downloadCenter
+        )
+    }
+
+    init(
+        bookRegistry: TPPBookRegistryProvider,
+        accountsManager: AccountsManager,
+        settings: TPPSettings,
+        downloadCenter: MyBooksDownloadCenter
+    ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.settings = settings
+        self.downloadCenter = downloadCenter
         self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
             groupName: DisplayStrings.sortBy,
@@ -82,7 +99,7 @@ enum Group: Int {
 
         // If the account requires authentication and user is not logged in,
         // don't show any books from the registry (they may be stale from a previous session)
-        let account = AccountsManager.shared.currentUserAccount
+        let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
             Log.info(#file, "User not logged in - showing empty My Books")
             self.allBooks = []
@@ -109,7 +126,7 @@ enum Group: Int {
             Log.info(#file, "📚 Removing \(expired.count) expired book(s) from My Books")
             for book in expired {
                 Log.info(#file, "  → '\(book.title)' expired")
-                MyBooksDownloadCenter.shared.deleteLocalContent(for: book.identifier)
+                downloadCenter.deleteLocalContent(for: book.identifier)
                 bookRegistry.setState(.unregistered, for: book.identifier)
             }
         }
@@ -163,8 +180,8 @@ enum Group: Int {
     func reloadData() {
         guard !isLoading else { return }
 
-        if AccountsManager.shared.currentUserAccount.needsAuth, !AccountsManager.shared.currentUserAccount.hasCredentials() {
-            SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
+        if accountsManager.currentUserAccount.needsAuth, !accountsManager.currentUserAccount.hasCredentials() {
+            SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: accountsManager, completion: nil)
         } else {
             bookRegistry.sync { [weak self] _, _ in
                 self?.loadData()
@@ -177,7 +194,7 @@ enum Group: Int {
     /// smoothly via registry notification → loadData() when sync completes.
     func refreshInBackground() {
         guard !isLoading else { return }
-        guard AccountsManager.shared.currentUserAccount.hasCredentials() else { return }
+        guard accountsManager.currentUserAccount.hasCredentials() else { return }
         // Only do a silent sync if we already have books displayed —
         // if empty, the user sees the empty state and can pull to refresh
         guard !books.isEmpty else { return }
