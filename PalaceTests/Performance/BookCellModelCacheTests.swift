@@ -28,7 +28,11 @@ final class BookCellModelCacheTests: XCTestCase {
                 observeRegistryChanges: false
             ),
             imageCache: mockImageCache,
-            bookRegistry: mockBookRegistry
+            bookRegistry: mockBookRegistry,
+            downloadCenter: .shared,
+            accountsManager: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared
         )
     }
 
@@ -194,7 +198,11 @@ final class BookCellModelCacheTests: XCTestCase {
                 observeRegistryChanges: false
             ),
             imageCache: mockImageCache,
-            bookRegistry: mockBookRegistry
+            bookRegistry: mockBookRegistry,
+            downloadCenter: .shared,
+            accountsManager: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared
         )
 
         let book = makeTestBook(identifier: "downloadingBook", title: "Test Book")
@@ -231,7 +239,11 @@ final class BookCellModelCacheTests: XCTestCase {
                 observeRegistryChanges: false
             ),
             imageCache: mockImageCache,
-            bookRegistry: mockBookRegistry
+            bookRegistry: mockBookRegistry,
+            downloadCenter: .shared,
+            accountsManager: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared
         )
 
         let book = makeTestBook(identifier: "activeDownload", title: "Active Download")
@@ -267,7 +279,11 @@ final class BookCellModelCacheTests: XCTestCase {
                 observeRegistryChanges: false
             ),
             imageCache: mockImageCache,
-            bookRegistry: mockBookRegistry
+            bookRegistry: mockBookRegistry,
+            downloadCenter: .shared,
+            accountsManager: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared
         )
 
         let book = makeTestBook(identifier: "holdBook", title: "Hold Book")
