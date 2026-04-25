@@ -37,6 +37,12 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: sparse,
             registry: TPPBookRegistryMock(),
+            downloadCenter: .shared,
+            accountsManager: .shared,
+            settings: .shared,
+            opdsFeedService: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared,
             metadataHydrator: { url in
                 fetchedURL = url
                 return fresh
@@ -67,6 +73,12 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: populated,
             registry: TPPBookRegistryMock(),
+            downloadCenter: .shared,
+            accountsManager: .shared,
+            settings: .shared,
+            opdsFeedService: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared,
             metadataHydrator: { _ in
                 fetchCount += 1
                 return nil
@@ -92,6 +104,12 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: sparseWithoutAlt,
             registry: TPPBookRegistryMock(),
+            downloadCenter: .shared,
+            accountsManager: .shared,
+            settings: .shared,
+            opdsFeedService: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared,
             metadataHydrator: { _ in
                 fetchCount += 1
                 return nil
@@ -142,6 +160,12 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: sparse,
             registry: TPPBookRegistryMock(),
+            downloadCenter: .shared,
+            accountsManager: .shared,
+            settings: .shared,
+            opdsFeedService: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared,
             metadataHydrator: { _ in fresh }
         )
 

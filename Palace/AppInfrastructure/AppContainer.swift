@@ -19,6 +19,9 @@ struct AppContainer {
     let bookCellModelCache: BookCellModelCache
     let imageCache: ImageCacheType
     let userAccountPublisher: UserAccountPublisher
+    let opdsFeedService: OPDSFeedService
+    let samplePreviewManager: SamplePreviewManager
+    let readerService: ReaderService
     /// DRM authorizer factory. Built behind `#if FEATURE_DRM_CONNECTOR`
     /// at the composition root so VMs/Views never reference
     /// `AdobeDRMService.shared` directly. Returns `nil` in DRM-disabled
@@ -35,6 +38,9 @@ struct AppContainer {
         bookCellModelCache: BookCellModelCache,
         imageCache: ImageCacheType,
         userAccountPublisher: UserAccountPublisher,
+        opdsFeedService: OPDSFeedService,
+        samplePreviewManager: SamplePreviewManager,
+        readerService: ReaderService,
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?
     ) {
         self.bookRegistry = bookRegistry
@@ -46,6 +52,9 @@ struct AppContainer {
         self.bookCellModelCache = bookCellModelCache
         self.imageCache = imageCache
         self.userAccountPublisher = userAccountPublisher
+        self.opdsFeedService = opdsFeedService
+        self.samplePreviewManager = samplePreviewManager
+        self.readerService = readerService
         self.drmAuthorizerProvider = drmAuthorizerProvider
     }
 
@@ -63,6 +72,9 @@ struct AppContainer {
             bookCellModelCache: .shared,
             imageCache: ImageCache.shared,
             userAccountPublisher: .shared,
+            opdsFeedService: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared,
             drmAuthorizerProvider: {
                 #if FEATURE_DRM_CONNECTOR
                 return AdobeCertificate.isDRMAvailable ? AdobeDRMService.shared.adeptInstance : nil

@@ -85,6 +85,10 @@ final class BookDetailViewModel: ObservableObject {
     let registry: TPPBookRegistryProvider
     let downloadCenter: MyBooksDownloadCenter
     private let accountsManager: AccountsManager
+    private let settings: TPPSettings
+    private let opdsFeedService: OPDSFeedService
+    private let samplePreviewManager: SamplePreviewManager
+    private let readerService: ReaderService
     private let metadataHydrator: BookMetadataHydrator
     private var cancellables = Set<AnyCancellable>()
 
@@ -111,22 +115,54 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Initializer
 
     @objc convenience init(book: TPPBook) {
-        self.init(book: book, registry: TPPBookRegistry.shared)
+        self.init(book: book, appContainer: .production())
+    }
+
+    /// Standard composition path — wraps the AppContainer service graph.
+    convenience init(book: TPPBook, appContainer: AppContainer) {
+        self.init(
+            book: book,
+            registry: appContainer.bookRegistry,
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
+            settings: appContainer.settings,
+            opdsFeedService: appContainer.opdsFeedService,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService
+        )
     }
 
     /// Initializer with dependency injection for testing
     init(
         book: TPPBook,
         registry: TPPBookRegistryProvider,
-        downloadCenter: MyBooksDownloadCenter = .shared,
-        accountsManager: AccountsManager = .shared,
-        metadataHydrator: @escaping BookMetadataHydrator = BookDetailViewModel.defaultMetadataHydrator
+        downloadCenter: MyBooksDownloadCenter,
+        accountsManager: AccountsManager,
+        settings: TPPSettings,
+        opdsFeedService: OPDSFeedService,
+        samplePreviewManager: SamplePreviewManager,
+        readerService: ReaderService,
+        metadataHydrator: BookMetadataHydrator? = nil
     ) {
         self.book = book
         self.registry = registry
         self.downloadCenter = downloadCenter
         self.accountsManager = accountsManager
-        self.metadataHydrator = metadataHydrator
+        self.settings = settings
+        self.opdsFeedService = opdsFeedService
+        self.samplePreviewManager = samplePreviewManager
+        self.readerService = readerService
+        // Default hydrator captures the injected services instead of reading
+        // .shared singletons. Tests pass a custom hydrator to short-circuit.
+        self.metadataHydrator = metadataHydrator ?? { url in
+            let feed = try await opdsFeedService.fetchFeed(
+                from: url,
+                useToken: accountsManager.currentUserAccount.hasAdobeToken()
+            )
+            guard let entries = feed.entries as? [TPPOPDSEntry],
+                  let entry = entries.first else { return nil }
+            return TPPBook(entry: entry)
+        }
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
@@ -151,7 +187,7 @@ final class BookDetailViewModel: ObservableObject {
         timer = nil
         NotificationCenter.default.removeObserver(self)
         #if LCP
-        if let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) {
+        if let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier, downloadCenter: downloadCenter) {
             var lcpAudiobooks: LCPAudiobooks?
             if let localURL = downloadCenter.fileUrl(for: bookIdentifier),
                FileManager.default.fileExists(atPath: localURL.path) {
@@ -396,16 +432,6 @@ final class BookDetailViewModel: ObservableObject {
         }
     }
 
-    static let defaultMetadataHydrator: BookMetadataHydrator = { url in
-        let feed = try await OPDSFeedService.shared.fetchFeed(
-            from: url,
-            useToken: AccountsManager.shared.currentUserAccount.hasAdobeToken()
-        )
-        guard let entries = feed.entries as? [TPPOPDSEntry],
-              let entry = entries.first else { return nil }
-        return TPPBook(entry: entry)
-    }
-
     private static func needsMetadataHydration(_ book: TPPBook) -> Bool {
         book.published == nil
             && (book.publisher?.isEmpty ?? true)
@@ -467,7 +493,7 @@ final class BookDetailViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let feed = try await OPDSFeedService.shared.fetchFeed(from: url, useToken: AccountsManager.shared.currentUserAccount.hasAdobeToken())
+                let feed = try await opdsFeedService.fetchFeed(from: url, useToken: accountsManager.currentUserAccount.hasAdobeToken())
 
                 await MainActor.run {
                     guard self.book.identifier == currentBookId else {
@@ -482,7 +508,7 @@ final class BookDetailViewModel: ObservableObject {
                             for entry in entries {
                                 guard let group = entry.groupAttributes else { continue }
                                 let groupTitle = group.title ?? ""
-                                if let b = CatalogViewModel.makeBook(from: entry, bookRegistry: TPPBookRegistry.shared) {
+                                if let b = CatalogViewModel.makeBook(from: entry, bookRegistry: registry) {
                                     groupTitleToBooks[groupTitle, default: []].append(b)
                                     if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
                                 }
@@ -607,7 +633,7 @@ final class BookDetailViewModel: ObservableObject {
         let businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
             libraryAccountsProvider: accountsManager,
-            urlSettingsProvider: TPPSettings.shared,
+            urlSettingsProvider: settings,
             bookRegistry: (registry as? TPPBookRegistrySyncing) ?? { preconditionFailure("registry must conform to TPPBookRegistrySyncing") }(),
             bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
@@ -619,13 +645,13 @@ final class BookDetailViewModel: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
-                let account = AccountsManager.shared.currentUserAccount
+                let account = self.accountsManager.currentUserAccount
                 if account.needsAuth && !account.hasCredentials() {
                     self.showHalfSheet = false
-                    SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
+                    SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: self.accountsManager) { [weak self] in
                         guard let self else { return }
                         // Only proceed if user successfully logged in, not if they cancelled
-                        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+                        guard self.accountsManager.currentUserAccount.hasCredentials() else {
                             Log.info(#file, "Sign-in cancelled or failed, not proceeding with action")
                             // Clear any processing state for download-related buttons
                             self.processingButtons.remove(.download)
@@ -702,7 +728,7 @@ final class BookDetailViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self = self else { return }
                 #if FEATURE_DRM_CONNECTOR
-                let user = AccountsManager.shared.currentUserAccount
+                let user = self.accountsManager.currentUserAccount
 
                 if user.hasCredentials() {
                     if user.hasAuthToken() {
@@ -797,8 +823,8 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     #if LCP
-    nonisolated static func lcpLicenseURL(forBookIdentifier identifier: String) -> URL? {
-        guard let bookFileURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else {
+    nonisolated static func lcpLicenseURL(forBookIdentifier identifier: String, downloadCenter: MyBooksDownloadCenter) -> URL? {
+        guard let bookFileURL = downloadCenter.fileUrl(for: identifier) else {
             return nil
         }
         let licenseURL = bookFileURL.deletingPathExtension().appendingPathExtension("lcpl")
@@ -808,7 +834,7 @@ final class BookDetailViewModel: ObservableObject {
 
     #if LCP
     private func prefetchLCPStreamingIfPossible() {
-        guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book), let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) else { return }
+        guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book), let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier, downloadCenter: downloadCenter) else { return }
         if let localURL = downloadCenter.fileUrl(for: bookIdentifier), FileManager.default.fileExists(atPath: localURL.path) {
             return
         }
@@ -828,18 +854,18 @@ final class BookDetailViewModel: ObservableObject {
 
         if book.defaultBookContentType == .audiobook {
             if book.sampleAcquisition?.type == "text/html" {
-                SamplePreviewManager.shared.close()
+                samplePreviewManager.close()
                 presentWebView(book.sampleAcquisition?.hrefURL)
                 isProcessingSample = false
                 completion?()
             } else {
 
-                SamplePreviewManager.shared.toggle(for: book)
+                samplePreviewManager.toggle(for: book)
                 isProcessingSample = false
                 completion?()
             }
         } else {
-            SamplePreviewManager.shared.close()
+            samplePreviewManager.close()
             EpubSampleFactory.createSample(book: book) { sampleURL, error in
                 DispatchQueue.main.async {
                     if let error = error {
@@ -852,7 +878,7 @@ final class BookDetailViewModel: ObservableObject {
 
                         if isEpubSample {
                             // Use Readium EPUB reader for EPUB samples
-                            ReaderService.shared.openSample(book, url: sampleURL)
+                            self.readerService.openSample(book, url: sampleURL)
                         } else {
                             // Use WebKit for HTML/web samples
                             let web = BundledHTMLViewController(fileURL: sampleURL, title: book.title)
@@ -1029,7 +1055,7 @@ extension BookDetailViewModel {
         }
     }
 
-    static func presentEndOfBookAlert(for book: TPPBook, downloadCenter: MyBooksDownloadCenter = .shared) {
+    static func presentEndOfBookAlert(for book: TPPBook, downloadCenter: MyBooksDownloadCenter) {
         let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
             forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
             allowedRelations: TPPOPDSAcquisitionRelationSetBorrow | TPPOPDSAcquisitionRelationSetGeneric,
@@ -1051,7 +1077,7 @@ extension BookDetailViewModel {
     }
 
     private func presentEndOfBookAlert() {
-        BookDetailViewModel.presentEndOfBookAlert(for: book)
+        BookDetailViewModel.presentEndOfBookAlert(for: book, downloadCenter: downloadCenter)
     }
 }
 

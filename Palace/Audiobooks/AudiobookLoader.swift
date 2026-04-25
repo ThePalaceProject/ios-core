@@ -509,7 +509,7 @@ final class AudiobookLoader {
                 )
                 manager.saveLocation(beginningPosition)
             }
-            BookDetailViewModel.presentEndOfBookAlert(for: book)
+            BookDetailViewModel.presentEndOfBookAlert(for: book, downloadCenter: AppContainer.production().downloadCenter)
         }
 
         let playbackModel = AudiobookPlaybackModel(audiobookManager: manager)

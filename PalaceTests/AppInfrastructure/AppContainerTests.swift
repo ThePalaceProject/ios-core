@@ -41,6 +41,9 @@ final class AppContainerTests: XCTestCase {
             bookCellModelCache: .shared,
             imageCache: ImageCache.shared,
             userAccountPublisher: .shared,
+            opdsFeedService: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared,
             drmAuthorizerProvider: { nil }
         )
         XCTAssertTrue(
@@ -71,6 +74,9 @@ final class AppContainerTests: XCTestCase {
             bookCellModelCache: .shared,
             imageCache: ImageCache.shared,
             userAccountPublisher: .shared,
+            opdsFeedService: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared,
             drmAuthorizerProvider: { nil }
         )
         let containerB = AppContainer.production()
