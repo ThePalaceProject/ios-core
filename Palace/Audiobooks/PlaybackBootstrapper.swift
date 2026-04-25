@@ -28,9 +28,13 @@ import PalaceAudiobookToolkit
 /// This class ensures these requirements are met, independent of UI lifecycle.
 ///
 /// ## Usage
-/// Call `PlaybackBootstrapper.shared.ensureInitialized()` early in:
+/// Call `ensureInitialized()` early in:
 /// - `TPPAppDelegate.application(_:didFinishLaunchingWithOptions:)`
 /// - `CarPlaySceneDelegate.templateApplicationScene(_:didConnect:)`
+///
+/// In production callers go through the `.shared` accessor; in tests
+/// construct a fresh `PlaybackBootstrapper(appContainer:)` with a mock
+/// `audiobookSessionProvider` to avoid hitting the global session.
 ///
 /// ## Regression Test Plan
 /// 1. Force-quit the Palace app on your phone
@@ -56,16 +60,51 @@ public final class PlaybackBootstrapper {
     private var commandTargets: [Any] = []
     private let commandCenter = MPRemoteCommandCenter.shared()
     private let bookRegistry: TPPBookRegistryProvider
+    /// Resolved-on-demand audiobook session. The bootstrapper is constructed
+    /// at app launch — long before any audiobook is opened — and the session
+    /// manager itself is a singleton that participates in cold-launch init,
+    /// so taking the reference at construction time would risk an init-order
+    /// race. Closure form lets tests inject a mock and lets the production
+    /// closure resolve `AudiobookSessionManager.shared` lazily.
+    private let audiobookSessionProvider: () -> AudiobookSessionManaging
 
     // MARK: - Initialization
 
-    private init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    /// Designated init — every dependency is explicit.
+    private init(
+        bookRegistry: TPPBookRegistryProvider,
+        audiobookSessionProvider: @escaping () -> AudiobookSessionManaging
+    ) {
         self.bookRegistry = bookRegistry
+        self.audiobookSessionProvider = audiobookSessionProvider
         Log.info(#file, "🚀 PlaybackBootstrapper created - app launch context")
 
         // Log the launch context for debugging cold start issues
         let launchReason = determineLaunchContext()
         Log.info(#file, "🚀 Launch context: \(launchReason)")
+    }
+
+    /// Backwards-compatible convenience for the singleton accessor. Resolves
+    /// every dependency from `.shared` at first touch.
+    private convenience init() {
+        self.init(
+            bookRegistry: TPPBookRegistry.shared,
+            audiobookSessionProvider: { AudiobookSessionManager.shared }
+        )
+    }
+
+    /// AppContainer-friendly initializer for future call sites that thread
+    /// the container down. Defaults the audiobook session provider to the
+    /// `.shared` accessor since AppContainer doesn't currently hold the
+    /// audiobook session manager.
+    convenience init(
+        appContainer: AppContainer,
+        audiobookSessionProvider: @escaping () -> AudiobookSessionManaging = { AudiobookSessionManager.shared }
+    ) {
+        self.init(
+            bookRegistry: appContainer.bookRegistry,
+            audiobookSessionProvider: audiobookSessionProvider
+        )
     }
 
     /// Determines how the app was launched (for diagnostic logging)
@@ -133,8 +172,10 @@ public final class PlaybackBootstrapper {
         setupRemoteCommands()
 
         // 3. Ensure AudiobookSessionManager exists so it can receive open
-        //    requests from either phone UI or CarPlay bridge.
-        _ = AudiobookSessionManager.shared
+        //    requests from either phone UI or CarPlay bridge. Resolving the
+        //    provider closure here forces lazy singleton init at the right
+        //    point in app launch.
+        _ = audiobookSessionProvider()
 
         isInitialized = true
 
@@ -324,11 +365,11 @@ public final class PlaybackBootstrapper {
     /// Returns .noActionableNowPlayingItem if no playback is active.
     ///
     /// Note: These handlers must work even when the phone UI has never been opened.
-    /// `AudiobookSessionManager.shared.manager` is nil until a book is opened;
-    /// opening the book binds the manager directly on the session.
+    /// The session manager's `hasActiveManager` flag is false until a book is
+    /// opened; opening the book binds the manager directly on the session.
 
     private func handlePlay() -> MPRemoteCommandHandlerStatus {
-        let hasManager = AudiobookSessionManager.shared.manager != nil
+        let hasManager = audiobookSessionProvider().hasActiveManager
         Log.debug(#file, "🎮 handlePlay - manager: \(hasManager)")
 
         // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
@@ -343,7 +384,7 @@ public final class PlaybackBootstrapper {
     }
 
     private func handlePause() -> MPRemoteCommandHandlerStatus {
-        let hasManager = AudiobookSessionManager.shared.manager != nil
+        let hasManager = audiobookSessionProvider().hasActiveManager
         Log.debug(#file, "🎮 handlePause - manager: \(hasManager)")
 
         // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
@@ -357,7 +398,7 @@ public final class PlaybackBootstrapper {
     }
 
     private func handleTogglePlayPause() -> MPRemoteCommandHandlerStatus {
-        let hasManager = AudiobookSessionManager.shared.manager != nil
+        let hasManager = audiobookSessionProvider().hasActiveManager
         Log.debug(#file, "🎮 handleTogglePlayPause - manager: \(hasManager)")
 
         // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
@@ -371,7 +412,7 @@ public final class PlaybackBootstrapper {
     }
 
     private func handleSkipForward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
-        let hasManager = AudiobookSessionManager.shared.manager != nil
+        let hasManager = audiobookSessionProvider().hasActiveManager
         Log.debug(#file, "🎮 handleSkipForward(\(interval)s) - manager: \(hasManager)")
 
         // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
@@ -386,7 +427,7 @@ public final class PlaybackBootstrapper {
     }
 
     private func handleSkipBackward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
-        let hasManager = AudiobookSessionManager.shared.manager != nil
+        let hasManager = audiobookSessionProvider().hasActiveManager
         Log.debug(#file, "🎮 handleSkipBackward(\(interval)s) - manager: \(hasManager)")
 
         // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
@@ -401,7 +442,7 @@ public final class PlaybackBootstrapper {
     }
 
     private func handleChangePlaybackRate(rate: Float) -> MPRemoteCommandHandlerStatus {
-        let hasManager = AudiobookSessionManager.shared.manager != nil
+        let hasManager = audiobookSessionProvider().hasActiveManager
         Log.debug(#file, "🎮 handleChangePlaybackRate(\(rate)x) - manager: \(hasManager)")
 
         // When AudiobookManager is active, the toolkit's MediaControlPublisher handles

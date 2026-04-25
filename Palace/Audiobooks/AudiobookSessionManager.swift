@@ -101,6 +101,11 @@ public final class AudiobookSessionManager: ObservableObject {
     private(set) var playbackModel: AudiobookPlaybackModel?
     private(set) var nowPlayingCoordinator: NowPlayingCoordinator?
 
+    /// Surface for the `AudiobookSessionManaging` protocol — exposes whether
+    /// an `AudiobookManager` is bound without leaking the toolkit type
+    /// through the protocol.
+    public var hasActiveManager: Bool { manager != nil }
+
     /// DRM decryptor tied to the currently loaded audiobook. Owned atomically
     /// alongside manager/audiobook/playbackModel so stopPlayback can release
     /// all four together — preventing the previous LCP Publication from
