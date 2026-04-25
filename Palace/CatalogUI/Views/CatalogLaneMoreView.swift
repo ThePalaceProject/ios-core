@@ -77,7 +77,7 @@ struct CatalogLaneMoreView: View {
         }
         .onDisappear {
             Log.debug(#file, "🔴 CatalogLaneMoreView.onDisappear() - Being dismissed")
-            SamplePreviewManager.shared.close()
+            appContainer.samplePreviewManager.close()
         }
         .onReceive(registryChangePublisher) { note in
             let changedId = (note.userInfo as? [String: Any])?["bookIdentifier"] as? String
@@ -131,8 +131,8 @@ struct CatalogLaneMoreView: View {
     // MARK: - Setup Helpers
 
     private func setupCoordinator() {
-        if NavigationCoordinatorHub.shared.coordinator == nil {
-            NavigationCoordinatorHub.shared.coordinator = coordinator
+        if appContainer.navigationCoordinatorHub.coordinator == nil {
+            appContainer.navigationCoordinatorHub.coordinator = coordinator
         }
     }
 
@@ -160,12 +160,12 @@ struct CatalogLaneMoreView: View {
 
         let action = (info["action"] as? String) ?? "toggle"
         if action == "close" {
-            SamplePreviewManager.shared.close()
+            appContainer.samplePreviewManager.close()
             return
         }
 
         if let book = appContainer.bookRegistry.book(forIdentifier: identifier) ?? viewModel.allBooks.first(where: { $0.identifier == identifier }) {
-            SamplePreviewManager.shared.toggle(for: book)
+            appContainer.samplePreviewManager.toggle(for: book)
         }
     }
 
