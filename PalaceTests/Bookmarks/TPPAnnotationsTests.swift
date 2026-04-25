@@ -1529,6 +1529,20 @@ final class TPPAnnotationsOverrideTests: XCTestCase {
 /// to TPPUserAccount.deviceID (Adobe-only) with ?? "" default.
 class AnnotationDeviceIDTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        // Defensive: ensure no override leakage from prior tests, regardless
+        // of execution ordering (Palace scheme uses `testExecutionOrdering="random"`).
+        AnnotationDevice.accountsManagerOverride = nil
+        AnnotationDevice.firebaseDeviceIDOverride = nil
+    }
+
+    override func tearDown() {
+        AnnotationDevice.accountsManagerOverride = nil
+        AnnotationDevice.firebaseDeviceIDOverride = nil
+        super.tearDown()
+    }
+
     func testAnnotationDeviceID_WhenNoAdobeDRM_ReturnsFirebaseDeviceID() {
         // Non-Adobe-DRM users have nil deviceID on TPPUserAccount.
         // The function must still return a non-empty urn:uuid: identifier
