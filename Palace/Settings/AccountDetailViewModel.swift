@@ -50,6 +50,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     private let accountsManager: AccountsManager
     private let bookRegistry: TPPBookRegistryProvider
     private let downloadCenter: MyBooksDownloadCenter
+    private let settings: TPPSettings
+    private let userAccountPublisher: UserAccountPublisher
+    private let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
     private var cancellables = Set<AnyCancellable>()
     var forceEditability = false
 
@@ -102,15 +105,38 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     /// re-auth flows triggered by 401 responses.
     var forceReauthMode: Bool = false
 
-    init(libraryAccountID: String, accountsManager: AccountsManager = .shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared) {
+    convenience init(libraryAccountID: String, appContainer: AppContainer) {
+        self.init(
+            libraryAccountID: libraryAccountID,
+            accountsManager: appContainer.accountsManager,
+            bookRegistry: appContainer.bookRegistry,
+            downloadCenter: appContainer.downloadCenter,
+            settings: appContainer.settings,
+            userAccountPublisher: appContainer.userAccountPublisher,
+            drmAuthorizerProvider: appContainer.drmAuthorizerProvider
+        )
+    }
+
+    init(
+        libraryAccountID: String,
+        accountsManager: AccountsManager,
+        bookRegistry: TPPBookRegistryProvider,
+        downloadCenter: MyBooksDownloadCenter,
+        settings: TPPSettings,
+        userAccountPublisher: UserAccountPublisher,
+        drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?
+    ) {
         self.libraryAccountID = libraryAccountID
         self.accountsManager = accountsManager
         self.bookRegistry = bookRegistry
         self.downloadCenter = downloadCenter
+        self.settings = settings
+        self.userAccountPublisher = userAccountPublisher
+        self.drmAuthorizerProvider = drmAuthorizerProvider
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accountsManager,
-            urlSettingsProvider: TPPSettings.shared,
+            urlSettingsProvider: settings,
             bookRegistry: (bookRegistry as? TPPBookRegistrySyncing) ?? { preconditionFailure("bookRegistry must conform to TPPBookRegistrySyncing") }(),
             bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
@@ -118,17 +144,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             drmAuthorizer: nil
         )
 
-        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
         self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         super.init()
 
-        var drmAuthorizer: TPPDRMAuthorizing?
-        #if FEATURE_DRM_CONNECTOR
-        if AdobeCertificate.isDRMAvailable {
-            drmAuthorizer = AdobeDRMService.shared.adeptInstance
-        }
-        #endif
+        let drmAuthorizer = drmAuthorizerProvider()
 
         let networkExecutor = TPPNetworkExecutor(
             credentialsProvider: self,
@@ -139,7 +160,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accountsManager,
-            urlSettingsProvider: TPPSettings.shared,
+            urlSettingsProvider: settings,
             bookRegistry: (bookRegistry as? TPPBookRegistrySyncing) ?? { preconditionFailure("bookRegistry must conform to TPPBookRegistrySyncing") }(),
             bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
@@ -192,7 +213,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             .sink { [weak self] _ in self?.accountDidChange() }
             .store(in: &cancellables)
 
-        UserAccountPublisher.shared.$hasCredentials
+        userAccountPublisher.$hasCredentials
             .receive(on: RunLoop.main)
             .removeDuplicates()
             .sink { [weak self] _ in self?.accountDidChange() }
@@ -526,7 +547,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func accountDidChange() {
-        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
 
         let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
@@ -557,7 +578,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func refreshSignInState() {
         let wasSignedIn = isSignedIn
 
-        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
         isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         if wasSignedIn != isSignedIn {

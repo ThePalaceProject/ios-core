@@ -18,7 +18,7 @@ struct SignInModalView: View {
         NavigationView {
             // forceReauthMode: true ensures sign-in form is shown even if user has stale credentials
             // This is needed for re-auth flows (e.g., after 401 from borrow)
-            AccountDetailView(libraryAccountID: libraryAccountID, forceReauthMode: true)
+            AccountDetailView(libraryAccountID: libraryAccountID, appContainer: .production(), forceReauthMode: true)
                 .navigationTitle(Strings.Generic.signin)
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationBarItems(leading: cancelButton)

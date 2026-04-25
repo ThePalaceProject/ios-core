@@ -326,7 +326,7 @@ import SwiftUI
             account = userAddedSecondaryAccounts[indexPath.row]
         }
 
-        let view = AccountDetailView(libraryAccountID: account?.uuid ?? "")
+        let view = AccountDetailView(libraryAccountID: account?.uuid ?? "", appContainer: .production())
         let vc = UIHostingController(rootView: view)
 
         // Pre-configure navigation bar to prevent snap

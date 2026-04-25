@@ -39,7 +39,9 @@ final class AppContainerTests: XCTestCase {
             downloadCenter: .shared,
             debugSettings: .shared,
             bookCellModelCache: .shared,
-            imageCache: ImageCache.shared
+            imageCache: ImageCache.shared,
+            userAccountPublisher: .shared,
+            drmAuthorizerProvider: { nil }
         )
         XCTAssertTrue(
             container.bookRegistry as AnyObject === mock,
@@ -67,7 +69,9 @@ final class AppContainerTests: XCTestCase {
             downloadCenter: .shared,
             debugSettings: .shared,
             bookCellModelCache: .shared,
-            imageCache: ImageCache.shared
+            imageCache: ImageCache.shared,
+            userAccountPublisher: .shared,
+            drmAuthorizerProvider: { nil }
         )
         let containerB = AppContainer.production()
         XCTAssertFalse(

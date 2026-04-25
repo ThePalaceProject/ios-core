@@ -18,6 +18,12 @@ struct AppContainer {
     let debugSettings: DebugSettings
     let bookCellModelCache: BookCellModelCache
     let imageCache: ImageCacheType
+    let userAccountPublisher: UserAccountPublisher
+    /// DRM authorizer factory. Built behind `#if FEATURE_DRM_CONNECTOR`
+    /// at the composition root so VMs/Views never reference
+    /// `AdobeDRMService.shared` directly. Returns `nil` in DRM-disabled
+    /// builds and on devices where the certificate is unavailable.
+    let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
 
     init(
         bookRegistry: TPPBookRegistryProvider,
@@ -27,7 +33,9 @@ struct AppContainer {
         downloadCenter: MyBooksDownloadCenter,
         debugSettings: DebugSettings,
         bookCellModelCache: BookCellModelCache,
-        imageCache: ImageCacheType
+        imageCache: ImageCacheType,
+        userAccountPublisher: UserAccountPublisher,
+        drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?
     ) {
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
@@ -37,6 +45,8 @@ struct AppContainer {
         self.debugSettings = debugSettings
         self.bookCellModelCache = bookCellModelCache
         self.imageCache = imageCache
+        self.userAccountPublisher = userAccountPublisher
+        self.drmAuthorizerProvider = drmAuthorizerProvider
     }
 
     /// The single composition root. App entry points (AppDelegate,
@@ -51,7 +61,15 @@ struct AppContainer {
             downloadCenter: .shared,
             debugSettings: .shared,
             bookCellModelCache: .shared,
-            imageCache: ImageCache.shared
+            imageCache: ImageCache.shared,
+            userAccountPublisher: .shared,
+            drmAuthorizerProvider: {
+                #if FEATURE_DRM_CONNECTOR
+                return AdobeCertificate.isDRMAvailable ? AdobeDRMService.shared.adeptInstance : nil
+                #else
+                return nil
+                #endif
+            }
         )
     }
 }
