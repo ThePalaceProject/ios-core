@@ -4,25 +4,24 @@ import UIKit
 struct AppTabHostView: View {
     @StateObject private var router = AppTabRouter()
     @State private var holdsBadgeCount: Int = 0
+    private let appContainer: AppContainer
     let bookRegistry: TPPBookRegistryProvider
+    @StateObject private var catalogViewModel: CatalogViewModel
 
-    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
-        self.bookRegistry = bookRegistry
-    }
-
-    @StateObject private var catalogViewModel: CatalogViewModel = {
+    init(appContainer: AppContainer = .production()) {
+        self.appContainer = appContainer
+        self.bookRegistry = appContainer.bookRegistry
         let client = URLSessionNetworkClient()
         let parser = OPDSParser()
         let api = DefaultCatalogAPI(client: client, parser: parser)
         let repository = CatalogRepository(api: api)
-        let container = AppContainer.production()
-        return CatalogViewModel(
+        _catalogViewModel = StateObject(wrappedValue: CatalogViewModel(
             repository: repository,
-            topLevelURLProvider: { container.settings.accountMainFeedURL },
-            bookRegistry: container.bookRegistry,
-            imageCache: container.imageCache
-        )
-    }()
+            topLevelURLProvider: { appContainer.settings.accountMainFeedURL },
+            bookRegistry: appContainer.bookRegistry,
+            imageCache: appContainer.imageCache
+        ))
+    }
 
     var body: some View {
         TabView(selection: $router.selected) {
@@ -37,7 +36,7 @@ struct AppTabHostView: View {
                 .tag(AppTab.catalog)
                 .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
 
-            NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel(appContainer: .production()), appContainer: .production()))
+            NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel(appContainer: appContainer), appContainer: appContainer))
                 .tabItem {
                     VStack {
                         Image("MyBooks").renderingMode(.template)
@@ -47,7 +46,7 @@ struct AppTabHostView: View {
                 .tag(AppTab.myBooks)
                 .accessibilityIdentifier(AccessibilityID.TabBar.myBooksTab)
 
-            NavigationHostView(rootView: HoldsView(appContainer: .production()))
+            NavigationHostView(rootView: HoldsView(appContainer: appContainer))
                 .tabItem {
                     VStack {
                         Image("Holds").renderingMode(.template)
@@ -65,16 +64,16 @@ struct AppTabHostView: View {
         }
         .tint(Color.accentColor)
         .onAppear {
-            AppTabRouterHub.shared.router = router
-            AppTabRouterHub.shared.applyPending()
+            appContainer.tabRouterHub.router = router
+            appContainer.tabRouterHub.applyPending()
         }
         .onChange(of: router.selected) { newTab in
             // Respect reduce motion accessibility setting
             if UIAccessibility.isReduceMotionEnabled {
-                NavigationCoordinatorHub.shared.coordinator?.popToRoot()
+                appContainer.navigationCoordinatorHub.coordinator?.popToRoot()
             } else {
                 withAnimation(.easeInOut) {
-                    NavigationCoordinatorHub.shared.coordinator?.popToRoot()
+                    appContainer.navigationCoordinatorHub.coordinator?.popToRoot()
                 }
             }
             if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate,
@@ -86,7 +85,7 @@ struct AppTabHostView: View {
             // become visible so the user doesn't have to pull-to-refresh
             // to see newly borrowed/returned/held books.
             if newTab == .myBooks || newTab == .holds {
-                TPPBookRegistry.shared.sync()
+                appContainer.bookRegistry.sync()
             }
             // Announce the new tab for VoiceOver when tab changes
             if UIAccessibility.isVoiceOverRunning {
@@ -122,12 +121,14 @@ private extension AppTabHostView {
             return
         }
 
+        let debugSettings = appContainer.debugSettings
+
         // Move heavy registry access off main thread to avoid blocking UI
         DispatchQueue.global(qos: .userInitiated).async {
             // Use test books if debug configuration is enabled, otherwise use real registry data
             #if DEBUG
-            let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? bookRegistry.heldBooks
-            let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
+            let held: [TPPBook] = debugSettings.createTestHoldBooks() ?? bookRegistry.heldBooks
+            let usingTestBooks = debugSettings.isTestHoldsEnabled
             #else
             let held = bookRegistry.heldBooks
             #endif
@@ -143,7 +144,7 @@ private extension AppTabHostView {
             }
 
             #if DEBUG
-            if DebugSettings.shared.isBadgeLoggingEnabled {
+            if debugSettings.isBadgeLoggingEnabled {
                 var reservedCount = 0
                 for book in held {
                     book.defaultAcquisition?.availability.match(unavailable: nil, limited: nil, unlimited: nil,

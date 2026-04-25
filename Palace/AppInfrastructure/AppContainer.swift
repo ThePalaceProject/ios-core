@@ -23,6 +23,7 @@ struct AppContainer {
     let samplePreviewManager: SamplePreviewManager
     let readerService: ReaderService
     let navigationCoordinatorHub: NavigationCoordinatorHub
+    let tabRouterHub: AppTabRouterHub
     /// DRM authorizer factory. Built behind `#if FEATURE_DRM_CONNECTOR`
     /// at the composition root so VMs/Views never reference
     /// `AdobeDRMService.shared` directly. Returns `nil` in DRM-disabled
@@ -43,6 +44,7 @@ struct AppContainer {
         samplePreviewManager: SamplePreviewManager,
         readerService: ReaderService,
         navigationCoordinatorHub: NavigationCoordinatorHub,
+        tabRouterHub: AppTabRouterHub,
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?
     ) {
         self.bookRegistry = bookRegistry
@@ -58,6 +60,7 @@ struct AppContainer {
         self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
         self.navigationCoordinatorHub = navigationCoordinatorHub
+        self.tabRouterHub = tabRouterHub
         self.drmAuthorizerProvider = drmAuthorizerProvider
     }
 
@@ -111,6 +114,7 @@ struct AppContainer {
             samplePreviewManager: samplePreviewManager,
             readerService: readerService,
             navigationCoordinatorHub: .shared,
+            tabRouterHub: .shared,
             drmAuthorizerProvider: {
                 #if FEATURE_DRM_CONNECTOR
                 return AdobeCertificate.isDRMAvailable ? AdobeDRMService.shared.adeptInstance : nil
