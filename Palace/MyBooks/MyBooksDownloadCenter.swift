@@ -44,6 +44,27 @@ import OverdriveProcessor
     private let networkExecutor: TPPNetworkExecutor
     private let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
 
+    // Phase 4 (Architectural Triad) — services formerly reached through
+    // `.shared` are now stored properties initialized via the constructor.
+    // Production callers fall back to `.shared` defaults so the existing
+    // `MyBooksDownloadCenter.shared` static-let factory keeps working,
+    // but tests and the AppContainer composition root can substitute mocks.
+    let errorActivityTracker: ErrorActivityTracker
+    let userRetryTracker: UserRetryTracker
+    let reachability: Reachability
+    let memoryPressureMonitor: MemoryPressureMonitor
+    let bookmarkDeletionLog: TPPBookmarkDeletionLog
+    let deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor
+    let opdsFeedService: OPDSFeedService
+    let debugSettings: DebugSettings
+    let settings: TPPSettings
+    #if FEATURE_DRM_CONNECTOR
+    let adobeDRMService: AdobeDRMService
+    #endif
+    #if FEATURE_OVERDRIVE
+    let overdriveAPIExecutor: OverdriveAPIExecutor
+    #endif
+
     private var bookIdentifierOfBookToRemove: String?
     private var session: URLSession!
 
@@ -80,6 +101,15 @@ import OverdriveProcessor
         accountsManager: AccountsManager = .shared,
         networkExecutor: TPPNetworkExecutor = .shared,
         accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
+        errorActivityTracker: ErrorActivityTracker = .shared,
+        userRetryTracker: UserRetryTracker = .shared,
+        reachability: Reachability = .shared,
+        memoryPressureMonitor: MemoryPressureMonitor = .shared,
+        bookmarkDeletionLog: TPPBookmarkDeletionLog = .shared,
+        deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor = .shared,
+        opdsFeedService: OPDSFeedService = .shared,
+        debugSettings: DebugSettings = .shared,
+        settings: TPPSettings = .shared,
         // Test seam: inject a URLSession (e.g. one configured with a custom
         // URLProtocol) so chaos / fault-injection tests can drive download
         // failure paths without standing up a real network. When `nil`, the
@@ -94,13 +124,28 @@ import OverdriveProcessor
         self.accountsManager = accountsManager
         self.networkExecutor = networkExecutor
         self.accessibilityAnnouncements = accessibilityAnnouncements
+        self.errorActivityTracker = errorActivityTracker
+        self.userRetryTracker = userRetryTracker
+        self.reachability = reachability
+        self.memoryPressureMonitor = memoryPressureMonitor
+        self.bookmarkDeletionLog = bookmarkDeletionLog
+        self.deviceSpecificErrorMonitor = deviceSpecificErrorMonitor
+        self.opdsFeedService = opdsFeedService
+        self.debugSettings = debugSettings
+        self.settings = settings
+        #if FEATURE_DRM_CONNECTOR
+        self.adobeDRMService = .shared
+        #endif
+        #if FEATURE_OVERDRIVE
+        self.overdriveAPIExecutor = .shared
+        #endif
 
         super.init()
 
         #if FEATURE_DRM_CONNECTOR
         // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
         if AdobeCertificate.isDRMAvailable {
-            AdobeDRMService.shared.setDelegate(self)
+            self.adobeDRMService.setDelegate(self)
         }
         #else
         NSLog("Cannot import ADEPT")
@@ -138,6 +183,28 @@ import OverdriveProcessor
 
         // Setup intelligent download management
         setupNetworkMonitoring()
+    }
+
+    /// Phase 4 (Architectural Triad) convenience init that pulls injectable
+    /// services from `AppContainer`. Composition roots that already hold an
+    /// `AppContainer` should prefer this over the long-form designated init —
+    /// it keeps the wiring out of feature code and ensures the same service
+    /// graph the rest of the app uses.
+    ///
+    /// Services not yet in `AppContainer` (`errorActivityTracker`,
+    /// `userRetryTracker`, `reachability`, `memoryPressureMonitor`,
+    /// `bookmarkDeletionLog`, `deviceSpecificErrorMonitor`) still default to
+    /// their `.shared` singletons here. As more of those land in the container
+    /// they will move from this convenience init into the parameter list.
+    convenience init(appContainer: AppContainer) {
+        self.init(
+            bookRegistry: appContainer.bookRegistry,
+            accountsManager: appContainer.accountsManager,
+            networkExecutor: appContainer.networkExecutor,
+            opdsFeedService: appContainer.opdsFeedService,
+            debugSettings: appContainer.debugSettings,
+            settings: appContainer.settings
+        )
     }
 
     #if DEBUG
@@ -338,10 +405,11 @@ import OverdriveProcessor
         // Legacy borrow errors from problem documents - offer retry for transient issues
         let retryAction: (() -> Void)? = {
             let operationId = "borrow-\(book.identifier)"
-            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+            guard self.userRetryTracker.canRetry(operationId: operationId) else { return nil }
             return { [weak self] in
-                UserRetryTracker.shared.recordRetry(operationId: operationId)
-                self?.startBorrow(for: book, attemptDownload: true)
+                guard let self else { return }
+                self.userRetryTracker.recordRetry(operationId: operationId)
+                self.startBorrow(for: book, attemptDownload: true)
             }
         }()
 
@@ -355,10 +423,11 @@ import OverdriveProcessor
 
         let retryAction: (() -> Void)? = {
             let operationId = "borrow-\(book.identifier)"
-            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+            guard self.userRetryTracker.canRetry(operationId: operationId) else { return nil }
             return { [weak self] in
-                UserRetryTracker.shared.recordRetry(operationId: operationId)
-                self?.startBorrow(for: book, attemptDownload: true)
+                guard let self else { return }
+                self.userRetryTracker.recordRetry(operationId: operationId)
+                self.startBorrow(for: book, attemptDownload: true)
             }
         }()
 
@@ -386,7 +455,7 @@ import OverdriveProcessor
 
         Log.info(#file, "📥 Starting download for '\(book.title)' - state: \(state), hasCredentials: \(userAccount.hasCredentials()), loginRequired: \(loginRequired)")
 
-        await ErrorActivityTracker.shared.log("Starting download for '\(book.title)'", category: .download)
+        await self.errorActivityTracker.log("Starting download for '\(book.title)'", category: .download)
 
         switch state {
         case .unregistered:
@@ -483,7 +552,7 @@ import OverdriveProcessor
     }
 
     private var isWifiOnlyEnforced: Bool {
-        TPPSettings.shared.downloadOnlyOnWiFi && !Reachability.shared.isOnWiFi
+        self.settings.downloadOnlyOnWiFi && !self.reachability.isOnWiFi
     }
 
     private func failWithWifiRequired(for book: TPPBook) {
@@ -567,9 +636,9 @@ import OverdriveProcessor
         }
 
         if let token = userAccount.authToken {
-            OverdriveAPIExecutor.shared.fulfillBook(urlString: url.absoluteString, authType: .token(token), completion: completion)
+            self.overdriveAPIExecutor.fulfillBook(urlString: url.absoluteString, authType: .token(token), completion: completion)
         } else if let username = userAccount.username, let pin = userAccount.PIN {
-            OverdriveAPIExecutor.shared.fulfillBook(urlString: url.absoluteString, authType: .basic(username: username, pin: pin), completion: completion)
+            self.overdriveAPIExecutor.fulfillBook(urlString: url.absoluteString, authType: .basic(username: username, pin: pin), completion: completion)
         }
     }
     #endif
@@ -610,7 +679,7 @@ import OverdriveProcessor
         guard let scope = normalizedHeaders?[scopeKey] as? String,
               let patronAuthorization = normalizedHeaders?[patronAuthorizationKey] as? String,
               let requestURLString = normalizedHeaders?[locationKey] as? String,
-              let request = OverdriveAPIExecutor.shared.getManifestRequest(urlString: requestURLString, token: patronAuthorization, scope: scope)
+              let request = self.overdriveAPIExecutor.getManifestRequest(urlString: requestURLString, token: patronAuthorization, scope: scope)
         else {
             TPPErrorLogger.logError(withCode: .overdriveFulfillResponseParseFail, summary: summaryWrongHeaders, metadata: [
                 responseHeadersKey: responseHeaders ?? nA,
@@ -682,7 +751,7 @@ import OverdriveProcessor
         // older books to make room — the root cause of "titles revert to
         // Download Needed after quits/library changes." The reclaim call
         // below handles actual low-disk scenarios without that collateral.
-        MemoryPressureMonitor.shared.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
+        self.memoryPressureMonitor.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
 
         if state == .SAMLStarted, let cookies = userAccount.cookies {
             Log.info(#file, "SAML authentication flow for '\(currentBook.title)'")
@@ -951,7 +1020,7 @@ import OverdriveProcessor
 
         #if FEATURE_DRM_CONNECTOR
         if info.rightsManagement == .adobe {
-            AdobeDRMService.shared.cancelFulfillment(withTag: identifier)
+            self.adobeDRMService.cancelFulfillment(withTag: identifier)
             return
         }
         #endif
@@ -1119,9 +1188,9 @@ extension MyBooksDownloadCenter {
         if let fulfillmentId = bookRegistry.fulfillmentId(forIdentifier: identifier),
            userAccount.authDefinition?.needsAuth == true {
             NSLog("Return attempt for book. userID: %@", userAccount.userID ?? "")
-            AdobeDRMService.shared.returnLoan(fulfillmentId,
-                                              userID: userAccount.userID,
-                                              deviceID: userAccount.deviceID) { success, _ in
+            self.adobeDRMService.returnLoan(fulfillmentId,
+                                            userID: userAccount.userID,
+                                            deviceID: userAccount.deviceID) { success, _ in
                 if !success {
                     NSLog("Failed to return loan via NYPLAdept.")
                 }
@@ -1143,7 +1212,7 @@ extension MyBooksDownloadCenter {
                     return
                 }
                 // Clear the deletion log since we're returning the book
-                TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
                 self.bookRegistry.setState(.unregistered, for: identifier)
                 self.bookRegistry.removeBook(forIdentifier: identifier)
                 self.performPostReturnSyncThen {
@@ -1165,7 +1234,7 @@ extension MyBooksDownloadCenter {
                 }
 
                 do {
-                    let feed = try await OPDSFeedService.shared.fetchFeed(from: revokeURL)
+                    let feed = try await self.opdsFeedService.fetchFeed(from: revokeURL)
                     await MainActor.run {
                         self.bookRegistry.setProcessing(false, for: book.identifier)
                     }
@@ -1194,7 +1263,7 @@ extension MyBooksDownloadCenter {
                     }
 
                     TPPAnnotations.deleteAllBookmarks(forBook: book) {
-                        TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                        self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
                         self.bookRegistry.updateAndRemoveBook(returnedBook)
                         self.bookRegistry.setState(.unregistered, for: identifier)
                         self.performPostReturnSyncThen {
@@ -1220,7 +1289,7 @@ extension MyBooksDownloadCenter {
                             self.purgeAllAudiobookCaches(force: true)
                         }
                         TPPAnnotations.deleteAllBookmarks(forBook: book) {
-                            TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                            self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
                             self.bookRegistry.setState(.unregistered, for: identifier)
                             self.bookRegistry.removeBook(forIdentifier: identifier)
                             self.performPostReturnSyncThen {
@@ -1247,7 +1316,7 @@ extension MyBooksDownloadCenter {
                             self.purgeAllAudiobookCaches(force: true)
                         }
                         TPPAnnotations.deleteAllBookmarks(forBook: book) {
-                            TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                            self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
                             self.bookRegistry.setState(.unregistered, for: identifier)
                             self.bookRegistry.removeBook(forIdentifier: identifier)
                             self.performPostReturnSyncThen {
@@ -1287,14 +1356,15 @@ extension MyBooksDownloadCenter {
 
                         let operationId = "return-\(identifier)"
                         let retryAction: (() -> Void)? = {
-                            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+                            guard self.userRetryTracker.canRetry(operationId: operationId) else { return nil }
                             return { [weak self] in
-                                UserRetryTracker.shared.recordRetry(operationId: operationId)
-                                self?.returnBook(withIdentifier: identifier, completion: completion)
+                                guard let self else { return }
+                                self.userRetryTracker.recordRetry(operationId: operationId)
+                                self.returnBook(withIdentifier: identifier, completion: completion)
                             }
                         }()
 
-                        let message = (retryAction == nil && !UserRetryTracker.shared.canRetry(operationId: operationId))
+                        let message = (retryAction == nil && !self.userRetryTracker.canRetry(operationId: operationId))
                             ? Strings.MyDownloadCenter.tryAgainLater
                             : formattedMessage
 
@@ -1310,7 +1380,7 @@ extension MyBooksDownloadCenter {
                                 self.deleteLocalContent(for: identifier)
                                 self.purgeAllAudiobookCaches(force: true)
                             }
-                            TPPBookmarkDeletionLog.shared.clearAllDeletions(forBook: identifier)
+                            self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
                             self.bookRegistry.setState(.unregistered, for: identifier)
                             self.bookRegistry.removeBook(forIdentifier: identifier)
                             self.announceReturnSucceeded(for: book)
@@ -1335,9 +1405,16 @@ extension MyBooksDownloadCenter {
     /// Performs a registry sync after a return. On failure, posts `TPPSyncFailed` so the
     /// Reservations tab can show the sync error banner; completion is always called so the return UI is dismissed.
     private func performPostReturnSyncThen(completion: @escaping () -> Void) {
-        Task {
+        Task { [weak self] in
             do {
-                _ = try await TPPBookRegistry.shared.syncAsync()
+                // Use the injected `bookRegistry` rather than TPPBookRegistry.shared
+                // so unit tests can substitute a registry double. `syncAsync` is
+                // defined on the concrete `TPPBookRegistry` rather than the
+                // protocol; the cast is safe in production where
+                // `bookRegistry` is always the singleton.
+                if let registry = self?.bookRegistry as? TPPBookRegistry {
+                    _ = try await registry.syncAsync()
+                }
             } catch {
                 Log.error(#file, "Post-return sync failed: \(error.localizedDescription)")
                 NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
@@ -1699,11 +1776,11 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                     Task { [weak self] in
                         guard let self else { return }
                         do {
-                            try await AdobeDRMService.shared.ensureDeviceActivated()
+                            try await self.adobeDRMService.ensureDeviceActivated()
                             let ua = self.userAccount
                             Log.info(#file, "Adobe DRM activated — fulfilling ACSM for '\(book.title)' with userID: \(ua.userID ?? "nil")")
                             await MainActor.run {
-                                AdobeDRMService.shared.fulfill(withACSMData: acsmData, tag: book.identifier, userID: ua.userID, deviceID: ua.deviceID)
+                                self.adobeDRMService.fulfill(withACSMData: acsmData, tag: book.identifier, userID: ua.userID, deviceID: ua.deviceID)
                             }
                         } catch {
                             Log.error(#file, "Adobe DRM activation failed for '\(book.title)': \(error.localizedDescription)")
@@ -2416,8 +2493,8 @@ extension MyBooksDownloadCenter {
         dict["downloadError"] = downloadTask.error ?? "N/A"
 
         // Use enhanced logging if enabled
-        Task {
-            await DeviceSpecificErrorMonitor.shared.logDownloadFailure(
+        Task { [weak self] in
+            await self?.deviceSpecificErrorMonitor.logDownloadFailure(
                 book: book,
                 reason: reason,
                 error: downloadTask.error,
@@ -2571,16 +2648,17 @@ extension MyBooksDownloadCenter {
 
         announceDownloadFailed(for: book)
 
-        Task {
-            await ErrorActivityTracker.shared.log(
+        Task { [weak self] in
+            await self?.errorActivityTracker.log(
                 "Download failed for '\(book.title)': \(message ?? "unknown reason")",
                 category: .download
             )
+            guard let self else { return }
             // CRITICAL: Remove from bookIdentifierToDownloadInfo so retry works
-            await bookIdentifierToDownloadInfo.remove(book.identifier)
-            await downloadCoordinator.removeCachedDownloadInfo(for: book.identifier)
-            await downloadCoordinator.registerCompletion(identifier: book.identifier)
-            let remainingCount = await downloadCoordinator.activeCount
+            await self.bookIdentifierToDownloadInfo.remove(book.identifier)
+            await self.downloadCoordinator.removeCachedDownloadInfo(for: book.identifier)
+            await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
+            let remainingCount = await self.downloadCoordinator.activeCount
             Log.info(#file, "📊 Download failed for '\(book.title)', remaining active: \(remainingCount)")
             self.schedulePendingStartsIfPossible()
         }
@@ -2592,10 +2670,11 @@ extension MyBooksDownloadCenter {
         // Download failures are retryable
         let retryAction: (() -> Void)? = {
             let operationId = "download-\(book.identifier)"
-            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+            guard self.userRetryTracker.canRetry(operationId: operationId) else { return nil }
             return { [weak self] in
-                UserRetryTracker.shared.recordRetry(operationId: operationId)
-                self?.startDownload(for: book)
+                guard let self else { return }
+                self.userRetryTracker.recordRetry(operationId: operationId)
+                self.startDownload(for: book)
             }
         }()
 
@@ -2629,10 +2708,11 @@ extension MyBooksDownloadCenter {
         let retryAction: (() -> Void)? = {
             guard !isNoActiveLoan else { return nil }
             let operationId = "download-\(book.identifier)"
-            guard UserRetryTracker.shared.canRetry(operationId: operationId) else { return nil }
+            guard self.userRetryTracker.canRetry(operationId: operationId) else { return nil }
             return { [weak self] in
-                UserRetryTracker.shared.recordRetry(operationId: operationId)
-                self?.startDownload(for: book)
+                guard let self else { return }
+                self.userRetryTracker.recordRetry(operationId: operationId)
+                self.startDownload(for: book)
             }
         }()
 
