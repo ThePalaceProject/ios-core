@@ -1054,6 +1054,9 @@
 		BORROWRED01BUILDFILE0001P /* BorrowReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BORROWRED01FILEREF000001Z /* BorrowReducer.swift */; };
 		BORROWRED01BUILDFILE0002N /* BorrowReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BORROWRED01FILEREF000001Z /* BorrowReducer.swift */; };
 		BORROWREDTESTSBUILDFILE01 /* BorrowReducerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BORROWREDTESTSFILEREF001Z /* BorrowReducerTests.swift */; };
+		AUTHRED01BUILDFILE0001PALA /* AuthReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUTHRED01FILEREF000000001Z /* AuthReducer.swift */; };
+		AUTHRED01BUILDFILE0002NDRM /* AuthReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUTHRED01FILEREF000000001Z /* AuthReducer.swift */; };
+		AUTHREDTESTSBUILDFILE01ZZZ /* AuthReducerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUTHREDTESTSFILEREF001ZZZZ /* AuthReducerTests.swift */; };
 		E544A1E32DF35040008679D6 /* BookButtonMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544A1E22DF35039008679D6 /* BookButtonMapper.swift */; };
 		E544A1E42DF35040008679D6 /* BookButtonMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544A1E22DF35039008679D6 /* BookButtonMapper.swift */; };
 		E544C4E92A395BE000B2DC9D /* MyBooksDownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E544C4E82A395BE000B2DC9D /* MyBooksDownloadCenter.swift */; };
@@ -2435,6 +2438,8 @@
 		HOLDSREDTESTSFILEREF001Z /* HoldsReducerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HoldsReducerTests.swift; sourceTree = "<group>"; };
 		BORROWRED01FILEREF000001Z /* BorrowReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorrowReducer.swift; sourceTree = "<group>"; };
 		BORROWREDTESTSFILEREF001Z /* BorrowReducerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BorrowReducerTests.swift; sourceTree = "<group>"; };
+		AUTHRED01FILEREF000000001Z /* AuthReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthReducer.swift; sourceTree = "<group>"; };
+		AUTHREDTESTSFILEREF001ZZZZ /* AuthReducerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthReducerTests.swift; sourceTree = "<group>"; };
 		E544A1E22DF35039008679D6 /* BookButtonMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookButtonMapper.swift; sourceTree = "<group>"; };
 		E544C4E82A395BE000B2DC9D /* MyBooksDownloadCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksDownloadCenter.swift; sourceTree = "<group>"; };
 		E544C4EB2A395DDE00B2DC9D /* MyBooksDownloadInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksDownloadInfo.swift; sourceTree = "<group>"; };
@@ -3459,6 +3464,7 @@
 				089E42C5249A823800310360 /* TPPCookiesWebViewController.swift */,
 				734B78982565F7DE006FB8AD /* TPPReauthenticator.swift */,
 				731A5B1124621F2B00B5E663 /* TPPSignInBusinessLogic.swift */,
+				AUTHRED01FILEREF000000001Z /* AuthReducer.swift */,
 				E74752F627FF044400F5E7FA /* TPPSignInBusinessLogic+CardCreation.swift */,
 				730D17CB25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift */,
 				737F4A6A254A137900A3C34B /* TPPSignInBusinessLogic+DRM.swift */,
@@ -4129,6 +4135,7 @@
 				E6F7081A2B3C4D5E6F708192 /* TPPAuthDocumentContractTests.swift */,
 				F8091A2B3C4D5E6F70819213 /* TPPPreferredAuthSelectionTests.swift */,
 				091A2B3C4D5E6F708192A3B4 /* TPPCredentialSnapshotCoherenceTests.swift */,
+				AUTHREDTESTSFILEREF001ZZZZ /* AuthReducerTests.swift */,
 			);
 			path = SignInLogic;
 			sourceTree = "<group>";
@@ -6143,6 +6150,7 @@
 				CE9909A4CDA78EEE1B7B1936 /* PlaybackRateTests.swift in Sources */,
 				9EB44CD30C94D33258B12A16 /* DebugSettingsTests.swift in Sources */,
 				9131F05942C27772C1CA21E7 /* SAMLHelperTests.swift in Sources */,
+				AUTHREDTESTSBUILDFILE01ZZZ /* AuthReducerTests.swift in Sources */,
 				184131D3C04F95ED70463EB4 /* TPPCredentialsCoverageTests.swift in Sources */,
 				E4828A0C02FBF2DBC8894ED8 /* TPPSignInAdobeSkipTests.swift in Sources */,
 				2328B4483544EAC500B592B6 /* UserAccountValidationTests.swift in Sources */,
@@ -6292,6 +6300,7 @@
 				21E4177B292810E000A78606 /* TPPPDFDocument.swift in Sources */,
 				21E4178C292810F600A78606 /* TPPPDFToolbarButton.swift in Sources */,
 				73EB0A7F25821DF4006BC997 /* TPPSignInBusinessLogic.swift in Sources */,
+				AUTHRED01BUILDFILE0001PALA /* AuthReducer.swift in Sources */,
 				73EB0A8125821DF4006BC997 /* TPPConfiguration+SE.swift in Sources */,
 				E5BEF01A26BD94D600C2A50B /* UIFont+Extensions.swift in Sources */,
 				21E41795292812B700A78606 /* TPPSignInBusinessLogic+CardCreation.swift in Sources */,
@@ -6812,6 +6821,7 @@
 				E523124B285C3828007D1DB5 /* TPPBookRegistry+Extensions.swift in Sources */,
 				E5E4A9DD2EB0563200CC1D67 /* MyBooksDownloadCenter+Async.swift in Sources */,
 				731A5B1224621F2B00B5E663 /* TPPSignInBusinessLogic.swift in Sources */,
+				AUTHRED01BUILDFILE0002NDRM /* AuthReducer.swift in Sources */,
 				E708F720284781D50028405B /* TPPEncryptedPDFViewController.swift in Sources */,
 				738CB2062509A87700891F31 /* TPPConfiguration+SE.swift in Sources */,
 				E5AD72E52E5520FB005A8070 /* CatalogRepository.swift in Sources */,
