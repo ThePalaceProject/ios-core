@@ -128,7 +128,7 @@ final class ReaderService {
     /// download fails or takes longer than 120 seconds.
     @MainActor
     private func attemptRedownloadAndReopen(book: TPPBook, originalError: LibraryServiceError) {
-        MyBooksDownloadCenter.shared.deleteLocalContent(for: book.identifier)
+        AppContainer.production().downloadCenter.deleteLocalContent(for: book.identifier)
         TPPBookRegistry.shared.setState(.downloadNeeded, for: book.identifier)
 
         let showFallback = { [weak self] in
@@ -161,7 +161,7 @@ final class ReaderService {
                 }
             }
 
-        MyBooksDownloadCenter.shared.startDownload(for: book)
+        AppContainer.production().downloadCenter.startDownload(for: book)
     }
 
     @MainActor

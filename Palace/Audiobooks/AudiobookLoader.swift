@@ -164,7 +164,7 @@ final class AudiobookLoader {
         #endif
 
         Log.debug(#file, "  Checking for local audiobook manifest...")
-        if let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+        if let url = AppContainer.production().downloadCenter.fileUrl(for: book.identifier),
            FileManager.default.fileExists(atPath: url.path) {
             Log.debug(#file, "  Local file exists at: \(url.path)")
 
@@ -220,7 +220,7 @@ final class AudiobookLoader {
         for book: TPPBook,
         completion: @escaping (Result<URL, AudiobookLoadError>) -> Void
     ) {
-        if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+        if let localURL = AppContainer.production().downloadCenter.fileUrl(for: book.identifier),
            FileManager.default.fileExists(atPath: localURL.path) {
             Log.debug(#file, "  → Using LOCAL LCP file: \(localURL.path)")
             completion(.success(localURL))
@@ -288,7 +288,7 @@ final class AudiobookLoader {
             return
         }
 
-        guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else {
+        guard let contentURL = AppContainer.production().downloadCenter.fileUrl(for: book.identifier) else {
             Log.error(#file, "  ❌ Cannot determine content directory for LCP license")
             completion(.failure(.missingContentDirectory))
             return
@@ -332,7 +332,7 @@ final class AudiobookLoader {
     }
 
     private func licenseURL(forBookIdentifier identifier: String) -> URL? {
-        guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else { return nil }
+        guard let contentURL = AppContainer.production().downloadCenter.fileUrl(for: identifier) else { return nil }
         let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         return FileManager.default.fileExists(atPath: license.path) ? license : nil
     }

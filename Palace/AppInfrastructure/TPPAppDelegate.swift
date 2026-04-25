@@ -571,7 +571,7 @@ final class MemoryPressureMonitor {
             URLCache.shared.removeAllCachedResponses()
             TPPNetworkExecutor.shared.clearCache()
             await MainActor.run {
-                MyBooksDownloadCenter.shared.pauseAllDownloads()
+                AppContainer.production().downloadCenter.pauseAllDownloads()
             }
             Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
 
@@ -593,7 +593,7 @@ final class MemoryPressureMonitor {
             TPPNetworkExecutor.shared.clearCache()
 
             DispatchQueue.main.async {
-                MyBooksDownloadCenter.shared.pauseAllDownloads()
+                AppContainer.production().downloadCenter.pauseAllDownloads()
             }
 
             self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
@@ -628,7 +628,7 @@ final class MemoryPressureMonitor {
             if processInfo.isLowPowerModeEnabled {
                 maxActive = min(maxActive, 1)
             }
-            MyBooksDownloadCenter.shared.limitActiveDownloads(max: maxActive)
+            AppContainer.production().downloadCenter.limitActiveDownloads(max: maxActive)
         }
     }
 
@@ -645,7 +645,7 @@ final class MemoryPressureMonitor {
         GeneralCache<String, Data>.clearAllCaches()
 
         // Evict least-recently-used book files
-        MyBooksDownloadCenter.shared.enforceContentDiskBudgetIfNeeded(adding: 0)
+        AppContainer.production().downloadCenter.enforceContentDiskBudgetIfNeeded(adding: 0)
 
         // As a final step, prune very old files from Caches directory
         pruneOldFilesFromCachesDirectory(olderThanDays: 30)

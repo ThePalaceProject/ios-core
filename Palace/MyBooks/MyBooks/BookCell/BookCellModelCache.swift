@@ -83,7 +83,7 @@ final class BookCellModelCache: ObservableObject {
             configuration: .default,
             imageCache: ImageCache.shared,
             bookRegistry: TPPBookRegistry.shared,
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             samplePreviewManager: .shared,
             readerService: .shared

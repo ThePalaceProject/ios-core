@@ -70,11 +70,12 @@ struct AppContainer {
     ///
     /// The result is cached in a private `static let` so every call
     /// returns the same container instance. That preserves singleton
-    /// semantics for hubs constructed inline here (`NavigationCoordinatorHub`,
-    /// `AppTabRouterHub`) — there is exactly one of each app-wide because
-    /// there is exactly one cached `AppContainer`. Removing the hubs'
-    /// `static let shared` declarations was only safe under this caching
-    /// guarantee.
+    /// semantics for the services constructed inline here
+    /// (`NavigationCoordinatorHub`, `AppTabRouterHub`,
+    /// `MyBooksDownloadCenter`) — there is exactly one of each app-wide
+    /// because there is exactly one cached `AppContainer`. Removing those
+    /// types' `static let shared` declarations was only safe under this
+    /// caching guarantee.
     ///
     /// `BookCellModelCache` is constructed directly from the already-resolved
     /// partner singletons rather than via `BookCellModelCache.shared`. That
@@ -89,7 +90,7 @@ struct AppContainer {
     private static let _cached: AppContainer = {
         let imageCache: ImageCacheType = ImageCache.shared
         let bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
-        let downloadCenter = MyBooksDownloadCenter.shared
+        let downloadCenter = MyBooksDownloadCenter()
         let accountsManager = AccountsManager.shared
         let samplePreviewManager = SamplePreviewManager.shared
         let readerService = ReaderService.shared

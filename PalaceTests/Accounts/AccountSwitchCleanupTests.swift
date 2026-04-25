@@ -152,7 +152,7 @@ final class AccountSwitchCleanupTests: XCTestCase {
             configuration: .init(maxEntries: 50, unusedTTL: 60, observeRegistryChanges: false),
             imageCache: mockImageCache,
             bookRegistry: mockRegistry,
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             samplePreviewManager: .shared,
             readerService: .shared

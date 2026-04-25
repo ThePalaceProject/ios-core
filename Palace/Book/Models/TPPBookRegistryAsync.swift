@@ -94,7 +94,7 @@ extension TPPBookRegistry {
         for identifier in removedIds {
             let state = self.state(for: identifier)
             if state == .downloadSuccessful || state == .used {
-                MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
+                AppContainer.production().downloadCenter.deleteLocalContent(for: identifier)
             }
             self.setState(.unregistered, for: identifier)
             self.removeBook(forIdentifier: identifier)

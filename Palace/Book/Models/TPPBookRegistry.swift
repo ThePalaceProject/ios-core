@@ -111,7 +111,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     // MARK: - External dependencies
 
     private let accountsManager: AccountsManager
-    private lazy var downloadCenter: MyBooksDownloadCenter = .shared
     private var coverRegistry = TPPBookCoverRegistry.shared
 
     private var accountDidChangeCancellable: AnyCancellable?
@@ -199,7 +198,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         let sync = BookRegistrySync(
             store: store,
             accountsManager: accountsManager,
-            downloadCenterProvider: { .shared },
+            downloadCenterProvider: { AppContainer.production().downloadCenter },
             opdsFeedServiceProvider: { .shared }
         )
         self.store = store
@@ -224,7 +223,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         let sync = BookRegistrySync(
             store: store,
             accountsManager: accountsManager,
-            downloadCenterProvider: { .shared },
+            downloadCenterProvider: { AppContainer.production().downloadCenter },
             opdsFeedServiceProvider: { .shared }
         )
         self.store = store

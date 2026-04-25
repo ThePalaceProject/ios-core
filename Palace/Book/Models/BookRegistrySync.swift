@@ -6,11 +6,14 @@ class BookRegistrySync {
 
   private let store: BookRegistryStore
   private let accountsManager: AccountsManager
-  /// Resolved lazily because `MyBooksDownloadCenter.shared` itself reads
-  /// `TPPBookRegistry.shared` during init — taking the singleton at
+  /// Resolved lazily because `MyBooksDownloadCenter` itself reads
+  /// `TPPBookRegistry.shared` during init — taking the instance at
   /// BookRegistrySync construction time would deadlock the static-let
-  /// initialization chain. The closure runs only inside async dispatched
-  /// blocks, by which point all `.shared` singletons have settled.
+  /// initialization chain (BookRegistrySync is constructed inside
+  /// `TPPBookRegistry.init` which runs while `AppContainer._cached` is
+  /// still resolving). The closure runs only inside async dispatched
+  /// blocks, by which point `AppContainer.production().downloadCenter`
+  /// has settled.
   private let downloadCenterProvider: () -> MyBooksDownloadCenter
   private let opdsFeedServiceProvider: () -> OPDSFeedService
   private let registryFolderName = "registry"
@@ -23,7 +26,8 @@ class BookRegistrySync {
   var loadingAccount: String?
 
   /// Resolved-on-demand accessors. Tests may inject closures returning
-  /// fakes; production wires `.shared` getters at construction time.
+  /// fakes; production wires `AppContainer.production().downloadCenter`
+  /// (and the `.shared` OPDS feed service) at construction time.
   private var downloadCenter: MyBooksDownloadCenter { downloadCenterProvider() }
   private var opdsFeedService: OPDSFeedService { opdsFeedServiceProvider() }
 

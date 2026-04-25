@@ -20,8 +20,6 @@ import OverdriveProcessor
 @objc class MyBooksDownloadCenter: NSObject, URLSessionDelegate {
     typealias DisplayStrings = Strings.MyDownloadCenter
 
-    @objc static let shared = MyBooksDownloadCenter()
-
     /// Optional override used by tests / fault-injection harnesses to pin a
     /// specific user account. Production code MUST NOT set this — leave nil
     /// so `userAccount` always resolves to the current account via
@@ -46,9 +44,10 @@ import OverdriveProcessor
 
     // Phase 4 (Architectural Triad) — services formerly reached through
     // `.shared` are now stored properties initialized via the constructor.
-    // Production callers fall back to `.shared` defaults so the existing
-    // `MyBooksDownloadCenter.shared` static-let factory keeps working,
-    // but tests and the AppContainer composition root can substitute mocks.
+    // Production callers fall back to `.shared` defaults so the long-form
+    // designated init still works without a container; the AppContainer
+    // composition root constructs a single instance and tests can substitute
+    // mocks via the parameter list.
     let errorActivityTracker: ErrorActivityTracker
     let userRetryTracker: UserRetryTracker
     let reachability: Reachability
@@ -1057,7 +1056,7 @@ extension MyBooksDownloadCenter {
     func redownloadLCPContentFile(for book: TPPBook) {
         #if LCP
         guard LCPAudiobooks.canOpenBook(book) else { return }
-        guard let licenseURL = Self.lcpLicenseURL(forBookIdentifier: book.identifier) else {
+        guard let licenseURL = lcpLicenseURL(forBookIdentifier: book.identifier) else {
             Log.warn(#file, "📥 [LCP RE-DOWNLOAD] No license file found for '\(book.title)' — skipping")
             return
         }
@@ -1097,8 +1096,8 @@ extension MyBooksDownloadCenter {
     }
 
     /// Returns the .lcpl license URL for an LCP audiobook, if it exists on disk.
-    private static func lcpLicenseURL(forBookIdentifier identifier: String) -> URL? {
-        guard let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else { return nil }
+    private func lcpLicenseURL(forBookIdentifier identifier: String) -> URL? {
+        guard let bookURL = fileUrl(for: identifier) else { return nil }
         let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
         return FileManager.default.fileExists(atPath: licenseURL.path) ? licenseURL : nil
     }

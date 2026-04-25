@@ -29,7 +29,7 @@ final class BookCellModelCacheTests: XCTestCase {
             ),
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             samplePreviewManager: .shared,
             readerService: .shared
@@ -199,7 +199,7 @@ final class BookCellModelCacheTests: XCTestCase {
             ),
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             samplePreviewManager: .shared,
             readerService: .shared
@@ -240,7 +240,7 @@ final class BookCellModelCacheTests: XCTestCase {
             ),
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             samplePreviewManager: .shared,
             readerService: .shared
@@ -280,7 +280,7 @@ final class BookCellModelCacheTests: XCTestCase {
             ),
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             samplePreviewManager: .shared,
             readerService: .shared

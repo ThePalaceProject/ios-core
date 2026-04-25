@@ -49,7 +49,8 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
     @MainActor private var lastBroadcastTime: Date = Date.distantPast
     @MainActor private var pendingBroadcast: DispatchWorkItem?
 
-    /// The object to use as the notification sender (typically MyBooksDownloadCenter.shared)
+    /// The object to use as the notification sender
+    /// (typically `AppContainer.production().downloadCenter`).
     weak var notificationSender: AnyObject?
 
     // MARK: - Init

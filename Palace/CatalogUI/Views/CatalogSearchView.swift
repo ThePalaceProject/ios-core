@@ -22,7 +22,7 @@ struct CatalogSearchView: View {
         baseURL: @escaping () -> URL?,
         books: [TPPBook],
         onBookSelected: @escaping (TPPBook) -> Void,
-        downloadCenter: MyBooksDownloadCenter = .shared
+        downloadCenter: MyBooksDownloadCenter = AppContainer.production().downloadCenter
     ) {
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: repository, baseURL: baseURL))
         self.books = books
@@ -42,7 +42,7 @@ struct CatalogSearchView: View {
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: dummyRepository, baseURL: { nil }))
         self.books = books
         self.onBookSelected = onBookSelected
-        self.downloadCenter = .shared
+        self.downloadCenter = AppContainer.production().downloadCenter
     }
 
     var body: some View {

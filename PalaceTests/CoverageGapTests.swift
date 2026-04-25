@@ -365,10 +365,8 @@ final class MyBooksDownloadCenterAdeptGapTests: XCTestCase {
 
     /// Coverage Gap: adept progress update — verify progress tracking infrastructure
     func testDownloadCenter_downloadProgressPublisher_exists() {
-        // Verify the download progress infrastructure exists and is accessible
-        let center = MyBooksDownloadCenter.shared
-        XCTAssertNotNil(center, "MyBooksDownloadCenter should be accessible")
         // A book with no active download should report zero progress
+        let center = AppContainer.production().downloadCenter
         let progress = center.downloadProgress(for: "nonexistent-book-id")
         XCTAssertEqual(progress, 0.0, accuracy: 0.001,
                        "Progress for unknown book must be 0.0")

@@ -24,7 +24,7 @@ final class BookRegistrySyncTests: XCTestCase {
         syncManager = BookRegistrySync(
             store: store,
             accountsManager: .shared,
-            downloadCenterProvider: { .shared },
+            downloadCenterProvider: { AppContainer.production().downloadCenter },
             opdsFeedServiceProvider: { .shared }
         )
 

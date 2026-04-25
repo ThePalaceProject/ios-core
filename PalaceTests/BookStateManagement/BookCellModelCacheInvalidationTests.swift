@@ -25,7 +25,7 @@ final class BookCellModelCacheInvalidationTests: XCTestCase {
         cache = BookCellModelCache(
             imageCache: mockImageCache,
             bookRegistry: mockRegistry,
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             samplePreviewManager: .shared,
             readerService: .shared

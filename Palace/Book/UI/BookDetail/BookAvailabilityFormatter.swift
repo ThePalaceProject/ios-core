@@ -82,7 +82,7 @@ final class BookAvailabilityFormatter {
             let alert = TPPReturnPromptHelper.audiobookPrompt { returnWasChosen in
                 if returnWasChosen {
                     AppContainer.production().navigationCoordinatorHub.coordinator?.pop()
-                    MyBooksDownloadCenter.shared.returnBook(withIdentifier: book.identifier)
+                    AppContainer.production().downloadCenter.returnBook(withIdentifier: book.identifier)
                 }
                 TPPAppStoreReviewPrompt.presentIfAvailable()
             }

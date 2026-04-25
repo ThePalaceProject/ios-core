@@ -36,7 +36,7 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
             ),
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             samplePreviewManager: .shared,
             readerService: .shared

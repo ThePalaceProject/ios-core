@@ -37,7 +37,7 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: sparse,
             registry: TPPBookRegistryMock(),
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             settings: .shared,
             opdsFeedService: .shared,
@@ -73,7 +73,7 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: populated,
             registry: TPPBookRegistryMock(),
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             settings: .shared,
             opdsFeedService: .shared,
@@ -104,7 +104,7 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: sparseWithoutAlt,
             registry: TPPBookRegistryMock(),
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             settings: .shared,
             opdsFeedService: .shared,
@@ -160,7 +160,7 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: sparse,
             registry: TPPBookRegistryMock(),
-            downloadCenter: .shared,
+            downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             settings: .shared,
             opdsFeedService: .shared,

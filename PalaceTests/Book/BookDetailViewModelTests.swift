@@ -50,7 +50,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
 
   private func createViewModel(with book: TPPBook, state: TPPBookState = .unregistered) -> BookDetailViewModel {
     mockRegistry.addBook(book, location: nil, state: state, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
-    return BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: .shared, accountsManager: .shared, settings: .shared, opdsFeedService: .shared, samplePreviewManager: .shared, readerService: .shared)
+    return BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, settings: .shared, opdsFeedService: .shared, samplePreviewManager: .shared, readerService: .shared)
   }
 
   // MARK: - Initialization Tests
@@ -98,7 +98,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
     mockRegistry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
     // Act
-    let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: .shared, accountsManager: .shared, settings: .shared, opdsFeedService: .shared, samplePreviewManager: .shared, readerService: .shared)
+    let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, settings: .shared, opdsFeedService: .shared, samplePreviewManager: .shared, readerService: .shared)
 
     // Assert
     XCTAssertEqual(viewModel.bookState, .downloadSuccessful, "Should get state from registry")
@@ -415,7 +415,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
     mockRegistry.addBook(book1, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
     mockRegistry.addBook(book2, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-    let viewModel = BookDetailViewModel(book: book1, registry: mockRegistry, downloadCenter: .shared, accountsManager: .shared, settings: .shared, opdsFeedService: .shared, samplePreviewManager: .shared, readerService: .shared)
+    let viewModel = BookDetailViewModel(book: book1, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, settings: .shared, opdsFeedService: .shared, samplePreviewManager: .shared, readerService: .shared)
     let relatedBook = createTestBook()
     let lane = BookLane(title: "Similar", books: [relatedBook], subsectionURL: nil)
     viewModel.relatedBooksByLane = ["Similar": lane]
