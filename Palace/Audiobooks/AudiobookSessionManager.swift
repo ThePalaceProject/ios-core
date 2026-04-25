@@ -144,18 +144,78 @@ public final class AudiobookSessionManager: ObservableObject {
 
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
+    private let settings: TPPSettings
+    /// Reachability is resolved on demand because it's a process-wide
+    /// network monitor singleton; the closure makes it overridable in tests
+    /// without forcing every consumer to wire one up.
+    private let reachabilityProvider: () -> Reachability
+    /// Cover registry resolved lazily so a future migration that injects an
+    /// alternate cache (or a no-op for tests) doesn't force a touch here.
+    private let bookCoverRegistryProvider: () -> TPPBookCoverRegistry
+    /// Navigation hub resolved lazily — the hub itself is process-wide and
+    /// references a UIKit coordinator that isn't valid at construction time
+    /// during cold launch / CarPlay background launch.
+    private let navigationCoordinatorHubProvider: () -> NavigationCoordinatorHub
 
     // MARK: - Initialization
 
-    private init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, accountsManager: AccountsManager = AccountsManager.shared) {
+    /// Designated init — every dependency is explicit. `private` so the
+    /// singleton accessor remains the only entry point in production.
+    private init(
+        bookRegistry: TPPBookRegistryProvider,
+        accountsManager: AccountsManager,
+        settings: TPPSettings,
+        reachabilityProvider: @escaping () -> Reachability,
+        bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry,
+        navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub
+    ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
+        self.settings = settings
+        self.reachabilityProvider = reachabilityProvider
+        self.bookCoverRegistryProvider = bookCoverRegistryProvider
+        self.navigationCoordinatorHubProvider = navigationCoordinatorHubProvider
         Log.info(#file, "AudiobookSessionManager initialized")
         nowPlayingCoordinator = NowPlayingCoordinator()
         // Note: Remote commands are handled by the toolkit's MediaControlPublisher.
         // This manager now owns the full audiobook lifecycle (load → bind → play)
         // directly via AudiobookLoader; no pub/sub handoff is needed.
         subscribeToPhoneSideErrorAlerts()
+    }
+
+    /// Backwards-compatible convenience for the singleton. Resolves every
+    /// dependency from `.shared` accessors at the moment the singleton is
+    /// first touched. Production code should prefer
+    /// `init(appContainer:)` so the dep graph is explicit.
+    private convenience init() {
+        self.init(
+            bookRegistry: TPPBookRegistry.shared,
+            accountsManager: AccountsManager.shared,
+            settings: TPPSettings.shared,
+            reachabilityProvider: { Reachability.shared },
+            bookCoverRegistryProvider: { TPPBookCoverRegistry.shared },
+            navigationCoordinatorHubProvider: { NavigationCoordinatorHub.shared }
+        )
+    }
+
+    /// AppContainer-friendly initializer. Used by future call sites that
+    /// thread the container down to here. Provider closures default to
+    /// `.shared` accessors since AppContainer doesn't currently hold
+    /// Reachability / TPPBookCoverRegistry / NavigationCoordinatorHub.
+    convenience init(
+        appContainer: AppContainer,
+        reachabilityProvider: @escaping () -> Reachability = { Reachability.shared },
+        bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry = { TPPBookCoverRegistry.shared },
+        navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub = { NavigationCoordinatorHub.shared }
+    ) {
+        self.init(
+            bookRegistry: appContainer.bookRegistry,
+            accountsManager: appContainer.accountsManager,
+            settings: appContainer.settings,
+            reachabilityProvider: reachabilityProvider,
+            bookCoverRegistryProvider: bookCoverRegistryProvider,
+            navigationCoordinatorHubProvider: navigationCoordinatorHubProvider
+        )
     }
 
     /// Presents user-facing alerts for validation errors published to
@@ -432,7 +492,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
     /// Dismisses the audiobook player view on the phone
     private func dismissPlayerOnPhone(bookId: String) {
-        if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+        if let coordinator = navigationCoordinatorHubProvider().coordinator {
             Log.info(#file, "Dismissing player UI on phone for book: \(bookId)")
             coordinator.removeAudioModel(forBookId: bookId)
             coordinator.popToRoot()
@@ -507,8 +567,9 @@ public final class AudiobookSessionManager: ObservableObject {
             loaded.playbackModel.updateCoverImage(lowRes)
             updateCoverImage(lowRes)
         }
+        let coverRegistry = bookCoverRegistryProvider()
         Task { [weak self, weak playbackModel = loaded.playbackModel] in
-            guard let img = await TPPBookCoverRegistry.shared.coverImage(for: book) else { return }
+            guard let img = await coverRegistry.coverImage(for: book) else { return }
             await MainActor.run {
                 playbackModel?.updateCoverImageAnimated(img)
                 self?.updateCoverImage(img)
@@ -516,7 +577,7 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         let route = BookRoute(id: book.identifier)
-        if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+        if let coordinator = navigationCoordinatorHubProvider().coordinator {
             Log.debug(#file, "Presenting audiobook player route for \(book.identifier)")
             coordinator.storeAudioModel(loaded.playbackModel, forBookId: route.id)
             coordinator.pushAudioRoute(route)
@@ -556,7 +617,11 @@ public final class AudiobookSessionManager: ObservableObject {
         let bookId = book.identifier
         let audiobookRef = loaded.audiobook
         let playbackModelRef = loaded.playbackModel
-        TPPBookRegistry.shared.syncLocation(for: book) { [weak self, weak playbackModel = playbackModelRef, localPosition] (remoteBookmark: AudioBookmark?) in
+        // `syncLocation(for:)` lives on the concrete TPPBookRegistry as an
+        // extension; the provider protocol doesn't expose it. Cast at the
+        // call site so the rest of this file talks to the protocol.
+        let concreteRegistry = (bookRegistry as? TPPBookRegistry) ?? TPPBookRegistry.shared
+        concreteRegistry.syncLocation(for: book) { [weak self, weak playbackModel = playbackModelRef, localPosition] (remoteBookmark: AudioBookmark?) in
             guard let remoteBookmark = remoteBookmark,
                   let remote = TrackPosition(
                     audioBookmark: remoteBookmark,
@@ -607,13 +672,13 @@ public final class AudiobookSessionManager: ObservableObject {
     // MARK: - Position restoration helpers
 
     private func shouldRestoreBookmarkPosition(for book: TPPBook) -> Bool {
-        let hasLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier) != nil
+        let hasLocation = bookRegistry.location(forIdentifier: book.identifier) != nil
         guard hasLocation else { return false }
         return true
     }
 
     private func getValidLocalPosition(book: TPPBook, audiobook: Audiobook) -> TrackPosition? {
-        guard let dict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary(),
+        guard let dict = bookRegistry.location(forIdentifier: book.identifier)?.locationStringDictionary(),
               let localBookmark = AudioBookmark.create(locatorData: dict),
               let localPosition = TrackPosition(
                 audioBookmark: localBookmark,
@@ -664,11 +729,12 @@ public final class AudiobookSessionManager: ObservableObject {
             return .notDownloaded
         }
 
+        let reachability = reachabilityProvider()
         return Self.networkValidationError(
             bookState: bookState,
-            isConnectedToNetwork: Reachability.shared.isConnectedToNetwork(),
-            isOnWiFi: Reachability.shared.isOnWiFi,
-            downloadOnlyOnWiFi: TPPSettings.shared.downloadOnlyOnWiFi
+            isConnectedToNetwork: reachability.isConnectedToNetwork(),
+            isOnWiFi: reachability.isOnWiFi,
+            downloadOnlyOnWiFi: settings.downloadOnlyOnWiFi
         )
     }
 
@@ -712,7 +778,7 @@ public final class AudiobookSessionManager: ObservableObject {
             return true
         }
 
-        return AccountsManager.shared.currentUserAccount.hasCredentials()
+        return accountsManager.currentUserAccount.hasCredentials()
     }
 
     private func handleManagerState(_ managerState: AudiobookManagerState) {
@@ -744,7 +810,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
             // PP-3703: When BiblioBoard bearer token refresh fails due to SAML session expiration
             // (401 on CM fulfill link), trigger SAML re-login and then re-fetch fulfill to resume playback.
-            let userAccount = AccountsManager.shared.currentUserAccount
+            let userAccount = accountsManager.currentUserAccount
             if Self.shouldTriggerSAMLReauthForPlaybackFailure(error: error, userAccount: userAccount, currentBook: currentBook),
                let book = currentBook {
                 Log.info(#file, "SAML + BiblioBoard: Bearer token refresh failed (session expired) - triggering re-auth, will re-open audiobook after login")
@@ -754,7 +820,7 @@ public final class AudiobookSessionManager: ObservableObject {
                     Task { @MainActor in
                         guard let self else { return }
                         guard self.currentBook?.identifier == book.identifier else { return }
-                        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+                        guard self.accountsManager.currentUserAccount.hasCredentials() else {
                             Log.info(#file, "SAML re-auth cancelled or failed - not re-opening audiobook")
                             self.errorPublisher.send(.notAuthenticated)
                             return
