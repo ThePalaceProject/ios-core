@@ -196,7 +196,12 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     private override init() {
         self.accountsManager = .shared
         let store = BookRegistryStore()
-        let sync = BookRegistrySync(store: store)
+        let sync = BookRegistrySync(
+            store: store,
+            accountsManager: accountsManager,
+            downloadCenterProvider: { .shared },
+            opdsFeedServiceProvider: { .shared }
+        )
         self.store = store
         self.syncEngine = sync
         // The save / saveSync closures always persist to the account the CALLER
@@ -216,7 +221,12 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     fileprivate init(account: String, accountsManager: AccountsManager = .shared) {
         self.accountsManager = accountsManager
         let store = BookRegistryStore()
-        let sync = BookRegistrySync(store: store)
+        let sync = BookRegistrySync(
+            store: store,
+            accountsManager: accountsManager,
+            downloadCenterProvider: { .shared },
+            opdsFeedServiceProvider: { .shared }
+        )
         self.store = store
         self.syncEngine = sync
         self.bookmarks = BookmarkManager(

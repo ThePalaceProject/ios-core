@@ -5,6 +5,14 @@ import Foundation
 class BookRegistrySync {
 
   private let store: BookRegistryStore
+  private let accountsManager: AccountsManager
+  /// Resolved lazily because `MyBooksDownloadCenter.shared` itself reads
+  /// `TPPBookRegistry.shared` during init — taking the singleton at
+  /// BookRegistrySync construction time would deadlock the static-let
+  /// initialization chain. The closure runs only inside async dispatched
+  /// blocks, by which point all `.shared` singletons have settled.
+  private let downloadCenterProvider: () -> MyBooksDownloadCenter
+  private let opdsFeedServiceProvider: () -> OPDSFeedService
   private let registryFolderName = "registry"
   private let registryFileName = "registry.json"
   /// Serial queue for disk writes — prevents out-of-order save races where a stale
@@ -14,8 +22,21 @@ class BookRegistrySync {
   var syncUrl: URL?
   var loadingAccount: String?
 
-  init(store: BookRegistryStore) {
+  /// Resolved-on-demand accessors. Tests may inject closures returning
+  /// fakes; production wires `.shared` getters at construction time.
+  private var downloadCenter: MyBooksDownloadCenter { downloadCenterProvider() }
+  private var opdsFeedService: OPDSFeedService { opdsFeedServiceProvider() }
+
+  init(
+    store: BookRegistryStore,
+    accountsManager: AccountsManager,
+    downloadCenterProvider: @escaping () -> MyBooksDownloadCenter,
+    opdsFeedServiceProvider: @escaping () -> OPDSFeedService
+  ) {
     self.store = store
+    self.accountsManager = accountsManager
+    self.downloadCenterProvider = downloadCenterProvider
+    self.opdsFeedServiceProvider = opdsFeedServiceProvider
   }
 
   func registryUrl(for account: String) -> URL? {
@@ -29,7 +50,7 @@ class BookRegistrySync {
     setState: @escaping (TPPBookRegistry.RegistryState) -> Void,
     completion: (() -> Void)? = nil
   ) {
-    guard let account = account ?? AccountsManager.shared.currentAccountId,
+    guard let account = account ?? accountsManager.currentAccountId,
           let url = registryUrl(for: account)
     else {
       completion?()
@@ -136,7 +157,7 @@ class BookRegistrySync {
                 // subsequent opens use the local copy instead of ranged reads
                 // from GCS (PP-3704).
                 if LCPAudiobooks.canOpenBook(record.book),
-                   let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: record.book, account: account),
+                   let bookURL = downloadCenter.fileUrl(for: record.book, account: account),
                    !FileManager.default.fileExists(atPath: bookURL.path) {
                   Log.warn(#file, "  '\(record.book.title)' LCP audiobook playable via streaming but .lcpa MISSING - scheduling background re-download")
                   lcpBooksNeedingBackgroundRedownload.append(record.book)
@@ -201,13 +222,13 @@ class BookRegistrySync {
         #if LCP
         if !lcpBooksNeedingBackgroundRedownload.isEmpty {
           Log.info(#file, "  Scheduling background .lcpa re-download for \(lcpBooksNeedingBackgroundRedownload.count) orphaned LCP audiobook(s)")
-          DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-            guard AccountsManager.shared.currentAccountId == loadedAccount else {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [accountsManager, downloadCenter] in
+            guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping LCP background re-download — account changed during wait")
               return
             }
             for book in lcpBooksNeedingBackgroundRedownload {
-              MyBooksDownloadCenter.shared.redownloadLCPContentFile(for: book)
+              downloadCenter.redownloadLCPContentFile(for: book)
             }
           }
         }
@@ -215,13 +236,13 @@ class BookRegistrySync {
 
         if !orphanedBooksNeedingRedownload.isEmpty {
           Log.info(#file, "  Scheduling auto-restart for \(orphanedBooksNeedingRedownload.count) orphaned download(s)")
-          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-            guard AccountsManager.shared.currentAccountId == loadedAccount else {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [accountsManager, downloadCenter] in
+            guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping orphan auto-restart — account changed during wait")
               return
             }
             for book in orphanedBooksNeedingRedownload {
-              MyBooksDownloadCenter.shared.startDownload(for: book)
+              downloadCenter.startDownload(for: book)
             }
           }
         }
@@ -252,7 +273,7 @@ class BookRegistrySync {
     // libraries while the feed fetch is in flight, we persist the result to
     // the account that was syncing — not the one that happens to be current
     // when the save commits (PP-4129 regression).
-    guard let currentAccount = AccountsManager.shared.currentAccount,
+    guard let currentAccount = accountsManager.currentAccount,
           let loansUrl = currentAccount.loansUrl
     else { return }
     let accountUUID = currentAccount.uuid
@@ -267,7 +288,7 @@ class BookRegistrySync {
 
       let feed: TPPOPDSFeed
       do {
-        feed = try await OPDSFeedService.shared.fetchFeed(from: loansUrl, resetCache: true)
+        feed = try await opdsFeedService.fetchFeed(from: loansUrl, resetCache: true)
       } catch {
         let errorDocument = (error as NSError).userInfo as? [AnyHashable: Any]
         Log.warn(#file, "Loans sync failed: \(error.localizedDescription)")
@@ -382,7 +403,7 @@ class BookRegistrySync {
         // overload so the call never re-enters the registry to look up the book
         // by identifier (the record is already gone at this point anyway).
         for book in booksToDeleteLocally {
-          MyBooksDownloadCenter.shared.deleteLocalContent(forBook: book, account: accountUUID)
+          downloadCenter.deleteLocalContent(forBook: book, account: accountUUID)
         }
 
         if changesMade {
@@ -398,7 +419,7 @@ class BookRegistrySync {
 
   /// Persist the registry for the given account. The caller MUST pass the account
   /// that owns the mutation being persisted (captured synchronously at the moment
-  /// of dispatch), not `AccountsManager.shared.currentAccount` looked up at save
+  /// of dispatch), not `accountsManager.currentAccount` looked up at save
   /// time. In async flows, a mutation queued on account A can execute after the
   /// user has switched to account B; looking up the current account inside `save()`
   /// would persist A's state to B's registry file and cause cross-account
@@ -448,7 +469,7 @@ class BookRegistrySync {
   }
 
   func validateDownloadedContent() {
-    guard let account = AccountsManager.shared.currentAccount?.uuid else { return }
+    guard let account = accountsManager.currentAccount?.uuid else { return }
 
     var didChange = false
     store.mutateRegistrySync { registry in
@@ -499,7 +520,7 @@ class BookRegistrySync {
   }
 
   func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {
-    guard let bookURL = MyBooksDownloadCenter.shared.fileUrl(for: book, account: account) else {
+    guard let bookURL = downloadCenter.fileUrl(for: book, account: account) else {
       return false
     }
 

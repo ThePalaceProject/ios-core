@@ -21,7 +21,12 @@ final class BookRegistrySyncTests: XCTestCase {
     override func setUp() {
         super.setUp()
         store = BookRegistryStore()
-        syncManager = BookRegistrySync(store: store)
+        syncManager = BookRegistrySync(
+            store: store,
+            accountsManager: .shared,
+            downloadCenterProvider: { .shared },
+            opdsFeedServiceProvider: { .shared }
+        )
 
         // Create a temp directory for registry file I/O tests
         tempDirectory = FileManager.default.temporaryDirectory
