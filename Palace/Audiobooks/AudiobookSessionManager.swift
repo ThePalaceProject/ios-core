@@ -199,7 +199,7 @@ public final class AudiobookSessionManager: ObservableObject {
             settings: TPPSettings.shared,
             reachabilityProvider: { Reachability.shared },
             bookCoverRegistryProvider: { TPPBookCoverRegistry.shared },
-            navigationCoordinatorHubProvider: { NavigationCoordinatorHub.shared }
+            navigationCoordinatorHubProvider: { AppContainer.production().navigationCoordinatorHub }
         )
     }
 
@@ -211,7 +211,7 @@ public final class AudiobookSessionManager: ObservableObject {
         appContainer: AppContainer,
         reachabilityProvider: @escaping () -> Reachability = { Reachability.shared },
         bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry = { TPPBookCoverRegistry.shared },
-        navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub = { NavigationCoordinatorHub.shared }
+        navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub = { AppContainer.production().navigationCoordinatorHub }
     ) {
         self.init(
             bookRegistry: appContainer.bookRegistry,

@@ -1058,7 +1058,7 @@ extension BookDetailViewModel {
         if paths.count > 0 {
             let alert = TPPReturnPromptHelper.audiobookPrompt { returnWasChosen in
                 if returnWasChosen {
-                    NavigationCoordinatorHub.shared.coordinator?.pop()
+                    AppContainer.production().navigationCoordinatorHub.coordinator?.pop()
                     downloadCenter.returnBook(withIdentifier: book.identifier)
                 }
                 TPPAppStoreReviewPrompt.presentIfAvailable()

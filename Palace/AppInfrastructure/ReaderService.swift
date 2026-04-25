@@ -37,7 +37,7 @@ final class ReaderService {
         r3Owner.libraryService.openBook(book, sender: presenter) { result in
             switch result {
             case .success(let publication):
-                if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+                if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                     coordinator.store(book: book)
                     coordinator.storeEPUBPublication(publication, forBookId: book.identifier, forSample: false)
                     coordinator.push(.epub(BookRoute(id: book.identifier)))
@@ -58,7 +58,7 @@ final class ReaderService {
         r3Owner.libraryService.openSample(book, sampleURL: url, sender: presenter) { result in
             switch result {
             case .success(let publication):
-                if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+                if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                     coordinator.store(book: book)
                     coordinator.presentEPUBSample(publication, forBookId: book.identifier)
                 } else {

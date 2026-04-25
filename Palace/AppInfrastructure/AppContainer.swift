@@ -68,21 +68,33 @@ struct AppContainer {
     /// SceneDelegate, the SwiftUI `@Environment` default) call this and
     /// only this to construct the live service graph.
     ///
-    /// Constructs `BookCellModelCache` directly from already-resolved
-    /// partner singletons rather than reading `BookCellModelCache.shared`.
-    /// That removes the historical init cycle in which a re-entrant
-    /// `\.appContainer` access during `BookCellModelCache.shared`'s
-    /// factory deadlocked the static-let init lock — `production()` no
-    /// longer touches `BookCellModelCache.shared`, so the cycle is closed.
-    /// `BookCellModelCache.shared` itself stays alive for legacy
-    /// default-arg callers; it will be removed once those migrate.
+    /// The result is cached in a private `static let` so every call
+    /// returns the same container instance. That preserves singleton
+    /// semantics for hubs constructed inline here (`NavigationCoordinatorHub`,
+    /// `AppTabRouterHub`) — there is exactly one of each app-wide because
+    /// there is exactly one cached `AppContainer`. Removing the hubs'
+    /// `static let shared` declarations was only safe under this caching
+    /// guarantee.
+    ///
+    /// `BookCellModelCache` is constructed directly from the already-resolved
+    /// partner singletons rather than via `BookCellModelCache.shared`. That
+    /// removes the historical init cycle in which a re-entrant `\.appContainer`
+    /// access during `BookCellModelCache.shared`'s factory deadlocked the
+    /// static-let init lock. `BookCellModelCache.shared` itself stays alive
+    /// for legacy default-arg callers; it will be removed once those migrate.
     static func production() -> AppContainer {
+        _cached
+    }
+
+    private static let _cached: AppContainer = {
         let imageCache: ImageCacheType = ImageCache.shared
         let bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
         let downloadCenter = MyBooksDownloadCenter.shared
         let accountsManager = AccountsManager.shared
         let samplePreviewManager = SamplePreviewManager.shared
         let readerService = ReaderService.shared
+        let navigationCoordinatorHub = NavigationCoordinatorHub()
+        let tabRouterHub = AppTabRouterHub()
 
         // BookCellModelCache is `@MainActor`-isolated. `production()` is
         // called either from app init (main thread) or via SwiftUI's
@@ -113,8 +125,8 @@ struct AppContainer {
             opdsFeedService: .shared,
             samplePreviewManager: samplePreviewManager,
             readerService: readerService,
-            navigationCoordinatorHub: .shared,
-            tabRouterHub: .shared,
+            navigationCoordinatorHub: navigationCoordinatorHub,
+            tabRouterHub: tabRouterHub,
             drmAuthorizerProvider: {
                 #if FEATURE_DRM_CONNECTOR
                 return AdobeCertificate.isDRMAvailable ? AdobeDRMService.shared.adeptInstance : nil
@@ -123,7 +135,7 @@ struct AppContainer {
                 #endif
             }
         )
-    }
+    }()
 }
 
 // MARK: - SwiftUI Environment Integration

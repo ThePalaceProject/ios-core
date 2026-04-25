@@ -278,7 +278,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                     return
                 }
 
-                AppTabRouterHub.shared.navigate(to: .holds)
+                AppContainer.production().tabRouterHub.navigate(to: .holds)
                 Log.info(#file, "[Notification] Navigated to Holds tab")
                 completionHandler()
             }

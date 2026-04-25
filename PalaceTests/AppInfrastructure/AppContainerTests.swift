@@ -44,8 +44,8 @@ final class AppContainerTests: XCTestCase {
             opdsFeedService: .shared,
             samplePreviewManager: .shared,
             readerService: .shared,
-            navigationCoordinatorHub: .shared,
-            tabRouterHub: .shared,
+            navigationCoordinatorHub: NavigationCoordinatorHub(),
+            tabRouterHub: AppTabRouterHub(),
             drmAuthorizerProvider: { nil }
         )
         XCTAssertTrue(
@@ -79,8 +79,8 @@ final class AppContainerTests: XCTestCase {
             opdsFeedService: .shared,
             samplePreviewManager: .shared,
             readerService: .shared,
-            navigationCoordinatorHub: .shared,
-            tabRouterHub: .shared,
+            navigationCoordinatorHub: NavigationCoordinatorHub(),
+            tabRouterHub: AppTabRouterHub(),
             drmAuthorizerProvider: { nil }
         )
         let containerB = AppContainer.production()
