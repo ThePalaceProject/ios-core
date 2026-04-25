@@ -1,6 +1,5 @@
 import Combine
 import SwiftUI
-import SafariServices
 import PalaceAudiobookToolkit
 
 #if LCP
@@ -320,7 +319,7 @@ final class BookDetailViewModel: ObservableObject {
                     self.downloadErrorAlert = AlertModel(title: errorInfo.title, message: errorInfo.message)
                 }
 
-                // BookActionHandler.startDownloadAfterAuth sets bookState =
+                // startDownloadAfterAuth sets bookState =
                 // .downloading and shows a Cancel button in the half-sheet
                 // before the download task even runs. When the download is
                 // refused (Wi-Fi-only on cellular, auth issue, etc.), nothing
@@ -897,17 +896,11 @@ final class BookDetailViewModel: ObservableObject {
     private func presentWebView(_ url: URL?) {
         guard let url = url else { return }
         guard let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else { return }
-
-        if url.scheme == "http" || url.scheme == "https" {
-            let safari = SFSafariViewController(url: url)
-            top.present(safari, animated: true)
-        } else {
-            let webController = BundledHTMLViewController(
-                fileURL: url,
-                title: accountsManager.currentAccount?.name ?? ""
-            )
-            top.present(webController, animated: true)
-        }
+        let controller = PreviewControllerFactory.makePreviewController(
+            for: url,
+            title: accountsManager.currentAccount?.name ?? ""
+        )
+        top.present(controller, animated: true)
     }
 
     // MARK: - Error Alerts

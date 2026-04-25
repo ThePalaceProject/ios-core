@@ -779,17 +779,17 @@ final class BookDetailViewModelUnitTests: XCTestCase {
 //
 // PP-2979 (commit 384b6aef9) added SFSafariViewController routing because
 // third-party preview readers (e.g. Cantook) need Web APIs that the embedded
-// WKWebView doesn't expose. The routing was dropped when BookActionHandler
-// was extracted from BookDetailViewModel — these tests pin the invariant so
-// the next refactor can't silently regress it.
+// WKWebView doesn't expose. The routing was dropped when the inline-vs-
+// extracted helper rewrote BookDetailViewModel.presentWebView — these
+// tests pin the invariant so the next refactor can't silently regress it.
 
 @MainActor
-final class BookActionHandlerPreviewRoutingTests: XCTestCase {
+final class PreviewControllerFactoryRoutingTests: XCTestCase {
 
   func testPreviewController_ForHTTPSURL_ReturnsSafariViewController() {
     let url = URL(string: "https://marketplace.example.com/preview/abc")!
 
-    let controller = BookActionHandler.previewController(for: url, title: "Lib")
+    let controller = PreviewControllerFactory.makePreviewController(for: url, title: "Lib")
 
     XCTAssertTrue(
       controller is SFSafariViewController,
@@ -800,7 +800,7 @@ final class BookActionHandlerPreviewRoutingTests: XCTestCase {
   func testPreviewController_ForHTTPURL_ReturnsSafariViewController() {
     let url = URL(string: "http://marketplace.example.com/preview/abc")!
 
-    let controller = BookActionHandler.previewController(for: url, title: "Lib")
+    let controller = PreviewControllerFactory.makePreviewController(for: url, title: "Lib")
 
     XCTAssertTrue(controller is SFSafariViewController)
   }
@@ -808,7 +808,7 @@ final class BookActionHandlerPreviewRoutingTests: XCTestCase {
   func testPreviewController_ForFileURL_ReturnsBundledHTMLViewController() {
     let url = URL(fileURLWithPath: "/tmp/sample.html")
 
-    let controller = BookActionHandler.previewController(for: url, title: "Lib")
+    let controller = PreviewControllerFactory.makePreviewController(for: url, title: "Lib")
 
     XCTAssertTrue(
       controller is BundledHTMLViewController,

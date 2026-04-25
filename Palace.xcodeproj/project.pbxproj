@@ -848,8 +848,8 @@
 		C68C9469871DE1074439C449 /* TypographyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59857C4239FBD7A4ABA37871 /* TypographyService.swift */; };
 		C6C2BB5EDA39F3116659A4A6 /* FontPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D99051FE5305ABE13531F76 /* FontPickerView.swift */; };
 		C72E88998C74489891046AA3 /* TPPBookmarkDeletionLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72E88998C74489891046AA2 /* TPPBookmarkDeletionLogTests.swift */; };
-		C7A10001AAAA000100000001 /* BookActionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A10001AAAA000000000001 /* BookActionHandler.swift */; };
-		C7A10001AAAA000100000002 /* BookActionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A10001AAAA000000000001 /* BookActionHandler.swift */; };
+		C7A10001AAAA000100000001 /* PreviewControllerFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A10001AAAA000000000001 /* PreviewControllerFactory.swift */; };
+		C7A10001AAAA000100000002 /* PreviewControllerFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A10001AAAA000000000001 /* PreviewControllerFactory.swift */; };
 		C7A10002AAAA000100000001 /* BookAvailabilityFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A10002AAAA000000000001 /* BookAvailabilityFormatter.swift */; };
 		C7A10002AAAA000100000002 /* BookAvailabilityFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A10002AAAA000000000001 /* BookAvailabilityFormatter.swift */; };
 		C7A10003AAAA000100000001 /* TPPBook+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A10003AAAA000000000001 /* TPPBook+Presentation.swift */; };
@@ -2303,7 +2303,7 @@
 		C61A8F5FC897F582128D45B7 /* NetworkClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkClientTests.swift; sourceTree = "<group>"; };
 		C71662BC50D2A8BFAFD5C37A /* AudiobookTimeEntryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookTimeEntryTests.swift; sourceTree = "<group>"; };
 		C72E88998C74489891046AA2 /* TPPBookmarkDeletionLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TPPBookmarkDeletionLogTests.swift; path = Bookmarks/TPPBookmarkDeletionLogTests.swift; sourceTree = "<group>"; };
-		C7A10001AAAA000000000001 /* BookActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookActionHandler.swift; sourceTree = "<group>"; };
+		C7A10001AAAA000000000001 /* PreviewControllerFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewControllerFactory.swift; sourceTree = "<group>"; };
 		C7A10002AAAA000000000001 /* BookAvailabilityFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookAvailabilityFormatter.swift; sourceTree = "<group>"; };
 		C7A10003AAAA000000000001 /* TPPBook+Presentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Presentation.swift"; sourceTree = "<group>"; };
 		C8F8EBC8684EF42942C688A7 /* ReadingStatsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStatsService.swift; sourceTree = "<group>"; };
@@ -4847,7 +4847,7 @@
 				E5DE86FB2D6C39C6003D356E /* BookImageView.swift */,
 				E521EADB2D56B59C00C08ADF /* HalfSheetview.swift */,
 				E5D8C8DC2D829B2000667A99 /* HTMLTextView.swift */,
-				C7A10001AAAA000000000001 /* BookActionHandler.swift */,
+				C7A10001AAAA000000000001 /* PreviewControllerFactory.swift */,
 				C7A10002AAAA000000000001 /* BookAvailabilityFormatter.swift */,
 				E562DD952D35AB88003A1A40 /* BookDetailViewModel.swift */,
 				E562DD992D35ABBF003A1A40 /* BookDetailView.swift */,
@@ -6411,7 +6411,7 @@
 				73EB0AC525821DF4006BC997 /* TPPSettings+SE.swift in Sources */,
 				E50543642E5F68B2007CCFAB /* LibraryNavTitle.swift in Sources */,
 				E562DD972D35AB8F003A1A40 /* BookDetailViewModel.swift in Sources */,
-				C7A10001AAAA000100000002 /* BookActionHandler.swift in Sources */,
+				C7A10001AAAA000100000002 /* PreviewControllerFactory.swift in Sources */,
 				C7A10002AAAA000100000002 /* BookAvailabilityFormatter.swift in Sources */,
 				C7A10003AAAA000100000002 /* TPPBook+Presentation.swift in Sources */,
 				E2CFEDD21B1544149D45935D /* AccountDetailViewModel.swift in Sources */,
@@ -7080,7 +7080,7 @@
 				E5AD72EF2E55218A005A8070 /* URLSessionNetworkClient.swift in Sources */,
 				E5AD72F02E55218A005A8070 /* NetworkClient.swift in Sources */,
 				E562DD962D35AB8F003A1A40 /* BookDetailViewModel.swift in Sources */,
-				C7A10001AAAA000100000001 /* BookActionHandler.swift in Sources */,
+				C7A10001AAAA000100000001 /* PreviewControllerFactory.swift in Sources */,
 				C7A10002AAAA000100000001 /* BookAvailabilityFormatter.swift in Sources */,
 				C7A10003AAAA000100000001 /* TPPBook+Presentation.swift in Sources */,
 				089E430C24A2459100310360 /* TPPLoginCellTypes.swift in Sources */,
