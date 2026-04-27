@@ -301,7 +301,7 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        self.authToken = authToken
+        self.dispatch(.bearerTokenReceived(token: authToken, expiration: nil))
         self.patron = parsedPatron
         validateCredentials()
     }

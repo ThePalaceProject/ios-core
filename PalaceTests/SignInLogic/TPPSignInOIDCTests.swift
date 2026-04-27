@@ -240,7 +240,7 @@ final class OIDCMakeRequestTests: XCTestCase {
 
     func testMakeRequest_forOIDC_addsBearerTokenHeader() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
-        businessLogic.authToken = "oidc-test-access-token"
+        businessLogic.dispatch(.bearerTokenReceived(token: "oidc-test-access-token", expiration: nil))
 
         let request = businessLogic.makeRequest(for: .signIn, context: "test")
 
@@ -253,7 +253,7 @@ final class OIDCMakeRequestTests: XCTestCase {
 
     func testMakeRequest_forOIDC_withoutToken_stillCreatesRequest() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
-        businessLogic.authToken = nil
+        businessLogic.dispatch(.signOutCompleted)
 
         let request = businessLogic.makeRequest(for: .signIn, context: "test")
 
@@ -262,7 +262,7 @@ final class OIDCMakeRequestTests: XCTestCase {
 
     func testMakeRequest_forOIDCSignOut_usesUserProfileURL() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
-        businessLogic.authToken = "oidc-token"
+        businessLogic.dispatch(.bearerTokenReceived(token: "oidc-token", expiration: nil))
 
         let request = businessLogic.makeRequest(for: .signOut, context: "test")
 
@@ -714,7 +714,7 @@ final class OIDCRegressionTests: XCTestCase {
         defer { businessLogic.userAccount.removeAll() }
 
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
-        businessLogic.authToken = "oauth-regression-token"
+        businessLogic.dispatch(.bearerTokenReceived(token: "oauth-regression-token", expiration: nil))
 
         let request = businessLogic.makeRequest(for: .signIn, context: "regression-test")
         XCTAssertEqual(request?.value(forHTTPHeaderField: "Authorization"), "Bearer oauth-regression-token")
@@ -736,7 +736,7 @@ final class OIDCRegressionTests: XCTestCase {
         defer { businessLogic.userAccount.removeAll() }
 
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
-        businessLogic.authToken = "saml-regression-token"
+        businessLogic.dispatch(.bearerTokenReceived(token: "saml-regression-token", expiration: nil))
 
         let request = businessLogic.makeRequest(for: .signIn, context: "regression-test")
         XCTAssertEqual(request?.value(forHTTPHeaderField: "Authorization"), "Bearer saml-regression-token")
@@ -976,7 +976,7 @@ final class OIDCCallbackEdgeCaseTests: XCTestCase {
 
     func testHandleOIDCCallback_doesNotAffectPriorOAuthState() {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
-        businessLogic.authToken = "existing-oauth-token"
+        businessLogic.dispatch(.bearerTokenReceived(token: "existing-oauth-token", expiration: nil))
 
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback")!
@@ -1367,6 +1367,38 @@ final class OIDCSignOutRegressionTests: XCTestCase {
         XCTAssertNil(businessLogic.userAccount.authToken,
                      "SAML sign-out must still clear tokens after OIDC changes")
     }
+
+    func testSignOut_resetsInFlightAuthState() {
+        // performLogOut now dispatches .signOutCompleted after userAccount.removeAll().
+        // Verifies the in-flight reducer state (authToken, capturedBarcode, ignoreSignedInState,
+        // isLoggingInAfterSignUp) is fully reset — the next sign-in starts from a clean slate.
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        businessLogic.dispatch(.bearerTokenReceived(token: "stale", expiration: Date()))
+        businessLogic.dispatch(.credentialCaptureStarted(barcode: "u", pin: "p"))
+        businessLogic.dispatch(.refreshAuthStarted(authType: .oidc, usingExistingCredentials: false))
+        businessLogic.isLoggingInAfterSignUp = true
+        businessLogic.updateUserAccount(forDRMAuthorization: true,
+                                        withBarcode: nil, pin: nil,
+                                        authToken: "current",
+                                        expirationDate: nil,
+                                        patron: nil, cookies: nil)
+        // After updateUserAccount, .userAccountUpdated already cleared most fields.
+        // Re-arm a couple to verify .signOutCompleted clears them too.
+        businessLogic.dispatch(.bearerTokenReceived(token: "post-update-token", expiration: nil))
+        businessLogic.isLoggingInAfterSignUp = true
+
+        let exp = expectation(description: "Sign-out completes")
+        uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
+        businessLogic.performLogOut()
+        waitForExpectations(timeout: 5.0)
+
+        XCTAssertNil(businessLogic.authToken, "signOut must clear in-flight authToken")
+        XCTAssertNil(businessLogic.capturedBarcode)
+        XCTAssertNil(businessLogic.capturedPin)
+        XCTAssertFalse(businessLogic.ignoreSignedInState)
+        XCTAssertFalse(businessLogic.isLoggingInAfterSignUp,
+                       "signOut must clear the after-signup flag (.signOutCompleted resets the whole AuthState)")
+    }
 }
 
 // MARK: - Regression Tests: Token Refresh Logic
@@ -1577,12 +1609,12 @@ final class OIDCIsolationRegressionTests: XCTestCase {
 
         let oauthBL = makeBusinessLogic()
         oauthBL.selectedAuthentication = libraryMock.oauthAuthentication
-        oauthBL.authToken = "oauth-tok"
+        oauthBL.dispatch(.bearerTokenReceived(token: "oauth-tok", expiration: nil))
         let oauthReq = oauthBL.makeRequest(for: .signIn, context: "test")
 
         let oidcBL = makeBusinessLogic()
         oidcBL.selectedAuthentication = libraryMock.oidcAuthentication
-        oidcBL.authToken = "oidc-tok"
+        oidcBL.dispatch(.bearerTokenReceived(token: "oidc-tok", expiration: nil))
         let oidcReq = oidcBL.makeRequest(for: .signIn, context: "test")
 
         XCTAssertEqual(oauthReq?.value(forHTTPHeaderField: "Authorization"), "Bearer oauth-tok")

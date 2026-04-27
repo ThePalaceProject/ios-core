@@ -221,6 +221,7 @@ extension TPPSignInBusinessLogic {
         userAccount.removeAll()
         selectedIDP = nil
         samlHelper.clearState()
+        dispatch(.signOutCompleted)
 
         TPPNetworkExecutor.shared.clearCache()
         URLCache.shared.removeAllCachedResponses()

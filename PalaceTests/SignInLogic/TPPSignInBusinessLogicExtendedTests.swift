@@ -186,7 +186,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
             cookies: nil
         )
 
-        businessLogic.ignoreSignedInState = true
+        businessLogic.dispatch(.refreshAuthStarted(authType: .saml, usingExistingCredentials: false))
         XCTAssertFalse(businessLogic.isSignedIn())
     }
 
@@ -245,7 +245,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     func testMakeRequest_forOAuth_hasBearerToken() {
         businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
-        businessLogic.authToken = "test-token"
+        businessLogic.dispatch(.bearerTokenReceived(token: "test-token", expiration: nil))
 
         let request = businessLogic.makeRequest(for: .signIn, context: "test")
 
@@ -256,7 +256,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     func testMakeRequest_forSAML_hasBearerToken() {
         businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
-        businessLogic.authToken = "saml-token"
+        businessLogic.dispatch(.bearerTokenReceived(token: "saml-token", expiration: nil))
 
         let request = businessLogic.makeRequest(for: .signIn, context: "test")
 
@@ -641,6 +641,101 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
         XCTAssertEqual(result, expectedResult,
                        "shouldShowSyncButton() should return \(expectedResult) based on library configuration")
+    }
+
+    // MARK: - AuthReducer integration: behaviors introduced by the wiring
+
+    func testUpdateUserAccount_clearsInFlightAuthToken() {
+        // .userAccountUpdated dispatched at the end of updateUserAccount must
+        // clear the in-flight authToken — the persisted store on userAccount
+        // is now the only source of truth.
+        businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
+        businessLogic.dispatch(.bearerTokenReceived(token: "in-flight-token", expiration: Date()))
+        XCTAssertEqual(businessLogic.authToken, "in-flight-token", "precondition")
+
+        businessLogic.updateUserAccount(forDRMAuthorization: true,
+                                        withBarcode: nil, pin: nil,
+                                        authToken: "persisted-token",
+                                        expirationDate: nil,
+                                        patron: nil,
+                                        cookies: nil)
+
+        XCTAssertNil(businessLogic.authToken,
+                     "In-flight authToken must be cleared once the canonical store is updated")
+        XCTAssertNil(businessLogic.authTokenExpiration,
+                     "In-flight expiration must be cleared alongside the token")
+        XCTAssertEqual(businessLogic.userAccount.authToken, "persisted-token",
+                       "Persisted token on userAccount must reflect what was passed in")
+    }
+
+    func testUpdateUserAccount_clearsCapturedCredentials() {
+        // capturedBarcode/Pin are set by .credentialCaptureStarted at logIn;
+        // .userAccountUpdated must clear them so a re-auth doesn't reuse stale
+        // input from a previous sign-in attempt.
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+        businessLogic.dispatch(.credentialCaptureStarted(barcode: "old-barcode", pin: "old-pin"))
+        XCTAssertEqual(businessLogic.capturedBarcode, "old-barcode")
+        XCTAssertEqual(businessLogic.capturedPin, "old-pin")
+
+        businessLogic.updateUserAccount(forDRMAuthorization: true,
+                                        withBarcode: "new-barcode", pin: "new-pin",
+                                        authToken: nil, expirationDate: nil,
+                                        patron: nil, cookies: nil)
+
+        XCTAssertNil(businessLogic.capturedBarcode)
+        XCTAssertNil(businessLogic.capturedPin)
+    }
+
+    func testUpdateUserAccount_clearsIgnoreSignedInState() {
+        // Browser-flow refresh arms ignoreSignedInState; once new credentials
+        // are persisted, the bypass must be lifted automatically.
+        businessLogic.dispatch(.refreshAuthStarted(authType: .saml, usingExistingCredentials: false))
+        XCTAssertTrue(businessLogic.ignoreSignedInState, "precondition")
+
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+        businessLogic.updateUserAccount(forDRMAuthorization: true,
+                                        withBarcode: "b", pin: "p",
+                                        authToken: nil, expirationDate: nil,
+                                        patron: nil, cookies: nil)
+
+        XCTAssertFalse(businessLogic.ignoreSignedInState,
+                       ".userAccountUpdated must lift the ignoreSignedInState bypass")
+    }
+
+    func testValidateCredentials_setsValidatingFlag() {
+        // The original `isValidatingCredentials = true` write at the entry of
+        // validateCredentials() is now mediated by the reducer; the observable
+        // effect must remain the same.
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+        XCTAssertFalse(businessLogic.isValidatingCredentials, "precondition")
+
+        businessLogic.validateCredentials()
+
+        XCTAssertTrue(businessLogic.isValidatingCredentials,
+                      "validateCredentials() must enter the validating state synchronously")
+    }
+
+    func testEnsureAuthDoc_setsAndClearsLoadingFlag() {
+        // The auth-doc loading toggles bracket the network call. They must
+        // round-trip through the reducer the same way the legacy boolean did.
+        XCTAssertFalse(businessLogic.isAuthenticationDocumentLoading, "precondition")
+
+        businessLogic.dispatch(.authDocumentLoadStarted)
+        XCTAssertTrue(businessLogic.isAuthenticationDocumentLoading)
+
+        businessLogic.dispatch(.authDocumentLoadCompleted)
+        XCTAssertFalse(businessLogic.isAuthenticationDocumentLoading)
+    }
+
+    func testIsLoggingInAfterSignUp_setterRoutesThroughReducer() {
+        // The @objc setter forwards into .loggingInAfterSignUpFlagSet so any
+        // external caller that still pokes the property in the legacy way
+        // ends up in the same reducer-managed state.
+        XCTAssertFalse(businessLogic.isLoggingInAfterSignUp, "precondition")
+        businessLogic.isLoggingInAfterSignUp = true
+        XCTAssertTrue(businessLogic.isLoggingInAfterSignUp)
+        XCTAssertTrue(businessLogic.authState.isLoggingInAfterSignUp,
+                      "Setter must reach the reducer state, not just a stored mirror")
     }
 }
 
