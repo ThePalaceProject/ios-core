@@ -34,10 +34,16 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private var pushNotificationsStatus = false
     private let settings: TPPSettings
     private let accountsManager: AccountsManager
+    private let debugSettings: DebugSettings
 
-    required init(settings: TPPSettings = TPPSettings.shared, accountsManager: AccountsManager = AccountsManager.shared) {
+    required init(
+        settings: TPPSettings = TPPSettings.shared,
+        accountsManager: AccountsManager = AccountsManager.shared,
+        debugSettings: DebugSettings = AppContainer.production().debugSettings
+    ) {
         self.settings = settings
         self.accountsManager = accountsManager
+        self.debugSettings = debugSettings
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -268,7 +274,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
     #if DEBUG
     @objc func incrementalSpeedSliderSwitchDidChange(sender: UISwitch) {
-        DebugSettings.shared.isIncrementalSpeedSliderEnabled = sender.isOn
+        self.debugSettings.isIncrementalSpeedSliderEnabled = sender.isOn
     }
 
     private func cellForIncrementalSpeedSlider() -> UITableViewCell {
@@ -279,14 +285,14 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         cell.textLabel?.text = "Incremental Speed Slider"
         cell.textLabel?.adjustsFontSizeToFitWidth = true
         cell.accessoryView = createSwitch(
-            isOn: DebugSettings.shared.isIncrementalSpeedSliderEnabled,
+            isOn: self.debugSettings.isIncrementalSpeedSliderEnabled,
             action: #selector(incrementalSpeedSliderSwitchDidChange)
         )
         return cell
     }
 
     @objc func badgeLoggingSwitchDidChange(sender: UISwitch) {
-        DebugSettings.shared.isBadgeLoggingEnabled = sender.isOn
+        self.debugSettings.isBadgeLoggingEnabled = sender.isOn
     }
 
     private func cellForBadgeLogging() -> UITableViewCell {
@@ -296,7 +302,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         cell.selectionStyle = .none
         cell.textLabel?.text = "Enable Badge Logging"
         cell.accessoryView = createSwitch(
-            isOn: DebugSettings.shared.isBadgeLoggingEnabled,
+            isOn: self.debugSettings.isBadgeLoggingEnabled,
             action: #selector(badgeLoggingSwitchDidChange)
         )
         return cell
@@ -308,7 +314,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         cell.textLabel?.text = "Test Holds Configuration"
         cell.textLabel?.adjustsFontSizeToFitWidth = true
 
-        let currentConfig = DebugSettings.shared.testHoldsConfiguration
+        let currentConfig = self.debugSettings.testHoldsConfiguration
         cell.detailTextLabel?.text = currentConfig.displayName
         cell.detailTextLabel?.textColor = currentConfig == .none ? .secondaryLabel : .systemBlue
         cell.accessoryType = .disclosureIndicator
@@ -324,7 +330,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         cell.textLabel?.adjustsFontSizeToFitWidth = true
         // In non-DEBUG builds, the switch reads the same DebugSettings property
         let switchControl = UISwitch()
-        switchControl.isOn = DebugSettings.shared.isIncrementalSpeedSliderEnabled
+        switchControl.isOn = self.debugSettings.isIncrementalSpeedSliderEnabled
         switchControl.isEnabled = false
         cell.accessoryView = switchControl
         return cell
@@ -507,7 +513,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     private func cellForErrorSimulation() -> UITableViewCell {
-        let currentError = DebugSettings.shared.simulatedBorrowError
+        let currentError = self.debugSettings.simulatedBorrowError
 
         let cell = UITableViewCell(style: .value1, reuseIdentifier: errorSimulationCellIdentifier)
         cell.selectionStyle = .default
@@ -520,7 +526,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     private func cellForSyncFailureSimulation() -> UITableViewCell {
-        let currentFailure = DebugSettings.shared.simulatedSyncFailure
+        let currentFailure = self.debugSettings.simulatedSyncFailure
 
         let cell = UITableViewCell(style: .value1, reuseIdentifier: "syncFailureSimulationCell")
         cell.selectionStyle = .default
@@ -679,11 +685,11 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         )
 
         for config in DebugSettings.TestHoldsConfiguration.allCases {
-            let isSelected = DebugSettings.shared.testHoldsConfiguration == config
+            let isSelected = self.debugSettings.testHoldsConfiguration == config
             let checkmark = isSelected ? " ✓" : ""
 
             alert.addAction(UIAlertAction(title: config.displayName + checkmark, style: .default) { [weak self] _ in
-                DebugSettings.shared.testHoldsConfiguration = config
+                self?.debugSettings.testHoldsConfiguration = config
                 self?.tableView.reloadData()
 
                 NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
@@ -718,11 +724,11 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         )
 
         for errorType in DebugSettings.SimulatedBorrowError.allCases {
-            let isSelected = DebugSettings.shared.simulatedBorrowError == errorType
+            let isSelected = self.debugSettings.simulatedBorrowError == errorType
             let checkmark = isSelected ? " ✓" : ""
 
             alert.addAction(UIAlertAction(title: errorType.displayName + checkmark, style: .default) { [weak self] _ in
-                DebugSettings.shared.simulatedBorrowError = errorType
+                self?.debugSettings.simulatedBorrowError = errorType
                 self?.tableView.reloadData()
 
                 if errorType != .none {
@@ -753,11 +759,11 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         )
 
         for failureType in DebugSettings.SimulatedSyncFailure.allCases {
-            let isSelected = DebugSettings.shared.simulatedSyncFailure == failureType
+            let isSelected = self.debugSettings.simulatedSyncFailure == failureType
             let checkmark = isSelected ? " \u{2713}" : ""
 
             alert.addAction(UIAlertAction(title: failureType.displayName + checkmark, style: .default) { [weak self] _ in
-                DebugSettings.shared.simulatedSyncFailure = failureType
+                self?.debugSettings.simulatedSyncFailure = failureType
                 self?.tableView.reloadData()
 
                 if failureType != .none {

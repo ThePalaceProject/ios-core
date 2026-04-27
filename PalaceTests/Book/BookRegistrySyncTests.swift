@@ -25,7 +25,7 @@ final class BookRegistrySyncTests: XCTestCase {
             store: store,
             accountsManager: .shared,
             downloadCenterProvider: { AppContainer.production().downloadCenter },
-            opdsFeedServiceProvider: { .shared }
+            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
         )
 
         // Create a temp directory for registry file I/O tests

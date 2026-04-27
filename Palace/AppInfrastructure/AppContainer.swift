@@ -78,11 +78,11 @@ struct AppContainer {
     /// caching guarantee.
     ///
     /// `BookCellModelCache` is constructed directly from the already-resolved
-    /// partner singletons rather than via `BookCellModelCache.shared`. That
-    /// removes the historical init cycle in which a re-entrant `\.appContainer`
-    /// access during `BookCellModelCache.shared`'s factory deadlocked the
-    /// static-let init lock. `BookCellModelCache.shared` itself stays alive
-    /// for legacy default-arg callers; it will be removed once those migrate.
+    /// partner singletons. Historically there was an init cycle where a
+    /// re-entrant `\.appContainer` access during `BookCellModelCache.shared`'s
+    /// factory deadlocked the static-let init lock; that static-let has been
+    /// removed (Phase 4 carryover) — every consumer now goes through this
+    /// instance.
     static func production() -> AppContainer {
         _cached
     }
@@ -92,18 +92,18 @@ struct AppContainer {
         let bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
         let downloadCenter = MyBooksDownloadCenter()
         let accountsManager = AccountsManager.shared
-        let samplePreviewManager = SamplePreviewManager.shared
-        let readerService = ReaderService.shared
+        let readerService = ReaderService()
         let navigationCoordinatorHub = NavigationCoordinatorHub()
         let tabRouterHub = AppTabRouterHub()
 
-        // BookCellModelCache is `@MainActor`-isolated. `production()` is
-        // called either from app init (main thread) or via SwiftUI's
-        // EnvironmentKey defaultValue (also main thread), so the
-        // assumeIsolated assertion is sound. Without it, the constructor
-        // call would be an isolation-crossing error.
-        let bookCellModelCache = MainActor.assumeIsolated {
-            BookCellModelCache(
+        // SamplePreviewManager + BookCellModelCache are both `@MainActor`-
+        // isolated. `production()` is called either from app init (main
+        // thread) or via SwiftUI's EnvironmentKey defaultValue (also main
+        // thread), so the assumeIsolated assertion is sound. Without it, the
+        // constructor calls would be isolation-crossing errors.
+        let (samplePreviewManager, bookCellModelCache) = MainActor.assumeIsolated {
+            let samplePreviewManager = SamplePreviewManager()
+            let cache = BookCellModelCache(
                 imageCache: imageCache,
                 bookRegistry: bookRegistry,
                 downloadCenter: downloadCenter,
@@ -111,6 +111,7 @@ struct AppContainer {
                 samplePreviewManager: samplePreviewManager,
                 readerService: readerService
             )
+            return (samplePreviewManager, cache)
         }
 
         return AppContainer(
@@ -119,11 +120,11 @@ struct AppContainer {
             accountsManager: accountsManager,
             settings: .shared,
             downloadCenter: downloadCenter,
-            debugSettings: .shared,
+            debugSettings: DebugSettings(),
             bookCellModelCache: bookCellModelCache,
             imageCache: imageCache,
             userAccountPublisher: .shared,
-            opdsFeedService: .shared,
+            opdsFeedService: OPDSFeedService(),
             samplePreviewManager: samplePreviewManager,
             readerService: readerService,
             navigationCoordinatorHub: navigationCoordinatorHub,

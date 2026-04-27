@@ -53,7 +53,7 @@ class CatalogSearchViewModel: ObservableObject {
         debounceInterval: TimeInterval = 0.4,
         announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
         bookRegistry: TPPBookRegistry = .shared,
-        bookCellModelCache: BookCellModelCache = .shared
+        bookCellModelCache: BookCellModelCache
     ) {
         self.repository = repository
         self.baseURL = baseURL

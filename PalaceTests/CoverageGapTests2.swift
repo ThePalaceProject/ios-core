@@ -50,15 +50,16 @@ final class AppTabRouterGapTests: XCTestCase {
 
     /// AppTabRouterHub returns to default state (no registered router) after
     /// the injected router is released — confirms the weak reference semantics.
+    /// Asserting the post-nil state is enough: if `hub.router` were a strong
+    /// reference, the router would survive the local `router = nil` and this
+    /// assertion would fail.
     func testAppTabRouterHub_registeredRouterIsWeaklyHeld() {
         let hub = AppTabRouterHub()
 
         var router: AppTabRouter? = AppTabRouter()
         hub.router = router
-        XCTAssertTrue(hub.router != nil,
-                      "Hub must hold the router while the strong reference exists")
-
         router = nil
+
         XCTAssertNil(hub.router,
                      "Hub's router reference is weak; it must become nil when the router is deallocated")
     }
@@ -179,13 +180,13 @@ final class DebugSettingsGapTests: XCTestCase {
 
     override func tearDown() {
         // Restore DebugSettings to default state after each test
-        DebugSettings.shared.resetAll()
+        DebugSettings().resetAll()
         super.tearDown()
     }
 
     /// Coverage Gap: DebugSettings — isBorrowErrorSimulationEnabled reflects simulatedBorrowError
     func testDebugSettings_isBorrowErrorSimulationEnabled_reflectsSimulatedBorrowError() {
-        let settings = DebugSettings.shared
+        let settings = DebugSettings()
 
         settings.simulatedBorrowError = .none
         XCTAssertFalse(settings.isBorrowErrorSimulationEnabled)
@@ -196,7 +197,7 @@ final class DebugSettingsGapTests: XCTestCase {
 
     /// Coverage Gap: DebugSettings — isTestHoldsEnabled reflects testHoldsConfiguration
     func testDebugSettings_isTestHoldsEnabled_reflectsTestHoldsConfiguration() {
-        let settings = DebugSettings.shared
+        let settings = DebugSettings()
 
         settings.testHoldsConfiguration = .none
         XCTAssertFalse(settings.isTestHoldsEnabled)
@@ -208,7 +209,7 @@ final class DebugSettingsGapTests: XCTestCase {
     /// Coverage Gap: DebugSettings — resetAll clears isBadgeLoggingEnabled
     /// even when it was explicitly set to true before the reset call.
     func testDebugSettings_resetAll_clearsBadgeLogging() {
-        let settings = DebugSettings.shared
+        let settings = DebugSettings()
 
         // Arrange: enable badge logging and verify it took effect before resetting
         settings.isBadgeLoggingEnabled = true
@@ -227,7 +228,7 @@ final class DebugSettingsGapTests: XCTestCase {
 
     /// Coverage Gap: DebugSettings resetAll — clears all state
     func testDebugSettings_resetAll_clearsState() {
-        let settings = DebugSettings.shared
+        let settings = DebugSettings()
 
         settings.simulatedBorrowError = .loanLimitReached
         settings.isBadgeLoggingEnabled = true

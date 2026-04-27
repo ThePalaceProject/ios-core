@@ -38,8 +38,8 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
             bookRegistry: mockBookRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
     }
 
@@ -150,7 +150,8 @@ final class CatalogSearchViewModelRegistryUpdateTests: XCTestCase {
         sut = CatalogSearchViewModel(
             repository: mockRepository,
             baseURL: { URL(string: "https://example.com/search") },
-            debounceInterval: 0.0
+            debounceInterval: 0.0,
+            bookCellModelCache: AppContainer.production().bookCellModelCache
         )
     }
 

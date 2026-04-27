@@ -27,8 +27,8 @@ final class BookCellModelCacheInvalidationTests: XCTestCase {
             bookRegistry: mockRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
         cancellables = Set<AnyCancellable>()
     }

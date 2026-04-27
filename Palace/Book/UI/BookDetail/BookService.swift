@@ -52,7 +52,7 @@ enum BookService {
                     openingBooks.remove(book.identifier)
                     onFinish?()
                 }
-                ReaderService.shared.openEPUB(book)
+                AppContainer.production().readerService.openEPUB(book)
             }
         case .pdf:
             Task { @MainActor in

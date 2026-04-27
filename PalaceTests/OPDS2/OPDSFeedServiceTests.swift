@@ -11,59 +11,36 @@ import XCTest
 
 final class OPDSFeedServiceTests: XCTestCase {
 
-    // MARK: - Singleton Tests
-
-    func testShared_returnsSameInstance() async {
-        let service1 = await OPDSFeedService.shared
-        let service2 = await OPDSFeedService.shared
-
-        // Should be the same actor instance
-        XCTAssertTrue(service1 === service2)
-    }
-
     // MARK: - Cancellation Tests (no network calls)
 
-    func testCancelRequest_doesNotCrash() async {
-        let service = OPDSFeedService.shared
+    /// Cancelling a URL with no in-flight request should be a no-op rather
+    /// than throwing or crashing the actor — UI code calls this opportunistically
+    /// (on view disappear, on navigation away) without first checking whether a
+    /// fetch is actually active. Idempotency matters because users can dismiss
+    /// the same screen multiple times via gestures + system back.
+    func testCancelRequest_isNoOpAndIdempotent_whenNoInflightRequestForUrl() async {
+        let service = OPDSFeedService()
         let url = URL(string: "https://example.com/feed")!
+        let otherURL = URL(string: "https://example.com/other")!
 
-        // Cancelling a URL for which no request is in-flight must not throw or crash
-        await service.cancelRequest(for: url)
+        var awaitedCallsCompleted = 0
+        await service.cancelRequest(for: url);      awaitedCallsCompleted += 1
+        await service.cancelRequest(for: url);      awaitedCallsCompleted += 1
+        await service.cancelRequest(for: otherURL); awaitedCallsCompleted += 1
 
-        // Verify the service is still usable after the cancellation call
-        let service2 = await OPDSFeedService.shared
-        XCTAssertTrue(service === service2, "Service should remain the same actor instance after cancel")
+        XCTAssertEqual(awaitedCallsCompleted, 3,
+                       "All three cancellation awaits completed — actor did not crash, hang, or trap")
     }
 
-    func testCancelAllRequests_doesNotCrash() async {
-        let service = OPDSFeedService.shared
+    func testCancelAllRequests_isNoOpAndIdempotent_whenNothingInFlight() async {
+        let service = OPDSFeedService()
 
-        // Cancelling all requests when none are in flight must not throw or crash
-        await service.cancelAllRequests()
+        var awaitedCallsCompleted = 0
+        await service.cancelAllRequests(); awaitedCallsCompleted += 1
+        await service.cancelAllRequests(); awaitedCallsCompleted += 1
 
-        // Service must still be the shared singleton afterwards
-        let service2 = await OPDSFeedService.shared
-        XCTAssertTrue(service === service2, "Service must remain the singleton after cancelAllRequests")
-    }
-
-    // MARK: - API Method Existence Tests
-    // These tests verify the API methods exist and have correct signatures
-    // without making actual network calls that could hang
-
-    func testFetchLoans_methodExists() async {
-        let service = OPDSFeedService.shared
-        XCTAssertNotNil(service, "Service should exist")
-        // Verify the service is still accessible and is the same shared instance
-        let service2 = await OPDSFeedService.shared
-        XCTAssertTrue(service === service2, "fetchLoans lives on the shared singleton")
-    }
-
-    func testFetchCatalogRoot_methodExists() async {
-        let service = OPDSFeedService.shared
-        XCTAssertNotNil(service, "Service should exist")
-        // Verify the service is still accessible and is the same shared instance
-        let service2 = await OPDSFeedService.shared
-        XCTAssertTrue(service === service2, "fetchCatalogRoot lives on the shared singleton")
+        XCTAssertEqual(awaitedCallsCompleted, 2,
+                       "Both cancelAll awaits completed — actor did not crash, hang, or trap")
     }
 }
 

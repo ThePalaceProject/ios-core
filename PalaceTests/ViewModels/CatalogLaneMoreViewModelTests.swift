@@ -32,7 +32,7 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
             title: title,
             url: url,
             bookRegistry: TPPBookRegistry.shared,
-            bookCellModelCache: .shared
+            bookCellModelCache: AppContainer.production().bookCellModelCache
         )
     }
 

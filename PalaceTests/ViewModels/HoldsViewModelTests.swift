@@ -34,7 +34,7 @@ final class HoldsViewModelTests: XCTestCase {
             bookRegistry: mockRegistry,
             accountsManager: .shared,
             settings: .shared,
-            debugSettings: .shared
+            debugSettings: AppContainer.production().debugSettings
         )
     }
 
@@ -457,7 +457,7 @@ final class HoldsSyncFailureTests: XCTestCase {
             bookRegistry: mockRegistry,
             accountsManager: .shared,
             settings: .shared,
-            debugSettings: .shared,
+            debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { true }
         )
     }
@@ -586,7 +586,7 @@ final class HoldsSyncFailureTests: XCTestCase {
             bookRegistry: mockRegistry,
             accountsManager: .shared,
             settings: .shared,
-            debugSettings: .shared,
+            debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { true }
         )
 
@@ -618,7 +618,7 @@ final class HoldsSyncFailureTests: XCTestCase {
             bookRegistry: mockRegistry,
             accountsManager: .shared,
             settings: .shared,
-            debugSettings: .shared
+            debugSettings: AppContainer.production().debugSettings
         )
         XCTAssertEqual(viewModel.reservedBookVMs.count, 1)
 
@@ -646,7 +646,7 @@ final class HoldsSyncFailureTests: XCTestCase {
             bookRegistry: mockRegistry,
             accountsManager: .shared,
             settings: .shared,
-            debugSettings: .shared,
+            debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { false }
         )
         XCTAssertTrue(viewModel.visibleBooks.isEmpty, "Precondition: no cached holds")
@@ -667,7 +667,7 @@ final class HoldsSyncFailureTests: XCTestCase {
             bookRegistry: mockRegistry,
             accountsManager: .shared,
             settings: .shared,
-            debugSettings: .shared,
+            debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { true }
         )
 

@@ -13,8 +13,6 @@ import Foundation
 /// which requires a hidden gesture to access.
 final class DebugSettings {
 
-    static let shared = DebugSettings()
-
     private let defaults = UserDefaults.standard
 
     // MARK: - Keys
@@ -392,5 +390,5 @@ final class DebugSettings {
         isIncrementalSpeedSliderEnabled = false
     }
 
-    private init() {}
+    init() {}
 }

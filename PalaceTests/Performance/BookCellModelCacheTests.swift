@@ -31,8 +31,8 @@ final class BookCellModelCacheTests: XCTestCase {
             bookRegistry: mockBookRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
     }
 
@@ -201,8 +201,8 @@ final class BookCellModelCacheTests: XCTestCase {
             bookRegistry: mockBookRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
 
         let book = makeTestBook(identifier: "downloadingBook", title: "Test Book")
@@ -242,8 +242,8 @@ final class BookCellModelCacheTests: XCTestCase {
             bookRegistry: mockBookRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
 
         let book = makeTestBook(identifier: "activeDownload", title: "Active Download")
@@ -282,8 +282,8 @@ final class BookCellModelCacheTests: XCTestCase {
             bookRegistry: mockBookRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
 
         let book = makeTestBook(identifier: "holdBook", title: "Hold Book")

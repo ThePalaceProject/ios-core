@@ -6,8 +6,7 @@ import ReadiumLCP
 #endif
 
 final class ReaderService {
-    static let shared = ReaderService()
-    private init() {}
+    init() {}
 
     private lazy var r3Owner: TPPR3Owner = TPPR3Owner()
 

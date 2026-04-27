@@ -13,7 +13,7 @@ import XCTest
 
 final class DebugSettingsTests: XCTestCase {
 
-    private let settings = DebugSettings.shared
+    private let settings = DebugSettings()
 
     override func tearDown() {
         settings.resetAll()

@@ -107,7 +107,7 @@ actor UnifiedOPDSService {
         opds2Cache: OPDS2FeedCache = .shared,
         opds1Cache: OPDS1FeedCache = .shared,
         urlSession: URLSession = .shared,
-        opds1FeedService: OPDSFeedService = .shared
+        opds1FeedService: OPDSFeedService = OPDSFeedService()
     ) {
         self.opds2Cache = opds2Cache
         self.opds1Cache = opds1Cache
