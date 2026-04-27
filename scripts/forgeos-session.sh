@@ -149,8 +149,12 @@ cmd_evidence() {
   echo "$test_output" | grep -q "BUILD SUCCEEDED\|TEST.*SUCCEEDED" && build_ok="true"
 
   local errors warnings
-  errors=$(echo "$test_output" | grep -c "error:" || echo "0")
-  warnings=$(echo "$test_output" | grep -c "warning:" || echo "0")
+  # `|| true` (not `|| echo "0"`): grep -c prints "0" on no match; the
+  # fallback was producing "0\n0" and breaking integer comparisons downstream.
+  errors=$(echo "$test_output" | grep -c "error:" || true)
+  warnings=$(echo "$test_output" | grep -c "warning:" || true)
+  errors=${errors:-0}
+  warnings=${warnings:-0}
 
   echo "Submitting unit_test evidence (pass: $pass_count, fail: $fail_count)..."
   api POST "/api/projects/${PROJECT_ID}/changesets/${cs_id}/evidence" "{
@@ -236,9 +240,9 @@ cmd_evidence() {
       [ -z "$ui_file" ] && continue
       [ ! -f "$ui_file" ] && continue
       local has_button has_a11y
-      has_button=$(grep -c 'UIButton\|Button(' "$ui_file" 2>/dev/null || echo "0")
-      has_a11y=$(grep -c 'accessibilityIdentifier\|accessibilityLabel\|isAccessibilityElement' "$ui_file" 2>/dev/null || echo "0")
-      if [ "$has_button" -gt 0 ] && [ "$has_a11y" -eq 0 ]; then
+      has_button=$(grep -c 'UIButton\|Button(' "$ui_file" 2>/dev/null || true)
+      has_a11y=$(grep -c 'accessibilityIdentifier\|accessibilityLabel\|isAccessibilityElement' "$ui_file" 2>/dev/null || true)
+      if [ "${has_button:-0}" -gt 0 ] && [ "${has_a11y:-0}" -eq 0 ]; then
         a11y_issues=$((a11y_issues + 1))
       fi
     done <<< "$changed_ui"
