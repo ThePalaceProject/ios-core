@@ -80,10 +80,10 @@ enum BookService {
     }
 
     @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
-        guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { completion?(); return }
+        guard let url = AppContainer.production().downloadCenter.fileUrl(for: book.identifier) else { completion?(); return }
         let metadata = TPPPDFDocumentMetadata(with: book)
         let document = TPPPDFDocument(url: url)
-        if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+        if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
             coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
             coordinator.push(.pdf(BookRoute(id: book.identifier)))
         }

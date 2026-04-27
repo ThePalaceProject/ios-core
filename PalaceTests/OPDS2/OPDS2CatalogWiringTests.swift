@@ -103,7 +103,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let opds2 = makeGroupedFeed(title: "Grouped Library", groupCount: 2, pubsPerGroup: 3)
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: TPPBookRegistry.shared)
 
         XCTAssertEqual(mapped.title, "Grouped Library")
         XCTAssertEqual(mapped.lanes.count, 2)
@@ -116,7 +116,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let opds2 = makeGroupedFeed(title: "Test", groupTitles: ["New Releases", "Popular"])
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: TPPBookRegistry.shared)
 
         XCTAssertEqual(mapped.lanes[0].title, "New Releases")
         XCTAssertEqual(mapped.lanes[1].title, "Popular")
@@ -126,7 +126,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let opds2 = makeGroupedFeed(title: "Test", groupCount: 1, pubsPerGroup: 1)
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: TPPBookRegistry.shared)
 
         XCTAssertNotNil(mapped.lanes.first?.moreURL)
         // The moreURL must be a valid absolute URL
@@ -141,7 +141,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let opds2 = makePublicationFeed(title: "Search Results", pubCount: 5)
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: TPPBookRegistry.shared)
 
         XCTAssertTrue(mapped.lanes.isEmpty)
         XCTAssertEqual(mapped.ungroupedBooks.count, 5)
@@ -151,7 +151,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let opds2 = makePublicationFeed(title: "Test", pubCount: 1)
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: TPPBookRegistry.shared)
         let book = mapped.ungroupedBooks.first
 
         XCTAssertNotNil(book)
@@ -171,7 +171,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         )
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: TPPBookRegistry.shared)
 
         XCTAssertTrue(mapped.lanes.isEmpty)
         XCTAssertTrue(mapped.ungroupedBooks.isEmpty)
@@ -194,7 +194,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
             facets: facets
         )
         let feed = CatalogFeed(opds2Feed: opds2)
-        let mapped = CatalogViewModel.mapFeed(feed)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: TPPBookRegistry.shared)
 
         XCTAssertEqual(mapped.facetGroups.count, 1)
         XCTAssertEqual(mapped.facetGroups.first?.name, "Sort By")
@@ -295,7 +295,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
 
         XCTAssertTrue(feed.isOPDS2)
 
-        let mapped = CatalogViewModel.mapFeed(feed)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: TPPBookRegistry.shared)
 
         XCTAssertEqual(mapped.title, "Palace Test Library")
         XCTAssertEqual(mapped.lanes.count, 3)

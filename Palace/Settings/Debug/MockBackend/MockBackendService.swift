@@ -81,7 +81,7 @@ final class MockBackendService: ObservableObject {
 
         // Recreate sessions so they pick up the mock protocol
         TPPNetworkExecutor.shared.recreateSession()
-        MyBooksDownloadCenter.shared.recreateSessionForMockBackend()
+        AppContainer.production().downloadCenter.recreateSessionForMockBackend()
 
         currentScenario = scenario
         isActive = true
@@ -101,7 +101,7 @@ final class MockBackendService: ObservableObject {
 
         // Recreate sessions to remove the mock protocol
         TPPNetworkExecutor.shared.recreateSession()
-        MyBooksDownloadCenter.shared.recreateSessionForMockBackend()
+        AppContainer.production().downloadCenter.recreateSessionForMockBackend()
 
         currentScenario = nil
         isActive = false

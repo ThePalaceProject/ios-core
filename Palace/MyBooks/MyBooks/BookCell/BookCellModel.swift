@@ -66,6 +66,8 @@ class BookCellModel: ObservableObject {
     let bookRegistry: TPPBookRegistryProvider
     let downloadCenter: MyBooksDownloadCenter
     private let accountsManager: AccountsManager
+    private let samplePreviewManager: SamplePreviewManager
+    private let readerService: ReaderService
     private var isFetchingImage = false
     #if LCP
     private var didPrefetchLCPStreaming = false
@@ -113,16 +115,36 @@ class BookCellModel: ObservableObject {
 
     // MARK: - Initializer
 
-    /// Creates a BookCellModel with injectable dependencies for testability
-    /// - Parameters:
-    ///   - book: The book to display
-    ///   - imageCache: Cache for book cover images
-    ///   - bookRegistry: Registry for book state (defaults to shared instance)
-    init(book: TPPBook, imageCache: ImageCacheType, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared, accountsManager: AccountsManager = .shared) {
+    /// Convenience: builds a BookCellModel from the standard AppContainer graph.
+    convenience init(book: TPPBook, appContainer: AppContainer) {
+        self.init(
+            book: book,
+            imageCache: appContainer.imageCache,
+            bookRegistry: appContainer.bookRegistry,
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService
+        )
+    }
+
+    /// Creates a BookCellModel with explicit injectable dependencies for tests.
+    /// Production code should prefer `init(book:appContainer:)`.
+    init(
+        book: TPPBook,
+        imageCache: ImageCacheType,
+        bookRegistry: TPPBookRegistryProvider,
+        downloadCenter: MyBooksDownloadCenter,
+        accountsManager: AccountsManager,
+        samplePreviewManager: SamplePreviewManager,
+        readerService: ReaderService
+    ) {
         self.book = book
         self.bookRegistry = bookRegistry
         self.downloadCenter = downloadCenter
         self.accountsManager = accountsManager
+        self.samplePreviewManager = samplePreviewManager
+        self.readerService = readerService
         self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
         self.currentBookIdentifier = book.identifier
         self.imageCache = imageCache
@@ -453,13 +475,13 @@ extension BookCellModel {
         isLoading = true
         switch book.defaultBookContentType {
         case .epub:
-            ReaderService.shared.openEPUB(book)
+            readerService.openEPUB(book)
             self.isLoading = false
         case .pdf:
             guard let url = downloadCenter.fileUrl(for: book.identifier) else { self.isLoading = false; return }
             let metadata = TPPPDFDocumentMetadata(with: book)
             let document = TPPPDFDocument(url: url)
-            if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                 coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
                 coordinator.push(.pdf(BookRoute(id: book.identifier)))
             }
@@ -528,12 +550,12 @@ extension BookCellModel {
     }
 
     func didSelectDownload() {
-        let account = AccountsManager.shared.currentUserAccount
+        let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
+            SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: accountsManager) { [weak self] in
                 guard let self else { return }
                 // Only proceed if user successfully logged in, not if they cancelled
-                guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+                guard accountsManager.currentUserAccount.hasCredentials() else {
                     Log.info(#file, "Sign-in cancelled or failed, not starting download")
                     return
                 }
@@ -553,12 +575,12 @@ extension BookCellModel {
 
     func didSelectReserve() {
         isLoading = true
-        let account = AccountsManager.shared.currentUserAccount
+        let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
+            SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: accountsManager) { [weak self] in
                 guard let self else { return }
                 // Only proceed if user successfully logged in, not if they cancelled
-                guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+                guard accountsManager.currentUserAccount.hasCredentials() else {
                     Log.info(#file, "Sign-in cancelled or failed, not proceeding with reservation")
                     self.isLoading = false
                     return
@@ -590,19 +612,19 @@ extension BookCellModel {
         isLoading = true
         if book.defaultBookContentType == .audiobook {
             if book.sampleAcquisition?.type == "text/html" {
-                SamplePreviewManager.shared.close()
+                samplePreviewManager.close()
                 if let url = book.sampleAcquisition?.hrefURL,
                    let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
                     let safari = SFSafariViewController(url: url)
                     top.present(safari, animated: true)
                 }
             } else {
-                SamplePreviewManager.shared.toggle(for: book)
+                samplePreviewManager.toggle(for: book)
             }
             self.isLoading = false
             return
         }
-        SamplePreviewManager.shared.close()
+        samplePreviewManager.close()
         EpubSampleFactory.createSample(book: book) { sampleURL, error in
             self.isLoading = false
             if let error = error {
@@ -622,7 +644,7 @@ extension BookCellModel {
 
                 if isEpubSample {
                     // Use Readium EPUB reader for EPUB samples
-                    ReaderService.shared.openSample(self.book, url: url)
+                    self.readerService.openSample(self.book, url: url)
                 } else {
                     // Use WebKit for HTML/web samples
                     let web = BundledHTMLViewController(fileURL: url, title: self.book.title)

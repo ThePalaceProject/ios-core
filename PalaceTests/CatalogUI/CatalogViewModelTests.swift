@@ -153,7 +153,12 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
     }
 
     private func createViewModel() -> CatalogViewModel {
-        CatalogViewModel(repository: mockRepository, topLevelURLProvider: { [testURL] in testURL })
+        CatalogViewModel(
+            repository: mockRepository,
+            topLevelURLProvider: { [testURL] in testURL },
+            bookRegistry: TPPBookRegistry.shared,
+            imageCache: ImageCache.shared
+        )
     }
 
     func testViewModel_InitialState_IsLoading() {
@@ -163,7 +168,12 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
     }
 
     func testLoad_WithNilURL_DoesNotCallRepository() async {
-        let vm = CatalogViewModel(repository: mockRepository, topLevelURLProvider: { nil })
+        let vm = CatalogViewModel(
+            repository: mockRepository,
+            topLevelURLProvider: { nil },
+            bookRegistry: TPPBookRegistry.shared,
+            imageCache: ImageCache.shared
+        )
         await vm.load()
         XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, 0)
     }

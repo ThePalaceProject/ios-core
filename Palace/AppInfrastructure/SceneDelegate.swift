@@ -40,7 +40,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         newWindow.tintAdjustmentMode = .normal
 
         // Create root view controller directly to avoid any timing issues
-        let container = AppContainer()
+        let container = AppContainer.production()
         let rootView = AppTabHostView()
             .environment(\.appContainer, container)
         let hostingController = UIHostingController(rootView: rootView)

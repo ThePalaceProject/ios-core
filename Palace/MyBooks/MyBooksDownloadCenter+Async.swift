@@ -95,12 +95,12 @@ extension MyBooksDownloadCenter {
 
         announceBorrowStarted(for: book)
 
-        Task { await ErrorActivityTracker.shared.log("Initiating borrow for '\(book.title)'", category: .borrow) }
+        Task { [errorActivityTracker] in await errorActivityTracker.log("Initiating borrow for '\(book.title)'", category: .borrow) }
 
         if Bundle.main.applicationEnvironment != .production,
-           let simulated = DebugSettings.shared.createSimulatedBorrowError() {
-            await ErrorActivityTracker.shared.log(
-                "Simulated borrow error triggered: \(DebugSettings.shared.simulatedBorrowError.displayName)",
+           let simulated = self.debugSettings.createSimulatedBorrowError() {
+            await self.errorActivityTracker.log(
+                "Simulated borrow error triggered: \(self.debugSettings.simulatedBorrowError.displayName)",
                 category: .borrow
             )
             await MainActor.run {
@@ -114,18 +114,18 @@ extension MyBooksDownloadCenter {
         // replaces the previous login-time activation.
         #if FEATURE_DRM_CONNECTOR
         if book.requiresAdobeDRM {
-            Task { await ErrorActivityTracker.shared.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
-            try await AdobeDRMService.shared.ensureDeviceActivated()
+            Task { [errorActivityTracker] in await errorActivityTracker.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
+            try await self.adobeDRMService.ensureDeviceActivated()
         }
         #endif
 
         // Use modern OPDSFeedService instead of legacy callback-based TPPOPDSFeed
         guard let acquisitionURL = book.defaultAcquisition?.hrefURL else {
-            Task { await ErrorActivityTracker.shared.log("No acquisition URL found for '\(book.title)'", category: .borrow) }
+            Task { [errorActivityTracker] in await errorActivityTracker.log("No acquisition URL found for '\(book.title)'", category: .borrow) }
             throw PalaceError.bookRegistry(.invalidState)
         }
 
-        Task { await ErrorActivityTracker.shared.log("Requesting loan from \(acquisitionURL.host ?? acquisitionURL.absoluteString)", category: .network) }
+        Task { [errorActivityTracker] in await errorActivityTracker.log("Requesting loan from \(acquisitionURL.host ?? acquisitionURL.absoluteString)", category: .network) }
 
         // Set processing state - this shows a spinner in the UI
         await MainActor.run {
@@ -145,7 +145,7 @@ extension MyBooksDownloadCenter {
             let borrowedBook = try await recovery.executeWithRetry(
                 policy: DownloadErrorRecovery.RetryPolicy.borrowOperation
             ) {
-                try await OPDSFeedService.shared.fetchBook(
+                try await self.opdsFeedService.fetchBook(
                     from: acquisitionURL,
                     resetCache: true,
                     useToken: true
@@ -177,7 +177,7 @@ extension MyBooksDownloadCenter {
             self.bookRegistry.setState(mapping.state, for: borrowedBook.identifier)
 
             if let raceError = mapping.error {
-                Task { await ErrorActivityTracker.shared.log(
+                Task { [errorActivityTracker] in await errorActivityTracker.log(
                     "Borrow for '\(borrowedBook.title)' returned \(mapping.state) — CM Loan→Hold race (PP-4178)",
                     category: .borrow
                 ) }
@@ -185,7 +185,7 @@ extension MyBooksDownloadCenter {
                 throw raceError
             }
 
-            Task { await ErrorActivityTracker.shared.log("Borrow succeeded for '\(borrowedBook.title)', state: \(mapping.state)", category: .borrow) }
+            Task { [errorActivityTracker] in await errorActivityTracker.log("Borrow succeeded for '\(borrowedBook.title)', state: \(mapping.state)", category: .borrow) }
 
             announceBorrowSucceeded(for: borrowedBook)
 
@@ -444,8 +444,8 @@ extension MyBooksDownloadCenter {
         }
 
         // Track the error in the activity trail
-        Task {
-            await ErrorActivityTracker.shared.log(
+        Task { [errorActivityTracker] in
+            await errorActivityTracker.log(
                 "Borrow failed for '\(book.title)': \(error.localizedDescription)",
                 category: .borrow
             )
@@ -460,7 +460,7 @@ extension MyBooksDownloadCenter {
         // Check if this error is retryable and within retry limits (PP-3707)
         let operationId = "borrow-\(book.identifier)"
         let isRetryable = DownloadErrorRecovery.isRetryableForUser(error)
-        let canRetry = isRetryable && UserRetryTracker.shared.canRetry(operationId: operationId)
+        let canRetry = isRetryable && self.userRetryTracker.canRetry(operationId: operationId)
 
         // If retryable but max retries exceeded, show "try again later" message
         if isRetryable && !canRetry {
@@ -469,8 +469,9 @@ extension MyBooksDownloadCenter {
 
         // Build retry closure if applicable
         let retryAction: (() -> Void)? = canRetry ? { [weak self] in
-            UserRetryTracker.shared.recordRetry(operationId: operationId)
-            self?.startBorrow(for: book, attemptDownload: true)
+            guard let self else { return }
+            self.userRetryTracker.recordRetry(operationId: operationId)
+            self.startBorrow(for: book, attemptDownload: true)
         } : nil
 
         // Use alertWithDetails to include the "View Error Details" button

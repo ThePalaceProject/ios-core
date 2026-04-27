@@ -123,7 +123,7 @@ final class DRMAdversarialTests: XCTestCase {
         // should NOT trigger reauthenticator (which showed a sign-in modal).
         // Instead it should just log a warning, because activation is now
         // handled before fulfillment.
-        let downloadCenter = MyBooksDownloadCenter.shared
+        let downloadCenter = AppContainer.production().downloadCenter
         // This should not present any UI — just log
         downloadCenter.didIgnoreFulfillmentWithNoAuthorizationPresent()
         // If we got here without a crash or modal presentation, the test passes.

@@ -51,39 +51,16 @@ final class AppTabRouterGapTests: XCTestCase {
     /// AppTabRouterHub returns to default state (no registered router) after
     /// the injected router is released — confirms the weak reference semantics.
     func testAppTabRouterHub_registeredRouterIsWeaklyHeld() {
-        let hub = AppTabRouterHub.shared
-        // Reset any previous router assignment
-        hub.router = nil
+        let hub = AppTabRouterHub()
 
         var router: AppTabRouter? = AppTabRouter()
         hub.router = router
-        // After assignment the hub must have a router
         XCTAssertTrue(hub.router != nil,
                       "Hub must hold the router while the strong reference exists")
 
         router = nil
         XCTAssertNil(hub.router,
                      "Hub's router reference is weak; it must become nil when the router is deallocated")
-    }
-
-    /// Coverage Gap: AppTabRouterHub — verify shared singleton exists
-    func testAppTabRouterHub_shared_singletonExists() {
-        let hub = AppTabRouterHub.shared
-        let hub2 = AppTabRouterHub.shared
-
-        // Identity check: both references must point to the same object
-        XCTAssertTrue(hub === hub2,
-                      "AppTabRouterHub.shared should return same instance")
-        // Verify hub can accept a router assignment without crashing
-        let router = AppTabRouter()
-        hub.router = router
-        // Snapshot the assigned router before cleanup and verify it's what we set
-        let assignedRouter = hub.router
-        XCTAssertTrue(assignedRouter === router, "Hub must hold the exactly same router object we assigned")
-        // Cleanup
-        hub.router = nil
-        let postNilRouter = hub.router
-        XCTAssertNil(postNilRouter, "Hub's router must be nil after explicit nil assignment")
     }
 }
 

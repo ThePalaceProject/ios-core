@@ -5,9 +5,15 @@ struct HoldsView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator
     typealias DisplayStrings = Strings.HoldsView
 
-    @StateObject private var model = HoldsViewModel()
+    private let appContainer: AppContainer
+    @StateObject private var model: HoldsViewModel
     @StateObject private var logoObserver = CatalogLogoObserver()
     @State private var currentAccountUUID: String = ""
+
+    init(appContainer: AppContainer) {
+        self.appContainer = appContainer
+        _model = StateObject(wrappedValue: HoldsViewModel(appContainer: appContainer))
+    }
     private var allBooks: [TPPBook] {
         model.reservedBookVMs.map { $0.book } + model.heldBookVMs.map { $0.book }
     }
@@ -20,7 +26,7 @@ struct HoldsView: View {
                 .toolbar {
                     ToolbarItem(placement: .principal) {
                         LibraryNavTitleView(onTap: {
-                            if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+                            if let urlString = appContainer.accountsManager.currentAccount?.homePageUrl, let url = URL(string: urlString) {
                                 UIApplication.shared.open(url, options: [:], completionHandler: nil)
                             }
                         })
@@ -45,7 +51,7 @@ struct HoldsView: View {
                 .onAppear {
                     model.showSearchSheet = false
                     model.showLibraryAccountView = false
-                    let account = AccountsManager.shared.currentAccount
+                    let account = appContainer.accountsManager.currentAccount
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
@@ -55,7 +61,7 @@ struct HoldsView: View {
                     model.isVisible = false
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
-                    let account = AccountsManager.shared.currentAccount
+                    let account = appContainer.accountsManager.currentAccount
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
@@ -175,7 +181,7 @@ struct HoldsView: View {
         .accessibilityIdentifier(AccessibilityID.Holds.libraryButton)
         .accessibilityLabel(Strings.Generic.switchLibrary)
         .actionSheet(isPresented: $model.selectNewLibrary) {
-            var buttons: [ActionSheet.Button] = TPPSettings.shared.settingsAccountsList.map { account in
+            var buttons: [ActionSheet.Button] = appContainer.settings.settingsAccountsList.map { account in
                 .default(Text(account.name)) {
                     model.loadAccount(account)
                 }
@@ -236,11 +242,11 @@ struct HoldsView: View {
 @objc final class TPPHoldsViewController: NSObject {
 
     /// Returns a `UINavigationController` containing our SwiftUI `HoldsView`.
-    /// • The SwiftUI view uses `HoldsViewModel()` under the hood.
-    /// • We set the navigation title and the tab-bar image here.
+    /// Composition root: hands the production `AppContainer` to the view,
+    /// which in turn constructs `HoldsViewModel` with live services.
     @MainActor
     @objc static func makeSwiftUIView() -> UIViewController {
-        let holdsRoot = HoldsView()
+        let holdsRoot = HoldsView(appContainer: .production())
 
         let hosting = UIHostingController(rootView: holdsRoot)
         hosting.title = NSLocalizedString("Holds", comment: "Nav title for Holds")

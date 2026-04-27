@@ -37,7 +37,7 @@ final class ReaderService {
         r3Owner.libraryService.openBook(book, sender: presenter) { result in
             switch result {
             case .success(let publication):
-                if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+                if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                     coordinator.store(book: book)
                     coordinator.storeEPUBPublication(publication, forBookId: book.identifier, forSample: false)
                     coordinator.push(.epub(BookRoute(id: book.identifier)))
@@ -58,7 +58,7 @@ final class ReaderService {
         r3Owner.libraryService.openSample(book, sampleURL: url, sender: presenter) { result in
             switch result {
             case .success(let publication):
-                if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+                if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                     coordinator.store(book: book)
                     coordinator.presentEPUBSample(publication, forBookId: book.identifier)
                 } else {
@@ -128,7 +128,7 @@ final class ReaderService {
     /// download fails or takes longer than 120 seconds.
     @MainActor
     private func attemptRedownloadAndReopen(book: TPPBook, originalError: LibraryServiceError) {
-        MyBooksDownloadCenter.shared.deleteLocalContent(for: book.identifier)
+        AppContainer.production().downloadCenter.deleteLocalContent(for: book.identifier)
         TPPBookRegistry.shared.setState(.downloadNeeded, for: book.identifier)
 
         let showFallback = { [weak self] in
@@ -161,7 +161,7 @@ final class ReaderService {
                 }
             }
 
-        MyBooksDownloadCenter.shared.startDownload(for: book)
+        AppContainer.production().downloadCenter.startDownload(for: book)
     }
 
     @MainActor

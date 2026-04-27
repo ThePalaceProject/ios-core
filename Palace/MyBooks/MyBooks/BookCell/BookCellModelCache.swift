@@ -61,23 +61,65 @@ final class BookCellModelCache: ObservableObject {
     private let configuration: Configuration
     private let imageCache: ImageCacheType
     private let bookRegistry: TPPBookRegistryProvider
+    private let downloadCenter: MyBooksDownloadCenter
+    private let accountsManager: AccountsManager
+    private let samplePreviewManager: SamplePreviewManager
+    private let readerService: ReaderService
     private var cancellables = Set<AnyCancellable>()
     private var cleanupTask: Task<Void, Never>?
 
     // MARK: - Singleton
 
-    public static let shared = BookCellModelCache()
+    /// Convenience singleton retained for default-arg callers (e.g.
+    /// `CatalogSearchViewModel.init(bookCellModelCache: = .shared)`).
+    /// The historical AppContainer.production() ↔ .shared init cycle is
+    /// gone — `production()` now constructs its own cache directly from
+    /// already-resolved partner singletons, so this static-let no longer
+    /// participates in any cycle. Phase 4 follow-up will migrate
+    /// remaining default-arg call sites to AppContainer-based DI and
+    /// then this static-let can be deleted.
+    public static let shared: BookCellModelCache = {
+        BookCellModelCache(
+            configuration: .default,
+            imageCache: ImageCache.shared,
+            bookRegistry: TPPBookRegistry.shared,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: .shared,
+            samplePreviewManager: .shared,
+            readerService: .shared
+        )
+    }()
 
     // MARK: - Initialization
 
+    public convenience init(configuration: Configuration = .default, appContainer: AppContainer) {
+        self.init(
+            configuration: configuration,
+            imageCache: appContainer.imageCache,
+            bookRegistry: appContainer.bookRegistry,
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService
+        )
+    }
+
     public init(
         configuration: Configuration = .default,
-        imageCache: ImageCacheType = ImageCache.shared,
-        bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
+        imageCache: ImageCacheType,
+        bookRegistry: TPPBookRegistryProvider,
+        downloadCenter: MyBooksDownloadCenter,
+        accountsManager: AccountsManager,
+        samplePreviewManager: SamplePreviewManager,
+        readerService: ReaderService
     ) {
         self.configuration = configuration
         self.imageCache = imageCache
         self.bookRegistry = bookRegistry
+        self.downloadCenter = downloadCenter
+        self.accountsManager = accountsManager
+        self.samplePreviewManager = samplePreviewManager
+        self.readerService = readerService
 
         if configuration.observeRegistryChanges {
             setupRegistryObserver()
@@ -154,7 +196,15 @@ final class BookCellModelCache: ObservableObject {
     }
 
     private func createAndCacheModel(for book: TPPBook) -> BookCellModel {
-        let model = BookCellModel(book: book, imageCache: imageCache, bookRegistry: bookRegistry)
+        let model = BookCellModel(
+            book: book,
+            imageCache: imageCache,
+            bookRegistry: bookRegistry,
+            downloadCenter: downloadCenter,
+            accountsManager: accountsManager,
+            samplePreviewManager: samplePreviewManager,
+            readerService: readerService
+        )
 
         // Evict if at capacity
         if cache.count >= configuration.maxEntries {

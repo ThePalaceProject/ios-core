@@ -173,7 +173,7 @@ final class CarPlayAudiobookBridge: ObservableObject {
     /// Dismisses the audiobook view on the phone
     func dismissBookOnPhone() {
         Task {
-            if let coordinator = NavigationCoordinatorHub.shared.coordinator,
+            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator,
                let bookId = currentBook?.identifier {
                 Log.info(#file, "CarPlay: Dismissing book view on phone")
                 coordinator.removeAudioModel(forBookId: bookId)

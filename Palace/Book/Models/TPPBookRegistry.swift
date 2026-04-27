@@ -43,6 +43,7 @@ protocol TPPBookRegistryProvider {
     // Image loading methods
     func cachedThumbnailImage(for book: TPPBook) -> UIImage?
     func thumbnailImage(for book: TPPBook?, handler: @escaping (_ image: UIImage?) -> Void)
+    func thumbnailImages(forBooks books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void)
 }
 
 // TPPBookRegistryData and TPPBookRegistryKey defined in TPPBookRegistryRecord.swift
@@ -110,7 +111,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     // MARK: - External dependencies
 
     private let accountsManager: AccountsManager
-    private lazy var downloadCenter: MyBooksDownloadCenter = .shared
     private var coverRegistry = TPPBookCoverRegistry.shared
 
     private var accountDidChangeCancellable: AnyCancellable?
@@ -195,7 +195,12 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     private override init() {
         self.accountsManager = .shared
         let store = BookRegistryStore()
-        let sync = BookRegistrySync(store: store)
+        let sync = BookRegistrySync(
+            store: store,
+            accountsManager: accountsManager,
+            downloadCenterProvider: { AppContainer.production().downloadCenter },
+            opdsFeedServiceProvider: { .shared }
+        )
         self.store = store
         self.syncEngine = sync
         // The save / saveSync closures always persist to the account the CALLER
@@ -215,7 +220,12 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     fileprivate init(account: String, accountsManager: AccountsManager = .shared) {
         self.accountsManager = accountsManager
         let store = BookRegistryStore()
-        let sync = BookRegistrySync(store: store)
+        let sync = BookRegistrySync(
+            store: store,
+            accountsManager: accountsManager,
+            downloadCenterProvider: { AppContainer.production().downloadCenter },
+            opdsFeedServiceProvider: { .shared }
+        )
         self.store = store
         self.syncEngine = sync
         self.bookmarks = BookmarkManager(

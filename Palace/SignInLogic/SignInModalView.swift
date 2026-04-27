@@ -11,14 +11,22 @@ import SwiftUI
 struct SignInModalView: View {
     let libraryAccountID: String
     let completion: (() -> Void)?
+    private let appContainer: AppContainer
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var accountPublisher = UserAccountPublisher.shared
+    @StateObject private var accountPublisher: UserAccountPublisher
+
+    init(libraryAccountID: String, completion: (() -> Void)?, appContainer: AppContainer) {
+        self.libraryAccountID = libraryAccountID
+        self.completion = completion
+        self.appContainer = appContainer
+        _accountPublisher = StateObject(wrappedValue: appContainer.userAccountPublisher)
+    }
 
     var body: some View {
         NavigationView {
             // forceReauthMode: true ensures sign-in form is shown even if user has stale credentials
             // This is needed for re-auth flows (e.g., after 401 from borrow)
-            AccountDetailView(libraryAccountID: libraryAccountID, forceReauthMode: true)
+            AccountDetailView(libraryAccountID: libraryAccountID, appContainer: appContainer, forceReauthMode: true)
                 .navigationTitle(Strings.Generic.signin)
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationBarItems(leading: cancelButton)
@@ -62,12 +70,12 @@ class SignInModalPresenter: NSObject {
     /// - Parameters:
     ///   - libraryAccountID: The library account to sign into
     ///   - completion: Called when sign-in completes successfully
-    static func presentSignInModal(libraryAccountID: String, completion: (() -> Void)?) {
+    static func presentSignInModal(libraryAccountID: String, appContainer: AppContainer = .production(), completion: (() -> Void)?) {
         guard !isPresenting else {
             Log.debug(#file, "Sign-in modal already presented — suppressing duplicate")
             return
         }
-        guard !AccountsManager.shared.isAccountSwitching else {
+        guard !appContainer.accountsManager.isAccountSwitching else {
             Log.debug(#file, "Account switch in progress — suppressing sign-in modal (F-032)")
             return
         }
@@ -78,7 +86,8 @@ class SignInModalPresenter: NSObject {
             completion: {
                 isPresenting = false
                 completion?()
-            }
+            },
+            appContainer: appContainer
         )
 
         let vc = UIHostingController(rootView: view)

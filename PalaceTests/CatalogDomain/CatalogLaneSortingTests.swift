@@ -79,7 +79,7 @@ final class CatalogLaneSortingTests: XCTestCase {
     networkClient.stubOPDSResponse(for: feedURL, xml: xml)
     
     let api = DefaultCatalogAPI(client: networkClient, parser: OPDSParser())
-    let viewModel = CatalogLaneMoreViewModel(title: "Test", url: feedURL, api: api)
+    let viewModel = CatalogLaneMoreViewModel(title: "Test", url: feedURL, bookRegistry: TPPBookRegistry.shared, bookCellModelCache: .shared, api: api)
     
     // Act
     await viewModel.fetchAndApplyFeed(at: feedURL)
@@ -108,7 +108,7 @@ final class CatalogLaneSortingTests: XCTestCase {
     networkClient.stubOPDSResponse(for: feedURL, xml: xml)
     
     let api = DefaultCatalogAPI(client: networkClient, parser: OPDSParser())
-    let viewModel = CatalogLaneMoreViewModel(title: "Test", url: feedURL, api: api)
+    let viewModel = CatalogLaneMoreViewModel(title: "Test", url: feedURL, bookRegistry: TPPBookRegistry.shared, bookCellModelCache: .shared, api: api)
     
     await viewModel.fetchAndApplyFeed(at: feedURL)
     

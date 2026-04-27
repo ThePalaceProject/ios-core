@@ -49,7 +49,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         XCTAssertEqual(viewModel.usernameText, "")
         XCTAssertEqual(viewModel.pinText, "")
@@ -65,7 +65,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         XCTAssertEqual(viewModel.usernameText, "", "usernameText must start empty")
 
         viewModel.usernameText = "testuser123"
@@ -81,7 +81,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         XCTAssertEqual(viewModel.pinText, "", "pinText must start empty")
 
         viewModel.pinText = "1234"
@@ -97,7 +97,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         XCTAssertTrue(viewModel.isPINHidden)
     }
@@ -108,7 +108,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         XCTAssertTrue(viewModel.isPINHidden)
         viewModel.togglePINVisibility()
@@ -123,7 +123,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         XCTAssertFalse(viewModel.showBarcode, "Precondition: showBarcode defaults to false")
 
         // Capture how many times objectWillChange fires when showBarcode is toggled
@@ -148,7 +148,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         viewModel.usernameText = ""
         viewModel.pinText = ""
 
@@ -162,7 +162,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         viewModel.usernameText = "testuser"
         viewModel.pinText = ""
 
@@ -181,7 +181,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         viewModel.usernameText = "testuser"
         viewModel.pinText = "1234"
 
@@ -200,7 +200,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         XCTAssertEqual(viewModel.libraryName, account.name)
     }
@@ -212,7 +212,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         let account = viewModel.selectedAccount
 
         XCTAssertNotNil(account, "selectedAccount must be non-nil for a valid libraryID")
@@ -228,7 +228,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         viewModel.alertTitle = "Test Title"
         viewModel.alertMessage = "Test Message"
@@ -247,7 +247,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         let initialValue = viewModel.isSyncEnabled
 
         viewModel.isSyncEnabled = !initialValue
@@ -268,7 +268,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         let businessLogic = viewModel.businessLogic
 
         // businessLogic must be tied to the correct library account
@@ -288,7 +288,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         viewModel.usernameText = "user123"
         viewModel.pinText = "4567"
@@ -304,7 +304,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         viewModel.usernameText = "user123"
         viewModel.pinText = "4567"
@@ -324,7 +324,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         var changeCount = 0
         let cancellable = viewModel.objectWillChange.sink { changeCount += 1 }
         defer { _ = cancellable }
@@ -364,7 +364,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         viewModel.usernameText = "   "
         viewModel.pinText = "1234"
 
@@ -388,7 +388,7 @@ final class AccountDetailViewModelTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         viewModel.usernameText = "user@example.com"
         viewModel.pinText = "pass!@#$%"
 
@@ -439,7 +439,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User has OAuth credentials (token-based) that are stale
         let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
@@ -469,7 +469,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User has SAML/Basic credentials (barcode/PIN) that are stale
         let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
@@ -500,7 +500,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User has credentials and is fully logged in
         let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
@@ -525,7 +525,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User starts logged in with SAML/Basic (barcode/PIN credentials)
         let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
@@ -554,7 +554,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User starts logged in with OAuth (token credentials)
         let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
@@ -582,7 +582,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User has stale SAML/Basic credentials (barcode/PIN)
         let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
@@ -662,7 +662,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Drain init's deferred Task { @MainActor in accountDidChange() } so any
         // account state set by previous tests is reflected before we assert.
@@ -677,7 +677,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Drain init's deferred Task { @MainActor in accountDidChange() }.
         // accountDidChange() may set pinText to a non-empty value when the device has
@@ -713,7 +713,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isSigningOut = true
         vm.isLoading = false
 
@@ -728,7 +728,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = true
         vm.isSigningOut = true
 
@@ -743,7 +743,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = false
 
         vm.businessLogicDidReceiveCredentials(vm.businessLogic)
@@ -756,7 +756,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = true
         vm.isSigningOut = true
 
@@ -771,7 +771,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = false
         vm.isSigningOut = false
 
@@ -786,7 +786,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = true
         vm.isSigningOut = true
 
@@ -801,7 +801,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = true
         vm.isSigningOut = true
 
@@ -821,7 +821,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.pinText = "1234"
 
         let cancelled = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled, userInfo: nil)
@@ -836,7 +836,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.isLoading = true
         vm.isSigningOut = true
 
@@ -853,7 +853,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         let err = NSError(domain: "test", code: 500,
                           userInfo: [NSLocalizedDescriptionKey: "server exploded"])
@@ -872,7 +872,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No account details available")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         let original = account.details?.syncPermissionGranted ?? false
 
         vm.updateSync(enabled: !original)
@@ -889,7 +889,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No auth methods available")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         vm.selectAuthMethod(auth)
 
@@ -904,7 +904,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
         account.removeAll()
         vm.refreshSignInState()
@@ -928,7 +928,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         account.setBarcode("foo", PIN: "9999")
         account.setAuthState(.loggedIn)
 
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.businessLogicDidCompleteSignIn(vm.businessLogic)
         // DI migration resolved the singleton integration issue — these assertions now pass
         XCTAssertEqual(vm.usernameText, "foo")
@@ -973,7 +973,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.usernameText = ""
         XCTAssertNil(vm.username)
         vm.usernameText = "user"
@@ -985,7 +985,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.pinText = ""
         XCTAssertEqual(vm.pin, "")
         vm.pinText = "4567"
@@ -997,7 +997,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         XCTAssertEqual(vm.context, "Settings Tab")
     }
 
@@ -1009,7 +1009,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         XCTAssertEqual(vm.libraryLogo, account.logo)
     }
 
@@ -1024,7 +1024,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         account.setBarcode("x", PIN: "1")
         account.setAuthState(.loggedIn)
 
-        let vm = AccountDetailViewModel(libraryAccountID: libraryID)
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
         vm.refreshSignInState()
         // DI migration resolved the singleton integration issue — these assertions now pass
         XCTAssertTrue(vm.isSignedIn)
@@ -1042,7 +1042,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Drain init's deferred tasks, then clear pinText to guarantee the
         // synchronous direct-toggle path (no async biometric challenge).

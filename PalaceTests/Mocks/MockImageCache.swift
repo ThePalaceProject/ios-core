@@ -46,6 +46,12 @@ public final class MockImageCache: ImageCacheType {
         cleared = true
     }
 
+    public func warmMemoryCache(for keys: [String]) async {
+        // No-op for tests — promotion is implicit since get() already
+        // returns from the in-memory store the mock holds.
+        for key in keys { _ = get(for: key) }
+    }
+
     public func resetHistory() {
         setKeys.removeAll()
         removedKeys.removeAll()

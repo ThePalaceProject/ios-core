@@ -175,7 +175,7 @@ struct CatalogCacheMetadata: Codable {
         MyBooksDownloadCenter.clearAllBorrowReauthState()
 
         Task { @MainActor [weak self] in
-            if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                 let pathCount = coordinator.path.count
                 Log.debug(#file, "  Navigation path has \(pathCount) items")
 

@@ -41,6 +41,13 @@ protocol AudiobookSessionManaging: AnyObject {
     /// The cover image for the current audiobook.
     var coverImage: UIImage? { get }
 
+    /// True when an `AudiobookManager` has been bound to the session — i.e.
+    /// post-load, post-bind. Distinguishes from the broader `state.isActive`
+    /// which is also true while loading. Used by the remote-command bridge
+    /// (PlaybackBootstrapper) to decide whether the toolkit's
+    /// MediaControlPublisher will handle a transport command.
+    var hasActiveManager: Bool { get }
+
     // MARK: - Publishers
 
     /// Emits when playback state changes (for CarPlay UI updates, etc.).

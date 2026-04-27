@@ -15,7 +15,8 @@ final class CatalogViewModel: ObservableObject {
 
   private let repository: CatalogRepositoryProtocol
   private let topLevelURLProvider: () -> URL?
-  private let bookRegistry: TPPBookRegistry
+  private let bookRegistry: TPPBookRegistryProvider
+  private let imageCache: ImageCacheType
 
   // MARK: - Public accessors for search
   var searchRepository: CatalogRepositoryProtocol { repository }
@@ -39,11 +40,13 @@ final class CatalogViewModel: ObservableObject {
   init(
     repository: CatalogRepositoryProtocol,
     topLevelURLProvider: @escaping () -> URL?,
-    bookRegistry: TPPBookRegistry = .shared
+    bookRegistry: TPPBookRegistryProvider,
+    imageCache: ImageCacheType
   ) {
     self.repository = repository
     self.topLevelURLProvider = topLevelURLProvider
     self.bookRegistry = bookRegistry
+    self.imageCache = imageCache
   }
 
   // MARK: - Public API
@@ -76,8 +79,8 @@ final class CatalogViewModel: ObservableObject {
         let t1 = CFAbsoluteTimeGetCurrent()
         guard !Task.isCancelled else { return }
 
-        let mapped = await Task.detached(priority: .userInitiated) { () -> MappedCatalog in
-          return await Self.mapFeed(feed, currentURL: url)
+        let mapped = await Task.detached(priority: .userInitiated) { [bookRegistry = self.bookRegistry] () -> MappedCatalog in
+          return await Self.mapFeed(feed, currentURL: url, bookRegistry: bookRegistry)
         }.value
 
         let t2 = CFAbsoluteTimeGetCurrent()
@@ -90,7 +93,7 @@ final class CatalogViewModel: ObservableObject {
           ["\($0.identifier)_\(laneDisplayHeight)pt", $0.identifier]
         }
         if !warmKeys.isEmpty {
-          await ImageCache.shared.warmMemoryCache(for: Array(warmKeys))
+          await self.imageCache.warmMemoryCache(for: Array(warmKeys))
         }
 
         guard !Task.isCancelled else { return }
@@ -119,7 +122,7 @@ final class CatalogViewModel: ObservableObject {
           let bgKeys = remainingBooks.flatMap {
             ["\($0.identifier)_\(laneDisplayHeight)pt", $0.identifier]
           }
-          Task { await ImageCache.shared.warmMemoryCache(for: Array(bgKeys)) }
+          Task { await self.imageCache.warmMemoryCache(for: Array(bgKeys)) }
         }
 
         // Prefetch thumbnails for visible lanes (network fetch for uncached)
@@ -204,7 +207,7 @@ final class CatalogViewModel: ObservableObject {
 
     // Try synchronous cache check — instant swap, no opacity fade
     if let cachedFeed = repository.cachedFeed(for: href) {
-      let mapped = Self.mapFeed(cachedFeed)
+      let mapped = Self.mapFeed(cachedFeed, bookRegistry: bookRegistry)
       let newContent = mapped.toCatalogContent()
       state = .loaded(CatalogContent(
         title: newContent.title,
@@ -229,7 +232,7 @@ final class CatalogViewModel: ObservableObject {
 
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
-        let mapped = Self.mapFeed(feed)
+        let mapped = Self.mapFeed(feed, bookRegistry: bookRegistry)
         state = .loaded(mapped.toCatalogContent())
         scrollGeneration &+= 1
       } else {
@@ -284,7 +287,7 @@ final class CatalogViewModel: ObservableObject {
 
     // Try repository cache — feed data exists but views need creation
     if let cachedFeed = repository.cachedFeed(for: href) {
-      let base = Self.mapFeed(cachedFeed).toCatalogContent()
+      let base = Self.mapFeed(cachedFeed, bookRegistry: bookRegistry).toCatalogContent()
       let newContent = CatalogContent(
         title: base.title, feed: base.feed,
         selectors: CatalogSelectors(entryPoints: optimisticSelectors.entryPoints, facetGroups: base.selectors.facetGroups)
@@ -303,7 +306,7 @@ final class CatalogViewModel: ObservableObject {
 
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
-        let base = Self.mapFeed(feed).toCatalogContent()
+        let base = Self.mapFeed(feed, bookRegistry: bookRegistry).toCatalogContent()
         let newContent = CatalogContent(
           title: base.title, feed: base.feed,
           selectors: CatalogSelectors(entryPoints: optimisticSelectors.entryPoints, facetGroups: base.selectors.facetGroups)
@@ -366,7 +369,7 @@ extension CatalogViewModel {
     let entryPoints: [CatalogFilter]
   }
 
-  static func mapFeed(_ feed: CatalogFeed, currentURL: URL? = nil) -> MappedCatalog {
+  static func mapFeed(_ feed: CatalogFeed, currentURL: URL? = nil, bookRegistry: TPPBookRegistryProvider) -> MappedCatalog {
     if let opds2 = feed.opds2Feed {
       return mapOPDS2Feed(opds2, title: feed.title, entries: feed.entries, currentURL: currentURL)
     }
@@ -378,13 +381,13 @@ extension CatalogViewModel {
     switch feedObjc.type {
     case .acquisitionGrouped:
       let (facetGroups, entryPoints) = extractFacets(from: feedObjc)
-      let (lanes, _) = buildGroupedContent(from: feedObjc)
+      let (lanes, _) = buildGroupedContent(from: feedObjc, bookRegistry: bookRegistry)
       return MappedCatalog(
         title: title, entries: entries, lanes: lanes, ungroupedBooks: [],
         facetGroups: facetGroups.isEmpty ? [] : facetGroups, entryPoints: entryPoints
       )
     case .acquisitionUngrouped:
-      let ungroupedBooks = (feedObjc.entries as? [TPPOPDSEntry])?.compactMap { makeBook(from: $0) } ?? []
+      let ungroupedBooks = (feedObjc.entries as? [TPPOPDSEntry])?.compactMap { makeBook(from: $0, bookRegistry: bookRegistry) } ?? []
       let (facetGroups, entryPoints) = extractFacets(from: feedObjc)
       return MappedCatalog(
         title: title, entries: entries, lanes: [], ungroupedBooks: ungroupedBooks,
@@ -485,13 +488,13 @@ extension CatalogViewModel {
     return aItems == bItems
   }
 
-  private static func buildGroupedContent(from feed: TPPOPDSFeed) -> ([CatalogLaneModel], [TPPBook]) {
+  private static func buildGroupedContent(from feed: TPPOPDSFeed, bookRegistry: TPPBookRegistryProvider) -> ([CatalogLaneModel], [TPPBook]) {
     var titleToBooks: [String: [TPPBook]] = [:]
     var titleToMoreURL: [String: URL?] = [:]
     var orderedTitles: [String] = []
     if let entries = feed.entries as? [TPPOPDSEntry] {
       for entry in entries {
-        if let group = entry.groupAttributes, let book = makeBook(from: entry) {
+        if let group = entry.groupAttributes, let book = makeBook(from: entry, bookRegistry: bookRegistry) {
           let title = group.title ?? ""
           if titleToBooks[title] == nil { orderedTitles.append(title) }
           titleToBooks[title, default: []].append(book)
@@ -536,7 +539,7 @@ extension CatalogViewModel {
     bookRegistry.thumbnailImages(forBooks: set) { _ in }
   }
 
-  static func makeBook(from entry: TPPOPDSEntry, bookRegistry: TPPBookRegistry = .shared) -> TPPBook? {
+  static func makeBook(from entry: TPPOPDSEntry, bookRegistry: TPPBookRegistryProvider) -> TPPBook? {
     guard var book = TPPBook(entry: entry) else { return nil }
     if let updated = bookRegistry.updatedBookMetadata(book) { book = updated }
     if book.defaultBookContentType == .unsupported { return nil }

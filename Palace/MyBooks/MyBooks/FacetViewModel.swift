@@ -38,7 +38,7 @@ class FacetViewModel: ObservableObject {
 
     private let accountsManager: AccountsManager
 
-    init(groupName: String, facets: [Facet], accountsManager: AccountsManager = AccountsManager.shared) {
+    init(groupName: String, facets: [Facet], accountsManager: AccountsManager) {
         self.facets = facets
         self.groupName = groupName
         self.accountsManager = accountsManager

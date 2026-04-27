@@ -24,10 +24,13 @@ struct AccountDetailView: View {
     private let forceReauthMode: Bool
     private let settings: TPPSettings
 
-    init(libraryAccountID: String, forceReauthMode: Bool = false, settings: TPPSettings = TPPSettings.shared) {
-        _viewModel = StateObject(wrappedValue: AccountDetailViewModel(libraryAccountID: libraryAccountID))
+    init(libraryAccountID: String, appContainer: AppContainer, forceReauthMode: Bool = false) {
+        _viewModel = StateObject(wrappedValue: AccountDetailViewModel(
+            libraryAccountID: libraryAccountID,
+            appContainer: appContainer
+        ))
         self.forceReauthMode = forceReauthMode
-        self.settings = settings
+        self.settings = appContainer.settings
     }
 
     var body: some View {

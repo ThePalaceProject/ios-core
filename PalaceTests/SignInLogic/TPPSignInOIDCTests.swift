@@ -1776,7 +1776,7 @@ final class OIDCViewModelSignInTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         let userAccount = viewModel.selectedUserAccount
         let originalState = userAccount.authState
@@ -1800,7 +1800,7 @@ final class OIDCViewModelSignInTests: XCTestCase {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID)
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         let isSignedIn = viewModel.isSignedIn
         let isStale = viewModel.selectedUserAccount.authState == .credentialsStale
