@@ -88,30 +88,20 @@ Last updated: 2026-04-16
 - `ui-testing.yml` — E2E test runner (manual trigger)
 - `ledger.yml` — Ledger + QAAtlas + AccessLint (non-blocking)
 
-## Governance Pipeline
+## Pre-PR Verification
 
-Every code change follows this pipeline (enforced by hooks):
+Anyone can self-check their work before opening a PR:
 
-```
-forge_init ─→ forge_propose_changeset ─→ evidence collection ─→ gate promotion ─→ PR
-                                              │
-                    ┌─────────────────────────┴───────────────────────────┐
-                    │ unit_test: XCTest pass/fail counts                  │
-                    │ lint: build errors + test-quality violations         │
-                    │ coverage: line coverage % vs floors                  │
-                    │ mutation: kill rate on changed files (threshold 50%) │
-                    │ a11y_audit: accessibility annotations on UI files    │
-                    └─────────────────────────────────────────────────────┘
+```bash
+scripts/verify-pr.sh --quick    # build + tests + lint + coverage + a11y
+scripts/verify-pr.sh            # adds mutation testing on changed files
 ```
 
-**Enforcement hooks** (`.claude/settings.json`):
-- `git commit` blocked without ForgeOS changeset
-- `git push` blocked without passing gates
-- `gh pr create` blocked without passing gates
+Each check is recorded against the changed files only — pass/fail summary at the end. JSON report optional via `--report /tmp/v.json` for CI consumption.
 
-**Evidence collection**: `scripts/forgeos-session.sh evidence <cs_id>` runs the full battery automatically.
+The mutation pass invokes `python3 scripts/palace_mutate.py` per changed Swift file, looking for ≥50% mutant kill rate (or ≥40% on legacy code with no characterization tests). Critical-path files (sign-in, borrow, download, DRM) require 100% kill rate.
 
-**Pre-PR verification**: `scripts/verify-pr.sh` runs build + tests + lint + coverage + mutation + a11y and produces a JSON report.
+Internal Synctek contributors additionally run through ForgeOS governance gates that hook into `git commit` / `git push` / `gh pr create` — that pipeline is local-only and outside contributors don't need it.
 
 ## Confidence Matrix
 
@@ -196,32 +186,13 @@ Use this for releases and for areas where automation gaps exist:
 
 ## Process Integration
 
-### Every Session
-```bash
-# 1. Init governance
-forge_init  # project: proj_87884c17
-
-# 2. Propose changeset BEFORE coding (read required evidence)
-forge_propose_changeset  # with planned files + modules
-
-# 3. Implement with TDD (tests first, then production code)
-
-# 4. Collect evidence
-scripts/forgeos-session.sh evidence <changeset_id>
-# Collects: unit_test, lint, coverage, mutation, a11y
-
-# 5. Promote gates
-scripts/forgeos-session.sh promote <changeset_id>
-
-# 6. Verify
-scripts/verify-pr.sh --report /tmp/verify.json
-
-# 7. Release check
-forge_release_check  # must return can_release: true
-
-# 8. Create PR (hooks enforce governance)
-gh pr create --base develop
-```
+### Per-change cycle
+1. **Plan tests first.** What edge cases, what error paths, what state transitions need to be pinned?
+2. **Write the failing test.** TDD — never write production code without a failing test driving it.
+3. **Make it pass.** Minimum production code, then refactor both sides.
+4. **Verify with `scripts/verify-pr.sh --quick`.** Build, tests, lint, coverage, accessibility — all green before pushing.
+5. **For critical-path changes** (sign-in, borrow, download, DRM, payment): also run `scripts/palace_mutate.py` against changed files and confirm 100% kill rate.
+6. **Open the PR against `develop`** (never `main`). Hooks enforce additional internal governance for Synctek contributors; outside contributors follow standard GitHub PR flow.
 
 ### Every Release
 ```bash
