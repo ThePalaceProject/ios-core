@@ -119,7 +119,7 @@ struct AppContainer {
             accountsManager: accountsManager,
             settings: .shared,
             downloadCenter: downloadCenter,
-            debugSettings: .shared,
+            debugSettings: DebugSettings(),
             bookCellModelCache: bookCellModelCache,
             imageCache: imageCache,
             userAccountPublisher: .shared,

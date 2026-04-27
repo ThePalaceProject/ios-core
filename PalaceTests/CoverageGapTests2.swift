@@ -179,13 +179,13 @@ final class DebugSettingsGapTests: XCTestCase {
 
     override func tearDown() {
         // Restore DebugSettings to default state after each test
-        DebugSettings.shared.resetAll()
+        DebugSettings().resetAll()
         super.tearDown()
     }
 
     /// Coverage Gap: DebugSettings — isBorrowErrorSimulationEnabled reflects simulatedBorrowError
     func testDebugSettings_isBorrowErrorSimulationEnabled_reflectsSimulatedBorrowError() {
-        let settings = DebugSettings.shared
+        let settings = DebugSettings()
 
         settings.simulatedBorrowError = .none
         XCTAssertFalse(settings.isBorrowErrorSimulationEnabled)
@@ -196,7 +196,7 @@ final class DebugSettingsGapTests: XCTestCase {
 
     /// Coverage Gap: DebugSettings — isTestHoldsEnabled reflects testHoldsConfiguration
     func testDebugSettings_isTestHoldsEnabled_reflectsTestHoldsConfiguration() {
-        let settings = DebugSettings.shared
+        let settings = DebugSettings()
 
         settings.testHoldsConfiguration = .none
         XCTAssertFalse(settings.isTestHoldsEnabled)
@@ -208,7 +208,7 @@ final class DebugSettingsGapTests: XCTestCase {
     /// Coverage Gap: DebugSettings — resetAll clears isBadgeLoggingEnabled
     /// even when it was explicitly set to true before the reset call.
     func testDebugSettings_resetAll_clearsBadgeLogging() {
-        let settings = DebugSettings.shared
+        let settings = DebugSettings()
 
         // Arrange: enable badge logging and verify it took effect before resetting
         settings.isBadgeLoggingEnabled = true
@@ -227,7 +227,7 @@ final class DebugSettingsGapTests: XCTestCase {
 
     /// Coverage Gap: DebugSettings resetAll — clears all state
     func testDebugSettings_resetAll_clearsState() {
-        let settings = DebugSettings.shared
+        let settings = DebugSettings()
 
         settings.simulatedBorrowError = .loanLimitReached
         settings.isBadgeLoggingEnabled = true
