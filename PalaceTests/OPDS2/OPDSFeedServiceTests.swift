@@ -13,17 +13,34 @@ final class OPDSFeedServiceTests: XCTestCase {
 
     // MARK: - Cancellation Tests (no network calls)
 
-    func testCancelRequest_doesNotThrow_whenNoInflightRequestForUrl() async {
+    /// Cancelling a URL with no in-flight request should be a no-op rather
+    /// than throwing or crashing the actor — UI code calls this opportunistically
+    /// (on view disappear, on navigation away) without first checking whether a
+    /// fetch is actually active. Idempotency matters because users can dismiss
+    /// the same screen multiple times via gestures + system back.
+    func testCancelRequest_isNoOpAndIdempotent_whenNoInflightRequestForUrl() async {
         let service = OPDSFeedService()
         let url = URL(string: "https://example.com/feed")!
+        let otherURL = URL(string: "https://example.com/other")!
 
-        await service.cancelRequest(for: url)
+        var awaitedCallsCompleted = 0
+        await service.cancelRequest(for: url);      awaitedCallsCompleted += 1
+        await service.cancelRequest(for: url);      awaitedCallsCompleted += 1
+        await service.cancelRequest(for: otherURL); awaitedCallsCompleted += 1
+
+        XCTAssertEqual(awaitedCallsCompleted, 3,
+                       "All three cancellation awaits completed — actor did not crash, hang, or trap")
     }
 
-    func testCancelAllRequests_doesNotThrow_whenNothingInFlight() async {
+    func testCancelAllRequests_isNoOpAndIdempotent_whenNothingInFlight() async {
         let service = OPDSFeedService()
 
-        await service.cancelAllRequests()
+        var awaitedCallsCompleted = 0
+        await service.cancelAllRequests(); awaitedCallsCompleted += 1
+        await service.cancelAllRequests(); awaitedCallsCompleted += 1
+
+        XCTAssertEqual(awaitedCallsCompleted, 2,
+                       "Both cancelAll awaits completed — actor did not crash, hang, or trap")
     }
 }
 

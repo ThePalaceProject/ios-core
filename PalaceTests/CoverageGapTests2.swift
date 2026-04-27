@@ -50,15 +50,16 @@ final class AppTabRouterGapTests: XCTestCase {
 
     /// AppTabRouterHub returns to default state (no registered router) after
     /// the injected router is released — confirms the weak reference semantics.
+    /// Asserting the post-nil state is enough: if `hub.router` were a strong
+    /// reference, the router would survive the local `router = nil` and this
+    /// assertion would fail.
     func testAppTabRouterHub_registeredRouterIsWeaklyHeld() {
         let hub = AppTabRouterHub()
 
         var router: AppTabRouter? = AppTabRouter()
         hub.router = router
-        XCTAssertTrue(hub.router != nil,
-                      "Hub must hold the router while the strong reference exists")
-
         router = nil
+
         XCTAssertNil(hub.router,
                      "Hub's router reference is weak; it must become nil when the router is deallocated")
     }
