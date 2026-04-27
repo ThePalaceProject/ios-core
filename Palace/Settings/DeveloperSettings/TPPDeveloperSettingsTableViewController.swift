@@ -689,7 +689,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             let checkmark = isSelected ? " ✓" : ""
 
             alert.addAction(UIAlertAction(title: config.displayName + checkmark, style: .default) { [weak self] _ in
-                self.debugSettings.testHoldsConfiguration = config
+                self?.debugSettings.testHoldsConfiguration = config
                 self?.tableView.reloadData()
 
                 NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
@@ -728,7 +728,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             let checkmark = isSelected ? " ✓" : ""
 
             alert.addAction(UIAlertAction(title: errorType.displayName + checkmark, style: .default) { [weak self] _ in
-                self.debugSettings.simulatedBorrowError = errorType
+                self?.debugSettings.simulatedBorrowError = errorType
                 self?.tableView.reloadData()
 
                 if errorType != .none {
@@ -763,7 +763,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             let checkmark = isSelected ? " \u{2713}" : ""
 
             alert.addAction(UIAlertAction(title: failureType.displayName + checkmark, style: .default) { [weak self] _ in
-                self.debugSettings.simulatedSyncFailure = failureType
+                self?.debugSettings.simulatedSyncFailure = failureType
                 self?.tableView.reloadData()
 
                 if failureType != .none {
