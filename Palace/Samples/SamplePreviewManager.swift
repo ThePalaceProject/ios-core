@@ -2,12 +2,10 @@ import SwiftUI
 
 @MainActor
 final class SamplePreviewManager: ObservableObject {
-    static let shared = SamplePreviewManager()
-
     @Published private(set) var currentBookID: String?
     @Published private(set) var toolbar: AudiobookSampleToolbar?
 
-    private init() {}
+    init() {}
 
     func isShowingPreview(for book: TPPBook) -> Bool {
         currentBookID == book.identifier && toolbar != nil
@@ -50,7 +48,7 @@ final class SamplePreviewManager: ObservableObject {
 }
 
 struct SamplePreviewBarView: View {
-    @ObservedObject private var manager = SamplePreviewManager.shared
+    @ObservedObject private var manager = AppContainer.production().samplePreviewManager
 
     var body: some View {
         SwiftUI.Group {

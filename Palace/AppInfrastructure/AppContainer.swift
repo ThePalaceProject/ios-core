@@ -92,7 +92,7 @@ struct AppContainer {
         let bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
         let downloadCenter = MyBooksDownloadCenter()
         let accountsManager = AccountsManager.shared
-        let samplePreviewManager = SamplePreviewManager.shared
+        let samplePreviewManager = SamplePreviewManager()
         let readerService = ReaderService()
         let navigationCoordinatorHub = NavigationCoordinatorHub()
         let tabRouterHub = AppTabRouterHub()
