@@ -42,7 +42,7 @@ extension TPPBookRegistry {
         }
 
         do {
-            let feed = try await OPDSFeedService.shared.fetchFeed(
+            let feed = try await AppContainer.production().opdsFeedService.fetchFeed(
                 from: loansURL,
                 resetCache: true,
                 useToken: true

@@ -123,7 +123,7 @@ struct AppContainer {
             bookCellModelCache: bookCellModelCache,
             imageCache: imageCache,
             userAccountPublisher: .shared,
-            opdsFeedService: .shared,
+            opdsFeedService: OPDSFeedService(),
             samplePreviewManager: samplePreviewManager,
             readerService: readerService,
             navigationCoordinatorHub: navigationCoordinatorHub,

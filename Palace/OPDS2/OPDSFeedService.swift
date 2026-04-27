@@ -11,11 +11,9 @@ import Foundation
 /// Wraps legacy Objective-C TPPOPDSFeed with type-safe async API
 actor OPDSFeedService {
 
-    static let shared = OPDSFeedService()
-
     private var inflightRequests: [URL: Task<TPPOPDSFeed, Error>] = [:]
 
-    private init() {}
+    init() {}
 
     // MARK: - Feed Fetching
 
