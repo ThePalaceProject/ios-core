@@ -217,56 +217,53 @@ final class BookDetailViewModel: ObservableObject {
                 // was too aggressive and missed availability data changes needed for the HalfSheet.
                 self.book = updatedBook
 
-                // If we are in a local returning override, hold it until unregistered
-                if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
-                    return
-                }
-                self.bookState = registryState
-
-                // Clear processing buttons based on state transitions
-                switch registryState {
-                case .unregistered:
-                    // Ensure UI is not left in a managing/processing state after returning
-                    self.isManagingHold = false
-                    self.showHalfSheet = false
-                    self.processingButtons.remove(.returning)
-                    self.processingButtons.remove(.cancelHold)
-                    self.processingButtons.remove(.return)
-                    self.processingButtons.remove(.remove)
-
-                case .downloading:
-                    // Download started - clear download-related processing buttons
-                    self.processingButtons.remove(.download)
-                    self.processingButtons.remove(.get)
-                    self.processingButtons.remove(.retry)
-
-                case .downloadFailed:
-                    // Download failed - clear download-related processing buttons
-                    self.processingButtons.remove(.download)
-                    self.processingButtons.remove(.get)
-                    self.processingButtons.remove(.retry)
-                // Don't auto-close the HalfSheet on downloadFailed - the HalfSheet will update
-                // to show retry/cancel buttons. Auto-closing causes a race condition with the
-                // error alert presentation, resulting in the alert being auto-dismissed.
-
-                case .downloadSuccessful, .used:
-                    // Download completed - clear all download-related processing
-                    // Keep half sheet open so user can tap Read/Listen
-                    self.processingButtons.remove(.download)
-                    self.processingButtons.remove(.get)
-                    self.processingButtons.remove(.retry)
-
-                case .holding:
-                    // Hold placed - clear reserve button and dismiss half sheet
-                    self.processingButtons.remove(.reserve)
-                    self.processingButtons.remove(.get)
-                    self.showHalfSheet = false
-
-                default:
-                    break
-                }
+                // Run the registry-state transition through BorrowReducer so the
+                // legacy switch is testable in isolation (see BorrowReducerTests).
+                var snapshot = self.snapshotBorrowState()
+                _ = BorrowReducer.reduce(&snapshot, .registryStateChanged(registryState))
+                self.applyBorrowState(snapshot)
             }
             .store(in: &cancellables)
+    }
+
+    /// Reads the relevant slice of VM @Published state into a `BorrowState`
+    /// value type so the reducer can mutate it in isolation. Cosmetic VM
+    /// fields (related books, alerts, sample state, etc.) live outside this
+    /// snapshot — the reducer only owns the borrow lifecycle.
+    private func snapshotBorrowState() -> BorrowState {
+        BorrowState(
+            bookState: bookState,
+            localBookStateOverride: localBookStateOverride,
+            downloadProgress: downloadProgress,
+            processingButtons: processingButtons,
+            isManagingHold: isManagingHold,
+            showHalfSheet: showHalfSheet
+        )
+    }
+
+    /// Mirrors the post-reduce state back onto VM @Published properties.
+    /// Guards each write with an inequality check so we avoid an unnecessary
+    /// objectWillChange spam — Combine subscribers (e.g. button-state
+    /// throttling) only fire when something actually changed.
+    private func applyBorrowState(_ state: BorrowState) {
+        if bookState != state.bookState {
+            bookState = state.bookState
+        }
+        if localBookStateOverride != state.localBookStateOverride {
+            localBookStateOverride = state.localBookStateOverride
+        }
+        if downloadProgress != state.downloadProgress {
+            downloadProgress = state.downloadProgress
+        }
+        if processingButtons != state.processingButtons {
+            processingButtons = state.processingButtons
+        }
+        if isManagingHold != state.isManagingHold {
+            isManagingHold = state.isManagingHold
+        }
+        if showHalfSheet != state.showHalfSheet {
+            showHalfSheet = state.showHalfSheet
+        }
     }
 
     private func setupObservers() {
