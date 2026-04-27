@@ -2,60 +2,32 @@
 
 Library reading app supporting EPUB, PDF, and audiobooks with multiple DRM systems.
 
-## Mandatory Verification — READ FIRST
+## Contributing & Development Workflow
 
-Every session that produces code changes MUST follow this workflow. No exceptions.
+**Outside contributors:** standard GitHub flow — fork the repo, branch from `develop` (never `main`), open a PR back to `develop` when ready. Tests are mandatory for production changes (see [TDD & Test Quality](#tdd--test-quality--mandatory) below).
 
-### 1. ForgeOS governance (every session)
-```bash
-# Session start — initialize project
-forge_init  # project: proj_87884c17
-forge_propose_changeset  # BEFORE coding — read required evidence to shape implementation
+**Internal Synctek contributors** additionally run through ForgeOS governance gates (changeset → evidence → review → promote). That tooling is in `scripts/forgeos-*.sh` and is exercised via the local-only `.claude/settings.json` PreToolUse hooks. Outside contributors can ignore those scripts; they no-op gracefully without an API key.
 
-# During work — collect evidence as milestones hit
-scripts/forgeos-session.sh evidence <changeset_id>
+**Pre-PR self-check (anyone):** `scripts/verify-pr.sh --quick` runs the full battery — build, tests, lint, coverage, accessibility — against the iPhone 16 Pro simulator. JSON report optional: `--report /tmp/v.json`.
 
-# Before PR — ALL gates must be promoted
-scripts/forgeos-session.sh promote <changeset_id>
-forge_release_check  # must return can_release: true
-```
-
-### 2. Pre-PR verification (every PR)
-```bash
-# Full verification battery — build, tests, lint, coverage, mutation, a11y
-scripts/verify-pr.sh                     # All checks
-scripts/verify-pr.sh --quick             # Skip mutation (faster)
-scripts/verify-pr.sh --report /tmp/v.json  # JSON report for tracking
-```
-
-### 3. Enforcement hooks (automatic — you WILL be blocked)
-- **git commit**: blocked unless ForgeOS changeset exists for current branch
-- **git push**: blocked unless ForgeOS gates pass
-- **gh pr create**: blocked unless ForgeOS gates pass
-
-### 4. Testing posture
-Full testing capabilities, confidence matrix, and gaps documented in:
-**`docs/Testing/TESTING_POSTURE.md`** — read before writing tests for unfamiliar areas.
-
-### 5. Before every PR
-- Run mutation testing: `python3 scripts/palace_mutate.py --file <changed>.swift --tests PalaceTests/`
-- ForgeOS gate-check passes
-- Target branch: `develop` (never `main` directly)
+**Architecture decisions:** see [`docs/architecture/`](./docs/architecture/) for the rationale behind major refactors (the post-modernization triad work, the parallel-agent rebase pattern, post-PR retros).
 
 ## Build & Test
 
 ```bash
-# Build (use xcodeproj, NOT workspace — workspace hits Firebase SPM issues)
+# Build (use xcodeproj, NOT workspace — workspace hits Firebase SPM issues).
+# Replace SIM_ID with your iPhone simulator UDID:
+#   xcrun simctl list devices iPhone | grep Booted
 xcodebuild -project Palace.xcodeproj -scheme Palace \
-  -destination 'platform=iOS Simulator,id=DF4A2A27-9888-429D-A749-2E157A049A37' build
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
 
 # Run all tests
 xcodebuild -project Palace.xcodeproj -scheme Palace \
-  -destination 'platform=iOS Simulator,id=DF4A2A27-9888-429D-A749-2E157A049A37' test
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test
 
 # Run a single test class
 xcodebuild -project Palace.xcodeproj -scheme Palace \
-  -destination 'platform=iOS Simulator,id=DF4A2A27-9888-429D-A749-2E157A049A37' \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
   -only-testing:PalaceTests/MyTestClass test
 ```
 
@@ -67,7 +39,7 @@ xcodebuild -project Palace.xcodeproj -scheme Palace \
 
 ```
 Palace/
-  AppInfrastructure/   # App launch, Firebase, navigation
+  AppInfrastructure/   # App launch, Firebase, navigation, AppContainer DI root
   Accounts/            # Library account management
   Book/                # Book models and detail views
   MyBooks/             # Downloaded books management
@@ -79,30 +51,36 @@ Palace/
   Reader3/             # PDF reader
   OPDS/                # OPDS 1.x parsing (Objective-C)
   OPDS2/               # OPDS 2.0 parsing and services
-  SignInLogic/         # Authentication flows (OAuth, SAML, basic)
+  SignInLogic/         # Authentication flows (OAuth, SAML, basic, OIDC)
   Network/             # HTTP networking layer
   Keychain/            # Secure credential storage
+  Holds/               # Reservations / holds flows + HoldsReducer
   Utilities/           # Extensions, helpers, concurrency
   Migrations/          # App upgrade migrations
 
 PalaceTests/
   Mocks/               # 21 shared mock implementations
-  ViewModels/          # ViewModel unit tests
+  ViewModels/          # ViewModel + reducer unit tests
   Network/             # Network layer tests
   Snapshots/           # UI snapshot tests
   (organized by feature area)
 
 PalaceConfig/          # Assets, certs, plists
 scripts/               # Build, test, release automation
+docs/                  # Architecture decisions + testing posture
 ```
 
 ## Architecture
 
-- **MVVM + Services** — ViewModels are `@MainActor ObservableObject` with `@Published` properties
+- **MVVM + Services + Reducers** — ViewModels are `@MainActor ObservableObject` with `@Published` properties; critical-path state machines extracted into pure `Reducer.reduce(state, action) -> Effect` functions
+- **`AppContainer`** — single composition root in `Palace/AppInfrastructure/AppContainer.swift`. Use `AppContainer.production()` for the live graph; pass an explicit `AppContainer` for tests/previews. Avoid `.shared` reads in new code.
+- **`Store<State, Action, Environment>`** — closure-based reducer + Effect type (~70 LOC) in `Palace/AppInfrastructure/Store.swift`. Not TCA — minimal ceremony.
 - **SwiftUI** for new UI, **UIKit** for legacy screens
 - **Combine** for reactive state management
 - **Manual DI** via protocols — no framework, inject through constructors
 - Mixed **Swift/Objective-C** (legacy OPDS parsing)
+
+See [`docs/architecture/architectural-triad.md`](./docs/architecture/architectural-triad.md) for the design rationale and decision log.
 
 ## Dependencies
 
@@ -131,7 +109,7 @@ scripts/               # Build, test, release automation
 **Test quality rules — every test must:**
 - **Test behavior, not implementation.** Assert what the code DOES, not how it's structured. `XCTAssertEqual(cart.total, 15.99)` is good. `XCTAssertTrue(viewModel.showSearchSheet)` after just setting it is fluff.
 - **Have meaningful setup.** If the test body is just `let x = Foo(); XCTAssertNotNil(x)`, it's not a test. Tests need Arrange → Act → Assert with a real Act step.
-- **Use mocks/stubs for dependencies.** Never hit real singletons (.shared), network, keychain, or UserDefaults. Inject via protocol.
+- **Use mocks/stubs for dependencies.** Never hit real singletons (`.shared`), network, keychain, or `UserDefaults`. Inject via protocol.
 - **Test edge cases, not happy paths only.** Empty arrays, nil values, concurrent access, error responses, expired tokens, malformed data.
 - **Name tests as behavior specs.** `testBorrow_WhenNotSignedIn_ShowsAuthPrompt` not `testBorrowButton`.
 
@@ -149,9 +127,19 @@ scripts/               # Build, test, release automation
 
 If the answer is no, the test is fluff regardless of assertion count. Run mutation testing on changed files:
 ```bash
-python3 scripts/palace_mutate.py --file Palace/Path/ChangedFile.swift --tests PalaceTests/Path/ --dry-run
-# Then without --dry-run to verify tests catch the mutants
+# Discover mutation surface (no test runs):
+python3 scripts/palace_mutate.py \
+  --file Palace/Path/ChangedFile.swift \
+  --tests PalaceTests/ChangedFileTests \
+  --dry-run
+
+# Verify tests catch the mutants:
+python3 scripts/palace_mutate.py \
+  --file Palace/Path/ChangedFile.swift \
+  --tests PalaceTests/ChangedFileTests
 ```
+
+The `--tests` arg is an XCTest **class** name (not a directory) — `-only-testing` matches `<TestBundle>/<XCTestCase subclass>`. A run that says "0 tests executed" is a misconfiguration, not a clean pass.
 
 A test that doesn't kill any mutants should be rewritten to test the actual behavior path, not just surface properties.
 
@@ -180,7 +168,7 @@ Never commit: `APIKeys.swift`, `GoogleService-Info.plist`, `TPPSecrets.swift`, `
 
 Recording coverage is reported as `<journeys-with-matching-replay> / <total-journeys>` (see `.github/workflows/unit-testing.yml`). Do NOT divide total replay files by total journeys — that ratio is meaningless and was the bug behind the "46/25 passing" mislabel.
 
-MCP server: `specterqa-ios==7.0.0`. Preferred sim: iPhone 12 (`31CF5C43-DD55-4889-B3B2-9A6810B4E98F`, iOS 26).
+MCP server: `specterqa-ios==7.0.0`.
 
 ### MCP Tool Rules — MANDATORY
 
@@ -201,11 +189,11 @@ MCP server: `specterqa-ios==7.0.0`. Preferred sim: iPhone 12 (`31CF5C43-DD55-488
 ### Simulator Setup
 
 ```bash
-# Kill stale runners, boot sim, enable dev settings
+# Kill stale runners; replace SIM_UDID with your iPhone simulator UDID:
 pgrep -f "xcodebuild test-without-building" | xargs -r kill -9
-xcrun simctl boot 31CF5C43-DD55-4889-B3B2-9A6810B4E98F 2>/dev/null || true
-xcrun simctl spawn 31CF5C43-DD55-4889-B3B2-9A6810B4E98F defaults write org.thepalaceproject.palace showDeveloperSettings -bool true
-xcrun simctl spawn 31CF5C43-DD55-4889-B3B2-9A6810B4E98F defaults write org.thepalaceproject.palace NYPLUseBetaLibrariesKey -bool true
+SIM_UDID=$(xcrun simctl list devices iPhone | awk '/Booted/ {print $NF; exit}' | tr -d '()')
+xcrun simctl spawn "$SIM_UDID" defaults write org.thepalaceproject.palace showDeveloperSettings -bool true
+xcrun simctl spawn "$SIM_UDID" defaults write org.thepalaceproject.palace NYPLUseBetaLibrariesKey -bool true
 ```
 
-Two libraries configured: A1QA Test Library (signed in) + Lyrasis Reads. Credentials at `~/.specterqa/credentials/a1qa-test.env`.
+Test library credentials live in your local environment (e.g. `~/.specterqa/credentials/`) and are never committed to the repo.
