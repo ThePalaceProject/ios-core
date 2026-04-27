@@ -157,10 +157,24 @@ def revert_file(file_path: str, original_content: str) -> None:
         f.write(original_content)
 
 
+def any_tests_ran(output: str) -> bool:
+    """
+    True if xcodebuild's output contains at least one `Executed N tests` line
+    with N >= 1. A misconfigured `--tests` arg (e.g. a directory instead of an
+    XCTestCase class name) silently matches no class and produces only zero-
+    count summaries, while still printing `** TEST SUCCEEDED **`. Without this
+    check the caller would grade every mutant as SURVIVED.
+    """
+    return bool(re.search(r"Executed [1-9]\d* test", output))
+
+
 def run_targeted_tests(test_class_paths: list[str], timeout: int = 600) -> tuple[bool, str]:
     """
     Run xcodebuild test scoped to the given test classes.
     Returns (all_passed, last_lines_of_output).
+    Returns (False, "ERROR: ...") if the configuration ran zero tests — that
+    is treated as a misconfiguration, not a passing run, so callers don't
+    grade mutants as SURVIVED against an empty test set.
     """
     only_testing_args: list[str] = []
     for path in test_class_paths:
@@ -184,6 +198,9 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = 600) -> tuple
         return (False, f"TIMEOUT after {timeout}s")
     output = result.stdout + result.stderr
     last = "\n".join(output.splitlines()[-15:])
+    if not any_tests_ran(output):
+        joined = ", ".join(test_class_paths)
+        return (False, f"ERROR: 0 tests executed for {joined} — likely a misconfigured --tests arg (directory instead of XCTestCase class name)")
     passed = result.returncode == 0 and "** TEST SUCCEEDED **" in output
     return (passed, last)
 
