@@ -73,8 +73,10 @@ echo "--- Build ---"
 BUILD_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination "id=$SIM_ID" build 2>&1)
 if echo "$BUILD_OUTPUT" | grep -q "BUILD SUCCEEDED\|BUILD FAILED"; then
-  SWIFT_ERRORS=$(echo "$BUILD_OUTPUT" | grep -c "error:.*\.swift:" || echo "0")
-  if [ "$SWIFT_ERRORS" -eq 0 ]; then
+  # `|| true` (not `|| echo "0"`): grep -c already prints "0" on no match, so
+  # the fallback was producing "0\n0" and breaking the integer test below.
+  SWIFT_ERRORS=$(echo "$BUILD_OUTPUT" | grep -c "error:.*\.swift:" || true)
+  if [ "${SWIFT_ERRORS:-0}" -eq 0 ]; then
     record "build" "pass" "No Swift compilation errors"
   else
     record "build" "fail" "$SWIFT_ERRORS Swift compilation errors"
@@ -103,7 +105,7 @@ if [ -f scripts/lint-test-quality.py ]; then
   NEW_VIOLATIONS=0
   while IFS= read -r test_file; do
     [ -z "$test_file" ] && continue
-    FILE_VIOLATIONS=$(echo "$LINT_OUTPUT" | grep -c "$test_file" || echo "0")
+    FILE_VIOLATIONS=$(echo "$LINT_OUTPUT" | grep -c "$test_file" || true)
     NEW_VIOLATIONS=$((NEW_VIOLATIONS + FILE_VIOLATIONS))
   done <<< "$CHANGED_TEST_SWIFT"
   if [ "$NEW_VIOLATIONS" -eq 0 ]; then
@@ -187,9 +189,9 @@ if [ -n "$CHANGED_UI" ]; then
     [ -z "$ui_file" ] && continue
     [ ! -f "$ui_file" ] && continue
     # Check for Button/Image without accessibilityIdentifier or accessibilityLabel
-    HAS_BUTTON=$(grep -c 'UIButton\|Button(' "$ui_file" 2>/dev/null || echo "0")
-    HAS_A11Y=$(grep -c 'accessibilityIdentifier\|accessibilityLabel\|isAccessibilityElement' "$ui_file" 2>/dev/null || echo "0")
-    if [ "$HAS_BUTTON" -gt 0 ] && [ "$HAS_A11Y" -eq 0 ]; then
+    HAS_BUTTON=$(grep -c 'UIButton\|Button(' "$ui_file" 2>/dev/null || true)
+    HAS_A11Y=$(grep -c 'accessibilityIdentifier\|accessibilityLabel\|isAccessibilityElement' "$ui_file" 2>/dev/null || true)
+    if [ "${HAS_BUTTON:-0}" -gt 0 ] && [ "${HAS_A11Y:-0}" -eq 0 ]; then
       A11Y_ISSUES=$((A11Y_ISSUES + 1))
     fi
   done <<< "$CHANGED_UI"
