@@ -93,7 +93,7 @@ struct AppContainer {
         let downloadCenter = MyBooksDownloadCenter()
         let accountsManager = AccountsManager.shared
         let samplePreviewManager = SamplePreviewManager.shared
-        let readerService = ReaderService.shared
+        let readerService = ReaderService()
         let navigationCoordinatorHub = NavigationCoordinatorHub()
         let tabRouterHub = AppTabRouterHub()
 
