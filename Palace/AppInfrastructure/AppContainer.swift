@@ -92,18 +92,18 @@ struct AppContainer {
         let bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
         let downloadCenter = MyBooksDownloadCenter()
         let accountsManager = AccountsManager.shared
-        let samplePreviewManager = SamplePreviewManager()
         let readerService = ReaderService()
         let navigationCoordinatorHub = NavigationCoordinatorHub()
         let tabRouterHub = AppTabRouterHub()
 
-        // BookCellModelCache is `@MainActor`-isolated. `production()` is
-        // called either from app init (main thread) or via SwiftUI's
-        // EnvironmentKey defaultValue (also main thread), so the
-        // assumeIsolated assertion is sound. Without it, the constructor
-        // call would be an isolation-crossing error.
-        let bookCellModelCache = MainActor.assumeIsolated {
-            BookCellModelCache(
+        // SamplePreviewManager + BookCellModelCache are both `@MainActor`-
+        // isolated. `production()` is called either from app init (main
+        // thread) or via SwiftUI's EnvironmentKey defaultValue (also main
+        // thread), so the assumeIsolated assertion is sound. Without it, the
+        // constructor calls would be isolation-crossing errors.
+        let (samplePreviewManager, bookCellModelCache) = MainActor.assumeIsolated {
+            let samplePreviewManager = SamplePreviewManager()
+            let cache = BookCellModelCache(
                 imageCache: imageCache,
                 bookRegistry: bookRegistry,
                 downloadCenter: downloadCenter,
@@ -111,6 +111,7 @@ struct AppContainer {
                 samplePreviewManager: samplePreviewManager,
                 readerService: readerService
             )
+            return (samplePreviewManager, cache)
         }
 
         return AppContainer(

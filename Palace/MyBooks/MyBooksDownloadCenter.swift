@@ -106,8 +106,8 @@ import OverdriveProcessor
         memoryPressureMonitor: MemoryPressureMonitor = .shared,
         bookmarkDeletionLog: TPPBookmarkDeletionLog = .shared,
         deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor = .shared,
-        opdsFeedService: OPDSFeedService = .shared,
-        debugSettings: DebugSettings = .shared,
+        opdsFeedService: OPDSFeedService = OPDSFeedService(),
+        debugSettings: DebugSettings = DebugSettings(),
         settings: TPPSettings = .shared,
         // Test seam: inject a URLSession (e.g. one configured with a custom
         // URLProtocol) so chaos / fault-injection tests can drive download

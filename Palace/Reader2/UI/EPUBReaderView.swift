@@ -13,7 +13,7 @@ struct EPUBReaderView: View {
     let book: TPPBook
     let publication: Publication
     let forSample: Bool
-    var readerService: ReaderService = .shared
+    var readerService: ReaderService = AppContainer.production().readerService
 
     @EnvironmentObject private var coordinator: NavigationCoordinator
     @State private var readerViewController: UIViewController?
