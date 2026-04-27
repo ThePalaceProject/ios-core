@@ -52,7 +52,7 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
 
     private func createModel(book: TPPBook, state: TPPBookState = .downloadSuccessful) -> BookCellModel {
         mockRegistry.addBook(book, state: state)
-        return BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: .shared, readerService: .shared)
+        return BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
     }
 
     // MARK: - title / authors
@@ -69,7 +69,7 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
     func testAuthors_ReturnsBookAuthors() {
         let book = TPPBookMocker.mockBook(title: "Test", authors: "Homer")
         mockRegistry.addBook(book, state: .downloadSuccessful)
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: .shared, readerService: .shared)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         XCTAssertEqual(model.authors, "Homer")
     }
@@ -134,7 +134,7 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
     func testShowUnreadIndicator_FalseForUnregistered() {
         let book = createBook()
         // Don't add to registry
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: .shared, readerService: .shared)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         XCTAssertFalse(model.showUnreadIndicator, "Unregistered book should not show unread indicator")
     }
@@ -629,7 +629,7 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
             title: "Test",
             url: URL(string: urlString)!,
             bookRegistry: TPPBookRegistry.shared,
-            bookCellModelCache: .shared
+            bookCellModelCache: AppContainer.production().bookCellModelCache
         )
     }
 
@@ -773,7 +773,7 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
             title: "Fiction",
             url: url,
             bookRegistry: TPPBookRegistry.shared,
-            bookCellModelCache: .shared
+            bookCellModelCache: AppContainer.production().bookCellModelCache
         )
 
         XCTAssertEqual(viewModel.url, url)
@@ -821,7 +821,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
         let book = createBook()
         mockRegistry.addBook(book, state: .downloadNeeded)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: .shared, readerService: .shared)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
         XCTAssertEqual(model.registryState, .downloadNeeded)
 
         let expectation = XCTestExpectation(description: "registryState updated")
@@ -846,7 +846,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
         let book = createBook()
         mockRegistry.addBook(book, state: .downloading)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: .shared, readerService: .shared)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         let expectation = XCTestExpectation(description: "Loading cleared after download complete")
 
@@ -870,7 +870,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
         let book = createBook()
         mockRegistry.addBook(book, state: .downloading)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: .shared, readerService: .shared)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         let expectation = XCTestExpectation(description: "Loading cleared after download failed")
 
@@ -895,7 +895,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
         mockRegistry.addBook(book, state: .downloadNeeded)
         mockRegistry.addBook(otherBook, state: .downloadNeeded)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: .shared, readerService: .shared)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         // Change state of OTHER book - should not affect this model
         mockRegistry.setState(.downloading, for: "other-book")

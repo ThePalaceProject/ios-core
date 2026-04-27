@@ -38,8 +38,8 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
             bookRegistry: mockBookRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
     }
 

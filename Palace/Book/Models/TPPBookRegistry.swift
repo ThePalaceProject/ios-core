@@ -199,7 +199,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             store: store,
             accountsManager: accountsManager,
             downloadCenterProvider: { AppContainer.production().downloadCenter },
-            opdsFeedServiceProvider: { .shared }
+            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
         )
         self.store = store
         self.syncEngine = sync
@@ -224,7 +224,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             store: store,
             accountsManager: accountsManager,
             downloadCenterProvider: { AppContainer.production().downloadCenter },
-            opdsFeedServiceProvider: { .shared }
+            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
         )
         self.store = store
         self.syncEngine = sync

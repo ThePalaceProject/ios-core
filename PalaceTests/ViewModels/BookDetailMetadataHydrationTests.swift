@@ -40,9 +40,9 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             settings: .shared,
-            opdsFeedService: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared,
+            opdsFeedService: AppContainer.production().opdsFeedService,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService,
             metadataHydrator: { url in
                 fetchedURL = url
                 return fresh
@@ -76,9 +76,9 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             settings: .shared,
-            opdsFeedService: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared,
+            opdsFeedService: AppContainer.production().opdsFeedService,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService,
             metadataHydrator: { _ in
                 fetchCount += 1
                 return nil
@@ -107,9 +107,9 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             settings: .shared,
-            opdsFeedService: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared,
+            opdsFeedService: AppContainer.production().opdsFeedService,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService,
             metadataHydrator: { _ in
                 fetchCount += 1
                 return nil
@@ -163,9 +163,9 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: .shared,
             settings: .shared,
-            opdsFeedService: .shared,
-            samplePreviewManager: .shared,
-            readerService: .shared,
+            opdsFeedService: AppContainer.production().opdsFeedService,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService,
             metadataHydrator: { _ in fresh }
         )
 
