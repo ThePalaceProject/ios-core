@@ -11,7 +11,8 @@ struct BookListView: View {
     @State private var screenSize: CGSize = UIScreen.main.bounds.size
 
     /// Shared model cache for performance - reuses BookCellModel instances
-    private let modelCache = BookCellModelCache.shared
+    @Environment(\.appContainer) private var appContainer
+    private var modelCache: BookCellModelCache { appContainer.bookCellModelCache }
 
     /// Number of items to prefetch beyond visible range.
     /// Kept low to avoid memory pressure from concurrent image decodes

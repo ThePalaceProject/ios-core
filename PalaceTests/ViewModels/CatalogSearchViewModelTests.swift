@@ -211,18 +211,21 @@ final class CatalogSearchViewModelTests: XCTestCase {
         announcements: TPPAccessibilityAnnouncementCenter? = nil
     ) -> CatalogSearchViewModel {
         let urlToUse = baseURL ?? testBaseURL
+        let cache = AppContainer.production().bookCellModelCache
         if let announcements {
             return CatalogSearchViewModel(
                 repository: mockRepository,
                 baseURL: { urlToUse },
                 debounceInterval: debounceInterval,
-                announcements: announcements
+                announcements: announcements,
+                bookCellModelCache: cache
             )
         }
         return CatalogSearchViewModel(
             repository: mockRepository,
             baseURL: { urlToUse },
-            debounceInterval: debounceInterval
+            debounceInterval: debounceInterval,
+            bookCellModelCache: cache
         )
     }
 
@@ -232,7 +235,8 @@ final class CatalogSearchViewModelTests: XCTestCase {
         return CatalogSearchViewModel(
             repository: mockRepository,
             baseURL: { nil },
-            debounceInterval: debounceInterval
+            debounceInterval: debounceInterval,
+            bookCellModelCache: AppContainer.production().bookCellModelCache
         )
     }
 

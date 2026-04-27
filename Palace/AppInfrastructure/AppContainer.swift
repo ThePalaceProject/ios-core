@@ -78,11 +78,11 @@ struct AppContainer {
     /// caching guarantee.
     ///
     /// `BookCellModelCache` is constructed directly from the already-resolved
-    /// partner singletons rather than via `BookCellModelCache.shared`. That
-    /// removes the historical init cycle in which a re-entrant `\.appContainer`
-    /// access during `BookCellModelCache.shared`'s factory deadlocked the
-    /// static-let init lock. `BookCellModelCache.shared` itself stays alive
-    /// for legacy default-arg callers; it will be removed once those migrate.
+    /// partner singletons. Historically there was an init cycle where a
+    /// re-entrant `\.appContainer` access during `BookCellModelCache.shared`'s
+    /// factory deadlocked the static-let init lock; that static-let has been
+    /// removed (Phase 4 carryover) — every consumer now goes through this
+    /// instance.
     static func production() -> AppContainer {
         _cached
     }

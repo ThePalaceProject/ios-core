@@ -24,7 +24,11 @@ struct CatalogSearchView: View {
         onBookSelected: @escaping (TPPBook) -> Void,
         downloadCenter: MyBooksDownloadCenter = AppContainer.production().downloadCenter
     ) {
-        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: repository, baseURL: baseURL))
+        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
+            repository: repository,
+            baseURL: baseURL,
+            bookCellModelCache: AppContainer.production().bookCellModelCache
+        ))
         self.books = books
         self.onBookSelected = onBookSelected
         self.downloadCenter = downloadCenter
@@ -39,7 +43,11 @@ struct CatalogSearchView: View {
         let parser = OPDSParser()
         let api = DefaultCatalogAPI(client: client, parser: parser)
         let dummyRepository = CatalogRepository(api: api)
-        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: dummyRepository, baseURL: { nil }))
+        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
+            repository: dummyRepository,
+            baseURL: { nil },
+            bookCellModelCache: AppContainer.production().bookCellModelCache
+        ))
         self.books = books
         self.onBookSelected = onBookSelected
         self.downloadCenter = AppContainer.production().downloadCenter

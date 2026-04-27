@@ -150,7 +150,8 @@ final class CatalogSearchViewModelRegistryUpdateTests: XCTestCase {
         sut = CatalogSearchViewModel(
             repository: mockRepository,
             baseURL: { URL(string: "https://example.com/search") },
-            debounceInterval: 0.0
+            debounceInterval: 0.0,
+            bookCellModelCache: AppContainer.production().bookCellModelCache
         )
     }
 
