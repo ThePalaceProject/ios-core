@@ -1,13 +1,6 @@
 import SwiftUI
 import Combine
 
-/// Centralized dependency container for injecting services into SwiftUI views
-/// via `@Environment(\.appContainer)`.
-///
-/// The container's `init` takes every service explicitly — no `.shared`
-/// defaults. Tests construct containers with mocks directly; the app's
-/// single composition root calls `AppContainer.production()` which is the
-/// only sanctioned place that reads singletons.
 struct AppContainer {
 
     let bookRegistry: TPPBookRegistryProvider
@@ -16,19 +9,43 @@ struct AppContainer {
     let settings: TPPSettings
     let downloadCenter: MyBooksDownloadCenter
     let debugSettings: DebugSettings
-    let bookCellModelCache: BookCellModelCache
     let imageCache: ImageCacheType
     let userAccountPublisher: UserAccountPublisher
     let opdsFeedService: OPDSFeedService
-    let samplePreviewManager: SamplePreviewManager
     let readerService: ReaderService
     let navigationCoordinatorHub: NavigationCoordinatorHub
     let tabRouterHub: AppTabRouterHub
-    /// DRM authorizer factory. Built behind `#if FEATURE_DRM_CONNECTOR`
-    /// at the composition root so VMs/Views never reference
-    /// `AdobeDRMService.shared` directly. Returns `nil` in DRM-disabled
-    /// builds and on devices where the certificate is unavailable.
     let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
+
+    // Lazy-init on MainActor: BookCellModelCache and SamplePreviewManager are
+    // @MainActor-isolated, but `_cached`'s static-let initializer can run on
+    // any thread (first consumer of `production()` wins). Eager construction
+    // there crashed with EXC_BREAKPOINT on background-thread first access.
+    @MainActor
+    var bookCellModelCache: BookCellModelCache {
+        if let cached = AppContainer._bookCellModelCache { return cached }
+        let cache = BookCellModelCache(
+            imageCache: imageCache,
+            bookRegistry: bookRegistry,
+            downloadCenter: downloadCenter,
+            accountsManager: accountsManager,
+            samplePreviewManager: samplePreviewManager,
+            readerService: readerService
+        )
+        AppContainer._bookCellModelCache = cache
+        return cache
+    }
+
+    @MainActor
+    var samplePreviewManager: SamplePreviewManager {
+        if let cached = AppContainer._samplePreviewManager { return cached }
+        let manager = SamplePreviewManager()
+        AppContainer._samplePreviewManager = manager
+        return manager
+    }
+
+    @MainActor private static var _bookCellModelCache: BookCellModelCache?
+    @MainActor private static var _samplePreviewManager: SamplePreviewManager?
 
     init(
         bookRegistry: TPPBookRegistryProvider,
@@ -37,11 +54,9 @@ struct AppContainer {
         settings: TPPSettings,
         downloadCenter: MyBooksDownloadCenter,
         debugSettings: DebugSettings,
-        bookCellModelCache: BookCellModelCache,
         imageCache: ImageCacheType,
         userAccountPublisher: UserAccountPublisher,
         opdsFeedService: OPDSFeedService,
-        samplePreviewManager: SamplePreviewManager,
         readerService: ReaderService,
         navigationCoordinatorHub: NavigationCoordinatorHub,
         tabRouterHub: AppTabRouterHub,
@@ -53,82 +68,33 @@ struct AppContainer {
         self.settings = settings
         self.downloadCenter = downloadCenter
         self.debugSettings = debugSettings
-        self.bookCellModelCache = bookCellModelCache
         self.imageCache = imageCache
         self.userAccountPublisher = userAccountPublisher
         self.opdsFeedService = opdsFeedService
-        self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
         self.navigationCoordinatorHub = navigationCoordinatorHub
         self.tabRouterHub = tabRouterHub
         self.drmAuthorizerProvider = drmAuthorizerProvider
     }
 
-    /// The single composition root. App entry points (AppDelegate,
-    /// SceneDelegate, the SwiftUI `@Environment` default) call this and
-    /// only this to construct the live service graph.
-    ///
-    /// The result is cached in a private `static let` so every call
-    /// returns the same container instance. That preserves singleton
-    /// semantics for the services constructed inline here
-    /// (`NavigationCoordinatorHub`, `AppTabRouterHub`,
-    /// `MyBooksDownloadCenter`) — there is exactly one of each app-wide
-    /// because there is exactly one cached `AppContainer`. Removing those
-    /// types' `static let shared` declarations was only safe under this
-    /// caching guarantee.
-    ///
-    /// `BookCellModelCache` is constructed directly from the already-resolved
-    /// partner singletons. Historically there was an init cycle where a
-    /// re-entrant `\.appContainer` access during `BookCellModelCache.shared`'s
-    /// factory deadlocked the static-let init lock; that static-let has been
-    /// removed (Phase 4 carryover) — every consumer now goes through this
-    /// instance.
     static func production() -> AppContainer {
         _cached
     }
 
     private static let _cached: AppContainer = {
-        let imageCache: ImageCacheType = ImageCache.shared
-        let bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
-        let downloadCenter = MyBooksDownloadCenter()
-        let accountsManager = AccountsManager.shared
-        let readerService = ReaderService()
-        let navigationCoordinatorHub = NavigationCoordinatorHub()
-        let tabRouterHub = AppTabRouterHub()
-
-        // SamplePreviewManager + BookCellModelCache are both `@MainActor`-
-        // isolated. `production()` is called either from app init (main
-        // thread) or via SwiftUI's EnvironmentKey defaultValue (also main
-        // thread), so the assumeIsolated assertion is sound. Without it, the
-        // constructor calls would be isolation-crossing errors.
-        let (samplePreviewManager, bookCellModelCache) = MainActor.assumeIsolated {
-            let samplePreviewManager = SamplePreviewManager()
-            let cache = BookCellModelCache(
-                imageCache: imageCache,
-                bookRegistry: bookRegistry,
-                downloadCenter: downloadCenter,
-                accountsManager: accountsManager,
-                samplePreviewManager: samplePreviewManager,
-                readerService: readerService
-            )
-            return (samplePreviewManager, cache)
-        }
-
         return AppContainer(
-            bookRegistry: bookRegistry,
+            bookRegistry: TPPBookRegistry.shared,
             networkExecutor: .shared,
-            accountsManager: accountsManager,
+            accountsManager: AccountsManager.shared,
             settings: .shared,
-            downloadCenter: downloadCenter,
+            downloadCenter: MyBooksDownloadCenter(),
             debugSettings: DebugSettings(),
-            bookCellModelCache: bookCellModelCache,
-            imageCache: imageCache,
+            imageCache: ImageCache.shared,
             userAccountPublisher: .shared,
             opdsFeedService: OPDSFeedService(),
-            samplePreviewManager: samplePreviewManager,
-            readerService: readerService,
-            navigationCoordinatorHub: navigationCoordinatorHub,
-            tabRouterHub: tabRouterHub,
+            readerService: ReaderService(),
+            navigationCoordinatorHub: NavigationCoordinatorHub(),
+            tabRouterHub: AppTabRouterHub(),
             drmAuthorizerProvider: {
                 #if FEATURE_DRM_CONNECTOR
                 return AdobeCertificate.isDRMAvailable ? AdobeDRMService.shared.adeptInstance : nil
