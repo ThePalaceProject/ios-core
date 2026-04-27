@@ -46,18 +46,27 @@ extension MyBooksDownloadCenter {
 
     // MARK: - Borrow Response Evaluation (PP-4178)
 
-    /// Maps a book returned from a Borrow request to the resulting registry state and
-    /// any error that should be surfaced to the user.
+    /// Maps a book returned from a Borrow/Place-Hold request to the resulting registry
+    /// state and any error that should be surfaced to the user.
     ///
-    /// When the CM circulation dispatcher loses the Loan→Hold race (another patron
-    /// consumes the copy between the HoldAvailable push and this patron's borrow tap),
-    /// CM returns 201 with a `reserved`/`unavailable` OPDS entry instead of a loan.
-    /// This helper flags that case so the caller can surface an explicit error instead
-    /// of silently reverting state.
-    static func borrowResponseState(for book: TPPBook) -> (state: TPPBookState, error: PalaceError?) {
-        guard let availability = book.defaultAcquisition?.availability else {
+    /// Both buttons share `borrowAsync`, but the same OPDS response carries different
+    /// meaning depending on what the user tapped:
+    ///
+    /// - Place Hold (pre availability == `unavailable`) → an `unavailable`/`reserved`
+    ///   response is the expected queue placement, NOT a failure.
+    /// - Borrow (pre availability is loan-class: `limited`/`unlimited`/`ready`/`reserved`)
+    ///   → an `unavailable`/`reserved` response means CM lost the Loan→Hold race and
+    ///   the loan was downgraded to a hold. Surface the alert so the patron knows
+    ///   why the borrow didn't grant a loan.
+    static func borrowResponseState(
+        for postBorrowBook: TPPBook,
+        preBorrowBook: TPPBook
+    ) -> (state: TPPBookState, error: PalaceError?) {
+        guard let availability = postBorrowBook.defaultAcquisition?.availability else {
             return (.downloadNeeded, nil)
         }
+
+        let userTappedPlaceHold = preBorrowWasUnavailable(preBorrowBook)
 
         var state: TPPBookState = .downloadNeeded
         var error: PalaceError?
@@ -65,18 +74,37 @@ extension MyBooksDownloadCenter {
         availability.match(
             unavailable: { _ in
                 state = .holding
-                error = .bookRegistry(.holdCopyUnavailable)
+                if !userTappedPlaceHold {
+                    error = .bookRegistry(.holdCopyUnavailable)
+                }
             },
             limited: { _ in state = .downloadNeeded },
             unlimited: { _ in state = .downloadNeeded },
             reserved: { _ in
                 state = .holding
-                error = .bookRegistry(.holdCopyUnavailable)
+                if !userTappedPlaceHold {
+                    error = .bookRegistry(.holdCopyUnavailable)
+                }
             },
             ready: { _ in state = .downloadNeeded }
         )
 
         return (state, error)
+    }
+
+    private static func preBorrowWasUnavailable(_ book: TPPBook) -> Bool {
+        guard let availability = book.defaultAcquisition?.availability else {
+            return false
+        }
+        var wasUnavailable = false
+        availability.match(
+            unavailable: { _ in wasUnavailable = true },
+            limited: { _ in },
+            unlimited: { _ in },
+            reserved: { _ in },
+            ready: { _ in }
+        )
+        return wasUnavailable
     }
 
     // MARK: - Async Borrow Operations
@@ -162,7 +190,8 @@ extension MyBooksDownloadCenter {
             // another patron consumed the copy between the ready-push and this tap),
             // update the registry with the true hold state so the UI is accurate, then
             // throw so the user sees an explicit error instead of a silent revert.
-            let mapping = Self.borrowResponseState(for: borrowedBook)
+            // Pre-borrow availability disambiguates Place Hold (no error) from race loss.
+            let mapping = Self.borrowResponseState(for: borrowedBook, preBorrowBook: book)
 
             self.bookRegistry.addBook(
                 borrowedBook,
