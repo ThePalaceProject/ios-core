@@ -122,8 +122,6 @@ private actor TokenRefreshCoordinator {
     }
     #endif
 
-    @objc static let shared = TPPNetworkExecutor(cachingStrategy: .fallback)
-
     /// Number of underlying token-refresh attempts that have taken the
     /// single-flight slot since process start (or last reset). Concurrent
     /// 401s that coalesce behind an in-flight refresh do NOT increment this.

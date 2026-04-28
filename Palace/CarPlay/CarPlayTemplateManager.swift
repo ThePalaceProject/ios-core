@@ -262,7 +262,7 @@ final class CarPlayTemplateManager: NSObject {
         }
 
         // Check network connectivity for streaming content that requires it
-        let isOffline = !Reachability.shared.isConnectedToNetwork()
+        let isOffline = !AppContainer.production().reachability.isConnectedToNetwork()
         let needsNetwork = !isFullyDownloaded(book)
 
         if isOffline && needsNetwork {

@@ -5,6 +5,8 @@ struct AppContainer {
 
     let bookRegistry: TPPBookRegistryProvider
     let networkExecutor: TPPNetworkExecutor
+    let networkQueue: NetworkQueue
+    let reachability: Reachability
     let accountsManager: AccountsManager
     let settings: TPPSettings
     let downloadCenter: MyBooksDownloadCenter
@@ -50,6 +52,8 @@ struct AppContainer {
     init(
         bookRegistry: TPPBookRegistryProvider,
         networkExecutor: TPPNetworkExecutor,
+        networkQueue: NetworkQueue,
+        reachability: Reachability,
         accountsManager: AccountsManager,
         settings: TPPSettings,
         downloadCenter: MyBooksDownloadCenter,
@@ -64,6 +68,8 @@ struct AppContainer {
     ) {
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
+        self.networkQueue = networkQueue
+        self.reachability = reachability
         self.accountsManager = accountsManager
         self.settings = settings
         self.downloadCenter = downloadCenter
@@ -82,9 +88,13 @@ struct AppContainer {
     }
 
     private static let _cached: AppContainer = {
+        let executor = TPPNetworkExecutor(cachingStrategy: .fallback)
+        let reachability = Reachability()
         return AppContainer(
             bookRegistry: TPPBookRegistry.shared,
-            networkExecutor: .shared,
+            networkExecutor: executor,
+            networkQueue: NetworkQueue(transport: executor.transport, reachability: reachability),
+            reachability: reachability,
             accountsManager: AccountsManager.shared,
             settings: TPPSettings(),
             downloadCenter: MyBooksDownloadCenter(),

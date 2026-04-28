@@ -43,7 +43,7 @@ enum BookButtonType: String {
         case .read, .listen, .remove:
             false
         default:
-            !Reachability.shared.isConnectedToNetwork()
+            !AppContainer.production().reachability.isConnectedToNetwork()
         }
     }
 }

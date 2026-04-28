@@ -14,8 +14,6 @@ import PalaceLogging
 
 @objcMembers
 class Reachability: NSObject {
-    static let shared = Reachability()
-
     private let connectionMonitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "NetworkMonitor")
     private let stateLock = NSLock()

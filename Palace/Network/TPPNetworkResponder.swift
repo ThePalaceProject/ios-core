@@ -371,7 +371,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
                                        with task: URLSessionTask,
-                                       networkExecutor: TPPNetworkExecutor = .shared) -> Bool {
+                                       networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor) -> Bool {
     // Skip DELETE requests - intentionally don't refresh tokens for deletes
     // This prevents refresh loops when revoking/returning items
     if task.originalRequest?.httpMethod == "DELETE" {

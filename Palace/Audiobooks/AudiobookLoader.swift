@@ -112,7 +112,7 @@ final class AudiobookLoader {
         }
         _ = username // guard-bound but unused beyond the predicate check
 
-        TPPNetworkExecutor.shared.refreshTokenAndResume(task: nil, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
+        AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
             switch result {
             case .success:
                 Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
@@ -298,7 +298,7 @@ final class AudiobookLoader {
         let licenseFileURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         Log.info(#file, "  📡 Fetching LCP license from: \(fulfillURL.host ?? "unknown")")
 
-        _ = TPPNetworkExecutor.shared.GET(fulfillURL) { data, response, error in
+        _ = AppContainer.production().networkExecutor.GET(fulfillURL) { data, response, error in
             if let error = error {
                 Log.error(#file, "  ❌ Network error re-downloading LCP license: \(error.localizedDescription)")
                 completion(.failure(.licenseDownloadFailed(underlying: error)))
@@ -350,7 +350,7 @@ final class AudiobookLoader {
 
         Log.debug(#file, "  📡 Fetching manifest from URL: \(url.absoluteString)")
 
-        _ = TPPNetworkExecutor.shared.GET(url) { [weak self] data, response, error in
+        _ = AppContainer.production().networkExecutor.GET(url) { [weak self] data, response, error in
             guard let self else { completion(nil); return }
             if let error = error {
                 Log.error(#file, "  ❌ Network error fetching manifest: \(error.localizedDescription)")

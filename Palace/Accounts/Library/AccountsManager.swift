@@ -89,7 +89,12 @@ struct CatalogCacheMetadata: Codable {
 
     let ageCheck: TPPAgeCheckVerifying
     private let settings: TPPSettings
-    private let networkExecutor: TPPNetworkExecutor
+    /// Lazy-resolved from AppContainer to break the singleton init cycle:
+    /// AccountsManager.shared is itself referenced by AppContainer._cached's
+    /// initializer, so we cannot read AppContainer.production() during this
+    /// class's init. The lazy var is first accessed *after* AppContainer
+    /// finishes constructing, so the cached instance is ready.
+    private lazy var networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor
     private var accountSet: String
     private var accountSets = [String: [Account]]()
     private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
@@ -102,7 +107,6 @@ struct CatalogCacheMetadata: Codable {
 
     private override init() {
         self.settings = TPPSettings()
-        self.networkExecutor = .shared
         self.accountSet = TPPConfiguration.customUrlHash()
             ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrlHash

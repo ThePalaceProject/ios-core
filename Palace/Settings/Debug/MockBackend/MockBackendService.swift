@@ -81,7 +81,7 @@ final class MockBackendService: ObservableObject {
         URLSessionConfiguration.mockBackend_swizzleProtocolClasses()
 
         // Recreate sessions so they pick up the mock protocol
-        TPPNetworkExecutor.shared.recreateSession()
+        AppContainer.production().networkExecutor.recreateSession()
         AppContainer.production().downloadCenter.recreateSessionForMockBackend()
 
         currentScenario = scenario
@@ -101,7 +101,7 @@ final class MockBackendService: ObservableObject {
         URLSessionConfiguration.mockBackend_unswizzleProtocolClasses()
 
         // Recreate sessions to remove the mock protocol
-        TPPNetworkExecutor.shared.recreateSession()
+        AppContainer.production().networkExecutor.recreateSession()
         AppContainer.production().downloadCenter.recreateSessionForMockBackend()
 
         currentScenario = nil

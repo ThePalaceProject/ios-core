@@ -112,7 +112,7 @@ final class BackgroundDownloadHandler: NSObject {
                 }
             } else if AccountsManager.shared.currentUserAccount.isTokenRefreshRequired() {
                 NSLog("Authentication might be needed after all")
-                TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+                AppContainer.production().networkExecutor.refreshTokenAndResume(task: task)
                 return
             }
         }

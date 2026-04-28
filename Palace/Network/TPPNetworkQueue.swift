@@ -26,18 +26,13 @@ enum HTTPMethodType: String {
 final class NetworkQueue: NSObject {
     typealias Expression = SQLite.Expression
 
-    static let sharedInstance = NetworkQueue(transport: TPPNetworkExecutor.shared.transport)
     private var cancellables = Set<AnyCancellable>()
-
-    // For Objective-C classes
-    @objc static func shared() -> NetworkQueue {
-        return NetworkQueue.sharedInstance
-    }
-
     private let transport: NetworkTransport
+    private let reachability: Reachability
 
-    init(transport: NetworkTransport) {
+    init(transport: NetworkTransport, reachability: Reachability) {
         self.transport = transport
+        self.reachability = reachability
         super.init()
     }
 
@@ -77,7 +72,7 @@ final class NetworkQueue: NSObject {
     // MARK: - Public Functions
 
     @objc func addObserverForOfflineQueue() {
-        Reachability.shared.connectivityPublisher
+        reachability.connectivityPublisher
             .filter { $0 }
             .sink { [weak self] _ in self?.retryQueue() }
             .store(in: &cancellables)

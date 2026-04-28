@@ -50,7 +50,7 @@ class TPPMigrationManager: NSObject {
         let userAccount = AccountsManager.shared.currentUserAccount
         if userAccount.hasCredentials(), userAccount.authTokenNearExpiry || userAccount.authTokenHasExpired {
             Log.info(#file, "Post-update: auth token expired/near-expiry — triggering refresh")
-            TPPNetworkExecutor.shared.refreshTokenAndResume(task: nil)
+            AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil)
         }
 
         // Validate downloaded content is still accessible

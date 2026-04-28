@@ -224,7 +224,7 @@ extension TPPSignInBusinessLogic {
         samlHelper.clearState()
         dispatch(.signOutCompleted)
 
-        TPPNetworkExecutor.shared.clearCache()
+        AppContainer.production().networkExecutor.clearCache()
         URLCache.shared.removeAllCachedResponses()
 
         // Clear the IdP session before notifying the UI that sign-out is complete.

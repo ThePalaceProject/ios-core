@@ -69,7 +69,7 @@ final class AuthFlowSecurityTests: XCTestCase {
         // and is observable. Driving an end-to-end concurrent-401 storm requires
         // standing up the executor with stubbed credentials and a 401-replying
         // URLProtocol, which is left as a follow-up integration test.
-        let executor = TPPNetworkExecutor.shared
+        let executor = AppContainer.production().networkExecutor
         await executor.resetRefreshAttemptCount()
         let after = await executor.refreshAttemptCount
         XCTAssertEqual(after, 0,

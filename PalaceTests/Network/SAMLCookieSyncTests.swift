@@ -132,15 +132,15 @@ final class SignOutCacheClearingTests: XCTestCase {
         // then the executor must still be reusable (the app keeps running after
         // sign-out). Regression: a cache-clear that also tore down the executor
         // would silently break every subsequent request with no error.
-        TPPNetworkExecutor.shared.clearCache()
+        AppContainer.production().networkExecutor.clearCache()
         URLCache.shared.removeAllCachedResponses()
 
-        XCTAssertNotNil(TPPNetworkExecutor.shared,
+        XCTAssertNotNil(AppContainer.production().networkExecutor,
                         "Executor must remain valid after clearCache")
 
         // Second clear must also be safe (sign-in → sign-out → sign-in flow).
-        TPPNetworkExecutor.shared.clearCache()
-        XCTAssertNotNil(TPPNetworkExecutor.shared,
+        AppContainer.production().networkExecutor.clearCache()
+        XCTAssertNotNil(AppContainer.production().networkExecutor,
                         "Executor must survive two clearCache calls in a row")
     }
 
@@ -166,10 +166,10 @@ final class SignOutCacheClearingTests: XCTestCase {
         // Executor uses its own URLCache (TPPCaching.makeCache()),
         // so clearing the executor should not affect URLCache.shared
         // and vice versa. We just verify neither crashes.
-        TPPNetworkExecutor.shared.clearCache()
+        AppContainer.production().networkExecutor.clearCache()
         URLCache.shared.removeAllCachedResponses()
         // Both must still be accessible after clearing
-        XCTAssertNotNil(TPPNetworkExecutor.shared,
+        XCTAssertNotNil(AppContainer.production().networkExecutor,
                         "Executor must remain valid after concurrent cache clears")
         XCTAssertNotNil(URLCache.shared,
                         "URLCache.shared must remain valid after concurrent cache clears")

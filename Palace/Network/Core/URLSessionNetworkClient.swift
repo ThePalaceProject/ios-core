@@ -8,7 +8,7 @@ import Foundation
 final class URLSessionNetworkClient: NetworkClient {
     private let executor: TPPNetworkExecutor
 
-    init(executor: TPPNetworkExecutor = .shared) {
+    init(executor: TPPNetworkExecutor = AppContainer.production().networkExecutor) {
         self.executor = executor
     }
 
