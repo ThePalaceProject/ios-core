@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 
 /// The functionalities on the UI that the sign-in business logic requires.
 @objc protocol TPPSignInBusinessLogicUIDelegate: NYPLBasicAuthCredentialsProvider, NYPLUserAccountInputProvider {

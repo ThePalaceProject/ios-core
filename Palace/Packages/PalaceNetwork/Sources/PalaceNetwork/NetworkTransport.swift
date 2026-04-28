@@ -23,23 +23,23 @@ import PalaceLogging
 /// proceeds — a fire-and-forget `Task { await actor.… }` would silently break
 /// that invariant and let in-flight requests complete against the wrong
 /// account's credentials.
-final class ActiveTasksStore {
+public final class ActiveTasksStore {
     private var tasks: [URLSessionTask] = []
     private let lock = NSLock()
 
-    func add(_ task: URLSessionTask) {
+    public func add(_ task: URLSessionTask) {
         lock.lock(); defer { lock.unlock() }
         tasks.append(task)
     }
 
-    func remove(_ task: URLSessionTask) {
+    public func remove(_ task: URLSessionTask) {
         lock.lock(); defer { lock.unlock() }
         if let index = tasks.firstIndex(of: task) {
             tasks.remove(at: index)
         }
     }
 
-    func pauseNonAudioTasks() {
+    public func pauseNonAudioTasks() {
         lock.lock(); defer { lock.unlock() }
         for task in tasks {
             if let url = task.originalRequest?.url,
@@ -51,13 +51,13 @@ final class ActiveTasksStore {
         }
     }
 
-    func resumeAll() {
+    public func resumeAll() {
         lock.lock(); defer { lock.unlock() }
         tasks.forEach { $0.resume() }
     }
 
     @discardableResult
-    func cancelNonEssential() -> Int {
+    public func cancelNonEssential() -> Int {
         lock.lock(); defer { lock.unlock() }
         let toCancel = tasks.filter { task in
             guard let url = task.originalRequest?.url else { return true }
@@ -81,21 +81,21 @@ final class ActiveTasksStore {
 
 /// Pure HTTP transport. Owns a URLSession and an active-tasks registry.
 /// Auth, retries, and credential plumbing live above this layer.
-@objc final class NetworkTransport: NSObject {
+@objc public final class NetworkTransport: NSObject {
     #if DEBUG
-    private(set) var urlSession: URLSession
+    public private(set) var urlSession: URLSession
     #else
-    let urlSession: URLSession
+    public let urlSession: URLSession
     #endif
 
-    let activeTasksStore = ActiveTasksStore()
+    public let activeTasksStore = ActiveTasksStore()
 
     private let cachingStrategy: NYPLCachingStrategy
     private let requestTimeout: TimeInterval
     private let delegateQueue: OperationQueue?
     private weak var delegate: URLSessionDelegate?
 
-    init(delegate: URLSessionDelegate?,
+    public init(delegate: URLSessionDelegate?,
          cachingStrategy: NYPLCachingStrategy,
          requestTimeout: TimeInterval,
          delegateQueue: OperationQueue? = nil) {
@@ -114,7 +114,7 @@ final class ActiveTasksStore {
 
     /// Test-friendly initializer with an explicit URLSessionConfiguration
     /// (e.g. one that registers a custom URLProtocol class).
-    init(delegate: URLSessionDelegate?,
+    public init(delegate: URLSessionDelegate?,
          sessionConfiguration: URLSessionConfiguration,
          delegateQueue: OperationQueue? = nil,
          cachingStrategy: NYPLCachingStrategy = .fallback,
@@ -138,7 +138,7 @@ final class ActiveTasksStore {
     /// Default URLSession config the transport will use when caller doesn't
     /// supply a custom one. Exposed for callers that need to inspect cache
     /// policy without poking at `urlSession.configuration`.
-    var requestCachePolicy: NSURLRequest.CachePolicy {
+    public var requestCachePolicy: NSURLRequest.CachePolicy {
         urlSession.configuration.requestCachePolicy
     }
 
@@ -146,7 +146,7 @@ final class ActiveTasksStore {
     /// Recreate the URLSession to pick up newly-registered URLProtocol classes
     /// (e.g. MockBackendURLProtocol). Called by MockBackendService when
     /// activating/deactivating the mock backend.
-    func recreateSession() {
+    public func recreateSession() {
         urlSession.finishTasksAndInvalidate()
         let config = TPPCaching.makeURLSessionConfiguration(
             caching: cachingStrategy,
@@ -163,7 +163,7 @@ final class ActiveTasksStore {
     /// Create + resume a data task. The task is auto-registered in the active
     /// tasks store so it participates in pause/resume/cancel.
     @discardableResult
-    func send(_ request: URLRequest) -> URLSessionDataTask {
+    public func send(_ request: URLRequest) -> URLSessionDataTask {
         let task = urlSession.dataTask(with: request)
         activeTasksStore.add(task)
         task.resume()
@@ -173,7 +173,7 @@ final class ActiveTasksStore {
     /// Create + resume a download task. Not added to the active-tasks store
     /// today — historical behavior; callers manage download lifecycle directly.
     @discardableResult
-    func download(_ request: URLRequest) -> URLSessionDownloadTask {
+    public func download(_ request: URLRequest) -> URLSessionDownloadTask {
         let task = urlSession.downloadTask(with: request)
         task.resume()
         return task
@@ -181,11 +181,11 @@ final class ActiveTasksStore {
 
     // MARK: - Active tasks control
 
-    @objc func pauseAllTasks() {
+    @objc public func pauseAllTasks() {
         activeTasksStore.pauseNonAudioTasks()
     }
 
-    @objc func resumeAllTasks() {
+    @objc public func resumeAllTasks() {
         activeTasksStore.resumeAll()
     }
 
@@ -193,14 +193,14 @@ final class ActiveTasksStore {
     /// during account switches to prevent in-flight requests from completing
     /// against the wrong account's credentials. Synchronous on purpose — see
     /// `ActiveTasksStore` doc-comment.
-    @objc func cancelNonEssentialTasks() {
+    @objc public func cancelNonEssentialTasks() {
         let count = activeTasksStore.cancelNonEssential()
         Log.info(#file, "Cancelled \(count) non-essential tasks during account switch")
     }
 
     // MARK: - Cache
 
-    @objc func clearCache() {
+    @objc public func clearCache() {
         urlSession.configuration.urlCache?.removeAllCachedResponses()
     }
 }

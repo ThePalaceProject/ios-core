@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 
 final class URLSessionNetworkClient: NetworkClient {
     private let executor: TPPNetworkExecutor

@@ -15,6 +15,7 @@
 //
 
 import XCTest
+import PalaceNetwork
 @testable import Palace
 
 // MARK: - TokenRequest Empty Credential Guards

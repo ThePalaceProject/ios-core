@@ -27,6 +27,11 @@ public struct NetworkRequest {
 public struct NetworkResponse {
     public let data: Data
     public let response: HTTPURLResponse
+
+    public init(data: Data, response: HTTPURLResponse) {
+        self.data = data
+        self.response = response
+    }
 }
 
 public enum HTTPMethod: String {

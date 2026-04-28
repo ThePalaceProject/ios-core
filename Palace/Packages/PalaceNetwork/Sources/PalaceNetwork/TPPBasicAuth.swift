@@ -10,20 +10,20 @@ import Foundation
 
 /// Defines the interface required by the various pieces of the sign-in logic
 /// to obtain the credentials for performing basic authentication.
-@objc protocol NYPLBasicAuthCredentialsProvider: NSObjectProtocol {
+@objc public protocol NYPLBasicAuthCredentialsProvider: NSObjectProtocol {
     var username: String? {get}
     var pin: String? {get}
 }
 
-@objc class TPPBasicAuth: NSObject {
-    typealias BasicAuthCompletionHandler = (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+@objc public class TPPBasicAuth: NSObject {
+    public typealias BasicAuthCompletionHandler = (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
 
     /// The object providing the credentials to respond to the authentication
     /// challenge.
     private var credentialsProvider: NYPLBasicAuthCredentialsProvider
 
     @objc(initWithCredentialsProvider:)
-    init(credentialsProvider: NYPLBasicAuthCredentialsProvider) {
+    public init(credentialsProvider: NYPLBasicAuthCredentialsProvider) {
         self.credentialsProvider = credentialsProvider
         super.init()
     }
@@ -32,8 +32,8 @@ import Foundation
     /// - Parameters:
     ///   - challenge: The authentication challenge to respond to.
     ///   - completion: Always called, synchronously.
-    @objc func handleChallenge(_ challenge: URLAuthenticationChallenge,
-                               completion: BasicAuthCompletionHandler) {
+    @objc public func handleChallenge(_ challenge: URLAuthenticationChallenge,
+                                      completion: BasicAuthCompletionHandler) {
         switch challenge.protectionSpace.authenticationMethod {
         case NSURLAuthenticationMethodHTTPBasic:
             guard

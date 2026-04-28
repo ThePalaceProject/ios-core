@@ -8,6 +8,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceNetwork
 
 enum NYPLResult<SuccessInfo> {
     case success(SuccessInfo, URLResponse?)

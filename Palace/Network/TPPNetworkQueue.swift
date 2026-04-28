@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import SQLite
 import PalaceLogging
+import PalaceNetwork
 
 /**
  Recommended pattern by SQLite docs

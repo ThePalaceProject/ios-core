@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import PalaceNetwork
 @testable import Palace
 
 final class NetworkClientTests: XCTestCase {

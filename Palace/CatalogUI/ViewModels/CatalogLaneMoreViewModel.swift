@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Combine
 import PalaceLogging
+import PalaceNetwork
 
 /// ViewModel for CatalogLaneMoreView that manages catalog feed loading, filtering, and sorting
 @MainActor

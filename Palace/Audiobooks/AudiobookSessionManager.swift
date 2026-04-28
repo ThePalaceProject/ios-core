@@ -14,6 +14,7 @@ import Foundation
 import MediaPlayer
 import PalaceAudiobookToolkit
 import PalaceLogging
+import PalaceNetwork
 
 // MARK: - AudiobookSessionState
 

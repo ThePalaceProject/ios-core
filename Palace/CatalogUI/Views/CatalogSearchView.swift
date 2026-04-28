@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import UIKit
+import PalaceNetwork
 
 // MARK: - Accessibility focus target (PP-3834: move VoiceOver to results after search)
 private enum SearchAccessibilityFocus: Hashable {

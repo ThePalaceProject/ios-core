@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 @testable import Palace
 
 /// Mock implementation of NetworkClient for isolated testing of network-dependent code.
