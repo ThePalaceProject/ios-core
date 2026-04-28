@@ -147,7 +147,6 @@ private extension CatalogSearchView {
     func announceSearchResults(isLoading: Bool) {
         if !isLoading, !viewModel.searchQuery.isEmpty, UIAccessibility.isVoiceOverRunning {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                accessibilityFocus = .resultsArea
                 let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count)
                 let listLabel = NSLocalizedString("Search results list", comment: "VoiceOver label for search results area")
                 UIAccessibility.post(notification: .announcement, argument: "\(listLabel), \(value)")
