@@ -95,9 +95,7 @@ final class BookRegistrySyncTests: XCTestCase {
         store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
         wait(for: [addDone], timeout: 2.0)
 
-        let ready = expectation(description: "ready")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { ready.fulfill() }
-        wait(for: [ready], timeout: 2.0)
+        drainMainQueue()
 
         XCTAssertEqual(store.allBooks.count, 1)
 
@@ -105,13 +103,9 @@ final class BookRegistrySyncTests: XCTestCase {
         syncManager.reset("test-account")
 
         // Allow barrier to complete
-        let verify = expectation(description: "verify")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        drainMainQueue()
             XCTAssertNil(self.syncManager.syncUrl)
             XCTAssertTrue(self.store.allBooks.isEmpty)
-            verify.fulfill()
-        }
-        wait(for: [verify], timeout: 2.0)
     }
 
     // MARK: - Loading Account Guard
@@ -129,13 +123,9 @@ final class BookRegistrySyncTests: XCTestCase {
         syncManager.load(account: "account-1", setState: setState)
 
         // Give time for any async work
-        let verify = expectation(description: "verify")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        drainMainQueue()
             // No state changes should have occurred (the load was skipped)
             XCTAssertTrue(stateChanges.isEmpty)
-            verify.fulfill()
-        }
-        wait(for: [verify], timeout: 2.0)
     }
 
     func test_load_allowsLoadForDifferentAccount() {
@@ -151,13 +141,9 @@ final class BookRegistrySyncTests: XCTestCase {
         // It will likely fail to find the registry file, but setState should be called
         syncManager.load(account: "account-2", setState: setState)
 
-        let verify = expectation(description: "verify")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        drainMainQueue()
             // setState should have been called at least with .loading
             XCTAssertTrue(stateChanges.contains(.loading))
-            verify.fulfill()
-        }
-        wait(for: [verify], timeout: 3.0)
     }
 
     // MARK: - SyncUrl Cancellation
@@ -174,9 +160,7 @@ final class BookRegistrySyncTests: XCTestCase {
         store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
         wait(for: [addDone], timeout: 2.0)
 
-        let ready = expectation(description: "ready")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { ready.fulfill() }
-        wait(for: [ready], timeout: 2.0)
+        drainMainQueue()
 
         let snapshot = store.registrySnapshot()
         XCTAssertEqual(snapshot.count, 1)
@@ -231,8 +215,7 @@ final class BookRegistrySyncTests: XCTestCase {
         }
         wait(for: [addDone], timeout: 3.0)
 
-        let verify = expectation(description: "verify")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        drainMainQueue()
             XCTAssertEqual(self.store.allBooks.count, 5)
             XCTAssertEqual(self.store.heldBooks.count, 1)
             // myBooks: downloadNeeded, downloadFailed, downloadSuccessful, used = 4
@@ -242,9 +225,6 @@ final class BookRegistrySyncTests: XCTestCase {
                 XCTAssertEqual(self.store.state(for: id), expectedState,
                                "Expected \(expectedState) for book \(id)")
             }
-            verify.fulfill()
-        }
-        wait(for: [verify], timeout: 3.0)
     }
 
     // MARK: - Validate Downloaded Content
@@ -261,9 +241,7 @@ final class BookRegistrySyncTests: XCTestCase {
         store.addBook(book, state: .downloadSuccessful) { _ in addDone.fulfill() }
         wait(for: [addDone], timeout: 2.0)
 
-        let ready = expectation(description: "ready")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { ready.fulfill() }
-        wait(for: [ready], timeout: 2.0)
+        drainMainQueue()
 
         // Directly simulate what validateDownloadedContent does using mutateRegistrySync
         store.mutateRegistrySync { registry in

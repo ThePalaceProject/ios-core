@@ -697,6 +697,7 @@
 		97D7098890B79033A5DF0E57 /* SendableSubject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34BD75A5447FB7BD0DA90F57 /* SendableSubject.swift */; };
 		9812F13FF174AC093BB626FF /* BookAvailabilityFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C50D1C0AA0BA1374D31676 /* BookAvailabilityFormatterTests.swift */; };
 		98305B9FFC0E45D2B33B5582 /* TPPSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91FD775116643E6AF6CB27E /* TPPSettingsTests.swift */; };
+		DR41NMQUEUE2026042760BB01 /* XCTestCase+drainMainQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = DR41NMQUEUE2026042760BBFE /* XCTestCase+drainMainQueue.swift */; };
 		99397E6CF643CA6230966B1E /* NSURLRequest+NYPLURLRequestAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DB8CC29A8C5DFB84187D498 /* NSURLRequest+NYPLURLRequestAdditions.swift */; };
 		9A0C46503A244883B9CF4005 /* DownloadErrorInfoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22586E379F04E1E9348FAAB /* DownloadErrorInfoTests.swift */; };
 		9A37A4DFD725B36DAD5015AC /* TPPOPDSAcquisitionAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11650305A565401AECEDEA6 /* TPPOPDSAcquisitionAvailability.swift */; };
@@ -2216,6 +2217,7 @@
 		A823D833192BABA400B55DE2 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A8B7ED878FCA626AD3519F6E /* BadgesViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgesViewModelTests.swift; sourceTree = "<group>"; };
 		A91FD775116643E6AF6CB27E /* TPPSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSettingsTests.swift; sourceTree = "<group>"; };
+		DR41NMQUEUE2026042760BBFE /* XCTestCase+drainMainQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "XCTestCase+drainMainQueue.swift"; sourceTree = "<group>"; };
 		A92FB0F821CDCE3D004740F4 /* TPPReturnPromptHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPReturnPromptHelper.swift; sourceTree = "<group>"; };
 		A934FABA62A6E51A6928F0DD /* PerformanceMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceMonitorTests.swift; sourceTree = "<group>"; };
 		A93F9F9621CDACF700BD3B0C /* TPPAppReviewPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAppReviewPrompt.swift; sourceTree = "<group>"; };
@@ -4379,6 +4381,7 @@
 				E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */,
 				EE20C7E18DE551AD81B9D2C6 /* NoNetworkURLProtocol.swift */,
 				TSETUP01FREF00000001 /* PalaceTestSetup.swift */,
+				DR41NMQUEUE2026042760BBFE /* XCTestCase+drainMainQueue.swift */,
 				E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */,
 				2D2B47761D08F808007F7764 /* Info.plist */,
 				2D2B47621D08F1ED007F7764 /* PalaceTests-Bridging-Header.h */,
@@ -5958,6 +5961,7 @@
 				696AE19BFBC6497EB2B21825 /* TPPUserFriendlyErrorTests.swift in Sources */,
 				233349692EA7423D97E70B5F /* SEMigrationsTests.swift in Sources */,
 				98305B9FFC0E45D2B33B5582 /* TPPSettingsTests.swift in Sources */,
+				DR41NMQUEUE2026042760BB01 /* XCTestCase+drainMainQueue.swift in Sources */,
 				PP3671BF000000000000001 /* TPPAccountListDataSourceTests.swift in Sources */,
 				E1216C1165CF4C0181C3A475 /* TPPBookContentMetadataFilesHelperTests.swift in Sources */,
 				E5LOGTEST012F0A10000003 /* DeviceLogCollectorTests.swift in Sources */,

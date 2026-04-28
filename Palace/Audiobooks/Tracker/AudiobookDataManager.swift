@@ -102,7 +102,13 @@ struct AudiobookDataManagerStore: Codable {
 class AudiobookDataManager {
     private let syncTimeInterval: TimeInterval
     private var subscriptions: Set<AnyCancellable> = []
-    private let syncQueue = DispatchQueue(label: "com.audiobook.syncQueue")
+    /// Serial dispatch queue that owns all writes to `store`. Exposed at
+    /// internal access so `@testable import` tests can `syncQueue.sync {}`
+    /// to deterministically wait for pending barrier writes to drain
+    /// before asserting against `store` — that race used to be papered
+    /// over with `DispatchQueue.main.asyncAfter` sleeps, which flaked
+    /// under load and were banned by CLAUDE.md.
+    let syncQueue = DispatchQueue(label: "com.audiobook.syncQueue")
     var store = AudiobookDataManagerStore()
     private let audiobookLogger = AudiobookFileLogger.shared
     private let networkService: TPPNetworkExecutor

@@ -214,7 +214,7 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
         // if model has some way of procesing login completion
         if let loginHandler = model?.loginCompletionHandler {
             // and login process just did complete
-            if let destination = navigationAction.request.url, destination.absoluteString.hasPrefix(TPPSettings.shared.universalLinksURL.absoluteString) {
+            if let destination = navigationAction.request.url, destination.absoluteString.hasPrefix(AppContainer.production().settings.universalLinksURL.absoluteString) {
 
                 // cancel further webview redirections and loading
                 decisionHandler(.cancel)

@@ -91,12 +91,14 @@ final class UserAccountPublisherTests: XCTestCase {
         XCTAssertTrue(publisher.isSigningOut)
     }
 
-    func testSignOut_resetsIsSigningOutAfterDelay() async {
+    func testSignOut_resetsIsSigningOutAfterDelay() {
         publisher.signOut()
         XCTAssertTrue(publisher.isSigningOut)
 
-        // Wait for the Task inside signOut to reset the flag
-        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        // The reset is dispatched from a detached Task, so a fixed 0.2s
+        // sleep was flaky under heavy main-thread load. Poll for the
+        // expected state instead.
+        awaitCondition { self.publisher.isSigningOut == false }
         XCTAssertFalse(publisher.isSigningOut)
     }
 

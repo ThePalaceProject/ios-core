@@ -487,7 +487,7 @@ final class AudiobookLoader {
             tracks: audiobook.tableOfContents.allTracks,
             decryptor: decryptor
         )
-        networkService.downloadOnlyOnWiFi = TPPSettings.shared.downloadOnlyOnWiFi
+        networkService.downloadOnlyOnWiFi = AppContainer.production().settings.downloadOnlyOnWiFi
 
         let manager = DefaultAudiobookManager(
             metadata: metadata,

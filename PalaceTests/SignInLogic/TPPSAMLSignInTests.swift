@@ -556,19 +556,18 @@ final class TPPSAMLSignInTests: XCTestCase {
   func testSignIn_callsBusinessLogicDidCompleteSignIn() {
     // Setup
     businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
-    
-    // Act: Complete sign-in via finalizeSignIn
-    businessLogic.finalizeSignIn(forDRMAuthorization: true)
-    
-    // Use expectation since finalizeSignIn dispatches to main queue
-    let expectation = self.expectation(description: "Sign-in completes")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-      expectation.fulfill()
-    }
 
-    waitForExpectations(timeout: 3.0)
-    
-    // Assert
+    // Drive the expectation off the actual delegate signal — the mock's
+    // didCompleteSignInHandler fires from businessLogicDidCompleteSignIn(_:).
+    // Earlier versions waited a fixed 0.5s on a dummy asyncAfter, which
+    // intermittently stalled under heavy main-thread load in the full suite.
+    let signedIn = expectation(description: "businessLogicDidCompleteSignIn called")
+    uiDelegate.didCompleteSignInHandler = { signedIn.fulfill() }
+
+    businessLogic.finalizeSignIn(forDRMAuthorization: true)
+
+    wait(for: [signedIn], timeout: 3.0)
+
     XCTAssertTrue(uiDelegate.didCallDidCompleteSignIn,
                   "businessLogicDidCompleteSignIn should be called when sign-in completes")
   }

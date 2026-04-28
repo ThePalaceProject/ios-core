@@ -17,7 +17,7 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
         bookRegistry: TPPBookRegistry = .shared,
         accountsManager: AccountsManager = .shared,
         networkExecutor: TPPNetworkExecutor = .shared,
-        settings: TPPSettings = .shared
+        settings: TPPSettings = AppContainer.production().settings
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager

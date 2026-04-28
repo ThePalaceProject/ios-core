@@ -27,7 +27,7 @@ import SwiftUI
     fileprivate let settings: TPPSettings
     fileprivate var accountsLoadingLogos: Set<String> = []
 
-    required init(accounts: [Account], manager: AccountsManager = .shared, settings: TPPSettings = .shared) {
+    required init(accounts: [Account], manager: AccountsManager = .shared, settings: TPPSettings = AppContainer.production().settings) {
         self.accounts = accounts
         self.manager = manager
         self.settings = settings

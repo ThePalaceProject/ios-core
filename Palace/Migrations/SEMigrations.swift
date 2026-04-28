@@ -8,14 +8,14 @@
 import Foundation
 
 extension TPPMigrationManager {
-    static func runMigrations(settings: TPPSettings = TPPSettings.shared) {
+    static func runMigrations(settings: TPPSettings = AppContainer.production().settings) {
         // Fetch and parse app version
         let appVersion = settings.appVersion ?? ""
         let appVersionTokens = appVersion.split(separator: ".").compactMap({ Int($0) })
 
         // Run through migration stages
         if version(appVersionTokens, isLessThan: [3, 2, 0]) { // v3.2.0
-            migrate1()
+            migrate1(settings: settings)
         }
         if version(appVersionTokens, isLessThan: [3, 3, 0]) { // v3.3.0
             migrate2()
@@ -27,7 +27,7 @@ extension TPPMigrationManager {
 
     // v3.2.0
     // Account IDs are changing, so we need to migrate resources accordingly
-    private static func migrate1() {
+    private static func migrate1(settings: TPPSettings) {
         Log.info(#file, "Running 3.2.0 migration")
 
         // Build account map where the key is the old account ID and the value is the new account ID
@@ -61,7 +61,7 @@ extension TPPMigrationManager {
 
         // Assign new uuid account list
         // The list of accounts would have been integers before; they will now be stored as a list of strings
-        TPPSettings.shared.settingsAccountIdsList = newAccountsList
+        settings.settingsAccountIdsList = newAccountsList
 
         // Migrate currentAccount
         // The old account ID that's being stored in the user defaults will be replaces with the string UUID

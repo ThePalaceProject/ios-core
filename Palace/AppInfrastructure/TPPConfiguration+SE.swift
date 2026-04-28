@@ -18,7 +18,7 @@ extension TPPConfiguration {
     static let betaUrlHash = betaUrl.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
     static let prodUrlHash = prodUrl.absoluteString.md5().base64EncodedStringUrlSafe().trimmingCharacters(in: ["="])
 
-    static func customUrl(settings: TPPSettings = TPPSettings.shared) -> URL? {
+    static func customUrl(settings: TPPSettings = TPPSettings()) -> URL? {
         guard let server = settings.customLibraryRegistryServer else { return nil }
         return URL(string: "https://\(server)/libraries/qa")
     }

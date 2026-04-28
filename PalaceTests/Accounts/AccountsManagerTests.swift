@@ -369,10 +369,11 @@ final class AccountsManagerTests: XCTestCase {
         }
 
         // Capture original value to restore later
-        let originalValue = TPPSettings.shared.useBetaLibraries
+        let settings = TPPSettings()
+        let originalValue = settings.useBetaLibraries
 
         // When: Toggling the beta libraries setting
-        TPPSettings.shared.useBetaLibraries = !originalValue
+        settings.useBetaLibraries = !originalValue
 
         // Then: Should receive notification
         waitForExpectations(timeout: 1.0)
@@ -380,7 +381,7 @@ final class AccountsManagerTests: XCTestCase {
 
         // Cleanup
         NotificationCenter.default.removeObserver(observer)
-        TPPSettings.shared.useBetaLibraries = originalValue
+        settings.useBetaLibraries = originalValue
     }
 
     // MARK: - Account Creation Tests (via Mock)

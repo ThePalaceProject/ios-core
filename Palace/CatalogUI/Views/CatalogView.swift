@@ -15,7 +15,7 @@ struct CatalogView: View {
     private let settings: TPPSettings
 
     // MARK: - Initialization
-    init(viewModel: CatalogViewModel, accountsManager: AccountsManager = AccountsManager.shared, settings: TPPSettings = TPPSettings.shared) {
+    init(viewModel: CatalogViewModel, accountsManager: AccountsManager = AccountsManager.shared, settings: TPPSettings = AppContainer.production().settings) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.accountsManager = accountsManager
         self.settings = settings

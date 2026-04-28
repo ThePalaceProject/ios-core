@@ -12,9 +12,16 @@ import XCTest
 final class DownloadOnlyOnWiFiTests: XCTestCase {
 
     private let settingsKey = TPPSettings.downloadOnlyOnWiFiKey
+    private var settings: TPPSettings!
+
+    override func setUp() {
+        super.setUp()
+        settings = TPPSettings()
+    }
 
     override func tearDown() {
         UserDefaults.standard.removeObject(forKey: settingsKey)
+        settings = nil
         super.tearDown()
     }
 
@@ -23,7 +30,7 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
     func testDefaultValue_isFalse() {
         UserDefaults.standard.removeObject(forKey: settingsKey)
         XCTAssertFalse(
-            TPPSettings.shared.downloadOnlyOnWiFi,
+            settings.downloadOnlyOnWiFi,
             "Download only on Wi-Fi should default to OFF"
         )
     }
@@ -31,28 +38,28 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
     // MARK: - Setting Persistence
 
     func testSetting_canBeToggledOn() {
-        TPPSettings.shared.downloadOnlyOnWiFi = true
-        XCTAssertTrue(TPPSettings.shared.downloadOnlyOnWiFi)
+        settings.downloadOnlyOnWiFi = true
+        XCTAssertTrue(settings.downloadOnlyOnWiFi)
         // Setting must persist to UserDefaults immediately
         XCTAssertTrue(UserDefaults.standard.bool(forKey: settingsKey),
                       "downloadOnlyOnWiFi=true must be reflected in UserDefaults")
     }
 
     func testSetting_canBeToggledOff() {
-        TPPSettings.shared.downloadOnlyOnWiFi = true
-        TPPSettings.shared.downloadOnlyOnWiFi = false
-        XCTAssertFalse(TPPSettings.shared.downloadOnlyOnWiFi)
+        settings.downloadOnlyOnWiFi = true
+        settings.downloadOnlyOnWiFi = false
+        XCTAssertFalse(settings.downloadOnlyOnWiFi)
         // Must also be false in UserDefaults
         XCTAssertFalse(UserDefaults.standard.bool(forKey: settingsKey),
                        "downloadOnlyOnWiFi=false must be reflected in UserDefaults")
     }
 
     func testSetting_persistsAcrossReads() {
-        TPPSettings.shared.downloadOnlyOnWiFi = true
+        settings.downloadOnlyOnWiFi = true
         let value = UserDefaults.standard.bool(forKey: settingsKey)
         XCTAssertTrue(value, "Setting should be persisted in UserDefaults")
         // Reading the setting again must return the same value (no side effects)
-        XCTAssertTrue(TPPSettings.shared.downloadOnlyOnWiFi,
+        XCTAssertTrue(settings.downloadOnlyOnWiFi,
                       "Re-reading the setting after setting to true must still return true")
     }
 
