@@ -37,7 +37,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let debugSettings: DebugSettings
 
     required init(
-        settings: TPPSettings = TPPSettings.shared,
+        settings: TPPSettings = AppContainer.production().settings,
         accountsManager: AccountsManager = AccountsManager.shared,
         debugSettings: DebugSettings = AppContainer.production().debugSettings
     ) {

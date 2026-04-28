@@ -86,7 +86,7 @@ struct AppContainer {
             bookRegistry: TPPBookRegistry.shared,
             networkExecutor: .shared,
             accountsManager: AccountsManager.shared,
-            settings: .shared,
+            settings: TPPSettings(),
             downloadCenter: MyBooksDownloadCenter(),
             debugSettings: DebugSettings(),
             imageCache: ImageCache.shared,

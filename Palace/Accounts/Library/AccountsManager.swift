@@ -100,7 +100,7 @@ struct CatalogCacheMetadata: Codable {
     private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
 
     private override init() {
-        self.settings = .shared
+        self.settings = TPPSettings()
         self.networkExecutor = .shared
         self.accountSet = TPPConfiguration.customUrlHash()
             ?? (settings.useBetaLibraries

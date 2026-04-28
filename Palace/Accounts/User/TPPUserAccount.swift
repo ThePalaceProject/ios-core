@@ -106,7 +106,7 @@ private enum StorageKey: String {
             DispatchQueue.main.async {
                 var mainFeed = URL(string: AccountsManager.shared.currentAccount?.catalogUrl ?? "")
                 let resolveFn = {
-                    TPPSettings.shared.accountMainFeedURL = mainFeed
+                    AppContainer.production().settings.accountMainFeedURL = mainFeed
                     UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
 
                     if self.notifyAccountChange {

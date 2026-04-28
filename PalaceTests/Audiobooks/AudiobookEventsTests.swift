@@ -49,12 +49,7 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
 
         dataManager.save(time: entry)
 
-        // Wait for async barrier write
-        let expectation = XCTestExpectation(description: "Save completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
+        awaitCondition { dataManager.store.queue.contains { $0.id == entry.id } }
 
         XCTAssertTrue(dataManager.store.queue.contains(where: { $0.id == entry.id }),
                        "Entry should be in the queue after save")
@@ -81,13 +76,9 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
 
         dataManager.save(time: entry)
 
-        let expectation = XCTestExpectation(description: "Save completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
-
         let libraryBook = LibraryBook(time: entry)
+        awaitCondition { dataManager.store.urls[libraryBook] == trackingURL }
+
         XCTAssertEqual(dataManager.store.urls[libraryBook], trackingURL,
                         "URL mapping should be stored for the library book")
 
@@ -115,11 +106,9 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
             dataManager.save(time: entry)
         }
 
-        let expectation = XCTestExpectation(description: "Saves complete")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
+        awaitCondition {
+            ids.allSatisfy { id in dataManager.store.queue.contains { $0.id == id } }
         }
-        wait(for: [expectation], timeout: 2.0)
 
         for id in ids {
             XCTAssertTrue(dataManager.store.queue.contains(where: { $0.id == id }),
@@ -150,11 +139,7 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
         let dm: DataManager = dataManager
         dm.save(time: entry)
 
-        let expectation = XCTestExpectation(description: "Save completes")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 2.0)
+        awaitCondition { dataManager.store.queue.contains { $0.id == entry.id } }
 
         XCTAssertTrue(dataManager.store.queue.contains(where: { $0.id == entry.id }),
                        "Entry saved via protocol should be in queue")

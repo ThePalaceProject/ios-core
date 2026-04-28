@@ -33,7 +33,7 @@ final class HoldsViewModelTests: XCTestCase {
         HoldsViewModel(
             bookRegistry: mockRegistry,
             accountsManager: .shared,
-            settings: .shared,
+            settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings
         )
     }
@@ -456,7 +456,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         HoldsViewModel(
             bookRegistry: mockRegistry,
             accountsManager: .shared,
-            settings: .shared,
+            settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { true }
         )
@@ -585,7 +585,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
             accountsManager: .shared,
-            settings: .shared,
+            settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { true }
         )
@@ -617,7 +617,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
             accountsManager: .shared,
-            settings: .shared,
+            settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings
         )
         XCTAssertEqual(viewModel.reservedBookVMs.count, 1)
@@ -645,7 +645,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
             accountsManager: .shared,
-            settings: .shared,
+            settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { false }
         )
@@ -666,7 +666,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
             accountsManager: .shared,
-            settings: .shared,
+            settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { true }
         )

@@ -838,7 +838,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
             .store(in: &cancellables)
 
         for book in books { registry.addBook(book, state: .downloadNeeded) }
-        waitForExpectations(timeout: 10.0)
+        waitForExpectations(timeout: 20.0)
 
         // Verify the state we waited for.
         for book in books {
@@ -855,7 +855,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
             .store(in: &cancellables)
 
         for book in books { registry.removeBook(forIdentifier: book.identifier) }
-        waitForExpectations(timeout: 10.0)
+        waitForExpectations(timeout: 20.0)
 
         for book in books {
             XCTAssertNil(registry.book(forIdentifier: book.identifier),

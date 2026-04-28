@@ -194,7 +194,7 @@ struct TPPSettingsView: View {
     }
 
     @ViewBuilder private var developerSettingsSection: some View {
-        if TPPSettings.shared.customMainFeedURL == nil && showDeveloperSettings {
+        if AppContainer.production().settings.customMainFeedURL == nil && showDeveloperSettings {
             Section(header: Text(DisplayStrings.developerSettings).accessibilityHidden(true), footer: versionInfo) {
                 let viewController = TPPDeveloperSettingsTableViewController()
 
@@ -236,6 +236,6 @@ struct TPPSettingsView: View {
     }
 
     private func updateAccountsList() {
-        currentAccounts = TPPSettings.shared.settingsAccountsList
+        currentAccounts = AppContainer.production().settings.settingsAccountsList
     }
 }

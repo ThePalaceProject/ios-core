@@ -89,9 +89,7 @@ final class BookmarkManagerTests: XCTestCase {
         store.addBook(book, state: state) { _ in done.fulfill() }
         wait(for: [done], timeout: 2.0)
         // Wait for barrier completion
-        let ready = expectation(description: "store ready")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { ready.fulfill() }
-        wait(for: [ready], timeout: 2.0)
+        drainMainQueue()
     }
 
     private func makeLocation(
@@ -130,9 +128,7 @@ final class BookmarkManagerTests: XCTestCase {
     }
 
     private func waitForBarrier() {
-        let done = expectation(description: "barrier done")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { done.fulfill() }
-        wait(for: [done], timeout: 2.0)
+        drainMainQueue()
     }
 
     // MARK: - Location Tracking

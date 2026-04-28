@@ -139,9 +139,7 @@ final class BookCellModelStateTests: XCTestCase {
         let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         // Allow the throttle (50 ms) to settle
-        let exp = XCTestExpectation(description: "stableButtonState settles")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        drainMainQueue()
 
         XCTAssertEqual(model.stableButtonState, .downloadInProgress,
             "Registry state .downloading must expose .downloadInProgress button state")
@@ -159,9 +157,7 @@ final class BookCellModelStateTests: XCTestCase {
 
         let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
-        let exp = XCTestExpectation(description: "stableButtonState settles")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        drainMainQueue()
 
         XCTAssertEqual(model.stableButtonState, .downloadFailed,
             "Registry state .downloadFailed must expose .downloadFailed button state")
@@ -179,9 +175,7 @@ final class BookCellModelStateTests: XCTestCase {
 
         let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
-        let exp = XCTestExpectation(description: "stableButtonState settles")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        drainMainQueue()
 
         XCTAssertEqual(model.stableButtonState, .downloadSuccessful,
             "Registry state .downloadSuccessful must expose .downloadSuccessful button state")
@@ -223,9 +217,7 @@ final class BookCellModelStateTests: XCTestCase {
         let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         // Give the image-fetch callback time to complete
-        let exp = XCTestExpectation(description: "isLoading clears after image fetch")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        drainMainQueue()
 
         XCTAssertFalse(model.isLoading,
             "isLoading must settle to false once the image-fetch callback completes")

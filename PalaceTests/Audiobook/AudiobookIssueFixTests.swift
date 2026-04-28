@@ -297,22 +297,24 @@ final class PostUpdateMigrationTests: XCTestCase {
 
     func testMigrate_doesNotCrash() {
         // Running migrate() in test environment should complete without errors
-        TPPMigrationManager.migrate()
+        let settings = TPPSettings()
+        TPPMigrationManager.migrate(settings: settings)
         // After migration the app version must be set to the current bundle version
         let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
         XCTAssertNotNil(currentVersion, "Bundle must expose a short version string")
         // Running migrate again must be idempotent
-        TPPMigrationManager.migrate()
-        XCTAssertEqual(TPPSettings.shared.appVersion, currentVersion,
+        TPPMigrationManager.migrate(settings: settings)
+        XCTAssertEqual(settings.appVersion, currentVersion,
                        "Repeated migration must not change the stored version")
     }
 
     func testMigrate_updatesStoredVersion() {
         let expectedVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        let settings = TPPSettings()
 
-        TPPMigrationManager.migrate()
+        TPPMigrationManager.migrate(settings: settings)
 
-        XCTAssertEqual(TPPSettings.shared.appVersion, expectedVersion,
+        XCTAssertEqual(settings.appVersion, expectedVersion,
                        "After migration, stored version should match current bundle version")
         XCTAssertNotNil(expectedVersion, "Bundle must declare a short version string")
     }

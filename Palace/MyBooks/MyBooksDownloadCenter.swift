@@ -108,7 +108,7 @@ import OverdriveProcessor
         deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor = .shared,
         opdsFeedService: OPDSFeedService = OPDSFeedService(),
         debugSettings: DebugSettings = DebugSettings(),
-        settings: TPPSettings = .shared,
+        settings: TPPSettings = TPPSettings(),
         // Test seam: inject a URLSession (e.g. one configured with a custom
         // URLProtocol) so chaos / fault-injection tests can drive download
         // failure paths without standing up a real network. When `nil`, the

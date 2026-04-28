@@ -76,7 +76,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func performBackgroundStartupTasks() {
-        let isFreshInstall = TPPSettings.shared.appVersion == nil
+        let isFreshInstall = AppContainer.production().settings.appVersion == nil
         TPPKeychainManager.validateKeychain()
         TPPMigrationManager.migrate()
         NetworkQueue.shared().addObserverForOfflineQueue()
@@ -224,7 +224,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         if userActivity.activityType == NSUserActivityTypeBrowsingWeb &&
-            userActivity.webpageURL?.host == TPPSettings.shared.universalLinksURL.host {
+            userActivity.webpageURL?.host == AppContainer.production().settings.universalLinksURL.host {
             NotificationCenter.default.post(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: userActivity.webpageURL)
             return true
         }
@@ -442,11 +442,12 @@ extension TPPAppDelegate {
 
         var nav: UINavigationController!
         let accountList = TPPAccountList { account in
-            if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-                TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+            let settings = AppContainer.production().settings
+            if !settings.settingsAccountIdsList.contains(account.uuid) {
+                settings.settingsAccountIdsList.append(account.uuid)
             }
             if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-                TPPSettings.shared.accountMainFeedURL = url
+                settings.accountMainFeedURL = url
             }
             AccountsManager.shared.currentAccount = account
 
