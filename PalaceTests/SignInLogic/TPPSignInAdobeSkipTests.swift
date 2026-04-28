@@ -180,8 +180,9 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
         )
         XCTAssertTrue(businessLogic.isSignedIn())
 
-        // Set ignoreSignedInState
-        businessLogic.ignoreSignedInState = true
+        // Force ignoreSignedInState via the same reducer action production uses
+        // when refreshAuth fires for a SAML browser flow without cached creds.
+        businessLogic.dispatch(.refreshAuthStarted(authType: .saml, usingExistingCredentials: false))
         XCTAssertFalse(businessLogic.isSignedIn(),
                        "isSignedIn should return false when ignoreSignedInState is true")
     }
@@ -244,8 +245,7 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
 
     func testMakeRequest_withOAuthButNoToken_logsError() {
         businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
-        businessLogic.authToken = nil
-        // userAccount also has no authToken by default
+        // AuthState starts with authToken == nil; userAccount also has no token by default
 
         let request = businessLogic.makeRequest(for: .signIn, context: "test")
 
@@ -256,24 +256,22 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
     }
 
     func testMakeRequest_prefersBusinessLogicToken_overUserAccountToken() {
+        // Production path during sign-in: OAuth handler dispatches the fresh
+        // token via `.bearerTokenReceived` before `updateUserAccount` has
+        // written it to the keychain. `makeRequest` must surface this fresh
+        // token (in-flight) — falling back to a stale `userAccount.authToken`
+        // would attach the previous session's bearer token to the new request.
         businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
-        businessLogic.authToken = "fresh-token"
 
-        // Set up user account with a different token
-        businessLogic.updateUserAccount(
-            forDRMAuthorization: true,
-            withBarcode: nil,
-            pin: nil,
-            authToken: "old-token",
-            expirationDate: nil,
-            patron: nil,
-            cookies: nil
-        )
+        // Seed userAccount directly (no updateUserAccount, which would dispatch
+        // .userAccountUpdated and clear the in-flight reducer state).
+        businessLogic.userAccount.setAuthToken("old-token", barcode: nil, pin: nil, expirationDate: nil)
+        businessLogic.dispatch(.bearerTokenReceived(token: "fresh-token", expiration: nil))
 
         let request = businessLogic.makeRequest(for: .signIn, context: "test")
         let authHeader = request?.value(forHTTPHeaderField: "Authorization")
 
         XCTAssertEqual(authHeader, "Bearer fresh-token",
-                       "Should prefer business logic authToken over user account token")
+                       "Should prefer in-flight authToken over the previously persisted userAccount token")
     }
 }

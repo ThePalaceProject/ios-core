@@ -147,7 +147,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         XCTAssertFalse(barcodeHeaderValue?.starts(with: "Bearer") ?? false)
 
         // prerequisite for both OAuth and SAML
-        businessLogic.authToken = "tekken"
+        businessLogic.dispatch(.bearerTokenReceived(token: "tekken", expiration: nil))
 
         // test sign-in request for oauth auth
         businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
