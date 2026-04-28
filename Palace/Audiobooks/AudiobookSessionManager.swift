@@ -13,6 +13,7 @@ import Combine
 import Foundation
 import MediaPlayer
 import PalaceAudiobookToolkit
+import PalaceLogging
 
 // MARK: - AudiobookSessionState
 

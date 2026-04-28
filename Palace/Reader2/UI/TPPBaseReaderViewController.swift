@@ -14,6 +14,7 @@ import WebKit
 import ReadiumNavigator
 import ReadiumShared
 import Combine
+import PalaceLogging
 
 /// This class is meant to be subclassed by each publication format view controller. It contains the shared behavior, eg. navigation bar toggling.
 class TPPBaseReaderViewController: UIViewController, Loggable {

@@ -11,6 +11,7 @@ import MessageUI
 import FirebaseCrashlytics
 import Compression
 import OSLog
+import PalaceLogging
 
 /// Actor responsible for collecting and exporting error logs for diagnostics
 actor ErrorLogExporter {

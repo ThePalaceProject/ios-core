@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UIKit
+import PalaceLogging
 
 protocol TPPBookRegistryProvider {
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }

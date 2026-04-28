@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import PalaceLogging
 
 /// This class is capable of working with values serializable by NSKeyedArchiver.
 @objc class TPPKeychain: NSObject {

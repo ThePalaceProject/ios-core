@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import PalaceLogging
 
 // MARK: - SearchView Model
 @MainActor

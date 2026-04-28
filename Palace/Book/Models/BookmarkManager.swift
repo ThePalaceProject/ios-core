@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 /// Manages bookmark CRUD operations and reading location tracking.
 /// Delegates thread-safe storage access to a BookRegistryStore.

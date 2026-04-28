@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import PalaceLogging
 
 /// Modern Combine-based user account state publisher
 /// Replaces notification-based patterns with type-safe publishers

@@ -11,6 +11,7 @@
 
 import Foundation
 import stduritemplate
+import PalaceLogging
 
 extension TPPSignInBusinessLogic {
 

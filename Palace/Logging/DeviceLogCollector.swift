@@ -7,6 +7,7 @@
 
 import Foundation
 import OSLog
+import PalaceLogging
 
 /// Collects device-level logs from the unified logging system (OSLogStore).
 ///

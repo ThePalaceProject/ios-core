@@ -10,6 +10,7 @@ import FirebaseCore
 #endif
 #if canImport(FirebaseCrashlytics)
 import FirebaseCrashlytics
+import PalaceLogging
 #endif
 
 private let nullString = "null"

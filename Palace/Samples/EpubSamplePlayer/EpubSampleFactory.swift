@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 @objc class EpubLocationSampleURL: NSObject {
     @objc var url: URL

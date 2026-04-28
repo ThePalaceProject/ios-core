@@ -13,6 +13,7 @@ import Combine
 
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor
+import PalaceLogging
 #endif
 
 // DownloadCoordinator is defined in MyBooksDownloadQueue.swift

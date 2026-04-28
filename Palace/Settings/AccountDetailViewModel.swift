@@ -8,6 +8,7 @@
 import SwiftUI
 import Combine
 import LocalAuthentication
+import PalaceLogging
 
 @MainActor
 class AccountDetailViewModel: NSObject, ObservableObject {

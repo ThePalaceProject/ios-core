@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import PalaceAudiobookToolkit
 import ReadiumShared
+import PalaceLogging
 
 /// High-level app routes for SwiftUI NavigationStack.
 /// Extend incrementally as new flows migrate to SwiftUI.

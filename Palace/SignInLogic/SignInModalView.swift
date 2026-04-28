@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PalaceLogging
 
 /// SwiftUI sign-in modal that wraps AccountDetailView for use in checkout/borrow flows
 struct SignInModalView: View {

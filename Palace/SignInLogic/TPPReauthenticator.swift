@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 protocol Reauthenticator: NSObject {
     func authenticateIfNeeded(_ user: TPPUserAccount,

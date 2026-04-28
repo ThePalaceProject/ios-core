@@ -14,6 +14,7 @@
 #if DEBUG
 
 import Foundation
+import PalaceLogging
 
 extension URLSessionConfiguration {
 

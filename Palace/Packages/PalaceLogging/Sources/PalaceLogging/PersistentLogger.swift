@@ -10,8 +10,8 @@ import os.log
 
 /// Actor-based persistent file logger for error diagnostics
 /// Complements Crashlytics by providing local log history
-actor PersistentLogger {
-    static let shared = PersistentLogger()
+public actor PersistentLogger {
+    public static let shared = PersistentLogger()
 
     private let maxLogFileSize: Int64 = 5_000_000 // 5MB
     private let maxLogFiles = 5
@@ -69,7 +69,7 @@ actor PersistentLogger {
     // MARK: - Logging
 
     /// Logs an error message to persistent storage
-    func log(level: OSLogType, tag: String, message: String) {
+    public func log(level: OSLogType, tag: String, message: String) {
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let levelString = levelToString(level)
         let formattedMessage = "[\(timestamp)] [\(levelString)] \(tag): \(message)\n"
@@ -140,7 +140,7 @@ actor PersistentLogger {
     // MARK: - Log Retrieval
 
     /// Retrieves all log files as a single string
-    func retrieveAllLogs() -> String {
+    public func retrieveAllLogs() -> String {
         let logsDirectory = getLogsDirectory()
         var allLogs = "=== Palace Persistent Logs ===\n"
         allLogs += "Retrieved: \(Date())\n\n"
@@ -162,7 +162,7 @@ actor PersistentLogger {
     }
 
     /// Clears all log files
-    func clearLogs() {
+    public func clearLogs() {
         try? logFileHandle?.close()
         logFileHandle = nil
 

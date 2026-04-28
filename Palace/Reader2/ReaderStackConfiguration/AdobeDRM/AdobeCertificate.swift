@@ -9,6 +9,7 @@
 #if FEATURE_DRM_CONNECTOR
 
 import Foundation
+import PalaceLogging
 
 /// Adobe DRM Certificate structure.
 ///

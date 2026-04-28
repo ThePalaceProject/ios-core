@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import ImageIO
+import PalaceLogging
 
 // MARK: - Host Failure Tracker (Circuit Breaker)
 

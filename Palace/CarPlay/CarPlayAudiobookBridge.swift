@@ -12,6 +12,7 @@ import Combine
 import MediaPlayer
 import PalaceAudiobookToolkit
 import UIKit
+import PalaceLogging
 
 // MARK: - CarPlayPlaybackError
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PalaceLogging
 
 struct AppTabHostView: View {
     @StateObject private var router = AppTabRouter()

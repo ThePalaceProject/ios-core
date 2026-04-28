@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 protocol Keyable {
     var key: String { get set }

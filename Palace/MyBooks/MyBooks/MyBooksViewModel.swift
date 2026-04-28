@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import PalaceLogging
 
 enum Group: Int {
     case groupSortBy

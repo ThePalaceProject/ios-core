@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import PalaceLogging
 import os.log
 @testable import Palace
 

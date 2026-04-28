@@ -7,6 +7,7 @@
 
 import UIKit
 import CoreText
+import PalaceLogging
 
 /// Manages registration of custom fonts (e.g. OpenDyslexic) and checks font availability.
 /// Call `registerCustomFonts()` at app launch to ensure bundled fonts are available.

@@ -9,6 +9,7 @@
 import CarPlay
 import Combine
 import PalaceAudiobookToolkit
+import PalaceLogging
 
 /// Manages CarPlay template hierarchy and navigation for audiobook playback.
 /// Pure UI layer - all playback logic delegated to AudiobookSessionManager via CarPlayAudiobookBridge.

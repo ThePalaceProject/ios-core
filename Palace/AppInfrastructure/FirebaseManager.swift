@@ -12,6 +12,7 @@ import FirebaseCore
 import FirebaseRemoteConfig
 import FirebaseAnalytics
 import FirebaseCrashlytics
+import PalaceLogging
 
 /// Centralized manager for all Firebase services.
 ///

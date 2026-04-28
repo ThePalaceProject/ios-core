@@ -11,6 +11,7 @@ import Foundation
 import UIKit
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import PalaceLogging
 
 // MARK: - Cover Image Fetching & Cache
 

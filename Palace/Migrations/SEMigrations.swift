@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 extension TPPMigrationManager {
     static func runMigrations(settings: TPPSettings = AppContainer.production().settings) {

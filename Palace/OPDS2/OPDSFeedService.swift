@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 /// Modern async/await service for OPDS feed operations
 /// Wraps legacy Objective-C TPPOPDSFeed with type-safe async API

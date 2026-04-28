@@ -5,6 +5,7 @@ import PalaceAudiobookToolkit
 #if LCP
 import ReadiumShared
 import ReadiumStreamer
+import PalaceLogging
 #endif
 
 struct BookLane {

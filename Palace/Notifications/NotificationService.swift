@@ -9,6 +9,7 @@
 import UserNotifications
 import FirebaseCore
 import FirebaseMessaging
+import PalaceLogging
 
 // MARK: - Notification Constants
 

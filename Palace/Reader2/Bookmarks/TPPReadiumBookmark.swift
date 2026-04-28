@@ -1,3 +1,5 @@
+import PalaceLogging
+
 /// This class specifies the keys used to represent a TPPReadiumBookmark
 /// as a dictionary.
 ///

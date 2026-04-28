@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 public protocol CatalogRepositoryProtocol {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?

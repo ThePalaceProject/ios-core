@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PalaceLogging
 
 /// A view that renders HTML content as styled text.
 /// Note: NSAttributedString HTML parsing uses WebKit internally and MUST run on the main thread.

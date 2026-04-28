@@ -7,6 +7,7 @@
 //
 
 import CoreLocation
+import PalaceLogging
 
 @objc enum TPPAuthRequestType: Int {
     case signIn = 1

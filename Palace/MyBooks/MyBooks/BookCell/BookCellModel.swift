@@ -11,6 +11,7 @@ import Combine
 import SwiftUI
 import SafariServices
 import PalaceAudiobookToolkit
+import PalaceLogging
 
 enum BookCellState {
     case normal(BookButtonState)

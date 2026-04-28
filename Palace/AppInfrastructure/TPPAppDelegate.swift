@@ -7,6 +7,7 @@ import BackgroundTasks
 import SwiftUI
 import CarPlay
 import PalaceAudiobookToolkit
+import PalaceLogging
 
 @main
 class TPPAppDelegate: UIResponder, UIApplicationDelegate {
@@ -18,6 +19,10 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ application: UIApplication) {
+        // Register Crashlytics forwarder before any Log call fires.
+        // PalaceLogging is Firebase-free; the host app supplies the bridge.
+        Log.crashlyticsBridge = FirebaseCrashlyticsBridge()
+
         let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
         // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts

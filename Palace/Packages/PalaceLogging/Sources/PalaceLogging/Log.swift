@@ -1,17 +1,18 @@
 import os
 import Foundation
-#if canImport(FirebaseCrashlytics)
-import FirebaseCrashlytics
-#endif
 
-final class Log: NSObject {
+public final class Log {
     /// Subsystem identifier used for unified logging (OSLog).
     /// This makes Palace log entries identifiable when collecting device logs via OSLogStore.
-    static let subsystem = "org.thepalaceproject.palace"
+    public static let subsystem = "org.thepalaceproject.palace"
+
+    /// Host-app-provided forwarder for non-debug log lines (e.g. Firebase Crashlytics).
+    /// Set once during app startup; reads/writes are intentionally unsynchronised.
+    public static var crashlyticsBridge: CrashlyticsLogBridge?
 
     private static let palaceLog = OSLog(subsystem: subsystem, category: "Palace")
 
-    static var dateFormatter: DateFormatter = {
+    public static var dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter
@@ -36,13 +37,11 @@ final class Log: NSObject {
         let tag = trimTag(tag)
 
         #if !targetEnvironment(simulator) && !DEBUG
-        #if canImport(FirebaseCrashlytics)
-        if level != .debug {
+        if level != .debug, let bridge = crashlyticsBridge {
             let timestamp = dateFormatter.string(from: Date())
             let formattedMsg = "[\(levelToString(level))] \(timestamp) \(tag): \(message)"
-            Crashlytics.crashlytics().log("\(formattedMsg)")
+            bridge.log(formattedMsg)
         }
-        #endif
         #endif
 
         #if DEBUG
@@ -63,24 +62,25 @@ final class Log: NSObject {
         }
     }
 
-    /** For objc compatibility only. */
-    @objc static func log(_ message: String) {
+    /// Default-level log with no tag. Historically marked "objc compat only"
+    /// but Swift code (notably the OPDS parsers) still relies on this short form.
+    public static func log(_ message: String) {
         log(.default, "", message)
     }
 
-    static func debug(_ tag: String, _ message: String) {
+    public static func debug(_ tag: String, _ message: String) {
         log(.debug, tag, message)
     }
 
-    static func info(_ tag: String, _ message: String) {
+    public static func info(_ tag: String, _ message: String) {
         log(.info, tag, message)
     }
 
-    static func warn(_ tag: String, _ message: String) {
+    public static func warn(_ tag: String, _ message: String) {
         log(.default, tag, message)
     }
 
-    static func error(_ tag: String, _ message: String) {
+    public static func error(_ tag: String, _ message: String) {
         log(.error, tag, message)
     }
 
@@ -88,7 +88,7 @@ final class Log: NSObject {
      Fault-level messages are intended for capturing system-level or
      multi-process errors only.
      */
-    static func fault(_ tag: String, _ message: String) {
+    public static func fault(_ tag: String, _ message: String) {
         log(.fault, tag, message)
     }
 

@@ -9,6 +9,7 @@
 import Foundation
 import ReadiumShared
 import ReadiumNavigator
+import PalaceLogging
 
 /// Encapsulates all of the SimplyE business logic related to bookmarking
 /// for a given book.
