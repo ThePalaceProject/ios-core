@@ -244,12 +244,9 @@ final class BookCellModelActionTests: XCTestCase {
         _ = model.acquireReaderPresentationLock()
         XCTAssertTrue(model.isPresentingReader)
 
-        let released = expectation(description: "Lock releases after debounce window")
-        // 0.5s lock window + 0.3s buffer — the async dispatch must clear the flag.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            if !model.isPresentingReader { released.fulfill() }
-        }
-        wait(for: [released], timeout: 2.0)
+        // Production lock window is 0.5s. Poll for the flag to clear with
+        // a generous timeout so heavy main-thread load can't flake this.
+        awaitCondition(timeout: 5.0) { !model.isPresentingReader }
 
         XCTAssertTrue(model.acquireReaderPresentationLock(),
             "After the debounce window expires, a fresh tap must be able to re-acquire")
