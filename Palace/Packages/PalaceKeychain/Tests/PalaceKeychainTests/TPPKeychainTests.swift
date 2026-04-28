@@ -1,5 +1,5 @@
 import XCTest
-@testable import Palace
+@testable import PalaceKeychain
 
 class TPPKeychainSwiftLegacyTests: XCTestCase {
 
