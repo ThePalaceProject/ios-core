@@ -10,6 +10,7 @@ import Foundation
 import Combine
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import PalaceLogging
 
 let DeprecatedAcquisitionKey = "acquisition"
 let DeprecatedAvailableCopiesKey = "available-copies"

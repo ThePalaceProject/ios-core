@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 extension TPPSignInBusinessLogic {
     @objc func shouldShowSyncButton() -> Bool {

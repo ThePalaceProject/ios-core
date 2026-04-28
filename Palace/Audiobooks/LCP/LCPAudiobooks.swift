@@ -9,6 +9,7 @@
 #if LCP
 
 import Foundation
+import PalaceLogging
 @preconcurrency import ReadiumShared
 @preconcurrency import ReadiumStreamer
 @preconcurrency import ReadiumLCP

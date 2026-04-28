@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 @objc class TokenResponse: NSObject, Codable {
     @objc let accessToken: String

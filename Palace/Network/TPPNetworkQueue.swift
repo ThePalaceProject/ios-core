@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import SQLite
+import PalaceLogging
 
 /**
  Recommended pattern by SQLite docs

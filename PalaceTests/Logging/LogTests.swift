@@ -7,6 +7,7 @@
 
 import XCTest
 import os.log
+import PalaceLogging
 @testable import Palace
 
 final class LogTests: XCTestCase {

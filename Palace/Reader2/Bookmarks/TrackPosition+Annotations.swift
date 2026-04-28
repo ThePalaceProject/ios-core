@@ -7,6 +7,7 @@
 //
 
 import PalaceAudiobookToolkit
+import PalaceLogging
 
 public extension TrackPosition {
     func toAudioBookmark() -> AudioBookmark {

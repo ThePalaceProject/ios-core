@@ -8,6 +8,7 @@
 
 import UIKit
 import SwiftUI
+import PalaceLogging
 
 /// Scene delegate for the main app window.
 /// Required when using UIApplicationSceneManifest for CarPlay support.

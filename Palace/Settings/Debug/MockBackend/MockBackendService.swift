@@ -12,6 +12,7 @@
 
 import Foundation
 import Combine
+import PalaceLogging
 
 final class MockBackendService: ObservableObject {
 

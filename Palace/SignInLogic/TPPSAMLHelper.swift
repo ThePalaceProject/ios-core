@@ -1,5 +1,6 @@
 import UIKit
 import WebKit
+import PalaceLogging
 
 // MARK: - Protocols for dependency injection
 

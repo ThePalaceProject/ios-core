@@ -3,6 +3,7 @@ import Combine
 import ReadiumShared
 #if LCP
 import ReadiumLCP
+import PalaceLogging
 #endif
 
 final class ReaderService {

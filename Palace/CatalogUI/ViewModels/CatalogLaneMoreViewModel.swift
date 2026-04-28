@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import PalaceLogging
 
 /// ViewModel for CatalogLaneMoreView that manages catalog feed loading, filtering, and sorting
 @MainActor

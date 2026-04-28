@@ -8,6 +8,7 @@
 
 import Foundation
 import WebKit
+import PalaceLogging
 
 extension TPPSignInBusinessLogic {
 

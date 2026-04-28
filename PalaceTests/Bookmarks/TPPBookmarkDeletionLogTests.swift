@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import PalaceLogging
 @testable import Palace
 
 /// Tests for the bookmark deletion log which tracks explicitly deleted bookmarks

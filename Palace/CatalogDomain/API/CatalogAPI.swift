@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 public protocol CatalogAPI {
     func fetchFeed(at url: URL) async throws -> CatalogFeed?

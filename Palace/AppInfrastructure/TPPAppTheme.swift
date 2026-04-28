@@ -1,3 +1,5 @@
+import PalaceLogging
+
 @objcMembers final class TPPAppTheme: NSObject {
 
     private enum NYPLAppThemeColor: String {

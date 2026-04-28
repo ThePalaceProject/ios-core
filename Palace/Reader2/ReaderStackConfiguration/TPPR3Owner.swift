@@ -13,6 +13,7 @@ import Foundation
 import UIKit
 import ReadiumShared
 import ReadiumStreamer
+import PalaceLogging
 
 /// This class is the main root of R3 objects. It:
 /// - owns the sub-modules (library, reader, etc.)

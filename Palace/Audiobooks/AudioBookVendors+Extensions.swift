@@ -8,6 +8,7 @@
 
 import Foundation
 import PalaceAudiobookToolkit
+import PalaceLogging
 
 extension AudioBookVendors {
 

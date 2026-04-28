@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 /// This class encapsulates analytic events sent to the server
 /// and keeps a local queue of failed attempts to retry them

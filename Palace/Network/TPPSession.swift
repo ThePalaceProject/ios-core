@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 @objc class TPPSession: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
 

@@ -9,6 +9,7 @@
 import Foundation
 import FirebaseCore
 import FirebaseAnalytics
+import PalaceLogging
 
 /// Remote feature flags using Firebase Remote Config.
 ///

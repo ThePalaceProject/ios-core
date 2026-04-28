@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 #if FEATURE_DRM_CONNECTOR
 

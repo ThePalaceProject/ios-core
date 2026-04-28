@@ -4,6 +4,7 @@ import R2LCPClient
 import ReadiumLCP
 import ReadiumShared
 import PalaceAudiobookToolkit
+import PalaceLogging
 
 enum LCPContextError: Error {
     case creationReturnedNil

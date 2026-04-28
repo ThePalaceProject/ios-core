@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PalaceLogging
 
 struct AdvancedSettingsView: View {
     typealias DisplayStrings = Strings.Settings

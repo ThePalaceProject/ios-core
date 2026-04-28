@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import CryptoKit
+import PalaceLogging
 
 public enum CachingMode {
     case memoryOnly

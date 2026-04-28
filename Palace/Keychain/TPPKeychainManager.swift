@@ -1,5 +1,6 @@
 import Foundation
 import PalaceAudiobookToolkit
+import PalaceLogging
 
 @objcMembers final class TPPKeychainManager: NSObject {
 

@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 /// Handles server synchronization for the book registry.
 /// Manages syncing loans from the OPDS feed and loading/saving from disk.

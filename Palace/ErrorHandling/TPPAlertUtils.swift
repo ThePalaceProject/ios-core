@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import PalaceLogging
 
 @objcMembers class TPPAlertUtils: NSObject {
     /**

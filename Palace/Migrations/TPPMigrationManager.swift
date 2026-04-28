@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 /**
  Manages data migrations as they are needed throughout the app's life

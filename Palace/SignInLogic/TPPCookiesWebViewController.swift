@@ -8,6 +8,7 @@
 
 import UIKit
 import WebKit
+import PalaceLogging
 
 // WARNING: This does not work  well for iOS versions lower than 11
 @objcMembers

@@ -8,6 +8,7 @@
 
 import CarPlay
 import UIKit
+import PalaceLogging
 
 /// Provides artwork images for CarPlay audiobook display
 /// Handles async loading, caching, and placeholder generation

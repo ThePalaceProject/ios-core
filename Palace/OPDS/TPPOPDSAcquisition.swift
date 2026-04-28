@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 @objc enum TPPOPDSAcquisitionRelation: Int {
   case generic

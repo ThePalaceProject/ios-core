@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 private enum StorageKey: String {
     // .barcode, .PIN, .authToken became legacy, as storage for those types was moved into .credentials enum

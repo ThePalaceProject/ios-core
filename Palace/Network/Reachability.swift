@@ -10,6 +10,7 @@ import Foundation
 import Combine
 import Network
 import SystemConfiguration
+import PalaceLogging
 
 @objcMembers
 class Reachability: NSObject {

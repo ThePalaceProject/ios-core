@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 
 @objc public class AudiobookBookmarkBusinessLogic: NSObject {

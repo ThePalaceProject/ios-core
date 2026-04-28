@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 public final class OPDSParser {
     public enum ParserError: Error, LocalizedError {

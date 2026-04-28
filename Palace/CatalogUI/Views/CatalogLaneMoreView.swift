@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import PalaceLogging
 
 /// Refactored, streamlined catalog lane view that delegates business logic to ViewModel
 struct CatalogLaneMoreView: View {

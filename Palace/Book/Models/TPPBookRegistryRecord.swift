@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 typealias TPPBookRegistryData = [String: Any]
 

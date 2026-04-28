@@ -8,6 +8,7 @@
 
 import AuthenticationServices
 import stduritemplate
+import PalaceLogging
 
 extension TPPSignInBusinessLogic {
 

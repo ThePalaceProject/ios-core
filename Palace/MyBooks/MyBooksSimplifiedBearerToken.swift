@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 class MyBooksSimplifiedBearerToken {
     var accessToken: String

@@ -8,6 +8,7 @@
 
 import CarPlay
 import Combine
+import PalaceLogging
 
 /// CarPlay scene delegate that manages the CarPlay interface lifecycle
 /// and coordinates audiobook playback from the vehicle's infotainment system.

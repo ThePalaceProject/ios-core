@@ -1,5 +1,6 @@
 import Compression
 import Foundation
+import PalaceLogging
 
 @objc enum TPPOPDSFeedType: Int {
   case invalid

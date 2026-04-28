@@ -16,6 +16,7 @@
 //
 
 import Foundation
+import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 
 /// Errors produced by AudiobookLoader during audiobook preparation.

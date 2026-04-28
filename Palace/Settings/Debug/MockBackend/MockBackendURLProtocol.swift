@@ -10,6 +10,7 @@
 #if DEBUG
 
 import Foundation
+import PalaceLogging
 
 final class MockBackendURLProtocol: URLProtocol {
 

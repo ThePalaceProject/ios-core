@@ -1,4 +1,5 @@
 import UIKit
+import PalaceLogging
 
 public protocol ImageCacheType {
     func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?)
