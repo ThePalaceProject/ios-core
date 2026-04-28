@@ -1,6 +1,6 @@
 //
 //  KeychainAvailability.swift
-//  PalaceTests
+//  PalaceKeychainTests
 //
 //  Helper for tests that need a real, writable keychain.
 //
@@ -11,8 +11,7 @@
 //
 
 import XCTest
-import PalaceKeychain
-@testable import Palace
+@testable import PalaceKeychain
 
 enum KeychainAvailability {
     /// Probes the keychain by writing and reading a unique sentinel value.

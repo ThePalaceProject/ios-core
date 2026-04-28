@@ -3,18 +3,16 @@ import Security
 import PalaceLogging
 
 /// This class is capable of working with values serializable by NSKeyedArchiver.
-@objc class TPPKeychain: NSObject {
+public final class TPPKeychain {
 
-  @objc static let sharedKeychain: TPPKeychain = {
+  public static let sharedKeychain: TPPKeychain = {
     let keychain = TPPKeychain()
     return keychain
   }()
 
-  @objc static var shared: TPPKeychain { sharedKeychain }
+  public static var shared: TPPKeychain { sharedKeychain }
 
-  private override init() {
-    super.init()
-  }
+  private init() {}
 
   private func defaultDictionary() -> NSMutableDictionary {
     let dictionary = NSMutableDictionary()
@@ -22,7 +20,7 @@ import PalaceLogging
     return dictionary
   }
 
-  @objc func object(forKey key: String) -> Any? {
+  public func object(forKey key: String) -> Any? {
     guard let keyData = try? NSKeyedArchiver.archivedData(withRootObject: key, requiringSecureCoding: false) else {
       return nil
     }
@@ -40,7 +38,7 @@ import PalaceLogging
     return try? NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(resultData)
   }
 
-  @objc func setObject(_ value: Any, forKey key: String) {
+  public func setObject(_ value: Any, forKey key: String) {
     guard let keyData = try? NSKeyedArchiver.archivedData(withRootObject: key, requiringSecureCoding: false),
           let valueData = try? NSKeyedArchiver.archivedData(withRootObject: value, requiringSecureCoding: false) else {
       return
@@ -71,7 +69,7 @@ import PalaceLogging
     }
   }
 
-  @objc func removeObject(forKey key: String) {
+  public func removeObject(forKey key: String) {
     guard let keyData = try? NSKeyedArchiver.archivedData(withRootObject: key, requiringSecureCoding: false) else {
       return
     }

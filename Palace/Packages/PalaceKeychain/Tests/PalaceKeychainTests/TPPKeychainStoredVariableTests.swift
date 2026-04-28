@@ -1,12 +1,12 @@
 //
 //  TPPKeychainStoredVariableTests.swift
-//  PalaceTests
+//  PalaceKeychainTests
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import XCTest
-@testable import Palace
+@testable import PalaceKeychain
 
 final class TPPKeychainStoredVariableTests: XCTestCase {
 

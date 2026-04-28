@@ -9,12 +9,12 @@
 import Foundation
 import PalaceLogging
 
-protocol Keyable {
+public protocol Keyable {
     var key: String { get set }
 }
 
-class TPPKeychainVariable<VariableType>: Keyable {
-    var key: String {
+public class TPPKeychainVariable<VariableType>: Keyable {
+    public var key: String {
         didSet {
             guard key != oldValue else { return }
 
@@ -28,12 +28,12 @@ class TPPKeychainVariable<VariableType>: Keyable {
 
     fileprivate var cachedValue: VariableType?
 
-    init(key: String, accountInfoQueue: DispatchQueue) {
+    public init(key: String, accountInfoQueue: DispatchQueue) {
         self.key = key
         self.transaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
     }
 
-    func read() -> VariableType? {
+    public func read() -> VariableType? {
         transaction.perform {
             // If currently cached value is valid, return from cache
             guard !alreadyInited else { return }
@@ -49,7 +49,7 @@ class TPPKeychainVariable<VariableType>: Keyable {
         return cachedValue
     }
 
-    func write(_ newValue: VariableType?) {
+    public func write(_ newValue: VariableType?) {
         transaction.perform {
             cachedValue = newValue
             alreadyInited = true
@@ -70,7 +70,7 @@ class TPPKeychainVariable<VariableType>: Keyable {
     /// Replaces the historical "assign a fake key to force didSet" pattern
     /// that TPPUserAccount used to invalidate all caches on snapshot — which
     /// is what the mutable-libraryUUID-singleton anti-pattern was built on.
-    func invalidateCache() {
+    public func invalidateCache() {
         transaction.perform {
             alreadyInited = false
             cachedValue = nil
@@ -78,8 +78,8 @@ class TPPKeychainVariable<VariableType>: Keyable {
     }
 }
 
-class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<VariableType> {
-    override func read() -> VariableType? {
+public class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<VariableType> {
+    public override func read() -> VariableType? {
         transaction.perform {
             guard !alreadyInited else { return }
 
@@ -114,7 +114,7 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
         return cachedValue
     }
 
-    override func write(_ newValue: VariableType?) {
+    public override func write(_ newValue: VariableType?) {
         transaction.perform {
             cachedValue = newValue
             alreadyInited = true
@@ -344,16 +344,16 @@ class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<Var
     }
 }
 
-class TPPKeychainVariableTransaction {
+public class TPPKeychainVariableTransaction {
     fileprivate let accountInfoQueue: DispatchQueue
     private let queueKey = DispatchSpecificKey<Void>()
 
-    init(accountInfoQueue: DispatchQueue) {
+    public init(accountInfoQueue: DispatchQueue) {
         self.accountInfoQueue = accountInfoQueue
         self.accountInfoQueue.setSpecific(key: queueKey, value: ())
     }
 
-    func perform(tasks: () -> Void) {
+    public func perform(tasks: () -> Void) {
         if DispatchQueue.getSpecific(key: queueKey) != nil {
             tasks()
         } else {

@@ -25,6 +25,7 @@
 //
 
 import XCTest
+import PalaceKeychain
 @testable import Palace
 
 final class TPPCredentialSnapshotCoherenceTests: XCTestCase {
