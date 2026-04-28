@@ -26,12 +26,19 @@ enum HTTPMethodType: String {
 final class NetworkQueue: NSObject {
     typealias Expression = SQLite.Expression
 
-    static let sharedInstance = NetworkQueue()
+    static let sharedInstance = NetworkQueue(transport: TPPNetworkExecutor.shared.transport)
     private var cancellables = Set<AnyCancellable>()
 
     // For Objective-C classes
     @objc static func shared() -> NetworkQueue {
         return NetworkQueue.sharedInstance
+    }
+
+    private let transport: NetworkTransport
+
+    init(transport: NetworkTransport) {
+        self.transport = transport
+        super.init()
     }
 
     static let StatusCodes = [NSURLErrorTimedOut,
@@ -233,7 +240,7 @@ final class NetworkQueue: NSObject {
             }
         }
 
-        let task = URLSession.shared.dataTask(with: urlRequest) { (_, response, _) in
+        let task = transport.urlSession.dataTask(with: urlRequest) { (_, response, _) in
             self.serialQueue.async {
                 if let response = response as? HTTPURLResponse,
                    (200...299).contains(response.statusCode) {
