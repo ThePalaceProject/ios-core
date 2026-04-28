@@ -91,6 +91,14 @@ struct AppContainer {
     private static let _cached: AppContainer = {
         let executor = TPPNetworkExecutor(cachingStrategy: .fallback)
         let reachability = Reachability()
+        // MyBooksDownloadCenter's default params for `networkExecutor` and
+        // `reachability` resolve via AppContainer.production(); calling the
+        // no-arg initializer here would re-enter this dispatch_once and
+        // deadlock. Pass them explicitly to break the cycle.
+        let downloadCenter = MyBooksDownloadCenter(
+            networkExecutor: executor,
+            reachability: reachability
+        )
         return AppContainer(
             bookRegistry: TPPBookRegistry.shared,
             networkExecutor: executor,
@@ -98,7 +106,7 @@ struct AppContainer {
             reachability: reachability,
             accountsManager: AccountsManager.shared,
             settings: TPPSettings(),
-            downloadCenter: MyBooksDownloadCenter(),
+            downloadCenter: downloadCenter,
             debugSettings: DebugSettings(),
             imageCache: ImageCache.shared,
             userAccountPublisher: .shared,
