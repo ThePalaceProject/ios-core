@@ -11,6 +11,7 @@
 
 import XCTest
 import Security
+import PalaceKeychain
 @testable import Palace
 
 final class TPPBookBearerTokenTests: XCTestCase {

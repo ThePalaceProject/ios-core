@@ -1,5 +1,6 @@
 import Foundation
 import PalaceLogging
+import PalaceKeychain
 import PalaceNetwork
 
 private enum StorageKey: String {
