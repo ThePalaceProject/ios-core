@@ -49,7 +49,8 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
 
         dataManager.save(time: entry)
 
-        awaitCondition { dataManager.store.queue.contains { $0.id == entry.id } }
+        // Drain the syncQueue: any pending barrier writes complete before sync returns.
+        dataManager.syncQueue.sync {}
 
         XCTAssertTrue(dataManager.store.queue.contains(where: { $0.id == entry.id }),
                        "Entry should be in the queue after save")
@@ -76,9 +77,9 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
 
         dataManager.save(time: entry)
 
-        let libraryBook = LibraryBook(time: entry)
-        awaitCondition { dataManager.store.urls[libraryBook] == trackingURL }
+        dataManager.syncQueue.sync {}
 
+        let libraryBook = LibraryBook(time: entry)
         XCTAssertEqual(dataManager.store.urls[libraryBook], trackingURL,
                         "URL mapping should be stored for the library book")
 
@@ -106,9 +107,7 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
             dataManager.save(time: entry)
         }
 
-        awaitCondition {
-            ids.allSatisfy { id in dataManager.store.queue.contains { $0.id == id } }
-        }
+        dataManager.syncQueue.sync {}
 
         for id in ids {
             XCTAssertTrue(dataManager.store.queue.contains(where: { $0.id == id }),
@@ -139,7 +138,7 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
         let dm: DataManager = dataManager
         dm.save(time: entry)
 
-        awaitCondition { dataManager.store.queue.contains { $0.id == entry.id } }
+        dataManager.syncQueue.sync {}
 
         XCTAssertTrue(dataManager.store.queue.contains(where: { $0.id == entry.id }),
                        "Entry saved via protocol should be in queue")
