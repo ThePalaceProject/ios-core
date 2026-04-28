@@ -57,79 +57,9 @@ private actor TokenRefreshCoordinator {
     }
 }
 
-/// Lock-protected store for the active tasks list.
-///
-/// Intentionally NOT an actor: the `@objc` methods that drive this
-/// (`pauseAllTasks`, `resumeAllTasks`, `cancelNonEssentialTasks`) are
-/// invoked from synchronous call sites — most importantly during account
-/// switches, where we *must* finish cancelling before the caller proceeds,
-/// otherwise in-flight requests can complete against the wrong account's
-/// credentials. A fire-and-forget `Task { await actor.… }` would silently
-/// break that invariant.
-private final class ActiveTasksStore {
-    private var tasks: [URLSessionTask] = []
-    private let lock = NSLock()
-
-    func add(_ task: URLSessionTask) {
-        lock.lock(); defer { lock.unlock() }
-        tasks.append(task)
-    }
-
-    func remove(_ task: URLSessionTask) {
-        lock.lock(); defer { lock.unlock() }
-        if let index = tasks.firstIndex(of: task) {
-            tasks.remove(at: index)
-        }
-    }
-
-    func pauseNonAudioTasks() {
-        lock.lock(); defer { lock.unlock() }
-        for task in tasks {
-            if let url = task.originalRequest?.url,
-               Self.isAudiobookRelated(url: url) {
-                Log.info(#function, "Preserving audiobook network task: \(url.absoluteString)")
-                continue
-            }
-            task.suspend()
-        }
-    }
-
-    func resumeAll() {
-        lock.lock(); defer { lock.unlock() }
-        tasks.forEach { $0.resume() }
-    }
-
-    @discardableResult
-    func cancelNonEssential() -> Int {
-        lock.lock(); defer { lock.unlock() }
-        let toCancel = tasks.filter { task in
-            guard let url = task.originalRequest?.url else { return true }
-            return !Self.isAudiobookRelated(url: url)
-        }
-        toCancel.forEach { $0.cancel() }
-        tasks.removeAll { toCancel.contains($0) }
-        return toCancel.count
-    }
-
-    private static func isAudiobookRelated(url: URL) -> Bool {
-        let s = url.absoluteString
-        return s.contains("audiobook") ||
-            s.contains(".mp3") ||
-            s.contains(".m4a") ||
-            s.contains("audio") ||
-            s.contains("readium") ||
-            s.contains("lcp")
-    }
-}
-
 @objc class TPPNetworkExecutor: NSObject {
-    #if DEBUG
-    private var urlSession: URLSession
-    #else
-    private let urlSession: URLSession
-    #endif
+    let transport: NetworkTransport
     private let tokenCoordinator = TokenRefreshCoordinator()
-    private let activeTasksStore = ActiveTasksStore()
 
     private let responder: TPPNetworkResponder
     private var _accountsManager: TPPLibraryAccountsProvider?
@@ -142,13 +72,10 @@ private final class ActiveTasksStore {
                delegateQueue: OperationQueue? = nil) {
         self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
                                              useFallbackCaching: cachingStrategy == .fallback)
-
-        let config = TPPCaching.makeURLSessionConfiguration(
-            caching: cachingStrategy,
-            requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
-        self.urlSession = URLSession(configuration: config,
-                                     delegate: self.responder,
-                                     delegateQueue: delegateQueue)
+        self.transport = NetworkTransport(delegate: self.responder,
+                                          cachingStrategy: cachingStrategy,
+                                          requestTimeout: TPPNetworkExecutor.defaultRequestTimeout,
+                                          delegateQueue: delegateQueue)
         // accountsManager is lazy — accessed on first use, not during init
         // This avoids circular singleton deadlock: TPPNetworkExecutor ↔ AccountsManager
         super.init()
@@ -161,9 +88,11 @@ private final class ActiveTasksStore {
                delegateQueue: OperationQueue? = nil) {
         self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
                                              useFallbackCaching: cachingStrategy == .fallback)
-        self.urlSession = URLSession(configuration: sessionConfiguration,
-                                     delegate: self.responder,
-                                     delegateQueue: delegateQueue)
+        self.transport = NetworkTransport(delegate: self.responder,
+                                          sessionConfiguration: sessionConfiguration,
+                                          delegateQueue: delegateQueue,
+                                          cachingStrategy: cachingStrategy,
+                                          requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
         // accountsManager is lazy — avoids circular init deadlock
         super.init()
     }
@@ -175,32 +104,20 @@ private final class ActiveTasksStore {
          delegateQueue: OperationQueue? = nil) {
         self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
                                              useFallbackCaching: cachingStrategy == .fallback)
-        let config = TPPCaching.makeURLSessionConfiguration(
-            caching: cachingStrategy,
-            requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
-        self.urlSession = URLSession(configuration: config,
-                                     delegate: self.responder,
-                                     delegateQueue: delegateQueue)
+        self.transport = NetworkTransport(delegate: self.responder,
+                                          cachingStrategy: cachingStrategy,
+                                          requestTimeout: TPPNetworkExecutor.defaultRequestTimeout,
+                                          delegateQueue: delegateQueue)
         self._accountsManager = accountsManager
         super.init()
     }
 
-    deinit {
-        urlSession.finishTasksAndInvalidate()
-    }
-
     #if DEBUG
-    /// Recreate the internal URLSession so it picks up any newly registered
-    /// URLProtocol classes (e.g., MockBackendURLProtocol). Called by
-    /// MockBackendService when activating/deactivating the mock backend.
+    /// Recreate the underlying URLSession so it picks up any newly-registered
+    /// URLProtocol classes (e.g. MockBackendURLProtocol). Delegates to the
+    /// transport.
     func recreateSession() {
-        urlSession.finishTasksAndInvalidate()
-        let config = TPPCaching.makeURLSessionConfiguration(
-            caching: .fallback,
-            requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
-        urlSession = URLSession(configuration: config,
-                                delegate: responder,
-                                delegateQueue: nil)
+        transport.recreateSession()
         Log.info(#file, "TPPNetworkExecutor: session recreated for mock backend")
     }
     #endif
@@ -225,19 +142,15 @@ private final class ActiveTasksStore {
              useTokenIfAvailable: Bool = true,
              completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
         let req = request(for: reqURL, useTokenIfAvailable: useTokenIfAvailable)
-        let task = executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
-
-        if let task = task {
-            activeTasksStore.add(task)
-        }
+        _ = executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
     }
 
     @objc func pauseAllTasks() {
-        activeTasksStore.pauseNonAudioTasks()
+        transport.pauseAllTasks()
     }
 
     @objc func resumeAllTasks() {
-        activeTasksStore.resumeAll()
+        transport.resumeAllTasks()
     }
 
     /// Cancels all active tasks that are not related to audiobook streaming.
@@ -245,8 +158,7 @@ private final class ActiveTasksStore {
     /// the wrong account's credentials. Synchronous on purpose — see
     /// `ActiveTasksStore` doc-comment.
     @objc func cancelNonEssentialTasks() {
-        let count = activeTasksStore.cancelNonEssential()
-        Log.info(#file, "Cancelled \(count) non-essential tasks during account switch")
+        transport.cancelNonEssentialTasks()
     }
 }
 
@@ -279,8 +191,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
 
     private func performDataTask(with request: URLRequest,
                                  completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-        let task = urlSession.dataTask(with: request)
+        let task = transport.urlSession.dataTask(with: request)
         responder.addCompletion(completion, taskID: task.taskIdentifier)
+        transport.activeTasksStore.add(task)
         task.resume()
         return task
     }
@@ -303,7 +216,7 @@ extension TPPNetworkExecutor {
 
     func request(for url: URL, useTokenIfAvailable: Bool = true, accountId: String?) -> URLRequest {
         var urlRequest = URLRequest(url: url,
-                                    cachePolicy: urlSession.configuration.requestCachePolicy)
+                                    cachePolicy: transport.requestCachePolicy)
         // Don't optimistically try HTTP/3 (QUIC) on first contact with each host.
         // Some library servers advertise h3 but have broken QUIC — iOS retries
         // twice (~260ms wasted) before falling back to h2. With this flag off,
@@ -335,7 +248,7 @@ extension TPPNetworkExecutor {
     }
 
     @objc func clearCache() {
-        urlSession.configuration.urlCache?.removeAllCachedResponses()
+        transport.clearCache()
     }
 }
 
@@ -365,7 +278,7 @@ extension TPPNetworkExecutor {
             }
         }
 
-        let task = urlSession.downloadTask(with: req)
+        let task = transport.urlSession.downloadTask(with: req)
         responder.addCompletion(completionWrapper, taskID: task.taskIdentifier)
         task.resume()
 
@@ -546,7 +459,7 @@ extension TPPNetworkExecutor {
                             }
 
                             let mutableRequest = self.request(for: originalURL)
-                            let newTask = self.urlSession.dataTask(with: mutableRequest)
+                            let newTask = self.transport.urlSession.dataTask(with: mutableRequest)
                             self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
                             newTasks.append(newTask)
                             oldTask.cancel()
@@ -600,7 +513,7 @@ extension TPPNetworkExecutor {
             return
         }
 
-        let session = self.urlSession
+        let session = self.transport.urlSession
         Task {
             let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
             let result = await tokenRequest.execute(session: session)
