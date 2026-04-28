@@ -737,6 +737,86 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
         XCTAssertTrue(businessLogic.authState.isLoggingInAfterSignUp,
                       "Setter must reach the reducer state, not just a stored mirror")
     }
+
+    // MARK: - isNetworkConnectivityError domain guard
+    //
+    // Mutation guard for the `error.domain == NSURLErrorDomain` check at the
+    // top of isNetworkConnectivityError. Without an explicit non-URL-domain
+    // case, the comparison can be flipped to `!=` and the suite stays green.
+
+    func testIsNetworkConnectivityError_NonURLDomain_ReturnsFalse() {
+        let nonURLError = NSError(
+            domain: "com.example.custom",
+            code: NSURLErrorTimedOut
+        )
+        XCTAssertFalse(
+            TPPSignInBusinessLogic.isNetworkConnectivityError(nonURLError),
+            "Errors not in NSURLErrorDomain must not be classified as network errors"
+        )
+    }
+
+    // MARK: - shouldSkipAdobeActivation guards
+    //
+    // Mutation guards for the early-return branches in shouldSkipAdobeActivation:
+    // not-stale and missing Adobe creds. Each branch returns false; without
+    // these tests, flipping `false → true` survives.
+
+    func testShouldSkipAdobeActivation_WhenNotCredentialsStale_ReturnsFalse() {
+        let acct = businessLogic.userAccount as! TPPUserAccountMock
+        acct.markLoggedIn()
+        acct.setUserID("adobe-user-id")
+        acct.setDeviceID("adobe-device-id")
+
+        XCTAssertFalse(
+            businessLogic.shouldSkipAdobeActivation(),
+            "Without credentialsStale, Adobe activation must not be skipped"
+        )
+    }
+
+    func testShouldSkipAdobeActivation_WhenMissingAdobeCredentials_ReturnsFalse() {
+        let acct = businessLogic.userAccount as! TPPUserAccountMock
+        acct.markLoggedIn()
+        acct.markCredentialsStale()
+        // Leave userID/deviceID nil.
+
+        XCTAssertFalse(
+            businessLogic.shouldSkipAdobeActivation(),
+            "Without Adobe credentials, activation must not be skipped"
+        )
+    }
+
+    // MARK: - selectPreferredAuthIfNeeded idempotence
+    //
+    // Mutation guard for the `selectedAuthentication == nil` early-return
+    // in selectPreferredAuthIfNeeded — flipping the comparison to `!=`
+    // would silently overwrite a user-chosen auth.
+
+    func testSelectPreferredAuthIfNeeded_WithExistingSelection_DoesNotOverride() {
+        let preselected = libraryAccountMock.oauthAuthentication
+        businessLogic.selectedAuthentication = preselected
+
+        businessLogic.selectPreferredAuthIfNeeded()
+
+        XCTAssertEqual(
+            businessLogic.selectedAuthentication?.authType,
+            preselected.authType,
+            "Existing auth selection must not be replaced when one is already set"
+        )
+    }
+
+    // MARK: - librarySupportsBarcodeDisplay needs all three conditions
+
+    func testLibrarySupportsBarcodeDisplay_WithoutAuthorizationIdentifier_ReturnsFalse() {
+        let acct = businessLogic.userAccount as! TPPUserAccountMock
+        acct._credentials = .barcodeAndPin(barcode: "12345", pin: "0000")
+        // Mock defaults `_authorizationIdentifier` to nil — leave it.
+        businessLogic.selectedAuthentication = libraryAccountMock.basicAuthentication
+
+        XCTAssertFalse(
+            businessLogic.librarySupportsBarcodeDisplay(),
+            "Without an authorizationIdentifier from the loans feed, barcode display must not be enabled"
+        )
+    }
 }
 
 // MARK: - OAuth Flow Tests
