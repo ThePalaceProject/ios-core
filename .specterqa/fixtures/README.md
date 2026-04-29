@@ -4,9 +4,32 @@ Structured behavior fixtures captured via simdrive's `observe` tool. Each fixtur
 
 ## Why this exists
 
-Mutation testing on `Palace/Accounts/Library/AccountsManager.swift` shows a 0% kill rate (PP-4164 finding F-001) — eight surviving mutants on lines 308/345/612/655/667/170/188/721 each control whether some visible UI state appears, but no existing test can see UI state. Tests assert `viewModel.x == y`, never "the Borrow button is on screen at this position." This corpus is the missing assertion target.
+Fixtures are the **reference data layer** that powers visual-regression tooling:
 
-A second motivation: Readium's WKWebView reader is invisible to XCTest's accessibility tree, so the entire reader surface has zero CI coverage. simdrive's marks come from on-screen OCR + visual element detection, not the AX tree, so reader fixtures actually work.
+- **`marks-diff.py`** auto-generates findings.csv rows when fixture pairs (baseline vs candidate) diverge.
+- **`a11y-coverage.py`** diffs visible marks vs the AX tree to surface VoiceOver gaps.
+- **The Visual Coverage Matrix** in the regression report lists which flows have captured fixtures vs which are gaps.
+- **Schema-validation tests** (`PalaceTests/VisualRegression/`) catch fixture drift between releases — if a UI dev reorders elements or rewords a label, the next re-capture will diverge from the checked-in JSON, and the test fails on that drift.
+
+## What fixtures do NOT do
+
+**Fixtures do not run production code.** The Swift tests assert against the captured JSON files; mutating `AccountsManager.swift` or `BorrowReducer.swift` does not change the static JSON, so the tests still pass. Verified via `palace_mutate.py` runs on both files (PP-4164 finding F-006): 0 of 8 AccountsManager mutants killed, 0 of 4 BorrowReducer mutants killed.
+
+The mutation-killing layer is **simdrive replays** under `.specterqa/replays/chaos/` — those YAMLs drive the live app and SSIM-drift catches code changes. Fixtures and replays solve different problems; you need both.
+
+## How they compose
+
+```
+fixture JSON       ─┐
+                    ├──► marks-diff.py ──► auto-findings (regression candidates)
+candidate marks    ─┘
+fixture JSON       ────► a11y-coverage.py + simctl ax dump ──► VoiceOver coverage %
+fixture JSON       ────► generate-regression-report.py --fixtures-dir ──► coverage matrix in report
+fixture JSON       ────► MarksFixture.swift assertions ──► drift-catcher CI tests
+
+simdrive replay    ────► live drive on candidate build + SSIM ──► mutation-killing CI tests
+chaos-qa session   ────► discovers new replays + fixtures ──► feeds both layers above
+```
 
 ## Layout
 

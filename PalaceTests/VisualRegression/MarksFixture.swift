@@ -161,25 +161,45 @@ struct MarksFixture: Decodable {
   // MARK: - URL resolution
 
   private static func resolveFixtureURL(version: String, flow: String, step: String, sourceFile: StaticString) throws -> URL {
-    let relpath = ".specterqa/fixtures/baselines/\(version)/\(flow)/\(step).json"
-    let candidates = candidateRoots(sourceFile: sourceFile).map { $0.appendingPathComponent(relpath) }
-    for url in candidates where FileManager.default.fileExists(atPath: url.path) {
-      return url
+    // 1. Bundle resource path — primary at test runtime. The `baselines/` folder
+    //    reference in PalaceTests' Resources phase preserves the nested layout, so
+    //    Bundle.resourceURL/baselines/<version>/<flow>/<step>.json is the live path.
+    if let bundleURL = Bundle(for: BundleAnchor.self).resourceURL {
+      let bundlePath = bundleURL
+        .appendingPathComponent("baselines")
+        .appendingPathComponent(version)
+        .appendingPathComponent(flow)
+        .appendingPathComponent("\(step).json")
+      if FileManager.default.fileExists(atPath: bundlePath.path) {
+        return bundlePath
+      }
     }
-    throw FixtureError.notFound(id: "\(flow)/\(step)", version: version, searched: candidates.map(\.path))
+
+    // 2. Source-tree fallback — for IDE / playground / dev runs where the Bundle
+    //    isn't populated (e.g., running this loader from a script context).
+    let relpath = ".specterqa/fixtures/baselines/\(version)/\(flow)/\(step).json"
+    let walkRoots = sourceTreeRoots(sourceFile: sourceFile)
+    for root in walkRoots {
+      let url = root.appendingPathComponent(relpath)
+      if FileManager.default.fileExists(atPath: url.path) {
+        return url
+      }
+    }
+
+    throw FixtureError.notFound(
+      id: "\(flow)/\(step)",
+      version: version,
+      searched: [Bundle(for: BundleAnchor.self).resourceURL?.path ?? "<no bundle>"]
+        + walkRoots.map { $0.appendingPathComponent(relpath).path }
+    )
   }
 
-  private static func candidateRoots(sourceFile: StaticString) -> [URL] {
+  private static func sourceTreeRoots(sourceFile: StaticString) -> [URL] {
     var roots: [URL] = []
-    // Walk up from this source file (PalaceTests/VisualRegression/...) to repo root.
     var url = URL(fileURLWithPath: "\(sourceFile)").deletingLastPathComponent()
     for _ in 0..<8 {
       roots.append(url)
       url = url.deletingLastPathComponent()
-    }
-    // Also try Bundle resource path (when fixtures are copied into the test bundle).
-    if let bundleURL = Bundle(for: BundleAnchor.self).resourceURL {
-      roots.append(bundleURL)
     }
     return roots
   }

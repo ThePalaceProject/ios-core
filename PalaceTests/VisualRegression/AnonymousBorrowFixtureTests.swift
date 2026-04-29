@@ -59,11 +59,32 @@ final class AnonymousBorrowBaselineFixtureTests: XCTestCase {
 
   // MARK: - 04 book detail
 
+  // NOTE on assertion design: do NOT assert specific book titles, authors, or
+  // absolute Y positions for content-driven elements. The Palace Bookshelf
+  // catalog is server-driven and rotates; carousels show different books on
+  // different cold launches. Asserting "A Night in Acadie at y=2244" will fail
+  // on the next re-capture even when the code is correct. Assert STABLE
+  // elements (UI controls, lane labels, library names, section headers) and
+  // RELATIVE positions (Borrow appears AFTER Description), not absolute ones.
+
   func test_04_bookDetail_borrowButtonPresent() throws {
     let f = try MarksFixture.load("anonymous-borrow/04-book-detail", version: "3.0.0")
-    f.assertText("Borrow", nearY: 1604, tolerancePx: 25)
+    f.assertContainsText("Borrow")              // present, position depends on title length
     f.assertContainsText("DESCRIPTION")
     f.assertContainsText("< Back")
+  }
+
+  /// The Borrow button must appear ABOVE the DESCRIPTION header. Asserting
+  /// relative ordering is content-stable; asserting absolute Y is not.
+  func test_04_bookDetail_borrowButtonAppearsAboveDescription() throws {
+    let f = try MarksFixture.load("anonymous-borrow/04-book-detail", version: "3.0.0")
+    guard let borrow = f.firstMark(withText: "Borrow"),
+          let description = f.firstMark(containing: "DESCRIPTION") else {
+      XCTFail("Expected both 'Borrow' and 'DESCRIPTION' in 04-book-detail")
+      return
+    }
+    XCTAssertLessThan(borrow.centerY, description.centerY,
+                      "Borrow CTA at y=\(borrow.centerY) should be above DESCRIPTION at y=\(description.centerY)")
   }
 
   func test_04_bookDetail_preBorrowDoesNotShowReadOrRemove() throws {
