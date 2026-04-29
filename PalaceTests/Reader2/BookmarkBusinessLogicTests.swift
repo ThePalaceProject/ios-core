@@ -118,14 +118,35 @@ final class BookmarkBusinessLogicExtendedTests: XCTestCase {
         XCTAssertNotNil(retrieved)
     }
 
-    func testBookmarkAtIndex_negativeIndex_returnsNil() {
-        let result = businessLogic.bookmark(at: -1)
-        XCTAssertNil(result)
-    }
+    /// `bookmark(at:)` guards both ends of the array — negative indices AND
+    /// indices >= count must yield nil. Pair both invalid shapes with a
+    /// valid lookup so a mutant that always-returns-nil OR drops the bounds
+    /// check fails on the same test.
+    func testBookmarkAtIndex_returnsNilForOutOfRangeIndicesAndItemForValid() {
+        // Empty registry: every index is out of range.
+        XCTAssertNil(businessLogic.bookmark(at: -1),
+                     "Negative index must yield nil — guards against `index < count` mutant that drops the lower bound")
+        XCTAssertNil(businessLogic.bookmark(at: 0),
+                     "Index 0 on empty bookmarks must yield nil")
+        XCTAssertNil(businessLogic.bookmark(at: 100),
+                     "Past-end index must yield nil — guards against the upper bound check")
 
-    func testBookmarkAtIndex_outOfBoundsIndex_returnsNil() {
-        let result = businessLogic.bookmark(at: 100)
-        XCTAssertNil(result)
+        // After adding one bookmark, index 0 yields it; -1 and 1 are still nil.
+        guard let bookmark = createBookmark(progressWithinBook: 0.5) else {
+            XCTFail("Failed to create bookmark"); return
+        }
+        bookRegistryMock.add(bookmark, forIdentifier: bookIdentifier)
+        businessLogic = TPPReaderBookmarksBusinessLogic(
+            book: testBook,
+            r2Publication: Publication(manifest: Manifest(metadata: Metadata(title: "Test"))),
+            drmDeviceID: "test-device-id",
+            bookRegistryProvider: bookRegistryMock,
+            currentLibraryAccountProvider: libraryAccountMock
+        )
+        XCTAssertNotNil(businessLogic.bookmark(at: 0),
+                        "Valid index MUST yield the stored bookmark — guards against an always-nil mutant")
+        XCTAssertNil(businessLogic.bookmark(at: -1))
+        XCTAssertNil(businessLogic.bookmark(at: 1))
     }
 
     // MARK: - Delete Bookmark Tests
@@ -177,36 +198,73 @@ final class BookmarkBusinessLogicExtendedTests: XCTestCase {
         XCTAssertEqual(businessLogic.bookmarks.count, 0)
     }
 
-    func testDeleteBookmarkAtIndex_invalidIndex_returnsNil() {
-        let result = businessLogic.deleteBookmark(at: -1)
-        XCTAssertNil(result)
+    /// `deleteBookmark(at:)` guards out-of-range indices and leaves the
+    /// bookmark list untouched. Pair both invalid shapes plus a valid delete
+    /// so a mutant that always-removes (regardless of bounds) is caught.
+    func testDeleteBookmarkAtIndex_guardsOutOfRangeAndRemovesOnlyValidIndex() {
+        guard let bookmark = createBookmark(progressWithinBook: 0.5) else {
+            XCTFail("Failed to create bookmark"); return
+        }
+        bookRegistryMock.add(bookmark, forIdentifier: bookIdentifier)
+        businessLogic = TPPReaderBookmarksBusinessLogic(
+            book: testBook,
+            r2Publication: Publication(manifest: Manifest(metadata: Metadata(title: "Test"))),
+            drmDeviceID: "test-device-id",
+            bookRegistryProvider: bookRegistryMock,
+            currentLibraryAccountProvider: libraryAccountMock
+        )
+
+        let initialCount = businessLogic.bookmarks.count
+        XCTAssertEqual(initialCount, 1)
+
+        // Out-of-range deletes return nil AND must not mutate the array.
+        XCTAssertNil(businessLogic.deleteBookmark(at: -1))
+        XCTAssertNil(businessLogic.deleteBookmark(at: 100))
+        XCTAssertEqual(businessLogic.bookmarks.count, initialCount,
+                       "Out-of-range delete attempts MUST NOT remove anything")
+
+        // Valid index removes and returns the bookmark.
+        let removed = businessLogic.deleteBookmark(at: 0)
+        XCTAssertNotNil(removed)
+        XCTAssertEqual(businessLogic.bookmarks.count, 0,
+                       "Successful delete must leave the array shorter")
+
+        // Subsequent delete on now-empty array is also out of range.
+        XCTAssertNil(businessLogic.deleteBookmark(at: 0))
     }
 
-    func testDeleteBookmarkAtIndex_outOfBounds_returnsNil() {
-        let result = businessLogic.deleteBookmark(at: 100)
-        XCTAssertNil(result)
-    }
+    // MARK: - UI Text + Selection + Sync
 
-    // MARK: - UI Text Tests
+    /// Three small static surfaces — the empty-list label, the
+    /// always-selectable predicate, and the sync-permission delegation.
+    /// Group them so the rare regression on these landings is captured by
+    /// one set of asserts rather than three single-statement tests.
+    func testReadOnlySurfaces_noBookmarksText_shouldSelect_shouldAllowRefresh() {
+        // noBookmarksText delegates to localized Strings — must match the
+        // canonical localization key, not just be non-empty (a mutant that
+        // returns "" would pass the non-empty check).
+        XCTAssertEqual(businessLogic.noBookmarksText,
+                       Strings.TPPReaderBookmarksBusinessLogic.noBookmarks,
+                       "noBookmarksText must surface the localized empty-state string verbatim")
+        XCTAssertFalse(businessLogic.noBookmarksText.isEmpty)
 
-    func testNoBookmarksText_returnsLocalizedString() {
-        let text = businessLogic.noBookmarksText
-        XCTAssertFalse(text.isEmpty)
-    }
+        // shouldSelectBookmark currently returns true regardless of index.
+        // Lock that design decision: if this ever becomes index-dependent,
+        // a future maintainer needs an explicit signal.
+        XCTAssertTrue(businessLogic.shouldSelectBookmark(at: 0))
+        XCTAssertTrue(businessLogic.shouldSelectBookmark(at: -1),
+                      "Selection is decoupled from index validity — taps always succeed")
+        XCTAssertTrue(businessLogic.shouldSelectBookmark(at: 999))
 
-    // MARK: - Selection Tests
-
-    func testShouldSelectBookmark_returnsTrue() {
-        let result = businessLogic.shouldSelectBookmark(at: 0)
-        XCTAssertTrue(result)
-    }
-
-    // MARK: - Sync Permission Tests
-
-    func testShouldAllowRefresh_checksSyncPermission() {
-        let result = businessLogic.shouldAllowRefresh()
-        // Result depends on sync configuration
-        XCTAssertNotNil(result)
+        // shouldAllowRefresh delegates to TPPAnnotations.syncIsPossibleAndPermitted().
+        // We can't easily mock that here, but we can assert referential
+        // transparency: two consecutive calls in the same configuration
+        // return the same Bool. Mutants that toggle the result based on
+        // call order would fail.
+        let first = businessLogic.shouldAllowRefresh()
+        let second = businessLogic.shouldAllowRefresh()
+        XCTAssertEqual(first, second,
+                       "shouldAllowRefresh must be referentially transparent within one config")
     }
 
     // MARK: - Helper Methods
@@ -460,9 +518,24 @@ final class BookmarkExistenceTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func testIsBookmarkExisting_withNilLocation_returnsNil() {
-        let result = businessLogic.isBookmarkExisting(at: nil)
-        XCTAssertNil(result)
+    /// `isBookmarkExisting(at:)` early-returns nil on a nil location AND on
+    /// a nil locator inside a non-nil location. Two distinct branches in
+    /// production — a mutant that drops the optional-binding guard fails on
+    /// either probe.
+    func testIsBookmarkExisting_returnsNilForNilLocationAndForLocationWithoutMatch() {
+        XCTAssertNil(businessLogic.isBookmarkExisting(at: nil),
+                     "nil location must short-circuit to nil")
+
+        // A non-nil location whose locator doesn't match any stored bookmark
+        // must also yield nil — distinct branch from the nil-location guard.
+        let locator = Locator(
+            href: AnyURL(string: "/no-match.xhtml")!,
+            mediaType: .xhtml,
+            locations: Locator.Locations(progression: 0.99, totalProgression: 0.99)
+        )
+        let location = TPPBookmarkR3Location(resourceIndex: 0, locator: locator)
+        XCTAssertNil(businessLogic.isBookmarkExisting(at: location),
+                     "Non-matching location with empty registry must yield nil")
     }
 
     func testIsBookmarkExisting_noBookmarks_returnsNil() {
@@ -988,11 +1061,11 @@ final class BookmarkReauthenticationTests: XCTestCase {
 
     // MARK: - Reauthenticator Integration Tests
 
-    func testReauthenticator_UsedInBusinessLogic() {
-        // Verify that the business logic accepts a reauthenticator
-        XCTAssertNotNil(businessLogic)
-        // The reauthenticator was injected during init - test passes if no crash
-    }
+    // The previous `testReauthenticator_UsedInBusinessLogic` only asserted
+    // that businessLogic constructed without crashing — a tautology already
+    // covered by the test-class setUp. The reauthenticator's actual integration
+    // (re-auth attempt during sync) is covered by tests in this same class
+    // that exercise sync behaviour. Removing the no-op test here.
 }
 
 // MARK: - Device ID Matching Tests
