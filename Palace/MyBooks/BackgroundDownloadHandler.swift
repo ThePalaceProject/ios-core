@@ -87,6 +87,54 @@ final class BackgroundDownloadHandler: NSObject {
             lowercased.contains("opds-catalog")
     }
 
+    /// Checks if the MIME type indicates an OPDS 2 publication JSON response.
+    /// Borrow endpoints sometimes redirect to a publication JSON whose
+    /// fulfillment link is the actual content URL — see
+    /// `handleOPDS2PublicationResponse`.
+    func isOPDS2PublicationMimeType(_ mimeType: String) -> Bool {
+        let lowercased = mimeType.lowercased()
+        return lowercased.contains("opds-publication+json") ||
+            lowercased.contains("opds+json")
+    }
+
+    /// Handles an OPDS 2 publication JSON response by parsing it and
+    /// following the actual acquisition link. The borrow endpoint returns a
+    /// publication JSON with fulfillment links — we parse it, extract the
+    /// direct content link, and start a new download for the actual content.
+    /// Returns `true` when a follow-up download was successfully started;
+    /// the caller should treat that as success and stop processing the
+    /// current task.
+    func handleOPDS2PublicationResponse(
+        at location: URL,
+        for book: TPPBook,
+        originalTask: URLSessionDownloadTask,
+        session: URLSession
+    ) async -> Bool {
+        guard let jsonData = try? Data(contentsOf: location) else {
+            Log.error(#file, "Failed to read OPDS2 publication JSON for \(book.identifier)")
+            return false
+        }
+
+        // Parse the OPDS2 publication. The publication payload comes in two
+        // shapes — `OPDS2Publication` (the lean form) and `OPDS2Full
+        // Publication`. Try the lean form first; on decode failure fall back
+        // to the full form before bailing out.
+        if let publication = try? JSONDecoder().decode(OPDS2Publication.self, from: jsonData),
+           let updatedBook = publication.toBook() {
+            return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
+        }
+
+        do {
+            let fullPub = try JSONDecoder().decode(OPDS2FullPublication.self, from: jsonData)
+            if let updatedBook = fullPub.toBook() {
+                return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
+            }
+        } catch {
+            Log.error(#file, "Failed to decode OPDS2 publication JSON for \(book.identifier): \(error)")
+        }
+        return false
+    }
+
     // MARK: - Progress Handling
 
     func handleDownloadProgress(
