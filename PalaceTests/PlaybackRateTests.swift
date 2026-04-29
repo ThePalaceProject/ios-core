@@ -31,8 +31,16 @@ class PlaybackRateTests: XCTestCase {
 
   // MARK: - presets
 
-  func testPresets_ContainsExactlyFiveCases() {
-    XCTAssertEqual(PlaybackRate.presets.count, 5)
+  /// presets is the user-facing 5-rate ladder. Lock the exact set here so
+  /// a mutant that adds/removes a preset (e.g. accidentally exposing an
+  /// intermediate `.p080`) fails on the equality. Pinning the set, not
+  /// just the count, kills mutants that swap one named rate for another.
+  func testPresets_isExactly_ThreeQuarters_Normal_OneAndAQuarter_OneAndAHalf_Double() {
+    let expected: [PlaybackRate] = [
+      .threeQuartersTime, .normalTime, .oneAndAQuarterTime, .oneAndAHalfTime, .doubleTime,
+    ]
+    XCTAssertEqual(PlaybackRate.presets, expected,
+                   "presets must be exactly the 5 named-rate ladder, in ascending order")
   }
 
   func testPresets_ContainsAllNamedRates() {
@@ -51,27 +59,24 @@ class PlaybackRateTests: XCTestCase {
 
   // MARK: - steps
 
-  func testSteps_IsSortedAscending() {
-    let rawValues = PlaybackRate.steps.map(\.rawValue)
-    XCTAssertEqual(rawValues, rawValues.sorted(), "steps must be in ascending order")
-  }
+  /// `steps` is the full slider rail: 26 values from 0.75 to 2.00 in 0.05
+  /// increments, sorted ascending. Lock the bounds, count, sortedness, AND
+  /// the uniform 0.05 gap in one body so a mutant that drops a step,
+  /// shuffles the order, or changes the increment fails on a single test.
+  func testSteps_isMonotonicLadderFromThreeQuartersToDoubleIn0Point05Increments() {
+    let steps = PlaybackRate.steps
+    XCTAssertEqual(steps.count, 26,
+                   "0.75→2.00 in 0.05 increments must be 26 distinct values")
+    XCTAssertEqual(steps.first, .threeQuartersTime, "Lower bound is 0.75×")
+    XCTAssertEqual(steps.last,  .doubleTime,        "Upper bound is 2.00×")
 
-  func testSteps_BoundsAre75And200() {
-    XCTAssertEqual(PlaybackRate.steps.first, .threeQuartersTime)
-    XCTAssertEqual(PlaybackRate.steps.last, .doubleTime)
-  }
-
-  func testSteps_Has0Point05IncrementsBetweenBounds() {
-    let rawValues = PlaybackRate.steps.map(\.rawValue)
-    for i in 1..<rawValues.count {
-      let gap = rawValues[i] - rawValues[i - 1]
-      XCTAssertEqual(gap, 5, "Each step should advance by 0.05× (raw value gap of 5)")
+    let raws = steps.map(\.rawValue)
+    XCTAssertEqual(raws, raws.sorted(),
+                   "steps must be sorted ascending by raw value")
+    for i in 1..<raws.count {
+      XCTAssertEqual(raws[i] - raws[i-1], 5,
+                     "Adjacent steps at indices \(i-1)→\(i) must advance by exactly 0.05× (raw gap of 5)")
     }
-  }
-
-  func testSteps_ContainsAll26Values() {
-    // 0.75 to 2.00 in 0.05 increments = 26 distinct values
-    XCTAssertEqual(PlaybackRate.steps.count, 26)
   }
 
   // MARK: - nearest(to:)
@@ -107,12 +112,26 @@ class PlaybackRateTests: XCTestCase {
     XCTAssertEqual(PlaybackRate.nearest(to: 1.98), .doubleTime)
   }
 
-  func testNearest_BelowMinimum_ReturnsThreeQuartersTime() {
+  /// `nearest(to:)` clamps out-of-range values to the bounds — sub-minimum
+  /// snaps to the slowest preset, super-maximum snaps to the fastest.
+  /// Pin both clamping branches at multiple values per side so a mutant
+  /// that flips one boundary fails immediately.
+  func testNearest_clampsOutOfRangeValuesToBounds() {
+    // Sub-minimum
     XCTAssertEqual(PlaybackRate.nearest(to: 0.10), .threeQuartersTime)
-  }
+    XCTAssertEqual(PlaybackRate.nearest(to: 0.50), .threeQuartersTime)
+    XCTAssertEqual(PlaybackRate.nearest(to: 0.74), .threeQuartersTime,
+                   "Just under the minimum must still snap to the minimum, not interpolate")
 
-  func testNearest_AboveMaximum_ReturnsDoubleTime() {
+    // Super-maximum
+    XCTAssertEqual(PlaybackRate.nearest(to: 2.01), .doubleTime,
+                   "Just over the maximum must still snap to the maximum")
+    XCTAssertEqual(PlaybackRate.nearest(to: 5.0),  .doubleTime)
     XCTAssertEqual(PlaybackRate.nearest(to: 9.99), .doubleTime)
+
+    // Negative input should not crash and must clamp to the minimum.
+    XCTAssertEqual(PlaybackRate.nearest(to: -1.0), .threeQuartersTime,
+                   "Negative input must be clamped, not crash on arithmetic")
   }
 
   // MARK: - HumanReadablePlaybackRate.formatMultiplier
@@ -133,10 +152,16 @@ class PlaybackRateTests: XCTestCase {
     XCTAssertEqual(HumanReadablePlaybackRate.formatMultiplier(0.85), "0.85×")
   }
 
-  func testFormatMultiplier_AllIntermediateSteps_ContainMultiplySign() {
+  /// Every step in the slider rail produces a label that ends with the
+  /// multiply sign and is non-empty. Loop guarantees coverage if a future
+  /// step is added without updating tests; the tail-suffix check rules out
+  /// a mutant that prepends `×` instead of appending it.
+  func testFormatMultiplier_allStepsProduceLabelEndingWithMultiplySign() {
     for rate in PlaybackRate.steps {
       let label = HumanReadablePlaybackRate.formatMultiplier(PlaybackRate.convert(rate: rate))
-      XCTAssertTrue(label.contains("×"), "Label '\(label)' for \(rate) should contain ×")
+      XCTAssertFalse(label.isEmpty, "Empty label for \(rate)")
+      XCTAssertTrue(label.hasSuffix("×"),
+                    "Label '\(label)' for \(rate) must END with × — the multiply sign is the trailing unit, not a prefix")
     }
   }
 }
