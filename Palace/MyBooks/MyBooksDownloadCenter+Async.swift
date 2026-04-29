@@ -95,7 +95,7 @@ extension MyBooksDownloadCenter {
     ) async throws -> TPPBook {
         let bookIdentifier = book.identifier
 
-        announceBorrowStarted(for: book)
+        downloadAnnouncementService.announceBorrowStarted(for: book)
 
         Task { [errorActivityTracker] in await errorActivityTracker.log("Initiating borrow for '\(book.title)'", category: .borrow) }
 
@@ -189,7 +189,7 @@ extension MyBooksDownloadCenter {
 
             Task { [errorActivityTracker] in await errorActivityTracker.log("Borrow succeeded for '\(borrowedBook.title)', state: \(mapping.state)", category: .borrow) }
 
-            announceBorrowSucceeded(for: borrowedBook)
+            downloadAnnouncementService.announceBorrowSucceeded(for: borrowedBook)
 
             // Optionally start download
             if attemptDownload && mapping.state == .downloadNeeded {
@@ -429,7 +429,7 @@ extension MyBooksDownloadCenter {
     ) {
         let title = Strings.MyDownloadCenter.borrowFailed
 
-        announceBorrowFailed(for: book)
+        downloadAnnouncementService.announceBorrowFailed(for: book)
 
         // Try to extract problem document from the original error
         let problemDoc: TPPProblemDocument? = {

@@ -44,6 +44,7 @@ import PalaceCatalog
     private let accountsManager: AccountsManager
     private let networkExecutor: TPPNetworkExecutor
     private let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
+    let downloadAnnouncementService: DownloadAnnouncementService
 
     // Phase 4 (Architectural Triad) — services formerly reached through
     // `.shared` are now stored properties initialized via the constructor.
@@ -103,6 +104,7 @@ import PalaceCatalog
         accountsManager: AccountsManager = AppContainer.production().accountsManager,
         networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor,
         accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
+        downloadAnnouncementService: DownloadAnnouncementService = DownloadAnnouncementService(),
         errorActivityTracker: ErrorActivityTracker = .shared,
         userRetryTracker: UserRetryTracker = .shared,
         reachability: Reachability = AppContainer.production().reachability,
@@ -126,6 +128,7 @@ import PalaceCatalog
         self.accountsManager = accountsManager
         self.networkExecutor = networkExecutor
         self.accessibilityAnnouncements = accessibilityAnnouncements
+        self.downloadAnnouncementService = downloadAnnouncementService
         self.errorActivityTracker = errorActivityTracker
         self.userRetryTracker = userRetryTracker
         self.reachability = reachability
@@ -203,6 +206,7 @@ import PalaceCatalog
             bookRegistry: appContainer.bookRegistry,
             accountsManager: appContainer.accountsManager,
             networkExecutor: appContainer.networkExecutor,
+            downloadAnnouncementService: appContainer.downloadAnnouncementService,
             opdsFeedService: appContainer.opdsFeedService,
             debugSettings: appContainer.debugSettings,
             settings: appContainer.settings
@@ -235,42 +239,6 @@ import PalaceCatalog
         session?.invalidateAndCancel()
     }
 
-    func announceDownloadStarted(for book: TPPBook) {
-        accessibilityAnnouncements.announceDownloadStarted(title: book.title, identifier: book.identifier)
-    }
-
-    func announceDownloadCompleted(for book: TPPBook) {
-        accessibilityAnnouncements.announceDownloadCompleted(title: book.title)
-    }
-
-    func announceDownloadFailed(for book: TPPBook) {
-        accessibilityAnnouncements.announceDownloadFailed(title: book.title)
-    }
-
-    func announceBorrowStarted(for book: TPPBook) {
-        accessibilityAnnouncements.announceBorrowStarted(title: book.title)
-    }
-
-    func announceBorrowSucceeded(for book: TPPBook) {
-        accessibilityAnnouncements.announceBorrowSucceeded(title: book.title)
-    }
-
-    func announceBorrowFailed(for book: TPPBook) {
-        accessibilityAnnouncements.announceBorrowFailed(title: book.title)
-    }
-
-    func announceReturnStarted(for book: TPPBook) {
-        accessibilityAnnouncements.announceReturnStarted(title: book.title)
-    }
-
-    func announceReturnSucceeded(for book: TPPBook) {
-        accessibilityAnnouncements.announceReturnSucceeded(title: book.title)
-    }
-
-    func announceReturnFailed(for book: TPPBook) {
-        accessibilityAnnouncements.announceReturnFailed(title: book.title)
-    }
-
     // MARK: - Error Announcements (PP-3673)
 
     /// Publishes an error to `downloadErrorPublisher` and simultaneously announces
@@ -283,7 +251,7 @@ import PalaceCatalog
 
     private func markDownloadSuccessful(for book: TPPBook) {
         bookRegistry.setState(.downloadSuccessful, for: book.identifier)
-        announceDownloadCompleted(for: book)
+        downloadAnnouncementService.announceDownloadCompleted(for: book)
     }
 
     /// Legacy callback-based borrow method - wraps the modern async implementation
@@ -1180,7 +1148,7 @@ extension MyBooksDownloadCenter {
             return
         }
 
-        announceReturnStarted(for: book)
+        downloadAnnouncementService.announceReturnStarted(for: book)
 
         let state = bookRegistry.state(for: identifier)
         let downloaded = (state == .downloadSuccessful) || (state == .used)
@@ -1218,7 +1186,7 @@ extension MyBooksDownloadCenter {
                 self.bookRegistry.setState(.unregistered, for: identifier)
                 self.bookRegistry.removeBook(forIdentifier: identifier)
                 self.performPostReturnSyncThen {
-                    self.announceReturnSucceeded(for: book)
+                    self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                     completion?()
                 }
             }
@@ -1229,7 +1197,7 @@ extension MyBooksDownloadCenter {
                 guard let self, let revokeURL = book.revokeURL else {
                     await MainActor.run {
                         self?.bookRegistry.setProcessing(false, for: book.identifier)
-                        self?.announceReturnFailed(for: book)
+                        self?.downloadAnnouncementService.announceReturnFailed(for: book)
                         completion?()
                     }
                     return
@@ -1244,7 +1212,7 @@ extension MyBooksDownloadCenter {
                     guard feed.entries.count == 1, let entry = feed.entries[0] as? TPPOPDSEntry else {
                         Log.error(#file, "Revoke response had \(feed.entries.count) entries, expected 1")
                         await MainActor.run {
-                            self.announceReturnFailed(for: book)
+                            self.downloadAnnouncementService.announceReturnFailed(for: book)
                             completion?()
                         }
                         return
@@ -1253,7 +1221,7 @@ extension MyBooksDownloadCenter {
                     guard let returnedBook = TPPBook(entry: entry) else {
                         Log.error(#file, "Failed to create book from revoke entry")
                         await MainActor.run {
-                            self.announceReturnFailed(for: book)
+                            self.downloadAnnouncementService.announceReturnFailed(for: book)
                             completion?()
                         }
                         return
@@ -1269,7 +1237,7 @@ extension MyBooksDownloadCenter {
                         self.bookRegistry.updateAndRemoveBook(returnedBook)
                         self.bookRegistry.setState(.unregistered, for: identifier)
                         self.performPostReturnSyncThen {
-                            self.announceReturnSucceeded(for: book)
+                            self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                             completion?()
                         }
                     }
@@ -1295,7 +1263,7 @@ extension MyBooksDownloadCenter {
                             self.bookRegistry.setState(.unregistered, for: identifier)
                             self.bookRegistry.removeBook(forIdentifier: identifier)
                             self.performPostReturnSyncThen {
-                                self.announceReturnSucceeded(for: book)
+                                self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                                 completion?()
                             }
                         }
@@ -1322,7 +1290,7 @@ extension MyBooksDownloadCenter {
                             self.bookRegistry.setState(.unregistered, for: identifier)
                             self.bookRegistry.removeBook(forIdentifier: identifier)
                             self.performPostReturnSyncThen {
-                                self.announceReturnSucceeded(for: book)
+                                self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                                 completion?()
                             }
                         }
@@ -1339,7 +1307,7 @@ extension MyBooksDownloadCenter {
                                     self.returnBook(withIdentifier: identifier, completion: completion)
                                 } else {
                                     runOnMainAsync {
-                                        self.announceReturnFailed(for: book)
+                                        self.downloadAnnouncementService.announceReturnFailed(for: book)
                                         completion?()
                                     }
                                 }
@@ -1385,7 +1353,7 @@ extension MyBooksDownloadCenter {
                             self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
                             self.bookRegistry.setState(.unregistered, for: identifier)
                             self.bookRegistry.removeBook(forIdentifier: identifier)
-                            self.announceReturnSucceeded(for: book)
+                            self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                             completion?()
                         })
 
@@ -1396,7 +1364,7 @@ extension MyBooksDownloadCenter {
                         }
 
                         TPPPresentationUtils.safelyPresent(alert)
-                        self.announceReturnFailed(for: book)
+                        self.downloadAnnouncementService.announceReturnFailed(for: book)
                         completion?()
                     }
                 }
@@ -2233,7 +2201,7 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
                                       readiumBookmarks: nil,
                                       genericBookmarks: nil)
 
-            self.announceDownloadStarted(for: book)
+            self.downloadAnnouncementService.announceDownloadStarted(for: book)
 
             runOnMainAsync {
                 NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: self)
@@ -2649,7 +2617,7 @@ extension MyBooksDownloadCenter {
                              readiumBookmarks: nil,
                              genericBookmarks: nil)
 
-        announceDownloadFailed(for: book)
+        downloadAnnouncementService.announceDownloadFailed(for: book)
 
         Task { [weak self] in
             await self?.errorActivityTracker.log(
