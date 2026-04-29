@@ -15,39 +15,39 @@ final class ErrorDetailViewControllerTests: XCTestCase {
 
     // MARK: - ErrorDetail Model Tests
 
-    func testErrorDetail_FormattedReport_ContainsTitle() {
-        let detail = makeErrorDetail(title: "Test Error", message: "Something went wrong")
+    /// `formattedReport()` produces the support-email body. Lock the
+    /// header skeleton (Error / Device / Activity Trail sections), the
+    /// pass-through of the supplied title and message, AND the section
+    /// ordering in one body. A mutant that drops a section header or
+    /// reorders sections fails on a single test.
+    func testErrorDetail_FormattedReport_includesAllSectionsAndPassesThroughTitleAndMessage() {
+        let detail = makeErrorDetail(title: "Test Error", message: "A detailed message")
         let report = detail.formattedReport()
 
-        XCTAssertTrue(report.contains("Test Error"))
-    }
+        // Title + message pass through unchanged.
+        XCTAssertTrue(report.contains("Test Error"),
+                      "Title must pass through to the formatted report")
+        XCTAssertTrue(report.contains("A detailed message"),
+                      "Message must pass through to the formatted report")
 
-    func testErrorDetail_FormattedReport_ContainsMessage() {
-        let detail = makeErrorDetail(title: "Error", message: "A detailed message")
-        let report = detail.formattedReport()
+        // Three required section headers are present.
+        XCTAssertTrue(report.contains("── Error ──"),
+                      "Error section header must be present")
+        XCTAssertTrue(report.contains("── Device ──"),
+                      "Device section header must be present")
+        XCTAssertTrue(report.contains("Activity Trail"),
+                      "Activity Trail section must be present")
 
-        XCTAssertTrue(report.contains("A detailed message"))
-    }
-
-    func testErrorDetail_FormattedReport_ContainsErrorHeader() {
-        let detail = makeErrorDetail()
-        let report = detail.formattedReport()
-
-        XCTAssertTrue(report.contains("── Error ──"))
-    }
-
-    func testErrorDetail_FormattedReport_ContainsDeviceSection() {
-        let detail = makeErrorDetail()
-        let report = detail.formattedReport()
-
-        XCTAssertTrue(report.contains("── Device ──"))
-    }
-
-    func testErrorDetail_FormattedReport_ContainsActivityTrailSection() {
-        let detail = makeErrorDetail()
-        let report = detail.formattedReport()
-
-        XCTAssertTrue(report.contains("Activity Trail"))
+        // Error must be the FIRST section — the user's actual error sits at
+        // the top so engineers triaging the email see it without scrolling.
+        guard
+            let errorIdx = report.range(of: "── Error ──")?.lowerBound,
+            let deviceIdx = report.range(of: "── Device ──")?.lowerBound
+        else {
+            XCTFail("Section markers must all be present"); return
+        }
+        XCTAssertLessThan(errorIdx, deviceIdx,
+                          "Error section must precede Device — error context is more important than environment context")
     }
 
     func testErrorDetail_FormattedReport_WithUnderlyingError_ContainsDomain() {
@@ -71,11 +71,25 @@ final class ErrorDetailViewControllerTests: XCTestCase {
         XCTAssertTrue(report.contains("Test Book"))
     }
 
-    func testErrorDetail_FormattedReport_WithNoBookInfo_OmitsBookSection() {
-        let detail = makeErrorDetail()
-        let report = detail.formattedReport()
+    /// The Book section must appear iff the detail carries book info.
+    /// Lock both branches in one test to guard against an "always-show" or
+    /// "always-hide" mutant on the conditional rendering. The corresponding
+    /// "WithBookInfo" test above already pins the present-section content;
+    /// this one pins the absent-section side AND verifies the report still
+    /// renders the other sections (so a mutant that crashes when book info
+    /// is missing fails too).
+    func testErrorDetail_FormattedReport_omitsBookSectionWhenNoBookInfoButRendersRestOfReport() {
+        let report = makeErrorDetail().formattedReport()
 
-        XCTAssertFalse(report.contains("── Book ──"))
+        XCTAssertFalse(report.contains("── Book ──"),
+                       "Book section header must NOT appear when no book info is supplied")
+        XCTAssertFalse(report.contains("Book Title:"),
+                       "Book Title field must NOT appear when no book info is supplied")
+        // The rest of the report still renders — guards against an
+        // early-return mutant in the rendering pipeline.
+        XCTAssertTrue(report.contains("── Error ──"),
+                      "Other sections must still render when book info is absent")
+        XCTAssertTrue(report.contains("── Device ──"))
     }
 
     func testErrorDetail_FormattedReport_ContainsTimestamp() {
@@ -108,14 +122,27 @@ final class ErrorDetailViewControllerTests: XCTestCase {
 
     // MARK: - ErrorDetailViewController Initialization Tests
 
-    func testErrorDetailViewController_Init_SetsTitle() {
-        let detail = makeErrorDetail()
+    /// Initialization wires the navigation title and the formatted report
+    /// into the text view. The previous test only checked the title, but
+    /// the title without a populated text view is meaningless to the user.
+    /// Lock both at once so a mutant that bypasses the text-view rendering
+    /// fails alongside one that swaps the title.
+    func testErrorDetailViewController_Init_setsTitleAndPopulatesTextView() {
+        let detail = makeErrorDetail(title: "Specific Error", message: "Inline copy")
         let vc = ErrorDetailViewController(errorDetail: detail)
-
-        // Trigger viewDidLoad
         vc.loadViewIfNeeded()
 
-        XCTAssertEqual(vc.title, "Error Details")
+        XCTAssertEqual(vc.title, "Error Details",
+                       "Navigation title is the user-facing screen label")
+
+        // Text view is the body — locate it and assert the formatted
+        // report's title string actually made it into the rendered text.
+        let textView = vc.view.subviews.compactMap { $0 as? UITextView }.first
+        XCTAssertNotNil(textView, "View hierarchy must contain a UITextView")
+        XCTAssertTrue(textView?.text.contains("Specific Error") ?? false,
+                      "Text view must surface the supplied error title")
+        XCTAssertTrue(textView?.text.contains("Inline copy") ?? false,
+                      "Text view must surface the supplied error message")
     }
 
     func testErrorDetailViewController_ViewDidLoad_HasTextView() {
