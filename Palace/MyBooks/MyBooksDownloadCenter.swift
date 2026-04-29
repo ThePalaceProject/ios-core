@@ -48,6 +48,7 @@ import PalaceCatalog
     private let bookFileManager: BookFileManager
     private let diskBudgetManager: DiskBudgetManager
     private let alertPresenter: DownloadAlertPresenter
+    private let throttlingService: DownloadThrottlingService
 
     // Phase 4 (Architectural Triad) — services formerly reached through
     // `.shared` are now stored properties initialized via the constructor.
@@ -146,6 +147,7 @@ import PalaceCatalog
         bookFileManager: BookFileManager? = nil,
         diskBudgetManager: DiskBudgetManager? = nil,
         alertPresenter: DownloadAlertPresenter? = nil,
+        throttlingService: DownloadThrottlingService? = nil,
         stateManager: DownloadStateManager = DownloadStateManager(),
         tokenInterceptor: TokenRefreshInterceptor? = nil,
         backgroundDownloadHandler: BackgroundDownloadHandler? = nil,
@@ -229,6 +231,13 @@ import PalaceCatalog
             errorActivityTracker: errorActivityTracker,
             userRetryTracker: userRetryTracker
         )
+        // DownloadThrottlingService shares the same DownloadStateManager
+        // MBDC owns so cap + suspend/resume policy stays coherent with the
+        // rest of the download state machine. Tests can inject a mock state
+        // manager + NotificationCenter to drive the network-monitor branch.
+        self.throttlingService = throttlingService ?? DownloadThrottlingService(
+            stateManager: stateManager
+        )
         self.errorActivityTracker = errorActivityTracker
         self.userRetryTracker = userRetryTracker
         self.reachability = reachability
@@ -257,6 +266,7 @@ import PalaceCatalog
         self.tokenInterceptor.delegate = self
         self.backgroundDownloadHandler.delegate = self
         self.alertPresenter.delegate = self
+        self.throttlingService.delegate = self
 
         #if FEATURE_DRM_CONNECTOR
         // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
@@ -298,8 +308,9 @@ import PalaceCatalog
             #endif
         }
 
-        // Setup intelligent download management
-        setupNetworkMonitoring()
+        // Setup intelligent download management — observer registration
+        // lives on the throttlingService which holds the handle for cleanup.
+        self.throttlingService.setupNetworkMonitoring()
     }
 
     /// Phase 4 (Architectural Triad) convenience init that pulls injectable
@@ -2127,7 +2138,7 @@ extension MyBooksDownloadCenter {
         }
     }
 
-    private func schedulePendingStartsAsync() async {
+    func schedulePendingStartsAsync() async {
         let activeCount = await downloadCoordinator.activeCount
         let capacity = maxConcurrentDownloads - activeCount
 
@@ -2167,81 +2178,19 @@ extension MyBooksDownloadCenter {
 }
 
 extension MyBooksDownloadCenter {
-    // Public helpers for memory monitor
+    // Public throttling helpers preserved for the @objc TPPAppDelegate +
+    // memoryPressureMonitor callers. All logic lives on
+    // DownloadThrottlingService; MBDC just forwards.
     @objc func limitActiveDownloads(max: Int) {
-        maxConcurrentDownloads = max
-
-        Task {
-            await limitActiveDownloadsAsync(max: max)
-        }
-    }
-
-    private func limitActiveDownloadsAsync(max: Int) async {
-        let allInfo = await bookIdentifierToDownloadInfo.values()
-        let running = allInfo.compactMap { $0.downloadTask }.filter { $0.state == .running }
-        let suspended = allInfo.compactMap { $0.downloadTask }.filter { $0.state == .suspended }
-
-        if running.count > max {
-            var nonAudiobookTasks: [URLSessionTask] = []
-            for task in running {
-                if let book = await taskIdentifierToBook.get(task.taskIdentifier) {
-                    if book.defaultBookContentType != .audiobook {
-                        nonAudiobookTasks.append(task)
-                    }
-                } else {
-                    nonAudiobookTasks.append(task)
-                }
-            }
-
-            let tasksToSuspend = nonAudiobookTasks.dropFirst(Swift.max(0, max - (running.count - nonAudiobookTasks.count)))
-            for task in tasksToSuspend {
-                Log.info(#file, "Suspending non-audiobook download to respect limits")
-                task.suspend()
-            }
-        } else if running.count < max {
-            let toResume = min(max - running.count, suspended.count)
-            if toResume > 0 {
-                for task in suspended.prefix(toResume) { task.resume() }
-            }
-        }
-        await schedulePendingStartsAsync()
+        throttlingService.limitActiveDownloads(max: max)
     }
 
     @objc func pauseAllDownloads() {
-        Task {
-            await pauseAllDownloadsAsync()
-        }
-    }
-
-    private func pauseAllDownloadsAsync() async {
-        let allInfo = await bookIdentifierToDownloadInfo.values()
-        for info in allInfo {
-            if let book = await taskIdentifierToBook.get(info.downloadTask.taskIdentifier),
-               book.defaultBookContentType == .audiobook {
-                Log.info(#file, "Preserving audiobook download/streaming for: \(book.title)")
-                continue
-            }
-            info.downloadTask.suspend()
-        }
+        throttlingService.pauseAllDownloads()
     }
 
     @objc func resumeIntelligentDownloads() {
-        limitActiveDownloads(max: maxConcurrentDownloads)
-    }
-
-    func setupNetworkMonitoring() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(networkConditionsChanged),
-            name: UIApplication.didBecomeActiveNotification,
-            object: nil
-        )
-        Log.info(#file, "Network monitoring setup for download optimization")
-    }
-
-    @objc private func networkConditionsChanged() {
-        let currentLimit = maxConcurrentDownloads
-        limitActiveDownloads(max: currentLimit)
+        throttlingService.resumeIntelligentDownloads()
     }
 
     func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
@@ -2583,3 +2532,11 @@ extension MyBooksDownloadCenter: TokenRefreshInterceptorDelegate {}
 // conformance — no synthesis needed.
 
 extension MyBooksDownloadCenter: DownloadAlertPresenterDelegate {}
+
+// MARK: - DownloadThrottlingServiceDelegate
+//
+// `schedulePendingStartsAsync()` is internal (promoted in this commit
+// from private) and matches the protocol's surface. Empty conformance
+// — no synthesis needed.
+
+extension MyBooksDownloadCenter: DownloadThrottlingServiceDelegate {}
