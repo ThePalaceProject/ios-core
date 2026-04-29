@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 
 extension Notification.Name {
     static let TPPSettingsDidChange = Notification.Name("TPPSettingsDidChange")
@@ -34,7 +35,7 @@ extension Notification.Name {
     static let TPPMyBooksDownloadCenterDidChange = Notification.Name("TPPMyBooksDownloadCenterDidChange")
     static let TPPBookDetailDidClose = Notification.Name("TPPBookDetailDidClose")
     static let TPPAccountSetDidLoad = Notification.Name("TPPAccountSetDidLoad")
-    static let TPPReachabilityChanged = Notification.Name("TPPReachabilityChanged")
+    // TPPReachabilityChanged is defined in PalaceNetwork; do not duplicate.
 }
 
 @objc extension NSNotification {

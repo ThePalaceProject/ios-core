@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import PalaceNetwork
 @testable import Palace
 
 final class DownloadOnlyOnWiFiTests: XCTestCase {
@@ -86,17 +87,17 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
     func testReachability_isOnWiFi_returnsBool() {
         // isOnWiFi must return a Bool without crashing. In CI the interface is
         // unknown, but we can verify the value is consistent with the detailed status.
-        let isWiFi = Reachability.shared.isOnWiFi
+        let isWiFi = AppContainer.production().reachability.isOnWiFi
         // Verify the return type is a proper Bool (not some nil-bridged optional)
         XCTAssertNotNil(isWiFi as Bool?, "isOnWiFi must return a non-nil Bool")
         // Verify consistency: calling twice must return the same value (no side effects)
-        XCTAssertEqual(Reachability.shared.isOnWiFi, isWiFi,
+        XCTAssertEqual(AppContainer.production().reachability.isOnWiFi, isWiFi,
                        "isOnWiFi must be idempotent: repeated calls must return the same value")
     }
 
     func testReachability_isOnWiFi_consistentWithDetailedStatus() {
-        let detailed = Reachability.shared.getDetailedConnectivityStatus()
-        let isWiFi = Reachability.shared.isOnWiFi
+        let detailed = AppContainer.production().reachability.getDetailedConnectivityStatus()
+        let isWiFi = AppContainer.production().reachability.isOnWiFi
 
         if detailed.connectionType == "WiFi" || detailed.connectionType == "Ethernet" {
             XCTAssertTrue(isWiFi, "isOnWiFi should be true when connected via WiFi or Ethernet")

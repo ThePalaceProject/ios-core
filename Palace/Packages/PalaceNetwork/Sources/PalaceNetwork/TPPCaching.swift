@@ -27,7 +27,7 @@ extension HTTPURLResponse {
      property does not check for its presence since in that case the server
      explicitly demands a revalidation.
      */
-    var hasSufficientCachingHeaders: Bool {
+    public var hasSufficientCachingHeaders: Bool {
         if cacheControlHeader != nil {
             if lastModifiedHeader != nil || expiresHeader != nil {
                 return true
@@ -46,7 +46,7 @@ extension HTTPURLResponse {
     /**
      Extracts the value of the `max-age` directive from the `Cache-Control` header.
      */
-    var cacheControlMaxAge: TimeInterval? {
+    public var cacheControlMaxAge: TimeInterval? {
         guard let cacheControl = cacheControlHeader else {
             return nil
         }
@@ -125,7 +125,7 @@ extension HTTPURLResponse {
     /// `Expires` and they are only added if they were missing from the original
     /// response (i.e. `self`). The added caching window is either `max-age` if
     /// that directive is present in `Cache-Control`, otherwise it's 3 hours.
-    func modifyingCacheHeaders() -> HTTPURLResponse {
+    public func modifyingCacheHeaders() -> HTTPURLResponse {
         // don't mess with failed responses
 
         guard (200...299).contains(statusCode) else {
@@ -147,7 +147,7 @@ extension HTTPURLResponse {
         if self.expiresHeader == nil {
             let maxAge: TimeInterval = self.cacheControlMaxAge ?? 60 * 60 * 3
             let in3HoursDate = Date().addingTimeInterval(maxAge)
-            headers["Expires"] = in3HoursDate.rfc1123String
+            headers["Expires"] = TPPCaching.rfc1123Formatter.string(from: in3HoursDate)
         }
         if self.cacheControlHeader == nil {
             headers["Cache-Control"] = "public, max-age=10800"
@@ -182,14 +182,14 @@ extension HTTPURLResponse {
 /// responses even when these would not be cached by URLSession despite having a
 /// sufficient set of caching headers per https://tools.ietf.org/html/rfc7234 --
 /// see `HTTPURLResponse::modifyingCacheHeaders()`.
-@objc enum NYPLCachingStrategy: NSInteger {
+@objc public enum NYPLCachingStrategy: NSInteger {
     case ephemeral
     case `default`
     case fallback
 }
 
 // ------------------------------------------------------------------------------
-class TPPCaching {
+public class TPPCaching {
 
     /// Makes a URLSessionConfiguration for standard HTTP requests with in-memory
     /// and disk caching enabled.
@@ -198,8 +198,8 @@ class TPPCaching {
     /// policy will always follow the one defined in the request protocol
     /// implementation.
     /// - Returns: A configuration with 8 max connections per host.
-    class func makeURLSessionConfiguration(caching: NYPLCachingStrategy,
-                                           requestTimeout: TimeInterval) -> URLSessionConfiguration {
+    public class func makeURLSessionConfiguration(caching: NYPLCachingStrategy,
+                                                  requestTimeout: TimeInterval) -> URLSessionConfiguration {
         guard caching != .ephemeral else {
             return .ephemeral
         }
@@ -239,6 +239,16 @@ class TPPCaching {
     // system if needed.
     private static let maxMemoryCapacity = 20 * 1024 * 1024 // 20 MB
     private static let maxDiskCapacity = 1024 * 1024 * 1024 // 1 GB
+
+    /// RFC 1123 formatter for HTTP `Expires` headers.
+    /// Example: "Wed, 25 Mar 2020 01:23:45 GMT"
+    static let rfc1123Formatter: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(identifier: "GMT")
+        df.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return df
+    }()
 
     private class func makeCache() -> URLCache {
         if #available(iOS 13.0, *) {

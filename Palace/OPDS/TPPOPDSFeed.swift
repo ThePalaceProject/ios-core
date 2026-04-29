@@ -142,7 +142,7 @@ private enum TPPOPDSFeedDataInspection {
 
     var request: URLRequest?
 
-    let task = TPPNetworkExecutor.shared.GET(
+    let task = AppContainer.production().networkExecutor.GET(
       url,
       cachePolicy: cachePolicy,
       useTokenIfAvailable: useTokenIfAvailable

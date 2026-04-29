@@ -1,5 +1,6 @@
 import Foundation
 import PalaceLogging
+import PalaceNetwork
 
 // MARK: - Progress
 

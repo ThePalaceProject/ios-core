@@ -15,6 +15,7 @@
 //
 
 import XCTest
+import PalaceNetwork
 @testable import Palace
 
 // MARK: - TokenRequest Empty Credential Guards
@@ -673,7 +674,7 @@ final class URLSessionCredentialStorageTests: XCTestCase {
         )
 
         XCTAssertNil(config.urlCredentialStorage,
-                     "Fallback config must set urlCredentialStorage=nil -- this is the config used by TPPNetworkExecutor.shared")
+                     "Fallback config must set urlCredentialStorage=nil -- this is the config used by AppContainer.production().networkExecutor")
     }
 
     func testMakeURLSessionConfiguration_Ephemeral_ReturnsEphemeralConfig() {

@@ -203,7 +203,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
     }
 
     private func performSyncBookmarks(completion: @escaping (Bool, [TPPReadiumBookmark]) -> Void) {
-        guard Reachability.shared.isConnectedToNetwork() else {
+        guard AppContainer.production().reachability.isConnectedToNetwork() else {
             self.handleBookmarksSyncFail(message: "Error: host was not reachable for bookmark sync attempt.",
                                          completion: completion,
                                          shouldAttemptReauth: false)

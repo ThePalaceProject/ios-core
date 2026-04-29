@@ -12,10 +12,15 @@ import Network
 import SystemConfiguration
 import PalaceLogging
 
-@objcMembers
-class Reachability: NSObject {
-    static let shared = Reachability()
+extension Notification.Name {
+    /// Posted when network connectivity transitions between connected and disconnected.
+    /// Object payload is the new connectivity `Bool`. Modern consumers should
+    /// observe `Reachability.connectivityPublisher` instead.
+    public static let TPPReachabilityChanged = Notification.Name("TPPReachabilityChanged")
+}
 
+@objcMembers
+public class Reachability: NSObject {
     private let connectionMonitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "NetworkMonitor")
     private let stateLock = NSLock()
@@ -24,7 +29,7 @@ class Reachability: NSObject {
     private let connectivitySubject = CurrentValueSubject<Bool, Never>(false)
 
     /// Publisher for connectivity state. Use instead of observing `.TPPReachabilityChanged`.
-    var connectivityPublisher: AnyPublisher<Bool, Never> {
+    public var connectivityPublisher: AnyPublisher<Bool, Never> {
         connectivitySubject
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
@@ -32,12 +37,16 @@ class Reachability: NSObject {
     }
 
     private var _isConnected = false
-    private(set) var isConnected: Bool {
+    public private(set) var isConnected: Bool {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _isConnected }
         set { stateLock.lock(); _isConnected = newValue; stateLock.unlock() }
     }
 
-    func startMonitoring() {
+    public override init() {
+        super.init()
+    }
+
+    public func startMonitoring() {
         connectionMonitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
             let newStatus = (path.status == .satisfied)
@@ -58,7 +67,7 @@ class Reachability: NSObject {
         connectionMonitor.start(queue: monitorQueue)
     }
 
-    func stopMonitoring() {
+    public func stopMonitoring() {
         connectionMonitor.cancel()
     }
 
@@ -66,7 +75,7 @@ class Reachability: NSObject {
 
     /// Returns `true` when the current path uses a Wi-Fi (or Ethernet) interface.
     /// Ethernet is treated as equivalent to Wi-Fi for download-restriction purposes.
-    var isOnWiFi: Bool {
+    public var isOnWiFi: Bool {
         let path = connectionMonitor.currentPath
         return path.status == .satisfied
             && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet))
@@ -74,7 +83,7 @@ class Reachability: NSObject {
 
     // MARK: - Reachability Check
 
-    func isConnectedToNetwork() -> Bool {
+    public func isConnectedToNetwork() -> Bool {
         if connectionMonitor.currentPath.status == .satisfied {
             return true
         }
@@ -107,7 +116,7 @@ class Reachability: NSObject {
         return isConnected
     }
 
-    func getDetailedConnectivityStatus() -> (isConnected: Bool, connectionType: String, details: String) {
+    public func getDetailedConnectivityStatus() -> (isConnected: Bool, connectionType: String, details: String) {
         let currentPath = connectionMonitor.currentPath
 
         switch currentPath.status {

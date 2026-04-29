@@ -14,6 +14,7 @@ import Combine
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor
 import PalaceLogging
+import PalaceNetwork
 #endif
 
 // DownloadCoordinator is defined in MyBooksDownloadQueue.swift
@@ -99,11 +100,11 @@ import PalaceLogging
         reauthenticator: Reauthenticator = TPPReauthenticator(),
         bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
         accountsManager: AccountsManager = .shared,
-        networkExecutor: TPPNetworkExecutor = .shared,
+        networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor,
         accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
         errorActivityTracker: ErrorActivityTracker = .shared,
         userRetryTracker: UserRetryTracker = .shared,
-        reachability: Reachability = .shared,
+        reachability: Reachability = AppContainer.production().reachability,
         memoryPressureMonitor: MemoryPressureMonitor = .shared,
         bookmarkDeletionLog: TPPBookmarkDeletionLog = .shared,
         deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor = .shared,

@@ -23,7 +23,7 @@ extension TPPMigrationManager {
         }
 
         // Migrate Network Queue DB
-        NetworkQueue.sharedInstance.migrate()
+        AppContainer.production().networkQueue.migrate()
     }
 
     // v3.2.0

@@ -9,6 +9,7 @@ import SwiftUI
 import Combine
 import LocalAuthentication
 import PalaceLogging
+import PalaceNetwork
 
 @MainActor
 class AccountDetailViewModel: NSObject, ObservableObject {

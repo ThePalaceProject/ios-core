@@ -39,7 +39,7 @@ class NetworkQueueTests: XCTestCase {
     }
 
     func testMaxRetriesInQueueIsFive() {
-        let queue = NetworkQueue()
+        let queue = AppContainer.production().networkQueue
         XCTAssertEqual(queue.MaxRetriesInQueue, 5)
         XCTAssertGreaterThan(queue.MaxRetriesInQueue, 0, "Retry limit must be positive")
         XCTAssertLessThanOrEqual(queue.MaxRetriesInQueue, 10,
@@ -66,24 +66,24 @@ class NetworkQueueTests: XCTestCase {
     // MARK: - Queue Instance
 
     func testSharedInstanceIsSingleton() {
-        let a = NetworkQueue.sharedInstance
-        let b = NetworkQueue.sharedInstance
+        let a = AppContainer.production().networkQueue
+        let b = AppContainer.production().networkQueue
         XCTAssertTrue(a === b, "sharedInstance must return the same object on every access")
         XCTAssertEqual(ObjectIdentifier(a), ObjectIdentifier(b), "Both references must have identical object identity")
     }
 
     func testObjCSharedReturnsInstance() {
-        let instance = NetworkQueue.shared()
+        let instance = AppContainer.production().networkQueue
         XCTAssertNotNil(instance)
         // The ObjC @objc factory must return the same singleton as the Swift property
-        XCTAssertTrue(instance === NetworkQueue.sharedInstance,
+        XCTAssertTrue(instance === AppContainer.production().networkQueue,
                       "ObjC shared() and Swift sharedInstance must be the same object")
     }
 
     // MARK: - Add Request (Integration)
 
     func testAddRequestDoesNotCrash() {
-        let queue = NetworkQueue()
+        let queue = AppContainer.production().networkQueue
         // Migrate first to set up the table
         queue.migrate()
 
@@ -103,7 +103,7 @@ class NetworkQueueTests: XCTestCase {
     }
 
     func testAddRequestWithHeadersDoesNotCrash() {
-        let queue = NetworkQueue()
+        let queue = AppContainer.production().networkQueue
         queue.migrate()
 
         let url = URL(string: "https://example.com/api/test")!
@@ -123,7 +123,7 @@ class NetworkQueueTests: XCTestCase {
     // MARK: - Migration
 
     func testMigrateDoesNotCrash() {
-        let queue = NetworkQueue()
+        let queue = AppContainer.production().networkQueue
         queue.migrate()
 
         let expectation = expectation(description: "Migration completes")
@@ -138,7 +138,7 @@ class NetworkQueueTests: XCTestCase {
     }
 
     func testMigrateCanBeCalledMultipleTimes() {
-        let queue = NetworkQueue()
+        let queue = AppContainer.production().networkQueue
         queue.migrate()
         queue.migrate()
 

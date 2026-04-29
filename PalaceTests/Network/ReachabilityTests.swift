@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import PalaceNetwork
 @testable import Palace
 
 final class ReachabilityTests: XCTestCase {
@@ -23,9 +24,9 @@ final class ReachabilityTests: XCTestCase {
         // that returned different values from the two accessors would cause callers
         // that sample one to drift from callers that sample the other — silent
         // split-brain state in the offline-queue retry path.
-        let method = Reachability.shared.isConnectedToNetwork()
-        let property1 = Reachability.shared.isConnected
-        let property2 = Reachability.shared.isConnected
+        let method = AppContainer.production().reachability.isConnectedToNetwork()
+        let property1 = AppContainer.production().reachability.isConnected
+        let property2 = AppContainer.production().reachability.isConnected
 
         XCTAssertEqual(method, property1,
                        "isConnectedToNetwork() and isConnected must agree on the same tick")
@@ -36,7 +37,7 @@ final class ReachabilityTests: XCTestCase {
     // MARK: - Detailed Status
 
     func testGetDetailedConnectivityStatus_returnsNonEmptyFields() {
-        let status = Reachability.shared.getDetailedConnectivityStatus()
+        let status = AppContainer.production().reachability.getDetailedConnectivityStatus()
 
         // connectionType and details should always be populated (even "None" / "Unknown")
         XCTAssertFalse(status.connectionType.isEmpty, "Connection type should not be empty")

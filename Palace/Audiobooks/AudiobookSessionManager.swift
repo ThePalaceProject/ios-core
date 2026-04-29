@@ -14,6 +14,7 @@ import Foundation
 import MediaPlayer
 import PalaceAudiobookToolkit
 import PalaceLogging
+import PalaceNetwork
 
 // MARK: - AudiobookSessionState
 
@@ -198,7 +199,7 @@ public final class AudiobookSessionManager: ObservableObject {
             bookRegistry: TPPBookRegistry.shared,
             accountsManager: AccountsManager.shared,
             settings: AppContainer.production().settings,
-            reachabilityProvider: { Reachability.shared },
+            reachabilityProvider: { AppContainer.production().reachability },
             bookCoverRegistryProvider: { TPPBookCoverRegistry.shared },
             navigationCoordinatorHubProvider: { AppContainer.production().navigationCoordinatorHub }
         )
@@ -210,7 +211,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Reachability / TPPBookCoverRegistry / NavigationCoordinatorHub.
     convenience init(
         appContainer: AppContainer,
-        reachabilityProvider: @escaping () -> Reachability = { Reachability.shared },
+        reachabilityProvider: @escaping () -> Reachability = { AppContainer.production().reachability },
         bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry = { TPPBookCoverRegistry.shared },
         navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub = { AppContainer.production().navigationCoordinatorHub }
     ) {

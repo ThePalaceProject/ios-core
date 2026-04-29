@@ -109,7 +109,7 @@ protocol AnnotationsManager {
     /// In production this is always `.shared`. In tests, setting
     /// `executorOverride` lets the test inject a stubbed executor.
     fileprivate static var currentExecutor: TPPNetworkExecutor {
-        return executorOverride ?? TPPNetworkExecutor.shared
+        return executorOverride ?? AppContainer.production().networkExecutor
     }
 
     /// Returns the accounts provider TPPAnnotations should use for the
@@ -618,6 +618,6 @@ protocol AnnotationsManager {
         let libraryID = manager.currentAccount?.uuid ?? ""
         let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
         let headers = executor.request(for: url).allHTTPHeaderFields
-        NetworkQueue.shared().addRequest(libraryID, bookID, url, .POST, parameterData, headers)
+        AppContainer.production().networkQueue.addRequest(libraryID, bookID, url, .POST, parameterData, headers)
     }
 }

@@ -29,6 +29,9 @@
 // but can't be imported via #import in ObjC++ context
 @protocol FIRMessagingDelegate;
 @protocol AudiobookPlaybackTrackerDelegate;
+@protocol NYPLBasicAuthCredentialsProvider;
+@protocol NYPLUserAccountInputProvider;
+typedef NS_ENUM(NSInteger, NYPLCachingStrategy);
 
 #import "Palace-Swift.h"
 

@@ -33,7 +33,9 @@ final class AppContainerTests: XCTestCase {
         let mock = TPPBookRegistryMock()
         let container = AppContainer(
             bookRegistry: mock,
-            networkExecutor: .shared,
+            networkExecutor: AppContainer.production().networkExecutor,
+            networkQueue: AppContainer.production().networkQueue,
+            reachability: AppContainer.production().reachability,
             accountsManager: .shared,
             settings: TPPSettings(),
             downloadCenter: AppContainer.production().downloadCenter,
@@ -66,7 +68,9 @@ final class AppContainerTests: XCTestCase {
         let mockA = TPPBookRegistryMock()
         let containerA = AppContainer(
             bookRegistry: mockA,
-            networkExecutor: .shared,
+            networkExecutor: AppContainer.production().networkExecutor,
+            networkQueue: AppContainer.production().networkQueue,
+            reachability: AppContainer.production().reachability,
             accountsManager: .shared,
             settings: TPPSettings(),
             downloadCenter: AppContainer.production().downloadCenter,

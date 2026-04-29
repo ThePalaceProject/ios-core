@@ -84,8 +84,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         let isFreshInstall = AppContainer.production().settings.appVersion == nil
         TPPKeychainManager.validateKeychain()
         TPPMigrationManager.migrate()
-        NetworkQueue.shared().addObserverForOfflineQueue()
-        Reachability.shared.startMonitoring()
+        AppContainer.production().networkQueue.addObserverForOfflineQueue()
+        AppContainer.production().reachability.startMonitoring()
 
         logCredentialStateAtLaunch(isFreshInstall: isFreshInstall)
 
@@ -323,7 +323,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         audiobookLifecycleManager.willTerminate()
         NotificationCenter.default.removeObserver(self)
-        Reachability.shared.stopMonitoring()
+        AppContainer.production().reachability.stopMonitoring()
     }
 
     internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
@@ -575,7 +575,7 @@ final class MemoryPressureMonitor {
         case .high:
             // Aggressive cleanup
             URLCache.shared.removeAllCachedResponses()
-            TPPNetworkExecutor.shared.clearCache()
+            AppContainer.production().networkExecutor.clearCache()
             await MainActor.run {
                 AppContainer.production().downloadCenter.pauseAllDownloads()
             }
@@ -596,7 +596,7 @@ final class MemoryPressureMonitor {
     @objc private func handleMemoryWarning() {
         monitorQueue.async {
             URLCache.shared.removeAllCachedResponses()
-            TPPNetworkExecutor.shared.clearCache()
+            AppContainer.production().networkExecutor.clearCache()
 
             DispatchQueue.main.async {
                 AppContainer.production().downloadCenter.pauseAllDownloads()

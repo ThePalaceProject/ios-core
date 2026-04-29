@@ -16,7 +16,10 @@ import PalaceLogging
     shouldResetCache: Bool,
     completionHandler handler: @escaping (TPPOpenSearchDescription?) -> Void
   ) {
-    TPPSession.sharedSession.withURL(url, shouldResetCache: shouldResetCache) { data, _, _ in
+    if shouldResetCache {
+      AppContainer.production().networkExecutor.clearCache()
+    }
+    _ = AppContainer.production().networkExecutor.GET(url, cachePolicy: .useProtocolCachePolicy, useTokenIfAvailable: false) { data, _, _ in
       guard let data = data else {
         Log.log("Failed to retrieve data.")
         TPPAsyncDispatch { handler(nil) }

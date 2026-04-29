@@ -1,10 +1,13 @@
 import SwiftUI
 import Combine
+import PalaceNetwork
 
 struct AppContainer {
 
     let bookRegistry: TPPBookRegistryProvider
     let networkExecutor: TPPNetworkExecutor
+    let networkQueue: NetworkQueue
+    let reachability: Reachability
     let accountsManager: AccountsManager
     let settings: TPPSettings
     let downloadCenter: MyBooksDownloadCenter
@@ -50,6 +53,8 @@ struct AppContainer {
     init(
         bookRegistry: TPPBookRegistryProvider,
         networkExecutor: TPPNetworkExecutor,
+        networkQueue: NetworkQueue,
+        reachability: Reachability,
         accountsManager: AccountsManager,
         settings: TPPSettings,
         downloadCenter: MyBooksDownloadCenter,
@@ -64,6 +69,8 @@ struct AppContainer {
     ) {
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
+        self.networkQueue = networkQueue
+        self.reachability = reachability
         self.accountsManager = accountsManager
         self.settings = settings
         self.downloadCenter = downloadCenter
@@ -82,12 +89,24 @@ struct AppContainer {
     }
 
     private static let _cached: AppContainer = {
+        let executor = TPPNetworkExecutor(cachingStrategy: .fallback)
+        let reachability = Reachability()
+        // MyBooksDownloadCenter's default params for `networkExecutor` and
+        // `reachability` resolve via AppContainer.production(); calling the
+        // no-arg initializer here would re-enter this dispatch_once and
+        // deadlock. Pass them explicitly to break the cycle.
+        let downloadCenter = MyBooksDownloadCenter(
+            networkExecutor: executor,
+            reachability: reachability
+        )
         return AppContainer(
             bookRegistry: TPPBookRegistry.shared,
-            networkExecutor: .shared,
+            networkExecutor: executor,
+            networkQueue: NetworkQueue(transport: executor.transport, reachability: reachability),
+            reachability: reachability,
             accountsManager: AccountsManager.shared,
             settings: TPPSettings(),
-            downloadCenter: MyBooksDownloadCenter(),
+            downloadCenter: downloadCenter,
             debugSettings: DebugSettings(),
             imageCache: ImageCache.shared,
             userAccountPublisher: .shared,

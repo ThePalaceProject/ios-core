@@ -606,7 +606,7 @@ protocol AccountLogoDelegate: AnyObject {
             return
         }
 
-        TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
+        AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false) { result in
             switch result {
             case .success(let serverData, _):
                 do {
@@ -661,7 +661,7 @@ protocol AccountLogoDelegate: AnyObject {
             completion(cachedImage)
             return
         }
-        TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
+        AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let serverData, _):

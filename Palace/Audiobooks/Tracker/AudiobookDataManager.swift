@@ -112,7 +112,7 @@ class AudiobookDataManager {
     var store = AudiobookDataManagerStore()
     private let audiobookLogger = AudiobookFileLogger.shared
     private let networkService: TPPNetworkExecutor
-    init(syncTimeInterval: TimeInterval = 60, networkService: TPPNetworkExecutor = TPPNetworkExecutor.shared) {
+    init(syncTimeInterval: TimeInterval = 60, networkService: TPPNetworkExecutor = AppContainer.production().networkExecutor) {
         self.syncTimeInterval = syncTimeInterval
         self.networkService = networkService
 
@@ -122,7 +122,7 @@ class AudiobookDataManager {
             .sink { [weak self] _ in self?.syncValues() }
             .store(in: &subscriptions)
 
-        Reachability.shared.connectivityPublisher
+        AppContainer.production().reachability.connectivityPublisher
             .filter { $0 } // Only sync when connected
             .sink { [weak self] _ in self?.syncValues() }
             .store(in: &subscriptions)
