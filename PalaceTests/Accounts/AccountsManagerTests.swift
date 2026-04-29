@@ -50,7 +50,7 @@ final class AccountsManagerTests: XCTestCase {
 
     func testAccountsManager_ConformsToTPPLibraryAccountsProvider() {
         // Given: The shared AccountsManager
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
 
         // Then: It should conform to the protocol and be able to look up accounts
         XCTAssertTrue(manager is TPPLibraryAccountsProvider)
@@ -61,7 +61,7 @@ final class AccountsManagerTests: XCTestCase {
 
     func testAccountsManager_HasNYPLAccountUUID() {
         // Given: The shared AccountsManager
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
 
         // Then: The NYPL account UUID should be the first in the list
         XCTAssertEqual(manager.tppAccountUUID, AccountsManager.TPPAccountUUIDs[0])
@@ -159,7 +159,7 @@ final class AccountsManagerTests: XCTestCase {
         }
 
         // And: Triggering an account change via the mock's currentAccount
-        // (We can't directly set AccountsManager.shared.currentAccount without having loaded accounts)
+        // (We can't directly set AppContainer.production().accountsManager.currentAccount without having loaded accounts)
         // So we test that the notification exists and can be posted
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
 
@@ -210,7 +210,7 @@ final class AccountsManagerTests: XCTestCase {
 
     func testAccountsHaveLoaded_IsConsistentWithAccountsQuery() {
         // Arrange: get both properties in a single coherent snapshot
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
 
         // Act: read accountsHaveLoaded and the accounts list together
         let hasLoaded = manager.accountsHaveLoaded
@@ -404,7 +404,7 @@ final class AccountsManagerTests: XCTestCase {
 
     func testClearCache_DoesNotThrow() {
         // Given: The shared AccountsManager
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
 
         // When/Then: Clearing cache should not throw
         XCTAssertNoThrow(manager.clearCache())
@@ -427,11 +427,11 @@ final class AccountsManagerTests: XCTestCase {
         // the manager has already finished loading (from setUp's shared singleton state).
         // If not yet loaded, skip — this is an integration concern better suited to
         // a dedicated integration test target with real network access.
-        try XCTSkipUnless(AccountsManager.shared.accountsHaveLoaded,
+        try XCTSkipUnless(AppContainer.production().accountsManager.accountsHaveLoaded,
                           "Skipped in unit tests: AccountsManager has no cached data; this test requires live network access")
 
         let expectation = expectation(description: "updateAccountSet completion")
-        AccountsManager.shared.updateAccountSet { _ in
+        AppContainer.production().accountsManager.updateAccountSet { _ in
             expectation.fulfill()
         }
         waitForExpectations(timeout: 5.0)
@@ -442,9 +442,9 @@ final class AccountsManagerTests: XCTestCase {
         // calls loadCatalogs which fires a real network request. Even with nil completion
         // the background request continues after this test returns, causing a crash in
         // TPPAccountList when the response arrives mid-flight through the next test class.
-        try XCTSkipUnless(AccountsManager.shared.accountsHaveLoaded,
+        try XCTSkipUnless(AppContainer.production().accountsManager.accountsHaveLoaded,
                           "Skipped in unit tests: would fire live network request in background")
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
         XCTAssertNoThrow(manager.updateAccountSet(completion: nil))
         // Manager must remain usable after the no-op nil-completion call
         XCTAssertNotNil(manager.tppAccountUUID,
@@ -462,8 +462,8 @@ final class AccountsManagerTests: XCTestCase {
 
         for _ in 0..<iterations {
             DispatchQueue.global(qos: .userInitiated).async {
-                let account = AccountsManager.shared.account(self.nyplUUID)
-                let hasLoaded = AccountsManager.shared.accountsHaveLoaded
+                let account = AppContainer.production().accountsManager.account(self.nyplUUID)
+                let hasLoaded = AppContainer.production().accountsManager.accountsHaveLoaded
                 // If accounts have loaded, a NYPL lookup should be consistent (nil or not nil)
                 lock.lock()
                 if hasLoaded && account == nil {
@@ -490,7 +490,7 @@ final class AccountsManagerTests: XCTestCase {
 
         for _ in 0..<iterations {
             DispatchQueue.global(qos: .userInitiated).async {
-                let accounts = AccountsManager.shared.accounts()
+                let accounts = AppContainer.production().accountsManager.accounts()
                 lock.lock()
                 resultCounts.append(accounts.count)
                 lock.unlock()
@@ -511,8 +511,8 @@ final class AccountsManagerTests: XCTestCase {
 
     func testShared_ReturnsSameInstance() {
         // Given: Two references to the shared instance
-        let instance1 = AccountsManager.shared
-        let instance2 = AccountsManager.shared
+        let instance1 = AppContainer.production().accountsManager
+        let instance2 = AppContainer.production().accountsManager
 
         // Then: Should be the same instance (referential equality, not just value equality)
         XCTAssertTrue(instance1 === instance2)
@@ -523,8 +523,8 @@ final class AccountsManagerTests: XCTestCase {
 
     func testSharedInstance_ReturnsSameAsShared() {
         // Given: References from both accessors
-        let shared = AccountsManager.shared
-        let sharedInstance = AccountsManager.sharedInstance()
+        let shared = AppContainer.production().accountsManager
+        let sharedInstance = AppContainer.production().accountsManagerInstance()
 
         // Then: Should be the same instance (ObjC compat bridge must not create a new object)
         XCTAssertTrue(shared === sharedInstance)
@@ -537,12 +537,12 @@ final class AccountsManagerTests: XCTestCase {
 
     func testAccountsManager_HasAgeCheck() {
         // Given: The shared AccountsManager
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
 
         // Then: Should have an age check verifier that can be queried without crashing
         XCTAssertNotNil(manager.ageCheck)
         // The same manager accessed twice must return the same ageCheck instance (not create new ones)
-        XCTAssertTrue(manager.ageCheck === AccountsManager.shared.ageCheck,
+        XCTAssertTrue(manager.ageCheck === AppContainer.production().accountsManager.ageCheck,
                       "ageCheck must be the same instance across multiple accesses to shared")
     }
 
@@ -801,7 +801,7 @@ extension AccountsManagerTests {
 
     func testAccount_WithExistingUUID_ReturnsAccount() {
         // Given: The shared AccountsManager with whatever accounts are loaded
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
         guard manager.accountsHaveLoaded else { return }
 
         // Find any account that is actually present in the current environment
@@ -818,7 +818,7 @@ extension AccountsManagerTests {
 
     func testAccount_WithNonExistentUUID_ReturnsNil() {
         // Given: The shared AccountsManager
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
 
         // When: Looking up by a non-existent UUID
         let account = manager.account("urn:uuid:non-existent-12345")
@@ -832,7 +832,7 @@ extension AccountsManagerTests {
 
     func testAccountsManager_WithEmptyUUID_ReturnsNil() {
         // Given: The shared AccountsManager
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
 
         // When: Looking up with empty string
         let account = manager.account("")
@@ -847,7 +847,7 @@ extension AccountsManagerTests {
     // MARK: - accounts(_ key:) Tests (Coverage Gap)
 
     func testAccounts_WithNilKey_ReturnsCurrentAccountSet() throws {
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
         try XCTSkipUnless(manager.accountsHaveLoaded,
                           "Account catalog not loaded (expected in CI without network)")
 
@@ -857,7 +857,7 @@ extension AccountsManagerTests {
 
     func testAccounts_WithNonExistentKey_ReturnsEmptyArray() {
         // Given: The shared AccountsManager
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
 
         // When: Getting accounts with a non-existent key
         let accounts = manager.accounts("non-existent-account-set")

@@ -449,7 +449,7 @@ final class HoldsSyncFailureTests: XCTestCase {
     /// All tests in this suite exercise the sign-in-required error-banner
     /// path, which `HoldsViewModel.handleSyncFailure(_:)` guards behind
     /// `hasCredentials()`. The default closure reads from
-    /// `AccountsManager.shared.currentUserAccount`, which is not populated
+    /// `AppContainer.production().accountsManager.currentUserAccount`, which is not populated
     /// in the test harness, so inject `hasCredentials: { true }` to exercise
     /// the authenticated-user branch under test.
     private func makeSignedInViewModel() -> HoldsViewModel {

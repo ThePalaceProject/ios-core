@@ -343,7 +343,7 @@ class CarPlayLibraryRefreshTests: XCTestCase {
     func testCarPlay_LibraryName_CanBeUpdated() {
         // Verify that AccountsManager can provide a current account
         // This is used to update the library name in CarPlay
-        let accountsManager = AccountsManager.shared
+        let accountsManager = AppContainer.production().accountsManager
 
         // In test environment, may or may not have a current account
         // But the manager should be accessible

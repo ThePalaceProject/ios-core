@@ -104,7 +104,7 @@ struct AppContainer {
             networkExecutor: executor,
             networkQueue: NetworkQueue(transport: executor.transport, reachability: reachability),
             reachability: reachability,
-            accountsManager: AccountsManager.shared,
+            accountsManager: AccountsManager(),
             settings: TPPSettings(),
             downloadCenter: downloadCenter,
             debugSettings: DebugSettings(),

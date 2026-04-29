@@ -141,7 +141,7 @@ final class FacetViewModelTests: XCTestCase {
 
     func testCurrentAccountURLWithNilAccount() {
         let vm = makeViewModel(groupName: "Test", facets: [.author, .title])
-        // The init populates from AccountsManager.shared — clear to test nil path
+        // The init populates from AppContainer.production().accountsManager — clear to test nil path
         vm.currentAccount = nil
         vm.logo = nil
 

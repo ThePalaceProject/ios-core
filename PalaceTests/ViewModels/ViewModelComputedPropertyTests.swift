@@ -984,7 +984,7 @@ final class FacetViewModelLogoDelegateTests: XCTestCase {
         let testImage = UIImage(systemName: "book.fill")!
 
         // Directly test the delegate method
-        if let account = AccountsManager.shared.currentAccount {
+        if let account = AppContainer.production().accountsManager.currentAccount {
             viewModel.logoDidUpdate(in: account, to: testImage)
             XCTAssertNotNil(viewModel.logo)
         }

@@ -21,8 +21,8 @@ final class TPPPerAccountIsolationTests: XCTestCase {
 
     override func tearDown() {
         // Clean up any keychain data written during tests
-        AccountsManager.shared.userAccount(for: uuidA).removeAll()
-        AccountsManager.shared.userAccount(for: uuidB).removeAll()
+        AppContainer.production().accountsManager.userAccount(for: uuidA).removeAll()
+        AppContainer.production().accountsManager.userAccount(for: uuidB).removeAll()
         super.tearDown()
     }
 
@@ -30,21 +30,21 @@ final class TPPPerAccountIsolationTests: XCTestCase {
 
     /// userAccount(for:) returns the same instance on repeated calls.
     func testInstanceCache_returnsSameInstance() {
-        let first = AccountsManager.shared.userAccount(for: uuidA)
-        let second = AccountsManager.shared.userAccount(for: uuidA)
+        let first = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let second = AppContainer.production().accountsManager.userAccount(for: uuidA)
         XCTAssertTrue(first === second, "Same UUID should return same instance")
     }
 
     /// Different UUIDs return different instances.
     func testInstanceCache_returnsDifferentInstancesForDifferentUUIDs() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
         XCTAssertFalse(accountA === accountB, "Different UUIDs should return different instances")
     }
 
     /// Per-account instances have immutable boundLibraryUUID.
     func testBoundLibraryUUID_isImmutable() {
-        let account = AccountsManager.shared.userAccount(for: uuidA)
+        let account = AppContainer.production().accountsManager.userAccount(for: uuidA)
         XCTAssertEqual(account.boundLibraryUUID, uuidA)
     }
 
@@ -52,8 +52,8 @@ final class TPPPerAccountIsolationTests: XCTestCase {
 
     /// Writing credentials to Account A does not affect Account B.
     func testCredentialIsolation_writeToA_doesNotAffectB() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
 
         accountA.setBarcode("barcodeA", PIN: "pinA")
         accountA.markLoggedIn()
@@ -70,8 +70,8 @@ final class TPPPerAccountIsolationTests: XCTestCase {
 
     /// Both accounts can hold independent credentials simultaneously.
     func testCredentialIsolation_bothAccountsHoldIndependentCredentials() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
 
         accountA.setBarcode("barcodeA", PIN: "pinA")
         accountB.setBarcode("barcodeB", PIN: "pinB")
@@ -84,8 +84,8 @@ final class TPPPerAccountIsolationTests: XCTestCase {
 
     /// Token credentials are isolated between accounts.
     func testCredentialIsolation_tokenCredentials() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
 
         accountA.setAuthToken("tokenA", barcode: "userA", pin: "passA", expirationDate: nil)
         accountB.setAuthToken("tokenB", barcode: "userB", pin: "passB", expirationDate: nil)
@@ -98,8 +98,8 @@ final class TPPPerAccountIsolationTests: XCTestCase {
 
     /// credentialSnapshot() returns correct data for each account.
     func testCredentialSnapshot_perAccountIsolation() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
 
         accountA.setBarcode("snapA", PIN: "pinSnapA")
         accountA.markLoggedIn()
@@ -117,8 +117,8 @@ final class TPPPerAccountIsolationTests: XCTestCase {
 
     /// removeAll() on one account does not affect the other.
     func testRemoveAll_doesNotAffectOtherAccount() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
 
         accountA.setBarcode("keepMe", PIN: "keepPin")
         accountB.setBarcode("removeMe", PIN: "removePin")
@@ -134,8 +134,8 @@ final class TPPPerAccountIsolationTests: XCTestCase {
 
     /// Concurrent reads/writes to different accounts do not cross-contaminate.
     func testConcurrentAccess_noContamination() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
         let iterations = 100
         let expectation = expectation(description: "concurrent access")
         expectation.expectedFulfillmentCount = iterations * 2
@@ -164,8 +164,8 @@ final class TPPPerAccountIsolationTests: XCTestCase {
 
     /// Concurrent credentialSnapshot() calls on different accounts return correct data.
     func testConcurrentSnapshots_returnCorrectData() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
 
         accountA.setBarcode("concurrentA", PIN: "pinA")
         accountA.markLoggedIn()

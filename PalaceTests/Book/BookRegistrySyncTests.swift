@@ -232,7 +232,7 @@ final class BookRegistrySyncTests: XCTestCase {
     func test_validateDownloadedContent_marksDownloadNeededWhenFileMissing() {
         // This test relies on the fact that no actual book file exists for our fake book,
         // so downloadSuccessful books should be marked as downloadNeeded.
-        // However, validateDownloadedContent requires AccountsManager.shared to have a
+        // However, validateDownloadedContent requires AppContainer.production().accountsManager to have a
         // current account, which won't be set in unit tests. We verify the store mutation
         // mechanism instead.
 
@@ -472,11 +472,11 @@ final class BookRegistrySyncTests: XCTestCase {
 
     func test_sync_withNoCurrentAccount_isNoOp() throws {
         // This test is sensitive to simulator sign-in state: when A1QA is signed in
-        // on the host simulator, AccountsManager.shared.currentAccount?.loansUrl is
+        // on the host simulator, AppContainer.production().accountsManager.currentAccount?.loansUrl is
         // set (not nil), so sync() proceeds instead of short-circuiting. Skip in
         // environments where a current account is present — the no-op behavior is
         // only observable in a clean environment.
-        try XCTSkipIf(AccountsManager.shared.currentAccount?.loansUrl != nil,
+        try XCTSkipIf(AppContainer.production().accountsManager.currentAccount?.loansUrl != nil,
                       "Skipping: simulator has an active currentAccount; this test requires a clean environment")
 
         var received: [TPPBookRegistry.RegistryState] = []

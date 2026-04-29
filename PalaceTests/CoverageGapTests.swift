@@ -184,16 +184,16 @@ final class AccountsManagerGapTests: XCTestCase {
 
     /// Coverage Gap: AccountsManager class — verify account lookup by UUID
     func testAccountsManager_accountByUUID_returnsNilForUnknownUUID() {
-        let result = AccountsManager.shared.account("urn:uuid:nonexistent-12345")
+        let result = AppContainer.production().accountsManager.account("urn:uuid:nonexistent-12345")
         XCTAssertNil(result, "Looking up a nonexistent UUID should return nil")
         // A different unknown UUID must also return nil (not a cached misfire)
-        let result2 = AccountsManager.shared.account("urn:uuid:also-nonexistent-67890")
+        let result2 = AppContainer.production().accountsManager.account("urn:uuid:also-nonexistent-67890")
         XCTAssertNil(result2, "Distinct nonexistent UUIDs must both return nil")
     }
 
     /// Coverage Gap: AccountsManager — verify currentAccountId persists
     func testAccountsManager_currentAccountId_persistsToUserDefaults() {
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
         let currentId = manager.currentAccountId
 
         // currentAccountId should be readable (may be nil in test environment)
@@ -205,10 +205,10 @@ final class AccountsManagerGapTests: XCTestCase {
 
     /// Coverage Gap: AccountsManager — verify tppAccountUUID is accessible
     func testAccountsManager_tppAccountUUID_isNotEmpty() {
-        let uuid = AccountsManager.shared.tppAccountUUID
+        let uuid = AppContainer.production().accountsManager.tppAccountUUID
         XCTAssertFalse(uuid.isEmpty, "TPP account UUID should not be empty")
         // UUID must be stable across calls (not regenerated each time)
-        let uuid2 = AccountsManager.shared.tppAccountUUID
+        let uuid2 = AppContainer.production().accountsManager.tppAccountUUID
         XCTAssertEqual(uuid, uuid2, "tppAccountUUID must return the same value on repeated calls")
     }
 }

@@ -1804,7 +1804,7 @@ final class OIDCReauthOnExpiredTokenTests: XCTestCase {
 final class OIDCViewModelSignInTests: XCTestCase {
 
     func testSignIn_withStaleOIDCCredentials_proceedsToLogin() {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             return
         }
 
@@ -1828,7 +1828,7 @@ final class OIDCViewModelSignInTests: XCTestCase {
     }
 
     func testSignIn_withActiveCredentials_showsSignOutAlert() {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             return
         }
 

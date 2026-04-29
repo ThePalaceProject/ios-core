@@ -250,7 +250,7 @@ final class TPPAnnotationsTests: XCTestCase {
         let userAccount = TPPUserAccountMock()
         userAccount._credentials = .token(authToken: "test-token", barcode: "12345", pin: "1234", expirationDate: Date().addingTimeInterval(3600))
 
-        // Note: This test depends on AccountsManager.shared.currentAccount
+        // Note: This test depends on AppContainer.production().accountsManager.currentAccount
         // In a real scenario, we'd need to mock AccountsManager or use dependency injection
 
         // Act

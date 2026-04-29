@@ -247,7 +247,7 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
 
         // Act: trigger account loading while syncing
         // (loadAccount only needs isSyncing to be true to show the alert)
-        guard let currentAccount = AccountsManager.shared.currentAccount else {
+        guard let currentAccount = AppContainer.production().accountsManager.currentAccount else {
             // If no account is configured in the test environment, set the alert directly
             // to verify the alert machinery works
             viewModel.alert = AlertModel(
@@ -903,7 +903,7 @@ final class MyBooksViewModelLoadAccountTests: XCTestCase {
         let mock = TPPBookRegistryMock()
         mock.isSyncing = true
         let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: .shared, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter)
-        let account = AccountsManager.shared.currentAccount ?? TPPLibraryAccountMock().tppAccount
+        let account = AppContainer.production().accountsManager.currentAccount ?? TPPLibraryAccountMock().tppAccount
 
         // Act
         viewModel.loadAccount(account)
@@ -921,7 +921,7 @@ final class MyBooksViewModelLoadAccountTests: XCTestCase {
         let mock = TPPBookRegistryMock()
         mock.isSyncing = false
         let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: .shared, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter)
-        let account = AccountsManager.shared.currentAccount ?? TPPLibraryAccountMock().tppAccount
+        let account = AppContainer.production().accountsManager.currentAccount ?? TPPLibraryAccountMock().tppAccount
 
         // Act
         viewModel.loadAccount(account)
