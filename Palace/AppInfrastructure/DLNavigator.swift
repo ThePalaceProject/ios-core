@@ -60,7 +60,7 @@ class DLNavigator {
         return Destination(screen: screen, params: params )
     }
 
-    private func login(libraryId: String, barcode: String, accountsManager: AccountsManager = AccountsManager.shared) {
+    private func login(libraryId: String, barcode: String, accountsManager: AccountsManager = AppContainer.production().accountsManager) {
         let accountsManager = accountsManager
         guard let topViewController = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController(),
               let newAccount = accountsManager.account(libraryId)
@@ -79,7 +79,7 @@ class DLNavigator {
             }
             return
         }
-        if AccountsManager.shared.userAccount(for: libraryId).isSignedIn() {
+        if accountsManager.userAccount(for: libraryId).isSignedIn() {
             return
         }
         Task { @MainActor in

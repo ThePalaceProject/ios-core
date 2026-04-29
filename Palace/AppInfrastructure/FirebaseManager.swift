@@ -220,7 +220,7 @@ final class FirebaseManager {
         info["build_type"] = "release"
         #endif
 
-        if let accountId = AccountsManager.shared.currentAccountId {
+        if let accountId = AppContainer.production().accountsManager.currentAccountId {
             info["library_id"] = accountId
         }
 

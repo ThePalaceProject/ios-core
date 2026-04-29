@@ -90,7 +90,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         logCredentialStateAtLaunch(isFreshInstall: isFreshInstall)
 
         PalaceAuthTokenProvider.tokenResolver = {
-            AccountsManager.shared.currentUserAccount.authToken
+            AppContainer.production().accountsManager.currentUserAccount.authToken
         }
 
         DispatchQueue.main.async {
@@ -110,8 +110,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func logCredentialStateAtLaunch(isFreshInstall: Bool) {
-        let account = AccountsManager.shared.currentUserAccount
-        let accountId = AccountsManager.shared.currentAccountId ?? "nil"
+        let accountsManager = AppContainer.production().accountsManager
+        let account = accountsManager.currentUserAccount
+        let accountId = accountsManager.currentAccountId ?? "nil"
         let authDef = account.authDefinition
         let authType = authDef?.authType.rawValue ?? "none"
         let hasCredentials = account.hasCredentials()
@@ -253,7 +254,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        TPPErrorLogger.setUserID(AccountsManager.shared.currentUserAccount.barcode)
+        TPPErrorLogger.setUserID(AppContainer.production().accountsManager.currentUserAccount.barcode)
 
         // Resume Firebase operations when app becomes active
         FirebaseManager.shared.applicationDidBecomeActive()
@@ -272,7 +273,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     /// Syncs the book registry if the user has holds to ensure fresh availability data.
     /// Throttled to prevent excessive network calls on frequent app activation.
     private func syncIfUserHasHolds() {
-        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+        guard AppContainer.production().accountsManager.currentUserAccount.hasCredentials() else {
             return
         }
 
@@ -430,17 +431,18 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 // MARK: - First Run Flow
 extension TPPAppDelegate {
     private func presentFirstRunFlowIfNeeded() {
+        let accountsManager = AppContainer.production().accountsManager
         // Defer until accounts have loaded to avoid false negatives on currentAccount
-        if !AccountsManager.shared.accountsHaveLoaded {
+        if !accountsManager.accountsHaveLoaded {
             NotificationCenter.default.addObserver(forName: .TPPCatalogDidLoad, object: nil, queue: .main) { [weak self] _ in
                 self?.presentFirstRunFlowIfNeeded()
             }
-            AccountsManager.shared.loadCatalogs(completion: nil)
+            accountsManager.loadCatalogs(completion: nil)
             return
         }
 
         // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
-        let needsAccount = (AccountsManager.shared.currentAccountId == nil)
+        let needsAccount = (accountsManager.currentAccountId == nil)
         guard needsAccount else { return }
 
         guard let top = topViewController() else { return }
@@ -454,7 +456,9 @@ extension TPPAppDelegate {
             if let urlString = account.catalogUrl, let url = URL(string: urlString) {
                 settings.accountMainFeedURL = url
             }
-            AccountsManager.shared.currentAccount = account
+            // The lone writer: route through the AppContainer-owned instance
+            // (same singleton, but no .shared literal at the call site).
+            accountsManager.currentAccount = account
 
             account.loadAuthenticationDocument { _ in }
 
