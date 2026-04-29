@@ -1612,32 +1612,13 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         return true
     }
 
-    /// Handles OPDS entry XML response by parsing it and following the actual acquisition link
-    /// - Returns: `true` if a follow-up download was successfully started
-    private func handleOPDSEntryResponse(
-        at location: URL,
-        for book: TPPBook,
-        originalTask: URLSessionDownloadTask,
-        session: URLSession
-    ) async -> Bool {
-        guard let xmlData = try? Data(contentsOf: location) else {
-            Log.error(#file, "Failed to read OPDS entry XML for \(book.identifier)")
-            return false
-        }
-
-        guard let xml = TPPXML.xml(withData: xmlData), let entry = TPPOPDSEntry(xml: xml) else {
-            Log.warn(#file, "Failed to parse XML as OPDS entry for \(book.identifier)")
-            return false
-        }
-
-        guard let updatedBook = TPPBook(entry: entry) else {
-            Log.warn(#file, "Failed to create book from OPDS entry for \(book.identifier)")
-            return false
-        }
-
-        return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
-    }
-
+    // handleOPDSEntryResponse moved to BackgroundDownloadHandler. The
+    // URLSession callback now calls `backgroundDownloadHandler.handleOPDS
+    // EntryResponse(...)` directly. The handler's inline version adds a
+    // defensive `!opds-catalog` guard that protects against infinite-redirect
+    // loops if a malformed OPDS entry advertises another catalog as the
+    // acquisition link. `followAcquisitionLink` below stays — the OPDS2 JSON
+    // publication path (handleOPDS2PublicationResponse) still uses it.
     // handleDownloadProgress moved to BackgroundDownloadHandler. The
     // URLSessionDownloadDelegate progress callback above now routes through
     // `backgroundDownloadHandler.handleDownloadProgress(...)` directly.
@@ -1698,7 +1679,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         if !failureRequiringAlert && backgroundDownloadHandler.isOPDSEntryMimeType(mimeType) {
             Log.info(#file, "📖 Received OPDS entry response for \(book.identifier), attempting to extract acquisition link")
 
-            if await handleOPDSEntryResponse(at: location, for: book, originalTask: task, session: session) {
+            if await backgroundDownloadHandler.handleOPDSEntryResponse(at: location, for: book, originalTask: task, session: session) {
                 // Successfully started follow-up download, don't fail this one
                 try? FileManager.default.removeItem(at: location)
                 return
