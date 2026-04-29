@@ -27,7 +27,7 @@ private enum StorageKey: String {
             // historically user data for NYPL has not used keys that contain the
             // library UUID.
             let libraryUUID = libraryUUID,
-            libraryUUID != AccountsManager.shared.tppAccountUUID else {
+            libraryUUID != AppContainer.production().accountsManager.tppAccountUUID else {
             return self.rawValue
         }
 
@@ -94,11 +94,12 @@ private enum StorageKey: String {
     var authDefinition: AccountDetails.Authentication? {
         get {
             guard let read = _authDefinition.read() else {
+                let accountsManager = AppContainer.production().accountsManager
                 if let libraryUUID = self.libraryUUID {
-                    return AccountsManager.shared.account(libraryUUID)?.details?.auths.first
+                    return accountsManager.account(libraryUUID)?.details?.auths.first
                 }
 
-                return AccountsManager.shared.currentAccount?.details?.auths.first
+                return accountsManager.currentAccount?.details?.auths.first
             }
             return read
         }
@@ -107,7 +108,8 @@ private enum StorageKey: String {
             _authDefinition.write(newValue)
 
             DispatchQueue.main.async {
-                var mainFeed = URL(string: AccountsManager.shared.currentAccount?.catalogUrl ?? "")
+                let accountsManager = AppContainer.production().accountsManager
+                var mainFeed = URL(string: accountsManager.currentAccount?.catalogUrl ?? "")
                 let resolveFn = {
                     AppContainer.production().settings.accountMainFeedURL = mainFeed
                     UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
@@ -120,8 +122,8 @@ private enum StorageKey: String {
                 }
 
                 if self.needsAgeCheck {
-                    AccountsManager.shared.ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: self,
-                                                                                       currentLibraryAccountProvider: AccountsManager.shared) { [weak self] meetsAgeRequirement in
+                    accountsManager.ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: self,
+                                                                                       currentLibraryAccountProvider: accountsManager) { [weak self] meetsAgeRequirement in
                         DispatchQueue.main.async {
                             mainFeed = self?.authDefinition?.coppaURL(isOfAge: meetsAgeRequirement)
                             resolveFn()
@@ -183,18 +185,19 @@ private enum StorageKey: String {
     // legacy singleton-style API. No shared state is involved — each call
     // resolves to the per-library instance owned by AccountsManager. Remove
     // once every test call site has been migrated to
-    // `AccountsManager.shared.userAccount(for:)`.
+    // `appContainer.accountsManager.userAccount(for:)`.
 
-    @available(*, deprecated, message: "Use AccountsManager.shared.userAccount(for:) or .currentUserAccount")
+    @available(*, deprecated, message: "Use appContainer.accountsManager.userAccount(for:) or .currentUserAccount")
     class func sharedAccount() -> TPPUserAccount {
-        return AccountsManager.shared.currentUserAccount
+        return AppContainer.production().accountsManager.currentUserAccount
     }
 
-    @available(*, deprecated, message: "Use AccountsManager.shared.userAccount(for:) or .currentUserAccount")
+    @available(*, deprecated, message: "Use appContainer.accountsManager.userAccount(for:) or .currentUserAccount")
     class func sharedAccount(libraryUUID: String?) -> TPPUserAccount {
-        let id = libraryUUID ?? AccountsManager.shared.currentAccountId ?? ""
-        guard !id.isEmpty else { return AccountsManager.shared.currentUserAccount }
-        return AccountsManager.shared.userAccount(for: id)
+        let accountsManager = AppContainer.production().accountsManager
+        let id = libraryUUID ?? accountsManager.currentAccountId ?? ""
+        guard !id.isEmpty else { return accountsManager.currentUserAccount }
+        return accountsManager.userAccount(for: id)
     }
 
     func setAuthDefinitionWithoutUpdate(authDefinition: AccountDetails.Authentication?) {
@@ -529,7 +532,8 @@ private enum StorageKey: String {
     /// `TPPUserAccount.credentialSnapshot(for:)` — internally it is just a
     /// thin forward to the safe per-account path, with no singleton mutation.
     class func credentialSnapshot(for libraryUUID: String?) -> CredentialSnapshot {
-        let id = libraryUUID ?? AccountsManager.shared.currentAccountId ?? ""
+        let accountsManager = AppContainer.production().accountsManager
+        let id = libraryUUID ?? accountsManager.currentAccountId ?? ""
         guard !id.isEmpty else {
             return CredentialSnapshot(
                 hasCredentials: false,
@@ -542,7 +546,7 @@ private enum StorageKey: String {
                 cookies: nil
             )
         }
-        return AccountsManager.shared.userAccount(for: id).credentialSnapshot()
+        return accountsManager.userAccount(for: id).credentialSnapshot()
     }
 
     // MARK: - Atomic Write
