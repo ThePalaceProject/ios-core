@@ -59,7 +59,7 @@ final class ReaderModule: ReaderModuleAPI {
     init(delegate: ModuleDelegate?,
          resourcesServer: HTTPServer,
          bookRegistry: TPPBookRegistryProvider,
-         userAccount: TPPUserAccount = AccountsManager.shared.currentUserAccount) {
+         userAccount: TPPUserAccount = AppContainer.production().accountsManager.currentUserAccount) {
         self.delegate = delegate
         self.bookRegistry = bookRegistry
         self.userAccount = userAccount

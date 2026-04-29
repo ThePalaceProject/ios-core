@@ -40,7 +40,7 @@ enum CarPlayTemplateBuilder {
         )
         let section = CPListSection(items: items)
 
-        let libraryName = AccountsManager.shared.currentAccount?.name ?? Strings.CarPlay.library
+        let libraryName = AppContainer.production().accountsManager.currentAccount?.name ?? Strings.CarPlay.library
 
         let template = CPListTemplate(title: libraryName, sections: [section])
         template.tabTitle = Strings.CarPlay.library

@@ -281,7 +281,7 @@ actor ErrorLogExporter {
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
         let libraryName = accountsManager.currentAccount?.name ?? "No library selected"
         let patronIdentifier = await MainActor.run {
-            AccountsManager.shared.currentUserAccount.authorizationIdentifier
+            AppContainer.production().accountsManager.currentUserAccount.authorizationIdentifier
         }
 
         var deviceInfo = """

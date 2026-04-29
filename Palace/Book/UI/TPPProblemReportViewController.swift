@@ -66,13 +66,13 @@ import PureLayout
   }
 
   private func reportIssueVC() {
-    if let email = AccountsManager.shared.currentAccount?.supportEmail {
+    if let email = AppContainer.production().accountsManager.currentAccount?.supportEmail {
       ProblemReportEmail.sharedInstance.beginComposing(
         to: email.rawValue,
         presentingViewController: self,
         book: book
       )
-    } else if let url = AccountsManager.shared.currentAccount?.supportURL {
+    } else if let url = AppContainer.production().accountsManager.currentAccount?.supportURL {
       presentWebView(url)
     }
   }
@@ -80,7 +80,7 @@ import PureLayout
   private func presentWebView(_ url: URL) {
     let webController = BundledHTMLViewController(
       fileURL: url,
-      title: AccountsManager.shared.currentAccount?.name ?? ""
+      title: AppContainer.production().accountsManager.currentAccount?.name ?? ""
     )
     webController.hidesBottomBarWhenPushed = true
     navigationController?.pushViewController(webController, animated: true)

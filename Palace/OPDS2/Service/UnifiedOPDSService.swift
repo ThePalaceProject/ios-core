@@ -311,7 +311,7 @@ actor UnifiedOPDSService {
     private func addAuthHeaders(to request: inout URLRequest, useToken: Bool) {
         guard useToken else { return }
 
-        let userAccount = AccountsManager.shared.currentUserAccount
+        let userAccount = AppContainer.production().accountsManager.currentUserAccount
 
         if let authToken = userAccount.authToken {
             request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
@@ -355,7 +355,7 @@ extension UnifiedOPDSService {
 
     /// Fetches catalog root with caching
     public func fetchCatalogRoot() async throws -> UnifiedOPDSFeed {
-        guard let catalogURLString = AccountsManager.shared.currentAccount?.catalogUrl,
+        guard let catalogURLString = AppContainer.production().accountsManager.currentAccount?.catalogUrl,
               let catalogURL = URL(string: catalogURLString) else {
             throw PalaceError.authentication(.accountNotFound)
         }
@@ -365,7 +365,7 @@ extension UnifiedOPDSService {
 
     /// Fetches user's loans feed
     public func fetchLoans() async throws -> UnifiedOPDSFeed {
-        guard let loansURL = AccountsManager.shared.currentAccount?.loansUrl else {
+        guard let loansURL = AppContainer.production().accountsManager.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
 

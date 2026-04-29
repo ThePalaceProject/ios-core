@@ -197,7 +197,7 @@ public final class AudiobookSessionManager: ObservableObject {
     private convenience init() {
         self.init(
             bookRegistry: TPPBookRegistry.shared,
-            accountsManager: AccountsManager.shared,
+            accountsManager: AppContainer.production().accountsManager,
             settings: AppContainer.production().settings,
             reachabilityProvider: { AppContainer.production().reachability },
             bookCoverRegistryProvider: { TPPBookCoverRegistry.shared },

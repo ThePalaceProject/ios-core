@@ -268,7 +268,7 @@ actor OPDSFeedService {
 
 extension OPDSFeedService {
     /// Fetches the user's loans feed
-    func fetchLoans(accountsManager: AccountsManager = AccountsManager.shared) async throws -> TPPOPDSFeed {
+    func fetchLoans(accountsManager: AccountsManager = AppContainer.production().accountsManager) async throws -> TPPOPDSFeed {
         guard let loansURL = accountsManager.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
@@ -277,7 +277,7 @@ extension OPDSFeedService {
     }
 
     /// Fetches the catalog root
-    func fetchCatalogRoot(accountsManager: AccountsManager = AccountsManager.shared) async throws -> TPPOPDSFeed {
+    func fetchCatalogRoot(accountsManager: AccountsManager = AppContainer.production().accountsManager) async throws -> TPPOPDSFeed {
         guard let catalogURLString = accountsManager.currentAccount?.catalogUrl,
               let catalogURL = URL(string: catalogURLString) else {
             throw PalaceError.authentication(.accountNotFound)

@@ -299,7 +299,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     /// Uses the same throttle as applicationDidBecomeActive to coordinate syncs.
     private func syncWithThrottle(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
         // Skip if user isn't authenticated
-        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+        guard AppContainer.production().accountsManager.currentUserAccount.hasCredentials() else {
             completion?(nil, false)
             return
         }

@@ -16,7 +16,7 @@ class TPPAccountListDataSource: NSObject {
   
   override convenience init() {
     self.init(
-      accountsProvider: { AccountsManager.shared.accounts() },
+      accountsProvider: { AppContainer.production().accountsManager.accounts() },
       nationalAccountUUIDs: AccountsManager.TPPNationalAccountUUIDs
     )
   }

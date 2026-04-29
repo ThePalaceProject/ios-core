@@ -622,7 +622,7 @@ extension TPPBook: @unchecked Sendable {}
 
 extension TPPBook {
     func requiresAuthForReturnOrDeletion() -> Bool {
-        let userAuthRequired = AccountsManager.shared.currentUserAccount.authDefinition?.needsAuth ?? false
+        let userAuthRequired = AppContainer.production().accountsManager.currentUserAccount.authDefinition?.needsAuth ?? false
         return self.defaultAcquisitionIfOpenAccess == nil && userAuthRequired
     }
 }

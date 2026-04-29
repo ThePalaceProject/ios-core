@@ -56,7 +56,7 @@ extension BookButtonState {
                 buttons = [.cancelHold]
             }
         case .downloadNeeded:
-            if let authDef = AccountsManager.shared.currentUserAccount.authDefinition,
+            if let authDef = AppContainer.production().accountsManager.currentUserAccount.authDefinition,
                authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
                 buttons = [.download, .return]
             } else {
@@ -72,7 +72,7 @@ extension BookButtonState {
                 break
             }
 
-            if let authDef = AccountsManager.shared.currentUserAccount.authDefinition,
+            if let authDef = AppContainer.production().accountsManager.currentUserAccount.authDefinition,
                authDef.needsAuth ||
                 book.defaultAcquisitionIfOpenAccess != nil {
                 buttons.append(.return)
@@ -194,7 +194,7 @@ extension TPPBook {
 
         let hasFullfillmentId = bookRegistry.fulfillmentId(forIdentifier: self.identifier) != nil
         let isFullfiliable = !(hasFullfillmentId && fullfillmentRequired) && self.revokeURL != nil
-        let needsAuthentication = self.defaultAcquisitionIfOpenAccess == nil && AccountsManager.shared.currentUserAccount.authDefinition?.needsAuth ?? false
+        let needsAuthentication = self.defaultAcquisitionIfOpenAccess == nil && AppContainer.production().accountsManager.currentUserAccount.authDefinition?.needsAuth ?? false
 
         return isFullfiliable && !needsAuthentication
     }

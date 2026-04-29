@@ -49,7 +49,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     let accountsManager: AccountsManager
     let bookRegistry: TPPBookRegistryProvider
 
-    init(viewModel: ViewModel, backgroundColor: Color, coverImage: Binding<UIImage?>, accountsManager: AccountsManager = AccountsManager.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    init(viewModel: ViewModel, backgroundColor: Color, coverImage: Binding<UIImage?>, accountsManager: AccountsManager = AppContainer.production().accountsManager, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
         self.viewModel = viewModel
         self.backgroundColor = backgroundColor
         self._coverImage = coverImage

@@ -47,7 +47,7 @@ class TPPMigrationManager: NSObject {
 
         // Refresh auth tokens proactively so users don't see "credentials invalid"
         // after an update that changed nothing about their account
-        let userAccount = AccountsManager.shared.currentUserAccount
+        let userAccount = AppContainer.production().accountsManager.currentUserAccount
         if userAccount.hasCredentials(), userAccount.authTokenNearExpiry || userAccount.authTokenHasExpired {
             Log.info(#file, "Post-update: auth token expired/near-expiry — triggering refresh")
             AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil)

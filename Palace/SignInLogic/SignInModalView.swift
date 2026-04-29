@@ -99,7 +99,7 @@ class SignInModalPresenter: NSObject {
 
     /// Convenience method for current account
     /// - Parameter completion: Called when sign-in completes successfully
-    static func presentSignInModalForCurrentAccount(accountsManager: AccountsManager = AccountsManager.shared, completion: (() -> Void)?) {
+    static func presentSignInModalForCurrentAccount(accountsManager: AccountsManager = AppContainer.production().accountsManager, completion: (() -> Void)?) {
         guard let libraryID = accountsManager.currentAccountId else {
             completion?()
             return
