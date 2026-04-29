@@ -47,6 +47,7 @@ import PalaceCatalog
     let downloadAnnouncementService: DownloadAnnouncementService
     private let bookFileManager: BookFileManager
     private let diskBudgetManager: DiskBudgetManager
+    private let alertPresenter: DownloadAlertPresenter
 
     // Phase 4 (Architectural Triad) — services formerly reached through
     // `.shared` are now stored properties initialized via the constructor.
@@ -144,6 +145,7 @@ import PalaceCatalog
         downloadAnnouncementService: DownloadAnnouncementService = DownloadAnnouncementService(),
         bookFileManager: BookFileManager? = nil,
         diskBudgetManager: DiskBudgetManager? = nil,
+        alertPresenter: DownloadAlertPresenter? = nil,
         stateManager: DownloadStateManager = DownloadStateManager(),
         tokenInterceptor: TokenRefreshInterceptor? = nil,
         backgroundDownloadHandler: BackgroundDownloadHandler? = nil,
@@ -188,6 +190,15 @@ import PalaceCatalog
             bookFileManager: self.bookFileManager
         )
         self.stateManager = stateManager
+        // DownloadAlertPresenter built eagerly so `self` can wire as its
+        // delegate after `super.init()`. Production passes nil so the
+        // presenter is constructed from the just-resolved registry +
+        // stateManager + downloadAnnouncementService — same instances MBDC
+        // owns, keeping the presenter's view of the download state machine
+        // coherent with the rest of MBDC. Tests can substitute mocks.
+        // The progress reporter wire-up happens after `let reporter =
+        // DownloadProgressReporter(...)` below since the presenter needs the
+        // same reporter MBDC publishes through.
         // Build TokenRefreshInterceptor + BackgroundDownloadHandler eagerly so
         // `self` can wire as their delegate after `super.init()`. Both default
         // to nil-init so callers (production + tests) can substitute mocks.
@@ -207,6 +218,17 @@ import PalaceCatalog
         self.progressReporter = reporter
         self.downloadProgressPublisher = reporter.downloadProgressPublisher
         self.downloadErrorPublisher = reporter.downloadErrorPublisher
+        // DownloadAlertPresenter shares the same reporter / stateManager /
+        // announcer / registry MBDC just wired so all download-failure paths
+        // funnel through one DownloadErrorPublisher subscriber chain.
+        self.alertPresenter = alertPresenter ?? DownloadAlertPresenter(
+            bookRegistry: bookRegistry,
+            stateManager: stateManager,
+            progressReporter: reporter,
+            downloadAnnouncementService: downloadAnnouncementService,
+            errorActivityTracker: errorActivityTracker,
+            userRetryTracker: userRetryTracker
+        )
         self.errorActivityTracker = errorActivityTracker
         self.userRetryTracker = userRetryTracker
         self.reachability = reachability
@@ -234,6 +256,7 @@ import PalaceCatalog
         // Optional and shadow the stored properties at this scope).
         self.tokenInterceptor.delegate = self
         self.backgroundDownloadHandler.delegate = self
+        self.alertPresenter.delegate = self
 
         #if FEATURE_DRM_CONNECTOR
         // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
@@ -2418,89 +2441,11 @@ extension MyBooksDownloadCenter {
     }
 
     func failDownloadWithAlert(for book: TPPBook, withMessage message: String? = nil) {
-        let location = bookRegistry.location(forIdentifier: book.identifier)
-
-        bookRegistry.addBook(book,
-                             location: location,
-                             state: .downloadFailed,
-                             fulfillmentId: nil,
-                             readiumBookmarks: nil,
-                             genericBookmarks: nil)
-
-        downloadAnnouncementService.announceDownloadFailed(for: book)
-
-        Task { [weak self] in
-            await self?.errorActivityTracker.log(
-                "Download failed for '\(book.title)': \(message ?? "unknown reason")",
-                category: .download
-            )
-            guard let self else { return }
-            // CRITICAL: Remove from bookIdentifierToDownloadInfo so retry works
-            await self.bookIdentifierToDownloadInfo.remove(book.identifier)
-            await self.downloadCoordinator.removeCachedDownloadInfo(for: book.identifier)
-            await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
-            let remainingCount = await self.downloadCoordinator.activeCount
-            Log.info(#file, "📊 Download failed for '\(book.title)', remaining active: \(remainingCount)")
-            self.schedulePendingStartsIfPossible()
-        }
-
-        let errorMessage = message ?? "No error message"
-        let formattedMessage = String.localizedStringWithFormat(NSLocalizedString("The download for %@ could not be completed.", comment: ""), book.title)
-        let finalMessage = "\(formattedMessage)\n\(errorMessage)"
-
-        // Download failures are retryable
-        let retryAction: (() -> Void)? = {
-            let operationId = "download-\(book.identifier)"
-            guard self.userRetryTracker.canRetry(operationId: operationId) else { return nil }
-            return { [weak self] in
-                guard let self else { return }
-                self.userRetryTracker.recordRetry(operationId: operationId)
-                self.startDownload(for: book)
-            }
-        }()
-
-        // Publish error and announce via VoiceOver (PP-3673)
-        runOnMainAsync {
-            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.downloadFailed, message: finalMessage, kind: .download, retryAction: retryAction))
-        }
-
-        broadcastUpdate()
+        alertPresenter.failDownloadWithAlert(for: book, withMessage: message)
     }
 
     func alertForProblemDocument(_ problemDoc: TPPProblemDocument?, error: Error?, book: TPPBook) {
-        let msg = String(format: NSLocalizedString("The download for %@ could not be completed.", comment: ""), book.title)
-
-        var finalMessage = msg
-        if let problemDoc = problemDoc {
-            TPPProblemDocumentCacheManager.sharedInstance().cacheProblemDocument(problemDoc, key: book.identifier)
-            if let detail = problemDoc.detail {
-                finalMessage = "\(msg)\n\n\(detail)"
-            }
-
-            if problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
-                bookRegistry.removeBook(forIdentifier: book.identifier)
-            }
-        } else if let error = error {
-            finalMessage = String(format: "%@\n\nError: %@", msg, error.localizedDescription)
-        }
-
-        // Download failures are generally retryable unless it's a "no active loan" error
-        let isNoActiveLoan = problemDoc?.type == TPPProblemDocument.TypeNoActiveLoan
-        let retryAction: (() -> Void)? = {
-            guard !isNoActiveLoan else { return nil }
-            let operationId = "download-\(book.identifier)"
-            guard self.userRetryTracker.canRetry(operationId: operationId) else { return nil }
-            return { [weak self] in
-                guard let self else { return }
-                self.userRetryTracker.recordRetry(operationId: operationId)
-                self.startDownload(for: book)
-            }
-        }()
-
-        // Publish error and announce via VoiceOver (PP-3673)
-        runOnMainAsync {
-            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.downloadFailed, message: finalMessage, kind: .download, retryAction: retryAction))
-        }
+        alertPresenter.alertForProblemDocument(problemDoc, error: error, book: book)
     }
 
     // moveFile / replaceBook / validateDownloadedFile moved to BackgroundDownloadHandler.
@@ -2669,3 +2614,13 @@ extension MyBooksDownloadCenter: BackgroundDownloadHandlerDelegate {}
 // MyBooksDownloadCenter. The interceptor uses these to drive 401-detection
 // + SAML/OIDC re-auth + retry after credential refresh.
 extension MyBooksDownloadCenter: TokenRefreshInterceptorDelegate {}
+
+// MARK: - DownloadAlertPresenterDelegate
+//
+// MBDC's `startDownload(for:withRequest:)` already exists with the
+// signature the protocol requires (the @objc default-arg method exposed
+// to legacy callers); `schedulePendingStartsIfPossible()` is internal
+// (promoted in commit 7) and matches the protocol's surface. Empty
+// conformance — no synthesis needed.
+
+extension MyBooksDownloadCenter: DownloadAlertPresenterDelegate {}
