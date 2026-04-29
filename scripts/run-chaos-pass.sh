@@ -43,6 +43,8 @@ SEEDS=()
 ALL_FLOWS=0
 DRY_RUN=0
 APP_PATH=""
+PRE_SEED_DEFAULTS=""
+PRISTINE=0
 
 usage() {
     cat <<EOF
@@ -62,6 +64,20 @@ Optional:
                               reset; can omit if the app is already installed).
     --max-paths <N>           Hard cap on paths (default: 30).
     --max-minutes <N>         Hard cap on wall-clock minutes (default: 15).
+    --pre-seed-defaults <PATH>
+                              Path to a JSON file with pre-launch UserDefaults
+                              writes. Each top-level key is a defaults key,
+                              each value is the value to write. Applied via
+                              \`xcrun simctl spawn defaults write\` BEFORE the
+                              session starts — lets chaos exercise edge-case
+                              account / registry / settings state that's
+                              hard to reach via the UI. Use to kill internal
+                              mutants the UI surface doesn't expose (e.g.
+                              AccountsManager L308/L613/L668-class predicates).
+    --pristine                Force fresh install: uninstall the app + clear
+                              UserDefaults + reinstall before launching. Useful
+                              when prior session state would interfere with
+                              the seed.
     --dry-run                 Print the prompt that would be sent and exit.
     --help                    This message.
 
@@ -83,6 +99,8 @@ while (( "$#" )); do
         --max-paths) MAX_PATHS="$2"; shift 2 ;;
         --max-minutes) MAX_MINUTES="$2"; shift 2 ;;
         --app-path) APP_PATH="$2"; shift 2 ;;
+        --pre-seed-defaults) PRE_SEED_DEFAULTS="$2"; shift 2 ;;
+        --pristine) PRISTINE=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --help|-h) usage; exit 0 ;;
         *) echo "unknown arg: $1" >&2; usage >&2; exit 1 ;;
@@ -133,6 +151,49 @@ cat > "$FINDINGS_CSV" <<'CSV'
 ID,Title,Area,Test ID,Classification,Severity,Verified,Baseline Behavior,Candidate Behavior,Steps,Screenshot Baseline,Screenshot Candidate,Notes,PR,Jira Ticket
 CSV
 
+# Pre-launch state injection. Skip during dry-run — these have real side
+# effects on the simulator's UserDefaults / app install state.
+PRE_LAUNCH_STEPS=""
+if (( DRY_RUN )); then
+    [[ -n "$PRE_SEED_DEFAULTS" ]] && PRE_LAUNCH_STEPS+="info: would apply pre_seed_defaults from $PRE_SEED_DEFAULTS\n"
+    (( PRISTINE )) && PRE_LAUNCH_STEPS+="info: would reinstall app (pristine mode)\n"
+elif (( PRISTINE )); then
+    PRE_LAUNCH_STEPS+="info: pristine mode — uninstall + reinstall\n"
+    if [[ -n "$APP_PATH" && -d "$APP_PATH" ]]; then
+        xcrun simctl uninstall "$UDID" org.thepalaceproject.palace 2>&1 | tail -1 || true
+        xcrun simctl install "$UDID" "$APP_PATH" >&2
+    else
+        echo "warn: --pristine requested without valid --app-path; skipping reinstall" >&2
+    fi
+fi
+
+if [[ -n "$PRE_SEED_DEFAULTS" ]]; then
+    if [[ ! -f "$PRE_SEED_DEFAULTS" ]]; then
+        echo "error: --pre-seed-defaults path not found: $PRE_SEED_DEFAULTS" >&2
+        exit 1
+    fi
+    # Each top-level key in the JSON becomes a `defaults write` call. Values are
+    # written as JSON-encoded strings — chaos tests typically inject corrupted
+    # plist blobs as base64 or as raw JSON.
+    PRE_LAUNCH_STEPS+="info: applying pre_seed_defaults from $PRE_SEED_DEFAULTS\n"
+    python3 -c '
+import json, subprocess, sys
+udid = sys.argv[1]
+path = sys.argv[2]
+data = json.load(open(path))
+for key, value in data.items():
+    if isinstance(value, (dict, list)):
+        # Write as a JSON string — caller may want to round-trip via PropertyList.
+        encoded = json.dumps(value)
+    else:
+        encoded = str(value)
+    cmd = ["xcrun", "simctl", "spawn", udid, "defaults", "write",
+           "org.thepalaceproject.palace", key, encoded]
+    print("  pre-seed:", key, "=", encoded[:80] + ("..." if len(encoded) > 80 else ""), file=sys.stderr)
+    subprocess.run(cmd, check=False)
+' "$UDID" "$PRE_SEED_DEFAULTS"
+fi
+
 # Build the chaos-qa prompt.
 {
     echo "Run an adversarial chaos QA pass on the Palace iOS simulator."
@@ -144,6 +205,8 @@ CSV
     echo "  per_seed_budget: ${PATHS_PER_SEED} paths / ${MINUTES_PER_SEED} minutes"
     echo "  findings_csv: $FINDINGS_CSV"
     echo "  replays_dir: $RUN_DIR/replays"
+    [[ -n "$PRE_SEED_DEFAULTS" ]] && echo "  pre_seed_defaults: $PRE_SEED_DEFAULTS (already applied)"
+    (( PRISTINE )) && echo "  pristine: yes (app reinstalled before launch)"
     echo
     echo "Seeds (process in order, share budget evenly):"
     for s in "${SEEDS[@]}"; do echo "  - $s"; done

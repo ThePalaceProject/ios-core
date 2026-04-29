@@ -1,0 +1,36 @@
+name: cold-launch-add-library-mid-load-cancel
+created_at: 1777489307.443167
+device: iPhone 16 Pro
+os_version: '18.4'
+app_bundle_id: org.thepalaceproject.palace
+steps:
+- id: 1
+  action: tap
+  args:
+    x: 398
+    y: 1554
+    screenshot_w: 1206
+    screenshot_h: 2622
+  pre_screenshot: snapshots/001_pre.png
+  post_screenshot: snapshots/001_post.png
+  captured_at: 1777489329.653661
+- id: 2
+  action: tap
+  args:
+    x: 417
+    y: 622
+    screenshot_w: 1206
+    screenshot_h: 2622
+  pre_screenshot: snapshots/002_pre.png
+  post_screenshot: snapshots/002_post.png
+  captured_at: 1777489340.997366
+- id: 3
+  action: tap
+  args:
+    x: 138
+    y: 235
+    screenshot_w: 1206
+    screenshot_h: 2622
+  pre_screenshot: snapshots/003_pre.png
+  post_screenshot: snapshots/003_post.png
+  captured_at: 1777489354.20786

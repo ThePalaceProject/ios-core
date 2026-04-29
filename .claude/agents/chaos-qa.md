@@ -258,3 +258,36 @@ cap during ANY action — observe, tap, log query, even mid-write of the
 findings CSV — finish the current write atomically, write the summary,
 and exit. Do NOT start another path "to round things out." The whole
 point of the budget is that the cost is bounded for the invoker.
+
+### Pre-seed UserDefaults state injection (`pre_seed_defaults`)
+
+Some surviving mutants live behind code paths the UI cannot reach.
+Example: `AccountsManager.swift` lines 309/346/722 are `accountSets`
+isEmpty checks; the catalog flow never produces an empty account-set
+state at runtime, so adversarial UI sessions can't probe them.
+
+`scripts/run-chaos-pass.sh --pre-seed-defaults <PATH>` writes a JSON
+file's contents into the app's UserDefaults BEFORE the simdrive session
+starts. Each top-level key becomes a `xcrun simctl spawn defaults
+write` call against `org.thepalaceproject.palace`. The simulator boots
+the app with that state already in place.
+
+Sample pre-seeds live under `.specterqa/chaos-pre-seeds/`. When invoked
+with one, your seed-mismatch tolerance should LOOSEN — the captured
+fixture won't match the corrupted state on purpose. Compare against the
+EXPECTED post-seed state (documented in the pre-seed JSON's `_purpose`
+field), not the original fixture.
+
+Strategies that pair well with pre-seeds:
+
+- **boundary-state** — corrupted-empty / single-element / many-element
+  sets to probe iterator code.
+- **stale-form-submit** — pre-populate a half-completed form state, see
+  if the app cleans up.
+- **migration-replay** — pre-seed a 2.x-shaped UserDefaults and watch
+  the migration code run on launch (TPPUserAccount migrations live
+  here).
+
+Findings discovered via pre-seed are still subject to the log-evidence
+rule. The pre-seed itself is part of the reproduction — include the
+pre-seed JSON path in the finding's Notes.
