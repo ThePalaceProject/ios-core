@@ -1841,9 +1841,9 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                     failDownloadWithAlert(for: book)
                 }
             case .overdriveManifestJSON:
-                failureRequiringAlert = !replaceBook(book, withFileAtURL: location, forDownloadTask: task)
+                failureRequiringAlert = !backgroundDownloadHandler.replaceBook(book, withFileAtURL: location, forDownloadTask: task)
             case .none:
-                failureRequiringAlert = !moveFile(at: location, toDestinationForBook: book, forDownloadTask: task)
+                failureRequiringAlert = !backgroundDownloadHandler.moveFile(at: location, toDestinationForBook: book, forDownloadTask: task)
             }
         }
 
@@ -2541,7 +2541,7 @@ extension MyBooksDownloadCenter {
             }
             self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
 
-            if !self.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask) {
+            if !self.backgroundDownloadHandler.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask) {
                 if book.defaultBookContentType == .audiobook {
                     Log.warn(#file, "Content storage failed for audiobook, but streaming still available")
                 } else {
@@ -2707,130 +2707,8 @@ extension MyBooksDownloadCenter {
         }
     }
 
-    func moveFile(at sourceLocation: URL, toDestinationForBook book: TPPBook, forDownloadTask downloadTask: URLSessionDownloadTask) -> Bool {
-        var removeError: Error?
-        var moveError: Error?
-
-        guard let finalFileURL = fileUrl(for: book.identifier) else { return false }
-
-        do {
-            try FileManager.default.removeItem(at: finalFileURL)
-        } catch {
-            removeError = error
-        }
-
-        var success = false
-
-        do {
-            try FileManager.default.moveItem(at: sourceLocation, to: finalFileURL)
-            success = true
-        } catch {
-            moveError = error
-        }
-
-        if success {
-            // Verify file exists and is not empty before marking as successful
-            if validateDownloadedFile(at: finalFileURL, for: book) {
-                markDownloadSuccessful(for: book)
-            } else {
-                logBookDownloadFailure(book, reason: "File validation failed after move", downloadTask: downloadTask, metadata: [
-                    "finalFileURL": finalFileURL.absoluteString
-                ])
-                success = false
-            }
-        } else if let moveError = moveError {
-            logBookDownloadFailure(book, reason: "Couldn't move book to final disk location", downloadTask: downloadTask, metadata: [
-                "moveError": moveError,
-                "removeError": removeError?.localizedDescription ?? "N/A",
-                "sourceLocation": sourceLocation.absoluteString,
-                "finalFileURL": finalFileURL.absoluteString
-            ])
-        }
-
-        return success
-    }
-
-    /// Validates that a downloaded file exists and is not empty before marking download as successful.
-    /// This prevents false "downloadSuccessful" states when files are corrupted or missing.
-    ///
-    /// - Parameters:
-    ///   - fileURL: The URL where the file should exist
-    ///   - book: The book being downloaded (for logging)
-    /// - Returns: true if the file exists and is not empty
-    private func validateDownloadedFile(at fileURL: URL, for book: TPPBook) -> Bool {
-        let fileManager = FileManager.default
-
-        guard fileManager.fileExists(atPath: fileURL.path) else {
-            Log.error(#file, "📚 ❌ Downloaded file missing at \(fileURL.path) for '\(book.title)'")
-            return false
-        }
-
-        do {
-            let attributes = try fileManager.attributesOfItem(atPath: fileURL.path)
-            guard let fileSize = attributes[.size] as? Int, fileSize > 0 else {
-                Log.error(#file, "📚 ❌ Downloaded file is empty at \(fileURL.path) for '\(book.title)'")
-                return false
-            }
-
-            Log.debug(#file, "📚 ✓ Downloaded file validated: \(fileURL.lastPathComponent) (\(fileSize) bytes)")
-            return true
-        } catch {
-            Log.error(#file, "📚 ❌ Failed to get file attributes at \(fileURL.path): \(error)")
-            return false
-        }
-    }
-
-    private func replaceBook(_ book: TPPBook, withFileAtURL sourceLocation: URL, forDownloadTask downloadTask: URLSessionDownloadTask) -> Bool {
-        guard let destURL = fileUrl(for: book.identifier) else { return false }
-
-        let fileManager = FileManager.default
-
-        do {
-            // Ensure parent directory exists
-            let parentDir = destURL.deletingLastPathComponent()
-            if !fileManager.fileExists(atPath: parentDir.path) {
-                try fileManager.createDirectory(at: parentDir, withIntermediateDirectories: true)
-            }
-
-            // If destination exists, use replaceItemAt for atomic replacement
-            // Otherwise, use moveItem (replaceItemAt fails if destination doesn't exist)
-            if fileManager.fileExists(atPath: destURL.path) {
-                _ = try fileManager.replaceItemAt(destURL, withItemAt: sourceLocation, options: .usingNewMetadataOnly)
-            } else {
-                try fileManager.moveItem(at: sourceLocation, to: destURL)
-            }
-
-            // Validate file exists and is not empty before marking as successful
-            guard validateDownloadedFile(at: destURL, for: book) else {
-                Log.error(#file, "📚 ❌ File validation failed after replace/move for '\(book.title)'")
-                return false
-            }
-
-            // Note: For LCP audiobooks, state is set in fulfillLCPLicense after license is ready
-            // For non-LCP audiobooks and other content types, set state here after content is successfully stored
-            #if LCP
-            let isLCPAudiobook = book.defaultBookContentType == .audiobook && LCPAudiobooks.canOpenBook(book)
-            if !isLCPAudiobook {
-                markDownloadSuccessful(for: book)
-            }
-            #else
-            markDownloadSuccessful(for: book)
-            #endif
-            return true
-        } catch {
-            logBookDownloadFailure(book,
-                                   reason: "Couldn't replace/move downloaded book",
-                                   downloadTask: downloadTask,
-                                   metadata: [
-                                    "error": error,
-                                    "destinationFileURL": destURL as Any,
-                                    "sourceFileURL": sourceLocation as Any,
-                                    "destinationExists": fileManager.fileExists(atPath: destURL.path)
-                                   ])
-        }
-
-        return false
-    }
+    // moveFile / replaceBook / validateDownloadedFile moved to BackgroundDownloadHandler.
+    // Internal call sites now route through `backgroundDownloadHandler.X(...)`.
 
     @objc func fileUrl(for identifier: String) -> URL? {
         bookFileManager.fileUrl(for: identifier)
