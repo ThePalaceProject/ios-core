@@ -5,12 +5,17 @@
 //  Created by Ettore Pasquini on 3/24/21.
 //  Copyright © 2021 NYPL Labs. All rights reserved.
 //
+//  Public protocol describing a request executor. Depends on NYPLResult
+//  (same module) and TPPUserFriendlyError (same module). App-target
+//  TPPNetworkExecutor adopts this protocol; PalaceTests' mocks implement
+//  it for substitution.
+//
 
 import Foundation
 
-let TPPDefaultRequestTimeout: TimeInterval = 30.0
+public let TPPDefaultRequestTimeout: TimeInterval = 30.0
 
-protocol TPPRequestExecuting {
+public protocol TPPRequestExecuting {
     /// Execute a given request.
     /// - Parameters:
     ///   - req: The request to perform.
@@ -22,12 +27,12 @@ protocol TPPRequestExecuting {
                         enableTokenRefresh: Bool,
                         completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask?
 
-    var requestTimeout: TimeInterval {get}
+    var requestTimeout: TimeInterval { get }
 
-    static var defaultRequestTimeout: TimeInterval {get}
+    static var defaultRequestTimeout: TimeInterval { get }
 }
 
-extension TPPRequestExecuting {
+public extension TPPRequestExecuting {
     var requestTimeout: TimeInterval {
         return Self.defaultRequestTimeout
     }

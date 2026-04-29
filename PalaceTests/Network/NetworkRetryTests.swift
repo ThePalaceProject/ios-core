@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import PalaceNetwork
 @testable import Palace
 
 // MARK: - Network Retry Logic Tests

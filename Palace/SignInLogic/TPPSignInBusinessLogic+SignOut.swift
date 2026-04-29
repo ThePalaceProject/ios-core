@@ -9,6 +9,7 @@
 import Foundation
 import WebKit
 import PalaceLogging
+import PalaceNetwork
 
 extension TPPSignInBusinessLogic {
 

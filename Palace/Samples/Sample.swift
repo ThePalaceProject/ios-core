@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 
 enum SampleType: String {
     case contentTypeEpubZip = "application/epub+zip"

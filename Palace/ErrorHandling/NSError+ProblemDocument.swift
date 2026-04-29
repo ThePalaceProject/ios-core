@@ -1,32 +1,17 @@
 //
-//  TPPUserFriendlyError.swift
+//  NSError+ProblemDocument.swift
 //  The Palace Project
 //
-//  Created by Ettore Pasquini on 7/15/20.
-//  Copyright © 2020 NYPL Labs. All rights reserved.
+//  Wires NSError up to the TPPUserFriendlyError protocol (defined in the
+//  PalaceNetwork package) using TPPProblemDocument (app-target type) for
+//  the messaging payload. Stays in the app target because TPPProblemDocument
+//  is an app-level type — moving the entire chain into PalaceNetwork would
+//  require pulling Codable + RFC7807 modeling into the package, which is a
+//  separate decision from the protocol split.
 //
 
 import Foundation
-
-/// A protocol describing an error that MAY offer user friendly
-/// messaging to the user.
-protocol TPPUserFriendlyError: Error {
-    /// A short summary of the error, if available.
-    var userFriendlyTitle: String? { get }
-
-    /// A user-friendly short message describing the error in more detail,
-    /// if possible.
-    var userFriendlyMessage: String? { get }
-}
-
-// Dummy implementation merely to ease error reporting work upstream, where
-// it's very common to have to handle errors obtained in various ways. This
-// is also ok because user friendly strings are in general never guaranteed
-// to be there, even when we obtain a problem document.
-extension TPPUserFriendlyError {
-    var userFriendlyTitle: String? { return nil }
-    var userFriendlyMessage: String? { return nil  }
-}
+import PalaceNetwork
 
 extension NSError: TPPUserFriendlyError {
     private static let problemDocumentKey = "problemDocument"
@@ -36,13 +21,13 @@ extension NSError: TPPUserFriendlyError {
     }
 
     /// Feeds off of the `problemDocument` computed property
-    @objc var userFriendlyTitle: String? {
+    @objc public var userFriendlyTitle: String? {
         return problemDocument?.title
     }
 
     /// Feeds off of the `problemDocument` computed property or the localized
     /// error description.
-    @objc var userFriendlyMessage: String? {
+    @objc public var userFriendlyMessage: String? {
         return (problemDocument?.detail ?? userInfo[NSLocalizedDescriptionKey]) as? String
     }
 
