@@ -12,7 +12,7 @@ import Foundation
 
 /// Complete OPDS 2.0 Feed representation
 /// Supports both catalog feeds and publication feeds with full navigation
-struct OPDS2Feed: Codable, Equatable, Sendable {
+public struct OPDS2Feed: Codable, Equatable, Sendable {
 
     // MARK: - Core Properties
 
@@ -26,7 +26,7 @@ struct OPDS2Feed: Codable, Equatable, Sendable {
     // MARK: - Computed Properties
 
     var title: String { metadata.title }
-    var id: String? { metadata.identifier }
+    public var id: String? { metadata.identifier }
 
     /// URL for the next page of results
     var nextPageURL: URL? {
@@ -88,7 +88,7 @@ struct OPDS2Feed: Codable, Equatable, Sendable {
 
 // MARK: - Feed Metadata
 
-struct OPDS2FeedMetadata: Codable, Equatable, Sendable {
+public struct OPDS2FeedMetadata: Codable, Equatable, Sendable {
     let title: String
     let identifier: String?
     let subtitle: String?
@@ -132,13 +132,13 @@ struct OPDS2FeedMetadata: Codable, Equatable, Sendable {
 
 // MARK: - Navigation Link
 
-struct OPDS2NavigationLink: Codable, Equatable, Sendable, Identifiable {
+public struct OPDS2NavigationLink: Codable, Equatable, Sendable, Identifiable {
     let href: String
     let title: String
     let rel: String?
     let type: String?
 
-    var id: String { href }
+    public var id: String { href }
 
     var hrefURL: URL? {
         URL(string: href)
@@ -154,13 +154,13 @@ struct OPDS2NavigationLink: Codable, Equatable, Sendable, Identifiable {
 
 // MARK: - Group (for grouped feeds)
 
-struct OPDS2Group: Codable, Equatable, Sendable, Identifiable {
+public struct OPDS2Group: Codable, Equatable, Sendable, Identifiable {
     let metadata: OPDS2GroupMetadata
     let links: [OPDS2Link]?
     let publications: [OPDS2Publication]?
     let navigation: [OPDS2NavigationLink]?
 
-    var id: String { metadata.title }
+    public var id: String { metadata.title }
     var title: String { metadata.title }
 
     /// URL for "more" items in this group
@@ -181,7 +181,7 @@ struct OPDS2Group: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-struct OPDS2GroupMetadata: Codable, Equatable, Sendable {
+public struct OPDS2GroupMetadata: Codable, Equatable, Sendable {
     let title: String
     let numberOfItems: Int?
 
@@ -193,11 +193,11 @@ struct OPDS2GroupMetadata: Codable, Equatable, Sendable {
 
 // MARK: - Facet Group
 
-struct OPDS2FacetGroup: Codable, Equatable, Sendable, Identifiable {
+public struct OPDS2FacetGroup: Codable, Equatable, Sendable, Identifiable {
     let metadata: OPDS2FacetGroupMetadata
     let links: [OPDS2FacetLink]
 
-    var id: String { metadata.title }
+    public var id: String { metadata.title }
     var title: String { metadata.title }
 
     init(metadata: OPDS2FacetGroupMetadata, links: [OPDS2FacetLink]) {
@@ -206,7 +206,7 @@ struct OPDS2FacetGroup: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-struct OPDS2FacetGroupMetadata: Codable, Equatable, Sendable {
+public struct OPDS2FacetGroupMetadata: Codable, Equatable, Sendable {
     let title: String
     /// Facet group type URI (e.g. "http://palaceproject.io/terms/rel/sort")
     /// Encoded as `@type` in the JSON response from the registry.
@@ -223,7 +223,7 @@ struct OPDS2FacetGroupMetadata: Codable, Equatable, Sendable {
         self.type = type
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         title = try container.decode(String.self, forKey: .title)
         // Try "type" first, then "@type"
@@ -231,21 +231,21 @@ struct OPDS2FacetGroupMetadata: Codable, Equatable, Sendable {
             ?? container.decodeIfPresent(String.self, forKey: .atType)
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(title, forKey: .title)
         try container.encodeIfPresent(type, forKey: .type)
     }
 }
 
-struct OPDS2FacetLink: Codable, Equatable, Sendable, Identifiable {
+public struct OPDS2FacetLink: Codable, Equatable, Sendable, Identifiable {
     let href: String
     let title: String
     let rel: String?
     let type: String?
     let properties: OPDS2FacetProperties?
 
-    var id: String { href }
+    public var id: String { href }
 
     var hrefURL: URL? {
         URL(string: href)
@@ -270,7 +270,7 @@ struct OPDS2FacetLink: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-struct OPDS2FacetProperties: Codable, Equatable, Sendable {
+public struct OPDS2FacetProperties: Codable, Equatable, Sendable {
     let numberOfItems: Int?
 
     init(numberOfItems: Int? = nil) {

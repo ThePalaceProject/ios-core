@@ -12,7 +12,7 @@ import PalaceLogging
 // MARK: - Cache Entry
 
 /// Represents a cached feed with metadata for freshness checking
-struct OPDSCacheEntry<T: Codable & Sendable>: Codable, Sendable {
+public struct OPDSCacheEntry<T: Codable & Sendable>: Codable, Sendable {
     public let feed: T
     public let timestamp: Date
     public let etag: String?
@@ -38,7 +38,7 @@ struct OPDSCacheEntry<T: Codable & Sendable>: Codable, Sendable {
 
 // MARK: - Feed Cache Protocol
 
-protocol OPDSFeedCaching: Actor {
+public protocol OPDSFeedCaching: Actor {
     associatedtype FeedType: Codable & Sendable
 
     func get(for url: URL) async -> OPDSCacheEntry<FeedType>?

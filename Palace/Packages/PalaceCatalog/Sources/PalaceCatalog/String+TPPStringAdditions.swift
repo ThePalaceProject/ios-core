@@ -3,7 +3,7 @@ import CommonCrypto
 
 extension NSString {
 
-  @objc func fileSystemSafeBase64DecodedString(usingEncoding encoding: UInt) -> String? {
+  @objc public func fileSystemSafeBase64DecodedString(usingEncoding encoding: UInt) -> String? {
     var s = (self as String)
       .replacingOccurrences(of: "-", with: "+")
       .replacingOccurrences(of: "_", with: "/")
@@ -19,7 +19,7 @@ extension NSString {
     return result
   }
 
-  @objc func fileSystemSafeBase64EncodedString(usingEncoding encoding: UInt) -> String? {
+  @objc public func fileSystemSafeBase64EncodedString(usingEncoding encoding: UInt) -> String? {
     guard let data = (self as String).data(using: String.Encoding(rawValue: encoding)) else {
       return nil
     }
@@ -29,7 +29,7 @@ extension NSString {
       .replacingOccurrences(of: "/", with: "_")
   }
 
-  @objc func sha256() -> String {
+  @objc public func sha256() -> String {
     guard let data = (self as String).data(using: .utf8) else { return "" }
     var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
     data.withUnsafeBytes {
@@ -38,13 +38,13 @@ extension NSString {
     return hash.map { String(format: "%02x", $0) }.joined()
   }
 
-  @objc func stringURLEncodedAsQueryParamValue() -> String? {
+  @objc public func stringURLEncodedAsQueryParamValue() -> String? {
     var allowedCharacters = CharacterSet.urlQueryAllowed
     allowedCharacters.remove(charactersIn: ";/?:@&=$+,")
     return (self as String).addingPercentEncoding(withAllowedCharacters: allowedCharacters)
   }
 
-  @objc var isEmptyNoWhitespace: Bool {
+  @objc public var isEmptyNoWhitespace: Bool {
     return (self as String).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 }

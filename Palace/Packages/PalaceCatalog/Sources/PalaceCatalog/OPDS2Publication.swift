@@ -8,7 +8,7 @@
 
 import Foundation
 
-struct OPDS2Publication: Codable, Equatable, Sendable {
+public struct OPDS2Publication: Codable, Equatable, Sendable {
     struct Metadata: Codable, Equatable, Sendable {
         let updated: Date?
         let description: String?

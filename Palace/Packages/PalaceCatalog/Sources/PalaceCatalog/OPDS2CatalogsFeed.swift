@@ -8,7 +8,7 @@
 
 import Foundation
 
-struct OPDS2CatalogsFeed: Codable {
+public struct OPDS2CatalogsFeed: Codable {
     struct Metadata: Codable {
         let adobe_vendor_id: String?
         let title: String

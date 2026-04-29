@@ -14,11 +14,13 @@ public protocol CatalogAPI {
 public final class DefaultCatalogAPI: CatalogAPI {
     public let client: NetworkClient
     public let parser: OPDSParser
+    private let featureFlags: FeatureFlagProvider
     private let inflight = InflightFeedFetches()
 
-    public init(client: NetworkClient, parser: OPDSParser) {
+    public init(client: NetworkClient, parser: OPDSParser, featureFlags: FeatureFlagProvider) {
         self.client = client
         self.parser = parser
+        self.featureFlags = featureFlags
     }
 
     public func fetchFeed(at url: URL) async throws -> CatalogFeed? {
@@ -31,7 +33,7 @@ public final class DefaultCatalogAPI: CatalogAPI {
     }
 
     private func fetchFeedFromNetwork(at url: URL) async throws -> CatalogFeed? {
-        let acceptHeader = RemoteFeatureFlags.shared.isOPDS2Enabled
+        let acceptHeader = featureFlags.isOPDS2Enabled
             ? "application/opds+json, application/atom+xml;q=0.9, */*;q=0.1"
             : "application/atom+xml, */*;q=0.1"
         let req = NetworkRequest(
@@ -90,7 +92,7 @@ public final class DefaultCatalogAPI: CatalogAPI {
 
     public func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
         return try await withCheckedThrowingContinuation { continuation in
-            TPPOpenSearchDescription.withURL(searchDescriptorURL, shouldResetCache: false) { description in
+            TPPOpenSearchDescription.withURL(searchDescriptorURL, networkClient: client) { description in
                 guard let description = description else {
                     continuation.resume(throwing: NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not load OpenSearch description"]))
                     return

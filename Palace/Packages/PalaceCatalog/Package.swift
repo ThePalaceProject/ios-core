@@ -14,12 +14,13 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(path: "../PalaceLogging")
+        .package(path: "../PalaceLogging"),
+        .package(path: "../PalaceNetwork")
     ],
     targets: [
         .target(
             name: "PalaceCatalog",
-            dependencies: ["PalaceLogging"]
+            dependencies: ["PalaceLogging", "PalaceNetwork"]
         ),
         .testTarget(
             name: "PalaceCatalogTests",
