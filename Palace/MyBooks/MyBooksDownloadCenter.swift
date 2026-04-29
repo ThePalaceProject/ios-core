@@ -45,6 +45,7 @@ import PalaceCatalog
     private let networkExecutor: TPPNetworkExecutor
     private let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
     let downloadAnnouncementService: DownloadAnnouncementService
+    private let bookFileManager: BookFileManager
 
     // Phase 4 (Architectural Triad) — services formerly reached through
     // `.shared` are now stored properties initialized via the constructor.
@@ -106,6 +107,7 @@ import PalaceCatalog
         networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor,
         accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
         downloadAnnouncementService: DownloadAnnouncementService = DownloadAnnouncementService(),
+        bookFileManager: BookFileManager? = nil,
         errorActivityTracker: ErrorActivityTracker = .shared,
         userRetryTracker: UserRetryTracker = .shared,
         reachability: Reachability = AppContainer.production().reachability,
@@ -130,6 +132,14 @@ import PalaceCatalog
         self.networkExecutor = networkExecutor
         self.accessibilityAnnouncements = accessibilityAnnouncements
         self.downloadAnnouncementService = downloadAnnouncementService
+        // BookFileManager pulls from the *same* registry + accounts manager
+        // we just resolved — passing nil here uses those, avoiding a second
+        // re-entrant AppContainer.production() lookup (the same cycle that
+        // motivated AppContainer.production()'s explicit-deps comment).
+        self.bookFileManager = bookFileManager ?? BookFileManager(
+            bookRegistry: bookRegistry,
+            accountsManager: accountsManager
+        )
         self.errorActivityTracker = errorActivityTracker
         self.userRetryTracker = userRetryTracker
         self.reachability = reachability
@@ -2821,63 +2831,25 @@ extension MyBooksDownloadCenter {
     }
 
     @objc func fileUrl(for identifier: String) -> URL? {
-        return fileUrl(for: identifier, account: accountsManager.currentAccountId)
+        bookFileManager.fileUrl(for: identifier)
     }
 
     func fileUrl(for identifier: String, account: String?) -> URL? {
-        guard let book = bookRegistry.book(forIdentifier: identifier) else {
-            return nil
-        }
-
-        let pathExtension = pathExtension(for: book)
-        let contentDirectoryURL = self.contentDirectoryURL(account)
-        let hashedIdentifier = identifier.sha256()
-
-        return contentDirectoryURL?.appendingPathComponent(hashedIdentifier).appendingPathExtension(pathExtension)
+        bookFileManager.fileUrl(for: identifier, account: account)
     }
 
     /// Returns the file URL for a book, accepting the book directly instead of looking it up in the registry.
     /// This is useful during registry loading when the registry hasn't been populated yet.
     func fileUrl(for book: TPPBook, account: String?) -> URL? {
-        let pathExtension = pathExtension(for: book)
-        let contentDirectoryURL = self.contentDirectoryURL(account)
-        let hashedIdentifier = book.identifier.sha256()
-
-        return contentDirectoryURL?.appendingPathComponent(hashedIdentifier).appendingPathExtension(pathExtension)
+        bookFileManager.fileUrl(for: book, account: account)
     }
 
     func contentDirectoryURL(_ account: String?) -> URL? {
-        guard let directoryURL = TPPBookContentMetadataFilesHelper.directory(for: account ?? "")?.appendingPathComponent("content") else {
-            NSLog("[contentDirectoryURL] nil directory.")
-            return nil
-        }
-
-        var isDirectory: ObjCBool = false
-        if !FileManager.default.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory) {
-            do {
-                try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true, attributes: nil)
-            } catch {
-                NSLog("Failed to create directory.")
-                return nil
-            }
-        }
-
-        return directoryURL
+        bookFileManager.contentDirectoryURL(account)
     }
 
     func pathExtension(for book: TPPBook?) -> String {
-        #if LCP
-        if let book = book {
-            if LCPAudiobooks.canOpenBook(book) {
-                return "lcpa"
-            }
-
-            if LCPPDFs.canOpenBook(book) {
-                return "zip"
-            }
-        }
-        #endif
-        return "epub"
+        bookFileManager.pathExtension(for: book)
     }
 }
 
