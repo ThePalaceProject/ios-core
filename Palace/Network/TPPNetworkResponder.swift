@@ -326,7 +326,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
             logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
 
             if httpResponse.statusCode == 401 {
-                let snap = AccountsManager.shared.currentUserAccount.credentialSnapshot()
+                let snap = AppContainer.production().accountsManager.currentUserAccount.credentialSnapshot()
                 if (snap.authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
                     tokenRefreshAttempts += 1
                     return handleExpiredTokenIfNeeded(for: httpResponse, with: task)
@@ -384,8 +384,9 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
     // whatever account is current at call time — if the user switched accounts
     // between sending the request and receiving the 401, the wrong account's
     // credentials would be checked/marked stale.
-    let accountId = AccountsManager.shared.currentAccountId
-    let snapshot = AccountsManager.shared.currentUserAccount.credentialSnapshot()
+    let accountsManager = AppContainer.production().accountsManager
+    let accountId = accountsManager.currentAccountId
+    let snapshot = accountsManager.currentUserAccount.credentialSnapshot()
 
     guard snapshot.hasCredentials else {
         return false
@@ -403,7 +404,7 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
         }
 
         // Mark credentials as stale - preserves Adobe DRM activation
-        AccountsManager.shared.userAccount(for: accountId ?? "").markCredentialsStale()
+        accountsManager.userAccount(for: accountId ?? "").markCredentialsStale()
 
         if authDef?.reauthStrategy == .browser {
             Log.info(#file, "Server returned 401 for browser-based auth - credentials marked stale, will trigger re-auth flow")
@@ -518,12 +519,12 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
                     task: URLSessionTask,
                     didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        let credsProvider = credentialsProvider ?? AccountsManager.shared.currentUserAccount
+        let credsProvider = credentialsProvider ?? AppContainer.production().accountsManager.currentUserAccount
         let authChallenger = TPPBasicAuth(credentialsProvider: credsProvider)
         authChallenger.handleChallenge(challenge, completion: completionHandler)
     }
 
-    func refreshToken(userAccount: TPPUserAccount = AccountsManager.shared.currentUserAccount) async throws {
+    func refreshToken(userAccount: TPPUserAccount = AppContainer.production().accountsManager.currentUserAccount) async throws {
         guard let tokenURL = userAccount.authDefinition?.tokenURL,
               let username = userAccount.username,
               let password = userAccount.pin
