@@ -63,6 +63,7 @@ import PalaceCatalog
     let settings: TPPSettings
     #if FEATURE_DRM_CONNECTOR
     let adobeDRMService: AdobeDRMService
+    private let adobeDRMHandler = AdobeDRMHandler()
     #endif
     #if FEATURE_OVERDRIVE
     let overdriveAPIExecutor: OverdriveAPIExecutor
@@ -150,7 +151,8 @@ import PalaceCatalog
         #if FEATURE_DRM_CONNECTOR
         // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
         if AdobeCertificate.isDRMAvailable {
-            self.adobeDRMService.setDelegate(self)
+            self.adobeDRMHandler.delegate = self
+            self.adobeDRMService.setDelegate(self.adobeDRMHandler)
         }
         #else
         NSLog("Cannot import ADEPT")
@@ -249,7 +251,7 @@ import PalaceCatalog
         accessibilityAnnouncements.announceStatus(title: errorInfo.title, message: errorInfo.message)
     }
 
-    private func markDownloadSuccessful(for book: TPPBook) {
+    func markDownloadSuccessful(for book: TPPBook) {
         bookRegistry.setState(.downloadSuccessful, for: book.identifier)
         downloadAnnouncementService.announceDownloadCompleted(for: book)
     }
@@ -2980,85 +2982,9 @@ extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
 }
 
 #if FEATURE_DRM_CONNECTOR
-extension MyBooksDownloadCenter: NYPLADEPTDelegate {
+extension MyBooksDownloadCenter: AdobeDRMHandlerDelegate {
 
-    func adept(_ adept: NYPLADEPT, didFinishDownload: Bool, to adeptToURL: URL?, fulfillmentID: String?, isReturnable: Bool, rightsData: Data, tag: String, error adeptError: Error?) {
-        guard let book = bookRegistry.book(forIdentifier: tag),
-              let rights = String(data: rightsData, encoding: .utf8) else { return }
-
-        var didSucceedCopying = false
-
-        if didFinishDownload {
-            guard let fileURL = fileUrl(for: book.identifier) else { return }
-            let fileManager = FileManager.default
-
-            do {
-                try fileManager.removeItem(at: fileURL)
-            } catch {
-                print("Remove item error: \(error)")
-            }
-
-            guard let destURL = fileUrl(for: book.identifier), let adeptToURL = adeptToURL else {
-                TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: destination file URL unavailable", metadata: [
-                    "adeptError": adeptError ?? "N/A",
-                    "fileURLToRemove": adeptToURL ?? "N/A",
-                    "book": book.loggableDictionary,
-                    "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
-                    "AdobeRights": rights,
-                    "AdobeTag": tag
-                ])
-                self.failDownloadWithAlert(for: book)
-                return
-            }
-
-            do {
-                try fileManager.copyItem(at: adeptToURL, to: destURL)
-                didSucceedCopying = true
-            } catch {
-                TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: failure copying file", metadata: [
-                    "adeptError": adeptError ?? "N/A",
-                    "copyError": error,
-                    "fromURL": adeptToURL,
-                    "destURL": destURL,
-                    "book": book.loggableDictionary,
-                    "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
-                    "AdobeRights": rights,
-                    "AdobeTag": tag
-                ])
-            }
-        } else {
-            TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: did not finish download", metadata: [
-                "adeptError": adeptError ?? "N/A",
-                "adeptToURL": adeptToURL ?? "N/A",
-                "book": book.loggableDictionary,
-                "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
-                "AdobeRights": rights,
-                "AdobeTag": tag
-            ])
-        }
-
-        if !didFinishDownload || !didSucceedCopying {
-            self.failDownloadWithAlert(for: book)
-            return
-        }
-
-        guard let rightsFilePath = fileUrl(for: book.identifier)?.path.appending("_rights.xml") else { return }
-        do {
-            try rightsData.write(to: URL(fileURLWithPath: rightsFilePath))
-        } catch {
-            print("Failed to store rights data.")
-        }
-
-        if isReturnable, let fulfillmentID = fulfillmentID {
-            bookRegistry.setFulfillmentId(fulfillmentID, for: book.identifier)
-        }
-
-        markDownloadSuccessful(for: book)
-
-        self.broadcastUpdate()
-    }
-
-    func adept(_ adept: NYPLADEPT, didUpdateProgress progress: Double, tag: String) {
+    func handleAdobeDownloadProgress(_ progress: Double, for tag: String) {
         Task {
             if let info = await self.downloadInfoAsync(forBookIdentifier: tag)?.withDownloadProgress(progress) {
                 await self.bookIdentifierToDownloadInfo.set(tag, value: info)
@@ -3069,19 +2995,6 @@ extension MyBooksDownloadCenter: NYPLADEPTDelegate {
             }
             self.broadcastUpdate()
         }
-    }
-
-    func adept(_ adept: NYPLADEPT, didCancelDownloadWithTag tag: String) {
-        bookRegistry.setState(.downloadNeeded, for: tag)
-        self.broadcastUpdate()
-    }
-
-    func didIgnoreFulfillmentWithNoAuthorizationPresent() {
-        // Pre-PP-3649 behavior was to show a sign-in modal, but now that we call
-        // ensureDeviceActivated() before fulfillment, this path should only be hit
-        // if activation succeeded but the device was deauthorized mid-fulfillment
-        // (extremely rare). Log for diagnostics rather than showing a confusing modal.
-        Log.warn(#file, "Adobe DRM fulfillment rejected after activation — device may have been deauthorized mid-download")
     }
 }
 #endif
