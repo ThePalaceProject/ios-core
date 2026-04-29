@@ -73,6 +73,12 @@ public struct OPDS2Publication: Codable, Equatable, Sendable {
     public let links: [OPDS2Link]
     public let metadata: Metadata
     public let images: [OPDS2Link]?
+
+    public init(links: [OPDS2Link], metadata: Metadata, images: [OPDS2Link]? = nil) {
+        self.links = links
+        self.metadata = metadata
+        self.images = images
+    }
 }
 
 private let imageType = "image/png"

@@ -5,6 +5,12 @@ public struct OPDS2FullPublication: Codable, Equatable, Sendable, Identifiable {
     public let links: [OPDS2Link]
     public let images: [OPDS2Link]?
 
+    public init(metadata: OPDS2FullMetadata, links: [OPDS2Link], images: [OPDS2Link]?) {
+        self.metadata = metadata
+        self.links = links
+        self.images = images
+    }
+
     public var id: String { metadata.identifier }
 
     // MARK: - Image URLs

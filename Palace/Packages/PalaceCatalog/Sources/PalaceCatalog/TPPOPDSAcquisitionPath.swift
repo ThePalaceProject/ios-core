@@ -35,8 +35,18 @@ public let ContentTypeOPDSPublication = "application/opds-publication+json"
     super.init()
   }
 
+  /// All content types this client knows how to acquire/render.
+  ///
+  /// Note: prior to PalaceCatalog extraction this method had `#if FEATURE_DRM_CONNECTOR`
+  /// / `#if LCP` guards. With both DRM stacks always linked in modern builds those
+  /// guards were always-true; we simplified to an unconditional list.
+  ///
+  /// The Adobe-cert-expired filter (originally `AdobeCertificate.defaultCertificate?.hasExpired`)
+  /// reached for an app-target singleton and has been moved out — call sites that need
+  /// to drop ContentTypeAdobeAdept on cert expiry should filter the returned set
+  /// themselves (see `TPPOPDSAcquisitionPath+AppFilters.swift` in the app target).
   @objc public static func supportedTypes() -> Set<String> {
-    var types: Set<String> = [
+    return [
       ContentTypeOPDSCatalog,
       ContentTypeBearerToken,
       ContentTypeEpubZip,
@@ -48,26 +58,12 @@ public let ContentTypeOPDSPublication = "application/opds-publication+json"
       ContentTypeOctetStream,
       ContentTypeBiblioboard,
       ContentTypeAudiobookZip,
-      ContentTypeOPDSPublication
+      ContentTypeOPDSPublication,
+      ContentTypeAdobeAdept,
+      ContentTypeReadiumLCP,
+      ContentTypeAudiobookLCP,
+      ContentTypeReadiumLCPPDF
     ]
-
-    #if FEATURE_DRM_CONNECTOR
-    types.insert(ContentTypeAdobeAdept)
-    #endif
-
-    #if LCP
-    types.insert(ContentTypeReadiumLCP)
-    types.insert(ContentTypeAudiobookLCP)
-    types.insert(ContentTypeReadiumLCPPDF)
-    #endif
-
-    #if FEATURE_DRM_CONNECTOR
-    if AdobeCertificate.defaultCertificate?.hasExpired == true {
-      types.remove(ContentTypeAdobeAdept)
-    }
-    #endif
-
-    return types
   }
 
   @objc public static func supportedSubtypes(forType type: String) -> Set<String> {

@@ -121,7 +121,7 @@ public final class DefaultCatalogAPI: CatalogAPI {
     }
 
     /// Extract entry-point format facets and their search descriptor URLs from a groups feed.
-    static func extractSearchEntryPoints(from feed: CatalogFeed) -> [SearchFormatEntry] {
+    public static func extractSearchEntryPoints(from feed: CatalogFeed) -> [SearchFormatEntry] {
         // OPDS 2 path
         if let opds2 = feed.opds2Feed {
             return extractOPDS2SearchEntryPoints(from: opds2)

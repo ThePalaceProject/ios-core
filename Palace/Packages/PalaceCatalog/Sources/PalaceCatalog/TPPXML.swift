@@ -13,7 +13,7 @@ import Foundation
   @objc public private(set) var attributes: NSDictionary = [:]
   @objc public private(set) var name: String = ""
   @objc public private(set) var namespaceURI: String = ""
-  @objc weak private(set) var parent: TPPXML?
+  @objc public weak private(set) var parent: TPPXML?
   @objc public private(set) var qualifiedName: String = ""
 
   private var mutableChildren: [TPPXML] = []
