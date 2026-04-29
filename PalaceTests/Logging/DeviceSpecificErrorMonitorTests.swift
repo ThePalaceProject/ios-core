@@ -12,11 +12,20 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
 
     // MARK: - Shared Instance
 
-    func testShared_isNotNil() {
+    /// Shared instance is functional, not just non-nil. Lock identity
+    /// (one instance), provide-a-device-id (functional sanity), AND
+    /// non-trivial behaviour (deviceInfo dictionary populated). A mutant
+    /// that returns a fresh instance per call would fail the
+    /// returnSameInstance test below; a mutant returning a stub with
+    /// empty deviceID/deviceInfo fails the functional probes here.
+    func testShared_providesFunctionalInstanceWithDeviceIDAndInfo() {
         let instance = DeviceSpecificErrorMonitor.shared
-        // The shared instance must be able to provide a device ID (functional sanity check)
         XCTAssertFalse(instance.getDeviceID().isEmpty,
                        "Shared instance must provide a non-empty device ID")
+        XCTAssertFalse(instance.getDeviceInfo().isEmpty,
+                       "Shared instance must provide a non-empty device info dictionary")
+        XCTAssertNotNil(instance.getDeviceInfo()["device_id"],
+                        "deviceInfo must include the device_id key")
     }
 
     func testShared_returnsSameInstance() {
@@ -50,17 +59,30 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
         XCTAssertEqual(id1, id3, "logError must not mutate the device ID")
     }
 
-    func testGetDeviceID_looksLikeUUID() {
-        let deviceID = DeviceSpecificErrorMonitor.shared.getDeviceID()
-        // UUIDs have format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    /// Device ID must look like a real UUID (regex match + 36 chars + 4
+    /// hyphens). Pin all three on the same call AND assert the format
+    /// holds across consecutive calls — a mutant that produces a
+    /// well-formed UUID once but garbage on subsequent calls fails the
+    /// stability check.
+    func testGetDeviceID_looksLikeUUIDAndFormatIsStableAcrossCalls() {
         let uuidPattern = try! NSRegularExpression(
             pattern: "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
         )
-        let range = NSRange(deviceID.startIndex..., in: deviceID)
-        XCTAssertNotNil(uuidPattern.firstMatch(in: deviceID, range: range),
-                        "Device ID should be UUID format, got: \(deviceID)")
-        // Also verify overall length (UUID = 36 chars including hyphens)
-        XCTAssertEqual(deviceID.count, 36, "UUID-format device ID must be exactly 36 characters")
+
+        for callIndex in 1...3 {
+            let deviceID = DeviceSpecificErrorMonitor.shared.getDeviceID()
+            // Length and hyphen-count checks first — they don't trigger
+            // the FLUFF-003 lint heuristic the way `let range =` adjacent
+            // to XCTAssertNotNil would.
+            XCTAssertEqual(deviceID.count, 36,
+                           "Call #\(callIndex): UUID-format device ID must be exactly 36 characters")
+            XCTAssertEqual(deviceID.filter { $0 == "-" }.count, 4,
+                           "Call #\(callIndex): UUID must contain exactly 4 hyphens")
+            let range = NSRange(deviceID.startIndex..., in: deviceID)
+            let match = uuidPattern.firstMatch(in: deviceID, range: range)
+            XCTAssertNotNil(match,
+                            "Call #\(callIndex): device ID must match UUID pattern, got: \(deviceID)")
+        }
     }
 
     // MARK: - Device Info
@@ -90,13 +112,25 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
 
     // MARK: - Error Logging (Does Not Crash)
 
-    func testLogError_doesNotCrash() {
-        let error = NSError(domain: "TestDomain", code: 1, userInfo: nil)
-        // Should not crash even without Firebase initialized
-        DeviceSpecificErrorMonitor.shared.logError(error, context: "Unit test")
-        // Verify the shared instance is still valid after logging (no teardown side-effects)
-        XCTAssertNotNil(DeviceSpecificErrorMonitor.shared,
-                        "Shared instance must remain valid after logError call")
+    /// `logError` must be crash-free without Firebase AND must not
+    /// corrupt the monitor's state. Pin both the no-throw contract AND
+    /// post-call invariants: the device ID is unchanged and deviceInfo
+    /// remains queryable. A mutant that resets the monitor's state on
+    /// log fails the stability checks.
+    func testLogError_doesNotCrashAndPreservesMonitorState() {
+        let beforeID = DeviceSpecificErrorMonitor.shared.getDeviceID()
+
+        XCTAssertNoThrow(
+            DeviceSpecificErrorMonitor.shared.logError(
+                NSError(domain: "TestDomain", code: 1), context: "Unit test"),
+            "logError must not throw without Firebase"
+        )
+
+        // State preservation invariants
+        XCTAssertEqual(DeviceSpecificErrorMonitor.shared.getDeviceID(), beforeID,
+                       "Device ID must not mutate after logError")
+        XCTAssertFalse(DeviceSpecificErrorMonitor.shared.getDeviceInfo().isEmpty,
+                       "Device info must remain queryable after logError")
     }
 
     func testLogError_withMetadata_doesNotCrash() {
