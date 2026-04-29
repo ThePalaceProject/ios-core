@@ -1508,41 +1508,9 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         }
     }
 
-    private func detectRightsManagement(from mimeType: String) -> MyBooksDownloadInfo.MyBooksDownloadRightsManagement {
-        switch mimeType {
-        case ContentTypeAdobeAdept:
-            return .adobe
-        case ContentTypeReadiumLCP:
-            return .lcp
-        case ContentTypeEpubZip:
-            return .none
-        case ContentTypeBearerToken:
-            return .simplifiedBearerTokenJSON
-        case ContentTypeOPDSPublication:
-            // Intermediate type — will be handled by handleOPDS2PublicationResponse
-            return .none
-        #if FEATURE_OVERDRIVE
-        case "application/json":
-            return .overdriveManifestJSON
-        #endif
-        default:
-            if TPPOPDSAcquisitionPath.supportedTypes().contains(mimeType) {
-                NSLog("Presuming no DRM for unrecognized MIME type \"\(mimeType)\".")
-                return .none
-            }
-            return .unknown
-        }
-    }
-
-    /// Checks if the MIME type indicates an OPDS entry response
-    private func isOPDSEntryMimeType(_ mimeType: String) -> Bool {
-        let lowercased = mimeType.lowercased()
-        // OPDS entry types that need to be parsed to extract acquisition links
-        return lowercased == "application/xml" ||
-            lowercased == "text/xml" ||
-            lowercased.contains("atom+xml") ||
-            lowercased.contains("opds-catalog")
-    }
+    // detectRightsManagement / isOPDSEntryMimeType moved to
+    // BackgroundDownloadHandler. Internal call sites below route through
+    // `backgroundDownloadHandler` directly.
 
     /// Checks if the MIME type indicates an OPDS 2 publication JSON response
     private func isOPDS2PublicationMimeType(_ mimeType: String) -> Bool {
@@ -1621,7 +1589,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         )
 
         // Detect rights from new acquisition type
-        let newRights = detectRightsManagement(from: acquisition.type)
+        let newRights = backgroundDownloadHandler.detectRightsManagement(from: acquisition.type)
 
         // Create follow-up download request
         var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
@@ -1686,7 +1654,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
 
             Log.info(#file, "Download MIME type detected for \(book.identifier): \(mimeType)")
 
-            let detectedRights = detectRightsManagement(from: mimeType)
+            let detectedRights = backgroundDownloadHandler.detectRightsManagement(from: mimeType)
 
             if detectedRights != .unknown {
                 if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(detectedRights) {
@@ -1750,7 +1718,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
 
         if rights == .unknown, let mimeType = task.response?.mimeType {
             Log.info(#file, "⚠️ Rights unknown, detecting from completion MIME type: \(mimeType)")
-            rights = detectRightsManagement(from: mimeType)
+            rights = backgroundDownloadHandler.detectRightsManagement(from: mimeType)
             if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(rights) {
                 await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
             }
@@ -1771,7 +1739,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
 
         // Check for OPDS entry XML response - this may contain the actual acquisition link
         let mimeType = task.response?.mimeType ?? ""
-        if !failureRequiringAlert && isOPDSEntryMimeType(mimeType) {
+        if !failureRequiringAlert && backgroundDownloadHandler.isOPDSEntryMimeType(mimeType) {
             Log.info(#file, "📖 Received OPDS entry response for \(book.identifier), attempting to extract acquisition link")
 
             if await handleOPDSEntryResponse(at: location, for: book, originalTask: task, session: session) {

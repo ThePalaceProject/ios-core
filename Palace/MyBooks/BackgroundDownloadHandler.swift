@@ -62,6 +62,9 @@ final class BackgroundDownloadHandler: NSObject {
             return .none
         case ContentTypeBearerToken:
             return .simplifiedBearerTokenJSON
+        case ContentTypeOPDSPublication:
+            // Intermediate type — will be handled by handleOPDS2PublicationResponse.
+            return .none
         #if FEATURE_OVERDRIVE
         case "application/json":
             return .overdriveManifestJSON
