@@ -10,6 +10,7 @@
 
 import Combine
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 @MainActor

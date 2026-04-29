@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - OPDS2Link Computed Properties Tests

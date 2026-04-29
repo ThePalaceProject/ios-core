@@ -78,7 +78,7 @@ private enum TPPOPDSFeedDataInspection {
 }
 
 extension TPPOPDSFeed {
-  @objc public static func withURL(
+  public static func withURL(
     _ url: URL?,
     shouldResetCache: Bool,
     useTokenIfAvailable: Bool,

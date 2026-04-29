@@ -9,6 +9,7 @@
 
 import Foundation
 import PalaceAudiobookToolkit
+import PalaceCatalog
 
 /// Provides audiobook location sync UI helpers formerly located in BookDetailViewModel.
 /// Also hosts the end-of-book alert and timer-based polling logic.

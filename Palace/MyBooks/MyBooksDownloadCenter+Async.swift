@@ -8,6 +8,7 @@
 import AuthenticationServices
 import Foundation
 import PalaceLogging
+import PalaceCatalog
 
 /// Modern async/await extensions for MyBooksDownloadCenter
 extension MyBooksDownloadCenter {

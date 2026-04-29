@@ -1,4 +1,5 @@
 import Foundation
+import PalaceCatalog
 
 @objc enum TPPBookButtonsState: Int {
   case canBorrow

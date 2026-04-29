@@ -1,4 +1,5 @@
 import Foundation
+import PalaceCatalog
 
 /// Authentication-method family. `AuthReducer` consumes this instead of
 /// `AccountDetails.Authentication` so the reducer stays decoupled from the

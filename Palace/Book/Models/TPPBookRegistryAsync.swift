@@ -9,6 +9,7 @@ import Foundation
 import Combine
 import UIKit
 import PalaceLogging
+import PalaceCatalog
 
 /// Modern async/await extensions for TPPBookRegistry.
 /// These provide actor-like async access to registry state, bridging

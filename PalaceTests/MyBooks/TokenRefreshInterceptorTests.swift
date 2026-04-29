@@ -8,6 +8,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - Mock Delegate

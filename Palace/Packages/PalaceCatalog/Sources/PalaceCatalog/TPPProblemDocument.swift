@@ -4,36 +4,36 @@ import Foundation
  Represents a Problem Document, outlined in https://tools.ietf.org/html/rfc7807
  */
 @objcMembers public class TPPProblemDocument: NSObject, Codable {
-    static let TypeNoActiveLoan =
+    public static let TypeNoActiveLoan =
         "http://librarysimplified.org/terms/problem/no-active-loan"
-    static let TypeLoanAlreadyExists =
+    public static let TypeLoanAlreadyExists =
         "http://librarysimplified.org/terms/problem/loan-already-exists"
-    static let TypeInvalidCredentials =
+    public static let TypeInvalidCredentials =
         "http://librarysimplified.org/terms/problem/credentials-invalid"
-    static let TypeCannotFulfillLoan =
+    public static let TypeCannotFulfillLoan =
         "http://librarysimplified.org/terms/problem/cannot-fulfill-loan"
-    static let TypeCannotIssueLoan =
+    public static let TypeCannotIssueLoan =
         "http://librarysimplified.org/terms/problem/cannot-issue-loan"
-    static let TypeCannotRender =
+    public static let TypeCannotRender =
         "http://librarysimplified.org/terms/problem/cannot-render"
 
     // MARK: - Account/Patron Status Types
 
     /// Patron's credentials have been suspended by the library
-    static let TypeCredentialsSuspended =
+    public static let TypeCredentialsSuspended =
         "http://librarysimplified.org/terms/problem/credentials-suspended"
 
     /// Patron has reached their loan limit
-    static let TypePatronLoanLimit =
+    public static let TypePatronLoanLimit =
         "http://librarysimplified.org/terms/problem/loan-limit-reached"
 
     /// Patron has reached their hold limit
-    static let TypePatronHoldLimit =
+    public static let TypePatronHoldLimit =
         "http://librarysimplified.org/terms/problem/hold-limit-reached"
 
     /// Feedbooks/LCP: DRM license term limit reached; the loan is already expired server-side.
     /// Appears in the `detail` field of a 500 problem document returned by the revoke endpoint.
-    static let DetailLoanTermLimitReached = "loan_term_limit_reached"
+    public static let DetailLoanTermLimitReached = "loan_term_limit_reached"
 
     private static let noStatus: Int = -1
 
@@ -44,21 +44,21 @@ import Foundation
     private static let instanceKey = "instance"
 
     /// Per RFC7807, this identifies the type of problem.
-    let type: String?
+    public let type: String?
 
     /// Per RFC7807, this is a short, human-readable summary of the problem.
-    let title: String?
+    public let title: String?
 
     /// Per RFC7807, this will match the HTTP status code.
-    let status: Int?
+    public let status: Int?
 
     /// Per RFC7807, this is a human-readable explanation of the specific problem
     /// that occurred. It can also provide information to correct the problem.
-    let detail: String?
+    public let detail: String?
 
     /// Per RFC7807, a URI reference that identifies the specific occurrence of
     /// the problem.
-    let instance: String?
+    public let instance: String?
 
     private init(_ dict: [String: Any]) {
         self.type = dict[TPPProblemDocument.typeKey] as? String
@@ -74,7 +74,7 @@ import Foundation
      @param data data with which to populate the ProblemDocument
      @return a ProblemDocument built from the given data
      */
-    static func fromData(_ data: Data) throws -> TPPProblemDocument {
+    public static func fromData(_ data: Data) throws -> TPPProblemDocument {
         let jsonDecoder = JSONDecoder()
         jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
 
@@ -121,7 +121,7 @@ import Foundation
 
     /// When the server returns application/api-problem+json but strict RFC 7807 decode fails,
     /// extracts a human-readable message from common keys so the user still sees the server's reason.
-    static func fromProblemResponseData(_ data: Data) -> TPPProblemDocument? {
+    public static func fromProblemResponseData(_ data: Data) -> TPPProblemDocument? {
         if let doc = try? fromData(data) {
             return doc
         }
@@ -147,11 +147,11 @@ import Foundation
      @param dict data with which to populate the ProblemDocument
      @return a ProblemDocument built from the given dicationary
      */
-    static func fromDictionary(_ dict: [String: Any]) -> TPPProblemDocument {
+    public static func fromDictionary(_ dict: [String: Any]) -> TPPProblemDocument {
         return TPPProblemDocument(dict)
     }
 
-    @objc var dictionaryValue: [String: Any] {
+    @objc public var dictionaryValue: [String: Any] {
         return [
             TPPProblemDocument.typeKey: type ?? "",
             TPPProblemDocument.titleKey: title ?? "",
@@ -161,7 +161,7 @@ import Foundation
         ]
     }
 
-    @objc var stringValue: String {
+    @objc public var stringValue: String {
         return "\(title.map { $0 + ": " } ?? "")\(detail ?? "")"
     }
 
@@ -182,7 +182,7 @@ import Foundation
     /// - Token expired/invalid → request new token
     /// - SAML session expired → re-authenticate via IdP
     /// - SAML bearer token invalid → restart SAML flow
-    var isRecoverableAuthError: Bool {
+    public var isRecoverableAuthError: Bool {
         guard let type = type else { return false }
         return type.contains(TPPProblemDocument.recoverableAuthPath)
     }
@@ -194,7 +194,7 @@ import Foundation
     /// - Invalid credentials (wrong username/password)
     /// - No access (user doesn't have library access)
     /// - Cannot identify patron (server config issue)
-    var isUnrecoverableAuthError: Bool {
+    public var isUnrecoverableAuthError: Bool {
         guard let type = type else { return false }
         return type.contains(TPPProblemDocument.unrecoverableAuthPath)
     }

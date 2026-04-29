@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 final class CatalogLaneSortingTests: XCTestCase {
@@ -78,7 +79,7 @@ final class CatalogLaneSortingTests: XCTestCase {
     let networkClient = NetworkClientMock()
     networkClient.stubOPDSResponse(for: feedURL, xml: xml)
     
-    let api = DefaultCatalogAPI(client: networkClient, parser: OPDSParser())
+    let api = DefaultCatalogAPI(client: networkClient, parser: OPDSParser(), featureFlags: MockFeatureFlagProvider())
     let viewModel = CatalogLaneMoreViewModel(title: "Test", url: feedURL, bookRegistry: AppContainer.production().bookRegistry, bookCellModelCache: AppContainer.production().bookCellModelCache, api: api)
     
     // Act
@@ -107,7 +108,7 @@ final class CatalogLaneSortingTests: XCTestCase {
     let networkClient = NetworkClientMock()
     networkClient.stubOPDSResponse(for: feedURL, xml: xml)
     
-    let api = DefaultCatalogAPI(client: networkClient, parser: OPDSParser())
+    let api = DefaultCatalogAPI(client: networkClient, parser: OPDSParser(), featureFlags: MockFeatureFlagProvider())
     let viewModel = CatalogLaneMoreViewModel(title: "Test", url: feedURL, bookRegistry: AppContainer.production().bookRegistry, bookCellModelCache: AppContainer.production().bookCellModelCache, api: api)
     
     await viewModel.fetchAndApplyFeed(at: feedURL)

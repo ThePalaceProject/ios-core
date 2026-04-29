@@ -15,6 +15,7 @@ import Combine
 import OverdriveProcessor
 import PalaceLogging
 import PalaceNetwork
+import PalaceCatalog
 #endif
 
 // DownloadCoordinator is defined in MyBooksDownloadQueue.swift

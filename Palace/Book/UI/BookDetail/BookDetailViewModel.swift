@@ -6,6 +6,7 @@ import PalaceAudiobookToolkit
 import ReadiumShared
 import ReadiumStreamer
 import PalaceLogging
+import PalaceCatalog
 #endif
 
 struct BookLane {

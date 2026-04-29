@@ -272,12 +272,12 @@ private let characterEntities: [Substring: Character] = [
 ]
 
 // Discussion: https://stackoverflow.com/questions/25607247/how-do-i-decode-html-entities-in-swift
-extension String {
+public extension String {
 
     /// Returns a new string made by replacing in the `String`
     /// all HTML character entity references with the corresponding
     /// character.
-    var stringByDecodingHTMLEntities: String {
+    public var stringByDecodingHTMLEntities: String {
 
         // ===== Utility functions =====
 
@@ -340,9 +340,9 @@ extension String {
     }
 }
 
-extension NSString {
+public extension NSString {
     @objc
-    func stringByDecodingHTMLEntities() -> NSString {
+    public func stringByDecodingHTMLEntities() -> NSString {
         return (self as String).stringByDecodingHTMLEntities as NSString
     }
 }

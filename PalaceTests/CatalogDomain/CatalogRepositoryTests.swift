@@ -10,6 +10,7 @@
 
 import XCTest
 import PalaceNetwork
+import PalaceCatalog
 @testable import Palace
 
 final class CatalogRepositoryTests: XCTestCase {
@@ -33,7 +34,7 @@ final class CatalogRepositoryTests: XCTestCase {
         super.setUp()
         networkClientMock = NetworkClientMock()
         parser = OPDSParser()
-        catalogAPI = DefaultCatalogAPI(client: networkClientMock, parser: parser)
+        catalogAPI = DefaultCatalogAPI(client: networkClientMock, parser: parser, featureFlags: MockFeatureFlagProvider())
         sut = CatalogRepository(api: catalogAPI)
     }
 
@@ -424,7 +425,7 @@ final class CatalogAPIDedupeTests: XCTestCase {
     override func setUp() {
         super.setUp()
         networkClient = NetworkClientMock()
-        api = DefaultCatalogAPI(client: networkClient, parser: OPDSParser())
+        api = DefaultCatalogAPI(client: networkClient, parser: OPDSParser(), featureFlags: MockFeatureFlagProvider())
         networkClient.stubOPDSResponse(
             for: feedURL,
             xml: NetworkClientMock.makeOPDSFeedXML(title: "Base")

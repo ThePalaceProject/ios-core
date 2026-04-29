@@ -1,4 +1,5 @@
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 /// Behavior tests for `AuthReducer` — the pure-function core of the

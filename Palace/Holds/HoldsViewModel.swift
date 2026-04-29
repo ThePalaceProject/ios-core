@@ -1,6 +1,7 @@
 import Combine
 import SwiftUI
 import PalaceLogging
+import PalaceCatalog
 
 @MainActor
 final class HoldsBookViewModel: ObservableObject, Identifiable {

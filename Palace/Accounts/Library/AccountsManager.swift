@@ -1,5 +1,6 @@
 import Foundation
 import PalaceLogging
+import PalaceCatalog
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 

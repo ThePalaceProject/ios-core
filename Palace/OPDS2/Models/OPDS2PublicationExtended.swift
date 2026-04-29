@@ -9,6 +9,7 @@
 import Foundation
 import UIKit
 import PalaceLogging
+import PalaceCatalog
 
 // MARK: - OPDS2 → TPPBook Bridge Utilities
 

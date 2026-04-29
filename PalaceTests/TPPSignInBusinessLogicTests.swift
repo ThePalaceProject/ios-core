@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 class TPPSignInBusinessLogicTests: XCTestCase {

@@ -1,6 +1,6 @@
 import Foundation
 
-extension NSDate {
+public extension NSDate {
 
   private static let rfc3339FormatterNoFraction: DateFormatter = {
     let formatter = DateFormatter()

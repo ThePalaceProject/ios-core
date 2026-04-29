@@ -1,3 +1,5 @@
+import PalaceCatalog
+
 @objcMembers class TPPBookDetailsProblemDocumentViewController: UIViewController {
     let doc: TPPProblemDocument
     let book: TPPBook?

@@ -1,4 +1,5 @@
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - Mock Network Fetcher

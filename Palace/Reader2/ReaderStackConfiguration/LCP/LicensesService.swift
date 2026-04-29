@@ -12,6 +12,7 @@ import ReadiumLCP
 import ReadiumZIPFoundation
 import CryptoSwift
 import PalaceLogging
+import PalaceCatalog
 
 enum TPPLicensesServiceError: Error {
     case licenseError(message: String)

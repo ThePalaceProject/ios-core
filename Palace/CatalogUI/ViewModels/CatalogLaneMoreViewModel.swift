@@ -3,6 +3,7 @@ import SwiftUI
 import Combine
 import PalaceLogging
 import PalaceNetwork
+import PalaceCatalog
 
 /// ViewModel for CatalogLaneMoreView that manages catalog feed loading, filtering, and sorting
 @MainActor
@@ -82,7 +83,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
     self.bookCellModelCache = bookCellModelCache
     self.api = api ?? DefaultCatalogAPI(
       client: URLSessionNetworkClient(),
-      parser: OPDSParser()
+      parser: OPDSParser(),
+      featureFlags: RemoteFeatureFlags.shared
     )
     
     setupObservers()

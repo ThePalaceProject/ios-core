@@ -9,6 +9,7 @@
 import AuthenticationServices
 import Foundation
 import PalaceLogging
+import PalaceCatalog
 
 // MARK: - TokenRefreshInterceptorDelegate
 

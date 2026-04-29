@@ -1,5 +1,6 @@
 import UIKit
 import PureLayout
+import PalaceCatalog
 
 @objc class TPPBookDetailDownloadFailedView: UIView {
 

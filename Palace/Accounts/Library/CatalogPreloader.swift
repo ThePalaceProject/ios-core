@@ -1,5 +1,6 @@
 import Foundation
 import PalaceLogging
+import PalaceCatalog
 
 /// Abstraction for preloading a feed URL. Allows mocking in tests.
 protocol CatalogFeedPreloading {

@@ -1,5 +1,6 @@
 import Foundation
 import PalaceLogging
+import PalaceCatalog
 
 /// Handles server synchronization for the book registry.
 /// Manages syncing loans from the OPDS feed and loading/saving from disk.

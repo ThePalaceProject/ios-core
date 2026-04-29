@@ -16,7 +16,9 @@ public final class OPDSParser {
         }
     }
 
-    func parseFeed(from data: Data) throws -> CatalogFeed {
+    public init() {}
+
+    public func parseFeed(from data: Data) throws -> CatalogFeed {
         let format = OPDSFormat.detect(from: data)
 
         switch format {

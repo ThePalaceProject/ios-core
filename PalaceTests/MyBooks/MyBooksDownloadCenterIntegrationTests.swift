@@ -11,6 +11,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - MockURLProtocol for Network Mocking

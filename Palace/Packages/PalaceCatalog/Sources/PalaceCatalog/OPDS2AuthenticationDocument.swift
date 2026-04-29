@@ -13,50 +13,50 @@ public enum OPDS2LinkRel: String {
 }
 
 public struct Announcement: Codable {
-    let id: String
-    let content: String
+    public let id: String
+    public let content: String
 }
 
 public struct OPDS2AuthenticationDocument: Codable {
-    struct Features: Codable {
-        let disabled: [String]?
-        let enabled: [String]?
+    public struct Features: Codable {
+        public let disabled: [String]?
+        public let enabled: [String]?
     }
 
-    struct Authentication: Codable {
-        struct Inputs: Codable {
-            struct Input: Codable {
-                let barcodeFormat: String?
-                let maximumLength: UInt?
-                let keyboard: String // TODO: Use enum instead (or not; it could break if new values are added)
+    public struct Authentication: Codable {
+        public struct Inputs: Codable {
+            public struct Input: Codable {
+                public let barcodeFormat: String?
+                public let maximumLength: UInt?
+                public let keyboard: String // TODO: Use enum instead (or not; it could break if new values are added)
             }
 
-            let login: Input
-            let password: Input
+            public let login: Input
+            public let password: Input
         }
 
-        struct Labels: Codable {
-            let login: String
-            let password: String
+        public struct Labels: Codable {
+            public let login: String
+            public let password: String
         }
 
-        let inputs: Inputs?
-        let labels: Labels?
-        let type: String
-        let description: String?
-        let links: [OPDS2Link]?
+        public let inputs: Inputs?
+        public let labels: Labels?
+        public let type: String
+        public let description: String?
+        public let links: [OPDS2Link]?
     }
 
-    let features: Features?
-    let links: [OPDS2Link]?
-    let title: String
-    let authentication: [Authentication]?
-    let serviceDescription: String?
-    let colorScheme: String?
-    let announcements: [Announcement]?
-    let id: String
+    public let features: Features?
+    public let links: [OPDS2Link]?
+    public let title: String
+    public let authentication: [Authentication]?
+    public let serviceDescription: String?
+    public let colorScheme: String?
+    public let announcements: [Announcement]?
+    public let id: String
 
-    static func fromData(_ data: Data) throws -> OPDS2AuthenticationDocument {
+    static public func fromData(_ data: Data) throws -> OPDS2AuthenticationDocument {
         let jsonDecoder = JSONDecoder()
         jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
 

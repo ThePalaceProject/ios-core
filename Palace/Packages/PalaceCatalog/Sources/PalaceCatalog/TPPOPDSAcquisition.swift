@@ -18,16 +18,16 @@ public struct TPPOPDSAcquisitionRelationSet: OptionSet {
     self.rawValue = rawValue
   }
 
-  static let generic    = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 0)
-  static let openAccess = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 1)
-  static let borrow     = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 2)
-  static let buy        = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 3)
-  static let sample     = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 4)
-  static let preview    = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 5)
-  static let subscribe  = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 6)
+  public static let generic    = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 0)
+  public static let openAccess = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 1)
+  public static let borrow     = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 2)
+  public static let buy        = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 3)
+  public static let sample     = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 4)
+  public static let preview    = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 5)
+  public static let subscribe  = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 6)
 
-  static let all: TPPOPDSAcquisitionRelationSet = [.generic, .openAccess, .borrow, .buy, .sample, .preview, .subscribe]
-  static let defaultAcquisition: TPPOPDSAcquisitionRelationSet = all.subtracting(.sample)
+  static public let all: TPPOPDSAcquisitionRelationSet = [.generic, .openAccess, .borrow, .buy, .sample, .preview, .subscribe]
+  static public let defaultAcquisition: TPPOPDSAcquisitionRelationSet = all.subtracting(.sample)
 }
 
 public let NYPLOPDSAcquisitionRelationSetAll: UInt = TPPOPDSAcquisitionRelationSet.all.rawValue

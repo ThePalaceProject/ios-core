@@ -11,6 +11,7 @@ import FirebaseCore
 #if canImport(FirebaseCrashlytics)
 import FirebaseCrashlytics
 import PalaceLogging
+import PalaceCatalog
 #endif
 
 private let nullString = "null"

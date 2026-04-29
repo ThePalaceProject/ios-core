@@ -9,12 +9,12 @@
 import Foundation
 
 public struct OPDS2Publication: Codable, Equatable, Sendable {
-    struct Metadata: Codable, Equatable, Sendable {
-        let updated: Date?
-        let description: String?
-        let id: String
-        let title: String
-        let author: [OPDS2Contributor]?
+    public struct Metadata: Codable, Equatable, Sendable {
+        public let updated: Date?
+        public let description: String?
+        public let id: String
+        public let title: String
+        public let author: [OPDS2Contributor]?
 
         private enum CodingKeys: String, CodingKey {
             case updated, description, id, title, author
@@ -22,7 +22,7 @@ public struct OPDS2Publication: Codable, Equatable, Sendable {
             case identifier
         }
 
-        init(updated: Date? = nil, description: String? = nil, id: String, title: String, author: [OPDS2Contributor]? = nil) {
+        public init(updated: Date? = nil, description: String? = nil, id: String, title: String, author: [OPDS2Contributor]? = nil) {
             self.updated = updated
             self.description = description
             self.id = id
@@ -30,7 +30,7 @@ public struct OPDS2Publication: Codable, Equatable, Sendable {
             self.author = author
         }
 
-        init(from decoder: Decoder) throws {
+        public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             title = try container.decode(String.self, forKey: .title)
             description = try container.decodeIfPresent(String.self, forKey: .description)
@@ -60,7 +60,7 @@ public struct OPDS2Publication: Codable, Equatable, Sendable {
             }
         }
 
-        func encode(to encoder: Encoder) throws {
+        public func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(id, forKey: .id)
             try container.encode(title, forKey: .title)
@@ -70,29 +70,29 @@ public struct OPDS2Publication: Codable, Equatable, Sendable {
         }
     }
 
-    let links: [OPDS2Link]
-    let metadata: Metadata
-    let images: [OPDS2Link]?
+    public let links: [OPDS2Link]
+    public let metadata: Metadata
+    public let images: [OPDS2Link]?
 }
 
 private let imageType = "image/png"
 
-extension OPDS2Publication {
-    var imageURL: URL? {
+public extension OPDS2Publication {
+    public var imageURL: URL? {
         guard let image = images?.first(where: { $0.type == imageType }) else {
             return nil
         }
         return URL(string: image.href)
     }
 
-    var thumbnailURL: URL? {
+    public var thumbnailURL: URL? {
         guard let thumbnail = images?.first(where: { $0.type == imageType && ($0.rel ?? "").contains("thumbnail") }) else {
             return nil
         }
         return URL(string: thumbnail.href)
     }
 
-    var coverURL: URL? {
+    public var coverURL: URL? {
         guard let cover = images?.first(where: { $0.type == imageType && ($0.rel ?? "").contains("cover") }) else {
             return nil
         }

@@ -3,17 +3,17 @@ import Foundation
 public struct CatalogFeed {
     public let title: String
     public let entries: [CatalogEntry]
-    let opdsFeed: TPPOPDSFeed
+    public let opdsFeed: TPPOPDSFeed
 
     /// OPDS 2 feed data (nil when feed was parsed as OPDS 1)
-    let opds2Feed: OPDS2Feed?
+    public let opds2Feed: OPDS2Feed?
 
     /// True when this feed came from an OPDS 2 source
-    var isOPDS2: Bool { opds2Feed != nil }
+    public var isOPDS2: Bool { opds2Feed != nil }
 
     // MARK: - OPDS 1 init (existing path)
 
-    init?(feed: TPPOPDSFeed?) {
+    public init?(feed: TPPOPDSFeed?) {
         guard let feed else { return nil }
         self.title = feed.title ?? "Catalog"
         self.opdsFeed = feed
@@ -24,7 +24,7 @@ public struct CatalogFeed {
 
     // MARK: - OPDS 2 init
 
-    init(opds2Feed: OPDS2Feed) {
+    public init(opds2Feed: OPDS2Feed) {
         self.title = opds2Feed.title
         self.opds2Feed = opds2Feed
 
@@ -65,13 +65,13 @@ public struct CatalogEntry: Identifiable {
     public let title: String
     public let authors: [String]
 
-    init(entry: TPPOPDSEntry) {
+    public init(entry: TPPOPDSEntry) {
         self.id = entry.identifier
         self.title = entry.title
         self.authors = (entry.authorStrings as? [String]) ?? []
     }
 
-    init(opds2Publication pub: OPDS2Publication) {
+    public init(opds2Publication pub: OPDS2Publication) {
         self.id = pub.metadata.id
         self.title = pub.metadata.title
         self.authors = []

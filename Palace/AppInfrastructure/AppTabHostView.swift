@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import PalaceLogging
 import PalaceNetwork
+import PalaceCatalog
 
 struct AppTabHostView: View {
     @StateObject private var router = AppTabRouter()
@@ -15,7 +16,7 @@ struct AppTabHostView: View {
         self.bookRegistry = appContainer.bookRegistry
         let client = URLSessionNetworkClient()
         let parser = OPDSParser()
-        let api = DefaultCatalogAPI(client: client, parser: parser)
+        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: RemoteFeatureFlags.shared)
         let repository = CatalogRepository(api: api)
         _catalogViewModel = StateObject(wrappedValue: CatalogViewModel(
             repository: repository,

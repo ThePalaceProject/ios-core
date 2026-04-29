@@ -1,5 +1,6 @@
 import MessageUI
 import SwiftUI
+import PalaceCatalog
 
 @objcMembers
 class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, MFMailComposeViewControllerDelegate {

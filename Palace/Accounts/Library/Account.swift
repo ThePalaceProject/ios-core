@@ -1,4 +1,5 @@
 import PalaceLogging
+import PalaceCatalog
 
 private let userAboveAgeKey              = "TPPSettingsUserAboveAgeKey"
 private let accountSyncEnabledKey        = "TPPAccountSyncEnabledKey"

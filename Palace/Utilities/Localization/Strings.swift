@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 
 struct Strings {
 

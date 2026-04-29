@@ -7,6 +7,7 @@
 
 import Foundation
 import UIKit
+import PalaceCatalog
 
 /// Captures full context about an error occurrence for the "View Error Details" feature.
 ///

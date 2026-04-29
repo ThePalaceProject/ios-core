@@ -1,7 +1,7 @@
 import Foundation
 import CommonCrypto
 
-extension NSString {
+public extension NSString {
 
   @objc public func fileSystemSafeBase64DecodedString(usingEncoding encoding: UInt) -> String? {
     var s = (self as String)
