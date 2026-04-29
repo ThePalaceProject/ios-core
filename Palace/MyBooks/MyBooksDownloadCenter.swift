@@ -81,19 +81,21 @@ import PalaceCatalog
     // Serial execution for download operations (replaces downloadQueue)
     private let downloadExecutor = SerialExecutor()
 
-    let downloadProgressPublisher = PassthroughSubject<(String, Double), Never>()
+    let downloadProgressPublisher: PassthroughSubject<(String, Double), Never>
 
     /// Publishes download error alerts for a given book identifier.
     /// Subscribers (e.g. view models showing a half sheet) can present the
     /// error inline via SwiftUI `.alert` instead of relying on UIKit
     /// presentation, which can fail when a SwiftUI sheet is topmost.
-    let downloadErrorPublisher = PassthroughSubject<DownloadErrorInfo, Never>()
+    let downloadErrorPublisher: PassthroughSubject<DownloadErrorInfo, Never>
+
+    /// Owns the Combine publishers + broadcast-throttling state machine.
+    /// MyBooksDownloadCenter exposes its publishers as the same passthrough
+    /// instances so external subscribers see one continuous stream.
+    private let progressReporter: DownloadProgressReporter
 
     private var maxConcurrentDownloads: Int = 4  // Increased from 2 for better UX
     private let downloadCoordinator = DownloadCoordinator()
-
-    @MainActor private var lastBroadcastTime: Date = Date.distantPast
-    @MainActor private var pendingBroadcast: DispatchWorkItem?
 
     init(
         // Test-only override. Production code passes nil so `userAccount`
@@ -140,6 +142,14 @@ import PalaceCatalog
             bookRegistry: bookRegistry,
             accountsManager: accountsManager
         )
+        // Build the DownloadProgressReporter from the same announcer the
+        // download center uses; expose its publishers as our public ones so
+        // external subscribers (BookCellModel, BookDetailViewModel, etc.)
+        // see one continuous Combine stream regardless of internal routing.
+        let reporter = DownloadProgressReporter(accessibilityAnnouncements: accessibilityAnnouncements)
+        self.progressReporter = reporter
+        self.downloadProgressPublisher = reporter.downloadProgressPublisher
+        self.downloadErrorPublisher = reporter.downloadErrorPublisher
         self.errorActivityTracker = errorActivityTracker
         self.userRetryTracker = userRetryTracker
         self.reachability = reachability
@@ -157,6 +167,10 @@ import PalaceCatalog
         #endif
 
         super.init()
+
+        // Notification sender has to outlive `super.init()` since the
+        // reporter holds it weakly — set after self is fully constructed.
+        progressReporter.notificationSender = self
 
         #if FEATURE_DRM_CONNECTOR
         // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
@@ -257,8 +271,7 @@ import PalaceCatalog
     /// it via VoiceOver so assistive technology users hear the error without
     /// needing to navigate to the alert element.
     private func publishAndAnnounceError(_ errorInfo: DownloadErrorInfo) {
-        downloadErrorPublisher.send(errorInfo)
-        accessibilityAnnouncements.announceStatus(title: errorInfo.title, message: errorInfo.message)
+        progressReporter.publishAndAnnounceError(errorInfo)
     }
 
     func markDownloadSuccessful(for book: TPPBook) {
@@ -2061,39 +2074,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     }
 
     func broadcastUpdate() {
-        Task { @MainActor [weak self] in
-            self?.broadcastUpdateOnMain()
-        }
-    }
-
-    @MainActor private func broadcastUpdateOnMain() {
-        pendingBroadcast?.cancel()
-
-        let timeSinceLastBroadcast = Date().timeIntervalSince(lastBroadcastTime)
-        let minimumBroadcastInterval: TimeInterval = 0.5
-
-        if timeSinceLastBroadcast >= minimumBroadcastInterval {
-            broadcastUpdateNow()
-        } else {
-            let delay = minimumBroadcastInterval - timeSinceLastBroadcast
-            let workItem = DispatchWorkItem { [weak self] in
-                Task { @MainActor in
-                    self?.broadcastUpdateNow()
-                }
-            }
-            pendingBroadcast = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
-        }
-    }
-
-    @MainActor private func broadcastUpdateNow() {
-        lastBroadcastTime = Date()
-        pendingBroadcast = nil
-
-        NotificationCenter.default.post(
-            name: Notification.Name.TPPMyBooksDownloadCenterDidChange,
-            object: self
-        )
+        progressReporter.broadcastUpdate()
     }
 
 }
