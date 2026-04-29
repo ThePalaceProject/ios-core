@@ -118,7 +118,14 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
         let copies = OPDS2Copies(total: 10, available: 3)
 
         let result = OPDS2BookBridge.convertAvailability(availability: avail, copies: copies, holds: nil)
-        XCTAssertTrue(result is TPPOPDSAcquisitionAvailabilityLimited)
+        XCTAssertTrue(result is TPPOPDSAcquisitionAvailabilityLimited,
+                      "available + copies → Limited")
+        // The Limited variant must NOT be a Reserved or Unavailable instance —
+        // those are distinct states from "available with copies".
+        XCTAssertFalse(result is TPPOPDSAcquisitionAvailabilityReserved,
+                       "available + copies must not classify as Reserved")
+        XCTAssertFalse(result is TPPOPDSAcquisitionAvailabilityUnavailable,
+                       "available + copies must not classify as Unavailable")
     }
 
     func testConvertAvailabilityAvailableWithoutCopies() {
@@ -165,18 +172,34 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
     }
 
     func testConvertAvailabilityUnknownState() {
-        let avail = OPDS2Availability(state: "something_else")
-
-        let result = OPDS2BookBridge.convertAvailability(availability: avail, copies: nil, holds: nil)
-        XCTAssertTrue(result is TPPOPDSAcquisitionAvailabilityUnlimited,
-                       "Unknown state should default to unlimited")
+        // Try several distinct unknown state strings — all must default to
+        // Unlimited (the failsafe/permissive choice). A mutant that defaults
+        // to Unavailable would block the user from acquiring a book whose
+        // state we simply don't recognize.
+        for state in ["something_else", "futureState", "garbage_value", ""] {
+            let avail = OPDS2Availability(state: state)
+            let result = OPDS2BookBridge.convertAvailability(
+                availability: avail, copies: nil, holds: nil)
+            XCTAssertTrue(result is TPPOPDSAcquisitionAvailabilityUnlimited,
+                          "Unknown state '\(state)' must default to Unlimited (the permissive choice)")
+            XCTAssertFalse(result is TPPOPDSAcquisitionAvailabilityUnavailable,
+                           "Unknown state '\(state)' must NOT default to Unavailable — that would block the user")
+        }
     }
 
     // MARK: - convertIndirectAcquisitions Tests
 
-    func testConvertIndirectAcquisitionsNil() {
-        let result = OPDS2BookBridge.convertIndirectAcquisitions(nil)
-        XCTAssertTrue(result.isEmpty)
+    /// `convertIndirectAcquisitions(nil)` and `convertIndirectAcquisitions([])`
+    /// must both yield an empty result without crashing. Pin both shapes.
+    /// A mutant that returned a single empty placeholder on nil would fail
+    /// the count assertion.
+    func testConvertIndirectAcquisitions_nilOrEmptyInputYieldsEmptyResult() {
+        XCTAssertTrue(OPDS2BookBridge.convertIndirectAcquisitions(nil).isEmpty,
+                      "nil input must yield empty array")
+        XCTAssertEqual(OPDS2BookBridge.convertIndirectAcquisitions(nil).count, 0,
+                       "nil input must yield exactly zero entries — guards a placeholder-on-nil mutant")
+        XCTAssertTrue(OPDS2BookBridge.convertIndirectAcquisitions([]).isEmpty,
+                      "Empty input array must yield empty result")
     }
 
     func testConvertIndirectAcquisitionsFlat() {
@@ -399,11 +422,22 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
         XCTAssertTrue(epubPub.isEPUB)
     }
 
-    func testFullPublicationId() {
-        let metadata = makeMinimalMetadata(identifier: "urn:isbn:1234567890")
-        let pub = OPDS2FullPublication(metadata: metadata, links: [], images: nil)
+    /// `OPDS2FullPublication.id` delegates to `metadata.identifier`. Lock
+    /// distinct ids across two instances to catch a mutant that returns a
+    /// hard-coded constant from `id`. Identifiable-instance distinctness
+    /// matters for SwiftUI list diffing.
+    func testFullPublicationId_delegatesToMetadataIdentifierAcrossInstances() {
+        let pubA = OPDS2FullPublication(
+            metadata: makeMinimalMetadata(identifier: "urn:isbn:1234567890"),
+            links: [], images: nil)
+        let pubB = OPDS2FullPublication(
+            metadata: makeMinimalMetadata(identifier: "urn:isbn:0987654321"),
+            links: [], images: nil)
 
-        XCTAssertEqual(pub.id, "urn:isbn:1234567890")
+        XCTAssertEqual(pubA.id, "urn:isbn:1234567890")
+        XCTAssertEqual(pubB.id, "urn:isbn:0987654321")
+        XCTAssertNotEqual(pubA.id, pubB.id,
+                          "Distinct metadata identifiers must yield distinct ids — guards a constant-return mutant on `id`")
     }
 
     // MARK: - OPDS2FullMetadata Codable Tests
