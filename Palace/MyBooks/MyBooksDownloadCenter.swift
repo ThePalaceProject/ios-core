@@ -49,6 +49,9 @@ import PalaceCatalog
     private let diskBudgetManager: DiskBudgetManager
     private let alertPresenter: DownloadAlertPresenter
     private let throttlingService: DownloadThrottlingService
+    #if LCP
+    private let lcpFulfillmentHandler: LCPFulfillmentHandler
+    #endif
 
     // Phase 4 (Architectural Triad) — services formerly reached through
     // `.shared` are now stored properties initialized via the constructor.
@@ -238,6 +241,21 @@ import PalaceCatalog
         self.throttlingService = throttlingService ?? DownloadThrottlingService(
             stateManager: stateManager
         )
+        #if LCP
+        // Build the LCP handler from the same shared services MBDC already
+        // wired (registry / state / reporter / presenter / file manager /
+        // background handler) so error reporting, progress publishing, and
+        // file moves stay coherent across the LCP code path.
+        let backgroundHandler = self.backgroundDownloadHandler
+        self.lcpFulfillmentHandler = LCPFulfillmentHandler(
+            bookRegistry: bookRegistry,
+            stateManager: stateManager,
+            progressReporter: reporter,
+            alertPresenter: self.alertPresenter,
+            bookFileManager: self.bookFileManager,
+            backgroundDownloadHandler: backgroundHandler
+        )
+        #endif
         self.errorActivityTracker = errorActivityTracker
         self.userRetryTracker = userRetryTracker
         self.reachability = reachability
@@ -267,6 +285,9 @@ import PalaceCatalog
         self.backgroundDownloadHandler.delegate = self
         self.alertPresenter.delegate = self
         self.throttlingService.delegate = self
+        #if LCP
+        self.lcpFulfillmentHandler.delegate = self
+        #endif
 
         #if FEATURE_DRM_CONNECTOR
         // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
@@ -2217,136 +2238,11 @@ extension MyBooksDownloadCenter {
 
     func fulfillLCPLicense(fileUrl: URL, forBook book: TPPBook, downloadTask: URLSessionDownloadTask) {
         #if LCP
-        let lcpService = LCPLibraryService()
-        let licenseUrl = fileUrl.deletingPathExtension().appendingPathExtension(lcpService.licenseExtension)
-
-        do {
-            _ = try FileManager.default.replaceItemAt(licenseUrl, withItemAt: fileUrl)
-        } catch {
-            TPPErrorLogger.logError(error, summary: "Error renaming LCP license file", metadata: [
-                "fileUrl": fileUrl.absoluteString,
-                "licenseUrl": licenseUrl.absoluteString,
-                "book": book.loggableDictionary
-            ])
-            failDownloadWithAlert(for: book, withMessage: error.localizedDescription)
-            return
-        }
-
-        let lcpProgress: (Double) -> Void = { [weak self] progressValue in
-            guard let self = self else { return }
-            Task {
-                if let info = await self.downloadInfoAsync(forBookIdentifier: book.identifier)?.withDownloadProgress(progressValue) {
-                    await self.bookIdentifierToDownloadInfo.set(book.identifier, value: info)
-                }
-                // Publish to progress publisher so UI updates (HalfSheet, BookCell, etc.)
-                await MainActor.run {
-                    self.downloadProgressPublisher.send((book.identifier, progressValue))
-                }
-                self.broadcastUpdate()
-            }
-        }
-
-        let lcpCompletion: (URL?, Error?) -> Void = { [weak self] localUrl, error in
-            guard let self = self else { return }
-            if let error = error {
-                let summary = "\(String(describing: book.distributor)) LCP license fulfillment error"
-                TPPErrorLogger.logError(error, summary: summary, metadata: [
-                    "book": book.loggableDictionary,
-                    "licenseURL": licenseUrl.absoluteString,
-                    "localURL": localUrl?.absoluteString ?? "N/A"
-                ])
-                let errorMessage = "Fulfilment Error: \(error.localizedDescription)"
-                self.failDownloadWithAlert(for: book, withMessage: errorMessage)
-                return
-            }
-            guard let localUrl = localUrl,
-                  let license = TPPLCPLicense(url: licenseUrl)
-            else {
-                let errorMessage = "Error with LCP license fulfillment: \(localUrl?.absoluteString ?? "")"
-                self.failDownloadWithAlert(for: book, withMessage: errorMessage)
-                return
-            }
-            self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
-
-            if !self.backgroundDownloadHandler.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask) {
-                if book.defaultBookContentType == .audiobook {
-                    Log.warn(#file, "Content storage failed for audiobook, but streaming still available")
-                } else {
-                    let errorMessage = "Error replacing content file with file \(localUrl.absoluteString)"
-                    self.failDownloadWithAlert(for: book, withMessage: errorMessage)
-                    return
-                }
-            } else {
-                if book.defaultBookContentType == .audiobook {
-                    Log.info(#file, "Audiobook content stored successfully, offline playback now available")
-                }
-            }
-
-            Task {
-                if book.defaultBookContentType == .pdf,
-                   let bookURL = self.fileUrl(for: book.identifier) {
-                    self.bookRegistry.setState(.downloading, for: book.identifier)
-                    _ = try? await LCPPDFs(url: bookURL)?.extract(url: bookURL)
-                    self.markDownloadSuccessful(for: book)
-                }
-            }
-        }
-
-        let fulfillmentDownloadTask = lcpService.fulfill(licenseUrl, progress: lcpProgress, completion: lcpCompletion)
-
-        if book.defaultBookContentType == .audiobook {
-            Log.info(#file, "LCP audiobook license fulfilled, ready for streaming: \(book.identifier)")
-
-            if let license = TPPLCPLicense(url: licenseUrl) {
-                self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
-            } else {
-                Log.error(#file, "🔑 ❌ Failed to read license for fulfillment ID")
-            }
-
-            self.copyLicenseForStreaming(book: book, sourceLicenseUrl: licenseUrl)
-            self.markDownloadSuccessful(for: book)
-
-            runOnMainAsync {
-                self.broadcastUpdate()
-            }
-        }
-
-        if let fulfillmentDownloadTask = fulfillmentDownloadTask {
-            let downloadInfo = MyBooksDownloadInfo(downloadProgress: 0.0, downloadTask: fulfillmentDownloadTask, rightsManagement: .none)
-            Task {
-                await self.bookIdentifierToDownloadInfo.set(book.identifier, value: downloadInfo)
-            }
-        }
+        lcpFulfillmentHandler.fulfillLCPLicense(fileUrl: fileUrl, forBook: book, downloadTask: downloadTask)
         #endif
     }
 
-    /// Copies the LCP license file to the content directory for streaming support
-    /// while preserving the existing fulfillment flow
-    private func copyLicenseForStreaming(book: TPPBook, sourceLicenseUrl: URL) {
-        #if LCP
-        Log.info(#file, "🎵 Starting license copy for streaming: \(book.identifier)")
-
-        guard let finalContentURL = self.fileUrl(for: book.identifier) else {
-            Log.error(#file, "🎵 ❌ Unable to determine final content URL for streaming license copy")
-            return
-        }
-
-        let streamingLicenseUrl = finalContentURL.deletingPathExtension().appendingPathExtension("lcpl")
-        Log.info(#file, "🎵 Copying license FROM: \(sourceLicenseUrl.path)")
-        Log.info(#file, "🎵 Copying license TO: \(streamingLicenseUrl.path)")
-
-        do {
-            try? FileManager.default.removeItem(at: streamingLicenseUrl)
-            try FileManager.default.copyItem(at: sourceLicenseUrl, to: streamingLicenseUrl)
-        } catch {
-            TPPErrorLogger.logError(error, summary: "Failed to copy LCP license for streaming", metadata: [
-                "book": book.loggableDictionary,
-                "sourceLicenseUrl": sourceLicenseUrl.absoluteString,
-                "targetLicenseUrl": streamingLicenseUrl.absoluteString
-            ])
-        }
-        #endif
-    }
+    // copyLicenseForStreaming moved to LCPFulfillmentHandler (private there).
 
     func failDownloadWithAlert(for book: TPPBook, withMessage message: String? = nil) {
         alertPresenter.failDownloadWithAlert(for: book, withMessage: message)
@@ -2540,3 +2436,13 @@ extension MyBooksDownloadCenter: DownloadAlertPresenterDelegate {}
 // — no synthesis needed.
 
 extension MyBooksDownloadCenter: DownloadThrottlingServiceDelegate {}
+
+// MARK: - LCPFulfillmentHandlerDelegate
+//
+// `markDownloadSuccessful(for:)` is internal on MBDC (promoted in
+// commit 2). Empty conformance gated on `#if LCP` since the protocol
+// itself only exists in LCP builds.
+
+#if LCP
+extension MyBooksDownloadCenter: LCPFulfillmentHandlerDelegate {}
+#endif
