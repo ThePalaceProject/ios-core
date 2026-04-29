@@ -1498,7 +1498,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                 return
             }
 
-            await handleDownloadProgress(
+            await backgroundDownloadHandler.handleDownloadProgress(
                 for: book,
                 task: downloadTask,
                 bytesWritten: bytesWritten,
@@ -1638,53 +1638,9 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
     }
 
-    private func handleDownloadProgress(
-        for book: TPPBook,
-        task: URLSessionDownloadTask,
-        bytesWritten: Int64,
-        totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64
-    ) async {
-
-        if bytesWritten == totalBytesWritten {
-            guard let mimeType = task.response?.mimeType else {
-                Log.error(#file, "No MIME type in response for book: \(book.identifier)")
-                return
-            }
-
-            Log.info(#file, "Download MIME type detected for \(book.identifier): \(mimeType)")
-
-            let detectedRights = backgroundDownloadHandler.detectRightsManagement(from: mimeType)
-
-            if detectedRights != .unknown {
-                if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(detectedRights) {
-                    await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
-                }
-            } else if userAccount.isTokenRefreshRequired() {
-                NSLog("Authentication might be needed after all")
-                networkExecutor.refreshTokenAndResume(task: task)
-                return
-            }
-        }
-
-        let rightsManagement = await downloadInfoAsync(forBookIdentifier: book.identifier)?.rightsManagement ?? .none
-        if rightsManagement != .adobe && rightsManagement != .simplifiedBearerTokenJSON && rightsManagement != .overdriveManifestJSON {
-            if totalBytesExpectedToWrite > 0 {
-                let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-                if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withDownloadProgress(progress) {
-                    await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
-                }
-
-                await MainActor.run {
-                    downloadProgressPublisher.send((book.identifier, progress))
-                }
-
-                if progress > 0.95 || Int(progress * 100) % 20 == 0 {
-                    broadcastUpdate()
-                }
-            }
-        }
-    }
+    // handleDownloadProgress moved to BackgroundDownloadHandler. The
+    // URLSessionDownloadDelegate progress callback above now routes through
+    // `backgroundDownloadHandler.handleDownloadProgress(...)` directly.
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         // Move file to a safe location first
