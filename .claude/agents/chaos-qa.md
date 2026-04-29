@@ -162,3 +162,99 @@ source of truth; the human will read it.
   `chaos-harness-unrecoverable`, and stop early.
 - If a strategy finds no anomaly in 2 paths, switch to a different
   strategy. Don't burn budget on a strategy that this build is robust to.
+
+## Lessons from the 2026-04-29 dogfood retro
+
+These rules are derived from real chaos sessions. Read them before you
+start — they prevent the failure modes the previous agent hit.
+
+### Coordinate guardrails (extension of the swipe rule)
+
+- **Swipes**: keep both endpoints in y ∈ [200, 2200]. Swipes ending below
+  y=2400 fire the iOS home gesture.
+- **Taps**: avoid rapid-fire taps in y ∈ [2470, 2520] — that's the iPhone
+  tab-bar zone on a 1206×2622 sim, and rapid taps there can leak into the
+  iOS home indicator's gesture window. If a strategy needs the tab bar
+  (e.g. tab-switch race), insert a 200ms wait between taps and re-observe
+  between actions to verify Palace is still frontmost.
+- **General rule**: after every adversarial action that touches y > 2400,
+  call `simdrive.observe` and check that the title-bar text or app
+  identifier confirms Palace is still in foreground. If not, the path
+  ended outside the app — discard it as no-evidence and try a different
+  one.
+
+### `simdrive.logs` defaults
+
+The crash-fatal-exit-exception predicate from the original prompt is too
+narrow. **Start with the broader predicate** below; only filter further if
+you're hunting a specific symptom:
+
+```
+processImagePath CONTAINS "Palace" AND
+  (eventMessage CONTAINS "error" OR
+   eventMessage CONTAINS "Error" OR
+   eventMessage CONTAINS "warn" OR
+   eventMessage CONTAINS "fail" OR
+   eventMessage CONTAINS "Failed" OR
+   eventMessage CONTAINS "exception" OR
+   eventMessage CONTAINS "exit")
+```
+
+Empty body interpretation: `simdrive.logs` returns the header line
+`"Timestamp ... Process[PID:TID]"` even when zero events match. **A
+header-only response means no matches**, NOT success. Treat zero matches
+as no-evidence and discard the path's finding (per the log-evidence rule)
+unless the visible UI itself is anomalous.
+
+### Replay output path
+
+`simdrive.record_start` / `record_stop` saves YAMLs under
+`~/.simdrive/recordings/<name>/recording.yaml`, NOT into the configured
+`replays_dir`. After each `record_stop`, if you want to keep the replay,
+copy it explicitly:
+
+```bash
+cp ~/.simdrive/recordings/<name>/recording.yaml \
+   <replays_dir>/<name>.yaml
+```
+
+If you don't keep it, the recording stays in `~/.simdrive/recordings/`
+and gets garbage-collected eventually — that's fine for paths that
+didn't surface findings.
+
+### Build-config artifact rule (don't false-positive on these)
+
+Some "anomalies" are caused by the build configuration of the candidate
+app, not by production code. **Do not file a regression finding** when:
+
+- The candidate app bundle contains `PlugIns/PalaceTests.xctest/` AND the
+  log evidence references symbols only defined in the test target. iOS
+  loads PlugIns on app launch, so a `build-for-testing` install will
+  register test-target classes (URL protocols, mocks, etc.) at runtime.
+  These behaviors do NOT happen in a normal release build. Verify before
+  filing:
+
+  ```bash
+  ls "$(find ~/Library/Developer/CoreSimulator/Devices/<UDID>/data/Containers/Bundle/Application -name Palace.app | head -1)/PlugIns/"
+  ```
+
+  If `PalaceTests.xctest` is present, classify any finding that names a
+  test-target symbol as `behavior-change / cosmetic` with a Notes line
+  warning the human curator: `BUILD-CONFIG ARTIFACT — does not occur in
+  release builds`. These are still useful signals for the dev team
+  (sometimes the test-host configuration leaks something it shouldn't),
+  but they are NOT regressions and must NOT promote into the replay
+  corpus.
+
+- The candidate app bundle contains `__preview.dylib`. Same family —
+  Xcode SwiftUI previews link in extra symbols; don't flag findings that
+  reference preview-only symbols as production bugs.
+
+### Hard-stop discipline
+
+The budget cap is hard. **The previous agent went 8min/6min** on its
+first dogfood run. That's a violation. When wall-clock minutes hit the
+cap during ANY action — observe, tap, log query, even mid-write of the
+findings CSV — finish the current write atomically, write the summary,
+and exit. Do NOT start another path "to round things out." The whole
+point of the budget is that the cost is bounded for the invoker.

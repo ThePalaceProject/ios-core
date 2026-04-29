@@ -1,5 +1,13 @@
 # Chaos-QA: adversarial iOS testing via simdrive
 
+> **Status (2026-04-29):** on-demand only. The nightly workflow is renamed
+> to `chaos-qa-nightly.yml.disabled` until we have a proven track record
+> and a self-hosted runner ready to absorb the cost. Re-enable by removing
+> the `.disabled` suffix. Until then, the only chaos-qa entry points are
+> (a) PR comments containing `@chaos-qa investigate` and (b) running
+> `scripts/run-chaos-pass.sh` locally.
+
+
 Adversarial QA agent that finds the bugs deterministic tests can't.
 Seeds from a captured fixture state, then deviates with rapid taps,
 pathological inputs, background/foreground races, and other tactics.
