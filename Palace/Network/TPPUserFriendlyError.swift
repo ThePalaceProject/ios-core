@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 
 /// A protocol describing an error that MAY offer user friendly
 /// messaging to the user.

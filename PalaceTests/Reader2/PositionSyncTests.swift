@@ -7,6 +7,7 @@
 
 import XCTest
 import ReadiumShared
+import PalaceCatalog
 @testable import Palace
 
 final class PositionSyncTests: XCTestCase {

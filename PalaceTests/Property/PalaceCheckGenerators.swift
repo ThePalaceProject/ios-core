@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - Primitives

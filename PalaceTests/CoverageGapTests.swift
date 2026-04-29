@@ -10,6 +10,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - Gap 1-3: Account, AccountDetails, Authentication (Account.swift)

@@ -9,6 +9,7 @@
 import Foundation
 import PalaceLogging
 import PalaceNetwork
+import PalaceCatalog
 
 private struct TPPNetworkTaskInfo {
     var progressData: Data

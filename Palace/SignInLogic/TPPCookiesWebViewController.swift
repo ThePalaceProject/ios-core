@@ -9,6 +9,7 @@
 import UIKit
 import WebKit
 import PalaceLogging
+import PalaceCatalog
 
 // WARNING: This does not work  well for iOS versions lower than 11
 @objcMembers

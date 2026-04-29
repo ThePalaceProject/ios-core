@@ -7,6 +7,7 @@
 
 import XCTest
 import Foundation
+import PalaceCatalog
 @testable import Palace
 
 final class PalaceCheckPropertyTests: XCTestCase {

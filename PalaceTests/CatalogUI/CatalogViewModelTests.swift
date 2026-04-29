@@ -1,5 +1,6 @@
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - CatalogState Tests

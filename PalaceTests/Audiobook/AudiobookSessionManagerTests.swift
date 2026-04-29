@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - AudiobookSessionState Tests

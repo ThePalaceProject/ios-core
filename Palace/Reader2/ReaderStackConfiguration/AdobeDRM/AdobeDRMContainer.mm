@@ -33,6 +33,16 @@
 @protocol NYPLUserAccountInputProvider;
 typedef NS_ENUM(NSInteger, NYPLCachingStrategy);
 
+// Forward-declare Swift types now living in PalaceCatalog. ObjC++ can't
+// @import the package directly (C++ modules disabled in this PCH); the
+// auto-generated Palace-Swift.h needs these forward decls to compile.
+@class TPPOPDSFeed;
+@class TPPOPDSEntry;
+@class TPPOPDSLink;
+@class TPPProblemDocument;
+@class TPPXML;
+@class TPPOpenSearchDescription;
+
 #import "Palace-Swift.h"
 
 static id acsdrm_lock = nil;
@@ -41,8 +51,8 @@ static id acsdrm_lock = nil;
   @private dpdev::Device *device;
   @private dp::Data rightsXMLData;
   @private NSData *encryptionData;
-  @private TPPXML *permissionsNode;
 }
+@property (nonatomic, strong) AdobeRightsParser *rightsParser;
 @end
 
 
@@ -67,9 +77,9 @@ static id acsdrm_lock = nil;
     // *_rights.xml file contents
     NSString *rightsPath = [NSString stringWithFormat:@"%@%@", path, RIGHTS_XML_SUFFIX];
     NSData *rightsData = [NSData dataWithContentsOfFile:rightsPath];
-    // Keep permissions node
-    TPPXML *xml = [TPPXML xmlWithData:rightsData];
-    permissionsNode = [[xml firstChildWithName:@"licenseToken"] firstChildWithName:@"permissions"];
+    // Parse via Swift bridge (TPPXML lives in PalaceCatalog SPM and can't
+    // be referenced directly from this ObjC++ file).
+    self.rightsParser = [[AdobeRightsParser alloc] initWithRightsData:rightsData];
     // Pass rights data to Adobe DRM
     size_t rightsLen = rightsData.length;
     unsigned char *rightsContent = (unsigned char *)rightsData.bytes;
@@ -82,8 +92,7 @@ static id acsdrm_lock = nil;
 - (NSDate *)displayUntilDate {
   if (!_displayUntilDate) {
     /// The date is in `*.epub_rights.xml` files, xpath `/licenseToken/permissions/display/until`
-    TPPXML *dateUntilNode = [[permissionsNode firstChildWithName:@"display"] firstChildWithName:@"until"];
-    NSString *dateUntilValue = dateUntilNode.value;
+    NSString *dateUntilValue = self.rightsParser.displayUntilString;
     NSDateFormatter *df = [[NSDateFormatter alloc] init];
     df.dateFormat = @"yyyy-MM-dd'T'HH:mm:ssZ";
     _displayUntilDate = [df dateFromString:dateUntilValue];

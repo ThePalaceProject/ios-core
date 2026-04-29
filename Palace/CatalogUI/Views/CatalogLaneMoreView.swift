@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import PalaceLogging
 import PalaceNetwork
+import PalaceCatalog
 
 /// Refactored, streamlined catalog lane view that delegates business logic to ViewModel
 struct CatalogLaneMoreView: View {
@@ -258,7 +259,8 @@ struct CatalogLaneMoreView: View {
             repository: CatalogRepository(
                 api: DefaultCatalogAPI(
                     client: URLSessionNetworkClient(),
-                    parser: OPDSParser()
+                    parser: OPDSParser(),
+                    featureFlags: RemoteFeatureFlags.shared
                 )
             ),
             baseURL: { viewModel.url },

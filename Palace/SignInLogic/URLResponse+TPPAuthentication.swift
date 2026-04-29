@@ -8,6 +8,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceCatalog
 
 extension URLResponse {
 

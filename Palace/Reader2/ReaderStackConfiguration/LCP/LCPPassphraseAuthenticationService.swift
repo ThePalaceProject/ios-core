@@ -2,6 +2,7 @@
 
 import Foundation
 import ReadiumLCP
+import PalaceCatalog
 
 /**
  For Passphrase in License Document, see https://readium.org/lcp-specs/releases/lcp/latest#41-introduction

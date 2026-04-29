@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - Phase 1+2: UI Decoupling + Force-Unwrap Elimination

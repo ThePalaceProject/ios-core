@@ -1,3 +1,5 @@
+import PalaceCatalog
+
 //
 //  TPPContentType.swift
 //  Palace

@@ -1,4 +1,5 @@
 import Foundation
+import PalaceCatalog
 
 private let announcementsFilename: String = "TPPPresentedAnnouncementsList"
 

@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 final class CirculationAnalyticsTests: XCTestCase {

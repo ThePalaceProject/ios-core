@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 /// SRS: NET-001 — GET/POST/PUT/DELETE execute with proper headers

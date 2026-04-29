@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - TPPProblemDocument Loan Expiry Constant

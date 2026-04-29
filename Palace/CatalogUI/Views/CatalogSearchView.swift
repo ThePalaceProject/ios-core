@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import UIKit
 import PalaceNetwork
+import PalaceCatalog
 
 // MARK: - Accessibility focus target (PP-3834: move VoiceOver to results after search)
 private enum SearchAccessibilityFocus: Hashable {
@@ -42,7 +43,7 @@ struct CatalogSearchView: View {
 
         let client = URLSessionNetworkClient()
         let parser = OPDSParser()
-        let api = DefaultCatalogAPI(client: client, parser: parser)
+        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: RemoteFeatureFlags.shared)
         let dummyRepository = CatalogRepository(api: api)
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
             repository: dummyRepository,

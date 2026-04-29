@@ -1,4 +1,5 @@
 import Foundation
+import PalaceCatalog
 
 /// Result of merging crawled publications into the existing catalog.
 struct MergeResult {

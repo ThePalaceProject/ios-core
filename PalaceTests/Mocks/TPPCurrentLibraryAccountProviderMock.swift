@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 @testable import Palace
 
 class TPPCurrentLibraryAccountProviderMock: NSObject, TPPCurrentLibraryAccountProvider {

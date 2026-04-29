@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import PalaceLogging
+import PalaceCatalog
 
 @MainActor
 final class CatalogViewModel: ObservableObject {

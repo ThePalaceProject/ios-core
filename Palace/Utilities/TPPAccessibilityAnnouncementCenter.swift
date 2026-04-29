@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import PalaceCatalog
 
 extension Notification.Name {
     /// Posted by views when a screen transition occurs (sheet presented, page navigated).

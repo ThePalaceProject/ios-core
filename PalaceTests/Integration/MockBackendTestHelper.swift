@@ -15,6 +15,7 @@
 
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 /// A test environment with a mock-backed network stack.
