@@ -151,27 +151,51 @@ final class OPDSAcquisitionPathExpandedTests: XCTestCase {
 
   // MARK: - Acquisition Path Resolution
 
-  func test_supportedTypes_isNonEmpty() {
-    let types = TPPOPDSAcquisitionPath.supportedTypes()
-    XCTAssertGreaterThan(types.count, 0, "Should have at least one supported type")
-  }
+  /// `supportedTypes()` and `audiobookTypes()` enumerate the MIME types the
+  /// app can fulfill. Lock them as a set, including EPUB membership and
+  /// the audiobook/ebook split (audiobook types must NOT all leak into
+  /// supportedTypes — they're a distinct fulfilment path). A mutant that
+  /// returned the same set from both methods would fail the symmetric-
+  /// difference assertion.
+  func test_supportedTypes_andAudiobookTypes_areNonEmptyAndDistinguishable() {
+    let supported = TPPOPDSAcquisitionPath.supportedTypes()
+    let audiobook = TPPOPDSAcquisitionPath.audiobookTypes()
 
-  func test_supportedTypes_containsEPUB() {
-    let types = TPPOPDSAcquisitionPath.supportedTypes()
-    let containsEpub = types.contains(where: { ($0 as? String)?.contains("epub") ?? false })
-    XCTAssertTrue(containsEpub, "Supported types should include EPUB")
-  }
+    XCTAssertGreaterThan(supported.count, 0, "Must have at least one supported type")
+    XCTAssertGreaterThan(audiobook.count, 0, "Must have at least one audiobook type")
 
-  func test_audiobookTypes_isNonEmpty() {
-    let types = TPPOPDSAcquisitionPath.audiobookTypes()
-    XCTAssertGreaterThan(types.count, 0, "Should have at least one audiobook type")
+    // EPUB membership in supportedTypes — guards against an accidental
+    // empty-array mutant that still passes the count check.
+    XCTAssertTrue(
+      supported.contains(where: { ($0 as? String)?.contains("epub") ?? false }),
+      "supportedTypes() MUST contain at least one epub MIME — guards a missing-EPUB regression")
+
+    // The two type sets must not be byte-identical (audiobook fulfillment
+    // is a distinct path). A mutant that aliased the two methods to the
+    // same backing array would fail this. Cast per-element since the
+    // arrays come back as NSArray-bridged [Any], not [String].
+    let supportedStrings = Set(supported.compactMap { $0 as? String })
+    let audiobookStrings = Set(audiobook.compactMap { $0 as? String })
+    XCTAssertFalse(supportedStrings.isEmpty,
+                   "supportedTypes must contain at least one parseable String entry")
+    XCTAssertFalse(audiobookStrings.isEmpty,
+                   "audiobookTypes must contain at least one parseable String entry")
+    XCTAssertNotEqual(supportedStrings, audiobookStrings,
+                      "supportedTypes() and audiobookTypes() must be distinguishable sets")
   }
 
   // MARK: - Nil Handling
 
-  func test_feedInitWithNilXML_returnsNil() {
-    let feed = TPPOPDSFeed(xml: nil)
-    XCTAssertNil(feed, "Feed should be nil when initialized with nil XML")
+  /// Both `TPPOPDSFeed(xml: nil)` and `TPPOPDSLink(xml: nil)` short-circuit
+  /// to nil. Pair the two parsers in one test so a mutant that drops the
+  /// nil-check on one but not the other fails immediately. Includes the
+  /// positive case (valid XML produces a non-nil feed) so an "always nil"
+  /// mutant is also caught.
+  func test_initWithNilXML_returnsNilOnFeedAndLink() {
+    XCTAssertNil(TPPOPDSFeed(xml: nil),
+                 "Feed must be nil when initialised with nil XML")
+    XCTAssertNil(TPPOPDSLink(xml: nil),
+                 "Link must be nil when initialised with nil XML")
   }
 
   func test_entryInitWithInvalidXML_returnsNil() {
@@ -184,21 +208,23 @@ final class OPDSAcquisitionPathExpandedTests: XCTestCase {
     XCTAssertNil(entry, "Entry should be nil when initialized with invalid XML")
   }
 
-  func test_linkInitWithNilXML_returnsNil() {
-    let link = TPPOPDSLink(xml: nil)
-    XCTAssertNil(link, "Link should be nil when initialized with nil XML")
-  }
-
   // MARK: - Acquisition Relation Conversion
 
-  func test_acquisitionRelationString_openAccess() {
-    let str = NYPLOPDSAcquisitionRelationString(.openAccess)
-    XCTAssertTrue(str.contains("open-access"), "Open access relation should contain 'open-access'")
-  }
+  /// `NYPLOPDSAcquisitionRelationString` is a string-conversion helper that
+  /// emits the OPDS link-relation URI for each acquisition relation case.
+  /// Lock the openAccess and borrow conversions together AND assert they
+  /// are distinct strings — a mutant that returned the same string from
+  /// both cases would fail the inequality.
+  func test_acquisitionRelationString_distinctStringsForOpenAccessAndBorrow() {
+    let openAccess = NYPLOPDSAcquisitionRelationString(.openAccess)
+    let borrow = NYPLOPDSAcquisitionRelationString(.borrow)
 
-  func test_acquisitionRelationString_borrow() {
-    let str = NYPLOPDSAcquisitionRelationString(.borrow)
-    XCTAssertTrue(str.contains("borrow"), "Borrow relation should contain 'borrow'")
+    XCTAssertTrue(openAccess.contains("open-access"),
+                  "openAccess relation string must surface the 'open-access' token")
+    XCTAssertTrue(borrow.contains("borrow"),
+                  "borrow relation string must surface the 'borrow' token")
+    XCTAssertNotEqual(openAccess, borrow,
+                      "openAccess and borrow must yield distinct strings — guards against constant-return mutant")
   }
 
   // MARK: - Acquisition Dictionary Representation
