@@ -1,16 +1,16 @@
 import Foundation
 import PalaceLogging
 
-@objc class TPPOPDSLink: NSObject {
+@objc public class TPPOPDSLink: NSObject {
 
-  @objc private(set) var attributes: NSDictionary = [:]
-  @objc private(set) var href: URL
-  @objc private(set) var rel: String?
-  @objc private(set) var type: String?
-  @objc private(set) var hreflang: String?
-  @objc private(set) var title: String?
+  @objc public private(set) var attributes: NSDictionary = [:]
+  @objc public private(set) var href: URL
+  @objc public private(set) var rel: String?
+  @objc public private(set) var type: String?
+  @objc public private(set) var hreflang: String?
+  @objc public private(set) var title: String?
 
-  @objc init?(xml linkXML: TPPXML?) {
+  @objc public init?(xml linkXML: TPPXML?) {
     guard let linkXML = linkXML else { return nil }
     let attrs = linkXML.attributes as? [String: String] ?? [:]
 

@@ -1,41 +1,41 @@
 import Foundation
 
 // MARK: - Content type constants
-let ContentTypeOPDSCatalog = "application/atom+xml;type=entry;profile=opds-catalog"
-let ContentTypeAdobeAdept = "application/vnd.adobe.adept+xml"
-let ContentTypeBearerToken = "application/vnd.librarysimplified.bearer-token+json"
-let ContentTypeEpubZip = "application/epub+zip"
-let ContentTypeFindaway = "application/vnd.librarysimplified.findaway.license+json"
-let ContentTypeOpenAccessAudiobook = "application/audiobook+json"
-let ContentTypeOpenAccessPDF = "application/pdf"
-let ContentTypeFeedbooksAudiobook = "application/audiobook+json;profile=\"http://www.feedbooks.com/audiobooks/access-restriction\""
-let ContentTypeOctetStream = "application/octet-stream"
-let ContentTypeOverdriveAudiobook = "application/vnd.overdrive.circulation.api+json;profile=audiobook"
-let ContentTypeOverdriveAudiobookActual = "application/json"
-let ContentTypeReadiumLCP = "application/vnd.readium.lcp.license.v1.0+json"
-let ContentTypeReadiumLCPPDF = "application/pdf"
-let ContentTypePDFLCP = "application/pdf+lcp"
-let ContentTypeAudiobookLCP = "application/audiobook+lcp"
-let ContentTypeAudiobookZip = "application/audiobook+zip"
-let ContentTypeBiblioboard = "application/json"
-let ContentTypeOPDSPublication = "application/opds-publication+json"
+public let ContentTypeOPDSCatalog = "application/atom+xml;type=entry;profile=opds-catalog"
+public let ContentTypeAdobeAdept = "application/vnd.adobe.adept+xml"
+public let ContentTypeBearerToken = "application/vnd.librarysimplified.bearer-token+json"
+public let ContentTypeEpubZip = "application/epub+zip"
+public let ContentTypeFindaway = "application/vnd.librarysimplified.findaway.license+json"
+public let ContentTypeOpenAccessAudiobook = "application/audiobook+json"
+public let ContentTypeOpenAccessPDF = "application/pdf"
+public let ContentTypeFeedbooksAudiobook = "application/audiobook+json;profile=\"http://www.feedbooks.com/audiobooks/access-restriction\""
+public let ContentTypeOctetStream = "application/octet-stream"
+public let ContentTypeOverdriveAudiobook = "application/vnd.overdrive.circulation.api+json;profile=audiobook"
+public let ContentTypeOverdriveAudiobookActual = "application/json"
+public let ContentTypeReadiumLCP = "application/vnd.readium.lcp.license.v1.0+json"
+public let ContentTypeReadiumLCPPDF = "application/pdf"
+public let ContentTypePDFLCP = "application/pdf+lcp"
+public let ContentTypeAudiobookLCP = "application/audiobook+lcp"
+public let ContentTypeAudiobookZip = "application/audiobook+zip"
+public let ContentTypeBiblioboard = "application/json"
+public let ContentTypeOPDSPublication = "application/opds-publication+json"
 
 // MARK: - TPPOPDSAcquisitionPath
 
-@objc class TPPOPDSAcquisitionPath: NSObject {
+@objc public class TPPOPDSAcquisitionPath: NSObject {
 
-  @objc private(set) var relation: TPPOPDSAcquisitionRelation
-  @objc private(set) var types: [String]
-  @objc private(set) var url: URL
+  @objc public private(set) var relation: TPPOPDSAcquisitionRelation
+  @objc public private(set) var types: [String]
+  @objc public private(set) var url: URL
 
-  @objc init(relation: TPPOPDSAcquisitionRelation, types: [String], url: URL) {
+  @objc public init(relation: TPPOPDSAcquisitionRelation, types: [String], url: URL) {
     self.relation = relation
     self.types = types
     self.url = url
     super.init()
   }
 
-  @objc static func supportedTypes() -> Set<String> {
+  @objc public static func supportedTypes() -> Set<String> {
     var types: Set<String> = [
       ContentTypeOPDSCatalog,
       ContentTypeBearerToken,
@@ -70,7 +70,7 @@ let ContentTypeOPDSPublication = "application/opds-publication+json"
     return types
   }
 
-  @objc static func supportedSubtypes(forType type: String) -> Set<String> {
+  @objc public static func supportedSubtypes(forType type: String) -> Set<String> {
     let subtypesForTypes: [String: Set<String>] = [
       ContentTypeOPDSCatalog: [
         ContentTypeAdobeAdept,
@@ -118,7 +118,7 @@ let ContentTypeOPDSPublication = "application/opds-publication+json"
     return subtypesForTypes[type] ?? []
   }
 
-  @objc static func audiobookTypes() -> Set<String> {
+  @objc public static func audiobookTypes() -> Set<String> {
     return [
       ContentTypeFindaway,
       ContentTypeOpenAccessAudiobook,
@@ -129,12 +129,12 @@ let ContentTypeOPDSPublication = "application/opds-publication+json"
     ]
   }
 
-  override func isEqual(_ object: Any?) -> Bool {
+  public override func isEqual(_ object: Any?) -> Bool {
     guard let other = object as? TPPOPDSAcquisitionPath else { return false }
     return relation == other.relation && types == other.types
   }
 
-  override var hash: Int {
+  public override var hash: Int {
     let prime = 31
     var result = 1
     result = prime * result + relation.rawValue
@@ -142,7 +142,7 @@ let ContentTypeOPDSPublication = "application/opds-publication+json"
     return result
   }
 
-  @objc static func supportedAcquisitionPaths(
+  @objc public static func supportedAcquisitionPaths(
     forAllowedTypes types: Set<String>,
     allowedRelations relations: UInt,
     acquisitions: [TPPOPDSAcquisition]

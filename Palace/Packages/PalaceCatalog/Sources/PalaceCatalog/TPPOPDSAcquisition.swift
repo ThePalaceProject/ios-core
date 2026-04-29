@@ -1,7 +1,7 @@
 import Foundation
 import PalaceLogging
 
-@objc enum TPPOPDSAcquisitionRelation: Int {
+@objc public enum TPPOPDSAcquisitionRelation: Int {
   case generic
   case openAccess
   case borrow
@@ -11,8 +11,12 @@ import PalaceLogging
   case subscribe
 }
 
-struct TPPOPDSAcquisitionRelationSet: OptionSet {
-  let rawValue: UInt
+public struct TPPOPDSAcquisitionRelationSet: OptionSet {
+  public let rawValue: UInt
+
+  public init(rawValue: UInt) {
+    self.rawValue = rawValue
+  }
 
   static let generic    = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 0)
   static let openAccess = TPPOPDSAcquisitionRelationSet(rawValue: 1 << 1)
@@ -26,19 +30,19 @@ struct TPPOPDSAcquisitionRelationSet: OptionSet {
   static let defaultAcquisition: TPPOPDSAcquisitionRelationSet = all.subtracting(.sample)
 }
 
-let NYPLOPDSAcquisitionRelationSetAll: UInt = TPPOPDSAcquisitionRelationSet.all.rawValue
-let TPPOPDSAcquisitionRelationSetDefaultAcquisition: UInt = TPPOPDSAcquisitionRelationSet.defaultAcquisition.rawValue
+public let NYPLOPDSAcquisitionRelationSetAll: UInt = TPPOPDSAcquisitionRelationSet.all.rawValue
+public let TPPOPDSAcquisitionRelationSetDefaultAcquisition: UInt = TPPOPDSAcquisitionRelationSet.defaultAcquisition.rawValue
 
 // Backward-compatible set constants
-let TPPOPDSAcquisitionRelationSetGeneric: UInt = TPPOPDSAcquisitionRelationSet.generic.rawValue
-let TPPOPDSAcquisitionRelationSetOpenAccess: UInt = TPPOPDSAcquisitionRelationSet.openAccess.rawValue
-let TPPOPDSAcquisitionRelationSetBorrow: UInt = TPPOPDSAcquisitionRelationSet.borrow.rawValue
-let TPPOPDSAcquisitionRelationSetBuy: UInt = TPPOPDSAcquisitionRelationSet.buy.rawValue
-let TPPOPDSAcquisitionRelationSetSample: UInt = TPPOPDSAcquisitionRelationSet.sample.rawValue
-let TPPOPDSAcquisitionRelationSetPreview: UInt = TPPOPDSAcquisitionRelationSet.preview.rawValue
-let TPPOPDSAcquisitionRelationSetSubscribe: UInt = TPPOPDSAcquisitionRelationSet.subscribe.rawValue
+public let TPPOPDSAcquisitionRelationSetGeneric: UInt = TPPOPDSAcquisitionRelationSet.generic.rawValue
+public let TPPOPDSAcquisitionRelationSetOpenAccess: UInt = TPPOPDSAcquisitionRelationSet.openAccess.rawValue
+public let TPPOPDSAcquisitionRelationSetBorrow: UInt = TPPOPDSAcquisitionRelationSet.borrow.rawValue
+public let TPPOPDSAcquisitionRelationSetBuy: UInt = TPPOPDSAcquisitionRelationSet.buy.rawValue
+public let TPPOPDSAcquisitionRelationSetSample: UInt = TPPOPDSAcquisitionRelationSet.sample.rawValue
+public let TPPOPDSAcquisitionRelationSetPreview: UInt = TPPOPDSAcquisitionRelationSet.preview.rawValue
+public let TPPOPDSAcquisitionRelationSetSubscribe: UInt = TPPOPDSAcquisitionRelationSet.subscribe.rawValue
 
-func NYPLOPDSAcquisitionRelationSetWithRelation(_ relation: TPPOPDSAcquisitionRelation) -> UInt {
+public func NYPLOPDSAcquisitionRelationSetWithRelation(_ relation: TPPOPDSAcquisitionRelation) -> UInt {
   switch relation {
   case .generic:    return TPPOPDSAcquisitionRelationSetGeneric
   case .openAccess: return TPPOPDSAcquisitionRelationSetOpenAccess
@@ -50,7 +54,7 @@ func NYPLOPDSAcquisitionRelationSetWithRelation(_ relation: TPPOPDSAcquisitionRe
   }
 }
 
-func NYPLOPDSAcquisitionRelationSetContainsRelation(_ relationSet: UInt, _ relation: TPPOPDSAcquisitionRelation) -> Bool {
+public func NYPLOPDSAcquisitionRelationSetContainsRelation(_ relationSet: UInt, _ relation: TPPOPDSAcquisitionRelation) -> Bool {
   return NYPLOPDSAcquisitionRelationSetWithRelation(relation) & relationSet != 0
 }
 
@@ -75,25 +79,25 @@ private let relationToString: [TPPOPDSAcquisitionRelation: String] = [
   .subscribe: "http://opds-spec.org/acquisition/subscribe"
 ]
 
-func NYPLOPDSAcquisitionRelationWithString(_ string: String, _ relationPointer: UnsafeMutablePointer<TPPOPDSAcquisitionRelation>) -> Bool {
+public func NYPLOPDSAcquisitionRelationWithString(_ string: String, _ relationPointer: UnsafeMutablePointer<TPPOPDSAcquisitionRelation>) -> Bool {
   guard let relation = relationStringMap[string] else { return false }
   relationPointer.pointee = relation
   return true
 }
 
-func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRelation) -> String {
+public func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRelation) -> String {
   return relationToString[relation] ?? ""
 }
 
 // MARK: - TPPOPDSAcquisition
 
-@objc class TPPOPDSAcquisition: NSObject {
+@objc public class TPPOPDSAcquisition: NSObject {
 
-  @objc private(set) var relation: TPPOPDSAcquisitionRelation
-  @objc private(set) var type: String
-  @objc private(set) var hrefURL: URL
-  @objc private(set) var indirectAcquisitions: [TPPOPDSIndirectAcquisition]
-  @objc private(set) var availability: TPPOPDSAcquisitionAvailability
+  @objc public private(set) var relation: TPPOPDSAcquisitionRelation
+  @objc public private(set) var type: String
+  @objc public private(set) var hrefURL: URL
+  @objc public private(set) var indirectAcquisitions: [TPPOPDSIndirectAcquisition]
+  @objc public private(set) var availability: TPPOPDSAcquisitionAvailability
 
   private static let availabilityKey = "availability"
   private static let hrefURLKey = "href"
@@ -103,7 +107,7 @@ func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRelation) -
   private static let relationKey = "rel"
   private static let typeKey = "type"
 
-  @objc init(relation: TPPOPDSAcquisitionRelation, type: String, hrefURL: URL, indirectAcquisitions: [TPPOPDSIndirectAcquisition], availability: TPPOPDSAcquisitionAvailability) {
+  @objc public init(relation: TPPOPDSAcquisitionRelation, type: String, hrefURL: URL, indirectAcquisitions: [TPPOPDSIndirectAcquisition], availability: TPPOPDSAcquisitionAvailability) {
     self.relation = relation
     self.type = type
     self.hrefURL = hrefURL
@@ -112,11 +116,11 @@ func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRelation) -
     super.init()
   }
 
-  @objc static func acquisition(withRelation relation: TPPOPDSAcquisitionRelation, type: String, hrefURL: URL, indirectAcquisitions: [TPPOPDSIndirectAcquisition], availability: TPPOPDSAcquisitionAvailability) -> TPPOPDSAcquisition {
+  @objc public static func acquisition(withRelation relation: TPPOPDSAcquisitionRelation, type: String, hrefURL: URL, indirectAcquisitions: [TPPOPDSIndirectAcquisition], availability: TPPOPDSAcquisitionAvailability) -> TPPOPDSAcquisition {
     return TPPOPDSAcquisition(relation: relation, type: type, hrefURL: hrefURL, indirectAcquisitions: indirectAcquisitions, availability: availability)
   }
 
-  @objc static func acquisition(withLinkXML linkXML: TPPXML) -> TPPOPDSAcquisition? {
+  @objc public static func acquisition(withLinkXML linkXML: TPPXML) -> TPPOPDSAcquisition? {
     let attrs = linkXML.attributes as? [String: String] ?? [:]
 
     guard let relationString = attrs["rel"] else { return nil }
@@ -145,7 +149,7 @@ func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRelation) -
     )
   }
 
-  @objc static func acquisition(withDictionary dictionary: NSDictionary) -> TPPOPDSAcquisition? {
+  @objc public static func acquisition(withDictionary dictionary: NSDictionary) -> TPPOPDSAcquisition? {
     guard let relationString = dictionary[TPPOPDSAcquisition.relationKey] as? String else { return nil }
     var relation: TPPOPDSAcquisitionRelation = .generic
     guard NYPLOPDSAcquisitionRelationWithString(relationString, &relation) else { return nil }
@@ -174,7 +178,7 @@ func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRelation) -
     )
   }
 
-  @objc func dictionaryRepresentation() -> NSDictionary {
+  @objc public func dictionaryRepresentation() -> NSDictionary {
     let indirectDicts = indirectAcquisitions.map { $0.dictionaryRepresentation() }
     return [
       TPPOPDSAcquisition.relationKey: NYPLOPDSAcquisitionRelationString(relation),

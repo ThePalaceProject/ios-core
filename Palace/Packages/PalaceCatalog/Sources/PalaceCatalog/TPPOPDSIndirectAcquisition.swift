@@ -1,25 +1,25 @@
 import Foundation
 import PalaceLogging
 
-@objc class TPPOPDSIndirectAcquisition: NSObject {
+@objc public class TPPOPDSIndirectAcquisition: NSObject {
 
-  @objc private(set) var type: String
-  @objc private(set) var indirectAcquisitions: [TPPOPDSIndirectAcquisition]
+  @objc public private(set) var type: String
+  @objc public private(set) var indirectAcquisitions: [TPPOPDSIndirectAcquisition]
 
   private static let typeKey = "type"
   private static let indirectAcquisitionsKey = "indirectAcquisitions"
 
-  @objc init(type: String, indirectAcquisitions: [TPPOPDSIndirectAcquisition]) {
+  @objc public init(type: String, indirectAcquisitions: [TPPOPDSIndirectAcquisition]) {
     self.type = type
     self.indirectAcquisitions = indirectAcquisitions
     super.init()
   }
 
-  @objc static func indirectAcquisition(withType type: String, indirectAcquisitions: [TPPOPDSIndirectAcquisition]) -> TPPOPDSIndirectAcquisition {
+  @objc public static func indirectAcquisition(withType type: String, indirectAcquisitions: [TPPOPDSIndirectAcquisition]) -> TPPOPDSIndirectAcquisition {
     return TPPOPDSIndirectAcquisition(type: type, indirectAcquisitions: indirectAcquisitions)
   }
 
-  @objc static func indirectAcquisition(withXML xml: TPPXML) -> TPPOPDSIndirectAcquisition? {
+  @objc public static func indirectAcquisition(withXML xml: TPPXML) -> TPPOPDSIndirectAcquisition? {
     guard let type = (xml.attributes as? [String: String])?["type"] else {
       return nil
     }
@@ -36,7 +36,7 @@ import PalaceLogging
     return indirectAcquisition(withType: type, indirectAcquisitions: mutableIndirectAcquisitions)
   }
 
-  @objc static func indirectAcquisition(withDictionary dictionary: NSDictionary) -> TPPOPDSIndirectAcquisition? {
+  @objc public static func indirectAcquisition(withDictionary dictionary: NSDictionary) -> TPPOPDSIndirectAcquisition? {
     guard let type = dictionary[typeKey] as? String else {
       return nil
     }
@@ -56,7 +56,7 @@ import PalaceLogging
     return indirectAcquisition(withType: type, indirectAcquisitions: mutableIndirectAcquisitions)
   }
 
-  @objc func dictionaryRepresentation() -> NSDictionary {
+  @objc public func dictionaryRepresentation() -> NSDictionary {
     let indirectDicts = indirectAcquisitions.map { $0.dictionaryRepresentation() }
     return [
       TPPOPDSIndirectAcquisition.typeKey: type,

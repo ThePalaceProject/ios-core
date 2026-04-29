@@ -1,32 +1,32 @@
 import Foundation
 import PalaceLogging
 
-@objc class TPPOPDSEntry: NSObject {
+@objc public class TPPOPDSEntry: NSObject {
 
-  @objc private(set) var acquisitions: [TPPOPDSAcquisition] = []
-  @objc private(set) var alternativeHeadline: String?
-  @objc private(set) var authorStrings: [String] = []
-  @objc private(set) var authorLinks: [TPPOPDSLink] = []
-  @objc private(set) var seriesLink: TPPOPDSLink?
-  @objc private(set) var categories: [TPPOPDSCategory] = []
-  @objc private(set) var identifier: String = ""
-  @objc private(set) var links: [TPPOPDSLink] = []
-  @objc private(set) var annotations: TPPOPDSLink?
-  @objc private(set) var alternate: TPPOPDSLink?
-  @objc private(set) var relatedWorks: TPPOPDSLink?
-  @objc private(set) var previewLink: TPPOPDSAcquisition?
-  @objc private(set) var analytics: URL?
-  @objc private(set) var providerName: String?
-  @objc private(set) var published: Date?
-  @objc private(set) var publisher: String?
-  @objc private(set) var summary: String?
-  @objc private(set) var title: String = ""
-  @objc private(set) var updated: Date = Date()
-  @objc private(set) var contributors: [String: [String]]?
-  @objc private(set) var timeTrackingLink: TPPOPDSLink?
-  @objc private(set) var duration: String?
+  @objc public private(set) var acquisitions: [TPPOPDSAcquisition] = []
+  @objc public private(set) var alternativeHeadline: String?
+  @objc public private(set) var authorStrings: [String] = []
+  @objc public private(set) var authorLinks: [TPPOPDSLink] = []
+  @objc public private(set) var seriesLink: TPPOPDSLink?
+  @objc public private(set) var categories: [TPPOPDSCategory] = []
+  @objc public private(set) var identifier: String = ""
+  @objc public private(set) var links: [TPPOPDSLink] = []
+  @objc public private(set) var annotations: TPPOPDSLink?
+  @objc public private(set) var alternate: TPPOPDSLink?
+  @objc public private(set) var relatedWorks: TPPOPDSLink?
+  @objc public private(set) var previewLink: TPPOPDSAcquisition?
+  @objc public private(set) var analytics: URL?
+  @objc public private(set) var providerName: String?
+  @objc public private(set) var published: Date?
+  @objc public private(set) var publisher: String?
+  @objc public private(set) var summary: String?
+  @objc public private(set) var title: String = ""
+  @objc public private(set) var updated: Date = Date()
+  @objc public private(set) var contributors: [String: [String]]?
+  @objc public private(set) var timeTrackingLink: TPPOPDSLink?
+  @objc public private(set) var duration: String?
 
-  @objc var groupAttributes: TPPOPDSEntryGroupAttributes? {
+  @objc public var groupAttributes: TPPOPDSEntryGroupAttributes? {
     for link in links {
       if link.rel == TPPOPDSRelationGroup {
         guard let title = (link.attributes as? [String: String])?["title"] else {
@@ -41,7 +41,7 @@ import PalaceLogging
     return nil
   }
 
-  @objc init?(xml entryXML: TPPXML) {
+  @objc public init?(xml entryXML: TPPXML) {
     super.init()
 
     alternativeHeadline = entryXML.firstChild(withName: "alternativeHeadline")?.value

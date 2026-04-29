@@ -8,22 +8,22 @@ import Foundation
 /// TPPXML objects representing elements, and all text nodes within the parent are concatenated into a
 /// single value. This is simple and convenient for parsing most data formats (e.g. OPDS), but it is not
 /// suitable for handling markup (e.g. XHTML).
-@objc class TPPXML: NSObject, XMLParserDelegate {
+@objc public class TPPXML: NSObject, XMLParserDelegate {
 
-  @objc private(set) var attributes: NSDictionary = [:]
-  @objc private(set) var name: String = ""
-  @objc private(set) var namespaceURI: String = ""
+  @objc public private(set) var attributes: NSDictionary = [:]
+  @objc public private(set) var name: String = ""
+  @objc public private(set) var namespaceURI: String = ""
   @objc weak private(set) var parent: TPPXML?
-  @objc private(set) var qualifiedName: String = ""
+  @objc public private(set) var qualifiedName: String = ""
 
   private var mutableChildren: [TPPXML] = []
   private var mutableValue: String = ""
 
-  @objc var children: [TPPXML] {
+  @objc public var children: [TPPXML] {
     return mutableChildren
   }
 
-  @objc var value: String {
+  @objc public var value: String {
     return mutableValue
   }
 
@@ -34,7 +34,7 @@ import Foundation
 
   /// Convenience initializer that parses XML data.
   /// Returns nil if parsing fails or data is nil/empty.
-  @objc convenience init?(data: Data?) {
+  @objc public convenience init?(data: Data?) {
     guard let result = TPPXML.xml(withData: data) else { return nil }
     self.init()
     self.attributes = result.attributes
@@ -49,7 +49,7 @@ import Foundation
     }
   }
 
-  @objc static func xml(withData data: Data?) -> TPPXML? {
+  @objc public static func xml(withData data: Data?) -> TPPXML? {
     guard let data = data else { return nil }
 
     let document = TPPXML()
@@ -71,18 +71,18 @@ import Foundation
     }
   }
 
-  @objc func childrenWithName(_ name: String?) -> [TPPXML] {
+  @objc public func childrenWithName(_ name: String?) -> [TPPXML] {
     guard let name = name else { return [] }
     return children.filter { $0.name == name }
   }
 
-  @objc func firstChild(withName name: String?) -> TPPXML? {
+  @objc public func firstChild(withName name: String?) -> TPPXML? {
     return childrenWithName(name).first
   }
 
   // MARK: - XMLParserDelegate
 
-  func parser(
+  public func parser(
     _ parser: XMLParser,
     didStartElement elementName: String,
     namespaceURI: String?,
@@ -100,7 +100,7 @@ import Foundation
     parser.delegate = child
   }
 
-  func parser(
+  public func parser(
     _ parser: XMLParser,
     didEndElement elementName: String,
     namespaceURI: String?,
@@ -109,7 +109,7 @@ import Foundation
     parser.delegate = self.parent
   }
 
-  func parser(_ parser: XMLParser, foundCharacters string: String) {
+  public func parser(_ parser: XMLParser, foundCharacters string: String) {
     mutableValue.append(string)
   }
 }

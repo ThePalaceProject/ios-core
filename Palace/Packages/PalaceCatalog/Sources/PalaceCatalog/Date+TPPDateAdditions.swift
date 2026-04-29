@@ -19,7 +19,7 @@ extension NSDate {
   }()
 
   /// Parses an RFC 3339 date string. Correctly handles fractional seconds but ignores them.
-  @objc static func date(withRFC3339String string: String?) -> NSDate? {
+  @objc public static func date(withRFC3339String string: String?) -> NSDate? {
     guard let string = string else { return nil }
 
     if let date = rfc3339FormatterNoFraction.date(from: string) {
@@ -30,7 +30,7 @@ extension NSDate {
   }
 
   /// Parses an ISO-8601 full date string with no time info, e.g. "2020-01-22".
-  @objc static func date(withISO8601DateString string: String?) -> NSDate? {
+  @objc public static func date(withISO8601DateString string: String?) -> NSDate? {
     guard let string = string else { return nil }
 
     let isoFormatter = ISO8601DateFormatter()
@@ -46,7 +46,7 @@ extension NSDate {
     return dateFormatter.date(from: string) as NSDate?
   }
 
-  @objc func rfc3339String() -> String {
+  @objc public func rfc3339String() -> String {
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'Z'"
@@ -54,7 +54,7 @@ extension NSDate {
     return formatter.string(from: self as Date)
   }
 
-  @objc func utcComponents() -> DateComponents {
+  @objc public func utcComponents() -> DateComponents {
     var calendar = Calendar(identifier: .iso8601)
     calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
     return calendar.dateComponents(
