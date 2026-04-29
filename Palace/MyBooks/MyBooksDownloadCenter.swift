@@ -78,7 +78,21 @@ import PalaceCatalog
     /// that route through this single state owner — preserves the call-site
     /// shape across MBDC's ~97 internal SafeDictionary accesses while
     /// eliminating the duplicate state previously stored on MBDC.
-    private let stateManager: DownloadStateManager
+    /// Internal access (was private) so BackgroundDownloadHandlerDelegate +
+    /// TokenRefreshInterceptorDelegate's `var stateManager` getters resolve.
+    let stateManager: DownloadStateManager
+
+    /// 401-detection / token-refresh / SAML+OIDC re-auth orchestration.
+    /// MBDC owns this so BackgroundDownloadHandler can reach it through the
+    /// delegate (`delegate.tokenInterceptor`) when a download fails on auth.
+    let tokenInterceptor: TokenRefreshInterceptor
+
+    /// URLSessionDownloadDelegate-helper extraction. Holds the rights-mgmt
+    /// detection, OPDS-entry follow-through, file move/replace/validate
+    /// helpers. MBDC is its delegate — the URLSession delegate methods on
+    /// MBDC remain in place and will route helper logic through this in a
+    /// follow-up commit.
+    private let backgroundDownloadHandler: BackgroundDownloadHandler
 
     // Thread-safe actor-based dictionaries — wrapper accessors over stateManager.
     private var bookIdentifierToDownloadInfo: SafeDictionary<String, MyBooksDownloadInfo> {
@@ -105,7 +119,9 @@ import PalaceCatalog
     /// Owns the Combine publishers + broadcast-throttling state machine.
     /// MyBooksDownloadCenter exposes its publishers as the same passthrough
     /// instances so external subscribers see one continuous stream.
-    private let progressReporter: DownloadProgressReporter
+    /// Internal access (was private) so the delegate protocols of
+    /// BackgroundDownloadHandler / TokenRefreshInterceptor can read it.
+    let progressReporter: DownloadProgressReporter
 
     private var maxConcurrentDownloads: Int {
         get { stateManager.maxConcurrentDownloads }
@@ -127,6 +143,8 @@ import PalaceCatalog
         downloadAnnouncementService: DownloadAnnouncementService = DownloadAnnouncementService(),
         bookFileManager: BookFileManager? = nil,
         stateManager: DownloadStateManager = DownloadStateManager(),
+        tokenInterceptor: TokenRefreshInterceptor? = nil,
+        backgroundDownloadHandler: BackgroundDownloadHandler? = nil,
         errorActivityTracker: ErrorActivityTracker = .shared,
         userRetryTracker: UserRetryTracker = .shared,
         reachability: Reachability = AppContainer.production().reachability,
@@ -160,6 +178,13 @@ import PalaceCatalog
             accountsManager: accountsManager
         )
         self.stateManager = stateManager
+        // Build TokenRefreshInterceptor + BackgroundDownloadHandler eagerly so
+        // `self` can wire as their delegate after `super.init()`. Both default
+        // to nil-init so callers (production + tests) can substitute mocks.
+        self.tokenInterceptor = tokenInterceptor ?? TokenRefreshInterceptor(
+            reauthenticator: reauthenticator
+        )
+        self.backgroundDownloadHandler = backgroundDownloadHandler ?? BackgroundDownloadHandler()
         // Build the DownloadProgressReporter from the same announcer the
         // download center uses, AND share the same DownloadAnnouncementService
         // instance. The reporter's lifecycle announce wrappers delegate to
@@ -193,6 +218,12 @@ import PalaceCatalog
         // Notification sender has to outlive `super.init()` since the
         // reporter holds it weakly — set after self is fully constructed.
         progressReporter.notificationSender = self
+
+        // Both helpers are weak-delegate types; safe to wire here. Use
+        // `self.` to disambiguate from the init parameters (which are
+        // Optional and shadow the stored properties at this scope).
+        self.tokenInterceptor.delegate = self
+        self.backgroundDownloadHandler.delegate = self
 
         #if FEATURE_DRM_CONNECTOR
         // Use safe DRM container to prevent EXC_BREAKPOINT crashes during initialization
@@ -1705,7 +1736,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         }
     }
 
-    private func handleDownloadCompletion(session: URLSession, task: URLSessionDownloadTask, location: URL) async {
+    func handleDownloadCompletion(session: URLSession, task: URLSessionDownloadTask, location: URL) async {
         guard let book = await taskIdentifierToBook.get(task.taskIdentifier) else {
             return
         }
@@ -2152,11 +2183,11 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
         didCompleteWithError error: Error?
     ) {
         Task {
-            await handleTaskCompletion(task: task, error: error)
+            await handleTaskCompletionError(task: task, error: error)
         }
     }
 
-    private func handleTaskCompletion(task: URLSessionTask, error: Error?) async {
+    func handleTaskCompletionError(task: URLSessionTask, error: Error?) async {
         guard let book = await taskIdentifierToBook.get(task.taskIdentifier) else {
             return
         }
@@ -2247,7 +2278,7 @@ extension MyBooksDownloadCenter {
         }
     }
 
-    private func schedulePendingStartsIfPossible() {
+    func schedulePendingStartsIfPossible() {
         Task {
             await schedulePendingStartsAsync()
         }
@@ -2467,7 +2498,7 @@ extension MyBooksDownloadCenter {
         limitActiveDownloads(max: currentLimit)
     }
 
-    private func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
+    func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
         let rights = downloadInfo(forBookIdentifier: book.identifier)?.rightsManagementString ?? ""
 
         var dict: [String: Any] = metadata ?? [:]
@@ -2973,3 +3004,26 @@ extension MyBooksDownloadCenter: AdobeDRMHandlerDelegate {
     }
 }
 #endif
+
+// MARK: - BackgroundDownloadHandlerDelegate
+//
+// Empty conformance — every required property and method already exists on
+// MyBooksDownloadCenter at the right access level. Establishes the delegate
+// seam so BackgroundDownloadHandler can read MBDC's stateManager /
+// progressReporter / bookRegistry / userAccount / tokenInterceptor and call
+// back into MBDC's handleDownloadCompletion / handleTaskCompletionError /
+// schedulePendingStartsIfPossible / failDownloadWithAlert /
+// alertForProblemDocument / logBookDownloadFailure / fileUrl /
+// fulfillLCPLicense surface. The next commit can route MBDC's URLSession
+// delegate methods through this handler instead of duplicating the helper
+// logic that already lives there.
+extension MyBooksDownloadCenter: BackgroundDownloadHandlerDelegate {}
+
+// MARK: - TokenRefreshInterceptorDelegate
+//
+// Empty conformance — every required surface (bookRegistry, userAccount,
+// stateManager, progressReporter, startDownload, startBorrow,
+// failDownloadWithAlert, alertForProblemDocument) already exists on
+// MyBooksDownloadCenter. The interceptor uses these to drive 401-detection
+// + SAML/OIDC re-auth + retry after credential refresh.
+extension MyBooksDownloadCenter: TokenRefreshInterceptorDelegate {}
