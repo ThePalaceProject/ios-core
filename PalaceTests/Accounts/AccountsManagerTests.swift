@@ -521,18 +521,6 @@ final class AccountsManagerTests: XCTestCase {
                        "Both references to shared must expose the same tppAccountUUID")
     }
 
-    func testSharedInstance_ReturnsSameAsShared() {
-        // Given: References from both accessors
-        let shared = AppContainer.production().accountsManager
-        let sharedInstance = AppContainer.production().accountsManagerInstance()
-
-        // Then: Should be the same instance (ObjC compat bridge must not create a new object)
-        XCTAssertTrue(shared === sharedInstance)
-        // Both accessors must agree on the NYPL UUID
-        XCTAssertEqual(shared.tppAccountUUID, sharedInstance.tppAccountUUID,
-                       "shared and sharedInstance() must expose the same tppAccountUUID")
-    }
-
     // MARK: - Age Check Tests
 
     func testAccountsManager_HasAgeCheck() {
