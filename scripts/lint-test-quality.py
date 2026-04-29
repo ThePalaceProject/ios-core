@@ -61,7 +61,10 @@ def find_test_methods(content: str) -> List[dict]:
         body = content[start:i-1]
 
         lines = [l.strip() for l in body.split('\n') if l.strip() and not l.strip().startswith('//')]
-        asserts = len(re.findall(r'XCTAssert|XCTFail', body))
+        # wait(for:) on an XCTestExpectation IS an assertion — it raises
+        # XCTFail on timeout. Treating it the same as XCTAssert* fixes a
+        # false-positive MISSING-001 on legitimate expectation-based tests.
+        asserts = len(re.findall(r'XCTAssert|XCTFail|wait\(for:', body))
         has_mock = bool(re.search(r'Mock|mock|stub|Stub', body))
         has_async = bool(re.search(r'await |expectation|fulfillment', body))
 
