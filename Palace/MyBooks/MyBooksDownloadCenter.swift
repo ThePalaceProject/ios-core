@@ -143,10 +143,14 @@ import PalaceCatalog
             accountsManager: accountsManager
         )
         // Build the DownloadProgressReporter from the same announcer the
-        // download center uses; expose its publishers as our public ones so
-        // external subscribers (BookCellModel, BookDetailViewModel, etc.)
-        // see one continuous Combine stream regardless of internal routing.
-        let reporter = DownloadProgressReporter(accessibilityAnnouncements: accessibilityAnnouncements)
+        // download center uses, AND share the same DownloadAnnouncementService
+        // instance. The reporter's lifecycle announce wrappers delegate to
+        // the service, so book→title bridging has a single source of truth
+        // across MBDC and the reporter.
+        let reporter = DownloadProgressReporter(
+            accessibilityAnnouncements: accessibilityAnnouncements,
+            downloadAnnouncementService: downloadAnnouncementService
+        )
         self.progressReporter = reporter
         self.downloadProgressPublisher = reporter.downloadProgressPublisher
         self.downloadErrorPublisher = reporter.downloadErrorPublisher
