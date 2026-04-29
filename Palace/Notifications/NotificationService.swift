@@ -60,7 +60,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     static let shared = NotificationService()
 
     override init() {
-        self.accountsManager = .shared
+        self.accountsManager = AppContainer.production().accountsManager
         self.networkExecutor = AppContainer.production().networkExecutor
         self.bookRegistry = TPPBookRegistry.shared
         super.init()

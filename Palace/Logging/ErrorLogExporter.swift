@@ -26,7 +26,7 @@ actor ErrorLogExporter {
     private let accountsManager: AccountsManager
     private let bookRegistry: TPPBookRegistryProvider
 
-    private init(accountsManager: AccountsManager = .shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    private init(accountsManager: AccountsManager = AppContainer.production().accountsManager, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
         self.accountsManager = accountsManager
         self.bookRegistry = bookRegistry
     }

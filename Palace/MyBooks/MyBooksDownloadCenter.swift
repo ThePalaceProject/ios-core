@@ -99,7 +99,7 @@ import PalaceNetwork
         userAccount: TPPUserAccount? = nil,
         reauthenticator: Reauthenticator = TPPReauthenticator(),
         bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
-        accountsManager: AccountsManager = .shared,
+        accountsManager: AccountsManager = AppContainer.production().accountsManager,
         networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor,
         accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
         errorActivityTracker: ErrorActivityTracker = .shared,

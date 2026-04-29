@@ -26,7 +26,7 @@ import UIKit
         presentingViewController: UIViewController,
         book: TPPBook?,
         libraryUUID: String?,
-        accountsManager: AccountsManager = .shared) {
+        accountsManager: AccountsManager = AppContainer.production().accountsManager) {
         let account: TPPUserAccount
         if let id = libraryUUID ?? accountsManager.currentAccountId {
             account = accountsManager.userAccount(for: id)
@@ -65,7 +65,7 @@ import UIKit
         presentingViewController.present(mailComposeViewController, animated: true)
     }
 
-    func generateBody(book: TPPBook?, patronIdentifier: String? = nil, accountsManager: AccountsManager = .shared) -> String {
+    func generateBody(book: TPPBook?, patronIdentifier: String? = nil, accountsManager: AccountsManager = AppContainer.production().accountsManager) -> String {
         let nativeHeight = UIScreen.main.nativeBounds.height
         let systemVersion = UIDevice.current.systemVersion
         let idiom: String

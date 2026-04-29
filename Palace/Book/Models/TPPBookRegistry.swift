@@ -194,7 +194,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     // MARK: - Init
 
     private override init() {
-        self.accountsManager = .shared
+        self.accountsManager = AppContainer.production().accountsManager
         let store = BookRegistryStore()
         let sync = BookRegistrySync(
             store: store,
@@ -218,7 +218,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         setupAccountDidChangeObserver()
     }
 
-    fileprivate init(account: String, accountsManager: AccountsManager = .shared) {
+    fileprivate init(account: String, accountsManager: AccountsManager = AppContainer.production().accountsManager) {
         self.accountsManager = accountsManager
         let store = BookRegistryStore()
         let sync = BookRegistrySync(

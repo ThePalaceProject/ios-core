@@ -82,7 +82,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
          forSample: Bool = false,
          initialLocation: Locator? = nil,
          bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
-         accountsManager: AccountsManager = .shared) {
+         accountsManager: AccountsManager = AppContainer.production().accountsManager) {
 
         self.navigator = navigator
         self.publication = publication
