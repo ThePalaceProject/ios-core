@@ -98,8 +98,8 @@ import PalaceNetwork
         // capturing a reference at init time is a bug.
         userAccount: TPPUserAccount? = nil,
         reauthenticator: Reauthenticator = TPPReauthenticator(),
-        bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
-        accountsManager: AccountsManager = .shared,
+        bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
+        accountsManager: AccountsManager = AppContainer.production().accountsManager,
         networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor,
         accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
         errorActivityTracker: ErrorActivityTracker = .shared,
@@ -1408,11 +1408,12 @@ extension MyBooksDownloadCenter {
     private func performPostReturnSyncThen(completion: @escaping () -> Void) {
         Task { [weak self] in
             do {
-                // Use the injected `bookRegistry` rather than TPPBookRegistry.shared
-                // so unit tests can substitute a registry double. `syncAsync` is
-                // defined on the concrete `TPPBookRegistry` rather than the
-                // protocol; the cast is safe in production where
-                // `bookRegistry` is always the singleton.
+                // Use the injected `bookRegistry` rather than reaching into
+                // AppContainer here, so unit tests can substitute a registry
+                // double. `syncAsync` is defined on the concrete
+                // `TPPBookRegistry` rather than the protocol; the cast is
+                // safe in production where `bookRegistry` is always the
+                // app-scoped instance constructed by AppContainer._cached.
                 if let registry = self?.bookRegistry as? TPPBookRegistry {
                     _ = try await registry.syncAsync()
                 }

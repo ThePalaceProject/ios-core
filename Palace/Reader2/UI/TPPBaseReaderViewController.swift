@@ -81,8 +81,8 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
          book: TPPBook,
          forSample: Bool = false,
          initialLocation: Locator? = nil,
-         bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared,
-         accountsManager: AccountsManager = .shared) {
+         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
+         accountsManager: AccountsManager = AppContainer.production().accountsManager) {
 
         self.navigator = navigator
         self.publication = publication
@@ -97,7 +97,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         bookmarksBusinessLogic = TPPReaderBookmarksBusinessLogic(
             book: book,
             r2Publication: publication,
-            drmDeviceID: AccountsManager.shared.currentUserAccount.deviceID,
+            drmDeviceID: AppContainer.production().accountsManager.currentUserAccount.deviceID,
             bookRegistryProvider: bookRegistry,
             currentLibraryAccountProvider: accountsManager)
 

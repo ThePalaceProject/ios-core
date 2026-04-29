@@ -110,7 +110,7 @@ final class BackgroundDownloadHandler: NSObject {
                 if let info = await stateManager.downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(detectedRights) {
                     await stateManager.bookIdentifierToDownloadInfo.set(book.identifier, value: info)
                 }
-            } else if AccountsManager.shared.currentUserAccount.isTokenRefreshRequired() {
+            } else if AppContainer.production().accountsManager.currentUserAccount.isTokenRefreshRequired() {
                 NSLog("Authentication might be needed after all")
                 AppContainer.production().networkExecutor.refreshTokenAndResume(task: task)
                 return
@@ -186,7 +186,7 @@ final class BackgroundDownloadHandler: NSObject {
         let newRights = detectRightsManagement(from: acquisition.type)
 
         var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
-        if let token = AccountsManager.shared.currentUserAccount.authToken {
+        if let token = AppContainer.production().accountsManager.currentUserAccount.authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 

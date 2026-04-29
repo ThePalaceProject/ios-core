@@ -32,7 +32,7 @@ final class HoldsViewModelTests: XCTestCase {
     private func createViewModel() -> HoldsViewModel {
         HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings
         )
@@ -449,13 +449,13 @@ final class HoldsSyncFailureTests: XCTestCase {
     /// All tests in this suite exercise the sign-in-required error-banner
     /// path, which `HoldsViewModel.handleSyncFailure(_:)` guards behind
     /// `hasCredentials()`. The default closure reads from
-    /// `AccountsManager.shared.currentUserAccount`, which is not populated
+    /// `AppContainer.production().accountsManager.currentUserAccount`, which is not populated
     /// in the test harness, so inject `hasCredentials: { true }` to exercise
     /// the authenticated-user branch under test.
     private func makeSignedInViewModel() -> HoldsViewModel {
         HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { true }
@@ -584,7 +584,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         // real code path (TPPSyncFailed for an authenticated, uncached user).
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { true }
@@ -616,7 +616,7 @@ final class HoldsSyncFailureTests: XCTestCase {
 
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings
         )
@@ -644,7 +644,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         // handles the anonymous case; an error banner here is noise.
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { false }
@@ -665,7 +665,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         // Authenticated user — sync failed for a real reason. Banner still appears.
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             settings: TPPSettings(),
             debugSettings: AppContainer.production().debugSettings,
             hasCredentials: { true }

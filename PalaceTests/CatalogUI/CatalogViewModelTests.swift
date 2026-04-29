@@ -156,7 +156,7 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         CatalogViewModel(
             repository: mockRepository,
             topLevelURLProvider: { [testURL] in testURL },
-            bookRegistry: TPPBookRegistry.shared,
+            bookRegistry: AppContainer.production().bookRegistry,
             imageCache: ImageCache.shared
         )
     }
@@ -171,7 +171,7 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         let vm = CatalogViewModel(
             repository: mockRepository,
             topLevelURLProvider: { nil },
-            bookRegistry: TPPBookRegistry.shared,
+            bookRegistry: AppContainer.production().bookRegistry,
             imageCache: ImageCache.shared
         )
         await vm.load()

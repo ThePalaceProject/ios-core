@@ -44,7 +44,7 @@ import PalaceLogging
         }
     }
 
-    private static func addToOfflineAnalyticsQueue(_ event: String, _ bookURL: URL, accountsManager: AccountsManager = AccountsManager.shared, networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor) {
+    private static func addToOfflineAnalyticsQueue(_ event: String, _ bookURL: URL, accountsManager: AccountsManager = AppContainer.production().accountsManager, networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor) {
         let libraryID = accountsManager.currentAccount?.uuid ?? ""
         let headers = networkExecutor.request(for: bookURL).allHTTPHeaderFields
         AppContainer.production().networkQueue.addRequest(libraryID, nil, bookURL, .GET, nil, headers)

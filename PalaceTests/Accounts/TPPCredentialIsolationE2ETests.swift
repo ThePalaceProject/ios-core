@@ -18,17 +18,17 @@ final class TPPCredentialIsolationE2ETests: XCTestCase {
     }
 
     override func tearDown() {
-        AccountsManager.shared.userAccount(for: uuidA).removeAll()
-        AccountsManager.shared.userAccount(for: uuidB).removeAll()
-        AccountsManager.shared.userAccount(for: uuidC).removeAll()
+        AppContainer.production().accountsManager.userAccount(for: uuidA).removeAll()
+        AppContainer.production().accountsManager.userAccount(for: uuidB).removeAll()
+        AppContainer.production().accountsManager.userAccount(for: uuidC).removeAll()
         super.tearDown()
     }
 
     // MARK: - Full Journey: Sign In A → Switch B → Sign In B → Verify A
 
     func testSignInA_switchToB_signInB_verifyAIntact() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
 
         // Step 1: Sign in to Library A
         accountA.setBarcode("patron-a-barcode", PIN: "patron-a-pin")
@@ -60,8 +60,8 @@ final class TPPCredentialIsolationE2ETests: XCTestCase {
     // MARK: - Sign In A → Switch B → Sign In B → Sign Out B → Verify A
 
     func testSignInA_switchB_signInB_signOutB_verifyAIntact() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
 
         // Sign in to A
         accountA.setBarcode("keep-me", PIN: "keep-pin")
@@ -88,9 +88,9 @@ final class TPPCredentialIsolationE2ETests: XCTestCase {
     // MARK: - Three Libraries Simultaneously
 
     func testThreeLibraries_allIsolated() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
-        let accountC = AccountsManager.shared.userAccount(for: uuidC)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
+        let accountC = AppContainer.production().accountsManager.userAccount(for: uuidC)
 
         accountA.setBarcode("barcode-a", PIN: "pin-a")
         accountA.markLoggedIn()
@@ -122,8 +122,8 @@ final class TPPCredentialIsolationE2ETests: XCTestCase {
     // MARK: - Credential State Transitions Don't Leak
 
     func testMarkCredentialsStale_doesNotAffectOtherAccount() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
 
         accountA.setBarcode("a", PIN: "a")
         accountA.markLoggedIn()
@@ -140,8 +140,8 @@ final class TPPCredentialIsolationE2ETests: XCTestCase {
     // MARK: - Rapid Account Switching Under Concurrency
 
     func testRapidSwitching_500Iterations_noContamination() {
-        let accountA = AccountsManager.shared.userAccount(for: uuidA)
-        let accountB = AccountsManager.shared.userAccount(for: uuidB)
+        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
         let iterations = 500
         let expectation = expectation(description: "rapid switching")
         expectation.expectedFulfillmentCount = iterations * 2

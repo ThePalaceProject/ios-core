@@ -36,7 +36,7 @@ extension TPPBookRegistry {
     /// Asynchronously syncs the registry with the server
     /// - Returns: Tuple of (errorDocument, hasNewBooks)
     /// - Throws: PalaceError if sync fails
-    func syncAsync(accountsManager: AccountsManager = AccountsManager.shared) async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
+    func syncAsync(accountsManager: AccountsManager = AppContainer.production().accountsManager) async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
         // Use OPDSFeedService for modern async approach
         guard let loansURL = accountsManager.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)

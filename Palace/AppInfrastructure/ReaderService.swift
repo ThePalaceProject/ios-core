@@ -129,7 +129,7 @@ final class ReaderService {
     @MainActor
     private func attemptRedownloadAndReopen(book: TPPBook, originalError: LibraryServiceError) {
         AppContainer.production().downloadCenter.deleteLocalContent(for: book.identifier)
-        TPPBookRegistry.shared.setState(.downloadNeeded, for: book.identifier)
+        AppContainer.production().bookRegistry.setState(.downloadNeeded, for: book.identifier)
 
         let showFallback = { [weak self] in
             self?.cancelRedownload(for: book.identifier)
@@ -144,7 +144,7 @@ final class ReaderService {
             await MainActor.run { showFallback() }
         }
 
-        redownloadObservers[book.identifier] = TPPBookRegistry.shared.bookStatePublisher
+        redownloadObservers[book.identifier] = AppContainer.production().bookRegistry.bookStatePublisher
             .filter { identifier, _ in identifier == book.identifier }
             .sink { [weak self] _, state in
                 guard let self else { return }
@@ -181,7 +181,7 @@ final class ReaderService {
 
     /// Creates an EPUB view controller from a publication (used by EPUBReaderView)
     @MainActor
-    func makeEPUBViewController(for publication: Publication, book: TPPBook, forSample: Bool, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) async throws -> UIViewController {
+    func makeEPUBViewController(for publication: Publication, book: TPPBook, forSample: Bool, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) async throws -> UIViewController {
         let bookRegistry = bookRegistry
 
         // Sync reading position with server before opening (shows "Stay or Move"
@@ -189,7 +189,7 @@ final class ReaderService {
         // Samples don't need sync since they have no persisted position.
         if !forSample {
             let synchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
-            let deviceID = AccountsManager.shared.currentUserAccount.deviceID
+            let deviceID = AppContainer.production().accountsManager.currentUserAccount.deviceID
             await synchronizer.sync(for: publication, book: book, drmDeviceID: deviceID)
         }
 

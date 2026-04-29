@@ -55,14 +55,14 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     private let notificationCenter = UNUserNotificationCenter.current()
     private let accountsManager: AccountsManager
     private let networkExecutor: TPPNetworkExecutor
-    private let bookRegistry: TPPBookRegistry
+    private let bookRegistry: TPPBookRegistryProvider
 
     static let shared = NotificationService()
 
     override init() {
-        self.accountsManager = .shared
+        self.accountsManager = AppContainer.production().accountsManager
         self.networkExecutor = AppContainer.production().networkExecutor
-        self.bookRegistry = TPPBookRegistry.shared
+        self.bookRegistry = AppContainer.production().bookRegistry
         super.init()
 
         // Update library token when the user changes library account.
@@ -299,7 +299,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     /// Uses the same throttle as applicationDidBecomeActive to coordinate syncs.
     private func syncWithThrottle(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
         // Skip if user isn't authenticated
-        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+        guard AppContainer.production().accountsManager.currentUserAccount.hasCredentials() else {
             completion?(nil, false)
             return
         }
@@ -505,7 +505,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     ///
     /// - Returns: `true` if the user has held books and should fetch updates
     class func backgroundFetchIsNeeded() -> Bool {
-        let count = TPPBookRegistry.shared.heldBooks.count
+        let count = AppContainer.production().bookRegistry.heldBooks.count
         Log.info(#file, "[Background Fetch] Held books: \(count)")
         return count > 0
     }

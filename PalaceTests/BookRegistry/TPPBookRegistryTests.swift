@@ -462,7 +462,7 @@ final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        registry = TPPBookRegistry.shared
+        registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         cancellables.removeAll()
     }
 
@@ -496,7 +496,7 @@ final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
         // Without one, it returns immediately as a no-op, but allBooks may still
         // contain stale books from other tests (e.g., thread safety tests that
         // add books to the shared singleton). This would cause a false failure.
-        guard AccountsManager.shared.currentAccountId != nil else {
+        guard AppContainer.production().accountsManager.currentAccountId != nil else {
             return
         }
 

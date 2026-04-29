@@ -52,7 +52,7 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
 
     private func createModel(book: TPPBook, state: TPPBookState = .downloadSuccessful) -> BookCellModel {
         mockRegistry.addBook(book, state: state)
-        return BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
+        return BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
     }
 
     // MARK: - title / authors
@@ -69,7 +69,7 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
     func testAuthors_ReturnsBookAuthors() {
         let book = TPPBookMocker.mockBook(title: "Test", authors: "Homer")
         mockRegistry.addBook(book, state: .downloadSuccessful)
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         XCTAssertEqual(model.authors, "Homer")
     }
@@ -134,7 +134,7 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
     func testShowUnreadIndicator_FalseForUnregistered() {
         let book = createBook()
         // Don't add to registry
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         XCTAssertFalse(model.showUnreadIndicator, "Unregistered book should not show unread indicator")
     }
@@ -628,7 +628,7 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
         CatalogLaneMoreViewModel(
             title: "Test",
             url: URL(string: urlString)!,
-            bookRegistry: TPPBookRegistry.shared,
+            bookRegistry: AppContainer.production().bookRegistry,
             bookCellModelCache: AppContainer.production().bookCellModelCache
         )
     }
@@ -772,7 +772,7 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
         let viewModel = CatalogLaneMoreViewModel(
             title: "Fiction",
             url: url,
-            bookRegistry: TPPBookRegistry.shared,
+            bookRegistry: AppContainer.production().bookRegistry,
             bookCellModelCache: AppContainer.production().bookCellModelCache
         )
 
@@ -821,7 +821,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
         let book = createBook()
         mockRegistry.addBook(book, state: .downloadNeeded)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
         XCTAssertEqual(model.registryState, .downloadNeeded)
 
         let expectation = XCTestExpectation(description: "registryState updated")
@@ -846,7 +846,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
         let book = createBook()
         mockRegistry.addBook(book, state: .downloading)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         let expectation = XCTestExpectation(description: "Loading cleared after download complete")
 
@@ -870,7 +870,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
         let book = createBook()
         mockRegistry.addBook(book, state: .downloading)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         let expectation = XCTestExpectation(description: "Loading cleared after download failed")
 
@@ -895,7 +895,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
         mockRegistry.addBook(book, state: .downloadNeeded)
         mockRegistry.addBook(otherBook, state: .downloadNeeded)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: .shared, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         // Change state of OTHER book - should not affect this model
         mockRegistry.setState(.downloading, for: "other-book")
@@ -915,7 +915,7 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 
     func testAccountCount_ReflectsSettingsAccountsList() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
 
         // accountCount is derived from settingsAccountsList.count
         XCTAssertEqual(viewModel.accountCount, viewModel.settingsAccountsList.count)
@@ -923,14 +923,14 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 
     func testShowDeveloperSettings_DefaultsFalse() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
 
         XCTAssertFalse(viewModel.showDeveloperSettings)
     }
 
     func testShowDeveloperSettings_CanBeToggled() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
 
         // Verify default before any toggle
         XCTAssertFalse(viewModel.showDeveloperSettings, "Developer settings must default to false")
@@ -941,7 +941,7 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 
     func testIsUsingCustomFeed_AfterClear_ReturnsFalse() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
 
         viewModel.setCustomFeedURL("https://example.com/feed")
         XCTAssertTrue(viewModel.isUsingCustomFeed)
@@ -952,7 +952,7 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 
     func testIsUsingCustomRegistry_AfterClear_ReturnsFalse() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
 
         viewModel.setCustomRegistryServer("https://registry.example.com")
         XCTAssertTrue(viewModel.isUsingCustomRegistry)
@@ -964,7 +964,7 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
     /// SRS: Verifies the guard clause that prevents duplicate writes to settings
     func testDuplicateWrite_DoesNotTriggerSettingsUpdate() {
         let mockSettings = TPPSettingsMock(useBetaLibraries: true)
-        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: .shared)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
 
         // Setting the same value should be guarded
         viewModel.useBetaLibraries = true
@@ -980,18 +980,18 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 final class FacetViewModelLogoDelegateTests: XCTestCase {
 
     func testLogoDidUpdate_SetsLogo() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title], accountsManager: .shared)
+        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title], accountsManager: AppContainer.production().accountsManager)
         let testImage = UIImage(systemName: "book.fill")!
 
         // Directly test the delegate method
-        if let account = AccountsManager.shared.currentAccount {
+        if let account = AppContainer.production().accountsManager.currentAccount {
             viewModel.logoDidUpdate(in: account, to: testImage)
             XCTAssertNotNil(viewModel.logo)
         }
     }
 
     func testAccountScreenURL_WithValidHomePageURL() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title], accountsManager: .shared)
+        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title], accountsManager: AppContainer.production().accountsManager)
 
         // currentAccountURL depends on currentAccount's homePageUrl — verify nil account yields nil URL
         viewModel.currentAccount = nil
@@ -1003,14 +1003,14 @@ final class FacetViewModelLogoDelegateTests: XCTestCase {
     }
 
     func testActiveSort_DefaultsToFirstFacet_TitleFirst() {
-        let viewModel = FacetViewModel(groupName: "Sort", facets: [.title, .author], accountsManager: .shared)
+        let viewModel = FacetViewModel(groupName: "Sort", facets: [.title, .author], accountsManager: AppContainer.production().accountsManager)
         XCTAssertEqual(viewModel.activeSort, .title)
         XCTAssertNotEqual(viewModel.activeSort, .author, "When title is first, author must not be the active sort")
         XCTAssertEqual(viewModel.facets.first, .title, "First facet in the list must be title")
     }
 
     func testActiveSort_DefaultsToFirstFacet_AuthorFirst() {
-        let viewModel = FacetViewModel(groupName: "Sort", facets: [.author, .title], accountsManager: .shared)
+        let viewModel = FacetViewModel(groupName: "Sort", facets: [.author, .title], accountsManager: AppContainer.production().accountsManager)
         XCTAssertEqual(viewModel.activeSort, .author)
         XCTAssertNotEqual(viewModel.activeSort, .title, "When author is first, title must not be the active sort")
         XCTAssertEqual(viewModel.facets.first, .author, "First facet in the list must be author")

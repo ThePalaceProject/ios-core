@@ -38,13 +38,13 @@ final class AccountDetailViewModelTests: XCTestCase {
     // MARK: - Helper to get a valid library ID
 
     private func getValidLibraryID() -> String? {
-        return AccountsManager.shared.currentAccountId
+        return AppContainer.production().accountsManager.currentAccountId
     }
 
     // MARK: - Published Property Tests
 
     func testInitialPublishedPropertiesState() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -60,7 +60,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testUsernameTextUpdate() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -76,7 +76,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testPinTextUpdate() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -92,7 +92,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testIsPINHiddenDefaultsToTrue() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -103,7 +103,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testTogglePINVisibility() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -118,7 +118,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testShowBarcode_WhenEnabled_TriggerObjectWillChange() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -143,7 +143,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     // MARK: - canSignIn Tests
 
     func testCanSignInWithEmptyCredentials() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -157,7 +157,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testCanSignInWithOnlyUsername() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -176,7 +176,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testCanSignInWithBothCredentials() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -194,8 +194,8 @@ final class AccountDetailViewModelTests: XCTestCase {
     // MARK: - Library Properties Tests
 
     func testLibraryNameReturnsAccountName() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId,
-              let account = AccountsManager.shared.account(libraryID) else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId,
+              let account = AppContainer.production().accountsManager.account(libraryID) else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -206,8 +206,8 @@ final class AccountDetailViewModelTests: XCTestCase {
     }
 
     func testSelectedAccountMatchesInitialized() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId,
-              AccountsManager.shared.account(libraryID) != nil else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId,
+              AppContainer.production().accountsManager.account(libraryID) != nil else {
             XCTSkip("No current account available or account not loaded for testing")
             return
         }
@@ -223,7 +223,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     // MARK: - Alert Tests
 
     func testAlertPropertiesUpdate() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -242,7 +242,7 @@ final class AccountDetailViewModelTests: XCTestCase {
     // MARK: - Sync Tests
 
     func testIsSyncEnabledToggle() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -434,7 +434,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
     /// When OAuth credentials are stale, isSignedIn should be TRUE because the token
     /// refreshes automatically in the background - user should still appear signed in.
     func testIsSignedIn_trueWhenOAuthCredentialsStale() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -464,7 +464,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
     /// When SAML/Basic credentials are stale (session expired), isSignedIn should be FALSE
     /// so the UI shows "Sign In" to prompt re-authentication via IDP.
     func testIsSignedIn_falseWhenSAMLCredentialsStale() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -495,7 +495,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     /// When user is fully logged in (not stale), isSignedIn should be TRUE regardless of auth type
     func testIsSignedIn_trueWhenLoggedIn() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -520,7 +520,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     /// For SAML/Basic: Transition from loggedIn to credentialsStale should update isSignedIn to false
     func testIsSignedIn_SAMLUpdatesWhenStateBecomesStale() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -549,7 +549,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     /// For OAuth: Transition from loggedIn to credentialsStale should keep isSignedIn true
     func testIsSignedIn_OAuthRemainsSignedInWhenStateBecomesStale() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -577,7 +577,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     /// Re-authentication from stale should update isSignedIn back to true (for SAML/Basic)
     func testIsSignedIn_updatesAfterSAMLReauthentication() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -607,7 +607,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     /// Account should indicate it needs re-authentication when credentials are stale
     func testNeedsReauthentication_trueWhenCredentialsStale() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -643,21 +643,21 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         try KeychainAvailability.skipIfUnavailable()
         // Reset shared user account state to prevent test pollution from
         // previous tests (in this class or elsewhere) that set credentials.
-        if let libraryID = AccountsManager.shared.currentAccountId {
+        if let libraryID = AppContainer.production().accountsManager.currentAccountId {
             TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
         }
     }
 
     override func tearDown() {
         // Same reset on the way out so we don't pollute downstream classes.
-        if let libraryID = AccountsManager.shared.currentAccountId {
+        if let libraryID = AppContainer.production().accountsManager.currentAccountId {
             TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
         }
         super.tearDown()
     }
 
     func testPINVisibility_DefaultsToHidden() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -672,7 +672,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testPINVisibility_ToggleMultipleTimes() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -709,7 +709,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // MARK: - Delegate Callback Tests (TPPSignInOutBusinessLogicUIDelegate)
 
     func testBusinessLogicWillSignIn_NonOAuth_SetsLoadingTrueAndClearsSigningOut() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -724,7 +724,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicDidCancelSignIn_ClearsLoadingAndSigningOut() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -739,7 +739,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicDidReceiveCredentials_SetsLoadingTrue() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -752,7 +752,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicDidCompleteSignIn_ClearsLoadingAndSigningOut() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -767,7 +767,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicWillSignOut_SetsLoadingAndSigningOut() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -782,7 +782,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicDidFinishDeauthorizing_ClearsLoadingAndSigningOut() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -797,7 +797,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicValidationError_ShowsAlertAndClearsLoading() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -817,7 +817,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicValidationError_CancelledErrorClearsPin() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -832,7 +832,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicSignOutError_401ShowsUnexpectedCredentialsAlert() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -849,7 +849,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testBusinessLogicSignOutError_WithErrorUsesLocalizedDescription() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -866,8 +866,8 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // MARK: - updateSync / selectAuthMethod / selectSAMLIDP
 
     func testUpdateSync_WritesToAccountDetails() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId,
-              let account = AccountsManager.shared.account(libraryID),
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId,
+              let account = AppContainer.production().accountsManager.account(libraryID),
               account.details != nil else {
             XCTSkip("No account details available")
             return
@@ -884,8 +884,8 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testSelectAuthMethod_ClearsIDPAndSetsSelectedAuth() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId,
-              let auth = AccountsManager.shared.account(libraryID)?.details?.auths.first else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId,
+              let auth = AppContainer.production().accountsManager.account(libraryID)?.details?.auths.first else {
             XCTSkip("No auth methods available")
             return
         }
@@ -900,7 +900,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // MARK: - refreshSignInState
 
     func testRefreshSignInState_ReloadsTableWhenStateChanges() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -920,7 +920,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testAccountDidChangeViaNotification_ClearsCredentialsOnLogout() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -969,7 +969,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // MARK: - Credentials Provider Extension
 
     func testUsernameComputed_EmptyReturnsNil() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -981,7 +981,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testPinComputed_EmptyReturnsEmptyString() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -993,7 +993,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testContext_ReturnsSettingsTab() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -1004,8 +1004,8 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // MARK: - libraryLogo / libraryName defaults
 
     func testLibraryLogo_MatchesSelectedAccountLogo() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId,
-              let account = AccountsManager.shared.account(libraryID) else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId,
+              let account = AppContainer.production().accountsManager.account(libraryID) else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -1016,7 +1016,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // MARK: - signIn early-exit when already signed in
 
     func testSignIn_WhenAlreadySignedIn_SetsIsSigningOutTrue() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }
@@ -1037,7 +1037,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     }
 
     func testPINVisibility_IndependentOfCredentialChanges() async {
-        guard let libraryID = AccountsManager.shared.currentAccountId else {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
             XCTSkip("No current account available for testing")
             return
         }

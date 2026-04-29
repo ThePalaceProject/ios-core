@@ -7,14 +7,14 @@ class BookRegistrySync {
 
   private let store: BookRegistryStore
   private let accountsManager: AccountsManager
-  /// Resolved lazily because `MyBooksDownloadCenter` itself reads
-  /// `TPPBookRegistry.shared` during init — taking the instance at
-  /// BookRegistrySync construction time would deadlock the static-let
-  /// initialization chain (BookRegistrySync is constructed inside
-  /// `TPPBookRegistry.init` which runs while `AppContainer._cached` is
-  /// still resolving). The closure runs only inside async dispatched
-  /// blocks, by which point `AppContainer.production().downloadCenter`
-  /// has settled.
+  /// Resolved lazily because `MyBooksDownloadCenter` reads the registry
+  /// via `AppContainer.production().bookRegistry` for its own default args
+  /// — taking the instance at BookRegistrySync construction time would
+  /// deadlock the static-let initialization chain (BookRegistrySync is
+  /// constructed inside `TPPBookRegistry.init` which runs while
+  /// `AppContainer._cached` is still resolving). The closure runs only
+  /// inside async dispatched blocks, by which point
+  /// `AppContainer.production().downloadCenter` has settled.
   private let downloadCenterProvider: () -> MyBooksDownloadCenter
   private let opdsFeedServiceProvider: () -> OPDSFeedService
   private let registryFolderName = "registry"

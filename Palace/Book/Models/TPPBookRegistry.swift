@@ -145,10 +145,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             }
     }
 
-    // MARK: - Shared singleton
-
-    static let shared = TPPBookRegistry()
-
     // MARK: - State + publishers
 
     private(set) var state: RegistryState = .unloaded {
@@ -193,8 +189,18 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
     // MARK: - Init
 
-    private override init() {
-        self.accountsManager = .shared
+    /// Construct the app-scoped registry. `accountsManager` is the only
+    /// external dependency the registry needs at init time — every other
+    /// collaborator (download center, OPDS feed service) is lazily resolved
+    /// via the AppContainer providers below.
+    ///
+    /// AppContainer is the sole production caller (see
+    /// `AppContainer._cached`); pass the explicitly-constructed
+    /// AccountsManager so we never re-enter `AppContainer.production()`'s
+    /// dispatch_once during app launch (the failure mode that motivated
+    /// killing the `static let shared` singleton in Phase 6.6).
+    init(accountsManager: AccountsManager) {
+        self.accountsManager = accountsManager
         let store = BookRegistryStore()
         let sync = BookRegistrySync(
             store: store,
@@ -218,7 +224,11 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         setupAccountDidChangeObserver()
     }
 
-    fileprivate init(account: String, accountsManager: AccountsManager = .shared) {
+    /// Account-scoped temporary instance used by `with(account:perform:)` to
+    /// run a block against a *different* registry file than the current one.
+    /// Inherits `accountsManager` from the calling facade — no default arg, no
+    /// AppContainer lookup, so the cycle that motivated 6.6 can't sneak back.
+    fileprivate init(account: String, accountsManager: AccountsManager) {
         self.accountsManager = accountsManager
         let store = BookRegistryStore()
         let sync = BookRegistrySync(
@@ -239,7 +249,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void) {
-        block(TPPBookRegistry(account: account))
+        block(TPPBookRegistry(account: account, accountsManager: accountsManager))
     }
 
     // MARK: - Load / sync / save / reset (delegate to BookRegistrySync)

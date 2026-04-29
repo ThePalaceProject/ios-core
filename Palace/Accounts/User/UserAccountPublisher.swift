@@ -97,7 +97,7 @@ final class UserAccountPublisher: ObservableObject {
         authState = .credentialsStale
 
         // Also update the persisted state in TPPUserAccount
-        AccountsManager.shared.currentUserAccount.setAuthState(.credentialsStale)
+        AppContainer.production().accountsManager.currentUserAccount.setAuthState(.credentialsStale)
     }
 
     /// Marks the account as fully logged in.

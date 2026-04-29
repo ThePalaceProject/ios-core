@@ -8,14 +8,14 @@ import ReadiumLCP
  */
 class LCPPassphraseAuthenticationService: LCPAuthenticating {
 
-    private let bookRegistry: TPPBookRegistry
+    private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
     private let networkExecutor: TPPNetworkExecutor
     private let settings: TPPSettings
 
     init(
-        bookRegistry: TPPBookRegistry = .shared,
-        accountsManager: AccountsManager = .shared,
+        bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
+        accountsManager: AccountsManager = AppContainer.production().accountsManager,
         networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor,
         settings: TPPSettings = AppContainer.production().settings
     ) {

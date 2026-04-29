@@ -68,7 +68,7 @@ final class MockBackendService: ObservableObject {
 
         // Scope mock interception to the current library's host so other
         // libraries aren't affected when the user switches accounts.
-        if let catalogUrlString = AccountsManager.shared.currentAccount?.catalogUrl,
+        if let catalogUrlString = AppContainer.production().accountsManager.currentAccount?.catalogUrl,
            let catalogURL = URL(string: catalogUrlString) {
             MockBackendURLProtocol.scopedHost = catalogURL.host
             Log.info(#file, "MockBackend: scoped to host '\(catalogURL.host ?? "unknown")'")

@@ -7,7 +7,7 @@ class TPPRegistryDebuggingCell: UITableViewCell {
     private var inputField = UITextField()
     weak var delegate: TPPLoadingViewController?
     private let settings: TPPSettings = AppContainer.production().settings
-    private let accountsManager: AccountsManager = .shared
+    private let accountsManager: AccountsManager = AppContainer.production().accountsManager
 
     private var reloadInProgress: Bool = false {
         didSet {

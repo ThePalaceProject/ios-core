@@ -30,7 +30,7 @@ final class BookCellModelCacheTests: XCTestCase {
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
             readerService: AppContainer.production().readerService
         )
@@ -200,7 +200,7 @@ final class BookCellModelCacheTests: XCTestCase {
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
             readerService: AppContainer.production().readerService
         )
@@ -241,7 +241,7 @@ final class BookCellModelCacheTests: XCTestCase {
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
             readerService: AppContainer.production().readerService
         )
@@ -281,7 +281,7 @@ final class BookCellModelCacheTests: XCTestCase {
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
             readerService: AppContainer.production().readerService
         )

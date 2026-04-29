@@ -43,7 +43,7 @@ enum CarPlayPlaybackError: Error {
 /// Shared authentication helper for CarPlay components.
 enum CarPlayAuthHelper {
     /// Checks if the user is authenticated with the current library.
-    static func isAuthenticated(accountsManager: AccountsManager = AccountsManager.shared) -> Bool {
+    static func isAuthenticated(accountsManager: AccountsManager = AppContainer.production().accountsManager) -> Bool {
         guard let account = accountsManager.currentAccount else {
             return false
         }
@@ -57,7 +57,7 @@ enum CarPlayAuthHelper {
             return true
         }
 
-        return AccountsManager.shared.currentUserAccount.hasCredentials()
+        return accountsManager.currentUserAccount.hasCredentials()
     }
 }
 

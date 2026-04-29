@@ -21,7 +21,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     private var interfaceController: CPInterfaceController?
     private var templateManager: CarPlayTemplateManager?
     private var cancellables = Set<AnyCancellable>()
-    private let bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
+    private let bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry
 
     // MARK: - CPTemplateApplicationSceneDelegate
 
@@ -159,7 +159,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         }
     }
 
-    private func subscribeToBookRegistryChanges(bookRegistry: TPPBookRegistry = .shared) {
+    private func subscribeToBookRegistryChanges(bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         // Subscribe to registry changes (fires when books are loaded from disk or synced)
         bookRegistry.registryPublisher
             .dropFirst() // Skip initial empty state

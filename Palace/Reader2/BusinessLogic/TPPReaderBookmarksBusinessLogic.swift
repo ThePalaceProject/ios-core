@@ -317,7 +317,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
         Log.info(#file, message)
 
         // Check if we should attempt re-authentication
-        let userAccount = AccountsManager.shared.currentUserAccount
+        let userAccount = AppContainer.production().accountsManager.currentUserAccount
         let isCredentialsStale = userAccount.authState == .credentialsStale
 
         if shouldAttemptReauth && isCredentialsStale && !hasAttemptedReauthDuringSync {

@@ -27,7 +27,7 @@ final class FacetViewModelTests: XCTestCase {
     /// Tests that don't care about account behavior pass the live singleton
     /// since none of these tests exercise account-scoped state transitions.
     private func makeViewModel(groupName: String, facets: [Facet]) -> FacetViewModel {
-        FacetViewModel(groupName: groupName, facets: facets, accountsManager: .shared)
+        FacetViewModel(groupName: groupName, facets: facets, accountsManager: AppContainer.production().accountsManager)
     }
 
     // MARK: - Facet Enum Tests
@@ -141,7 +141,7 @@ final class FacetViewModelTests: XCTestCase {
 
     func testCurrentAccountURLWithNilAccount() {
         let vm = makeViewModel(groupName: "Test", facets: [.author, .title])
-        // The init populates from AccountsManager.shared — clear to test nil path
+        // The init populates from AppContainer.production().accountsManager — clear to test nil path
         vm.currentAccount = nil
         vm.logo = nil
 

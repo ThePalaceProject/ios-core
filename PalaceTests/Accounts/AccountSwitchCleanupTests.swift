@@ -153,7 +153,7 @@ final class AccountSwitchCleanupTests: XCTestCase {
             imageCache: mockImageCache,
             bookRegistry: mockRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
             readerService: AppContainer.production().readerService
         )

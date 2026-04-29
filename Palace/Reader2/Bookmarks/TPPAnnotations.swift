@@ -20,7 +20,7 @@ public struct AnnotationResponse {
 enum AnnotationDevice {
     /// Test-only seam mirroring `TPPAnnotations.accountsManagerOverride`.
     /// When non-nil, `currentID()` reads `currentUserAccount.deviceID`
-    /// from this provider instead of `AccountsManager.shared`. Typed as
+    /// from this provider instead of the AppContainer instance. Typed as
     /// the `TPPUserAccountResolving` protocol so tests can inject mock
     /// providers without subclassing the final `AccountsManager`.
     /// Always `nil` in production. Reset in `tearDown`.
@@ -32,7 +32,7 @@ enum AnnotationDevice {
     nonisolated(unsafe) static var firebaseDeviceIDOverride: String?
 
     static func currentID() -> String {
-        let accountsManager: TPPUserAccountResolving = accountsManagerOverride ?? AccountsManager.shared
+        let accountsManager: TPPUserAccountResolving = accountsManagerOverride ?? AppContainer.production().accountsManager
         if let adobeID = accountsManager.currentUserAccount.deviceID, !adobeID.isEmpty {
             return adobeID
         }
@@ -116,7 +116,7 @@ protocol AnnotationsManager {
     /// current call. In production this is always `.shared`. In tests,
     /// setting `accountsManagerOverride` lets the test inject a mock.
     fileprivate static var currentAccountsManager: TPPLibraryAccountsProvider {
-        return accountsManagerOverride ?? AccountsManager.shared
+        return accountsManagerOverride ?? AppContainer.production().accountsManager
     }
 
     // MARK: - Reading Position

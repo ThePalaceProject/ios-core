@@ -94,7 +94,8 @@ final class AudiobookLoader {
     // MARK: - Token refresh
 
     private func refreshTokenIfNeeded(for book: TPPBook, completion: @escaping (Result<Void, AudiobookLoadError>) -> Void) {
-        let userAccount = AccountsManager.shared.currentUserAccount
+        let accountsManager = AppContainer.production().accountsManager
+        let userAccount = accountsManager.currentUserAccount
         guard userAccount.authTokenHasExpired else {
             completion(.success(()))
             return
@@ -112,7 +113,7 @@ final class AudiobookLoader {
         }
         _ = username // guard-bound but unused beyond the predicate check
 
-        AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
+        AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil, accountId: accountsManager.currentAccount?.uuid) { result in
             switch result {
             case .success:
                 Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
@@ -479,7 +480,7 @@ final class AudiobookLoader {
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
         var timeTracker: AudiobookTimeTracker?
         if
-            let libraryId = AccountsManager.shared.currentAccount?.uuid,
+            let libraryId = AppContainer.production().accountsManager.currentAccount?.uuid,
             let url = book.timeTrackingURL {
             timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: url)
         }

@@ -66,9 +66,6 @@ struct CatalogCacheMetadata: Codable {
 /// Manages library accounts asynchronously with authentication & image loading
 @objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider, TPPUserAccountResolving {
 
-    static let shared = AccountsManager()
-    static func sharedInstance() -> AccountsManager { shared }
-
     // MARK: – Config / state
 
     static let TPPAccountUUIDs = [
@@ -90,7 +87,7 @@ struct CatalogCacheMetadata: Codable {
     let ageCheck: TPPAgeCheckVerifying
     private let settings: TPPSettings
     /// Lazy-resolved from AppContainer to break the singleton init cycle:
-    /// AccountsManager.shared is itself referenced by AppContainer._cached's
+    /// AccountsManager is constructed inline by AppContainer._cached's
     /// initializer, so we cannot read AppContainer.production() during this
     /// class's init. The lazy var is first accessed *after* AppContainer
     /// finishes constructing, so the cached instance is ready.
@@ -105,7 +102,11 @@ struct CatalogCacheMetadata: Codable {
     private var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
     private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
 
-    private override init() {
+    /// Initializer is `internal` rather than `private` so `AppContainer` can
+    /// construct the single live instance directly. Outside of `AppContainer`
+    /// (and tests that need an isolated instance), do not call this directly
+    /// — read `appContainer.accountsManager` instead.
+    override init() {
         self.settings = TPPSettings()
         self.accountSet = TPPConfiguration.customUrlHash()
             ?? (settings.useBetaLibraries

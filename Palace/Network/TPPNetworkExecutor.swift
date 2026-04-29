@@ -65,7 +65,7 @@ private actor TokenRefreshCoordinator {
     private let responder: TPPNetworkResponder
     private var _accountsManager: TPPLibraryAccountsProvider?
     private var accountsManager: TPPLibraryAccountsProvider {
-        _accountsManager ?? AccountsManager.shared
+        _accountsManager ?? AppContainer.production().accountsManager
     }
 
     @objc init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
@@ -101,7 +101,7 @@ private actor TokenRefreshCoordinator {
     /// DI-friendly initializer for testing
     init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
          cachingStrategy: NYPLCachingStrategy,
-         accountsManager: TPPLibraryAccountsProvider = AccountsManager.shared,
+         accountsManager: TPPLibraryAccountsProvider = AppContainer.production().accountsManager,
          delegateQueue: OperationQueue? = nil) {
         self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
                                              useFallbackCaching: cachingStrategy == .fallback)
@@ -165,7 +165,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     @discardableResult
     func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
         let accountId = accountsManager.currentAccountId
-        let userAccount = accountId.flatMap { AccountsManager.shared.userAccount(for: $0) } ?? AccountsManager.shared.currentUserAccount
+        let userAccount = accountId.flatMap { accountsManager.userAccount(for: $0) } ?? accountsManager.currentUserAccount
 
         // SAML auth uses cookies, not tokens - proceed directly
         if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
@@ -228,7 +228,7 @@ extension TPPNetworkExecutor {
         // sharedAccount() and the property reads, causing cross-account
         // credential leaks.
         let resolvedId = accountId ?? accountsManager.currentAccountId ?? ""
-        let snapshot = AccountsManager.shared.userAccount(for: resolvedId).credentialSnapshot()
+        let snapshot = accountsManager.userAccount(for: resolvedId).credentialSnapshot()
 
         // SAML auth uses cookies, not tokens — make sure they are installed in
         // the shared cookie storage before the request goes out. Removing this
@@ -254,7 +254,7 @@ extension TPPNetworkExecutor {
 extension TPPNetworkExecutor {
     @objc class func bearerAuthorized(request: URLRequest) -> URLRequest {
         var request = request
-        let snapshot = AccountsManager.shared.currentUserAccount.credentialSnapshot()
+        let snapshot = AppContainer.production().accountsManager.currentUserAccount.credentialSnapshot()
 
         if let authToken = snapshot.authToken, !authToken.isEmpty {
             let tokenPrefix = String(authToken.prefix(8))
@@ -419,7 +419,7 @@ extension TPPNetworkExecutor {
             // another thread could switch libraryUUID between sharedAccount()
             // and the .username/.pin reads, sending Account B's credentials
             // to Account A's token endpoint.
-            let snapshot = AccountsManager.shared.userAccount(for: capturedAccountId ?? AccountsManager.shared.currentAccountId ?? "").credentialSnapshot()
+            let snapshot = self.accountsManager.userAccount(for: capturedAccountId ?? self.accountsManager.currentAccountId ?? "").credentialSnapshot()
             guard let username = snapshot.barcode, !username.isEmpty,
                   let password = snapshot.pin,
                   let tokenURL = snapshot.authDefinition?.tokenURL else {
@@ -484,7 +484,7 @@ extension TPPNetworkExecutor {
                         if let nsError = error as? NSError, nsError.code == 401 {
                             Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? "current")")
                             await MainActor.run {
-                                AccountsManager.shared.userAccount(for: capturedAccountId ?? AccountsManager.shared.currentAccountId ?? "").markCredentialsStale()
+                                self.accountsManager.userAccount(for: capturedAccountId ?? self.accountsManager.currentAccountId ?? "").markCredentialsStale()
                                 if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
                                     SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
                                 }
@@ -519,7 +519,7 @@ extension TPPNetworkExecutor {
 
             switch result {
             case .success(let tokenResponse):
-                let targetAccount = AccountsManager.shared.userAccount(for: accountId ?? AccountsManager.shared.currentAccountId ?? "")
+                let targetAccount = self.accountsManager.userAccount(for: accountId ?? self.accountsManager.currentAccountId ?? "")
                 targetAccount.setAuthToken(
                     tokenResponse.accessToken,
                     barcode: username,

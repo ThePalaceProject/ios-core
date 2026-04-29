@@ -32,7 +32,7 @@ class CatalogSearchViewModel: ObservableObject {
     private var entryPointLoadTask: Task<Void, Never>?
     private let debounceInterval: TimeInterval
     private let announcements: TPPAccessibilityAnnouncementCenter
-    private let bookRegistry: TPPBookRegistry
+    private let bookRegistry: TPPBookRegistryProvider
     private let bookCellModelCache: BookCellModelCache
 
     /// Cache mapping groupsFeedURL.absoluteString → OpenSearch descriptor URL.
@@ -53,7 +53,7 @@ class CatalogSearchViewModel: ObservableObject {
         baseURL: @escaping () -> URL?,
         debounceInterval: TimeInterval = 0.4,
         announcements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
-        bookRegistry: TPPBookRegistry = .shared,
+        bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
         bookCellModelCache: BookCellModelCache
     ) {
         self.repository = repository
@@ -308,7 +308,7 @@ class CatalogSearchViewModel: ObservableObject {
                         // OPDS 1 path
                         let feedObjc = feed.opdsFeed
                         if let opdsEntries = feedObjc.entries as? [TPPOPDSEntry] {
-                            searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: TPPBookRegistry.shared) }
+                            searchResults = opdsEntries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: self.bookRegistry) }
                         }
                         self.extractNextPageURL(from: feedObjc)
                         self.extractPostSearchFacets(from: feedObjc)
@@ -367,7 +367,7 @@ class CatalogSearchViewModel: ObservableObject {
                 let feedObjc = feed.opdsFeed
                 extractNextPageURL(from: feedObjc)
                 if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-                    newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: TPPBookRegistry.shared) }
+                    newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: self.bookRegistry) }
                 }
             }
             filteredBooks.append(contentsOf: newBooks)
