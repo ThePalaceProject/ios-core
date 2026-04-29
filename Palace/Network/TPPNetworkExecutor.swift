@@ -10,11 +10,6 @@ import Foundation
 import PalaceLogging
 import PalaceNetwork
 
-enum NYPLResult<SuccessInfo> {
-    case success(SuccessInfo, URLResponse?)
-    case failure(TPPUserFriendlyError, URLResponse?)
-}
-
 /// Actor that serializes access to the token refresh state and retry queue.
 private actor TokenRefreshCoordinator {
     var isRefreshing = false

@@ -1,6 +1,7 @@
 import UIKit
 import ReadiumShared
 import PalaceLogging
+import PalaceNetwork
 
 public struct AnnotationResponse {
     var serverId: String?

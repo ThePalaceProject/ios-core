@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 @testable import Palace
 
 class TPPRequestExecutorMock: TPPRequestExecuting {

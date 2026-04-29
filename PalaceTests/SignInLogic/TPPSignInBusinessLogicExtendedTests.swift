@@ -7,6 +7,7 @@
 
 import XCTest
 import Combine
+import PalaceNetwork
 @testable import Palace
 
 // MARK: - Extended Sign-In Business Logic Tests

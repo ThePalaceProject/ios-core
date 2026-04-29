@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import PalaceNetwork
 @testable import Palace
 
 final class TokenRefreshTests: XCTestCase {
