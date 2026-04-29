@@ -73,10 +73,23 @@ import PalaceCatalog
     private var bookIdentifierOfBookToRemove: String?
     private var session: URLSession!
 
-    // Thread-safe actor-based dictionaries
-    private let bookIdentifierToDownloadInfo = SafeDictionary<String, MyBooksDownloadInfo>()
-    private let bookIdentifierToDownloadTask = SafeDictionary<String, URLSessionDownloadTask>()
-    private let taskIdentifierToBook = SafeDictionary<Int, TPPBook>()
+    /// Owns the thread-safe download tracking dictionaries + DownloadCoordinator
+    /// + maxConcurrentDownloads. The properties below are computed wrappers
+    /// that route through this single state owner — preserves the call-site
+    /// shape across MBDC's ~97 internal SafeDictionary accesses while
+    /// eliminating the duplicate state previously stored on MBDC.
+    private let stateManager: DownloadStateManager
+
+    // Thread-safe actor-based dictionaries — wrapper accessors over stateManager.
+    private var bookIdentifierToDownloadInfo: SafeDictionary<String, MyBooksDownloadInfo> {
+        stateManager.bookIdentifierToDownloadInfo
+    }
+    private var bookIdentifierToDownloadTask: SafeDictionary<String, URLSessionDownloadTask> {
+        stateManager.bookIdentifierToDownloadTask
+    }
+    private var taskIdentifierToBook: SafeDictionary<Int, TPPBook> {
+        stateManager.taskIdentifierToBook
+    }
 
     // Serial execution for download operations (replaces downloadQueue)
     private let downloadExecutor = SerialExecutor()
@@ -94,8 +107,11 @@ import PalaceCatalog
     /// instances so external subscribers see one continuous stream.
     private let progressReporter: DownloadProgressReporter
 
-    private var maxConcurrentDownloads: Int = 4  // Increased from 2 for better UX
-    private let downloadCoordinator = DownloadCoordinator()
+    private var maxConcurrentDownloads: Int {
+        get { stateManager.maxConcurrentDownloads }
+        set { stateManager.maxConcurrentDownloads = newValue }
+    }
+    private var downloadCoordinator: DownloadCoordinator { stateManager.downloadCoordinator }
 
     init(
         // Test-only override. Production code passes nil so `userAccount`
@@ -110,6 +126,7 @@ import PalaceCatalog
         accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
         downloadAnnouncementService: DownloadAnnouncementService = DownloadAnnouncementService(),
         bookFileManager: BookFileManager? = nil,
+        stateManager: DownloadStateManager = DownloadStateManager(),
         errorActivityTracker: ErrorActivityTracker = .shared,
         userRetryTracker: UserRetryTracker = .shared,
         reachability: Reachability = AppContainer.production().reachability,
@@ -142,6 +159,7 @@ import PalaceCatalog
             bookRegistry: bookRegistry,
             accountsManager: accountsManager
         )
+        self.stateManager = stateManager
         // Build the DownloadProgressReporter from the same announcer the
         // download center uses, AND share the same DownloadAnnouncementService
         // instance. The reporter's lifecycle announce wrappers delegate to
