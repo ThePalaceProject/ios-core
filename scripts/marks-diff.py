@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+"""
+marks-diff.py — diff two simdrive fixture corpora and emit findings rows.
+
+Compares baseline vs candidate fixtures step-by-step. For each step, identifies:
+  - text_disappeared : a label present in baseline is missing in candidate
+  - text_appeared    : a label in candidate not present in baseline
+  - text_moved       : a label present in both moved more than --tolerance pixels
+
+Each finding becomes a row in the regression-report findings.csv format. Severity
+is inferred from movement magnitude and from whether the moved label is on a
+known critical-path control list (Borrow / Sign In / Read / Remove / etc.).
+
+Usage
+-----
+    # Diff one step:
+    marks-diff.py \\
+      --baseline .specterqa/fixtures/baselines/3.0.0/anonymous-borrow/03-catalog.json \\
+      --candidate .specterqa/fixtures/baselines/3.0.1/anonymous-borrow/03-catalog.json
+
+    # Diff a whole flow + append rows to findings.csv:
+    marks-diff.py \\
+      --baseline-dir .specterqa/fixtures/baselines/3.0.0/anonymous-borrow \\
+      --candidate-dir .specterqa/fixtures/baselines/3.0.1/anonymous-borrow \\
+      --append-csv ~/Desktop/regression-PP-4164/findings.csv \\
+      --tolerance 50
+
+    # Strict mode (CI): non-zero exit if any findings emitted.
+    marks-diff.py --baseline-dir <a> --candidate-dir <b> --strict
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import re
+import sys
+import unicodedata
+from dataclasses import dataclass
+from pathlib import Path
+
+
+CRITICAL_TEXTS = {
+    # Auth
+    "sign in", "log in", "sign out", "log out",
+    # Circulation actions
+    "borrow", "return", "read", "remove", "download", "cancel", "reserve", "place hold",
+    # Tab bar
+    "catalog", "my books", "holds", "settings",
+    # Common errors
+    "error", "failed", "unable",
+}
+
+CSV_HEADER = [
+    "ID", "Title", "Area", "Test ID", "Classification", "Severity", "Verified",
+    "Baseline Behavior", "Candidate Behavior", "Steps",
+    "Screenshot Baseline", "Screenshot Candidate", "Notes", "PR", "Jira Ticket",
+]
+
+
+@dataclass
+class Finding:
+    title: str
+    area: str
+    test_id: str
+    classification: str
+    severity: str
+    baseline_behavior: str
+    candidate_behavior: str
+    steps: str
+    screenshot_baseline: str
+    screenshot_candidate: str
+    notes: str
+
+    def to_csv_row(self, finding_id: str) -> list[str]:
+        return [
+            finding_id, self.title, self.area, self.test_id, self.classification, self.severity,
+            "true",
+            self.baseline_behavior, self.candidate_behavior, self.steps,
+            self.screenshot_baseline, self.screenshot_candidate, self.notes,
+            "", "",
+        ]
+
+
+# ---------- normalization ----------
+
+_PUNCT_RE = re.compile(r"[\s\W_]+", re.UNICODE)
+
+
+def normalize(s: str) -> str:
+    nf = unicodedata.normalize("NFKD", s)
+    no_diacritic = "".join(ch for ch in nf if not unicodedata.combining(ch))
+    return _PUNCT_RE.sub("", no_diacritic).lower()
+
+
+def is_critical(text: str) -> bool:
+    n = normalize(text)
+    return any(n == normalize(c) or normalize(c) in n for c in CRITICAL_TEXTS)
+
+
+def is_meaningful(text: str, confidence: float, min_conf: float = 0.85) -> bool:
+    if confidence < min_conf:
+        return False
+    n = normalize(text)
+    if len(n) < 3:
+        return False
+    return True
+
+
+# ---------- diff ----------
+
+def load(path: Path) -> dict:
+    return json.loads(path.read_text())
+
+
+def diff_step(baseline: dict, candidate: dict, tolerance: int) -> list[Finding]:
+    """Diff a single step (one fixture pair) → list of findings."""
+    findings: list[Finding] = []
+
+    bmarks = {normalize(m["text"]): m for m in baseline["marks"] if is_meaningful(m["text"], m.get("confidence", 1.0))}
+    cmarks = {normalize(m["text"]): m for m in candidate["marks"] if is_meaningful(m["text"], m.get("confidence", 1.0))}
+
+    fixture_id = baseline.get("fixture") or candidate.get("fixture") or "<unknown>"
+    bsh = baseline.get("screenshot_relpath", "")
+    csh = candidate.get("screenshot_relpath", "")
+
+    # Disappeared (in baseline, missing in candidate).
+    for key, bm in bmarks.items():
+        if key in cmarks:
+            continue
+        text = bm["text"]
+        critical = is_critical(text)
+        sev = "major" if critical else "minor"
+        cls = "regression" if critical else "behavior-change"
+        findings.append(Finding(
+            title=f"Text disappeared in candidate: {text!r}",
+            area="visual-regression",
+            test_id=fixture_id,
+            classification=cls,
+            severity=sev,
+            baseline_behavior=f"Visible at center=({bm['center'][0]}, {bm['center'][1]}), confidence={bm.get('confidence', 1.0)}",
+            candidate_behavior="Not present in candidate marks",
+            steps=f"Compare {fixture_id} fixture marks: baseline contains {text!r}, candidate does not.",
+            screenshot_baseline=bsh,
+            screenshot_candidate=csh,
+            notes=f"Auto-generated by marks-diff.py. Critical control: {critical}.",
+        ))
+
+    # Appeared (in candidate, missing in baseline).
+    for key, cm in cmarks.items():
+        if key in bmarks:
+            continue
+        text = cm["text"]
+        critical = is_critical(text)
+        # New labels are usually intentional (new feature) but on critical-control terms it's an alert.
+        cls = "regression" if critical else "new-feature"
+        sev = "major" if critical else "minor"
+        findings.append(Finding(
+            title=f"Text appeared in candidate: {text!r}",
+            area="visual-regression",
+            test_id=fixture_id,
+            classification=cls,
+            severity=sev,
+            baseline_behavior="Not present",
+            candidate_behavior=f"Visible at center=({cm['center'][0]}, {cm['center'][1]}), confidence={cm.get('confidence', 1.0)}",
+            steps=f"Compare {fixture_id} fixture marks.",
+            screenshot_baseline=bsh,
+            screenshot_candidate=csh,
+            notes=f"Auto-generated by marks-diff.py. Critical control: {critical}.",
+        ))
+
+    # Moved.
+    for key, bm in bmarks.items():
+        if key not in cmarks:
+            continue
+        cm = cmarks[key]
+        dx = cm["center"][0] - bm["center"][0]
+        dy = cm["center"][1] - bm["center"][1]
+        if max(abs(dx), abs(dy)) <= tolerance:
+            continue
+        text = bm["text"]
+        critical = is_critical(text)
+        magnitude = max(abs(dx), abs(dy))
+        if critical and magnitude > 100:
+            sev = "major"
+            cls = "regression"
+        elif critical:
+            sev = "minor"
+            cls = "behavior-change"
+        elif magnitude > 200:
+            sev = "minor"
+            cls = "behavior-change"
+        else:
+            sev = "cosmetic"
+            cls = "behavior-change"
+        findings.append(Finding(
+            title=f"{text!r} moved Δ=({dx:+d}, {dy:+d}) px between versions",
+            area="visual-regression",
+            test_id=fixture_id,
+            classification=cls,
+            severity=sev,
+            baseline_behavior=f"center=({bm['center'][0]}, {bm['center'][1]})",
+            candidate_behavior=f"center=({cm['center'][0]}, {cm['center'][1]})",
+            steps=f"Compare {fixture_id} fixture marks.",
+            screenshot_baseline=bsh,
+            screenshot_candidate=csh,
+            notes=f"Auto-generated by marks-diff.py. Tolerance={tolerance}px. Critical control: {critical}.",
+        ))
+
+    return findings
+
+
+def diff_dir(baseline_dir: Path, candidate_dir: Path, tolerance: int) -> list[Finding]:
+    findings: list[Finding] = []
+    for bjson in sorted(baseline_dir.glob("*.json")):
+        cjson = candidate_dir / bjson.name
+        if not cjson.exists():
+            findings.append(Finding(
+                title=f"Fixture step missing in candidate: {bjson.name}",
+                area="visual-regression",
+                test_id=bjson.stem,
+                classification="regression",
+                severity="major",
+                baseline_behavior=f"Fixture present at {bjson}",
+                candidate_behavior=f"No corresponding fixture at {cjson}",
+                steps="Both versions should have the same step set.",
+                screenshot_baseline="",
+                screenshot_candidate="",
+                notes="Capture the candidate side or remove the baseline step.",
+            ))
+            continue
+        findings.extend(diff_step(load(bjson), load(cjson), tolerance))
+    return findings
+
+
+# ---------- output ----------
+
+def append_csv(path: Path, findings: list[Finding]) -> tuple[int, int]:
+    """Append findings to CSV. Returns (existing_id_max, appended_count).
+    Skips findings whose Title already exists (rough idempotency)."""
+    existing_ids: set[int] = set()
+    existing_titles: set[str] = set()
+    if path.exists():
+        with path.open() as f:
+            r = csv.reader(f)
+            header = next(r, None)
+            for row in r:
+                if not row:
+                    continue
+                m = re.match(r"F-(\d+)", row[0])
+                if m:
+                    existing_ids.add(int(m.group(1)))
+                if len(row) > 1:
+                    existing_titles.add(row[1])
+    next_id = max(existing_ids) + 1 if existing_ids else 1
+
+    new_rows: list[list[str]] = []
+    appended = 0
+    for f in findings:
+        if f.title in existing_titles:
+            continue
+        new_rows.append(f.to_csv_row(f"F-{next_id:03d}"))
+        next_id += 1
+        appended += 1
+
+    if not path.exists():
+        with path.open("w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(CSV_HEADER)
+            w.writerows(new_rows)
+    elif new_rows:
+        with path.open("a", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerows(new_rows)
+
+    return (next_id - 1 - appended, appended)
+
+
+# ---------- CLI ----------
+
+def main() -> int:
+    p = argparse.ArgumentParser(description="Diff two simdrive fixture corpora and emit findings.")
+    g_pair = p.add_argument_group("single-step diff")
+    g_pair.add_argument("--baseline", type=Path)
+    g_pair.add_argument("--candidate", type=Path)
+    g_dir = p.add_argument_group("flow-wide diff")
+    g_dir.add_argument("--baseline-dir", type=Path)
+    g_dir.add_argument("--candidate-dir", type=Path)
+    p.add_argument("--tolerance", type=int, default=50, help="Pixel tolerance before reporting a move (default 50).")
+    p.add_argument("--append-csv", type=Path, help="Append findings to this CSV (regression-report format).")
+    p.add_argument("--json", type=Path, help="Write findings as JSON to this path.")
+    p.add_argument("--strict", action="store_true", help="Exit non-zero if any findings emitted.")
+    args = p.parse_args()
+
+    if args.baseline_dir and args.candidate_dir:
+        findings = diff_dir(args.baseline_dir, args.candidate_dir, args.tolerance)
+    elif args.baseline and args.candidate:
+        findings = diff_step(load(args.baseline), load(args.candidate), args.tolerance)
+    else:
+        print("error: provide --baseline + --candidate, or --baseline-dir + --candidate-dir", file=sys.stderr)
+        return 2
+
+    by_class: dict[str, int] = {}
+    by_sev: dict[str, int] = {}
+    for f in findings:
+        by_class[f.classification] = by_class.get(f.classification, 0) + 1
+        by_sev[f.severity] = by_sev.get(f.severity, 0) + 1
+
+    print(f"marks-diff: {len(findings)} finding(s)")
+    print(f"  by classification: {dict(sorted(by_class.items()))}")
+    print(f"  by severity:       {dict(sorted(by_sev.items()))}")
+    for f in findings:
+        print(f"  - [{f.severity:8}] [{f.classification}] {f.title}")
+
+    if args.json:
+        payload = [{
+            "title": f.title, "area": f.area, "test_id": f.test_id,
+            "classification": f.classification, "severity": f.severity,
+            "baseline_behavior": f.baseline_behavior, "candidate_behavior": f.candidate_behavior,
+            "steps": f.steps, "screenshot_baseline": f.screenshot_baseline,
+            "screenshot_candidate": f.screenshot_candidate, "notes": f.notes,
+        } for f in findings]
+        args.json.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+        print(f"\nJSON: {args.json}")
+
+    if args.append_csv:
+        max_id, appended = append_csv(args.append_csv, findings)
+        print(f"\nAppended {appended} new row(s) to {args.append_csv}")
+
+    if args.strict and findings:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

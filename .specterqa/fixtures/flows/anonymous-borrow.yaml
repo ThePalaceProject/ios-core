@@ -1,0 +1,67 @@
+name: anonymous-borrow
+description: |
+  Add the anonymous-auth Palace Bookshelf library, browse the catalog, open a
+  book detail, borrow it, and verify the post-borrow state. Exercises:
+  - G1 (app launch / first screen)
+  - A1 anonymous (no sign-in form, no JIT modal — SQ-005 regression guard)
+  - C1 (catalog browsing — lanes render)
+  - X5 (book detail view)
+  - B1 (borrow button → state transition)
+  - C3 (My Books reflects the borrow)
+
+steps:
+  - id: 01-launch
+    expects:
+      title: "Add Library"        # first-launch library picker
+      contains_text: ["Allin Township Library"]
+      overlay: "Palace Would Like to Send"  # iOS notification permission alert
+
+  - id: 02-after-allow-notif
+    action: "tap text='Allow' (the notif permission Allow button)"
+    expects:
+      title: "Add Library"
+      contains_text: ["Palace Bookshelf", "Popular books free to download and keep"]
+      no_overlay: true
+
+  - id: 03-catalog
+    action: "tap mark for Palace Bookshelf row chevron"
+    expects:
+      title: "Palace Bookshelf"
+      contains_text: ["DPLA Publications", "Big Ten Open Books Collection", "Fiction"]
+      tab_bar: ["Catalog", "My Books", "Holds", "Settings"]
+
+  - id: 04-book-detail
+    action: "tap text='A Night in Acadie'"
+    expects:
+      contains_text: ["A Night in Acadie", "Kate Chopin", "1897", "Borrow", "DESCRIPTION"]
+      no_text: ["Read", "Remove"]   # not yet borrowed
+
+  - id: 05-after-borrow
+    action: "tap text='Borrow'"
+    expects:
+      contains_text: ["A Night in Acadie", "Read", "Remove", "Palace Bookshelf"]
+      no_text: ["Borrow"]           # gone after successful borrow
+
+  - id: 06-my-books
+    action: "tap text='Catalog' (back to root) then tap text='My Books' tab"
+    expects:
+      title: "Palace Bookshelf"
+      contains_text: ["A Night in Acadie", "Kate Chopin", "Read", "Remove"]
+      sort_indicator: "T Title"
+
+mutation_targets:
+  # Mutants that fixture assertions should kill (reference for test design)
+  - file: Palace/Accounts/Library/AccountsManager.swift
+    lines: [308, 345, 612, 655, 667]
+    rationale: |
+      F-001 survivors. These lines control whether specific account/catalog state
+      becomes visible. If a fixture shows the catalog rendered correctly, flipping
+      these conditionals should cause one of the asserted-text/position checks
+      to fail.
+
+  - file: Palace/SignInLogic/TPPSignInBusinessLogic.swift
+    lines: [506, 698]
+    rationale: |
+      F-002 survivors. Anonymous flow exercises the "no sign-in required" path —
+      flipping the not-equal at 506 or the && at 698 should change whether the
+      sign-in modal appears (which fixture 02 explicitly asserts is absent).

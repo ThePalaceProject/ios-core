@@ -1,0 +1,29 @@
+{
+  "fixture": "anonymous-borrow/02-after-allow-notif",
+  "version": "3.0.0",
+  "build": "470",
+  "device": "iPhone 16 Pro",
+  "os": "iOS 18.4",
+  "udid": "F3CB599D-B154-4D40-B2C4-52F821EABAD7",
+  "captured_at": "2026-04-29T16:55:50Z",
+  "screen_size": [1206, 2622],
+  "screenshot_relpath": "02-after-allow-notif.png",
+  "marks": [
+    {"id": 3, "bbox": [448, 269, 304, 66], "center": [600, 302], "text": "Add Library", "confidence": 1.0},
+    {"id": 4, "bbox": [41, 442, 57, 57], "center": [69, 470], "text": "Q", "confidence": 1.0},
+    {"id": 5, "bbox": [220, 598, 395, 49], "center": [417, 622], "text": "Palace Bookshelf", "confidence": 1.0},
+    {"id": 6, "bbox": [216, 647, 719, 53], "center": [575, 673], "text": "Popular books free to download and keep,", "confidence": 1.0},
+    {"id": 7, "bbox": [1110, 644, 38, 49], "center": [1129, 668], "text": ">", "confidence": 1.0},
+    {"id": 8, "bbox": [216, 697, 677, 50], "center": [554, 722], "text": "handpicked by librarians across the US.", "confidence": 1.0},
+    {"id": 9, "bbox": [220, 971, 760, 49], "center": [600, 995], "text": "A List Administrator Library - OSL", "confidence": 1.0},
+    {"id": 11, "bbox": [216, 1200, 407, 54], "center": [419, 1227], "text": "A1QA Test Library", "confidence": 1.0},
+    {"id": 12, "bbox": [216, 1257, 391, 42], "center": [411, 1278], "text": "A test library for A1QA.", "confidence": 1.0},
+    {"id": 13, "bbox": [220, 1436, 635, 49], "center": [537, 1460], "text": "Acorn Public Library District", "confidence": 1.0}
+  ],
+  "asserts": {
+    "title": "Add Library",
+    "contains_text": ["Palace Bookshelf", "A1QA Test Library"],
+    "no_text": ["Allow", "Don't Allow", "Would Like to Send"],
+    "comment": "Notif overlay dismissed; library list scrollable; Palace Bookshelf at top with anonymous-flow tagline."
+  }
+}

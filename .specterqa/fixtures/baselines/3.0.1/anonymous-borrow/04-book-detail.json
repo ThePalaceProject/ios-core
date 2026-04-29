@@ -1,0 +1,29 @@
+{
+  "fixture": "anonymous-borrow/04-book-detail",
+  "version": "3.0.1",
+  "build": "468",
+  "device": "iPhone 16 Pro",
+  "os": "iOS 18.4",
+  "udid": "DF4A2A27-9888-429D-A749-2E157A049A37",
+  "captured_at": "2026-04-29T17:16:17Z",
+  "screen_size": [1206, 2622],
+  "screenshot_relpath": "04-book-detail.png",
+  "marks": [
+    {"id": 2, "bbox": [45, 203, 187, 64], "center": [138, 235], "text": "< Back", "confidence": 1.0},
+    {"id": 3, "bbox": [353, 487, 494, 46], "center": [600, 510], "text": "The Impeachment Papers II", "confidence": 1.0},
+    {"id": 8, "bbox": [102, 1330, 1000, 61], "center": [602, 1360], "text": "The Impeachment Papers II : Materials", "confidence": 1.0},
+    {"id": 12, "bbox": [205, 1645, 779, 42], "center": [594, 1666], "text": "Majority Staff Of The House Committee On", "confidence": 1.0},
+    {"id": 14, "bbox": [524, 1863, 152, 38], "center": [600, 1882], "text": "Borrow", "confidence": 1.0},
+    {"id": 15, "bbox": [91, 2019, 338, 45], "center": [260, 2041], "text": "DESCRIPTION", "confidence": 1.0}
+  ],
+  "asserts": {
+    "has_back_button": true,
+    "title_visible_in_nav": "The Impeachment Papers II",
+    "primary_action_button": "Borrow",
+    "no_text": ["Read", "Remove", "Sign In"]
+  },
+  "diffs_from_baseline": {
+    "borrow_button_y": "candidate=1882 vs baseline=1604 (Δ=+278px). NOT a regression — book has multi-line title (4 lines) and long author string ('Majority Staff Of The House Committee On The Judiciary'), which legitimately pushes the Borrow CTA down. Layout responds to content height, which is correct behavior. A future test should assert 'Borrow appears below author block' rather than asserting an absolute Y.",
+    "comment": "Tapped a different book on candidate (Impeachment Papers II) than baseline (Souls of Black Folk) because the DPLA Publications carousel showed different books at the visible scroll position. The flow YAML's mutation_targets list still applies — the borrow→loaned state machine doesn't care which book is being borrowed."
+  }
+}

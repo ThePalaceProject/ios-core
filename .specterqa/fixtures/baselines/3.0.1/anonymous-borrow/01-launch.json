@@ -1,0 +1,25 @@
+{
+  "fixture": "anonymous-borrow/01-launch",
+  "version": "3.0.1",
+  "build": "468",
+  "device": "iPhone 16 Pro",
+  "os": "iOS 18.4",
+  "udid": "DF4A2A27-9888-429D-A749-2E157A049A37",
+  "captured_at": "2026-04-29T17:02:47Z",
+  "screen_size": [1206, 2622],
+  "screenshot_relpath": "01-launch.png",
+  "marks": [
+    {"id": 3, "bbox": [460, 239, 285, 62], "center": [602, 270], "text": "Add Library", "confidence": 1.0},
+    {"id": 5, "bbox": [444, 491, 313, 75], "center": [600, 528], "text": "Add Library", "confidence": 1.0},
+    {"id": 7, "bbox": [209, 818, 410, 61], "center": [414, 848], "text": "Palace Bookshelf", "confidence": 1.0},
+    {"id": 8, "bbox": [213, 876, 722, 49], "center": [574, 900], "text": "Popular books free to download and keep,", "confidence": 1.0},
+    {"id": 11, "bbox": [258, 1150, 680, 49], "center": [598, 1174], "text": "\"Palace\" Would Like to Send", "confidence": 1.0},
+    {"id": 17, "bbox": [269, 1530, 259, 49], "center": [398, 1554], "text": "Don't Allow", "confidence": 1.0},
+    {"id": 18, "bbox": [741, 1532, 129, 45], "center": [805, 1554], "text": "Allow", "confidence": 1.0}
+  ],
+  "asserts_match_baseline": ["title", "Palace Bookshelf row", "notif overlay shape", "Allow button position"],
+  "diffs_from_baseline": {
+    "palace_bookshelf_row_y": "candidate=848 vs baseline=622 (~226px lower) — candidate launches with secondary 'Add Library' header below status bar that pushes content down. Verify intentional in PR.",
+    "comment": "Layout shift on candidate first-launch is the only structural difference visible at step 01. Could be intentional (new branding banner added between Phase 6.5/6.6) or unintentional (insets miscalc after AccountsManager.shared kill). Worth flagging — see candidate marks 3 + 5 (two 'Add Library' marks instead of one)."
+  }
+}
