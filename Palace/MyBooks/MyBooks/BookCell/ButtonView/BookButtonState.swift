@@ -119,7 +119,7 @@ extension BookButtonState {
 }
 
 extension BookButtonState {
-    init?(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    init?(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         let bookState = bookRegistry.state(for: book.identifier)
         switch bookState {
         case .unregistered, .holding:
@@ -186,7 +186,7 @@ extension BookButtonState {
 }
 
 extension TPPBook {
-    func supportsDeletion(for state: BookButtonState, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) -> Bool {
+    func supportsDeletion(for state: BookButtonState, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) -> Bool {
         var fullfillmentRequired = false
         #if FEATURE_DRM_CONNECTOR
         fullfillmentRequired = state == .holding && self.revokeURL != nil

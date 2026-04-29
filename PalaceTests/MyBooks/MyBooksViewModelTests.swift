@@ -15,7 +15,7 @@ import Combine
 // MARK: - Shared Helper
 
 /// Creates a MyBooksViewModel backed by a mock registry so init() does not
-/// hit TPPBookRegistry.shared / TPPUserAccount.sharedAccount, which can
+/// hit the production registry / TPPUserAccount.sharedAccount, which can
 /// deadlock on CI when the main-thread syncQueue and notification observers
 /// re-enter loadData().
 @MainActor

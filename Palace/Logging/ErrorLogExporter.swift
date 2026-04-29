@@ -26,7 +26,7 @@ actor ErrorLogExporter {
     private let accountsManager: AccountsManager
     private let bookRegistry: TPPBookRegistryProvider
 
-    private init(accountsManager: AccountsManager = AppContainer.production().accountsManager, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    private init(accountsManager: AccountsManager = AppContainer.production().accountsManager, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         self.accountsManager = accountsManager
         self.bookRegistry = bookRegistry
     }
@@ -237,7 +237,16 @@ actor ErrorLogExporter {
     private func collectRegistryState() async -> String {
         var logs = ""
 
-        let registry = bookRegistry as? TPPBookRegistry ?? TPPBookRegistry.shared
+        // Falls back to the production app-container registry if the
+        // injected one isn't a concrete TPPBookRegistry (e.g. a test mock).
+        // `allBooks` is on the concrete type, not the protocol, so we
+        // need the real instance for full diagnostic output.
+        let registry = (bookRegistry as? TPPBookRegistry)
+            ?? (AppContainer.production().bookRegistry as? TPPBookRegistry)
+        guard let registry else {
+            logs += "Registry diagnostics unavailable (no concrete TPPBookRegistry instance)\n"
+            return logs
+        }
         let allBooks = registry.allBooks
         let downloadedBooks = allBooks.filter { registry.state(for: $0.identifier) == .downloadSuccessful }
 

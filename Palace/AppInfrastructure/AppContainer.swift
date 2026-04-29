@@ -91,20 +91,32 @@ struct AppContainer {
     private static let _cached: AppContainer = {
         let executor = TPPNetworkExecutor(cachingStrategy: .fallback)
         let reachability = Reachability()
-        // MyBooksDownloadCenter's default params for `networkExecutor` and
-        // `reachability` resolve via AppContainer.production(); calling the
-        // no-arg initializer here would re-enter this dispatch_once and
-        // deadlock. Pass them explicitly to break the cycle.
+        // AccountsManager and TPPBookRegistry are constructed inline here.
+        // TPPBookRegistry.init takes AccountsManager as an explicit dependency,
+        // and reading either via `AppContainer.production()` during this
+        // dispatch_once would deadlock on first launch (the cycle that
+        // motivated killing TPPBookRegistry.shared in Phase 6.6). We hand
+        // both into AppContainer.init — and into every collaborator built
+        // here — explicitly so no default arg ever fires.
+        let accountsManager = AccountsManager()
+        let bookRegistry = TPPBookRegistry(accountsManager: accountsManager)
+        // MyBooksDownloadCenter has *four* default params that resolve via
+        // AppContainer.production(): accountsManager, bookRegistry,
+        // networkExecutor, reachability. Calling the no-arg init here would
+        // re-enter this dispatch_once on every one of them. Pass them all
+        // explicitly to break the cycle.
         let downloadCenter = MyBooksDownloadCenter(
+            bookRegistry: bookRegistry,
+            accountsManager: accountsManager,
             networkExecutor: executor,
             reachability: reachability
         )
         return AppContainer(
-            bookRegistry: TPPBookRegistry.shared,
+            bookRegistry: bookRegistry,
             networkExecutor: executor,
             networkQueue: NetworkQueue(transport: executor.transport, reachability: reachability),
             reachability: reachability,
-            accountsManager: AccountsManager(),
+            accountsManager: accountsManager,
             settings: TPPSettings(),
             downloadCenter: downloadCenter,
             debugSettings: DebugSettings(),

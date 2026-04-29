@@ -15,12 +15,18 @@ final class AppContainerTests: XCTestCase {
 
     /// `AppContainer.production()` is the single composition root the app
     /// entry points (SceneDelegate, AppDelegate, EnvironmentKey default) call.
-    /// It must wire the real app-scoped singletons.
-    func testProduction_wiresTheRealBookRegistry() {
-        let container = AppContainer.production()
+    /// It must hand back a stable, app-scoped registry — the same instance
+    /// across calls. Identity is the contract: every consumer must subscribe
+    /// to the *same* registryPublisher / observe the *same* state, so a
+    /// refactor that quietly constructs a new registry per call would break
+    /// every reactive UI binding. (Phase 6.6 replaced `TPPBookRegistry.shared`
+    /// with this AppContainer-anchored instance — the singleton is gone.)
+    func testProduction_handsOutStableAppScopedRegistry() {
+        let containerA = AppContainer.production()
+        let containerB = AppContainer.production()
         XCTAssertTrue(
-            container.bookRegistry as AnyObject === TPPBookRegistry.shared as AnyObject,
-            "Production container must hand out the live TPPBookRegistry.shared"
+            containerA.bookRegistry as AnyObject === containerB.bookRegistry as AnyObject,
+            "Production container must hand out the same TPPBookRegistry across calls"
         )
     }
 
@@ -29,7 +35,7 @@ final class AppContainerTests: XCTestCase {
     /// A test suite must be able to drop a mock registry into AppContainer
     /// and see that mock on the other side. If this breaks, no ViewModel that
     /// depends on AppContainer can be unit-tested.
-    func testInit_withMockBookRegistry_exposesTheMockNotTheSingleton() {
+    func testInit_withMockBookRegistry_exposesTheMockNotTheProductionRegistry() {
         let mock = TPPBookRegistryMock()
         let container = AppContainer(
             bookRegistry: mock,
@@ -50,11 +56,11 @@ final class AppContainerTests: XCTestCase {
         )
         XCTAssertTrue(
             container.bookRegistry as AnyObject === mock,
-            "Container must hand back the injected mock, not TPPBookRegistry.shared"
+            "Container must hand back the injected mock, not the production registry"
         )
         XCTAssertFalse(
-            container.bookRegistry as AnyObject === TPPBookRegistry.shared as AnyObject,
-            "Substitution must displace the singleton, not shadow it"
+            container.bookRegistry as AnyObject === AppContainer.production().bookRegistry as AnyObject,
+            "Substitution must displace the production instance, not shadow it"
         )
     }
 

@@ -89,7 +89,7 @@ public final class PlaybackBootstrapper {
     /// every dependency from `.shared` at first touch.
     private convenience init() {
         self.init(
-            bookRegistry: TPPBookRegistry.shared,
+            bookRegistry: AppContainer.production().bookRegistry,
             audiobookSessionProvider: { AudiobookSessionManager.shared }
         )
     }
@@ -194,9 +194,9 @@ public final class PlaybackBootstrapper {
     public func ensureInitializedForCarPlay() {
         Log.debug(#file, "🚀 PlaybackBootstrapper preparing for CarPlay")
 
-        // CRITICAL: Load book registry from disk for CarPlay cold starts
-        // Just accessing TPPBookRegistry.shared creates the singleton but doesn't load data
-        // We must explicitly call load() to read books from disk
+        // CRITICAL: Load book registry from disk for CarPlay cold starts.
+        // Constructing the registry inside AppContainer doesn't trigger a
+        // disk load — we must explicitly call load() to read books from disk.
         (bookRegistry as? TPPBookRegistry)?.load()
 
         // Full initialization if not done yet

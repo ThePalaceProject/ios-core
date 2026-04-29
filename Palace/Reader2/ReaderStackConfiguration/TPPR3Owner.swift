@@ -24,7 +24,7 @@ import PalaceLogging
     var libraryService: LibraryService! = nil
     var readerModule: ReaderModuleAPI! = nil
 
-    init(bookRegistry: TPPBookRegistry = .shared) {
+    init(bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         super.init()
         libraryService = LibraryService()
         readerModule = ReaderModule(delegate: self,

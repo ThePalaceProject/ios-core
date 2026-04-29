@@ -212,19 +212,19 @@ enum CarPlayTemplateBuilder {
     // MARK: - Data Helpers
 
     static func fetchDownloadedAudiobooks() -> [TPPBook] {
-        TPPBookRegistry.shared.myBooks
+        AppContainer.production().bookRegistry.myBooks
             .filter { $0.isAudiobook }
             .filter { isDownloaded($0) }
             .sorted { ($0.title) < ($1.title) }
     }
 
     static func isDownloaded(_ book: TPPBook) -> Bool {
-        let state = TPPBookRegistry.shared.state(for: book.identifier)
+        let state = AppContainer.production().bookRegistry.state(for: book.identifier)
         return state == .downloadSuccessful || state == .used
     }
 
     static func isFullyDownloaded(_ book: TPPBook) -> Bool {
-        let state = TPPBookRegistry.shared.state(for: book.identifier)
+        let state = AppContainer.production().bookRegistry.state(for: book.identifier)
         return state == .downloadSuccessful || state == .used
     }
 

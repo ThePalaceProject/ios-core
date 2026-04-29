@@ -462,7 +462,7 @@ final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        registry = TPPBookRegistry.shared
+        registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         cancellables.removeAll()
     }
 

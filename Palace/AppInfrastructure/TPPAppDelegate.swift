@@ -166,7 +166,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // store's own queue — but it primes the `loadingAccount` guard and
         // queues the state transition to .loaded. Any sync() that races it is
         // caught by the .unloaded/.loading guard in BookRegistrySync.sync.
-        TPPBookRegistry.shared.load()
+        AppContainer.production().bookRegistry.load()
 
         NotificationService.shared.setupPushNotifications()
     }
@@ -184,14 +184,14 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         scheduleAppRefresh()
         let startDate = Date()
 
-        TPPBookRegistry.shared.sync { errorDocument, newBooks in
+        AppContainer.production().bookRegistry.sync { errorDocument, newBooks in
             if errorDocument != nil {
                 Log.log("[Background Refresh] Failed. Error Document Present. Elapsed Time: \(-startDate.timeIntervalSinceNow)")
                 task.setTaskCompleted(success: false)
             } else {
                 Log.log("[Background Refresh] \(newBooks ? "New books available" : "No new books fetched"). Elapsed Time: \(-startDate.timeIntervalSinceNow)")
 
-                NotificationService.updateAppIconBadge(heldBooks: TPPBookRegistry.shared.heldBooks)
+                NotificationService.updateAppIconBadge(heldBooks: AppContainer.production().bookRegistry.heldBooks)
 
                 task.setTaskCompleted(success: true)
             }
@@ -277,7 +277,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             return
         }
 
-        let heldBooks = TPPBookRegistry.shared.heldBooks
+        let heldBooks = AppContainer.production().bookRegistry.heldBooks
         guard !heldBooks.isEmpty else {
             return
         }
@@ -296,12 +296,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         Log.info(#file, "[Foreground Sync] Starting - user has \(heldBooks.count) holds")
 
-        TPPBookRegistry.shared.sync { errorDocument, newBooks in
+        AppContainer.production().bookRegistry.sync { errorDocument, newBooks in
             if let errorDocument = errorDocument {
                 Log.error(#file, "[Foreground Sync] Failed: \(errorDocument)")
             } else {
                 Log.info(#file, "[Foreground Sync] Completed. New books: \(newBooks)")
-                NotificationService.updateAppIconBadge(heldBooks: TPPBookRegistry.shared.heldBooks)
+                NotificationService.updateAppIconBadge(heldBooks: AppContainer.production().bookRegistry.heldBooks)
             }
         }
     }

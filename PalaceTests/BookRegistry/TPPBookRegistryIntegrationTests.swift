@@ -44,7 +44,7 @@ final class TPPBookRegistryStateManagementTests: XCTestCase {
     // MARK: - addBook Tests
 
     func testAddBook_NewBook_RegistersWithCorrectState() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "add-test-\(UUID().uuidString)",
                                           title: "Add Test Book",
                                           distributorType: .EpubZip)
@@ -59,7 +59,7 @@ final class TPPBookRegistryStateManagementTests: XCTestCase {
     }
 
     func testAddBook_WithLocation_StoresLocation() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "location-test-\(UUID().uuidString)",
                                           title: "Location Test",
                                           distributorType: .EpubZip)
@@ -76,7 +76,7 @@ final class TPPBookRegistryStateManagementTests: XCTestCase {
     }
 
     func testAddBook_WithFulfillmentId_StoresFulfillmentId() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "fulfillment-test-\(UUID().uuidString)",
                                           title: "Fulfillment Test",
                                           distributorType: .EpubZip)
@@ -89,7 +89,7 @@ final class TPPBookRegistryStateManagementTests: XCTestCase {
     }
 
     func testAddBook_WithBookmarks_StoresBookmarks() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "bookmarks-test-\(UUID().uuidString)",
                                           title: "Bookmarks Test",
                                           distributorType: .EpubZip)
@@ -106,7 +106,7 @@ final class TPPBookRegistryStateManagementTests: XCTestCase {
     // MARK: - setState Tests
 
     func testSetState_TransitionsCorrectly() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "state-transition-\(UUID().uuidString)",
                                           title: "State Transition",
                                           distributorType: .EpubZip)
@@ -124,7 +124,7 @@ final class TPPBookRegistryStateManagementTests: XCTestCase {
     }
 
     func testSetState_ForUnregisteredBook_DoesNotCrash() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let id = "non-existent-\(UUID().uuidString)"
 
         registry.setState(.downloadNeeded, for: id)
@@ -137,7 +137,7 @@ final class TPPBookRegistryStateManagementTests: XCTestCase {
     // MARK: - removeBook Tests
 
     func testRemoveBook_RemovesFromRegistry() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "remove-test-\(UUID().uuidString)",
                                           title: "Remove Test",
                                           distributorType: .EpubZip)
@@ -177,7 +177,7 @@ final class TPPBookRegistryStateManagementTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private var registry: TPPBookRegistry { TPPBookRegistry.shared }
+    private var registry: TPPBookRegistry { AppContainer.production().bookRegistry as! TPPBookRegistry }
 }
 
 // MARK: - TPPBookRegistry Combine Publisher Integration Tests
@@ -199,7 +199,7 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
     // MARK: - registryPublisher Tests
 
     func testRegistryPublisher_EmitsOnBookAdd() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "publisher-add-\(UUID().uuidString)",
                                           title: "Publisher Add Test",
                                           distributorType: .EpubZip)
@@ -223,7 +223,7 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
     }
 
     func testRegistryPublisher_EmitsOnBookRemove() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "publisher-remove-\(UUID().uuidString)",
                                           title: "Publisher Remove Test",
                                           distributorType: .EpubZip)
@@ -251,7 +251,7 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
     // MARK: - bookStatePublisher Tests
 
     func testBookStatePublisher_EmitsOnStateChange() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "state-publisher-\(UUID().uuidString)",
                                           title: "State Publisher Test",
                                           distributorType: .EpubZip)
@@ -279,7 +279,7 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
     }
 
     func testBookStatePublisher_EmitsOnBookAdd() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "add-state-publisher-\(UUID().uuidString)",
                                           title: "Add State Publisher",
                                           distributorType: .EpubZip)
@@ -304,7 +304,7 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
     }
 
     func testBookStatePublisher_EmitsOnBookRemove() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "remove-state-publisher-\(UUID().uuidString)",
                                           title: "Remove State Publisher",
                                           distributorType: .EpubZip)
@@ -328,7 +328,7 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
     }
 
     func testBookStatePublisher_MultipleStateChanges_EmitsAll() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "multi-state-\(UUID().uuidString)",
                                           title: "Multi State Test",
                                           distributorType: .EpubZip)
@@ -375,7 +375,7 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
 final class TPPBookRegistryLocationTests: XCTestCase {
 
     func testSetLocation_UpdatesLocation() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "location-update-\(UUID().uuidString)",
                                           title: "Location Update",
                                           distributorType: .EpubZip)
@@ -393,7 +393,7 @@ final class TPPBookRegistryLocationTests: XCTestCase {
     }
 
     func testSetLocation_WithNil_ClearsLocation() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "location-clear-\(UUID().uuidString)",
                                           title: "Location Clear",
                                           distributorType: .EpubZip)
@@ -410,13 +410,13 @@ final class TPPBookRegistryLocationTests: XCTestCase {
 
     func testLocation_ForNonExistentBook_ReturnsNil() {
         let nonExistentId = "non-existent-\(UUID().uuidString)"
-        XCTAssertNil(TPPBookRegistry.shared.location(forIdentifier: nonExistentId))
-        XCTAssertEqual(TPPBookRegistry.shared.state(for: nonExistentId), .unregistered,
+        XCTAssertNil(AppContainer.production().bookRegistry.location(forIdentifier: nonExistentId))
+        XCTAssertEqual(AppContainer.production().bookRegistry.state(for: nonExistentId), .unregistered,
                        "Non-existent book must also be unregistered")
     }
 
     func testSetLocationSync_UpdatesSynchronously() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "sync-location-\(UUID().uuidString)",
                                           title: "Sync Location",
                                           distributorType: .EpubZip)
@@ -443,7 +443,7 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
     // MARK: - Generic Bookmark Tests
 
     func testAddGenericBookmark_AppendsToList() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "generic-bookmark-\(UUID().uuidString)",
                                           title: "Generic Bookmark",
                                           distributorType: .EpubZip)
@@ -462,7 +462,7 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
     }
 
     func testDeleteGenericBookmark_RemovesFromList() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "delete-bookmark-\(UUID().uuidString)",
                                           title: "Delete Bookmark",
                                           distributorType: .EpubZip)
@@ -479,7 +479,7 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
         registry.removeBook(forIdentifier: book.identifier)
     }
 
-    func testReplaceGenericBookmark_UpdatesBookmark() {        let registry = TPPBookRegistry.shared
+    func testReplaceGenericBookmark_UpdatesBookmark() {        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "replace-bookmark-\(UUID().uuidString)",
                                           title: "Replace Bookmark",
                                           distributorType: .EpubZip)
@@ -497,7 +497,7 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
     }
 
     func testAddOrReplaceGenericBookmark_ReplacesExisting() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "add-or-replace-\(UUID().uuidString)",
                                           title: "Add Or Replace",
                                           distributorType: .EpubZip)
@@ -518,7 +518,7 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
     // MARK: - Readium Bookmark Tests
 
     func testAddReadiumBookmark_AppendsToList() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "readium-bookmark-\(UUID().uuidString)",
                                           title: "Readium Bookmark",
                                           distributorType: .EpubZip)
@@ -549,7 +549,7 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
     }
 
     func testDeleteReadiumBookmark_RemovesFromList() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "delete-readium-\(UUID().uuidString)",
                                           title: "Delete Readium",
                                           distributorType: .EpubZip)
@@ -575,7 +575,7 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
     }
 
     func testReadiumBookmarks_SortedByProgress() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "sorted-bookmarks-\(UUID().uuidString)",
                                           title: "Sorted Bookmarks",
                                           distributorType: .EpubZip)
@@ -609,7 +609,7 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
 final class TPPBookRegistryProcessingTests: XCTestCase {
 
     func testSetProcessing_TracksProcessingState() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let id = "processing-test-\(UUID().uuidString)"
 
         XCTAssertFalse(registry.processing(forIdentifier: id))
@@ -623,7 +623,7 @@ final class TPPBookRegistryProcessingTests: XCTestCase {
     }
 
     func testSetProcessing_False_ClearsProcessingState() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let id = "processing-clear-\(UUID().uuidString)"
 
         registry.setProcessing(true, for: id)
@@ -640,7 +640,7 @@ final class TPPBookRegistryProcessingTests: XCTestCase {
 final class TPPBookRegistryFulfillmentIdTests: XCTestCase {
 
     func testSetFulfillmentId_UpdatesFulfillmentId() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "fulfillment-update-\(UUID().uuidString)",
                                           title: "Fulfillment Update",
                                           distributorType: .EpubZip)
@@ -655,15 +655,15 @@ final class TPPBookRegistryFulfillmentIdTests: XCTestCase {
     }
 
     func testFulfillmentId_ForNilIdentifier_ReturnsNil() {
-        XCTAssertNil(TPPBookRegistry.shared.fulfillmentId(forIdentifier: nil))
+        XCTAssertNil(AppContainer.production().bookRegistry.fulfillmentId(forIdentifier: nil))
     }
 
     func testFulfillmentId_ForEmptyIdentifier_ReturnsNil() {
-        XCTAssertNil(TPPBookRegistry.shared.fulfillmentId(forIdentifier: ""))
+        XCTAssertNil(AppContainer.production().bookRegistry.fulfillmentId(forIdentifier: ""))
     }
 
     func testFulfillmentId_ForNonExistentBook_ReturnsNil() {
-        XCTAssertNil(TPPBookRegistry.shared.fulfillmentId(forIdentifier: "non-existent-book"))
+        XCTAssertNil(AppContainer.production().bookRegistry.fulfillmentId(forIdentifier: "non-existent-book"))
     }
 }
 
@@ -672,7 +672,7 @@ final class TPPBookRegistryFulfillmentIdTests: XCTestCase {
 final class TPPBookRegistryBookRetrievalTests: XCTestCase {
 
     func testBook_ForValidIdentifier_ReturnsBook() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "retrieval-test-\(UUID().uuidString)",
                                           title: "Retrieval Test",
                                           distributorType: .EpubZip)
@@ -687,26 +687,26 @@ final class TPPBookRegistryBookRetrievalTests: XCTestCase {
     }
 
     func testBook_ForNilIdentifier_ReturnsNil() {
-        XCTAssertNil(TPPBookRegistry.shared.book(forIdentifier: nil))
-        XCTAssertEqual(TPPBookRegistry.shared.state(for: nil), .unregistered,
+        XCTAssertNil(AppContainer.production().bookRegistry.book(forIdentifier: nil))
+        XCTAssertEqual(AppContainer.production().bookRegistry.state(for: nil), .unregistered,
                        "nil identifier must map to unregistered state")
     }
 
     func testBook_ForEmptyIdentifier_ReturnsNil() {
-        XCTAssertNil(TPPBookRegistry.shared.book(forIdentifier: ""))
-        XCTAssertEqual(TPPBookRegistry.shared.state(for: ""), .unregistered,
+        XCTAssertNil(AppContainer.production().bookRegistry.book(forIdentifier: ""))
+        XCTAssertEqual(AppContainer.production().bookRegistry.state(for: ""), .unregistered,
                        "Empty identifier must map to unregistered state")
     }
 
     func testBook_ForNonExistentIdentifier_ReturnsNil() {
         let id = "does-not-exist-\(UUID().uuidString)"
-        XCTAssertNil(TPPBookRegistry.shared.book(forIdentifier: id))
-        XCTAssertEqual(TPPBookRegistry.shared.state(for: id), .unregistered,
+        XCTAssertNil(AppContainer.production().bookRegistry.book(forIdentifier: id))
+        XCTAssertEqual(AppContainer.production().bookRegistry.state(for: id), .unregistered,
                        "Non-existent identifier must map to unregistered state")
     }
 
     func testAllBooks_ReturnsRegisteredBooks() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let b1 = TPPBookMocker.mockBook(identifier: "all-books-1-\(UUID().uuidString)",
                                          title: "All Books 1", distributorType: .EpubZip)
         let b2 = TPPBookMocker.mockBook(identifier: "all-books-2-\(UUID().uuidString)",
@@ -724,7 +724,7 @@ final class TPPBookRegistryBookRetrievalTests: XCTestCase {
     }
 
     func testHeldBooks_ReturnsOnlyHoldingBooks() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let downloaded = TPPBookMocker.mockBook(identifier: "downloaded-\(UUID().uuidString)",
                                                  title: "Downloaded", distributorType: .EpubZip)
         let held = TPPBookMocker.snapshotReservedBook(identifier: "held-\(UUID().uuidString)",
@@ -742,7 +742,7 @@ final class TPPBookRegistryBookRetrievalTests: XCTestCase {
     }
 
     func testMyBooks_ReturnsDownloadRelatedBooks() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let dl  = TPPBookMocker.mockBook(identifier: "my-dl-\(UUID().uuidString)",
                                           title: "Downloaded", distributorType: .EpubZip)
         let dlg = TPPBookMocker.mockBook(identifier: "my-dlg-\(UUID().uuidString)",
@@ -770,7 +770,7 @@ final class TPPBookRegistryBookRetrievalTests: XCTestCase {
 final class TPPBookRegistryUpdateAndRemoveTests: XCTestCase {
 
     func testUpdateAndRemoveBook_SetsStateToUnregistered() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "update-remove-\(UUID().uuidString)",
                                           title: "Update Remove",
                                           distributorType: .EpubZip)
@@ -810,7 +810,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
         // check the final registry state rather than publisher emission *counts*, which
         // are scheduling-dependent under load and cause flakes (the publisher may
         // coalesce rapid emissions or the main-thread sink may drop behind the writes).
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let count = 20
         let books = (0..<count).map { i in
             TPPBookMocker.mockBook(identifier: "thread-safety-\(i)-\(UUID().uuidString)",
@@ -864,7 +864,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
     }
 
     func testCrashlytics30c41d7e_ConcurrentAddAndUpdate_DoNotCrash() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "concurrent-update-\(UUID().uuidString)",
                                           title: "Concurrent Update Test",
                                           distributorType: .EpubZip)
@@ -905,7 +905,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
     }
 
     func testRegistryPublisher_EmitsConsistentSnapshots_DuringRapidMutations() {
-        let registry = TPPBookRegistry.shared
+        let registry = AppContainer.production().bookRegistry as! TPPBookRegistry
         let iterations = 15
         let books = (0..<iterations).map { i in
             TPPBookMocker.mockBook(identifier: "snapshot-consistency-\(i)-\(UUID().uuidString)",

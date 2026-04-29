@@ -23,7 +23,7 @@ enum BookService {
     /// lock from latching permanently and silently swallowing every retry.
     private static let openLockSafetyRelease: TimeInterval = 30
 
-    static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, onFinish: (() -> Void)? = nil) {
+    static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry, onFinish: (() -> Void)? = nil) {
         guard !openingBooks.contains(book.identifier) else {
             Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
             onFinish?()

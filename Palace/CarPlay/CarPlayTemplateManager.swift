@@ -47,9 +47,9 @@ final class CarPlayTemplateManager: NSObject {
     // MARK: - Initialization
 
     private let accountsManager: AccountsManager
-    private let bookRegistry: TPPBookRegistry
+    private let bookRegistry: TPPBookRegistryProvider
 
-    init(interfaceController: CPInterfaceController, accountsManager: AccountsManager = AppContainer.production().accountsManager, bookRegistry: TPPBookRegistry = .shared) {
+    init(interfaceController: CPInterfaceController, accountsManager: AccountsManager = AppContainer.production().accountsManager, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         self.interfaceController = interfaceController
         self.imageProvider = CarPlayImageProvider()
         self.playerBridge = CarPlayAudiobookBridge()

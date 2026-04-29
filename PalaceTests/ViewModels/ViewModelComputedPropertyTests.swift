@@ -628,7 +628,7 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
         CatalogLaneMoreViewModel(
             title: "Test",
             url: URL(string: urlString)!,
-            bookRegistry: TPPBookRegistry.shared,
+            bookRegistry: AppContainer.production().bookRegistry,
             bookCellModelCache: AppContainer.production().bookCellModelCache
         )
     }
@@ -772,7 +772,7 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
         let viewModel = CatalogLaneMoreViewModel(
             title: "Fiction",
             url: url,
-            bookRegistry: TPPBookRegistry.shared,
+            bookRegistry: AppContainer.production().bookRegistry,
             bookCellModelCache: AppContainer.production().bookCellModelCache
         )
 

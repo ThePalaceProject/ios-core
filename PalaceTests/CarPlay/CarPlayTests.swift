@@ -354,12 +354,15 @@ class CarPlayLibraryRefreshTests: XCTestCase {
     }
 
     func testCarPlay_BookRegistry_IsAccessible() {
-        // Verify book registry can be accessed (used for library book list)
-        let registry = TPPBookRegistry.shared
-        XCTAssertNotNil(registry, "Book registry should be accessible")
-        // The registry should return an array (possibly empty) for allBooks
-        let books = registry.allBooks
-        XCTAssertNotNil(books, "allBooks should return a non-nil array")
+        // Verify book registry exposes its myBooks list (the same property
+        // CarPlay's library template builds against). `myBooks` is a derived
+        // computed property that filters allBooks for user-scoped state, so
+        // hitting it exercises the registry's read path end-to-end —
+        // registry construction, account scoping, and the filter — rather
+        // than just confirming the singleton was wired up.
+        let registry = AppContainer.production().bookRegistry
+        let books = registry.myBooks
+        XCTAssertNotNil(books, "myBooks must return a non-nil array (possibly empty)")
     }
 
     func testCarPlay_DownloadedAudiobooks_CanBeFiltered() {

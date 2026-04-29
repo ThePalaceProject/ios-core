@@ -196,7 +196,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// `init(appContainer:)` so the dep graph is explicit.
     private convenience init() {
         self.init(
-            bookRegistry: TPPBookRegistry.shared,
+            bookRegistry: AppContainer.production().bookRegistry,
             accountsManager: AppContainer.production().accountsManager,
             settings: AppContainer.production().settings,
             reachabilityProvider: { AppContainer.production().reachability },
@@ -627,7 +627,16 @@ public final class AudiobookSessionManager: ObservableObject {
         // `syncLocation(for:)` lives on the concrete TPPBookRegistry as an
         // extension; the provider protocol doesn't expose it. Cast at the
         // call site so the rest of this file talks to the protocol.
-        let concreteRegistry = (bookRegistry as? TPPBookRegistry) ?? TPPBookRegistry.shared
+        // syncLocation(for:) lives on the concrete TPPBookRegistry as an
+        // extension; the provider protocol doesn't expose it. If the injected
+        // bookRegistry isn't the concrete app-scoped instance, skip the
+        // remote-bookmark lookup rather than fall through to a singleton —
+        // tests pass mocks here on purpose.
+        guard let concreteRegistry = bookRegistry as? TPPBookRegistry else {
+            // No-op: progress-syncing requires the production registry. In a
+            // mock-injected test, the local position alone is the best signal.
+            return
+        }
         concreteRegistry.syncLocation(for: book) { [weak self, weak playbackModel = playbackModelRef, localPosition] (remoteBookmark: AudioBookmark?) in
             guard let remoteBookmark = remoteBookmark,
                   let remote = TrackPosition(
