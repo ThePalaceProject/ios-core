@@ -34,33 +34,45 @@ final class ArrayExtensionsTests: XCTestCase {
     XCTAssertNil(array[safe: -100])
   }
 
-  /// SRS: EXT-ARR-004 — Safe subscript returns nil on empty array
-  func testSafeSubscriptGet_EmptyArray_ReturnsNil() {
+  /// Empty-array reads: index 0, positive, and negative all return nil
+  /// without crashing. A mutant that doesn't bounds-check the empty case
+  /// would force-unwrap a missing element and crash.
+  func testSafeSubscriptGet_emptyArray_returnsNilForAllIndices() {
     let array: [Int] = []
-    XCTAssertNil(array[safe: 0])
+    XCTAssertNil(array[safe: 0],   "Index 0 on empty array must yield nil")
+    XCTAssertNil(array[safe: 5],   "Positive index on empty array must yield nil")
+    XCTAssertNil(array[safe: -1],  "Negative index on empty array must yield nil")
+    XCTAssertNil(array[safe: 100], "Far out-of-bounds on empty array must yield nil")
   }
 
   // MARK: - Safe Subscript Setter
 
-  /// SRS: EXT-ARR-005 — Safe subscript setter updates value at valid index
-  func testSafeSubscriptSet_ValidIndex_UpdatesValue() {
+  /// Setter contract: writes at valid indices update the array; writes at
+  /// invalid indices (out-of-bounds or nil value) leave the array
+  /// untouched. Pin all four shapes (valid set, out-of-bounds set, nil
+  /// at valid index, nil at invalid index) in one body.
+  func testSafeSubscriptSet_updatesValidIndicesAndIgnoresInvalidWrites() {
     var array = [10, 20, 30]
+
+    // Valid index: write applies.
     array[safe: 1] = 99
-    XCTAssertEqual(array, [10, 99, 30])
-  }
+    XCTAssertEqual(array, [10, 99, 30],
+                   "Valid-index write must mutate the array")
 
-  /// SRS: EXT-ARR-006 — Safe subscript setter ignores out-of-bounds index
-  func testSafeSubscriptSet_OutOfBounds_NoChange() {
-    var array = [10, 20, 30]
-    array[safe: 5] = 99
-    XCTAssertEqual(array, [10, 20, 30])
-  }
+    // Out-of-bounds: write must be a no-op.
+    array[safe: 5] = 42
+    XCTAssertEqual(array, [10, 99, 30],
+                   "Out-of-bounds write must NOT extend the array — guards against an array.append mutant")
 
-  /// SRS: EXT-ARR-007 — Safe subscript setter ignores nil value
-  func testSafeSubscriptSet_NilValue_NoChange() {
-    var array = [10, 20, 30]
+    // Nil at a valid index: must be ignored (no removal, no crash).
     array[safe: 1] = nil
-    XCTAssertEqual(array, [10, 20, 30])
+    XCTAssertEqual(array, [10, 99, 30],
+                   "Nil at a valid index must NOT remove the element — setter ignores nil writes")
+
+    // Negative index: also no-op.
+    array[safe: -1] = 7
+    XCTAssertEqual(array, [10, 99, 30],
+                   "Negative-index write must NOT mutate — guards against a wraparound mutant")
   }
 
   /// SRS: EXT-ARR-008 — Safe subscript works with String arrays
