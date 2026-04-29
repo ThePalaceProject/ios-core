@@ -27,7 +27,7 @@ final class FacetViewModelTests: XCTestCase {
     /// Tests that don't care about account behavior pass the live singleton
     /// since none of these tests exercise account-scoped state transitions.
     private func makeViewModel(groupName: String, facets: [Facet]) -> FacetViewModel {
-        FacetViewModel(groupName: groupName, facets: facets, accountsManager: .shared)
+        FacetViewModel(groupName: groupName, facets: facets, accountsManager: AppContainer.production().accountsManager)
     }
 
     // MARK: - Facet Enum Tests

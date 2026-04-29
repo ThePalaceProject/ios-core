@@ -23,7 +23,7 @@ final class BookRegistrySyncTests: XCTestCase {
         store = BookRegistryStore()
         syncManager = BookRegistrySync(
             store: store,
-            accountsManager: .shared,
+            accountsManager: AppContainer.production().accountsManager,
             downloadCenterProvider: { AppContainer.production().downloadCenter },
             opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
         )
