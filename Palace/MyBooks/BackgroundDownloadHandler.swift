@@ -147,10 +147,6 @@ final class BackgroundDownloadHandler: NSObject {
         originalTask: URLSessionDownloadTask,
         session: URLSession
     ) async -> Bool {
-        guard let delegate = delegate else { return false }
-        let stateManager = delegate.stateManager
-        let bookRegistry = delegate.bookRegistry
-
         guard let xmlData = try? Data(contentsOf: location) else {
             Log.error(#file, "Failed to read OPDS entry XML for \(book.identifier)")
             return false
@@ -166,18 +162,36 @@ final class BackgroundDownloadHandler: NSObject {
             return false
         }
 
+        return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
+    }
+
+    /// Shared follow-up step for both OPDS-entry XML and OPDS2 JSON publication
+    /// paths. Given a book whose `defaultAcquisition` resolves to a direct
+    /// content URL (not another opds-catalog), this swaps the original task
+    /// out of stateManager, registers the updated book with `.downloading`,
+    /// kicks off a new authenticated downloadTask, and returns true on success.
+    func followAcquisitionLink(
+        from updatedBook: TPPBook,
+        originalBook: TPPBook,
+        originalTask: URLSessionDownloadTask,
+        session: URLSession
+    ) async -> Bool {
+        guard let delegate = delegate else { return false }
+        let stateManager = delegate.stateManager
+        let bookRegistry = delegate.bookRegistry
+
         guard let acquisition = updatedBook.defaultAcquisition,
               !acquisition.type.lowercased().contains("opds-catalog") else {
-            Log.warn(#file, "No direct acquisition link in OPDS entry for \(book.identifier)")
+            Log.warn(#file, "No direct acquisition link for \(originalBook.identifier)")
             return false
         }
 
         let acquisitionURL = acquisition.hrefURL
-        Log.info(#file, "Following acquisition link from OPDS entry: \(acquisitionURL)")
+        Log.info(#file, "Following acquisition link: \(acquisitionURL)")
 
         await stateManager.taskIdentifierToBook.remove(originalTask.taskIdentifier)
 
-        let registryLocation = bookRegistry.location(forIdentifier: book.identifier)
+        let registryLocation = bookRegistry.location(forIdentifier: originalBook.identifier)
         bookRegistry.addBook(
             updatedBook,
             location: registryLocation,
@@ -190,7 +204,7 @@ final class BackgroundDownloadHandler: NSObject {
         let newRights = detectRightsManagement(from: acquisition.type)
 
         var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
-        if let token = AppContainer.production().accountsManager.currentUserAccount.authToken {
+        if let token = delegate.userAccount.authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 

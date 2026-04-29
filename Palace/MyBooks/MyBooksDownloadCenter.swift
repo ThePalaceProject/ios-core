@@ -1542,7 +1542,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
             do {
                 let fullPub = try JSONDecoder().decode(OPDS2FullPublication.self, from: jsonData)
                 if let updatedBook = fullPub.toBook() {
-                    return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
+                    return await backgroundDownloadHandler.followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
                 }
             } catch {
                 Log.error(#file, "Failed to decode OPDS2 publication JSON for \(book.identifier): \(error)")
@@ -1555,70 +1555,16 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
             return false
         }
 
-        return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
+        return await backgroundDownloadHandler.followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
     }
 
-    /// Follows the acquisition link from an updated book (from OPDS entry or OPDS2 publication response)
-    private func followAcquisitionLink(
-        from updatedBook: TPPBook,
-        originalBook: TPPBook,
-        originalTask: URLSessionDownloadTask,
-        session: URLSession
-    ) async -> Bool {
-        // Find a direct acquisition link (not another intermediate type)
-        guard let acquisition = updatedBook.defaultAcquisition else {
-            Log.warn(#file, "No acquisition link in OPDS2 publication for \(originalBook.identifier)")
-            return false
-        }
-
-        let acquisitionURL = acquisition.hrefURL
-        Log.info(#file, "📖 Following acquisition link from OPDS2 publication: \(acquisitionURL) (type: \(acquisition.type))")
-
-        // Remove original task mapping
-        await taskIdentifierToBook.remove(originalTask.taskIdentifier)
-
-        // Update book in registry
-        let registryLocation = bookRegistry.location(forIdentifier: originalBook.identifier)
-        bookRegistry.addBook(
-            updatedBook,
-            location: registryLocation,
-            state: .downloading,
-            fulfillmentId: nil as String?,
-            readiumBookmarks: nil as [TPPReadiumBookmark]?,
-            genericBookmarks: nil as [TPPBookLocation]?
-        )
-
-        // Detect rights from new acquisition type
-        let newRights = backgroundDownloadHandler.detectRightsManagement(from: acquisition.type)
-
-        // Create follow-up download request
-        var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
-        if let token = userAccount.authToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let newTask = session.downloadTask(with: request)
-        let downloadInfo = MyBooksDownloadInfo(
-            downloadProgress: 0.0,
-            downloadTask: newTask,
-            rightsManagement: newRights
-        )
-
-        await bookIdentifierToDownloadInfo.set(updatedBook.identifier, value: downloadInfo)
-        await taskIdentifierToBook.set(newTask.taskIdentifier, value: updatedBook)
-
-        newTask.resume()
-        Log.info(#file, "📖 Started follow-up download task \(newTask.taskIdentifier) for \(updatedBook.identifier)")
-        return true
-    }
-
-    // handleOPDSEntryResponse moved to BackgroundDownloadHandler. The
-    // URLSession callback now calls `backgroundDownloadHandler.handleOPDS
-    // EntryResponse(...)` directly. The handler's inline version adds a
-    // defensive `!opds-catalog` guard that protects against infinite-redirect
-    // loops if a malformed OPDS entry advertises another catalog as the
-    // acquisition link. `followAcquisitionLink` below stays — the OPDS2 JSON
-    // publication path (handleOPDS2PublicationResponse) still uses it.
+    // handleOPDSEntryResponse + followAcquisitionLink moved to
+    // BackgroundDownloadHandler. The OPDS-entry XML callsite (URL-finished
+    // callback) and the OPDS2 JSON publication callsites
+    // (handleOPDS2PublicationResponse) now route through
+    // `backgroundDownloadHandler.X(...)` directly. The handler's version
+    // adds a defensive `!opds-catalog` guard against infinite-redirect
+    // loops on malformed entries / publications.
     // handleDownloadProgress moved to BackgroundDownloadHandler. The
     // URLSessionDownloadDelegate progress callback above now routes through
     // `backgroundDownloadHandler.handleDownloadProgress(...)` directly.
