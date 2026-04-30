@@ -76,8 +76,8 @@ fi
 echo
 echo "[2/4] marks-diff.py"
 diff_out=$(python3 scripts/marks-diff.py \
-    --baseline-dir .specterqa/fixtures/baselines/3.0.0/anonymous-borrow \
-    --candidate-dir .specterqa/fixtures/baselines/3.0.1/anonymous-borrow \
+    --baseline-dir .simdrive/fixtures/baselines/3.0.0/anonymous-borrow \
+    --candidate-dir .simdrive/fixtures/baselines/3.0.1/anonymous-borrow \
     --tolerance 50 2>&1 | head -1)
 n=$(echo "$diff_out" | grep -oE '[0-9]+' | head -1 || echo 0)
 if (( n > 10 )); then
@@ -91,13 +91,13 @@ echo
 echo "[3/4] generate-regression-report.py --fixtures-dir"
 report_out=/tmp/vr-smoke-report.html
 findings_csv="${HOME}/Desktop/regression-PP-4164/findings.csv"
-[[ ! -f "$findings_csv" ]] && findings_csv=".specterqa/fixtures/README.md"  # fallback dummy
+[[ ! -f "$findings_csv" ]] && findings_csv=".simdrive/fixtures/README.md"  # fallback dummy
 python3 scripts/generate-regression-report.py \
     --csv "$findings_csv" \
     --output "$report_out" \
     --baseline-version 3.0.0 \
     --candidate-version 3.0.1 \
-    --fixtures-dir .specterqa/fixtures/baselines \
+    --fixtures-dir .simdrive/fixtures/baselines \
     --title "VR smoke test" > /tmp/vr-smoke-report.log 2>&1
 if grep -q "Visual Coverage Matrix" "$report_out" 2>/dev/null; then
     report "Visual Coverage Matrix renders in HTML" PASS "size=$(stat -f %z "$report_out")B"

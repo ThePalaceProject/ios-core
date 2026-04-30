@@ -1,0 +1,49 @@
+scenario:
+  id: library-picker-stateless
+  name: "Library Picker — open, verify, cancel"
+  description: >
+    Tap the library switcher icon, verify the picker sheet shows Find Your
+    Library + current library + Add Library + Cancel, tap Cancel.
+    Stateless because Cancel doesn't mutate library list.
+  tags: [tier1, ios, navigation, library_management, layout-regression]
+  tier: stateless
+  blocking: true
+
+  preconditions:
+    - "Palace app launched, Catalog tab active on a library (default: Palace Bookshelf)"
+
+  recording:
+    path: "~/.simdrive/recordings/library-picker-stateless/recording.yaml"
+    steps: 2
+    captured_with: "simdrive 0.2.0a2"
+    captured_on: "2026-04-30"
+
+  steps:
+    - { id: open_picker, description: "Tap library switcher icon (top-left of catalog)", tap: { x: 100, y: 240 } }
+    - { id: tap_cancel,  description: "Tap Cancel to dismiss picker",                    tap_target: { stable_id: "d8239f7ded16" } }
+
+  expected_invariants:
+    - "Picker sheet shows Find Your Library section, current library row, Add Library row, Cancel"
+    - "Cancel returns to the catalog screen"
+    - "No library was added or switched"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn
+
+  structural_checks:
+    - after_step: 1
+      required_text:   ["Find Your Library", "Palace Bookshelf", "Add Library", "Cancel"]
+      min_marks: 8
+      rationale: "Picker sheet must show all four expected rows."
+    - after_step: 2
+      required_text:   ["Catalog", "My Books", "Holds", "Settings"]
+      required_chrome: ["a229e82e3f00", "3218623d0801", "0f06bf1e2d8b"]
+      min_marks: 25
+      rationale: "Cancel restores catalog chrome."
+
+  rationale: |
+    Replaces SpecterQA's `library-picker.yaml`. The library-switcher button
+    is an icon-only target without OCR-stable text, so we tap by pixel coord
+    (100, 240). If the icon ever moves, the structural check after step 1
+    will fail loudly with "Find Your Library missing."

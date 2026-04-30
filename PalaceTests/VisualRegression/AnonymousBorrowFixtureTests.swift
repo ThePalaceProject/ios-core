@@ -5,7 +5,7 @@
 //
 // Each test case asserts what the user actually sees at a known step. These
 // tests kill mutation classes that ViewModel-property tests (XCTAssertEqual on
-// vm.x) cannot — see .specterqa/fixtures/flows/anonymous-borrow.yaml for the
+// vm.x) cannot — see .simdrive/fixtures/flows/anonymous-borrow.yaml for the
 // per-step mutation_targets list.
 
 import XCTest

@@ -15,7 +15,7 @@ Fixtures are the **reference data layer** that powers visual-regression tooling:
 
 **Fixtures do not run production code.** The Swift tests assert against the captured JSON files; mutating `AccountsManager.swift` or `BorrowReducer.swift` does not change the static JSON, so the tests still pass. Verified via `palace_mutate.py` runs on both files (PP-4164 finding F-006): 0 of 8 AccountsManager mutants killed, 0 of 4 BorrowReducer mutants killed.
 
-The mutation-killing layer is **simdrive replays** under `.specterqa/replays/chaos/` — those YAMLs drive the live app and SSIM-drift catches code changes. Fixtures and replays solve different problems; you need both.
+The mutation-killing layer is **simdrive replays** under `.simdrive/replays/chaos/` — those YAMLs drive the live app and SSIM-drift catches code changes. Fixtures and replays solve different problems; you need both.
 
 ## How they compose
 
@@ -34,7 +34,7 @@ chaos-qa session   ────► discovers new replays + fixtures ──► fe
 ## Layout
 
 ```
-.specterqa/fixtures/
+.simdrive/fixtures/
 ├── README.md                  this file
 ├── flows/                     YAML descriptions of each captured flow
 │   └── anonymous-borrow.yaml

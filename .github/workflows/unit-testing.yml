@@ -442,11 +442,11 @@ jobs:
           # SpecterQA E2E journey coverage: count journeys that have a recorded
           # replay with the matching filename. Note this measures recording
           # coverage, not execution pass/fail — replays are not run in this job.
-          JOURNEY_COUNT=$(find .specterqa/journeys -name "*.yaml" 2>/dev/null | wc -l | tr -d ' ')
+          JOURNEY_COUNT=$(find .simdrive/journeys -name "*.yaml" 2>/dev/null | wc -l | tr -d ' ')
           RECORDED_COUNT=0
           if [ "$JOURNEY_COUNT" -gt 0 ] 2>/dev/null; then
-            for j in $(ls .specterqa/journeys/*.yaml 2>/dev/null | sed 's|.*/||;s|\.yaml||' | sort); do
-              [ -f ".specterqa/replays/$j.yaml" ] && RECORDED_COUNT=$((RECORDED_COUNT + 1))
+            for j in $(ls .simdrive/journeys/*.yaml 2>/dev/null | sed 's|.*/||;s|\.yaml||' | sort); do
+              [ -f ".simdrive/replays/$j.yaml" ] && RECORDED_COUNT=$((RECORDED_COUNT + 1))
             done
             echo "**E2E Journey Recording Coverage (SpecterQA): ${RECORDED_COUNT}/${JOURNEY_COUNT} journeys have recorded replays**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -455,8 +455,8 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Journey | Replay |" >> $GITHUB_STEP_SUMMARY
             echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
-            for j in $(ls .specterqa/journeys/*.yaml 2>/dev/null | sed 's|.*/||;s|\.yaml||' | sort); do
-              if [ -f ".specterqa/replays/$j.yaml" ]; then
+            for j in $(ls .simdrive/journeys/*.yaml 2>/dev/null | sed 's|.*/||;s|\.yaml||' | sort); do
+              if [ -f ".simdrive/replays/$j.yaml" ]; then
                 echo "| ✅ $j | recorded |" >> $GITHUB_STEP_SUMMARY
               else
                 echo "| ⬜ $j | pending |" >> $GITHUB_STEP_SUMMARY
@@ -786,8 +786,8 @@ jobs:
             // SpecterQA E2E journey recording coverage: count only journeys
             // that have a replay with the matching filename. Measures recording
             // coverage, not execution pass/fail — replays are not run here.
-            const journeyDir = '.specterqa/journeys';
-            const replayDir = '.specterqa/replays';
+            const journeyDir = '.simdrive/journeys';
+            const replayDir = '.simdrive/replays';
             try {
               const journeys = fs.readdirSync(journeyDir).filter(f => f.endsWith('.yaml')).sort();
               const replays = new Set(fs.readdirSync(replayDir).filter(f => f.endsWith('.yaml')));

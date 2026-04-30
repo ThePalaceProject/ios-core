@@ -38,7 +38,18 @@ Ask the user to fill in ENVIRONMENT.md with their build details, devices, and cr
 
 ## Phase 2: Automated Sweep
 
-Run automated tools:
+**Step 2a — pre-flight simdrive journey replay** (catches obvious regressions fast):
+
+```bash
+SIMDRIVE_SIM_ID=<UDID> scripts/simdrive-regress.sh \
+  --report ~/Desktop/regression-<TICKET>/automated/simdrive/regress.json
+```
+
+Reports per-journey: steps run, drift count (informational), errors, perf delta
+(severity low/medium/high), crash count. Any journey with severity `high` perf
+delta or crashes>0 is auto-failed. Each failing journey becomes a finding.
+
+**Step 2b — full automated tool sweep**:
 
 ```bash
 scripts/regression-report.sh auto \
@@ -84,36 +95,71 @@ at 0% kill rate this way.
 
 This is the highest-value phase. Read `TEST_MATRIX.md` and walk through each priority tier.
 
-### Driving the sim: `simdrive` (MCP)
+### Driving the sim: `simdrive` (MCP, current version 0.3.0a1)
 
-`simdrive` replaces the specterqa-ios pipeline from prior cycles. It's an MCP server
-with real CoreSimulator HID input — taps actually focus UITextFields and accept
-keyboard input on iOS 26+ (the v15/v16 cliclick path didn't).
+`simdrive` is the canonical iOS sim driver. Real CoreSimulator HID input — taps focus
+UITextFields and accept keyboard input on iOS 26+ (the v15/v16 cliclick path didn't).
+SpecterQA was deprecated 2026-04-29 and fully migrated under `.simdrive/` on
+2026-04-30.
 
-**One-time install**:
+**Install / upgrade** (PyPI alpha track):
 ```bash
-gh release download simdrive-v0.1.0a1 -R SyncTek-LLC/specterqa-ios \
-  -p "simdrive-0.1.0a1-py3-none-any.whl" -O /tmp/simdrive.whl --clobber
-python3 -m pip install /tmp/simdrive.whl
+pip3 install --pre --upgrade simdrive
+~/harness/bin/harness simdrive status   # verify version + active sessions
 ```
 
-(The pip-direct URL hits a 404 because GitHub release assets need authenticated
-download — `gh release download` uses your gh auth.)
-
-**Wire into Claude Code** — add to `~/.claude.json` under `mcpServers`:
-```json
-{ "mcpServers": { "simdrive": { "type": "stdio", "command": "simdrive", "args": [] } } }
-```
-
-Restart Claude Code (or `/mcp` reload) so the simdrive tools become available.
+After upgrade, run `/mcp` reload so new MCP tools become available.
 
 **Tool surface** (all `mcp__simdrive__*`):
-- `session_start` / `session_end` / `session_status` — boot/find sim, optionally launch app
-- `observe` — screenshot + numbered annotated copy + OCR'd text marks
-- `tap` — by `{x,y}` (pixel), `{mark: N}` (numbered region from observe), or `{text: "..."}` (text match)
-- `swipe`, `type_text`, `press_key` (home, lock, return, tab, escape, arrow keys)
-- `record_start` / `record_stop` / `replay` — capture flows, replay with drift-aware halting
-- `logs` — tail simulator logs (NSPredicate-filterable)
+
+*Vision + driving*
+- `session_start` / `session_end` / `session_status` — boot/find sim, launch app
+- `observe` — screenshot + annotated PNG + OCR marks (each w/ `stable_id` + `stable_id_loose`)
+- `tap` — by `{x,y}`, `{stable_id}`, `{stable_id_loose}`, `{mark}`, or `{text}`
+- `swipe`, `type_text` (with optional `tap_first`), `press_key`
+- `record_start` / `record_stop` / `replay` — replay supports `mask_regions` + auto-load `ssim_masks` from YAML
+
+*Diagnostics + perf (new in 0.3.0a1)*
+- `app_state`, `apps`, `crashes`, `doctor`, `memory`
+- `perf` (snapshot), `perf_baseline` (labeled), `perf_compare` (returns severity: low/medium/high)
+
+*Robustness (new in 0.3.0a1)*
+- `pre_grant_permissions` — `simctl privacy grant` BEFORE launch (avoids SpringBoard PIDChange race)
+- `set_appearance` — light/dark mode
+- `dismiss_first_launch_alerts` — handles the 1-in-4 Allow-button-misses race
+- `dismiss_sheet`, `validate_replay`, `list_replays`
+
+### Three orchestrators (use the right one for the job)
+
+1. **`scripts/simdrive-regress.sh`** — pre-PR opt-in journey replay against an active sim.
+   Runs every `.simdrive/journeys/*.yaml`, replays the recording, runs structural checks,
+   captures perf baseline + delta + crash count per journey. Fails on `errored>0`,
+   `crashes>0`, or perf severity `high`. Use this for the pre-regression pre-flight.
+
+   ```bash
+   SIMDRIVE_SIM_ID=<UDID> scripts/simdrive-regress.sh --report /tmp/sd.json
+   scripts/simdrive-regress.sh --tier stateless         # only blocking-tier journeys
+   scripts/simdrive-regress.sh --only book-detail-stateless
+   ```
+
+2. **`scripts/run-chaos-pass.sh`** — adversarial exploration. Seeds from
+   `.simdrive/fixtures/flows/<flow>/<step>` and deviates with rapid-tap, pathological
+   input, bg/fg races. Discovers new bugs that deterministic tests miss.
+   See `.simdrive/CHAOS_QA_README.md`.
+
+3. **MarksFixture XCTest** (`PalaceTests/VisualRegression/`) — compile-time XCTest
+   assertions against `.simdrive/fixtures/baselines/<version>/<flow>/<step>.json`.
+   NOT mutation-killing (asserts against static JSON), but catches fixture corruption
+   + drift between versions. Runs in the unit suite.
+
+The three layers are complementary:
+
+| Layer | Catches | Mutation-killing? |
+|---|---|---|
+| Fixture JSON + MarksFixture XCTest | Fixture drift, layout shifts | No |
+| `simdrive-regress.sh` journey replay | Functional + perf regressions during a flow | Yes (drives live) |
+| Replay corpus (`.simdrive/replays/chaos/`) on every PR via `chaos-replay-on-pr.yml` | Production regressions of fixed-once bugs | Yes (drives live) |
+| Live chaos sessions (`run-chaos-pass.sh`) | New unknown bugs | Yes (drives live) |
 
 ### Per-area workflow (use this for each P0/P1 area)
 

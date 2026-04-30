@@ -3,7 +3,7 @@
 chaos-targets.py — given a list of changed file paths, return the set of
 fixture flow seeds whose `mutation_targets` cover those files.
 
-This reverse-maps `.specterqa/fixtures/flows/*.yaml` → `mutation_targets[].file`
+This reverse-maps `.simdrive/fixtures/flows/*.yaml` → `mutation_targets[].file`
 so chaos-qa can focus its exploration on flows whose assertions cover the
 changed surface area. PR authors who add a new flow YAML automatically
 extend chaos's reach.
@@ -140,8 +140,8 @@ def main() -> int:
     p.add_argument("files", nargs="*", help="Changed file paths.")
     p.add_argument("--all", action="store_true", help="List every flow regardless of changed-file match.")
     p.add_argument("--fixtures-root", type=Path,
-                   default=Path(".specterqa/fixtures"),
-                   help="Path to .specterqa/fixtures/ (default: relative to cwd).")
+                   default=Path(".simdrive/fixtures"),
+                   help="Path to .simdrive/fixtures/ (default: relative to cwd).")
     p.add_argument("--json", action="store_true", help="Output as JSON instead of one-seed-per-line.")
     p.add_argument("--include-pending", action="store_true",
                    help="Include flows with status=PENDING_CAPTURE (default: skip).")

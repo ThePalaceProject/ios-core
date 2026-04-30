@@ -1,0 +1,103 @@
+scenario:
+  id: reader2-page-forward
+  name: "Reader2 — Open EPUB, page forward, surface chrome, exit"
+  description: >
+    Validate that the Readium 3.x EPUB reader (Reader2) is drivable end-to-end
+    via simdrive. This is the use case with NO XCTest equivalent — Readium's
+    WKWebView renders outside the accessibility tree, so XCTest cannot read
+    page content or tap reader chrome. simdrive sees both via OCR.
+  tags: [tier1, ios, reader2, epub, readium, regression-gate]
+  tier: stateful
+  blocking: false
+
+  preconditions:
+    - "iPhone 16 Pro / iOS 18.4 simulator booted"
+    - "Palace app installed (org.thepalaceproject.palace)"
+    - "At least one EPUB downloaded in My Books (default fixture: 'The Souls of Black Folk' by W.E.B. Du Bois, free DPLA)"
+    - "simdrive >= 0.2.0a1 (uses stable_id resolution)"
+
+  recording:
+    path: "~/.simdrive/recordings/reader2-page-forward/recording.yaml"
+    steps: 9
+    captured_with: "simdrive 0.2.0a1"
+    captured_on: "2026-04-29"
+    replay_command: "mcp__simdrive__replay(session_id=..., name='reader2-page-forward', drift_threshold=0.85)"
+
+  steps:
+    - id: open_my_books
+      description: "Tap the My Books tab"
+      tap_target: { stable_id: "3218623d0801", text: "My Books" }
+      checkpoint: "My Books list visible with 'The Souls of Black Folk' Read button"
+
+    - id: launch_reader
+      description: "Tap Read on the downloaded EPUB"
+      tap_target: { stable_id: "29bbcf0ba0cd", text: "Read" }
+      checkpoint: |
+        Reader opens, OCR sees 'Page 1 of 171' at the bottom, plus Project
+        Gutenberg preface text in the WKWebView.
+
+    - id: page_forward_5x
+      description: "Swipe right-to-left across mid-screen, 5 times"
+      swipe: { x1: 1100, y1: 1300, x2: 100, y2: 1300, duration_ms: 300 }
+      repeat: 5
+      checkpoint: |
+        Page indicator advances. After 5 swipes, expect to be on page 4 or
+        beyond (front matter advances multiple pages per swipe). OCR sees
+        body text from Chapter 1 'Of Our Spiritual Strivings'.
+
+    - id: surface_reader_chrome
+      description: "Tap mid-screen to summon reader chrome"
+      tap: { x: 600, y: 1300 }
+      checkpoint: |
+        Top bar appears with '< The Souls of...' back button (stable_id
+        approximate: 0fbf3ac56fc4) and 'TT' typography icon (approximate:
+        17cfb013d37a). Both OCR'd from Readium's accessibility-invisible
+        WKWebView — proving simdrive sees what XCTest cannot.
+
+    - id: exit_reader
+      description: "Tap the back button in reader chrome"
+      tap_target: { stable_id: "0fbf3ac56fc4", text: "< The Souls of..." }
+      checkpoint: "App returns to My Books list. No exit handler triggered."
+
+  expected_invariants:
+    - "Page count strictly increases on each forward swipe (no stuck pages)"
+    - "Body text changes meaningfully between consecutive pages (not the same page rerendered)"
+    - "Reader chrome (back, typography) is OCR-visible after a mid-screen tap"
+    - "Exit returns to My Books, not to home / SpringBoard"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn
+    rationale: |
+      Reader chrome and body content can shift slightly across iOS minor
+      versions. 0.85 is generous enough to allow theme/font tweaks but tight
+      enough to catch a real layout regression (missing chrome, missing page
+      indicator, blank page).
+
+  known_limitation:
+    stateful_replay: |
+      Reader2 persists the last-read page across launches. Replaying this
+      journey from My Books → Read does NOT land the reader on page 1 — it
+      lands on whatever page the previous session left off on. Expect 7–8 of
+      9 steps to register as "drifted" under SSIM gating in normal operation;
+      that's the EPUB position state, not a layout regression.
+
+      Treat this journey as a "did the flow run end-to-end without crashing"
+      smoke test, not as a layout-regression sentinel. For layout regression,
+      use a stateless journey (catalog browse, settings, sign-in form) where
+      no app-side state diverges across replays.
+
+      Smoke-test result on 2026-04-29 with simdrive 0.2.0a1: 9 steps executed,
+      8 drifted (expected), 0 errors. Flow ran end-to-end.
+
+  related:
+    - "feedback_simdrive_replaces_specterqa.md (memory) — cutover rationale"
+    - "simdrive_v0_2_0a1_dogfood.md (memory) — what 0.2.0a1 fixed"
+    - "CLAUDE.md 'E2E / UI sim driving — simdrive' — tool rules"
+
+  next_journeys:
+    - reader2-toc-navigation       # Open TOC, jump to chapter, verify position
+    - reader2-bookmark             # Bookmark page, exit, reopen, verify bookmark
+    - reader2-font-theme-switch    # Cycle font/theme via TT, verify body re-renders
+    - catalog-browse-stateless     # Stateless catalog tour suitable for layout-regression SSIM gating
+    - settings-tour-stateless      # Stateless Settings tour, ditto

@@ -21,19 +21,19 @@ look for unexpected behavior at boundaries, transitions, and load.
 - `replays_dir`: absolute path to write recorded replay YAMLs to
 - `focus`: optional list of file paths from a PR diff. If present, use the
   flow YAMLs' `mutation_targets` reverse mapping to bias exploration toward
-  flows that cover those files. Read .specterqa/fixtures/flows/*.yaml.
+  flows that cover those files. Read .simdrive/fixtures/flows/*.yaml.
 
 ## Phase 1 — Seed the simulator state
 
 If `seed` is `<flow>/<step>`:
-1. Read `.specterqa/fixtures/flows/<flow>.yaml` to get the action sequence.
+1. Read `.simdrive/fixtures/flows/<flow>.yaml` to get the action sequence.
 2. `simdrive.session_start` on the udid with `app_bundle_id =
    org.thepalaceproject.palace`.
 3. `simdrive.observe` — confirm app is launched.
 4. Drive each step's `action` until you reach `<step>`. Use the fixture
    step's `expects` block to verify each intermediate state matches.
 5. After reaching `<step>`, `simdrive.observe` again and compare the marks
-   against `.specterqa/fixtures/baselines/<some-version>/<flow>/<step>.json`.
+   against `.simdrive/fixtures/baselines/<some-version>/<flow>/<step>.json`.
    Tolerance: 50px on positions, exact match on stable text (UI controls,
    lane labels). Volatile content (book titles, authors) is ignored.
 6. **If the seed cannot be reproduced** (more than 2 stable marks divergent),
@@ -272,7 +272,7 @@ starts. Each top-level key becomes a `xcrun simctl spawn defaults
 write` call against `org.thepalaceproject.palace`. The simulator boots
 the app with that state already in place.
 
-Sample pre-seeds live under `.specterqa/chaos-pre-seeds/`. When invoked
+Sample pre-seeds live under `.simdrive/chaos-pre-seeds/`. When invoked
 with one, your seed-mismatch tolerance should LOOSEN — the captured
 fixture won't match the corrupted state on purpose. Compare against the
 EXPECTED post-seed state (documented in the pre-seed JSON's `_purpose`

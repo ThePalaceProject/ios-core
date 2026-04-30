@@ -6,7 +6,7 @@
 # chaos-qa subagent via Claude Code's headless mode (`claude -p`).
 #
 # Designed to run from CI (GitHub Actions self-hosted Mac) OR locally for
-# dogfooding. Output: a per-session directory under ~/.specterqa/chaos-runs/
+# dogfooding. Output: a per-session directory under ~/.simdrive/chaos-runs/
 # containing findings.csv, replays/, and a summary.json.
 #
 # Usage:
@@ -32,7 +32,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUNS_ROOT="${CHAOS_RUNS_ROOT:-$HOME/.specterqa/chaos-runs}"
+RUNS_ROOT="${CHAOS_RUNS_ROOT:-$HOME/.simdrive/chaos-runs}"
 TIMESTAMP="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
 
 UDID=""
@@ -120,12 +120,12 @@ if [[ -n "$DIFF_FILES_FROM" ]]; then
     fi
     mapfile -t derived < <(
         xargs -a "$DIFF_FILES_FROM" python3 "$REPO_ROOT/scripts/chaos-targets.py" \
-            --fixtures-root "$REPO_ROOT/.specterqa/fixtures"
+            --fixtures-root "$REPO_ROOT/.simdrive/fixtures"
     )
     SEEDS+=("${derived[@]}")
 elif (( ALL_FLOWS )); then
     mapfile -t derived < <(python3 "$REPO_ROOT/scripts/chaos-targets.py" \
-        --all --fixtures-root "$REPO_ROOT/.specterqa/fixtures")
+        --all --fixtures-root "$REPO_ROOT/.simdrive/fixtures")
     SEEDS+=("${derived[@]}")
 fi
 

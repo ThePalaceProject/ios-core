@@ -8,7 +8,7 @@
 # chaos-qa-nightly.yml). Replays here are the curated, kept-in-tree
 # subset that have proven valuable enough to lock into CI forever.
 #
-# Replays live under .specterqa/replays/chaos/<flow>-<descriptor>.yaml.
+# Replays live under .simdrive/replays/chaos/<flow>-<descriptor>.yaml.
 # Each YAML was written by `simdrive.record_stop` during a chaos session
 # and curated by a human as worth-keeping.
 
@@ -18,7 +18,7 @@ on:
   pull_request:
     branches: [develop, main]
     paths:
-      - '.specterqa/replays/chaos/**'
+      - '.simdrive/replays/chaos/**'
       - 'Palace/**'
       - 'PalaceTests/**'
       - 'Palace.xcodeproj/**'
@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 30
     if: |
       vars.ENABLE_CHAOS_QA_RUNNER == 'true' &&
-      hashFiles('.specterqa/replays/chaos/**.yaml') != ''
+      hashFiles('.simdrive/replays/chaos/**.yaml') != ''
     steps:
       - name: Checkout PR
         uses: actions/checkout@v4
@@ -68,7 +68,7 @@ jobs:
           PASS=0
           REPORT=/tmp/replay-report.txt
           : > "$REPORT"
-          for yaml in .specterqa/replays/chaos/*.yaml; do
+          for yaml in .simdrive/replays/chaos/*.yaml; do
             [[ -f "$yaml" ]] || continue
             NAME=$(basename "$yaml" .yaml)
             echo "::group::$NAME"

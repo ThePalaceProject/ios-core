@@ -9,7 +9,7 @@ testing (PP-4020) comparing different app versions.
 Onboarding is handled automatically: the script dismisses the walkthrough,
 adds Addison Public Library, and optionally signs in before walking screens.
 
-Navigation patterns derived from SpecterQA replay YAMLs in .specterqa/replays/.
+Navigation patterns derived from SpecterQA replay YAMLs in .simdrive/replays/.
 
 Usage:
     python3 browserstack-screenshot-walker.py --ipa ~/Downloads/Palace-1.2.8.ipa --version 1.2.8

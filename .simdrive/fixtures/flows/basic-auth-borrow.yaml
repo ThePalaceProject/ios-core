@@ -20,7 +20,7 @@ blocked_by: |
   type_text casing fix (see SIMDRIVE_DOGFOOD_2026_04_29.md P1 #2), OR via the
   chaos-qa subagent which handles input variability natively.
 
-credentials_source: ~/.specterqa/credentials/a1qa-test.env
+credentials_source: ~/.simdrive/credentials/a1qa-test.env
 credentials_keys: [A1QA_BARCODE, A1QA_PIN]
 
 steps:

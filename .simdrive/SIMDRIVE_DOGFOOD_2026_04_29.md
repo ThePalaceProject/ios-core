@@ -1,7 +1,7 @@
 # simdrive v0.1.0a1 — Palace iOS dogfood feedback (2026-04-29)
 
 **Tester:** Maurice Carrier · iOS solo · Palace iOS Core
-**Workload:** PP-4164 regression (release/3.0.0 vs candidate) — captured a 6-step `anonymous-borrow` flow on two iPhone 16 Pro sims (iOS 18.4) and built a fixture-based test corpus in `.specterqa/fixtures/`.
+**Workload:** PP-4164 regression (release/3.0.0 vs candidate) — captured a 6-step `anonymous-borrow` flow on two iPhone 16 Pro sims (iOS 18.4) and built a fixture-based test corpus in `.simdrive/fixtures/`.
 **Volume:** ~50 `observe` calls, ~30 `tap` / `swipe` / `type_text` calls, 2 sims, 6 successful sessions out of 8 attempts.
 
 ## P0 — Blocks fixture-based test infrastructure

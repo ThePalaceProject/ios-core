@@ -38,7 +38,7 @@ echo ">>> Checking WDA..."
 WDA_READY=$(curl -s "$WDA_URL/status" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('value',{}).get('ready',False))" 2>/dev/null || echo "False")
 if [ "$WDA_READY" != "True" ]; then
     echo "ERROR: WDA not running at $WDA_URL"
-    echo "Start it with: xcodebuild test-without-building -project ~/.specterqa/wda/WebDriverAgent/WebDriverAgent.xcodeproj -scheme WebDriverAgentRunner -destination id=$DEVICE_ECID -derivedDataPath ~/.specterqa/wda/build-device"
+    echo "Start it with: xcodebuild test-without-building -project ~/.simdrive/wda/WebDriverAgent/WebDriverAgent.xcodeproj -scheme WebDriverAgentRunner -destination id=$DEVICE_ECID -derivedDataPath ~/.simdrive/wda/build-device"
     exit 1
 fi
 echo "WDA is ready."

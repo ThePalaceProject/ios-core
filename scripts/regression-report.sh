@@ -178,7 +178,7 @@ cmd_setup() {
 
 | Library | Auth Type | Credentials |
 |---------|-----------|-------------|
-| A1QA Test Library | Basic | See ~/.specterqa/credentials/a1qa-test.env |
+| A1QA Test Library | Basic | See ~/.simdrive/credentials/a1qa-test.env |
 | Lyrasis Reads | None | N/A |
 | Palace Bookshelf | Anonymous | N/A |
 

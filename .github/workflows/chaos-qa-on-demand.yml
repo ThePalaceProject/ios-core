@@ -7,7 +7,7 @@
 #   - Live chaos exploration is non-deterministic (different findings each
 #     run) — running it on every PR would create flaky checks.
 #   - LLM + simulator time costs real $$. Opting in keeps costs scoped.
-#   - The PR's REPLAY corpus (under .specterqa/replays/chaos/) runs
+#   - The PR's REPLAY corpus (under .simdrive/replays/chaos/) runs
 #     deterministically on every PR via a separate workflow; THAT is the
 #     guard. Live chaos is for discovery, not regression-prevention.
 #
@@ -129,7 +129,7 @@ jobs:
       - name: Locate latest run dir
         id: run
         run: |
-          DIR=$(ls -dt ~/.specterqa/chaos-runs/*/ | head -1)
+          DIR=$(ls -dt ~/.simdrive/chaos-runs/*/ | head -1)
           echo "dir=$DIR" >> "$GITHUB_OUTPUT"
 
       - name: Format PR comment

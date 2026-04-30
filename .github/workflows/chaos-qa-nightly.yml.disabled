@@ -86,7 +86,7 @@ jobs:
       - name: Locate run dir
         id: run
         run: |
-          DIR=$(ls -dt ~/.specterqa/chaos-runs/*/ | head -1)
+          DIR=$(ls -dt ~/.simdrive/chaos-runs/*/ | head -1)
           echo "dir=$DIR" >> "$GITHUB_OUTPUT"
 
       - name: Post summary to Slack

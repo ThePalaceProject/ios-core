@@ -644,7 +644,7 @@ def _render_visual_coverage(
     baseline_version: str,
     candidate_version: str,
 ) -> str:
-    """Render a fixture coverage matrix from .specterqa/fixtures/baselines/<version>/<flow>/.
+    """Render a fixture coverage matrix from .simdrive/fixtures/baselines/<version>/<flow>/.
 
     For each (version, flow) pair, count steps and report:
       - PNG count   = visual evidence captured
@@ -898,7 +898,7 @@ def main() -> None:
     parser.add_argument("--strict", action="store_true",
                         help="Exit 1 if any findings are unverified")
     parser.add_argument("--fixtures-dir", type=Path, default=None,
-                        help="Path to .specterqa/fixtures/baselines/ to render Visual Coverage Matrix")
+                        help="Path to .simdrive/fixtures/baselines/ to render Visual Coverage Matrix")
 
     args = parser.parse_args()
 
