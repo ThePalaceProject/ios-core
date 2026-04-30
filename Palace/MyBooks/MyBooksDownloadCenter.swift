@@ -91,6 +91,11 @@ import PalaceCatalog
     /// and the DownloadStartDispatcherDelegate.startBorrow hop both
     /// remain intact.
     private let startCoordinator: DownloadStartCoordinator
+    /// Owns the complete borrow lifecycle (borrowAsync + auth-error
+    /// retry + OIDC silent reauth + sign-in modal + error
+    /// presentation). MBDC's `borrowAsync(_:attemptDownload:)` in
+    /// MyBooksDownloadCenter+Async.swift is a 1-line forwarder.
+    let borrowOperation: BorrowOperation
     /// Owns the URLSession willPerformHTTPRedirection decision: cap
     /// the redirect chain at the configured max + reject HTTPS →
     /// non-HTTPS downgrades. Stateless — counters live in
@@ -224,6 +229,7 @@ import PalaceCatalog
         taskLifecycleService: DownloadTaskLifecycleService? = nil,
         cancellationHandler: DownloadCancellationHandler? = nil,
         startCoordinator: DownloadStartCoordinator? = nil,
+        borrowOperation: BorrowOperation? = nil,
         redirectPolicy: RedirectPolicy? = nil,
         startDispatcher: DownloadStartDispatcher? = nil,
         errorActivityTracker: ErrorActivityTracker = .shared,
@@ -597,6 +603,79 @@ import PalaceCatalog
         self.overdriveAPIExecutor = .shared
         #endif
 
+        // BorrowOperation owns the complete borrow lifecycle. Closures
+        // wrap the production OPDS fetch (with DownloadErrorRecovery
+        // retries), the TPPAlertUtils error-presentation path, the
+        // SignInModalPresenter, and the OIDC silent-reauth web session.
+        // Tests substitute simpler stubs.
+        let resolveAccountForBorrowOp: () -> TPPUserAccount = {
+            userAccount ?? accountsManager.currentUserAccount
+        }
+        let opdsFeedServiceForBorrow = opdsFeedService
+        let fetchBookClosure: (URL, Bool, Bool) async throws -> TPPBook = { url, resetCache, useToken in
+            let recovery = DownloadErrorRecovery()
+            return try await recovery.executeWithRetry(
+                policy: DownloadErrorRecovery.RetryPolicy.borrowOperation
+            ) {
+                try await opdsFeedServiceForBorrow.fetchBook(
+                    from: url,
+                    resetCache: resetCache,
+                    useToken: useToken
+                )
+            }
+        }
+        let presentBorrowErrorAlertClosure: @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void = { title, message, originalError, problemDoc, book, retryAction in
+            let alert = TPPAlertUtils.alertWithDetails(
+                title: title,
+                message: message,
+                error: originalError,
+                problemDocument: problemDoc,
+                bookIdentifier: book.identifier,
+                bookTitle: book.title,
+                retryAction: retryAction
+            )
+            TPPAlertUtils.presentFromViewControllerOrNil(
+                alertController: alert,
+                viewController: nil,
+                animated: true,
+                completion: nil
+            )
+        }
+        let presentSignInModalClosure: @MainActor (@escaping () -> Void) -> Void = { completion in
+            SignInModalPresenter.presentSignInModalForCurrentAccount(completion: completion)
+        }
+        let attemptOIDCReauthClosure: () async -> Bool = {
+            await BorrowOperation.attemptOIDCSilentReauth(userAccount: resolveAccountForBorrowOp())
+        }
+        #if FEATURE_DRM_CONNECTOR
+        self.borrowOperation = borrowOperation ?? BorrowOperation(
+            bookRegistry: bookRegistry,
+            downloadAnnouncementService: downloadAnnouncementService,
+            errorActivityTracker: errorActivityTracker,
+            debugSettings: debugSettings,
+            userRetryTracker: userRetryTracker,
+            userAccountProvider: resolveAccountForBorrowOp,
+            adobeDRMService: .shared,
+            fetchBook: fetchBookClosure,
+            presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
+            presentSignInModal: presentSignInModalClosure,
+            attemptOIDCReauth: attemptOIDCReauthClosure
+        )
+        #else
+        self.borrowOperation = borrowOperation ?? BorrowOperation(
+            bookRegistry: bookRegistry,
+            downloadAnnouncementService: downloadAnnouncementService,
+            errorActivityTracker: errorActivityTracker,
+            debugSettings: debugSettings,
+            userRetryTracker: userRetryTracker,
+            userAccountProvider: resolveAccountForBorrowOp,
+            fetchBook: fetchBookClosure,
+            presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
+            presentSignInModal: presentSignInModalClosure,
+            attemptOIDCReauth: attemptOIDCReauthClosure
+        )
+        #endif
+
         super.init()
 
         // Notification sender has to outlive `super.init()` since the
@@ -623,6 +702,7 @@ import PalaceCatalog
         self.taskLifecycleService.delegate = self
         self.cancellationHandler.delegate = self
         self.startCoordinator.delegate = self
+        self.borrowOperation.delegate = self
         self.queueOrchestrator.delegate = self
         #if LCP
         self.lcpFulfillmentHandler.delegate = self
@@ -1369,6 +1449,8 @@ extension MyBooksDownloadCenter: DownloadTaskLifecycleServiceDelegate {}
 extension MyBooksDownloadCenter: DownloadCancellationHandlerDelegate {}
 
 extension MyBooksDownloadCenter: DownloadStartCoordinatorDelegate {}
+
+extension MyBooksDownloadCenter: BorrowOperationDelegate {}
 
 // MARK: - DownloadStartDispatcherDelegate
 //

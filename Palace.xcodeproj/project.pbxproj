@@ -50,6 +50,7 @@
 		F2A3B4C5D6E7F8A9B0C1D2E3 /* DownloadTaskLifecycleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D1E2 /* DownloadTaskLifecycleService.swift */; };
 		A2B3C4D5E6F7A8B9C0D1E2F3 /* DownloadCancellationHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* DownloadCancellationHandler.swift */; };
 		C2B3C4D5E6F7A8B9C0D1E2F3 /* DownloadStartCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1B2C3D4E5F6A7B8C9D0E1F2 /* DownloadStartCoordinator.swift */; };
+		D2B3C4D5E6F7A8B9C0D1E2F3 /* BorrowOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2C3D4E5F6A7B8C9D0E1F2 /* BorrowOperation.swift */; };
 		B2A3B4C5D6E7F8A9B0C1D2E3 /* RedirectPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A2B3C4D5E6F7A8B9C0D1E2 /* RedirectPolicy.swift */; };
 		E0A3B4C5D6E7F8A9B0C1D2E3 /* DownloadStartDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0A2B3C4D5E6F7A8B9C0D1E2 /* DownloadStartDispatcher.swift */; };
 		0B1838E6F21342A31DC01D12 /* AdobeDRMHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */; };
@@ -134,6 +135,7 @@
 		F3A4B5C6D7E8F9A0B1C2D3E4 /* DownloadTaskLifecycleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D1E2 /* DownloadTaskLifecycleService.swift */; };
 		A3B4C5D6E7F8A9B0C1D2E3F4 /* DownloadCancellationHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* DownloadCancellationHandler.swift */; };
 		C3B4C5D6E7F8A9B0C1D2E3F4 /* DownloadStartCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1B2C3D4E5F6A7B8C9D0E1F2 /* DownloadStartCoordinator.swift */; };
+		D3B4C5D6E7F8A9B0C1D2E3F4 /* BorrowOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2C3D4E5F6A7B8C9D0E1F2 /* BorrowOperation.swift */; };
 		B3A4B5C6D7E8F9A0B1C2D3E4 /* RedirectPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A2B3C4D5E6F7A8B9C0D1E2 /* RedirectPolicy.swift */; };
 		E0A4B5C6D7E8F9A0B1C2D3E4 /* DownloadStartDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0A2B3C4D5E6F7A8B9C0D1E2 /* DownloadStartDispatcher.swift */; };
 		9C2F146198FD9E8862E88B57 /* AdobeDRMHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */; };
@@ -710,6 +712,7 @@
 		F5A6B7C8D9E0F1A2B3C4D5E6 /* DownloadTaskLifecycleServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A5B6C7D8E9F0A1B2C3D4E5 /* DownloadTaskLifecycleServiceTests.swift */; };
 		A5B6C7D8E9F0A1B2C3D4E5F6 /* DownloadCancellationHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4B5C6D7E8F9A0B1C2D3E4F5 /* DownloadCancellationHandlerTests.swift */; };
 		C5B6C7D8E9F0A1B2C3D4E5F6 /* DownloadStartCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4B5C6D7E8F9A0B1C2D3E4F5 /* DownloadStartCoordinatorTests.swift */; };
+		D5B6C7D8E9F0A1B2C3D4E5F6 /* BorrowOperationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B5C6D7E8F9A0B1C2D3E4F5 /* BorrowOperationTests.swift */; };
 		B5A6B7C8D9E0F1A2B3C4D5E6 /* RedirectPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A5B6C7D8E9F0A1B2C3D4E5 /* RedirectPolicyTests.swift */; };
 		C2A3B4C5D6E7F8A9B0C1D2E3 /* DownloadQueueOrchestratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3C4D5E6F7A8B9C0D1E2 /* DownloadQueueOrchestratorTests.swift */; };
 		D2A3B4C5D6E7F8A9B0C1D2E3 /* OverdriveDownloadHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C4D5E6F7A8B9C0D1E2 /* OverdriveDownloadHandlerTests.swift */; };
@@ -1912,6 +1915,7 @@
 		F1A2B3C4D5E6F7A8B9C0D1E2 /* DownloadTaskLifecycleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadTaskLifecycleService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* DownloadCancellationHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadCancellationHandler.swift; sourceTree = "<group>"; };
 		C1B2C3D4E5F6A7B8C9D0E1F2 /* DownloadStartCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadStartCoordinator.swift; sourceTree = "<group>"; };
+		D1B2C3D4E5F6A7B8C9D0E1F2 /* BorrowOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorrowOperation.swift; sourceTree = "<group>"; };
 		B1A2B3C4D5E6F7A8B9C0D1E2 /* RedirectPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedirectPolicy.swift; sourceTree = "<group>"; };
 		E0A2B3C4D5E6F7A8B9C0D1E2 /* DownloadStartDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadStartDispatcher.swift; sourceTree = "<group>"; };
 		FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdobeDRMHandler.swift; sourceTree = "<group>"; };
@@ -2007,6 +2011,7 @@
 		F4A5B6C7D8E9F0A1B2C3D4E5 /* DownloadTaskLifecycleServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DownloadTaskLifecycleServiceTests.swift; sourceTree = "<group>"; };
 		A4B5C6D7E8F9A0B1C2D3E4F5 /* DownloadCancellationHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DownloadCancellationHandlerTests.swift; sourceTree = "<group>"; };
 		C4B5C6D7E8F9A0B1C2D3E4F5 /* DownloadStartCoordinatorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DownloadStartCoordinatorTests.swift; sourceTree = "<group>"; };
+		D4B5C6D7E8F9A0B1C2D3E4F5 /* BorrowOperationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BorrowOperationTests.swift; sourceTree = "<group>"; };
 		B4A5B6C7D8E9F0A1B2C3D4E5 /* RedirectPolicyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RedirectPolicyTests.swift; sourceTree = "<group>"; };
 		C1A2B3C4D5E6F7A8B9C0D1E2 /* DownloadQueueOrchestratorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DownloadQueueOrchestratorTests.swift; sourceTree = "<group>"; };
 		D1A2B3C4D5E6F7A8B9C0D1E2 /* OverdriveDownloadHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OverdriveDownloadHandlerTests.swift; sourceTree = "<group>"; };
@@ -3630,6 +3635,7 @@
 				F1A2B3C4D5E6F7A8B9C0D1E2 /* DownloadTaskLifecycleService.swift */,
 				A1B2C3D4E5F6A7B8C9D0E1F2 /* DownloadCancellationHandler.swift */,
 				C1B2C3D4E5F6A7B8C9D0E1F2 /* DownloadStartCoordinator.swift */,
+				D1B2C3D4E5F6A7B8C9D0E1F2 /* BorrowOperation.swift */,
 				B1A2B3C4D5E6F7A8B9C0D1E2 /* RedirectPolicy.swift */,
 				E0A2B3C4D5E6F7A8B9C0D1E2 /* DownloadStartDispatcher.swift */,
 				FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */,
@@ -4686,6 +4692,7 @@
 				F4A5B6C7D8E9F0A1B2C3D4E5 /* DownloadTaskLifecycleServiceTests.swift */,
 				A4B5C6D7E8F9A0B1C2D3E4F5 /* DownloadCancellationHandlerTests.swift */,
 				C4B5C6D7E8F9A0B1C2D3E4F5 /* DownloadStartCoordinatorTests.swift */,
+				D4B5C6D7E8F9A0B1C2D3E4F5 /* BorrowOperationTests.swift */,
 				B4A5B6C7D8E9F0A1B2C3D4E5 /* RedirectPolicyTests.swift */,
 				C1A2B3C4D5E6F7A8B9C0D1E2 /* DownloadQueueOrchestratorTests.swift */,
 				D1A2B3C4D5E6F7A8B9C0D1E2 /* OverdriveDownloadHandlerTests.swift */,
@@ -6198,6 +6205,7 @@
 				F5A6B7C8D9E0F1A2B3C4D5E6 /* DownloadTaskLifecycleServiceTests.swift in Sources */,
 				A5B6C7D8E9F0A1B2C3D4E5F6 /* DownloadCancellationHandlerTests.swift in Sources */,
 				C5B6C7D8E9F0A1B2C3D4E5F6 /* DownloadStartCoordinatorTests.swift in Sources */,
+				D5B6C7D8E9F0A1B2C3D4E5F6 /* BorrowOperationTests.swift in Sources */,
 				B5A6B7C8D9E0F1A2B3C4D5E6 /* RedirectPolicyTests.swift in Sources */,
 				C2A3B4C5D6E7F8A9B0C1D2E3 /* DownloadQueueOrchestratorTests.swift in Sources */,
 				D2A3B4C5D6E7F8A9B0C1D2E3 /* OverdriveDownloadHandlerTests.swift in Sources */,
@@ -6588,6 +6596,7 @@
 				F2A3B4C5D6E7F8A9B0C1D2E3 /* DownloadTaskLifecycleService.swift in Sources */,
 				A2B3C4D5E6F7A8B9C0D1E2F3 /* DownloadCancellationHandler.swift in Sources */,
 				C2B3C4D5E6F7A8B9C0D1E2F3 /* DownloadStartCoordinator.swift in Sources */,
+				D2B3C4D5E6F7A8B9C0D1E2F3 /* BorrowOperation.swift in Sources */,
 				B2A3B4C5D6E7F8A9B0C1D2E3 /* RedirectPolicy.swift in Sources */,
 				E0A3B4C5D6E7F8A9B0C1D2E3 /* DownloadStartDispatcher.swift in Sources */,
 				0B1838E6F21342A31DC01D12 /* AdobeDRMHandler.swift in Sources */,
@@ -6866,6 +6875,7 @@
 				F3A4B5C6D7E8F9A0B1C2D3E4 /* DownloadTaskLifecycleService.swift in Sources */,
 				A3B4C5D6E7F8A9B0C1D2E3F4 /* DownloadCancellationHandler.swift in Sources */,
 				C3B4C5D6E7F8A9B0C1D2E3F4 /* DownloadStartCoordinator.swift in Sources */,
+				D3B4C5D6E7F8A9B0C1D2E3F4 /* BorrowOperation.swift in Sources */,
 				B3A4B5C6D7E8F9A0B1C2D3E4 /* RedirectPolicy.swift in Sources */,
 				E0A4B5C6D7E8F9A0B1C2D3E4 /* DownloadStartDispatcher.swift in Sources */,
 				9C2F146198FD9E8862E88B57 /* AdobeDRMHandler.swift in Sources */,
