@@ -1756,7 +1756,7 @@
 		17628BE0EB1E554ECF46071E /* StatsCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsCardView.swift; sourceTree = "<group>"; };
 		17631AEC25E488CD006079C4 /* TPPAgeCheckViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAgeCheckViewController.swift; sourceTree = "<group>"; };
 		1763C0D524F460FE00A4D0E2 /* TPPAnnouncementManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAnnouncementManagerTests.swift; sourceTree = "<group>"; };
-		17742AEE6E7728A2BB5C0F2C /* baselines */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder; name = baselines; path = .specterqa/fixtures/baselines; sourceTree = SOURCE_ROOT; };
+		17742AEE6E7728A2BB5C0F2C /* baselines */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder; name = baselines; path = .simdrive/fixtures/baselines; sourceTree = SOURCE_ROOT; };
 		179699D024131BA500EC309F /* UIColor+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIColor+Extensions.swift"; sourceTree = "<group>"; };
 		1798538A255A4092009F94D9 /* TPPBookLocation+Locator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBookLocation+Locator.swift"; sourceTree = "<group>"; };
 		17A5AB4E25D201BD005DFF05 /* LCPPassphraseAuthenticationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LCPPassphraseAuthenticationService.swift; sourceTree = "<group>"; };
