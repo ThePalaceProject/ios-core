@@ -28,24 +28,32 @@ final class TPPPerAccountIsolationTests: XCTestCase {
 
     // MARK: - Instance Identity
 
-    /// userAccount(for:) returns the same instance on repeated calls.
-    func testInstanceCache_returnsSameInstance() {
-        let first = AppContainer.production().accountsManager.userAccount(for: uuidA)
-        let second = AppContainer.production().accountsManager.userAccount(for: uuidA)
-        XCTAssertTrue(first === second, "Same UUID should return same instance")
-    }
+    /// Instance-cache invariant: same UUID always returns same instance,
+    /// different UUIDs return different instances, AND `boundLibraryUUID`
+    /// is preserved on each cached instance. Pin all three contracts
+    /// across multiple lookups so a mutant that returns a fresh instance
+    /// per call (or aliases two UUIDs to the same instance) fails on a
+    /// distinct row.
+    func testInstanceCache_isStableSameUUID_distinctDifferentUUIDs_andPreservesBinding() {
+        // Same UUID — three lookups must yield the same instance.
+        let firstA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let secondA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        let thirdA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        XCTAssertTrue(firstA === secondA && secondA === thirdA,
+                      "Repeated lookups for the same UUID must yield the same instance")
 
-    /// Different UUIDs return different instances.
-    func testInstanceCache_returnsDifferentInstancesForDifferentUUIDs() {
-        let accountA = AppContainer.production().accountsManager.userAccount(for: uuidA)
+        // Different UUID — must yield a distinct instance.
         let accountB = AppContainer.production().accountsManager.userAccount(for: uuidB)
-        XCTAssertFalse(accountA === accountB, "Different UUIDs should return different instances")
-    }
+        XCTAssertFalse(firstA === accountB,
+                       "Different UUIDs must yield distinct instances — guards against an aliased-cache mutant")
 
-    /// Per-account instances have immutable boundLibraryUUID.
-    func testBoundLibraryUUID_isImmutable() {
-        let account = AppContainer.production().accountsManager.userAccount(for: uuidA)
-        XCTAssertEqual(account.boundLibraryUUID, uuidA)
+        // boundLibraryUUID preserved AND distinct on each instance.
+        XCTAssertEqual(firstA.boundLibraryUUID, uuidA,
+                       "Account A's boundLibraryUUID must equal uuidA")
+        XCTAssertEqual(accountB.boundLibraryUUID, uuidB,
+                       "Account B's boundLibraryUUID must equal uuidB")
+        XCTAssertNotEqual(firstA.boundLibraryUUID, accountB.boundLibraryUUID,
+                          "Distinct accounts must have distinct boundLibraryUUIDs")
     }
 
     // MARK: - Credential Isolation
