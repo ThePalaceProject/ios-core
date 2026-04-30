@@ -48,23 +48,62 @@ final class OverdriveDownloadHandler {
     private let stateManager: DownloadStateManager
     private let progressReporter: DownloadProgressReporter
     private let alertPresenter: DownloadAlertPresenter
-    private let overdriveAPIExecutor: OverdriveAPIExecutor
     private let userAccountProvider: () -> TPPUserAccount
+
+    /// Closure that performs the Overdrive fulfillment redirect request.
+    /// Production wires `OverdriveAPIExecutor.shared.fulfillBook(...)`.
+    /// Tests stub this to capture the completion handler so they can
+    /// drive the success / error / missing-headers branches without a
+    /// live Overdrive API. Mirrors the closure-injection pattern used
+    /// in `CredentialPromptCoordinator.presentSignInModal`.
+    ///
+    /// The completion signature uses `Error?` (not `NSError?`) so the
+    /// handler's existing closure shape (`([AnyHashable: Any]?, Error?)`)
+    /// flows through unchanged. The Obj-C bridge between
+    /// `OverdriveAPIExecutor`'s `NSError?` parameter and `Error?` is
+    /// transparent.
+    private let fulfillBookRequest: (_ urlString: String,
+                                     _ authType: AuthType,
+                                     _ completion: @escaping ([AnyHashable: Any]?, Error?) -> Void) -> Void
+
+    /// Closure that builds the manifest URLRequest from the redirect
+    /// headers. Production wires
+    /// `OverdriveAPIExecutor.shared.getManifestRequest(...)`. Tests stub
+    /// this to return a synthetic request (or nil to exercise the
+    /// "wrong headers" parse-fail branch).
+    private let manifestRequestFactory: (_ urlString: String,
+                                         _ token: String,
+                                         _ scope: String) -> URLRequest?
 
     init(
         bookRegistry: TPPBookRegistryProvider,
         stateManager: DownloadStateManager,
         progressReporter: DownloadProgressReporter,
         alertPresenter: DownloadAlertPresenter,
-        overdriveAPIExecutor: OverdriveAPIExecutor = .shared,
-        userAccountProvider: @escaping () -> TPPUserAccount
+        userAccountProvider: @escaping () -> TPPUserAccount,
+        fulfillBookRequest: @escaping (_ urlString: String,
+                                       _ authType: AuthType,
+                                       _ completion: @escaping ([AnyHashable: Any]?, Error?) -> Void) -> Void = { urlString, authType, completion in
+            OverdriveAPIExecutor.shared.fulfillBook(urlString: urlString, authType: authType) { (headers: [String: Any]?, nsError: NSError?) in
+                let bridged: [AnyHashable: Any]? = headers.map { dict in
+                    Dictionary(uniqueKeysWithValues: dict.map { (AnyHashable($0.key), $0.value) })
+                }
+                completion(bridged, nsError)
+            }
+        },
+        manifestRequestFactory: @escaping (_ urlString: String,
+                                           _ token: String,
+                                           _ scope: String) -> URLRequest? = { urlString, token, scope in
+            OverdriveAPIExecutor.shared.getManifestRequest(urlString: urlString, token: token, scope: scope)
+        }
     ) {
         self.bookRegistry = bookRegistry
         self.stateManager = stateManager
         self.progressReporter = progressReporter
         self.alertPresenter = alertPresenter
-        self.overdriveAPIExecutor = overdriveAPIExecutor
         self.userAccountProvider = userAccountProvider
+        self.fulfillBookRequest = fulfillBookRequest
+        self.manifestRequestFactory = manifestRequestFactory
     }
 
     // MARK: - Defer (loans-feed-out-of-sync)
@@ -110,9 +149,9 @@ final class OverdriveDownloadHandler {
 
         let userAccount = userAccountProvider()
         if let token = userAccount.authToken {
-            overdriveAPIExecutor.fulfillBook(urlString: url.absoluteString, authType: .token(token), completion: completion)
+            fulfillBookRequest(url.absoluteString, .token(token), completion)
         } else if let username = userAccount.username, let pin = userAccount.PIN {
-            overdriveAPIExecutor.fulfillBook(urlString: url.absoluteString, authType: .basic(username: username, pin: pin), completion: completion)
+            fulfillBookRequest(url.absoluteString, .basic(username: username, pin: pin), completion)
         }
     }
 
@@ -155,7 +194,7 @@ final class OverdriveDownloadHandler {
         guard let scope = normalizedHeaders?[scopeKey] as? String,
               let patronAuthorization = normalizedHeaders?[patronAuthorizationKey] as? String,
               let requestURLString = normalizedHeaders?[locationKey] as? String,
-              let request = overdriveAPIExecutor.getManifestRequest(urlString: requestURLString, token: patronAuthorization, scope: scope)
+              let request = manifestRequestFactory(requestURLString, patronAuthorization, scope)
         else {
             TPPErrorLogger.logError(withCode: .overdriveFulfillResponseParseFail, summary: summaryWrongHeaders, metadata: [
                 responseHeadersKey: responseHeaders ?? nA,

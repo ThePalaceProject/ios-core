@@ -707,6 +707,7 @@
 		A5B6C7D8E9F0A1B2C3D4E5F6 /* DownloadCancellationHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4B5C6D7E8F9A0B1C2D3E4F5 /* DownloadCancellationHandlerTests.swift */; };
 		B5A6B7C8D9E0F1A2B3C4D5E6 /* RedirectPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A5B6C7D8E9F0A1B2C3D4E5 /* RedirectPolicyTests.swift */; };
 		C2A3B4C5D6E7F8A9B0C1D2E3 /* DownloadQueueOrchestratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3C4D5E6F7A8B9C0D1E2 /* DownloadQueueOrchestratorTests.swift */; };
+		D2A3B4C5D6E7F8A9B0C1D2E3 /* OverdriveDownloadHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C4D5E6F7A8B9C0D1E2 /* OverdriveDownloadHandlerTests.swift */; };
 		B501B7DE2AD6E37E38642B99 /* AdobeDRMHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B6ED44D40E09EC72287887 /* AdobeDRMHandlerTests.swift */; };
 		CF16C9CEFF972B187420D537 /* DownloadAnnouncementServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DCF14A6A237EADD5978E148 /* DownloadAnnouncementServiceTests.swift */; };
 		917D628924F123B7A30238CE /* TPPLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C7D04F855F2DA251329CDD /* TPPLocalization.swift */; };
@@ -1999,6 +2000,7 @@
 		A4B5C6D7E8F9A0B1C2D3E4F5 /* DownloadCancellationHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DownloadCancellationHandlerTests.swift; sourceTree = "<group>"; };
 		B4A5B6C7D8E9F0A1B2C3D4E5 /* RedirectPolicyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RedirectPolicyTests.swift; sourceTree = "<group>"; };
 		C1A2B3C4D5E6F7A8B9C0D1E2 /* DownloadQueueOrchestratorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DownloadQueueOrchestratorTests.swift; sourceTree = "<group>"; };
+		D1A2B3C4D5E6F7A8B9C0D1E2 /* OverdriveDownloadHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OverdriveDownloadHandlerTests.swift; sourceTree = "<group>"; };
 		28B6ED44D40E09EC72287887 /* AdobeDRMHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AdobeDRMHandlerTests.swift; sourceTree = "<group>"; };
 		4DCF14A6A237EADD5978E148 /* DownloadAnnouncementServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DownloadAnnouncementServiceTests.swift; sourceTree = "<group>"; };
 		67CD20B0A844EE53B3370192 /* UIFont+TPPSystemFontOverride.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "UIFont+TPPSystemFontOverride.swift"; sourceTree = "<group>"; };
@@ -4673,6 +4675,7 @@
 				A4B5C6D7E8F9A0B1C2D3E4F5 /* DownloadCancellationHandlerTests.swift */,
 				B4A5B6C7D8E9F0A1B2C3D4E5 /* RedirectPolicyTests.swift */,
 				C1A2B3C4D5E6F7A8B9C0D1E2 /* DownloadQueueOrchestratorTests.swift */,
+				D1A2B3C4D5E6F7A8B9C0D1E2 /* OverdriveDownloadHandlerTests.swift */,
 				28B6ED44D40E09EC72287887 /* AdobeDRMHandlerTests.swift */,
 				4DCF14A6A237EADD5978E148 /* DownloadAnnouncementServiceTests.swift */,
 				EEE0C3EAFC52054E7144B795 /* DownloadStateManagerTests.swift */,
@@ -6182,6 +6185,7 @@
 				A5B6C7D8E9F0A1B2C3D4E5F6 /* DownloadCancellationHandlerTests.swift in Sources */,
 				B5A6B7C8D9E0F1A2B3C4D5E6 /* RedirectPolicyTests.swift in Sources */,
 				C2A3B4C5D6E7F8A9B0C1D2E3 /* DownloadQueueOrchestratorTests.swift in Sources */,
+				D2A3B4C5D6E7F8A9B0C1D2E3 /* OverdriveDownloadHandlerTests.swift in Sources */,
 				B501B7DE2AD6E37E38642B99 /* AdobeDRMHandlerTests.swift in Sources */,
 				CF16C9CEFF972B187420D537 /* DownloadAnnouncementServiceTests.swift in Sources */,
 				DFF555639FA1B81BE6A9DFCE /* DownloadStateManagerTests.swift in Sources */,
@@ -7375,7 +7379,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palaceTests;
 				PRODUCT_NAME = PalaceTests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = LCP;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "LCP FEATURE_OVERDRIVE";
 				SWIFT_OBJC_BRIDGING_HEADER = "PalaceTests/PalaceTests-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
@@ -7436,7 +7440,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palaceTests;
 				PRODUCT_NAME = PalaceTests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = LCP;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "LCP FEATURE_OVERDRIVE";
 				SWIFT_OBJC_BRIDGING_HEADER = "PalaceTests/PalaceTests-Bridging-Header.h";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 4.2;
