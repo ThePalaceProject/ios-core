@@ -56,6 +56,9 @@ import PalaceCatalog
     private let borrowErrorPresenter: BorrowErrorPresenter
     private let signInRedirectHandler: BookSignInRedirectHandler
     private let contentResetService: BookContentResetService
+    #if FEATURE_OVERDRIVE
+    private let overdriveDownloadHandler: OverdriveDownloadHandler
+    #endif
     /// Shared with `BorrowErrorPresenter` so the borrow-error path and
     /// the start-download path can't both fire concurrent sign-in modals.
     private let credentialRequestState = CredentialRequestState()
@@ -341,6 +344,15 @@ import PalaceCatalog
             progressReporter: reporter,
             localContentService: self.localContentService
         )
+        #if FEATURE_OVERDRIVE
+        self.overdriveDownloadHandler = OverdriveDownloadHandler(
+            bookRegistry: bookRegistry,
+            stateManager: stateManager,
+            progressReporter: reporter,
+            alertPresenter: self.alertPresenter,
+            userAccountProvider: resolveAccountForBorrow
+        )
+        #endif
         // DownloadQueueOrchestrator shares the same DownloadStateManager
         // (so the active-count + max-concurrent-downloads + dequeue all
         // resolve through one state owner) and the same TPPBookRegistry
@@ -399,6 +411,9 @@ import PalaceCatalog
         self.throttlingService.delegate = self
         self.borrowErrorPresenter.delegate = self
         self.signInRedirectHandler.delegate = self
+        #if FEATURE_OVERDRIVE
+        self.overdriveDownloadHandler.delegate = self
+        #endif
         self.queueOrchestrator.delegate = self
         #if LCP
         self.lcpFulfillmentHandler.delegate = self
@@ -680,11 +695,11 @@ import PalaceCatalog
         }
     }
 
-    private var isWifiOnlyEnforced: Bool {
+    var isWifiOnlyEnforced: Bool {
         self.settings.downloadOnlyOnWiFi && !self.reachability.isOnWiFi
     }
 
-    private func failWithWifiRequired(for book: TPPBook) {
+    func failWithWifiRequired(for book: TPPBook) {
         Log.info(#file, "Download blocked for '\(book.title)' — Wi-Fi only mode is enabled and device is not on Wi-Fi")
         runOnMainAsync {
             self.publishAndAnnounceError(
@@ -735,94 +750,20 @@ import PalaceCatalog
         return book.defaultAcquisitionIfBorrow != nil
     }
 
+    #if FEATURE_OVERDRIVE
     private func deferOverdriveFulfillment(for book: TPPBook) {
-        Log.warn(#file, "Overdrive audiobook '\(book.title)' routed to fulfillment but default acquisition is still borrow — deferring and syncing loans feed")
-        Task { await downloadCoordinator.registerCompletion(identifier: book.identifier) }
-        bookRegistry.sync()
-        runOnMainAsync {
-            self.publishAndAnnounceError(
-                DownloadErrorInfo(
-                    bookId: book.identifier,
-                    title: DisplayStrings.borrowFailed,
-                    message: DisplayStrings.loanAlreadyExistsAlertMessage,
-                    kind: .borrow
-                )
-            )
-        }
+        overdriveDownloadHandler.deferOverdriveFulfillment(for: book)
     }
+    #endif
 
     #if FEATURE_OVERDRIVE
     private func processOverdriveDownload(for book: TPPBook, withState state: TPPBookState) {
-        if isWifiOnlyEnforced {
-            failWithWifiRequired(for: book)
-            return
-        }
-
-        guard let url = book.defaultAcquisition?.hrefURL else { return }
-
-        let completion: ([AnyHashable: Any]?, Error?) -> Void = { [weak self] responseHeaders, error in
-            self?.handleOverdriveResponse(for: book, url: url, withState: state, responseHeaders: responseHeaders, error: error)
-        }
-
-        if let token = userAccount.authToken {
-            self.overdriveAPIExecutor.fulfillBook(urlString: url.absoluteString, authType: .token(token), completion: completion)
-        } else if let username = userAccount.username, let pin = userAccount.PIN {
-            self.overdriveAPIExecutor.fulfillBook(urlString: url.absoluteString, authType: .basic(username: username, pin: pin), completion: completion)
-        }
+        overdriveDownloadHandler.processOverdriveDownload(for: book, withState: state)
     }
     #endif
 
-    #if FEATURE_OVERDRIVE
-    private func handleOverdriveResponse(
-        for book: TPPBook,
-        url: URL?,
-        withState state: TPPBookState,
-        responseHeaders: [AnyHashable: Any]?,
-        error: Error?
-    ) {
-        let summaryWrongHeaders = "Overdrive audiobook fulfillment: wrong headers"
-        let nA = "N/A"
-        let responseHeadersKey = "responseHeaders"
-        let acquisitionURLKey = "acquisitionURL"
-        let bookKey = "book"
-        let bookRegistryStateKey = "bookRegistryState"
-
-        if let error = error {
-            let summary = "Overdrive audiobook fulfillment error"
-
-            TPPErrorLogger.logError(error, summary: summary, metadata: [
-                responseHeadersKey: responseHeaders ?? nA,
-                acquisitionURLKey: url?.absoluteString ?? nA,
-                bookKey: book.loggableDictionary,
-                bookRegistryStateKey: TPPBookStateHelper.stringValue(from: state)
-            ])
-            self.failDownloadWithAlert(for: book)
-            return
-        }
-
-        let normalizedHeaders = responseHeaders?.mapKeys { String(describing: $0).lowercased() }
-        let scopeKey = "x-overdrive-scope"
-        let patronAuthorizationKey = "x-overdrive-patron-authorization"
-        let locationKey = "location"
-
-        guard let scope = normalizedHeaders?[scopeKey] as? String,
-              let patronAuthorization = normalizedHeaders?[patronAuthorizationKey] as? String,
-              let requestURLString = normalizedHeaders?[locationKey] as? String,
-              let request = self.overdriveAPIExecutor.getManifestRequest(urlString: requestURLString, token: patronAuthorization, scope: scope)
-        else {
-            TPPErrorLogger.logError(withCode: .overdriveFulfillResponseParseFail, summary: summaryWrongHeaders, metadata: [
-                responseHeadersKey: responseHeaders ?? nA,
-                acquisitionURLKey: url?.absoluteString ?? nA,
-                bookKey: book.loggableDictionary,
-                bookRegistryStateKey: TPPBookStateHelper.stringValue(from: state)
-            ])
-            self.failDownloadWithAlert(for: book)
-            return
-        }
-
-        self.addDownloadTask(with: request, book: book)
-    }
-    #endif
+    // handleOverdriveResponse moved to OverdriveDownloadHandler
+    // (private there).
 
     private func processRegularDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?) {
         // The book parameter might be stale (from before borrowing completed)
@@ -1400,7 +1341,7 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
         schedulePendingStartsIfPossible()
     }
 
-    private func addDownloadTask(with request: URLRequest, book: TPPBook) {
+    func addDownloadTask(with request: URLRequest, book: TPPBook) {
         var modifiableRequest = request
         // `downloadTask(with:)` throws NSGenericException("Task created in a session
         // that has been invalidated") if the session has been torn down between the
@@ -1698,6 +1639,16 @@ extension MyBooksDownloadCenter: BookSignInRedirectHandlerDelegate {
         session.configuration.httpCookieStorage
     }
 }
+
+// MARK: - OverdriveDownloadHandlerDelegate
+//
+// `isWifiOnlyEnforced`, `failWithWifiRequired(for:)`, and
+// `addDownloadTask(with:book:)` already exist on MBDC's surface.
+// Empty conformance.
+
+#if FEATURE_OVERDRIVE
+extension MyBooksDownloadCenter: OverdriveDownloadHandlerDelegate {}
+#endif
 
 // MARK: - BookReturnServiceDelegate
 //
