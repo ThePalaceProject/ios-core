@@ -38,6 +38,7 @@
 		C07B8C9D0E1F2A3B4C5D6E7F /* LCPFulfillmentHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D18C9D0E1F2A3B4C5D6E7F80 /* LCPFulfillmentHandler.swift */; };
 		F30E1F2A3B4C5D6E7F8091A2 /* DownloadAuthRetryHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 041F2A3B4C5D6E7F8091A2B3 /* DownloadAuthRetryHandler.swift */; };
 		263B4C5D6E7F8091A2B3C4D5 /* LocalBookContentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 374C5D6E7F8091A2B3C4D5E6 /* LocalBookContentService.swift */; };
+		596F8091A2B3C4D5E6F70718 /* BookReturnService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A7081A2B3C4D5E6F7081929 /* BookReturnService.swift */; };
 		0B1838E6F21342A31DC01D12 /* AdobeDRMHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */; };
 		14342D20DADCD5B6AA7ECC97 /* DownloadAnnouncementService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D85D6FFA9CEBA4295D91F15 /* DownloadAnnouncementService.swift */; };
 		067E92BE15024B84A6E5E0B0 /* TPPBookmarkFactoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6515A1241D6D4D08A1866E72 /* TPPBookmarkFactoryTests.swift */; };
@@ -108,6 +109,7 @@
 		E29D0E1F2A3B4C5D6E7F8091 /* LCPFulfillmentHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D18C9D0E1F2A3B4C5D6E7F80 /* LCPFulfillmentHandler.swift */; };
 		152A3B4C5D6E7F8091A2B3C4 /* DownloadAuthRetryHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 041F2A3B4C5D6E7F8091A2B3 /* DownloadAuthRetryHandler.swift */; };
 		485D6E7F8091A2B3C4D5E6F7 /* LocalBookContentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 374C5D6E7F8091A2B3C4D5E6 /* LocalBookContentService.swift */; };
+		7B8192A3B4C5D6E7F8091A2B /* BookReturnService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A7081A2B3C4D5E6F7081929 /* BookReturnService.swift */; };
 		9C2F146198FD9E8862E88B57 /* AdobeDRMHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */; };
 		AD27B6FD04FB3A7966122D83 /* DownloadAnnouncementService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D85D6FFA9CEBA4295D91F15 /* DownloadAnnouncementService.swift */; };
 		173F0823241AAA4E00A64658 /* TPPBookStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 173F0822241AAA4E00A64658 /* TPPBookStateTests.swift */; };
@@ -1853,6 +1855,7 @@
 		D18C9D0E1F2A3B4C5D6E7F80 /* LCPFulfillmentHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LCPFulfillmentHandler.swift; sourceTree = "<group>"; };
 		041F2A3B4C5D6E7F8091A2B3 /* DownloadAuthRetryHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadAuthRetryHandler.swift; sourceTree = "<group>"; };
 		374C5D6E7F8091A2B3C4D5E6 /* LocalBookContentService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBookContentService.swift; sourceTree = "<group>"; };
+		6A7081A2B3C4D5E6F7081929 /* BookReturnService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookReturnService.swift; sourceTree = "<group>"; };
 		FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdobeDRMHandler.swift; sourceTree = "<group>"; };
 		6D85D6FFA9CEBA4295D91F15 /* DownloadAnnouncementService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadAnnouncementService.swift; sourceTree = "<group>"; };
 		3DDE892E38D34061A2DBE2F2 /* CatalogRepositoryMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogRepositoryMock.swift; sourceTree = "<group>"; };
@@ -3538,6 +3541,7 @@
 				D18C9D0E1F2A3B4C5D6E7F80 /* LCPFulfillmentHandler.swift */,
 				041F2A3B4C5D6E7F8091A2B3 /* DownloadAuthRetryHandler.swift */,
 				374C5D6E7F8091A2B3C4D5E6 /* LocalBookContentService.swift */,
+				6A7081A2B3C4D5E6F7081929 /* BookReturnService.swift */,
 				FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */,
 				6D85D6FFA9CEBA4295D91F15 /* DownloadAnnouncementService.swift */,
 				1FDB637C01812EEB10919A6E /* BackgroundDownloadHandler.swift */,
@@ -6444,6 +6448,7 @@
 				C07B8C9D0E1F2A3B4C5D6E7F /* LCPFulfillmentHandler.swift in Sources */,
 				F30E1F2A3B4C5D6E7F8091A2 /* DownloadAuthRetryHandler.swift in Sources */,
 				263B4C5D6E7F8091A2B3C4D5 /* LocalBookContentService.swift in Sources */,
+				596F8091A2B3C4D5E6F70718 /* BookReturnService.swift in Sources */,
 				0B1838E6F21342A31DC01D12 /* AdobeDRMHandler.swift in Sources */,
 				14342D20DADCD5B6AA7ECC97 /* DownloadAnnouncementService.swift in Sources */,
 				5C5CFDA86E67C6186A24EFF9 /* BackgroundDownloadHandler.swift in Sources */,
@@ -6708,6 +6713,7 @@
 				E29D0E1F2A3B4C5D6E7F8091 /* LCPFulfillmentHandler.swift in Sources */,
 				152A3B4C5D6E7F8091A2B3C4 /* DownloadAuthRetryHandler.swift in Sources */,
 				485D6E7F8091A2B3C4D5E6F7 /* LocalBookContentService.swift in Sources */,
+				7B8192A3B4C5D6E7F8091A2B /* BookReturnService.swift in Sources */,
 				9C2F146198FD9E8862E88B57 /* AdobeDRMHandler.swift in Sources */,
 				AD27B6FD04FB3A7966122D83 /* DownloadAnnouncementService.swift in Sources */,
 				D3101CC4442E0E2A8E6B9AE2 /* BackgroundDownloadHandler.swift in Sources */,

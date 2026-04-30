@@ -48,6 +48,7 @@ import PalaceCatalog
     private let bookFileManager: BookFileManager
     private let diskBudgetManager: DiskBudgetManager
     private let localContentService: LocalBookContentService
+    private let returnService: BookReturnService
     private let alertPresenter: DownloadAlertPresenter
     private let authRetryHandler: DownloadAuthRetryHandler
     private let throttlingService: DownloadThrottlingService
@@ -152,6 +153,7 @@ import PalaceCatalog
         bookFileManager: BookFileManager? = nil,
         diskBudgetManager: DiskBudgetManager? = nil,
         localContentService: LocalBookContentService? = nil,
+        returnService: BookReturnService? = nil,
         alertPresenter: DownloadAlertPresenter? = nil,
         authRetryHandler: DownloadAuthRetryHandler? = nil,
         throttlingService: DownloadThrottlingService? = nil,
@@ -205,6 +207,24 @@ import PalaceCatalog
             bookRegistry: bookRegistry,
             accountsManager: accountsManager,
             bookFileManager: self.bookFileManager
+        )
+        // BookReturnService takes the just-resolved registry / local-
+        // content service / OPDS feed service / announcer / bookmark
+        // deletion log / reauthenticator / retry tracker. The userAccount
+        // provider closure preserves MBDC's just-in-time userAccount
+        // resolution semantics across library switches.
+        let resolveAccountForReturn: () -> TPPUserAccount = {
+            userAccount ?? accountsManager.currentUserAccount
+        }
+        self.returnService = returnService ?? BookReturnService(
+            bookRegistry: bookRegistry,
+            localContentService: self.localContentService,
+            opdsFeedService: opdsFeedService,
+            downloadAnnouncementService: downloadAnnouncementService,
+            bookmarkDeletionLog: bookmarkDeletionLog,
+            reauthenticator: reauthenticator,
+            userRetryTracker: userRetryTracker,
+            userAccountProvider: resolveAccountForReturn
         )
         self.stateManager = stateManager
         // DownloadAlertPresenter built eagerly so `self` can wire as its
@@ -311,6 +331,7 @@ import PalaceCatalog
         self.tokenInterceptor.delegate = self
         self.backgroundDownloadHandler.delegate = self
         self.alertPresenter.delegate = self
+        self.returnService.delegate = self
         self.authRetryHandler.delegate = self
         self.throttlingService.delegate = self
         #if LCP
@@ -1208,256 +1229,12 @@ extension MyBooksDownloadCenter {
     // (private there).
 
     @objc func returnBook(withIdentifier identifier: String, completion: (() -> Void)? = nil) {
-        guard let book = bookRegistry.book(forIdentifier: identifier) else {
-            completion?()
-            return
-        }
-
-        downloadAnnouncementService.announceReturnStarted(for: book)
-
-        let state = bookRegistry.state(for: identifier)
-        let downloaded = (state == .downloadSuccessful) || (state == .used)
-
-        // Process Adobe Return
-        #if FEATURE_DRM_CONNECTOR
-        if let fulfillmentId = bookRegistry.fulfillmentId(forIdentifier: identifier),
-           userAccount.authDefinition?.needsAuth == true {
-            NSLog("Return attempt for book. userID: %@", userAccount.userID ?? "")
-            self.adobeDRMService.returnLoan(fulfillmentId,
-                                            userID: userAccount.userID,
-                                            deviceID: userAccount.deviceID) { success, _ in
-                if !success {
-                    NSLog("Failed to return loan via NYPLAdept.")
-                }
-            }
-        }
-        #endif
-
-        if book.revokeURL == nil {
-            if downloaded {
-                deleteLocalContent(for: identifier)
-                purgeAllAudiobookCaches(force: true)
-            }
-
-            // Delete all server bookmarks before removing book to prevent
-            // old bookmarks from reappearing when the book is re-borrowed
-            TPPAnnotations.deleteAllBookmarks(forBook: book) { [weak self] in
-                guard let self = self else {
-                    completion?()
-                    return
-                }
-                // Clear the deletion log since we're returning the book
-                self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
-                self.bookRegistry.setState(.unregistered, for: identifier)
-                self.bookRegistry.removeBook(forIdentifier: identifier)
-                self.performPostReturnSyncThen {
-                    self.downloadAnnouncementService.announceReturnSucceeded(for: book)
-                    completion?()
-                }
-            }
-        } else {
-            bookRegistry.setProcessing(true, for: book.identifier)
-
-            Task { [weak self] in
-                guard let self, let revokeURL = book.revokeURL else {
-                    await MainActor.run {
-                        self?.bookRegistry.setProcessing(false, for: book.identifier)
-                        self?.downloadAnnouncementService.announceReturnFailed(for: book)
-                        completion?()
-                    }
-                    return
-                }
-
-                do {
-                    let feed = try await self.opdsFeedService.fetchFeed(from: revokeURL)
-                    await MainActor.run {
-                        self.bookRegistry.setProcessing(false, for: book.identifier)
-                    }
-
-                    guard feed.entries.count == 1, let entry = feed.entries[0] as? TPPOPDSEntry else {
-                        Log.error(#file, "Revoke response had \(feed.entries.count) entries, expected 1")
-                        await MainActor.run {
-                            self.downloadAnnouncementService.announceReturnFailed(for: book)
-                            completion?()
-                        }
-                        return
-                    }
-
-                    guard let returnedBook = TPPBook(entry: entry) else {
-                        Log.error(#file, "Failed to create book from revoke entry")
-                        await MainActor.run {
-                            self.downloadAnnouncementService.announceReturnFailed(for: book)
-                            completion?()
-                        }
-                        return
-                    }
-
-                    if downloaded {
-                        self.deleteLocalContent(for: identifier)
-                        self.purgeAllAudiobookCaches(force: true)
-                    }
-
-                    TPPAnnotations.deleteAllBookmarks(forBook: book) {
-                        self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
-                        self.bookRegistry.updateAndRemoveBook(returnedBook)
-                        self.bookRegistry.setState(.unregistered, for: identifier)
-                        self.performPostReturnSyncThen {
-                            self.downloadAnnouncementService.announceReturnSucceeded(for: book)
-                            completion?()
-                        }
-                    }
-
-                } catch {
-                    await MainActor.run {
-                        self.bookRegistry.setProcessing(false, for: book.identifier)
-                    }
-
-                    // The OverDrive revoke endpoint returns XML that isn't a
-                    // valid OPDS feed (e.g., a simple success response). The
-                    // OPDS parser rejects it → PalaceError.parsing(.opdsFeedInvalid).
-                    // The revoke likely SUCCEEDED server-side — clean up locally
-                    // and sync to confirm, rather than showing an error.
-                    if case .parsing(.opdsFeedInvalid) = error as? PalaceError {
-                        Log.info(#file, "Revoke response was not a valid OPDS feed — treating as success and syncing to verify")
-                        if downloaded {
-                            self.deleteLocalContent(for: identifier)
-                            self.purgeAllAudiobookCaches(force: true)
-                        }
-                        TPPAnnotations.deleteAllBookmarks(forBook: book) {
-                            self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
-                            self.bookRegistry.setState(.unregistered, for: identifier)
-                            self.bookRegistry.removeBook(forIdentifier: identifier)
-                            self.performPostReturnSyncThen {
-                                self.downloadAnnouncementService.announceReturnSucceeded(for: book)
-                                completion?()
-                            }
-                        }
-                        return
-                    }
-
-                    // Extract problem document from the typed error
-                    let problemDoc = (error as NSError).problemDocument
-                    let problemType = problemDoc?.type
-
-                    Log.error(#file, "Return failed for '\(book.title)': \(error.localizedDescription), problemDoc type: \(problemType ?? "nil")")
-
-                    // Loan already gone on server — clean up locally
-                    let isLoanGone = problemType == TPPProblemDocument.TypeNoActiveLoan
-                        || (problemDoc?.detail?.contains(TPPProblemDocument.DetailLoanTermLimitReached) == true)
-
-                    if isLoanGone {
-                        if downloaded {
-                            self.deleteLocalContent(for: identifier)
-                            self.purgeAllAudiobookCaches(force: true)
-                        }
-                        TPPAnnotations.deleteAllBookmarks(forBook: book) {
-                            self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
-                            self.bookRegistry.setState(.unregistered, for: identifier)
-                            self.bookRegistry.removeBook(forIdentifier: identifier)
-                            self.performPostReturnSyncThen {
-                                self.downloadAnnouncementService.announceReturnSucceeded(for: book)
-                                completion?()
-                            }
-                        }
-                        return
-                    }
-
-                    // Invalid credentials — re-authenticate and retry
-                    if problemType == TPPProblemDocument.TypeInvalidCredentials {
-                        Log.info(#file, "Invalid credentials on return — triggering re-auth")
-                        await MainActor.run {
-                            self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-                                guard let self else { return }
-                                if self.userAccount.hasCredentials() {
-                                    self.returnBook(withIdentifier: identifier, completion: completion)
-                                } else {
-                                    runOnMainAsync {
-                                        self.downloadAnnouncementService.announceReturnFailed(for: book)
-                                        completion?()
-                                    }
-                                }
-                            }
-                        }
-                        return
-                    }
-
-                    // All other errors — show alert with problem document if available
-                    await MainActor.run {
-                        let serverDetail = problemDoc?.detail
-                            ?? (error as NSError).userInfo["problemDocumentDetail"] as? String
-                            ?? error.localizedDescription
-                        let formattedMessage = String(format: Strings.MyDownloadCenter.returnFailedMessage, book.title)
-                            + "\n\n" + serverDetail
-
-                        let operationId = "return-\(identifier)"
-                        let retryAction: (() -> Void)? = {
-                            guard self.userRetryTracker.canRetry(operationId: operationId) else { return nil }
-                            return { [weak self] in
-                                guard let self else { return }
-                                self.userRetryTracker.recordRetry(operationId: operationId)
-                                self.returnBook(withIdentifier: identifier, completion: completion)
-                            }
-                        }()
-
-                        let message = (retryAction == nil && !self.userRetryTracker.canRetry(operationId: operationId))
-                            ? Strings.MyDownloadCenter.tryAgainLater
-                            : formattedMessage
-
-                        let alert = UIAlertController(title: Strings.MyDownloadCenter.returnFailed, message: message, preferredStyle: .alert)
-
-                        if let retryAction = retryAction {
-                            alert.addAction(UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { _ in retryAction() })
-                        }
-
-                        alert.addAction(UIAlertAction(title: NSLocalizedString("Remove from Device", comment: "Button to remove a book locally when server return fails"), style: .destructive) { [weak self] _ in
-                            guard let self else { return }
-                            if downloaded {
-                                self.deleteLocalContent(for: identifier)
-                                self.purgeAllAudiobookCaches(force: true)
-                            }
-                            self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
-                            self.bookRegistry.setState(.unregistered, for: identifier)
-                            self.bookRegistry.removeBook(forIdentifier: identifier)
-                            self.downloadAnnouncementService.announceReturnSucceeded(for: book)
-                            completion?()
-                        })
-
-                        alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
-
-                        if let doc = problemDoc {
-                            TPPAlertUtils.setProblemDocument(controller: alert, document: doc, append: true)
-                        }
-
-                        TPPPresentationUtils.safelyPresent(alert)
-                        self.downloadAnnouncementService.announceReturnFailed(for: book)
-                        completion?()
-                    }
-                }
-            }
-        }
+        returnService.returnBook(withIdentifier: identifier, completion: completion)
     }
 
-    /// Performs a registry sync after a return. On failure, posts `TPPSyncFailed` so the
-    /// Reservations tab can show the sync error banner; completion is always called so the return UI is dismissed.
-    private func performPostReturnSyncThen(completion: @escaping () -> Void) {
-        Task { [weak self] in
-            do {
-                // Use the injected `bookRegistry` rather than reaching into
-                // AppContainer here, so unit tests can substitute a registry
-                // double. `syncAsync` is defined on the concrete
-                // `TPPBookRegistry` rather than the protocol; the cast is
-                // safe in production where `bookRegistry` is always the
-                // app-scoped instance constructed by AppContainer._cached.
-                if let registry = self?.bookRegistry as? TPPBookRegistry {
-                    _ = try await registry.syncAsync()
-                }
-            } catch {
-                Log.error(#file, "Post-return sync failed: \(error.localizedDescription)")
-                NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
-            }
-            runOnMainAsync(completion)
-        }
-    }
+    // returnBook full body + performPostReturnSyncThen moved to
+    // BookReturnService. ~230 LOC of return-state-machine + the
+    // post-return sync helper now lives in that file.
 }
 
 extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
@@ -2180,6 +1957,13 @@ extension MyBooksDownloadCenter: DownloadThrottlingServiceDelegate {}
 // MBDC's surface. Empty conformance.
 
 extension MyBooksDownloadCenter: DownloadAuthRetryHandlerDelegate {}
+
+// MARK: - BookReturnServiceDelegate
+//
+// `purgeAllAudiobookCaches(force:)` is internal on MBDC. Empty
+// conformance.
+
+extension MyBooksDownloadCenter: BookReturnServiceDelegate {}
 
 // MARK: - LCPFulfillmentHandlerDelegate
 //
