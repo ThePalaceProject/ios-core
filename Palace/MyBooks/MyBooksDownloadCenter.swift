@@ -48,6 +48,7 @@ import PalaceCatalog
     private let bookFileManager: BookFileManager
     private let diskBudgetManager: DiskBudgetManager
     private let alertPresenter: DownloadAlertPresenter
+    private let authRetryHandler: DownloadAuthRetryHandler
     private let throttlingService: DownloadThrottlingService
     #if LCP
     private let lcpFulfillmentHandler: LCPFulfillmentHandler
@@ -150,6 +151,7 @@ import PalaceCatalog
         bookFileManager: BookFileManager? = nil,
         diskBudgetManager: DiskBudgetManager? = nil,
         alertPresenter: DownloadAlertPresenter? = nil,
+        authRetryHandler: DownloadAuthRetryHandler? = nil,
         throttlingService: DownloadThrottlingService? = nil,
         stateManager: DownloadStateManager = DownloadStateManager(),
         tokenInterceptor: TokenRefreshInterceptor? = nil,
@@ -234,6 +236,21 @@ import PalaceCatalog
             errorActivityTracker: errorActivityTracker,
             userRetryTracker: userRetryTracker
         )
+        // DownloadAuthRetryHandler shares the same stateManager / registry /
+        // reauthenticator / alertPresenter MBDC owns. The userAccountProvider
+        // closure resolves through `accountsManager.currentUserAccount` each
+        // call so library switches mid-flow are observed correctly (matches
+        // MBDC's `userAccount` computed property semantics).
+        let resolveAccount: () -> TPPUserAccount = {
+            userAccount ?? accountsManager.currentUserAccount
+        }
+        self.authRetryHandler = authRetryHandler ?? DownloadAuthRetryHandler(
+            stateManager: stateManager,
+            bookRegistry: bookRegistry,
+            reauthenticator: reauthenticator,
+            alertPresenter: self.alertPresenter,
+            userAccountProvider: resolveAccount
+        )
         // DownloadThrottlingService shares the same DownloadStateManager
         // MBDC owns so cap + suspend/resume policy stays coherent with the
         // rest of the download state machine. Tests can inject a mock state
@@ -284,6 +301,7 @@ import PalaceCatalog
         self.tokenInterceptor.delegate = self
         self.backgroundDownloadHandler.delegate = self
         self.alertPresenter.delegate = self
+        self.authRetryHandler.delegate = self
         self.throttlingService.delegate = self
         #if LCP
         self.lcpFulfillmentHandler.delegate = self
@@ -1755,201 +1773,15 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         }
 
         if failureRequiringAlert {
-            runOnMainAsync {
-                let hasCredentials = self.userAccount.hasCredentials()
-                let loginRequired = self.userAccount.authDefinition?.needsAuth ?? false
-
-                // A 401 from a third-party domain (e.g., biblioboard.com) should NOT
-                // trigger re-authentication since our Palace credentials are not the issue
-                let originalURL = task.originalRequest?.url
-                let httpResponse = task.response as? HTTPURLResponse
-                let reauthStrategy = self.userAccount.authDefinition?.reauthStrategy ?? .none
-
-                if httpResponse?.indicatesAuthenticationNeedsRefresh(with: problemDoc, originalRequestURL: originalURL) == true {
-                    // If user has credentials but got 401, this is a session/token expiry issue
-                    if hasCredentials {
-                        // Mark credentials as stale - preserves Adobe DRM activation
-                        self.userAccount.markCredentialsStale()
-
-                        switch reauthStrategy {
-                        case .browser:
-                            if self.userAccount.authDefinition?.isSaml == true {
-                                // SAML cookies expired - need to re-auth via IDP
-                                Log.info(#file, "SAML session expired - triggering SAML re-auth flow")
-
-                                Task {
-                                    await self.bookIdentifierToDownloadInfo.remove(book.identifier)
-                                    await self.taskIdentifierToBook.remove(task.taskIdentifier)
-                                    await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
-
-                                    await MainActor.run {
-                                        self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
-                                        Log.info(#file, "Cleared failed download, now retrying with SAML re-auth")
-                                        self.startDownload(for: book)
-                                    }
-                                }
-                            } else {
-                                // OIDC or other browser-based auth - present sign-in modal
-                                Log.info(#file, "Browser-based auth expired - triggering re-auth via sign-in modal")
-
-                                // Clean up download tracking before presenting modal
-                                Task { [weak self] in
-                                    guard let self else { return }
-                                    await self.bookIdentifierToDownloadInfo.remove(book.identifier)
-                                    await self.taskIdentifierToBook.remove(task.taskIdentifier)
-                                    await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
-
-                                    await MainActor.run { [weak self] in
-                                        guard let self else { return }
-                                        self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
-
-                                        self.reauthenticator.authenticateIfNeeded(
-                                            self.userAccount,
-                                            usingExistingCredentials: false,
-                                            authenticationCompletion: { [weak self] in
-                                                Task { @MainActor [weak self] in
-                                                    guard let self else { return }
-                                                    guard self.userAccount.authState == .loggedIn else {
-                                                        Log.info(#file, "Re-auth cancelled or incomplete, not retrying download for \(book.identifier)")
-                                                        return
-                                                    }
-                                                    Log.info(#file, "Re-auth completed, retrying download for \(book.identifier)")
-                                                    self.startDownload(for: book)
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                            return
-
-                        case .tokenRefresh:
-                            // Token refresh was already attempted by TPPNetworkResponder
-                            Log.warn(#file, "Token refresh failed for \(book.identifier) - showing error")
-
-                        case .credentialPrompt, .none:
-                            Log.warn(#file, "Auth failed for \(book.identifier) - showing error")
-                        }
-                    } else if loginRequired {
-                        // No credentials - show sign-in
-                        Log.info(#file, "No credentials - showing sign-in modal")
-                        self.reauthenticator.authenticateIfNeeded(
-                            self.userAccount,
-                            usingExistingCredentials: false,
-                            authenticationCompletion: { [weak self] in
-                                Task { @MainActor [weak self] in
-                                    guard let self else { return }
-                                    // Only retry if user successfully authenticated; if they cancelled, bail out
-                                    guard self.userAccount.hasCredentials() else {
-                                        Log.info(#file, "Authentication cancelled, not retrying download for \(book.identifier)")
-                                        return
-                                    }
-                                    Log.info(#file, "Authentication completed, retrying download for \(book.identifier)")
-                                    self.startDownload(for: book)
-                                }
-                            }
-                        )
-                        return  // DON'T show error alert - sign-in is handling it
-                    }
-                } else if !hasCredentials && loginRequired {
-                    // No auth error, but no credentials - show sign-in
-                    Log.info(#file, "No credentials - showing sign-in modal")
-                    self.reauthenticator.authenticateIfNeeded(
-                        self.userAccount,
-                        usingExistingCredentials: false,
-                        authenticationCompletion: { [weak self] in
-                            Task { @MainActor [weak self] in
-                                guard let self else { return }
-                                // Only retry if user successfully authenticated; if they cancelled, bail out
-                                guard self.userAccount.hasCredentials() else {
-                                    Log.info(#file, "Authentication cancelled, not retrying download for \(book.identifier)")
-                                    return
-                                }
-                                self.startDownload(for: book)
-                            }
-                        }
-                    )
-                    return
-                }
-
-                // Check if the error is "No active loan" - attempt to re-borrow
-                if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
-
-                    // PP-3716: When browser-based auth expires, the server may return
-                    // "no-active-loan" (400) instead of 401. Treat as session expiry.
-                    if reauthStrategy == .browser && hasCredentials {
-                        self.userAccount.markCredentialsStale()
-
-                        if self.userAccount.authDefinition?.isSaml == true {
-                            Log.info(#file, "SAML: 'no-active-loan' treating as session expiry (PP-3716)")
-                            Task {
-                                await self.bookIdentifierToDownloadInfo.remove(book.identifier)
-                                await self.taskIdentifierToBook.remove(task.taskIdentifier)
-                                await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
-
-                                await MainActor.run {
-                                    self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
-                                    Log.info(#file, "SAML: Cleared failed download, retrying with SAML re-auth for \(book.identifier)")
-                                    self.startDownload(for: book)
-                                }
-                            }
-                        } else {
-                            Log.info(#file, "Browser auth: 'no-active-loan' treating as session expiry")
-                            Task { [weak self] in
-                                guard let self else { return }
-                                await self.bookIdentifierToDownloadInfo.remove(book.identifier)
-                                await self.taskIdentifierToBook.remove(task.taskIdentifier)
-                                await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
-
-                                await MainActor.run { [weak self] in
-                                    guard let self else { return }
-                                    self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
-
-                                    self.reauthenticator.authenticateIfNeeded(
-                                        self.userAccount,
-                                        usingExistingCredentials: false,
-                                        authenticationCompletion: { [weak self] in
-                                            Task { @MainActor [weak self] in
-                                                guard let self else { return }
-                                                guard self.userAccount.authState == .loggedIn else {
-                                                    Log.info(#file, "Re-auth cancelled or incomplete, not retrying download for \(book.identifier)")
-                                                    return
-                                                }
-                                                Log.info(#file, "Re-auth completed, retrying download for \(book.identifier)")
-                                                self.startDownload(for: book)
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                        return
-                    }
-
-                    Log.info(#file, "Download failed: No active loan for \(book.identifier). Auto-borrowing...")
-
-                    // Update state to unregistered so borrow logic will work
-                    self.bookRegistry.setState(.unregistered, for: book.identifier)
-
-                    // Try to borrow the book (which will auto-download if successful)
-                    self.startBorrow(for: book, attemptDownload: true) { [weak self] in
-                        guard let self else { return }
-
-                        // If borrow completed, check if download started
-                        let newState = self.bookRegistry.state(for: book.identifier)
-                        Log.debug(#file, "Auto-borrow after 'no active loan' completed, new state: \(newState)")
-
-                        if newState != .downloading && newState != .downloadSuccessful {
-                            // Borrow failed or didn't result in download
-                            Log.warn(#file, "Auto-borrow failed for \(book.identifier), showing error to user")
-                            self.alertForProblemDocument(problemDoc, error: failureError, book: book)
-                        } else {
-                            Log.info(#file, "Auto-borrow successful for \(book.identifier), download started")
-                        }
-                    }
-                    // Don't call alertForProblemDocument here - wait for borrow completion
-                    return
-                }
+            runOnMainAsync { [weak self] in
+                guard let self else { return }
+                let handled = self.authRetryHandler.handleAuthFailureIfApplicable(
+                    book: book,
+                    task: task,
+                    problemDoc: problemDoc,
+                    failureError: failureError
+                )
+                guard !handled else { return }
 
                 // For other errors, show alert immediately
                 self.alertForProblemDocument(problemDoc, error: failureError, book: book)
@@ -2436,6 +2268,14 @@ extension MyBooksDownloadCenter: DownloadAlertPresenterDelegate {}
 // — no synthesis needed.
 
 extension MyBooksDownloadCenter: DownloadThrottlingServiceDelegate {}
+
+// MARK: - DownloadAuthRetryHandlerDelegate
+//
+// `startDownload(for:withRequest:)` and
+// `startBorrow(for:attemptDownload:borrowCompletion:)` already exist on
+// MBDC's surface. Empty conformance.
+
+extension MyBooksDownloadCenter: DownloadAuthRetryHandlerDelegate {}
 
 // MARK: - LCPFulfillmentHandlerDelegate
 //
