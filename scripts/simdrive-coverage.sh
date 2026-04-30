@@ -8,11 +8,11 @@
 #   - Palace.app built with coverage instrumentation (the same build produced
 #     by xcodebuild test -enableCodeCoverage YES)
 #   - A booted simulator with the app installed
-#   - SpecterQA MCP server available
+#   - simdrive MCP server available
 #   - Unit test xcresult bundle (optional, for merging)
 #
 # USAGE
-#   ./scripts/specterqa-coverage.sh [--sim-id UDID] [--xcresult PATH] [--output DIR]
+#   ./scripts/simdrive-coverage.sh [--sim-id UDID] [--xcresult PATH] [--output DIR]
 #
 # OUTPUT
 #   combined-coverage.profdata   — merged profdata (unit + E2E)
@@ -39,7 +39,7 @@ done
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "=== SpecterQA Coverage Collection ==="
+echo "=== simdrive Coverage Collection ==="
 echo "Simulator: $SIM_ID"
 
 # ---------------------------------------------------------------
@@ -103,22 +103,22 @@ xcrun simctl spawn "$SIM_ID" rm -rf "$PROFRAW_DIR" 2>/dev/null || true
 xcrun simctl spawn "$SIM_ID" mkdir -p "$PROFRAW_DIR"
 
 # ---------------------------------------------------------------
-# Step 4: Run SpecterQA journeys
+# Step 4: Run simdrive journeys
 # ---------------------------------------------------------------
 # This is where SpecterQA drives the app. The MCP server handles
 # app launch, so the LLVM_PROFILE_FILE env must be set before this.
 #
-# In CI, this step would invoke the SpecterQA MCP tool.
+# In CI, this step would invoke the simdrive MCP tool.
 # Locally, you'd run your journeys manually or via a wrapper script.
 #
 # For now, we just print instructions and wait for manual execution.
 
 echo ""
-echo "=== Ready for SpecterQA journeys ==="
+echo "=== Ready for simdrive journeys ==="
 echo "The simulator is configured to collect coverage."
 echo ""
-echo "Run your SpecterQA journeys now. When done, press Enter to collect coverage."
-echo "(In CI, this step would be automated via the SpecterQA MCP tools.)"
+echo "Run your simdrive journeys now. When done, press Enter to collect coverage."
+echo "(In CI, this step would be automated via the simdrive MCP tools.)"
 echo ""
 
 if [ -t 0 ]; then
@@ -158,7 +158,7 @@ if [ "$PROFRAW_COUNT" -eq 0 ]; then
     echo "  1. Binary was not built with coverage instrumentation"
     echo "  2. LLVM_PROFILE_FILE was not set before app launch"
     echo "  3. App crashed before writing coverage data"
-    echo "  4. SpecterQA didn't exercise any code paths"
+    echo "  4. simdrive didn't exercise any code paths"
     exit 1
 fi
 
@@ -168,17 +168,17 @@ echo "Collected $PROFRAW_COUNT profraw file(s)"
 # Step 7: Merge profraw into profdata
 # ---------------------------------------------------------------
 echo "Merging profraw files..."
-SPECTERQA_PROFDATA="$OUTPUT_DIR/specterqa-coverage.profdata"
+SIMDRIVE_PROFDATA="$OUTPUT_DIR/simdrive-coverage.profdata"
 
 xcrun llvm-profdata merge -sparse "$LOCAL_PROFRAW_DIR"/*.profraw \
-    -o "$SPECTERQA_PROFDATA"
+    -o "$SIMDRIVE_PROFDATA"
 
-echo "SpecterQA profdata: $SPECTERQA_PROFDATA"
+echo "SpecterQA profdata: $SIMDRIVE_PROFDATA"
 
 # ---------------------------------------------------------------
 # Step 8: Optionally merge with unit test coverage
 # ---------------------------------------------------------------
-FINAL_PROFDATA="$SPECTERQA_PROFDATA"
+FINAL_PROFDATA="$SIMDRIVE_PROFDATA"
 
 if [ -n "$XCRESULT_PATH" ] && [ -d "$XCRESULT_PATH" ]; then
     echo "Merging with unit test coverage from: $XCRESULT_PATH"
@@ -195,7 +195,7 @@ if [ -n "$XCRESULT_PATH" ] && [ -d "$XCRESULT_PATH" ]; then
         COMBINED_PROFDATA="$OUTPUT_DIR/combined-coverage.profdata"
 
         xcrun llvm-profdata merge -sparse \
-            "$SPECTERQA_PROFDATA" \
+            "$SIMDRIVE_PROFDATA" \
             "$XCRESULT_PROFDATA" \
             -o "$COMBINED_PROFDATA"
 

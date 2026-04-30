@@ -1,9 +1,9 @@
 // MarksFixture.swift
 //
-// Loads simdrive observation fixtures (.specterqa/fixtures/baselines/<version>/<flow>/<step>.json)
+// Loads simdrive observation fixtures (.simdrive/fixtures/baselines/<version>/<flow>/<step>.json)
 // and provides assertions for behavior captured at the on-screen-text level.
 //
-// See .specterqa/fixtures/README.md for the schema and rationale. Short version:
+// See .simdrive/fixtures/README.md for the schema and rationale. Short version:
 // each fixture is a structured snapshot of every visible text region at a known
 // step in a flow. Tests assert what the user sees rather than what the
 // ViewModel privately holds — closes the F-001-class mutation testing gap.
@@ -41,7 +41,7 @@ struct MarksFixture: Decodable {
   // MARK: - Loading
 
   /// Load a fixture by its `<flow>/<step>` id and version.
-  /// Searches the test bundle's `.specterqa/fixtures/baselines/<version>/<flow>/<step>.json`.
+  /// Searches the test bundle's `.simdrive/fixtures/baselines/<version>/<flow>/<step>.json`.
   /// On miss, falls back to walking up from the test source file to repo root.
   static func load(_ id: String, version: String, file: StaticString = #filePath) throws -> MarksFixture {
     let parts = id.split(separator: "/", maxSplits: 1).map(String.init)
@@ -177,7 +177,7 @@ struct MarksFixture: Decodable {
 
     // 2. Source-tree fallback — for IDE / playground / dev runs where the Bundle
     //    isn't populated (e.g., running this loader from a script context).
-    let relpath = ".specterqa/fixtures/baselines/\(version)/\(flow)/\(step).json"
+    let relpath = ".simdrive/fixtures/baselines/\(version)/\(flow)/\(step).json"
     let walkRoots = sourceTreeRoots(sourceFile: sourceFile)
     for root in walkRoots {
       let url = root.appendingPathComponent(relpath)

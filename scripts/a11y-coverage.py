@@ -2,14 +2,14 @@
 """
 a11y-coverage.py — measure VoiceOver label coverage against a simdrive fixture.
 
-For a given fixture (.specterqa/fixtures/baselines/<version>/<flow>/<step>.json),
+For a given fixture (.simdrive/fixtures/baselines/<version>/<flow>/<step>.json),
 compare the on-screen text marks (what the user SEES) against the iOS accessibility
 tree (what VoiceOver READS). Anything visible-but-unlabeled is a VoiceOver gap.
 
 Usage
 -----
     # Full coverage report for one fixture:
-    a11y-coverage.py --fixture .specterqa/fixtures/baselines/3.0.0/anonymous-borrow/03-catalog.json \\
+    a11y-coverage.py --fixture .simdrive/fixtures/baselines/3.0.0/anonymous-borrow/03-catalog.json \\
                      --udid F3CB599D-B154-4D40-B2C4-52F821EABAD7
 
     # CI mode — fail if coverage drops below threshold:

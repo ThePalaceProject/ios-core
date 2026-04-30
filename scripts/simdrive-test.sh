@@ -1,14 +1,14 @@
 #!/bin/bash
 #
-# specterqa-test.sh — Build Palace and run SpecterQA integration tests
+# simdrive-test.sh — Build Palace and run simdrive integration tests
 #
 # Usage:
-#   ./scripts/specterqa-test.sh                    # Build + test
-#   ./scripts/specterqa-test.sh --skip-build        # Test only (use last build)
-#   ./scripts/specterqa-test.sh --sim-id <UDID>     # Use a specific source sim
+#   ./scripts/simdrive-test.sh                    # Build + test
+#   ./scripts/simdrive-test.sh --skip-build        # Test only (use last build)
+#   ./scripts/simdrive-test.sh --sim-id <UDID>     # Use a specific source sim
 #
 # Prerequisites:
-#   - pip install specterqa-ios>=6.0.0
+#   - pip install --pre simdrive
 #   - Xcode 16.1+ with iOS Simulator booted
 #   - Source sim should have libraries pre-configured (see README)
 #
@@ -30,7 +30,7 @@ SKIP_BUILD=false
 
 # Source simulator — iPhone 17 Pro (iOS 26) with libraries pre-configured
 # Override with --sim-id
-SIM_ID="${SPECTERQA_SIM_ID:-0423F115-F7CE-4406-BB2B-877DFFCEED1C}"
+SIM_ID="${SIMDRIVE_SIM_ID:-0423F115-F7CE-4406-BB2B-877DFFCEED1C}"
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -46,7 +46,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-echo "=== SpecterQA Test Runner ==="
+echo "=== simdrive Test Runner ==="
 echo "  Scheme:    $SCHEME"
 echo "  Source Sim: $SIM_ID"
 echo ""
@@ -56,7 +56,7 @@ if [ "$SKIP_BUILD" = false ]; then
   echo ">>> Building $SCHEME..."
   xcodebuild -project "$PROJECT" -scheme "$SCHEME" \
     -destination "platform=iOS Simulator,id=$SIM_ID" \
-    -derivedDataPath "$REPO_ROOT/.build/specterqa" \
+    -derivedDataPath "$REPO_ROOT/.build/simdrive" \
     -quiet \
     build
 
@@ -73,8 +73,8 @@ fi
 APP_PATH=""
 
 # Check our dedicated build dir first
-if [ -d "$REPO_ROOT/.build/specterqa/Build/Products/Debug-iphonesimulator/Palace.app" ]; then
-  APP_PATH="$REPO_ROOT/.build/specterqa/Build/Products/Debug-iphonesimulator/Palace.app"
+if [ -d "$REPO_ROOT/.build/simdrive/Build/Products/Debug-iphonesimulator/Palace.app" ]; then
+  APP_PATH="$REPO_ROOT/.build/simdrive/Build/Products/Debug-iphonesimulator/Palace.app"
 fi
 
 # Fallback: check Xcode DerivedData
@@ -101,7 +101,7 @@ echo ">>> Installed successfully"
 
 # Step 4: Output config for SpecterQA
 echo ""
-echo "=== Ready for SpecterQA ==="
+echo "=== Ready for simdrive ==="
 echo ""
 echo "  Start a session in Claude Code with:"
 echo ""
@@ -111,7 +111,7 @@ echo "    app_path:  $APP_PATH"
 echo ""
 echo "  Or set these environment variables:"
 echo ""
-echo "    export SPECTERQA_APP_PATH=\"$APP_PATH\""
-echo "    export SPECTERQA_SIM_ID=\"$SIM_ID\""
-echo "    export SPECTERQA_BUNDLE_ID=\"$BUNDLE_ID\""
+echo "    export SIMDRIVE_APP_PATH=\"$APP_PATH\""
+echo "    export SIMDRIVE_SIM_ID=\"$SIM_ID\""
+echo "    export SIMDRIVE_BUNDLE_ID=\"$BUNDLE_ID\""
 echo ""

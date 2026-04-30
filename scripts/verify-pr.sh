@@ -7,6 +7,10 @@
 #   scripts/verify-pr.sh                     # Run all checks
 #   scripts/verify-pr.sh --quick             # Skip mutation testing (faster)
 #   scripts/verify-pr.sh --report <file>     # Write JSON report to file
+#   scripts/verify-pr.sh --simdrive          # Also replay .simdrive/journeys/*.yaml
+#                                            # via simdrive (opt-in, requires
+#                                            # `pip3 install --pre simdrive` and
+#                                            # a paired ~/.simdrive/recordings/<n>/)
 #
 # Designed to be called by:
 #   - Claude Code agents before PR creation
@@ -21,12 +25,14 @@ cd "$REPO_ROOT"
 
 QUICK=false
 REPORT_FILE=""
+SIMDRIVE=false
 SIM_ID="DF4A2A27-9888-429D-A749-2E157A049A37"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --quick) QUICK=true; shift ;;
     --report) REPORT_FILE="$2"; shift 2 ;;
+    --simdrive) SIMDRIVE=true; shift ;;
     *) shift ;;
   esac
 done
@@ -202,6 +208,27 @@ if [ -n "$CHANGED_UI" ]; then
   fi
 else
   record "accessibility" "pass" "No UI files changed (skipped)"
+fi
+
+# 7. simdrive replay (opt-in via --simdrive). Delegates to scripts/simdrive-regress.sh
+#    which enforces the two-tier gate (stateless = blocking on drift, stateful = smoke).
+echo "--- simdrive Replay ---"
+if [ "$SIMDRIVE" != "true" ]; then
+  record "simdrive" "pass" "Skipped (pass --simdrive to enable)"
+elif [ ! -x scripts/simdrive-regress.sh ]; then
+  record "simdrive" "fail" "scripts/simdrive-regress.sh missing or not executable"
+elif ! python3 -c 'import simdrive' >/dev/null 2>&1; then
+  record "simdrive" "fail" "simdrive package not installed (pip3 install --pre simdrive)"
+else
+  SIMDRIVE_REPORT=$(mktemp)
+  if SIMDRIVE_SIM_ID="$SIM_ID" scripts/simdrive-regress.sh --tier stateless --report "$SIMDRIVE_REPORT" >/dev/null 2>&1; then
+    SD_PASS=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('pass_count', 0))" 2>/dev/null || echo 0)
+    record "simdrive" "pass" "${SD_PASS} stateless journey(s) clean"
+  else
+    SD_FAIL=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('fail_count', 0))" 2>/dev/null || echo "?")
+    SD_PASS=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('pass_count', 0))" 2>/dev/null || echo 0)
+    record "simdrive" "fail" "${SD_FAIL} stateless journey(s) drifted (${SD_PASS} clean) — see ${SIMDRIVE_REPORT}"
+  fi
 fi
 
 # Summary

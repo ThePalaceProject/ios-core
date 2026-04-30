@@ -9,8 +9,10 @@ Last updated: 2026-04-16
                     │ Manual  │  Device testing, SAML IdP flows,
                     │ Device  │  audiobook playback, DRM fulfillment
                     ├─────────┤
-                 ┌──┤ E2E     │  SpecterQA journeys (26 flows),
-                 │  │ (Specter│  replays (43), accessibility audit
+                 ┌──┤ E2E     │  simdrive (canonical, vision-first) drives
+                 │  │ (sim    │  iOS sim. Active: .simdrive/fixtures/flows/,
+                 │  │  drive) │  .simdrive/journeys/, .simdrive/replays/chaos/.
+                 │  │         │  Legacy: .simdrive/_archive/ (do not extend)
                  │  ├─────────┤
               ┌──┤  │ Integra-│  6 integration tests, contract tests,
               │  │  │ tion    │  mock backend scenarios
@@ -26,7 +28,7 @@ Last updated: 2026-04-16
 | Integration | 6 test files | Fully automated | Yes (in unit suite) |
 | Contract/API | 1 suite + 35 fixtures | Fully automated | Yes (in unit suite) |
 | Snapshot | 11 test files | Automated capture | Artifact only |
-| E2E (SpecterQA) | 26 journeys / 43 replays | MCP-driven replay | Manual trigger |
+| E2E (simdrive) | Active: `.simdrive/fixtures/flows/` + `.simdrive/journeys/` + `.simdrive/replays/chaos/`; legacy SpecterQA corpus (26/43) archived under `.simdrive/_archive/` | MCP-driven replay (SSIM- + structural-gated) + chaos-replay CI workflow | Manual trigger; chaos-replay runs in CI |
 | Security | 3 test files | Fully automated | Yes (in unit suite) |
 | Chaos | 2 test files | Fully automated | Yes (in unit suite) |
 | Fuzz | 3 test files + 9 corpus | Fully automated | Yes (in unit suite) |
@@ -50,13 +52,19 @@ Last updated: 2026-04-16
 - **Coverage floors**: `scripts/enforce_coverage_floors.py` + `scripts/coverage-floors.json` — per-module thresholds (46% overall, 30-50% per module)
 - **Rule**: Every test must kill at least one mutant. Tautology and coverage-only tests are banned.
 
-### SpecterQA E2E Testing
+### E2E sim-driving — simdrive (canonical)
+- **Package**: `simdrive` (PyPI, alpha track) — see `~/harness/bin/harness simdrive status`
+- **Backend**: real CoreSimulator HID input + vision-first OCR (no XCTest runner, no accessibility-tree dependency)
+- **Capabilities**: `observe` (annotated PNG + marks JSON), `tap` / `swipe` / `type_text` / `press_key`, `record_start` / `record_stop` / `replay` (SSIM-gated), `logs` (NSPredicate filter), `session_start` / `session_end`
+- **Why this replaces SpecterQA**: Reader2 (Readium 3.x WKWebView), out-of-process auth Safari sheets, OS alerts, and iOS-26 UITextField focus all worked partially or not at all under SpecterQA. simdrive sees pixels, not the AX tree.
+- **Tool rules**: see project CLAUDE.md "E2E / UI sim driving — simdrive". Cardinal rules: `observe(annotate=true)` before `tap text=` / `tap mark=`; re-observe after every navigation; pre-grant permissions before `session_start`.
+- **Journeys**: new work goes in `.simdrive/journeys/`. Replays in `.simdrive/replays/`.
+
+### SpecterQA E2E Testing — ARCHIVE
+- **Status**: Deprecated 2026-04-29. Do not extend. Kept on disk to support reproduction of historical regressions only.
 - **Version**: specterqa-ios 7.0.0
-- **Simulator**: iPhone 12 (iOS 26, id: 31CF5C43-DD55-4889-B3B2-9A6810B4E98F)
-- **Journeys**: 26 YAML scenarios in `.specterqa/journeys/`
-- **Replays**: 43 recorded sessions in `.specterqa/replays/`
-- **Capabilities**: Screenshot (via elements), tap, swipe, type, wait, accessibility audit, dark/light mode, console logs, crash detection, network monitoring, performance baselines
-- **Limitations**: `ios_screenshot` exceeds MCP size (use `ios_elements`); `ios_press_key("return")` crashes session; EPUB reader nav controls invisible to XCTest
+- **Corpus**: 26 journey YAMLs + 43 replays in `.simdrive/`
+- **Known limitations** (one of the reasons it was retired): `ios_screenshot` exceeds MCP size; `ios_press_key("return")` crashes session; EPUB reader nav controls invisible to XCTest; iOS-26 cliclick path broke text-field focus.
 
 ### Contract Testing
 - **File**: `PalaceTests/Network/APIContractTests.swift`
@@ -107,24 +115,24 @@ Internal Synctek contributors additionally run through ForgeOS governance gates 
 
 | Feature Area | Unit | Integration | E2E | Manual | Confidence |
 |-------------|------|-------------|-----|--------|------------|
-| Basic auth (barcode/PIN) | High | Medium | Yes (SpecterQA) | Verified | **High** |
-| OAuth/Clever auth | High | Low | Yes (SpecterQA) | Verified | **Medium** |
+| Basic auth (barcode/PIN) | High | Medium | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
+| OAuth/Clever auth | High | Low | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **Medium** |
 | SAML auth | High (29 new tests) | None | Manual only | Pending | **Medium** |
-| OIDC auth | High | Low | Yes (SpecterQA) | Verified | **Medium** |
-| Catalog browsing | High | Yes | Yes (SpecterQA) | Verified | **High** |
-| Search | Medium | Yes | Yes (SpecterQA) | Verified | **High** |
+| OIDC auth | High | Low | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **Medium** |
+| Catalog browsing | High | Yes | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
+| Search | Medium | Yes | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
 | EPUB reading | Low | None | Partial (reader invisible) | Required | **Low** |
 | PDF reading | Low | None | None | Required | **Low** |
 | Audiobook playback | Medium | None | Manual only | Required | **Low** |
-| Book borrowing | High | Yes | Yes (SpecterQA) | Verified | **High** |
-| Holds/Reservations | Medium | None | Yes (SpecterQA) | Verified | **Medium** |
+| Book borrowing | High | Yes | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
+| Holds/Reservations | Medium | None | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **Medium** |
 | Downloads | Medium | None | Manual only | Required | **Low** |
 | DRM (Adobe/LCP) | Low (adversarial only) | None | None | Required | **Very Low** |
 | Push notifications | Medium | None | Partial (tooling) | Required | **Low** |
-| Account switching | High | Yes | Yes (SpecterQA) | Verified | **High** |
-| Credential isolation | High | Yes | Yes (SpecterQA) | Verified | **High** |
+| Account switching | High | Yes | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
+| Credential isolation | High | Yes | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
 | CarPlay | Low | None | None | Required | **Very Low** |
-| Accessibility (VoiceOver) | Medium | None | SpecterQA audit | Required | **Medium** |
+| Accessibility (VoiceOver) | Medium | None | simdrive (OCR vs AX-tree diff) — see CLAUDE.md | Required | **Medium** |
 | Offline mode | Low | None | Manual only | Required | **Very Low** |
 
 ## Known Gaps
@@ -138,7 +146,7 @@ Internal Synctek contributors additionally run through ForgeOS governance gates 
 6. **Push notification delivery** — APNs requires real device + server
 
 ### Can Automate But Not Yet Done
-1. **SpecterQA in CI** — 26 journeys exist but not wired into GitHub Actions
+1. **More CI gates beyond `chaos-replay-on-pr.yml`** — `verify-pr.sh --simdrive` is opt-in locally; could extend chaos-replay to also run journey-tier replays from `.simdrive/journeys/`. Legacy SpecterQA's 26 journeys are archived at `.simdrive/_archive/journeys/`, not the path forward.
 2. **Snapshot regression gating** — Captures exist but no automated comparison gate
 3. **Performance regression gating** — Scripts exist but not CI-integrated
 4. **CM contract drift blocking** — Monitor exists but non-blocking
@@ -196,7 +204,7 @@ Use this for releases and for areas where automation gaps exist:
 
 ### Every Release
 ```bash
-# Run SpecterQA regression suite
+# Run regression suite (simdrive-driven; legacy SpecterQA paths still wired in scripts/regression-report.sh for archive replay)
 scripts/regression-report.sh --baseline <old-tag> --candidate <new-tag>
 
 # Manual testing checklist (above)
@@ -210,5 +218,5 @@ python3 scripts/generate-regression-report.py --csv findings.csv \
 - [Coverage Roadmap](Coverage_Roadmap.md) — per-module coverage targets
 - [Test Patterns](Test_Patterns.md) — mock patterns, stubbing, fixtures
 - [Traceability Matrix](Traceability_Matrix.md) — requirements → tests mapping
-- [SpecterQA Regression Plan](../../.specterqa/REGRESSION_PLAN.md) — E2E journey execution order
-- [SpecterQA Gap Analysis](../../.specterqa/journeys/_GAP_ANALYSIS.md) — what's automatable vs manual
+- [Legacy SpecterQA Regression Plan](../../.simdrive/_archive/REGRESSION_PLAN.md) — archive, kept for reference
+- [Active simdrive Gap Analysis](../../.simdrive/journeys/_GAP_ANALYSIS.md) — current coverage gaps + tier breakdown

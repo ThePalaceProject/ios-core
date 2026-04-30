@@ -12,7 +12,7 @@ the agent surfaced.
 | 2 | `anonymous-borrow/05-after-borrow` | 2 | 0 | 0 | 5/6 min ✓ | Discipline: discarded all paths for missing log evidence |
 | 3 | `cold-launch` | 2 | **3** | 2 | 5.5/6 min ✓ | Cold-launch is genuinely fertile |
 
-Sessions live under `~/.specterqa/chaos-runs/2026-04-29T*-dogfood-*`.
+Sessions live under `~/.simdrive/chaos-runs/2026-04-29T*-dogfood-*`.
 They are NOT checked into the repo — they're local artifacts. Anything
 worth keeping was promoted explicitly: real bugs to the regression
 findings.csv, retro learnings to chaos-qa.md, this doc to here.
@@ -37,9 +37,9 @@ authenticated endpoint and shouldn't be requested for an account whose
 auth-doc says no credentials are needed. The fix lives in
 `TPPSignInBusinessLogic.swift` or `BookRegistrySync.swift` (gate on
 `accountAuthDocURL.requiresAuth`). Replay YAML at
-`~/.specterqa/chaos-runs/2026-04-29T18-58-34Z-dogfood-3-cold-launch/replays/cold-launch-add-library-mid-load-cancel.yaml`
+`~/.simdrive/chaos-runs/2026-04-29T18-58-34Z-dogfood-3-cold-launch/replays/cold-launch-add-library-mid-load-cancel.yaml`
 — **this becomes the regression guard once the bug is fixed.** Per the
-curation discipline in `.specterqa/replays/chaos/README.md`, replays
+curation discipline in `.simdrive/replays/chaos/README.md`, replays
 only enter the protected corpus AFTER the underlying bug is fixed.
 
 ### F-008 (was DD3-001) — minor pre-existing
@@ -157,7 +157,7 @@ These are deeper than prompt tweaks; they're scope-of-work questions:
 ## Next steps
 
 - F-007 fix in a separate PR. Once that PR merges, promote the replay
-  YAML into `.specterqa/replays/chaos/` as the regression guard.
+  YAML into `.simdrive/replays/chaos/` as the regression guard.
 - F-008 fix in a separate PR (lower priority — log spam, not breakage).
 - One more dogfood pass once `pre_seed_defaults` is wired, targeting
   AccountsManager mutants that the UI surface can't reach.

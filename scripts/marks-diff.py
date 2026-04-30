@@ -15,13 +15,13 @@ Usage
 -----
     # Diff one step:
     marks-diff.py \\
-      --baseline .specterqa/fixtures/baselines/3.0.0/anonymous-borrow/03-catalog.json \\
-      --candidate .specterqa/fixtures/baselines/3.0.1/anonymous-borrow/03-catalog.json
+      --baseline .simdrive/fixtures/baselines/3.0.0/anonymous-borrow/03-catalog.json \\
+      --candidate .simdrive/fixtures/baselines/3.0.1/anonymous-borrow/03-catalog.json
 
     # Diff a whole flow + append rows to findings.csv:
     marks-diff.py \\
-      --baseline-dir .specterqa/fixtures/baselines/3.0.0/anonymous-borrow \\
-      --candidate-dir .specterqa/fixtures/baselines/3.0.1/anonymous-borrow \\
+      --baseline-dir .simdrive/fixtures/baselines/3.0.0/anonymous-borrow \\
+      --candidate-dir .simdrive/fixtures/baselines/3.0.1/anonymous-borrow \\
       --append-csv ~/Desktop/regression-PP-4164/findings.csv \\
       --tolerance 50
 

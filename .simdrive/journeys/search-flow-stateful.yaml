@@ -1,0 +1,52 @@
+scenario:
+  id: search-flow-stateful
+  name: "Search — open, type query, cancel"
+  description: >
+    Open the catalog search field, type a query, verify auto-submit returned
+    results, cancel back to catalog. Stateful because the search field
+    history may persist across sessions.
+  tags: [tier1, ios, catalog, search, ios26-text-field-regression]
+  tier: stateful
+  blocking: false   # smoke-only — passes on no error, drift expected
+
+  preconditions:
+    - "Palace app launched, Catalog tab active"
+    - "Palace Bookshelf catalog OPDS reachable"
+    - "Network connection available (search hits the OPDS search endpoint)"
+
+  state_reset:
+    - "Search history may be retained between sessions; first-replay results may differ"
+    - "Recommend: clear search history before each replay if comparing screenshots"
+
+  recording:
+    path: "~/.simdrive/recordings/search-flow-stateful/recording.yaml"
+    steps: 3
+    captured_with: "simdrive 0.2.0a1"
+    captured_on: "2026-04-29"
+
+  steps:
+    - { id: tap_search,  description: "Tap the search magnifier (top-right)", tap: { x: 1090, y: 240 } }
+    - { id: type_query,  description: "Type 'harlem' into the field",         type: { tap_first: { stable_id: "850877875550" }, text: "harlem" } }
+    - { id: cancel,      description: "Tap Cancel to dismiss search",         tap_target: { stable_id: "c2e6bc14ef2e" } }
+
+  expected_invariants:
+    - "Field accepts focus on tap (was the iOS-26 cliclick regression — must not re-break)"
+    - "Auto-capitalization renders 'Harlem' in the field"
+    - "Search auto-submits — results appear without pressing return"
+    - "At least one result row renders from the OPDS catalog"
+    - "Cancel returns to the unfiltered Catalog screen"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn   # stateful — drift is information, not failure
+
+  rationale: |
+    This is the #1 regression simdrive was built to fix (vs SpecterQA + iOS 26
+    cliclick). The journey's value is verifying that text input still works
+    end-to-end — NOT comparing pixel snapshots, since OPDS search returns
+    server-side ranked results that change. Treat it as a smoke test: any
+    error is a hard fail; SSIM drift is informational.
+
+  known_issues:
+    - "OPDS search results are not deterministic — different result rows on every replay"
+    - "If the OPDS server is down, the journey fails for environmental reasons"

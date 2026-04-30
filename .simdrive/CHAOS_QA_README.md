@@ -17,7 +17,7 @@ Records each finding with log-evidence and an optional simdrive replay.
 
 | Mode | Cadence | Trigger | Cost | Determinism |
 |---|---|---|---|---|
-| **Replay corpus** (`.specterqa/replays/chaos/`) | Every PR | `chaos-replay-on-pr.yml` | Cheap (deterministic) | High — same input, same result |
+| **Replay corpus** (`.simdrive/replays/chaos/`) | Every PR | `chaos-replay-on-pr.yml` | Cheap (deterministic) | High — same input, same result |
 | **On-demand investigation** | Maintainer comments `@chaos-qa investigate` | `chaos-qa-on-demand.yml` | Medium (LLM + sim) | Low — different findings each run |
 | **Nightly discovery** | 06:00 UTC | `chaos-qa-nightly.yml` cron | Medium (LLM + sim) | Low |
 
@@ -137,7 +137,7 @@ git diff --name-only origin/develop...HEAD > /tmp/diff.txt
 ./scripts/run-chaos-pass.sh --seed anonymous-borrow/06-my-books --udid <UDID> --dry-run
 ```
 
-Output lands in `~/.specterqa/chaos-runs/<timestamp>/`:
+Output lands in `~/.simdrive/chaos-runs/<timestamp>/`:
 - `findings.csv` — CSV rows in the regression-report format
 - `replays/` — recorded simdrive YAMLs for any path worth saving
 - `summary.json` — final counts by severity
@@ -157,7 +157,7 @@ Most chaos findings should NOT become replays. The bar for promotion:
    replay's end-state SSIM below threshold. If no mutants matter, the
    replay is theatre — discard.
 
-Replays that pass all three move to `.specterqa/replays/chaos/` with a
+Replays that pass all three move to `.simdrive/replays/chaos/` with a
 sidecar `.notes.md` documenting the original finding, the seed, the
 covered mutants, the bug-fix PR, and the test-guard PR.
 

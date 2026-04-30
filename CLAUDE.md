@@ -162,38 +162,58 @@ Two build phases (two targets) — new source files need entries in both Sources
 
 Never commit: `APIKeys.swift`, `GoogleService-Info.plist`, `TPPSecrets.swift`, `.env` files.
 
-## SpecterQA E2E Testing
+## E2E / UI sim driving — simdrive
 
-25 canonical journey YAMLs in `.specterqa/journeys/` (plus `_GAP_ANALYSIS.md`), 46 replay YAMLs in `.specterqa/replays/`. Only 19 of the 25 journeys have a matching-name replay; the other 27 replays are historical captures (SQ-005/007/008 fix iterations, version-specific snapshots, dogfood runs, regression variants) with no corresponding journey.
+**simdrive is the canonical iOS sim driver.** SpecterQA is **deprecated** as of 2026-04-29 (cutover) and **fully migrated** as of 2026-04-30 (everything moved under `.simdrive/`). The old SpecterQA corpus lives under `.simdrive/_archive/` (do **not** extend). Active flows live under `.simdrive/fixtures/flows/` (declarative, with `expects:` blocks) and `.simdrive/journeys/` (recording-aligned, paired with `~/.simdrive/recordings/`). Per-version visual baselines live under `.simdrive/fixtures/baselines/<version>/<flow>/<step>.{json,png}`.
 
-Recording coverage is reported as `<journeys-with-matching-replay> / <total-journeys>` (see `.github/workflows/unit-testing.yml`). Do NOT divide total replay files by total journeys — that ratio is meaningless and was the bug behind the "46/25 passing" mislabel.
+**Why:** simdrive uses real CoreSimulator HID input + a vision-first OCR loop; it sees pixels, not the XCTest accessibility tree. This unblocks Reader2 (Readium 3.x WKWebView is invisible to XCTest), iOS-26 UITextField focus, OAuth/SAML out-of-process Safari sheets, and OS-level alerts — all places SpecterQA failed silently or required workarounds.
 
-MCP server: `specterqa-ios==7.0.0`.
+**MCP server:** `simdrive` (Python pkg). Surface: `session_start`, `session_end`, `session_status`, `observe`, `tap`, `swipe`, `type_text`, `press_key`, `record_start`, `record_stop`, `replay`, `logs`.
 
-### MCP Tool Rules — MANDATORY
+### Tool rules — MANDATORY
 
-**`ios_tap` only accepts `element_index` (integer).** Call `ios_elements()` first. Indices change after every navigation — always re-fetch before tapping.
+**Always `observe` with `annotate=true` before a `tap text=...` or `tap mark=...`.** Text/mark resolution caches against the **last** observe. An `annotate=false` observe returns no marks and the next text/mark tap will fail. If you've already seen the screen and know the coords, `tap x= y=` skips the cache concern entirely.
 
-**`ios_type` works. `ios_press_key(key="return")` crashes the session.** Search auto-submits after typing. For forms, tap a submit button element instead. Never press return after typing.
+**Re-observe after every navigation.** Coordinates change with transitions, sheets, and orientation. Don't reuse marks across screens.
 
-**`ios_set_appearance` / `ios_simctl` fail during active sessions.** Set appearance BEFORE `ios_start_session` via bash: `xcrun simctl ui <UDID> appearance dark`.
+**Pre-grant permissions BEFORE `session_start`.** Memory: ~1/4 SpringBoard alert taps race the alert's PIDChange; the tap "succeeds" but the app drops to home. Use `xcrun simctl privacy <UDID> grant ...` before starting the session.
 
-**`ios_screenshot` exceeds MCP size limit.** Use `ios_elements()` instead — returns labels, types, positions. This IS your screenshot.
+**`session_start` is sim-aware.** If a sim is already booted and you pass `udid=`, simdrive reuses it. With `app_bundle_id=` it launches the app. No xctest runner is involved.
 
-**Kill stale runners before every session.** `pgrep -f "xcodebuild test-without-building" | xargs -r kill -9`. Old runners hold the port and block new sessions.
+**Recordings start at `record_start`, not `session_start`.** Wrap a tight flow; `record_stop` writes `recording.yaml` and clears the buffer. Replay with `replay name=<n> on_drift=halt drift_threshold=0.85` for SSIM-gated visual regression.
 
-**EPUB reader nav controls are invisible to XCTest.** Readium WKWebView renders outside the accessibility tree. Page content IS visible but back/settings buttons are not. `ios_swipe_back` does NOT exit the reader.
+**Don't tap Safari/system-Chrome links from a sim screenshot when the link could be malicious.** Same OPSEC as desktop computer-use — verify URLs first.
 
-**`ios_save_replay` captures ALL actions since session start.** For clean replays, start a fresh session per journey. 0-step replays are valid (e.g., app-launch).
+**Reader2 nav (back, settings, TOC) IS reachable via simdrive** — that's the whole point. It's NOT reachable via XCTest. Prefer simdrive for any Reader2 regression.
 
 ### Simulator Setup
 
 ```bash
-# Kill stale runners; replace SIM_UDID with your iPhone simulator UDID:
+# Kill any stale xctest runners left over from the SpecterQA era:
 pgrep -f "xcodebuild test-without-building" | xargs -r kill -9
 SIM_UDID=$(xcrun simctl list devices iPhone | awk '/Booted/ {print $NF; exit}' | tr -d '()')
+
+# Pre-grant permissions to avoid the SpringBoard alert race:
+xcrun simctl privacy "$SIM_UDID" grant notifications org.thepalaceproject.palace
+xcrun simctl privacy "$SIM_UDID" grant location  org.thepalaceproject.palace
+
+# Palace-specific debug toggles (unchanged from before):
 xcrun simctl spawn "$SIM_UDID" defaults write org.thepalaceproject.palace showDeveloperSettings -bool true
 xcrun simctl spawn "$SIM_UDID" defaults write org.thepalaceproject.palace NYPLUseBetaLibrariesKey -bool true
 ```
 
-Test library credentials live in your local environment (e.g. `~/.specterqa/credentials/`) and are never committed to the repo.
+Test library credentials live in your local environment (e.g. `~/.simdrive/credentials/` or whatever the agent has configured) and are never committed to the repo.
+
+### Where things live
+
+- `.simdrive/journeys/*.yaml` — canonical user journeys (new work goes here)
+- `.simdrive/replays/*.yaml` — recorded sessions for SSIM regression
+- `.simdrive/journeys/` — recording-aligned project-tracked journeys (active, our 8 from the cutover)
+- `.simdrive/fixtures/flows/` — declarative flow specs with `expects:` blocks (active)
+- `.simdrive/fixtures/baselines/<version>/` — per-version visual snapshots (active)
+- `.simdrive/replays/chaos/` — curated mutation-killing replay corpus (active, gates `chaos-replay-on-pr.yml`)
+- `.simdrive/_archive/journeys/`, `.simdrive/_archive/replays/`, `.simdrive/_archive/{personas,products,evidence}/`, `.simdrive/_archive/REGRESSION_PLAN.md` — old SpecterQA corpus (do not extend)
+- `~/.simdrive/sessions/<id>/observations/` — per-session screenshots + SoM annotations
+- `scripts/specterqa-*.sh`, `scripts/fix-replay-assertions.py` — legacy build/coverage tooling kept for archive-replay; do not author new SpecterQA scripts
+
+When in doubt, run `~/harness/bin/harness simdrive status` to confirm version + active sessions.
