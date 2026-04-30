@@ -37,7 +37,10 @@ extension TPPAccessibilityAnnouncementCenter: DownloadLifecycleAnnouncing {}
 /// accessibility announcer. Pairs Completed / Failed with `resetProgress` so
 /// the per-identifier progress-bucket state machine can re-fire on the next
 /// download for the same book.
-final class DownloadAnnouncementService {
+/// Non-final so test-only subclasses (e.g. `SpyAnnouncementService` in
+/// BookReturnServiceTests) can override individual announce methods. The
+/// dynamic-dispatch cost is trivial — none of these are on a hot path.
+class DownloadAnnouncementService {
 
     private let announcer: DownloadLifecycleAnnouncing
 

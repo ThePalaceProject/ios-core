@@ -21,7 +21,10 @@ import PalaceAudiobookToolkit
 import PalaceLogging
 
 /// File-system lifecycle for downloaded book content.
-final class LocalBookContentService {
+/// Non-final to allow test-only subclassing in `SpyLocalContentService`.
+/// The dynamic-dispatch cost is negligible — none of these methods are
+/// called in tight loops.
+class LocalBookContentService {
 
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager

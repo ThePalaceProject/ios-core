@@ -40,7 +40,7 @@ final class BookReturnService {
 
     private let bookRegistry: TPPBookRegistryProvider
     private let localContentService: LocalBookContentService
-    private let opdsFeedService: OPDSFeedService
+    private let opdsFeedService: OPDSFeedFetching
     private let downloadAnnouncementService: DownloadAnnouncementService
     private let bookmarkDeletionLog: TPPBookmarkDeletionLog
     private let reauthenticator: Reauthenticator
@@ -62,7 +62,7 @@ final class BookReturnService {
     init(
         bookRegistry: TPPBookRegistryProvider,
         localContentService: LocalBookContentService,
-        opdsFeedService: OPDSFeedService,
+        opdsFeedService: OPDSFeedFetching,
         downloadAnnouncementService: DownloadAnnouncementService,
         bookmarkDeletionLog: TPPBookmarkDeletionLog,
         reauthenticator: Reauthenticator,
@@ -84,7 +84,7 @@ final class BookReturnService {
     init(
         bookRegistry: TPPBookRegistryProvider,
         localContentService: LocalBookContentService,
-        opdsFeedService: OPDSFeedService,
+        opdsFeedService: OPDSFeedFetching,
         downloadAnnouncementService: DownloadAnnouncementService,
         bookmarkDeletionLog: TPPBookmarkDeletionLog,
         reauthenticator: Reauthenticator,
