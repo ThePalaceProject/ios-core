@@ -13,87 +13,89 @@ import XCTest
 
 final class StringExtensionsTests: XCTestCase {
 
-    // MARK: - isDate(_:moreRecentThan:with:) Tests
+    // MARK: - isDate(_:moreRecentThan:with:) — happy paths
 
-    func testIsDate_WhenDate1IsMoreRecent_ReturnsTrue() {
-        // Date1 is 10 seconds after Date2
-        let date1 = "2024-01-15T10:00:10Z"
-        let date2 = "2024-01-15T10:00:00Z"
+    /// `isDate(_:moreRecentThan:with:)` is true iff
+    /// `parse(date1) + delay > parse(date2)`. Lock the temporal-direction
+    /// contract at three magnitudes (seconds, days, years) and both
+    /// directions in one body so a mutant that flips `>` to `<` (or to
+    /// `>=`, since the strict-greater behaviour matters) fails on the
+    /// equal-time case.
+    func testIsDate_temporalDirection_acrossSecondsDaysAndYears() {
+        // Seconds-apart, both directions
+        XCTAssertTrue(String.isDate("2024-01-15T10:00:10Z",
+                                    moreRecentThan: "2024-01-15T10:00:00Z",
+                                    with: 0),
+                      "10 seconds later → more recent")
+        XCTAssertFalse(String.isDate("2024-01-15T10:00:00Z",
+                                     moreRecentThan: "2024-01-15T10:00:10Z",
+                                     with: 0),
+                       "10 seconds earlier → not more recent")
 
-        // With 0 delay, date1 should be more recent
-        XCTAssertTrue(String.isDate(date1, moreRecentThan: date2, with: 0))
+        // Days-apart
+        XCTAssertTrue(String.isDate("2024-01-16T10:00:00Z",
+                                    moreRecentThan: "2024-01-15T10:00:00Z",
+                                    with: 0),
+                      "Next-day timestamp must be more recent")
+
+        // Years-apart
+        XCTAssertTrue(String.isDate("2025-01-15T10:00:00Z",
+                                    moreRecentThan: "2024-01-15T10:00:00Z",
+                                    with: 0),
+                      "Next-year timestamp must be more recent")
+
+        // Equal-time, zero delay: NOT more recent (strict greater).
+        let identical = "2024-01-15T10:00:00Z"
+        XCTAssertFalse(String.isDate(identical,
+                                     moreRecentThan: identical,
+                                     with: 0),
+                       "Identical timestamps with zero delay are NOT strictly more recent — guards against `>=` mutant")
     }
 
-    func testIsDate_WhenDate1IsOlder_ReturnsFalse() {
-        // Date1 is 10 seconds before Date2
-        let date1 = "2024-01-15T10:00:00Z"
-        let date2 = "2024-01-15T10:00:10Z"
-
-        XCTAssertFalse(String.isDate(date1, moreRecentThan: date2, with: 0))
-    }
-
-    func testIsDate_WithDelay_AdjustsComparison() {
-        // Date1 is exactly at Date2
-        let date1 = "2024-01-15T10:00:00Z"
-        let date2 = "2024-01-15T10:00:00Z"
-
-        // With 5 second delay, date1 + 5s > date2, so should return true
-        XCTAssertTrue(String.isDate(date1, moreRecentThan: date2, with: 5))
-
-        // With 0 delay, they're equal, so date1 is NOT more recent (not strictly greater)
-        XCTAssertFalse(String.isDate(date1, moreRecentThan: date2, with: 0))
-    }
-
-    func testIsDate_WithInvalidDate1_ReturnsFalse() {
-        let date1 = "invalid-date"
-        let date2 = "2024-01-15T10:00:00Z"
-
-        XCTAssertFalse(String.isDate(date1, moreRecentThan: date2, with: 0))
-    }
-
-    func testIsDate_WithInvalidDate2_ReturnsFalse() {
-        let date1 = "2024-01-15T10:00:00Z"
-        let date2 = "not-a-date"
-
-        XCTAssertFalse(String.isDate(date1, moreRecentThan: date2, with: 0))
-    }
-
-    func testIsDate_WithBothInvalidDates_ReturnsFalse() {
-        XCTAssertFalse(String.isDate("invalid1", moreRecentThan: "invalid2", with: 0))
-    }
-
-    func testIsDate_WithEmptyStrings_ReturnsFalse() {
-        XCTAssertFalse(String.isDate("", moreRecentThan: "", with: 0))
-        XCTAssertFalse(String.isDate("2024-01-15T10:00:00Z", moreRecentThan: "", with: 0))
-        XCTAssertFalse(String.isDate("", moreRecentThan: "2024-01-15T10:00:00Z", with: 0))
-    }
-
-    func testIsDate_DelayAtThreshold_WorksCorrectly() {
-        // Date1 is exactly 5 seconds before Date2
+    /// Delay shifts date1 forward; comparison is strict. Pin the boundary:
+    /// at exactly the delay value the predicate is false (equal); just past
+    /// it is true; just under it is false. This catches `>` ↔ `>=` mutants
+    /// directly on the comparison.
+    func testIsDate_delayBoundary_isStrictGreaterThan() {
         let date1 = "2024-01-15T09:59:55Z"
-        let date2 = "2024-01-15T10:00:00Z"
+        let date2 = "2024-01-15T10:00:00Z"  // exactly 5s after date1
 
-        // With exactly 5.01 second delay, date1 + 5.01s > date2
-        XCTAssertTrue(String.isDate(date1, moreRecentThan: date2, with: 5.01))
-
-        // With exactly 5 second delay, date1 + 5s = date2 (not strictly greater)
-        XCTAssertFalse(String.isDate(date1, moreRecentThan: date2, with: 5.0))
-
-        // With 4.99 second delay, date1 + 4.99s < date2
-        XCTAssertFalse(String.isDate(date1, moreRecentThan: date2, with: 4.99))
+        XCTAssertTrue(String.isDate(date1, moreRecentThan: date2, with: 5.01),
+                      "date1 + 5.01s > date2 → true")
+        XCTAssertFalse(String.isDate(date1, moreRecentThan: date2, with: 5.0),
+                       "date1 + 5.0s = date2 → false (strict greater) — boundary case for `>=` mutant")
+        XCTAssertFalse(String.isDate(date1, moreRecentThan: date2, with: 4.99),
+                       "date1 + 4.99s < date2 → false")
     }
 
-    func testIsDate_WithDifferentDays_ComparesCorrectly() {
-        let date1 = "2024-01-16T10:00:00Z" // Next day
-        let date2 = "2024-01-15T10:00:00Z"
+    // MARK: - Invalid input
 
-        XCTAssertTrue(String.isDate(date1, moreRecentThan: date2, with: 0))
-    }
-
-    func testIsDate_WithDifferentYears_ComparesCorrectly() {
-        let date1 = "2025-01-15T10:00:00Z"
-        let date2 = "2024-01-15T10:00:00Z"
-
-        XCTAssertTrue(String.isDate(date1, moreRecentThan: date2, with: 0))
+    /// Invalid input on either side (and on both sides) MUST return false —
+    /// never crash, never default to true. Lock all four invalid-input
+    /// shapes (invalid d1, invalid d2, both invalid, empty strings) in one
+    /// table-driven test. A mutant that defaults to true on a parse failure
+    /// fails on every row.
+    func testIsDate_invalidOrEmptyStrings_returnFalse() {
+        let validDate = "2024-01-15T10:00:00Z"
+        let cases: [(d1: String, d2: String, label: String)] = [
+            ("invalid-date", validDate,    "invalid date1"),
+            (validDate,    "not-a-date",   "invalid date2"),
+            ("invalid1",   "invalid2",     "both invalid"),
+            ("",           "",             "both empty"),
+            (validDate,    "",             "empty date2"),
+            ("",           validDate,      "empty date1"),
+        ]
+        for c in cases {
+            XCTAssertFalse(
+                String.isDate(c.d1, moreRecentThan: c.d2, with: 0),
+                "isDate must be false on invalid input: \(c.label)"
+            )
+            // And with a non-zero delay (rule out a mutant that only fails
+            // the parse check when delay is 0).
+            XCTAssertFalse(
+                String.isDate(c.d1, moreRecentThan: c.d2, with: 100),
+                "isDate must remain false on invalid input even with positive delay: \(c.label)"
+            )
+        }
     }
 }

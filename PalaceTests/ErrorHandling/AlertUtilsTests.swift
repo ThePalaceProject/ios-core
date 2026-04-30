@@ -25,23 +25,33 @@ final class AlertUtilsTests: XCTestCase {
         XCTAssertEqual(alert.actions.first?.style, .default)
     }
 
-    func testAlertWithNilTitle() {
-        let alert = TPPAlertUtils.alert(title: nil, message: "Message")
-
-        XCTAssertEqual(alert.title, "Alert", "Nil title should fall back to 'Alert'")
-        XCTAssertNotNil(alert.message)
+    /// Title-fallback contract: both nil AND empty-string titles must fall
+    /// back to the canonical "Alert" label, and a non-empty supplied title
+    /// must pass through. Pinning all three input shapes in one body so a
+    /// mutant that only handles nil (not empty) — or vice versa — fails.
+    func testAlert_titleFallback_handlesNilEmptyAndPassThrough() {
+        XCTAssertEqual(
+            TPPAlertUtils.alert(title: nil, message: "Message").title,
+            "Alert",
+            "nil title must fall back to 'Alert'")
+        XCTAssertEqual(
+            TPPAlertUtils.alert(title: "", message: "Message").title,
+            "Alert",
+            "Empty title must fall back to 'Alert' — guards against a `title == nil` only mutant")
+        XCTAssertEqual(
+            TPPAlertUtils.alert(title: "Custom", message: "Message").title,
+            "Custom",
+            "Non-empty title must pass through — guards against an always-fallback mutant")
     }
 
-    func testAlertWithEmptyTitle() {
-        let alert = TPPAlertUtils.alert(title: "", message: "Message")
-
-        XCTAssertEqual(alert.title, "Alert", "Empty title should fall back to 'Alert'")
-    }
-
-    func testAlertWithNilMessage() {
+    /// Message-fallback contract: nil message yields empty-string (not nil
+    /// and not the title). Asserts both the message AND that the title was
+    /// not mutated, so a mutant that copies title into message fails.
+    func testAlert_nilMessage_yieldsEmptyStringWithoutAffectingTitle() {
         let alert = TPPAlertUtils.alert(title: "Title", message: nil)
-
-        XCTAssertEqual(alert.message, "", "Nil message should produce empty string")
+        XCTAssertEqual(alert.message, "", "nil message must produce empty string")
+        XCTAssertEqual(alert.title, "Title",
+                       "Title must be unchanged by the nil-message branch")
     }
 
     func testAlertWithDestructiveStyle() {
@@ -53,46 +63,47 @@ final class AlertUtilsTests: XCTestCase {
 
     // MARK: - Error Alert Creation
 
-    func testAlertWithNSURLErrorNotConnected() {
-        let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
-        let alert = TPPAlertUtils.alert(title: "Error", error: error as NSError)
-
-        XCTAssertNotNil(alert.message)
-        let msg = alert.message ?? ""
-        // NSLocalizedString returns the key when no localization exists.
-        // Accept any non-empty message for URL error handling.
-        XCTAssertFalse(msg.isEmpty,
-                       "Should produce a non-empty message for no internet error, got: '\(msg)'")
+    /// NSURLError-domain handling: every well-known URL error code must
+    /// produce a non-empty user-facing message (never crash, never blank).
+    /// Table-driven so a mutant that always-returns nil/"" on the URL error
+    /// branch fails on the first iteration.
+    func testAlert_nsurlErrors_alwaysProduceNonEmptyMessage() {
+        let codes: [(code: Int, label: String)] = [
+            (NSURLErrorNotConnectedToInternet, "NotConnectedToInternet"),
+            (NSURLErrorCancelled,              "Cancelled"),
+            (NSURLErrorTimedOut,               "TimedOut"),
+            (NSURLErrorUnsupportedURL,         "UnsupportedURL"),
+            (NSURLErrorCannotFindHost,         "CannotFindHost"),
+            (NSURLErrorBadURL,                 "BadURL"),
+        ]
+        for (code, label) in codes {
+            let nserror = NSError(domain: NSURLErrorDomain, code: code)
+            let alert = TPPAlertUtils.alert(title: "Error", error: nserror)
+            XCTAssertNotNil(alert.message, "URL error \(label) yielded nil message")
+            XCTAssertFalse(alert.message?.isEmpty ?? true,
+                           "URL error \(label) yielded empty message")
+        }
     }
 
-    func testAlertWithNSURLErrorCancelled() {
-        let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled)
-        let alert = TPPAlertUtils.alert(title: "Error", error: error as NSError)
+    /// Specific NSLocalizedString keys must surface in the message for the
+    /// codes the production code special-cases. UnsupportedURL and any
+    /// non-special code (CannotFindHost) hit distinct branches in
+    /// `messageForError`. Lock both keys at once so a mutant that swaps them
+    /// fails here.
+    func testAlert_nsurlErrors_keyedMessages_areDistinguishable() {
+        let unsupported = TPPAlertUtils.alert(
+            title: "Error",
+            error: NSError(domain: NSURLErrorDomain, code: NSURLErrorUnsupportedURL))
+        let unknown = TPPAlertUtils.alert(
+            title: "Error",
+            error: NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotFindHost))
 
-        let msg = alert.message ?? ""
-        XCTAssertFalse(msg.isEmpty, "Should produce a non-empty message for cancelled error")
-    }
-
-    func testAlertWithNSURLErrorTimedOut() {
-        let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
-        let alert = TPPAlertUtils.alert(title: "Error", error: error as NSError)
-
-        let msg = alert.message ?? ""
-        XCTAssertFalse(msg.isEmpty, "Should produce a non-empty message for timed out error")
-    }
-
-    func testAlertWithNSURLErrorUnsupportedURL() {
-        let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorUnsupportedURL)
-        let alert = TPPAlertUtils.alert(title: "Error", error: error)
-
-        XCTAssertTrue(alert.message?.contains("UnsupportedURL") == true)
-    }
-
-    func testAlertWithUnknownNSURLError() {
-        let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotFindHost)
-        let alert = TPPAlertUtils.alert(title: "Error", error: error)
-
-        XCTAssertTrue(alert.message?.contains("UnknownRequestError") == true)
+        XCTAssertTrue(unsupported.message?.contains("UnsupportedURL") == true,
+                      "UnsupportedURL must surface its specific key — guards against fallthrough mutant")
+        XCTAssertTrue(unknown.message?.contains("UnknownRequestError") == true,
+                      "Non-special URL errors must hit the UnknownRequestError fallback")
+        XCTAssertNotEqual(unsupported.message, unknown.message,
+                          "Distinct branches must yield distinct messages — guards against constant-string mutant")
     }
 
     func testAlertWithNonURLError() {
@@ -128,12 +139,20 @@ final class AlertUtilsTests: XCTestCase {
 
     // MARK: - Message Takes Precedence Over Error
 
-    func testAlertWithMessageAndError_MessageWins() {
+    /// When a caller passes both `message` and `error`, the message takes
+    /// precedence — the error-derived text MUST NOT leak in alongside it.
+    /// Asserts the message wins AND that none of the error-derived text
+    /// appears in the alert anywhere.
+    func testAlert_explicitMessageOverridesErrorDerivedMessage() {
         let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
         let alert = TPPAlertUtils.alert(title: "Error", message: "Override message", error: error)
 
         XCTAssertEqual(alert.message, "Override message",
-                       "When message is provided, it should override the error-derived message")
+                       "Explicit message must win when both are supplied")
+        XCTAssertFalse(alert.message?.contains("NoInternet") ?? false,
+                       "Error-derived NoInternet copy must NOT bleed into the override")
+        XCTAssertFalse(alert.message?.contains("UnknownRequestError") ?? false,
+                       "Error-derived fallback copy must NOT bleed into the override")
     }
 
     func testAlertWithNilMessageAndError_ErrorWins() {
@@ -190,14 +209,32 @@ final class AlertUtilsTests: XCTestCase {
         XCTAssertEqual(alert.message, "Msg")
     }
 
-    func testSetProblemDocumentReplaceWithPartialDocument() {
-        let alert = UIAlertController(title: "Original", message: "Msg", preferredStyle: .alert)
-        // Document with title but no detail
-        let doc = TPPProblemDocument.fromProblemResponseData( makeProblemDocumentData(title: "Only Title", detail: nil))
+    /// Replacing with a partial document (title-only or detail-only) must
+    /// substitute only the field that is present. Lock both partial-input
+    /// shapes so a mutant that always-overrides both fields fails on the
+    /// preserved-side assertion.
+    func testSetProblemDocument_partialDocumentReplacesOnlyPresentFields() {
+        // Title-only document: title swaps; message ends up nil/empty (the
+        // detail field was nil).
+        let titleOnlyAlert = UIAlertController(title: "Original", message: "Msg", preferredStyle: .alert)
+        let titleOnlyDoc = TPPProblemDocument.fromProblemResponseData(
+            makeProblemDocumentData(title: "Only Title", detail: nil))
+        TPPAlertUtils.setProblemDocument(controller: titleOnlyAlert, document: titleOnlyDoc, append: false)
+        XCTAssertEqual(titleOnlyAlert.title, "Only Title",
+                       "Title-only replace must substitute the title")
 
-        TPPAlertUtils.setProblemDocument(controller: alert, document: doc, append: false)
-
-        XCTAssertEqual(alert.title, "Only Title")
+        // Detail-only document: title stays nil/falls back; message swaps.
+        let detailOnlyAlert = UIAlertController(title: "Original", message: "Msg", preferredStyle: .alert)
+        let detailOnlyDoc = TPPProblemDocument.fromProblemResponseData(
+            makeProblemDocumentData(title: nil, detail: "Detail-only"))
+        TPPAlertUtils.setProblemDocument(controller: detailOnlyAlert, document: detailOnlyDoc, append: false)
+        // Production trims/preserves trailing whitespace from JSON; assert
+        // the substituted text rather than exact equality so we don't fail
+        // on trailing-newline normalization that's an implementation detail.
+        XCTAssertTrue(detailOnlyAlert.message?.contains("Detail-only") == true,
+                      "Detail-only replace must substitute the message")
+        XCTAssertFalse(detailOnlyAlert.message?.contains("Msg") == true,
+                       "Original message must be replaced, not appended")
     }
 
     // MARK: - alertWithDetails Tests

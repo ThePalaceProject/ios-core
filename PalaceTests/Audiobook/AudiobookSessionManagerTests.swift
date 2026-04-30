@@ -277,58 +277,56 @@ final class AudiobookNetworkValidationTests: XCTestCase {
                      ".used state (already-opened downloaded book) must also play offline")
     }
 
-    func testFullyDownloaded_onCellularWithWifiOnly_isAllowed() {
-        XCTAssertNil(validate(.downloadSuccessful, connected: true, onWiFi: false, wifiOnly: true),
-                     "Downloaded audiobook must play on cellular even with Wi-Fi-only on — no bytes going over the wire")
+    /// Fully-downloaded books bypass network rules entirely — they must
+    /// play under every (connected × onWiFi × wifiOnly) combination,
+    /// including offline-with-Wi-Fi-only-on. Pin every cell of the matrix
+    /// across both downloaded states (.downloadSuccessful and .used) so a
+    /// mutant that adds a network gate to the downloaded path fails on
+    /// the offline-with-Wi-Fi-only row.
+    func testFullyDownloaded_bypassesNetworkRulesAcrossAllConnectivityCombinations() {
+        for state in [TPPBookState.downloadSuccessful, .used] {
+            XCTAssertNil(validate(state, connected: false, onWiFi: false, wifiOnly: true),
+                         "\(state): offline + Wi-Fi-only on must NOT block — bytes are local")
+            XCTAssertNil(validate(state, connected: true,  onWiFi: false, wifiOnly: true),
+                         "\(state): cellular + Wi-Fi-only on must NOT block — bytes are local")
+            XCTAssertNil(validate(state, connected: true,  onWiFi: true,  wifiOnly: true),
+                         "\(state): on Wi-Fi must obviously not block")
+            XCTAssertNil(validate(state, connected: true,  onWiFi: false, wifiOnly: false),
+                         "\(state): cellular + Wi-Fi-only off — no gate")
+        }
     }
 
     // MARK: Streaming books — the bug this fix addresses
 
-    func testStreaming_onCellularWithWifiOnly_returnsWifiRequired() {
-        XCTAssertEqual(validate(.downloading, connected: true, onWiFi: false, wifiOnly: true),
+    /// Streaming-state full validation matrix. The bug PP-XXXX exposed was
+    /// that the open path skipped the Wi-Fi-only gate; the fix restored it.
+    /// Lock every cell in one body so a mutant that flips ANY cell fails.
+    /// Additionally pins the offline-preempt-wifi rule (offline must report
+    /// .networkUnavailable, not .wifiRequired — that wording would mislead
+    /// users into thinking Wi-Fi could solve a no-network situation).
+    func testStreaming_networkValidationCoversAllConnectivityCombinations() {
+        // On-Wi-Fi → always allowed (regardless of wifiOnly setting)
+        XCTAssertNil(validate(.downloading, connected: true, onWiFi: true, wifiOnly: true))
+        XCTAssertNil(validate(.downloading, connected: true, onWiFi: true, wifiOnly: false))
+
+        // Cellular + wifiOnly OFF → user's choice, no gate
+        XCTAssertNil(validate(.downloading, connected: true, onWiFi: false, wifiOnly: false))
+
+        // Cellular + wifiOnly ON → .wifiRequired (the primary bug fix).
+        // Pin both .downloading and .downloadFailed states.
+        XCTAssertEqual(validate(.downloading,    connected: true, onWiFi: false, wifiOnly: true),
                        .wifiRequired,
-                       "Streaming on cellular with Wi-Fi-only ON must surface .wifiRequired — the exact alert the open path was silently skipping before this fix")
+                       "Cellular streaming with Wi-Fi-only ON must surface .wifiRequired")
         XCTAssertEqual(validate(.downloadFailed, connected: true, onWiFi: false, wifiOnly: true),
                        .wifiRequired,
-                       ".downloadFailed is also a non-downloaded state — Wi-Fi-only gate must still fire")
-    }
+                       ".downloadFailed (no local bytes) is treated as streaming — same gate")
 
-    func testStreaming_onWifi_isAllowed() {
-        XCTAssertNil(validate(.downloading, connected: true, onWiFi: true, wifiOnly: true),
-                     "Streaming on Wi-Fi must be allowed — the setting name is 'download only on Wi-Fi', not 'block streaming'")
-    }
-
-    func testStreaming_onCellularWithoutWifiOnly_isAllowed() {
-        XCTAssertNil(validate(.downloading, connected: true, onWiFi: false, wifiOnly: false),
-                     "Without the Wi-Fi-only preference, cellular streaming is the user's choice — no gate")
-    }
-
-    func testStreaming_offline_returnsNetworkUnavailable() {
+        // Offline → .networkUnavailable (preempts wifiRequired, both wifiOnly values).
         XCTAssertEqual(validate(.downloading, connected: false, onWiFi: false, wifiOnly: false),
-                       .networkUnavailable,
-                       "No network + streaming content must return the generic offline error, not the Wi-Fi-specific one")
-    }
-
-    func testStreaming_offline_preemptsWifiOnlyCheck() {
-        // If the device is fully offline, .networkUnavailable is more accurate
-        // than .wifiRequired — the user can't solve it by toggling a setting.
+                       .networkUnavailable)
         XCTAssertEqual(validate(.downloading, connected: false, onWiFi: false, wifiOnly: true),
                        .networkUnavailable,
                        "Offline must report .networkUnavailable even with Wi-Fi-only on — connect-to-Wi-Fi wording would be misleading")
-    }
-
-    // MARK: Boundary / sanity
-
-    func testRulesAreIndependentOfAuthAndRegistration() {
-        // networkValidationError is a pure function — it doesn't touch auth or
-        // registration state, because validateRequirements already gated those
-        // separately. A mutation that added an auth check here would silently
-        // break the downloaded-offline path (fully-downloaded books must play
-        // without reaching out to the auth stack).
-        for state in [TPPBookState.downloadSuccessful, .used] {
-            XCTAssertNil(validate(state, connected: false, onWiFi: false, wifiOnly: true),
-                         "Downloaded state \(state) must return nil regardless of network/wifi state")
-        }
     }
 }
 

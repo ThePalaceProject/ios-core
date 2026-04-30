@@ -127,7 +127,23 @@ final class BookmarkManagerTests: XCTestCase {
         )!
     }
 
+    /// Synchronously waits for BookRegistryStore's concurrent-queue work
+    /// (barrier mutation + onComplete) to land before returning.
+    ///
+    /// Previously this was just `drainMainQueue()`, which only flushed the
+    /// MAIN queue. But `mutateRegistry` enqueues two barrier blocks on the
+    /// store's internal concurrent queue: the mutation, then the onComplete
+    /// (which calls `save`). Neither hops through main, so draining main
+    /// didn't actually wait for the save closure to fire — the next test
+    /// step could land before `saveCallCount` was incremented, manifesting
+    /// as the long-standing `test_everyMutationCallsSave` flake (saw 4
+    /// instead of 5 saves).
+    ///
+    /// Fix: a sync read on the store. `readRegistry` calls `performSync`,
+    /// which blocks behind ALL prior enqueued barriers — guaranteeing the
+    /// preceding mutation + onComplete are done by the time it returns.
     private func waitForBarrier() {
+        _ = store.readRegistry { _ in }
         drainMainQueue()
     }
 
@@ -148,12 +164,28 @@ final class BookmarkManagerTests: XCTestCase {
         XCTAssertEqual(saveCallCount, 1, "save should be called once after setting location")
     }
 
-    func test_setLocation_emptyIdentifier_doesNothing() {
-        let location = makeLocation()
-        manager.setLocation(location, forIdentifier: "", account: testAccount)
+    /// `setLocation` with an empty identifier must short-circuit — neither
+    /// trigger a save NOR mutate any other book's location. Previously the
+    /// test only checked saveCallCount; this version also pins that no
+    /// other book got hit (cross-contamination guard).
+    func test_setLocation_emptyIdentifier_doesNotSaveAndDoesNotTouchAnyBook() {
+        let other = makeBook(identifier: "other-book")
+        addBookToStore(other)
+        let originalLocation = makeLocation(page: 99)
+        manager.setLocation(originalLocation, forIdentifier: other.identifier, account: testAccount)
         waitForBarrier()
 
-        XCTAssertEqual(saveCallCount, 0, "save should not be called for empty identifier")
+        let beforeSaveCount = saveCallCount
+
+        // Empty identifier — must do nothing.
+        manager.setLocation(makeLocation(page: 1), forIdentifier: "", account: testAccount)
+        waitForBarrier()
+
+        XCTAssertEqual(saveCallCount, beforeSaveCount,
+                       "save must not fire for empty identifier")
+        let stored = manager.location(forIdentifier: other.identifier)
+        XCTAssertTrue(stored?.locationString.contains("99") ?? false,
+                      "Empty-id setLocation must NOT cross-contaminate another book's location")
     }
 
     func test_setLocation_nil_clearsLocation() {
@@ -171,9 +203,20 @@ final class BookmarkManagerTests: XCTestCase {
         XCTAssertNil(retrieved)
     }
 
-    func test_locationForMissingBook_returnsNil() {
-        let location = manager.location(forIdentifier: "nonexistent-book")
-        XCTAssertNil(location)
+    /// Missing-book lookup contracts in one place — `location(forIdentifier:)`
+    /// AND the empty/nil readout paths all return absent values without
+    /// inventing entries. A mutant that returns a default `TPPBookLocation`
+    /// for missing keys fails on the first nil-assertion.
+    func test_missingBook_locationAndBookmarkLookups_returnAbsentValues() {
+        // Pure read on an empty manager — none of these may invent state.
+        XCTAssertNil(manager.location(forIdentifier: "missing-1"),
+                     "location(forIdentifier:) on missing book must yield nil")
+        XCTAssertTrue(manager.readiumBookmarks(forIdentifier: "missing-1").isEmpty,
+                      "readiumBookmarks on missing book must be empty array")
+        XCTAssertTrue(manager.genericBookmarks(forIdentifier: "missing-1").isEmpty,
+                      "genericBookmarks on missing book must be empty array")
+        XCTAssertEqual(saveCallCount, 0,
+                       "Pure reads must not trigger any save side-effect")
     }
 
     func test_setLocationSync_callsSaveSyncInsteadOfSave() {
@@ -190,9 +233,16 @@ final class BookmarkManagerTests: XCTestCase {
         XCTAssertNotNil(retrieved)
     }
 
-    func test_setLocationSync_emptyIdentifier_doesNothing() {
+    /// setLocationSync mirrors setLocation but on the sync queue — empty
+    /// identifier must also short-circuit, neither calling saveSync NOR
+    /// triggering the async save path (mutant that conflates the two
+    /// would fire the wrong save).
+    func test_setLocationSync_emptyIdentifier_neitherSyncNorAsyncSaveFires() {
         manager.setLocationSync(makeLocation(), forIdentifier: "", account: testAccount)
-        XCTAssertEqual(saveSyncCallCount, 0)
+        XCTAssertEqual(saveSyncCallCount, 0,
+                       "saveSync must not fire on empty identifier")
+        XCTAssertEqual(saveCallCount, 0,
+                       "Async save must not fire either — guards against a mutant that falls through to setLocation()")
     }
 
     // MARK: - Readium Bookmarks
@@ -272,10 +322,10 @@ final class BookmarkManagerTests: XCTestCase {
         XCTAssertEqual(Double(bookmarks.first?.progressWithinBook ?? 0), 0.6, accuracy: 0.01)
     }
 
-    func test_readiumBookmarks_emptyForMissingBook() {
-        let bookmarks = manager.readiumBookmarks(forIdentifier: "nonexistent")
-        XCTAssertTrue(bookmarks.isEmpty)
-    }
+    // (Missing-book readiumBookmarks coverage now lives in
+    // test_missingBook_locationAndBookmarkLookups_returnAbsentValues above —
+    // covering location, readiumBookmarks AND genericBookmarks together so
+    // a mutant that returns nil-for-one-but-default-for-another fails.)
 
     func test_addReadiumBookmark_toMissingBook_doesNotCrash() {
         let bookmark = makeReadiumBookmark()
@@ -397,10 +447,8 @@ final class BookmarkManagerTests: XCTestCase {
         XCTAssertEqual(bookmarks.count, 1)
     }
 
-    func test_genericBookmarks_emptyForMissingBook() {
-        let bookmarks = manager.genericBookmarks(forIdentifier: "nonexistent")
-        XCTAssertTrue(bookmarks.isEmpty)
-    }
+    // (Missing-book genericBookmarks coverage now lives in
+    // test_missingBook_locationAndBookmarkLookups_returnAbsentValues above.)
 
     // MARK: - Multiple Books
 

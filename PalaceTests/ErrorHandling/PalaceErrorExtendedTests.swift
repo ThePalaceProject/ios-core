@@ -135,29 +135,31 @@ final class PalaceErrorExtendedTests: XCTestCase {
 
     // MARK: - Error Code Range Tests
 
-    func testErrorCode_bookRegistryErrors_startAt2000() {
-        let error = PalaceError.bookRegistry(.bookNotFound)
-        XCTAssertEqual(error.errorCode, 2000)
-    }
+    /// Each PalaceError category occupies its own 1000-block of error codes.
+    /// Lock the blocks together so a mutant that swaps two categories'
+    /// offsets fails on a single test, and so a future engineer adding a new
+    /// category sees the canonical layout in one place.
+    func testErrorCode_categoryOffsetsAreUniqueAndStable() {
+        // category → first-case → expected base
+        let blocks: [(error: PalaceError, expectedCode: Int, label: String)] = [
+            (.bookRegistry(.bookNotFound),  2000, "bookRegistry"),
+            (.parsing(.invalidJSON),        4000, "parsing"),
+            (.storage(.insufficientSpace),  7000, "storage"),
+            (.bookReader(.bookNotAvailable),8000, "bookReader"),
+            (.audiobook(.corruptedManifest),9000, "audiobook"),
+        ]
 
-    func testErrorCode_parsingErrors_startAt4000() {
-        let error = PalaceError.parsing(.invalidJSON)
-        XCTAssertEqual(error.errorCode, 4000)
-    }
+        // Each category lands at its expected base.
+        for block in blocks {
+            XCTAssertEqual(block.error.errorCode, block.expectedCode,
+                           "\(block.label) must start at \(block.expectedCode)")
+        }
 
-    func testErrorCode_storageErrors_startAt7000() {
-        let error = PalaceError.storage(.insufficientSpace)
-        XCTAssertEqual(error.errorCode, 7000)
-    }
-
-    func testErrorCode_bookReaderErrors_startAt8000() {
-        let error = PalaceError.bookReader(.bookNotAvailable)
-        XCTAssertEqual(error.errorCode, 8000)
-    }
-
-    func testErrorCode_audiobookErrors_startAt9000() {
-        let error = PalaceError.audiobook(.corruptedManifest)
-        XCTAssertEqual(error.errorCode, 9000)
+        // Bases are pairwise distinct. A mutant that collapses two ranges
+        // (e.g. parsing at 2000) would fail this set-size invariant.
+        let bases = Set(blocks.map { $0.expectedCode })
+        XCTAssertEqual(bases.count, blocks.count,
+                       "Each category MUST occupy a distinct error-code range")
     }
 
     func testErrorCode_offsetByRawValue() {
@@ -276,33 +278,49 @@ final class PalaceErrorExtendedTests: XCTestCase {
         }
     }
 
-    // MARK: - NetworkError Recovery Suggestion Edge Cases
+    // MARK: - Cancellation has no recovery suggestion
 
-    func testNetworkError_cancelled_hasNilRecoverySuggestion() {
-        let error = NetworkError.cancelled
-        XCTAssertNil(error.recoverySuggestion,
-                     "Cancelled errors should not have a recovery suggestion")
-    }
+    /// "Cancelled" is the user's choice — surfacing a recovery suggestion for
+    /// it would be nagging. Lock the contract on both NetworkError and
+    /// DownloadError in one body, AND contrast against a non-cancelled case
+    /// to make sure the "always-nil" mutant fails. This kills the broader
+    /// mutation surface that two single-assertion tests would not.
+    func testCancellation_yieldsNoRecoverySuggestionAcrossNetworkAndDownload() {
+        XCTAssertNil(NetworkError.cancelled.recoverySuggestion,
+                     "User-cancelled network errors must not show a recovery prompt")
+        XCTAssertNil(DownloadError.cancelled.recoverySuggestion,
+                     "User-cancelled downloads must not show a recovery prompt")
 
-    func testDownloadError_cancelled_hasNilRecoverySuggestion() {
-        let error = DownloadError.cancelled
-        XCTAssertNil(error.recoverySuggestion,
-                     "Cancelled downloads should not have a recovery suggestion")
+        // Contrast cases — would fail if a mutant nukes the whole getter.
+        XCTAssertNotNil(NetworkError.timeout.recoverySuggestion,
+                        "Non-cancelled errors MUST have a recovery suggestion — guards against an always-nil mutant")
+        XCTAssertNotNil(DownloadError.insufficientSpace.recoverySuggestion)
     }
 
     // MARK: - LocalizedError Conformance via PalaceError Wrapper
 
-    func testPalaceError_recoverySuggestion_delegatesToInnerError() {
-        let error = PalaceError.storage(.permissionDenied)
-        let innerSuggestion = StorageError.permissionDenied.recoverySuggestion
-        XCTAssertEqual(error.recoverySuggestion, innerSuggestion,
-                       "PalaceError should delegate recoverySuggestion to inner error")
-    }
+    /// PalaceError is a sum type that defers `recoverySuggestion` and
+    /// `errorDescription` to the wrapped inner error. Verify the delegation
+    /// across both LocalizedError surfaces in one body so a mutant that
+    /// returns a hard-coded string from PalaceError fails on either probe.
+    func testPalaceError_localizedErrorSurface_delegatesToInnerError() {
+        // recoverySuggestion delegation via storage(.permissionDenied)
+        let storageError = PalaceError.storage(.permissionDenied)
+        XCTAssertEqual(storageError.recoverySuggestion,
+                       StorageError.permissionDenied.recoverySuggestion,
+                       "recoverySuggestion must come from the wrapped inner error")
 
-    func testPalaceError_errorDescription_delegatesToInnerError() {
-        let error = PalaceError.authentication(.tokenExpired)
-        let innerDescription = AuthenticationError.tokenExpired.errorDescription
-        XCTAssertEqual(error.errorDescription, innerDescription,
-                       "PalaceError should delegate errorDescription to inner error")
+        // errorDescription delegation via authentication(.tokenExpired)
+        let authError = PalaceError.authentication(.tokenExpired)
+        XCTAssertEqual(authError.errorDescription,
+                       AuthenticationError.tokenExpired.errorDescription,
+                       "errorDescription must come from the wrapped inner error")
+
+        // Cross-category sanity: recoverySuggestion of one inner type doesn't
+        // leak when wrapping a different inner type. This catches a mutant
+        // that hardcodes a single inner-error's value.
+        XCTAssertNotEqual(storageError.errorDescription,
+                          AuthenticationError.tokenExpired.errorDescription,
+                          "Different wrapped inner errors must yield different errorDescription")
     }
 }

@@ -179,23 +179,31 @@ final class TPPBookTests: XCTestCase {
     /// reload. Categories default to `[]`; updated defaults to
     /// `.distantPast`. Only identifier + title remain hard requirements.
     func test_dictionaryInit_salvagesWhenCategoriesMissing() {
-        let book = TPPBook(dictionary: [
+        guard let book = TPPBook(dictionary: [
             "id": "123",
             "title": "Test",
             "updated": "2024-01-01T00:00:00Z"
-        ])
-        XCTAssertNotNil(book)
-        XCTAssertEqual(book?.categoryStrings ?? [], [])
+        ]) else {
+            XCTFail("Missing 'categories' must not drop the book — registry-salvage path"); return
+        }
+        XCTAssertEqual(book.categoryStrings, [],
+                       "Missing 'categories' falls back to []")
+        XCTAssertEqual(book.identifier, "123",
+                       "Other required fields must still parse — guards against a mutant that drops every field on missing-categories")
     }
 
     func test_dictionaryInit_salvagesWhenUpdatedMissing() {
-        let book = TPPBook(dictionary: [
+        guard let book = TPPBook(dictionary: [
             "categories": ["Fiction"],
             "id": "123",
             "title": "Test"
-        ])
-        XCTAssertNotNil(book)
-        XCTAssertEqual(book?.updated, .distantPast)
+        ]) else {
+            XCTFail("Missing 'updated' must not drop the book — registry-salvage path"); return
+        }
+        XCTAssertEqual(book.updated, .distantPast,
+                       "Missing 'updated' falls back to .distantPast")
+        XCTAssertEqual(book.categoryStrings, ["Fiction"],
+                       "Other required fields must still parse — guards against a mutant that drops every field on missing-updated")
     }
 
     func test_dictionaryInit_handlesNestedAuthorArrayFormat() {
@@ -704,22 +712,30 @@ final class TPPBookTests: XCTestCase {
         XCTAssertEqual(merged.bookAuthors?.first?.name, "New Author")
     }
 
-    func test_mergingPreservingMetadata_preservesSelfSummaryWhenFreshIsEmpty() {
-        let selfBook = makeBook(summary: "A rich summary from an earlier catalog hit.")
-        let fresh = makeBook(summary: "")
+    /// `mergingPreservingMetadata` is the registry-merge guard — when the
+    /// fresh catalog hit comes back lean (empty summary or empty categories),
+    /// it must NOT overwrite the richer existing record. Lock both fields'
+    /// preservation contract in one body so a mutant that overrides one but
+    /// not the other fails on a single test.
+    /// `mergingPreservingMetadata` is the registry-merge guard — when the
+    /// fresh catalog hit comes back lean (empty summary or empty categories),
+    /// it must NOT overwrite the richer existing record. Lock both fields'
+    /// preservation contract in one body so a mutant that overrides one but
+    /// not the other fails on a single test.
+    func test_mergingPreservingMetadata_preservesRichSelfFieldsWhenFreshIsEmpty() {
+        let selfBook = makeBook(
+            categoryStrings: ["Fiction", "Adventure"],
+            summary: "A rich summary from an earlier catalog hit."
+        )
+        let leanFresh = makeBook(categoryStrings: [], summary: "")
 
-        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+        let merged = selfBook.mergingPreservingMetadata(from: leanFresh)
 
-        XCTAssertEqual(merged.summary, "A rich summary from an earlier catalog hit.")
-    }
-
-    func test_mergingPreservingMetadata_preservesSelfCategoriesWhenFreshIsEmpty() {
-        let selfBook = makeBook(categoryStrings: ["Fiction", "Adventure"])
-        let fresh = makeBook(categoryStrings: [])
-
-        let merged = selfBook.mergingPreservingMetadata(from: fresh)
-
-        XCTAssertEqual(merged.categoryStrings ?? [], ["Fiction", "Adventure"])
+        XCTAssertEqual(merged.summary,
+                       "A rich summary from an earlier catalog hit.",
+                       "Empty summary on fresh must not overwrite a populated self.summary")
+        XCTAssertEqual(merged.categoryStrings ?? [], ["Fiction", "Adventure"],
+                       "Empty categories on fresh must not overwrite populated self.categoryStrings")
     }
 
     func test_mergingPreservingMetadata_usesFreshUpdatedTimestamp() {

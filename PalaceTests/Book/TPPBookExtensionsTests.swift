@@ -86,21 +86,46 @@ final class TPPBookExtensionsTests: XCTestCase {
         XCTAssertEqual(book.format, Strings.TPPBook.pdfContentType)
     }
 
-    func test_format_isNotEmpty() {
-        let book = makeBook()
-        XCTAssertFalse(book.format.isEmpty)
+    /// `format` is a localized user-facing label. Lock both the
+    /// non-emptiness invariant AND a couple of distinct content-type
+    /// outputs in one body — the localized strings differ between
+    /// ePub/Audiobook/PDF, so a mutant that always returns a constant
+    /// fails the inequality cross-check.
+    func test_format_isNonEmptyAndDistinguishableAcrossContentTypes() {
+        let epub = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let pdf = TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
+        let audiobook = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+
+        XCTAssertFalse(epub.format.isEmpty,      "epub.format must be non-empty")
+        XCTAssertFalse(pdf.format.isEmpty,       "pdf.format must be non-empty")
+        XCTAssertFalse(audiobook.format.isEmpty, "audiobook.format must be non-empty")
+
+        // Distinct content types must yield distinct labels — guards a
+        // mutant that returns the same constant from every branch.
+        let formats = Set([epub.format, pdf.format, audiobook.format])
+        XCTAssertGreaterThanOrEqual(formats.count, 2,
+                                    "At least two of (epub, pdf, audiobook) must yield distinct format strings")
     }
 
     // MARK: - hasSample
 
-    func test_hasSample_withNoSample_returnsFalse() {
-        let book = makeBook()
-        XCTAssertFalse(book.hasSample)
-    }
+    /// `hasSample` is true iff the book has a usable preview path. Lock
+    /// both branches (no sample, with sample) in one body and pin the
+    /// hasAudiobookSample distinction so a mutant that conflates the two
+    /// flags is caught.
+    func test_hasSample_returnsTrueOnlyWhenSampleIsPresent_andDistinguishesAudiobook() {
+        let plainEpub = makeBook()
+        let epubWithSample = makeBook(previewLink: TPPFake.genericSample)
 
-    func test_hasSample_withPreviewLink_returnsTrue() {
-        let book = makeBook(previewLink: TPPFake.genericSample)
-        XCTAssertTrue(book.hasSample)
+        XCTAssertFalse(plainEpub.hasSample,
+                       "Plain epub without preview must not claim hasSample")
+        XCTAssertTrue(epubWithSample.hasSample,
+                      "Epub with previewLink MUST claim hasSample")
+
+        // hasSample must NOT be aliased to hasAudiobookSample — an epub
+        // with a (non-audiobook) sample must not flip the audiobook flag.
+        XCTAssertFalse(epubWithSample.hasAudiobookSample,
+                       "Epub sample must NOT trip the audiobook-sample flag — distinct branches in production")
     }
 
     func test_hasSample_withMockerHasSampleTrue_returnsTrue() {
@@ -169,9 +194,44 @@ final class TPPBookExtensionsTests: XCTestCase {
         XCTAssertTrue(sample is AudiobookSample)
     }
 
-    func test_sample_withNoSample_returnsNil() {
-        let book = makeBook()
-        XCTAssertNil(book.sample)
+    /// `sample` factory yields nil when there's nothing to play. Pair the
+    /// no-preview case with the no-acquisition case so a mutant that
+    /// short-circuits the wrong branch is caught.
+    func test_sample_returnsNilWhenNoSampleIsAvailable() {
+        // Plain book — no preview link.
+        XCTAssertNil(makeBook().sample,
+                     "Book without previewLink must yield nil sample")
+
+        // Book with empty acquisitions — even a previewLink can't be played.
+        let bookWithNoAcquisitions = TPPBook(
+            acquisitions: [],
+            authors: [TPPBookAuthor(authorName: "Author", relatedBooksURL: nil)],
+            categoryStrings: ["Test"],
+            distributor: nil,
+            identifier: "no-acq",
+            imageURL: nil,
+            imageThumbnailURL: nil,
+            published: nil,
+            publisher: nil,
+            subtitle: nil,
+            summary: nil,
+            title: "No Acquisitions",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: TPPFake.genericSample,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: nil,
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
+        XCTAssertNil(bookWithNoAcquisitions.sample,
+                     "previewLink without acquisitions must NOT yield a sample — content type can't be derived")
     }
 
     func test_sample_nilForUnsupportedContentType() {

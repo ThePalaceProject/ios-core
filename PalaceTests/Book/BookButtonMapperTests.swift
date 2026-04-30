@@ -152,9 +152,19 @@ final class BookButtonMapperExtendedTests: XCTestCase {
 
     // MARK: - stateForAvailability Tests
 
-    func testStateForAvailability_nil_returnsNil() {
-        let result = BookButtonMapper.stateForAvailability(nil)
-        XCTAssertNil(result)
+    /// `stateForAvailability(nil)` short-circuits to nil — distinct branch
+    /// from any availability variant. Pin it AND assert the convenience
+    /// behaviour: `nil` is the only input that yields `nil`. A mutant that
+    /// returns nil from any availability instance would fail the
+    /// convenience cross-check.
+    func testStateForAvailability_nilInputReturnsNil_butValidAvailabilityDoesNot() {
+        XCTAssertNil(BookButtonMapper.stateForAvailability(nil),
+                     "nil availability must short-circuit to nil")
+
+        let unlimited = BookButtonMapper.stateForAvailability(
+            TPPOPDSAcquisitionAvailabilityUnlimited())
+        XCTAssertNotNil(unlimited,
+                        "Valid availability must NOT yield nil — guards against an always-nil mutant")
     }
 
     func testStateForAvailability_unavailable_returnsCanHold() {
@@ -199,27 +209,31 @@ final class BookButtonMapperExtendedTests: XCTestCase {
         XCTAssertEqual(result, .canBorrow)
     }
 
-    func testStateForAvailability_unlimited_returnsCanBorrow() {
-        let unlimited = TPPOPDSAcquisitionAvailabilityUnlimited()
-        let result = BookButtonMapper.stateForAvailability(unlimited)
-        XCTAssertEqual(result, .canBorrow)
-    }
+    /// Unlimited / Reserved / Ready dispatch table — three distinct
+    /// availability variants must each map to their canonical button state.
+    /// Pin the equality + the cross-pair inequalities (Reserved must NOT
+    /// match Ready/Unlimited even though Ready and Unlimited share the
+    /// canBorrow result). Catches a mutant that maps Reserved to canBorrow
+    /// (which would silently surface a borrow button on a held title).
+    func testStateForAvailability_unlimitedReservedReady_dispatchTableIsExact() {
+        let unlimited = BookButtonMapper.stateForAvailability(
+            TPPOPDSAcquisitionAvailabilityUnlimited())
+        let reserved = BookButtonMapper.stateForAvailability(
+            TPPOPDSAcquisitionAvailabilityReserved(holdPosition: 1, copiesTotal: 5,
+                                                    since: nil, until: nil))
+        let ready = BookButtonMapper.stateForAvailability(
+            TPPOPDSAcquisitionAvailabilityReady(since: nil, until: nil))
 
-    func testStateForAvailability_reserved_returnsHoldingFrontOfQueue() {
-        let reserved = TPPOPDSAcquisitionAvailabilityReserved(
-            holdPosition: 1,
-            copiesTotal: 5,
-            since: nil,
-            until: nil
-        )
-        let result = BookButtonMapper.stateForAvailability(reserved)
-        XCTAssertEqual(result, .holdingFrontOfQueue)
-    }
+        XCTAssertEqual(unlimited, .canBorrow)
+        XCTAssertEqual(reserved,  .holdingFrontOfQueue)
+        XCTAssertEqual(ready,     .canBorrow)
 
-    func testStateForAvailability_ready_returnsCanBorrow() {
-        let ready = TPPOPDSAcquisitionAvailabilityReady(since: nil, until: nil)
-        let result = BookButtonMapper.stateForAvailability(ready)
-        XCTAssertEqual(result, .canBorrow)
+        // Reserved must NOT collapse into the canBorrow group — a mutant
+        // doing that would silently let users borrow a held title.
+        XCTAssertNotEqual(reserved, unlimited,
+                          "Reserved (still in queue) must NOT be conflated with Unlimited (borrowable)")
+        XCTAssertNotEqual(reserved, ready,
+                          "Reserved must NOT be conflated with Ready (loan ready to confirm)")
     }
 
     // MARK: - Priority Tests (registry state overrides availability)

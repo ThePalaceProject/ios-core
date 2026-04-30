@@ -13,134 +13,181 @@ import XCTest
 
 final class CatalogCacheMetadataTests: XCTestCase {
 
-    // MARK: - isStale Tests (default TTL = 6 hours)
+    // MARK: - isStale (default TTL = 6 hours)
 
-    func testIsStale_WithFreshCache_ReturnsFalse() {
-        let metadata = CatalogCacheMetadata(timestamp: Date(), hash: "abc123")
-        XCTAssertFalse(metadata.isStale)
+    func testIsStale_TransitionsAtSixHourBoundary() {
+        let justUnder = CatalogCacheMetadata(
+            timestamp: Date().addingTimeInterval(-21599),
+            hash: "abc"
+        )
+        let justOver = CatalogCacheMetadata(
+            timestamp: Date().addingTimeInterval(-21601),
+            hash: "abc"
+        )
+        XCTAssertFalse(justUnder.isStale, "5h59m59s old must be fresh")
+        XCTAssertTrue(justOver.isStale, "6h00m01s old must be stale")
     }
 
-    func testIsStale_WithCacheUnder6Hours_ReturnsFalse() {
-        let fiveHoursAgo = Date().addingTimeInterval(-18000)
-        let metadata = CatalogCacheMetadata(timestamp: fiveHoursAgo, hash: "abc123")
-        XCTAssertFalse(metadata.isStale)
+    func testIsStale_FreshCache_StaysFreshAcrossSubSecondJitter() {
+        let now = CatalogCacheMetadata(timestamp: Date(), hash: "abc")
+        let oneSecondOld = CatalogCacheMetadata(
+            timestamp: Date().addingTimeInterval(-1),
+            hash: "abc"
+        )
+        XCTAssertFalse(now.isStale)
+        XCTAssertFalse(now.isExpired)
+        XCTAssertFalse(oneSecondOld.isStale)
     }
 
-    func testIsStale_WithCacheJustUnder6Hours_ReturnsFalse() {
-        let justUnder = Date().addingTimeInterval(-21599)
-        let metadata = CatalogCacheMetadata(timestamp: justUnder, hash: "abc123")
-        XCTAssertFalse(metadata.isStale)
+    func testIsStale_DeepInsideTTL_RemainsFresh() {
+        // Sanity check: a 5-hour-old cache must not be stale, ruling out
+        // an off-by-an-hour-unit bug (e.g. seconds vs minutes mix-up).
+        let fiveHoursAgo = CatalogCacheMetadata(
+            timestamp: Date().addingTimeInterval(-18000),
+            hash: "abc"
+        )
+        XCTAssertFalse(fiveHoursAgo.isStale)
+        XCTAssertFalse(fiveHoursAgo.isExpired)
     }
 
-    func testIsStale_WithCacheOver6Hours_ReturnsTrue() {
-        let sevenHoursAgo = Date().addingTimeInterval(-25200)
-        let metadata = CatalogCacheMetadata(timestamp: sevenHoursAgo, hash: "abc123")
-        XCTAssertTrue(metadata.isStale)
-    }
+    // MARK: - staleTTL(serverMaxAge:) — half-of-server clamped to [5min, 12hr]
 
-    func testIsStale_WithCacheJustOver6Hours_ReturnsTrue() {
-        let justOver = Date().addingTimeInterval(-21601)
-        let metadata = CatalogCacheMetadata(timestamp: justOver, hash: "abc123")
-        XCTAssertTrue(metadata.isStale)
-    }
-
-    // MARK: - Dynamic TTL via serverMaxAge
-
-    func testStaleTTL_UsesHalfOfServerMaxAge() {
+    func testStaleTTL_HalvesServerMaxAgeInMidRange() {
+        // 12-hour server max-age → 6-hour stale window (default expectation)
         XCTAssertEqual(CatalogCacheMetadata.staleTTL(serverMaxAge: 43200), 21600)
+        // 4-hour server max-age → 2-hour stale window
+        XCTAssertEqual(CatalogCacheMetadata.staleTTL(serverMaxAge: 14400), 7200)
+        // 1-hour server max-age → 30-minute stale window
+        XCTAssertEqual(CatalogCacheMetadata.staleTTL(serverMaxAge: 3600), 1800)
     }
 
-    func testStaleTTL_ClampsToMinimum5Minutes() {
+    func testStaleTTL_ClampsBelowFiveMinutesUpToFloor() {
+        // Half of 60s would be 30s; floor pushes it to 5min (300s).
         XCTAssertEqual(CatalogCacheMetadata.staleTTL(serverMaxAge: 60), 300)
+        // Half of 0 hits the nil-or-nonpositive guard and uses default.
+        XCTAssertEqual(CatalogCacheMetadata.staleTTL(serverMaxAge: 0), 21600)
+        // Half of 599s = 299.5s, clamped up to 300s.
+        XCTAssertEqual(CatalogCacheMetadata.staleTTL(serverMaxAge: 599), 300)
     }
 
-    func testStaleTTL_ClampsToMaximum12Hours() {
+    func testStaleTTL_ClampsAboveTwelveHoursDownToCeiling() {
+        // Half of 48h = 24h; ceiling caps at 12h (43200s).
         XCTAssertEqual(CatalogCacheMetadata.staleTTL(serverMaxAge: 172800), 43200)
+        // Half of 24h = 12h, exactly at ceiling.
+        XCTAssertEqual(CatalogCacheMetadata.staleTTL(serverMaxAge: 86400), 43200)
+        // Just over the ceiling input — still clamped.
+        XCTAssertEqual(CatalogCacheMetadata.staleTTL(serverMaxAge: 86401), 43200)
     }
 
-    func testStaleTTL_NilServerMaxAge_UsesDefault() {
+    func testStaleTTL_NilOrNegativeServerMaxAge_UsesDefault() {
         XCTAssertEqual(CatalogCacheMetadata.staleTTL(serverMaxAge: nil), 21600)
+        XCTAssertEqual(CatalogCacheMetadata.staleTTL(serverMaxAge: -100), 21600)
     }
 
-    func testIsStale_WithServerMaxAge_UsesCustomTTL() {
-        let sixMinutesAgo = Date().addingTimeInterval(-360)
-        let metadata = CatalogCacheMetadata(timestamp: sixMinutesAgo, hash: "abc123")
-        XCTAssertTrue(metadata.isStale(serverMaxAge: 600), "6min > 5min custom TTL")
-        XCTAssertFalse(metadata.isStale(serverMaxAge: 43200), "6min < 6hr default TTL")
+    func testIsStale_WithServerMaxAge_RespectsOverride() {
+        let sixMinutesAgo = CatalogCacheMetadata(
+            timestamp: Date().addingTimeInterval(-360),
+            hash: "abc"
+        )
+        // Custom server max-age 600s → 5-min TTL → 6-min-old IS stale
+        XCTAssertTrue(sixMinutesAgo.isStale(serverMaxAge: 600))
+        // Default 6-hour TTL → 6-min-old is NOT stale
+        XCTAssertFalse(sixMinutesAgo.isStale(serverMaxAge: 43200))
+        // Sanity: convenience property uses default, must agree
+        XCTAssertFalse(sixMinutesAgo.isStale)
     }
 
-    // MARK: - isExpired Tests (always 24 hours)
+    // MARK: - isExpired (always 24 hours)
 
-    func testIsExpired_WithFreshCache_ReturnsFalse() {
-        let metadata = CatalogCacheMetadata(timestamp: Date(), hash: "abc123")
-        XCTAssertFalse(metadata.isExpired)
+    func testIsExpired_TransitionsAtTwentyFourHourBoundary() {
+        let justUnder = CatalogCacheMetadata(
+            timestamp: Date().addingTimeInterval(-86399),
+            hash: "abc"
+        )
+        let justOver = CatalogCacheMetadata(
+            timestamp: Date().addingTimeInterval(-86401),
+            hash: "abc"
+        )
+        XCTAssertFalse(justUnder.isExpired, "23h59m59s old must not be expired")
+        XCTAssertTrue(justOver.isExpired, "24h00m01s old must be expired")
+        // Both sit comfortably past the 6h stale boundary
+        XCTAssertTrue(justUnder.isStale)
+        XCTAssertTrue(justOver.isStale)
     }
 
-    func testIsExpired_WithCacheUnder24Hours_ReturnsFalse() {
-        let twentyThreeHoursAgo = Date().addingTimeInterval(-82800)
-        let metadata = CatalogCacheMetadata(timestamp: twentyThreeHoursAgo, hash: "abc123")
-        XCTAssertFalse(metadata.isExpired)
-        XCTAssertTrue(metadata.isStale, "23-hour-old cache is stale but not expired")
+    // MARK: - Lifecycle invariants
+
+    func testCacheLifecycle_FreshThenStaleThenExpired() {
+        // Three checkpoints walking the same cache forward in time.
+        let fresh = CatalogCacheMetadata(timestamp: Date(), hash: "h")
+        let stale = CatalogCacheMetadata(
+            timestamp: Date().addingTimeInterval(-25200), // 7h
+            hash: "h"
+        )
+        let expired = CatalogCacheMetadata(
+            timestamp: Date().addingTimeInterval(-90000), // 25h
+            hash: "h"
+        )
+        XCTAssertFalse(fresh.isStale);   XCTAssertFalse(fresh.isExpired)
+        XCTAssertTrue(stale.isStale);    XCTAssertFalse(stale.isExpired)
+        XCTAssertTrue(expired.isStale);  XCTAssertTrue(expired.isExpired)
     }
 
-    func testIsExpired_WithCacheOver24Hours_ReturnsTrue() {
-        let twentyFiveHoursAgo = Date().addingTimeInterval(-90000)
-        let metadata = CatalogCacheMetadata(timestamp: twentyFiveHoursAgo, hash: "abc123")
-        XCTAssertTrue(metadata.isExpired)
-        XCTAssertTrue(metadata.isStale, "Expired cache is always stale")
-    }
-
-    func testIsExpired_WithCacheJustOver24Hours_ReturnsTrue() {
-        let justOver = Date().addingTimeInterval(-86401)
-        let metadata = CatalogCacheMetadata(timestamp: justOver, hash: "abc123")
-        XCTAssertTrue(metadata.isExpired)
-    }
-
-    // MARK: - Combined State
-
-    func testStaleAndExpired_FreshCache_NeitherStaleNorExpired() {
-        let metadata = CatalogCacheMetadata(timestamp: Date(), hash: "abc123")
-        XCTAssertFalse(metadata.isStale)
-        XCTAssertFalse(metadata.isExpired)
-    }
-
-    func testStaleAndExpired_StaleButNotExpired() {
-        let sevenHoursAgo = Date().addingTimeInterval(-25200)
-        let metadata = CatalogCacheMetadata(timestamp: sevenHoursAgo, hash: "abc123")
-        XCTAssertTrue(metadata.isStale)
-        XCTAssertFalse(metadata.isExpired)
-    }
-
-    func testStaleAndExpired_ExpiredCacheIsAlsoStale() {
-        let twentyFiveHoursAgo = Date().addingTimeInterval(-90000)
-        let metadata = CatalogCacheMetadata(timestamp: twentyFiveHoursAgo, hash: "abc123")
-        XCTAssertTrue(metadata.isStale)
-        XCTAssertTrue(metadata.isExpired)
+    func testInvariant_ExpiredImpliesStale() {
+        // Across a span of ages past 24h, isExpired must always imply isStale.
+        // (Stale TTL ≤ 12h, expiry = 24h, so this is structural — but a
+        // mutant flipping the comparison operator would break it.)
+        for hoursOld in [25, 48, 168, 720] {
+            let metadata = CatalogCacheMetadata(
+                timestamp: Date().addingTimeInterval(-Double(hoursOld) * 3600),
+                hash: "h"
+            )
+            XCTAssertTrue(metadata.isExpired, "\(hoursOld)h old must be expired")
+            XCTAssertTrue(metadata.isStale, "\(hoursOld)h old must be stale")
+        }
     }
 
     // MARK: - Encoding/Decoding
 
     func testEncodeDecode_PreservesAllProperties() throws {
-        let original = CatalogCacheMetadata(timestamp: Date(), hash: "test-hash-12345")
+        let original = CatalogCacheMetadata(
+            timestamp: Date(),
+            hash: "test-hash-12345"
+        )
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(CatalogCacheMetadata.self, from: data)
-        XCTAssertEqual(decoded.timestamp.timeIntervalSince1970, original.timestamp.timeIntervalSince1970, accuracy: 1)
+        XCTAssertEqual(
+            decoded.timestamp.timeIntervalSince1970,
+            original.timestamp.timeIntervalSince1970,
+            accuracy: 1
+        )
         XCTAssertEqual(decoded.hash, original.hash)
+        // Round-tripped metadata must agree on freshness with the original.
+        XCTAssertEqual(decoded.isStale, original.isStale)
+        XCTAssertEqual(decoded.isExpired, original.isExpired)
     }
 
     // MARK: - Edge Cases
 
-    func testIsStale_WithFutureTimestamp_ReturnsFalse() {
-        let futureDate = Date().addingTimeInterval(3600)
-        let metadata = CatalogCacheMetadata(timestamp: futureDate, hash: "future")
-        XCTAssertFalse(metadata.isStale)
-        XCTAssertFalse(metadata.isExpired)
+    func testIsStale_FutureTimestamp_TreatsAsFresh() {
+        // Clock skew can produce a timestamp in the future; the type must
+        // not crash or report stale (negative timeIntervalSince).
+        let oneHourAhead = CatalogCacheMetadata(
+            timestamp: Date().addingTimeInterval(3600),
+            hash: "future"
+        )
+        XCTAssertFalse(oneHourAhead.isStale)
+        XCTAssertFalse(oneHourAhead.isExpired)
+        // Even with a tiny serverMaxAge override, future timestamp stays fresh.
+        XCTAssertFalse(oneHourAhead.isStale(serverMaxAge: 60))
     }
 
-    func testIsExpired_WithVeryOldTimestamp() {
-        let veryOldDate = Date(timeIntervalSince1970: 0)
-        let metadata = CatalogCacheMetadata(timestamp: veryOldDate, hash: "old")
-        XCTAssertTrue(metadata.isStale)
-        XCTAssertTrue(metadata.isExpired)
+    func testIsExpired_EpochTimestamp_IsAlwaysStaleAndExpired() {
+        let epoch = CatalogCacheMetadata(
+            timestamp: Date(timeIntervalSince1970: 0),
+            hash: "epoch"
+        )
+        XCTAssertTrue(epoch.isStale)
+        XCTAssertTrue(epoch.isExpired)
     }
 }

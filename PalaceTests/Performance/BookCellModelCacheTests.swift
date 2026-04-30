@@ -54,14 +54,22 @@ final class BookCellModelCacheTests: XCTestCase {
         XCTAssertEqual(model.book.title, "Test Book")
     }
 
-    func testModelReuse() throws {
+    func testModelReuse_returnsSameInstanceAndDoesNotGrowCacheCount() throws {
         let book = makeTestBook(identifier: "book1", title: "Test Book")
 
         let model1 = sut.model(for: book)
+        let countAfterFirst = sut.count
         let model2 = sut.model(for: book)
+        let countAfterSecond = sut.count
 
-        // Should be the same instance
+        // Identity — second lookup must reuse the cached instance.
         XCTAssertTrue(model1 === model2, "Cache should return same model instance")
+
+        // Count must NOT grow on the second lookup — guards a mutant that
+        // produces same-identity-but-double-stored entries (would silently
+        // bloat memory under heavy scrolling).
+        XCTAssertEqual(countAfterFirst, 1, "First lookup creates exactly one entry")
+        XCTAssertEqual(countAfterSecond, 1, "Re-lookup must NOT add a second entry")
     }
 
     func testDifferentBooksGetDifferentModels() throws {
@@ -346,39 +354,37 @@ final class BookCellModelCacheTests: XCTestCase {
         XCTAssertLessThanOrEqual(sut.count, 20)
     }
 
-    func testInvalidateNonExistentKey_DoesNotCrash() throws {
-        // Invalidating a key that doesn't exist should not crash
+    /// Empty-cache safety net: every public mutator must be a no-op (or
+    /// safe operation) when the cache is empty — never crash, never
+    /// invent entries. Lock all five entry points in one body. After every
+    /// call the count must remain 0. A mutant that adds a placeholder
+    /// entry on any of these paths fails on the count check; a mutant
+    /// that crashes (e.g. force-unwraps a missing key) trips XCTest's
+    /// signal handling.
+    func testEmptyCache_survivesAllPublicMutatorsWithoutCrashOrSpuriousEntries() throws {
+        XCTAssertEqual(sut.count, 0, "Pre-condition: cache starts empty")
+
         sut.invalidate(for: "non-existent-key")
+        XCTAssertEqual(sut.count, 0, "invalidate(for:) on missing key must not insert")
 
-        XCTAssertEqual(sut.count, 0)
-    }
+        sut.invalidate(for: ["a", "b", "c"])
+        XCTAssertEqual(sut.count, 0, "invalidate(for: [Set]) on missing keys must not insert")
 
-    func testClearEmptyCache_DoesNotCrash() throws {
-        // Clearing an empty cache should not crash
         sut.clear()
+        XCTAssertEqual(sut.count, 0, "clear() on empty cache must remain at 0")
 
-        XCTAssertEqual(sut.count, 0)
-    }
-
-    func testMemoryWarningOnEmptyCache_DoesNotCrash() throws {
         sut.handleMemoryWarning()
+        XCTAssertEqual(sut.count, 0, "memory warning on empty cache must remain at 0")
 
-        XCTAssertEqual(sut.count, 0)
-    }
-
-    func testPreloadEmptyArray_DoesNotCrash() throws {
         sut.preload(books: [])
+        XCTAssertEqual(sut.count, 0, "preload([]) must not insert anything")
 
-        XCTAssertEqual(sut.count, 0)
-    }
-
-    func testPrefetchWithEmptyRange_DoesNotCrash() throws {
+        // prefetch with empty visible range across a non-empty array — buffer 0
+        // means no preload window, so nothing gets cached.
         let books = [makeTestBook(identifier: "book1", title: "Book")]
-
         sut.prefetch(books: books, visibleRange: 0..<0, buffer: 0)
-
-        // Should not crash
-        XCTAssertTrue(true)
+        XCTAssertEqual(sut.count, 0,
+                       "prefetch with empty visible range + zero buffer must NOT insert any entries")
     }
 
     // MARK: - Configuration Tests

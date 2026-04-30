@@ -221,10 +221,22 @@ final class BorrowReducerTests: XCTestCase {
                       "downloadStartConfirmed must surface the Cancel button before the network task even runs")
     }
 
-    func testReturnStartConfirmed_insertsReturningSpinner() {
-        var state = makeState(bookState: .downloadSuccessful)
+    /// `returnStartConfirmed` inserts only the `.returning` spinner — must
+    /// not flip `bookState` (the registry hasn't confirmed yet) and must
+    /// not insert any other spinner. Catches a mutant that bumps
+    /// bookState prematurely OR adds extra processing flags.
+    func testReturnStartConfirmed_insertsReturningSpinnerOnlyAndPreservesBookState() {
+        var state = makeState(
+            bookState: .downloadSuccessful,
+            processing: [.download]
+        )
         _ = BorrowReducer.reduce(&state, .returnStartConfirmed)
-        XCTAssertTrue(state.processingButtons.contains(.returning))
+        XCTAssertTrue(state.processingButtons.contains(.returning),
+                      "Returning spinner must be inserted")
+        XCTAssertEqual(state.processingButtons, [.download, .returning],
+                       "No other spinner is added — only .returning, alongside any pre-existing flags")
+        XCTAssertEqual(state.bookState, .downloadSuccessful,
+                       "Book state must NOT change yet — registry confirmation drives the transition")
     }
 
     func testCancelTapped_resetsDownloadProgressAndIsIdempotent() {
@@ -245,13 +257,28 @@ final class BorrowReducerTests: XCTestCase {
                        "manageHoldTapped must keep us in .holding so the manage-hold UI renders")
     }
 
-    func testSignInCancelled_clearsAllDownloadAndBorrowSpinners() {
+    /// `signInCancelled` mirrors the legacy `ensureAuthAndExecute`
+    /// cancellation block: it must release the four acquire-related
+    /// spinners (`.download`, `.get`, `.retry`, `.reserve`) but leave
+    /// unrelated flags like `.returning` alone. Lock both branches plus
+    /// the empty-state idempotence so a mutant that always-clears or
+    /// over-clears fails on a distinct row.
+    func testSignInCancelled_releasesAcquireSpinnersAndPreservesUnrelatedFlags() {
         var state = makeState(processing: [.download, .get, .retry, .reserve, .returning])
         _ = BorrowReducer.reduce(&state, .signInCancelled)
-        // Same {.download, .get, .retry, .reserve} purge as the legacy
-        // `ensureAuthAndExecute` cancellation block.
         XCTAssertEqual(state.processingButtons, [.returning],
-                       "Sign-in cancelled must release the four acquire-related spinners but leave .returning alone")
+                       "Sign-in cancelled must release {download, get, retry, reserve} but leave .returning")
+
+        // Idempotence: re-running on already-cleared state is a no-op.
+        _ = BorrowReducer.reduce(&state, .signInCancelled)
+        XCTAssertEqual(state.processingButtons, [.returning],
+                       "Re-running signInCancelled on cleared state must NOT remove .returning")
+
+        // Empty-state safety: must not crash and must remain empty.
+        var emptyState = makeState()
+        _ = BorrowReducer.reduce(&emptyState, .signInCancelled)
+        XCTAssertEqual(emptyState.processingButtons, [],
+                       "signInCancelled on empty processingButtons must remain empty — no phantom inserts")
     }
 
     // MARK: - Processing button bookkeeping
@@ -266,10 +293,25 @@ final class BorrowReducerTests: XCTestCase {
         XCTAssertEqual(state.processingButtons, [.download])
     }
 
-    func testProcessingButtonRemoved_removesOnlyThatButton() {
+    /// `processingButtonRemoved` removes only the named button — never
+    /// touches the other flags AND must be safe when the named flag is
+    /// already absent. Lock both shapes so a mutant that clears the whole
+    /// set OR fails to remove the target fails on a distinct assertion.
+    func testProcessingButtonRemoved_removesOnlyThatButton_andIsIdempotent() {
         var state = makeState(processing: [.download, .retry])
+
         _ = BorrowReducer.reduce(&state, .processingButtonRemoved(.retry))
         XCTAssertEqual(state.processingButtons, [.download],
                        ".retry must be the only flag cleared — others remain untouched")
+
+        // Removing an already-absent flag must be a no-op.
+        _ = BorrowReducer.reduce(&state, .processingButtonRemoved(.retry))
+        XCTAssertEqual(state.processingButtons, [.download],
+                       "Removing already-absent .retry must NOT clear unrelated flags")
+
+        // Removing a different flag clears it independently.
+        _ = BorrowReducer.reduce(&state, .processingButtonRemoved(.download))
+        XCTAssertEqual(state.processingButtons, [],
+                       "Removing the only remaining flag must yield an empty set")
     }
 }

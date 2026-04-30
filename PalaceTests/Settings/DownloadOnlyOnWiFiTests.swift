@@ -38,21 +38,27 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
 
     // MARK: - Setting Persistence
 
-    func testSetting_canBeToggledOn() {
+    /// Setting persists to UserDefaults synchronously through the
+    /// `TPPSettings` getter/setter bridge. Lock the full toggle cycle
+    /// (off→on→off) plus a fresh-instance read after each write to catch
+    /// a mutant that caches the value in memory but drops the
+    /// UserDefaults write (which would silently revert on app relaunch).
+    func testSetting_persistsToUserDefaultsAcrossToggleCycle() {
+        // Toggle on: in-memory + UserDefaults must agree.
         settings.downloadOnlyOnWiFi = true
-        XCTAssertTrue(settings.downloadOnlyOnWiFi)
-        // Setting must persist to UserDefaults immediately
         XCTAssertTrue(UserDefaults.standard.bool(forKey: settingsKey),
-                      "downloadOnlyOnWiFi=true must be reflected in UserDefaults")
-    }
+                      "Setter must write through to UserDefaults synchronously")
+        // A fresh TPPSettings instance must observe the same value —
+        // this is the cross-relaunch invariant the setting depends on.
+        XCTAssertTrue(TPPSettings().downloadOnlyOnWiFi,
+                      "A new TPPSettings must observe the persisted value — guards against an in-memory-only mutant")
 
-    func testSetting_canBeToggledOff() {
-        settings.downloadOnlyOnWiFi = true
+        // Toggle off: same round-trip.
         settings.downloadOnlyOnWiFi = false
-        XCTAssertFalse(settings.downloadOnlyOnWiFi)
-        // Must also be false in UserDefaults
         XCTAssertFalse(UserDefaults.standard.bool(forKey: settingsKey),
-                       "downloadOnlyOnWiFi=false must be reflected in UserDefaults")
+                       "Setting to false must write through to UserDefaults")
+        XCTAssertFalse(TPPSettings().downloadOnlyOnWiFi,
+                       "A new TPPSettings must read the now-false value")
     }
 
     func testSetting_persistsAcrossReads() {
