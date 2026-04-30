@@ -59,6 +59,7 @@ import PalaceCatalog
     #if FEATURE_OVERDRIVE
     private let overdriveDownloadHandler: OverdriveDownloadHandler
     #endif
+    private let credentialPromptCoordinator: CredentialPromptCoordinator
     /// Shared with `BorrowErrorPresenter` so the borrow-error path and
     /// the start-download path can't both fire concurrent sign-in modals.
     private let credentialRequestState = CredentialRequestState()
@@ -353,6 +354,30 @@ import PalaceCatalog
             userAccountProvider: resolveAccountForBorrow
         )
         #endif
+        // CredentialPromptCoordinator presents sign-in modals during
+        // start-download when the user has no stored credentials.
+        // Closures over SignInModalPresenter + AdobeCertificate so
+        // tests can substitute fakes without UIKit/DRM at hand.
+        self.credentialPromptCoordinator = CredentialPromptCoordinator(
+            stateManager: stateManager,
+            userAccountProvider: resolveAccountForBorrow,
+            credentialRequestState: self.credentialRequestState,
+            presentSignInModal: { completion in
+                SignInModalPresenter.presentSignInModalForCurrentAccount(completion: completion)
+            },
+            isAdobeDRMExpired: {
+                #if FEATURE_DRM_CONNECTOR
+                return AdobeCertificate.defaultCertificate?.hasExpired ?? false
+                #else
+                return false
+                #endif
+            },
+            presentAdobeExpiredAlert: {
+                #if FEATURE_DRM_CONNECTOR
+                TPPAlertUtils.presentFromViewControllerOrNil(alertController: TPPAlertUtils.expiredAdobeDRMAlert(), viewController: nil, animated: true, completion: nil)
+                #endif
+            }
+        )
         // DownloadQueueOrchestrator shares the same DownloadStateManager
         // (so the active-count + max-concurrent-downloads + dequeue all
         // resolve through one state owner) and the same TPPBookRegistry
@@ -414,6 +439,7 @@ import PalaceCatalog
         #if FEATURE_OVERDRIVE
         self.overdriveDownloadHandler.delegate = self
         #endif
+        self.credentialPromptCoordinator.delegate = self
         self.queueOrchestrator.delegate = self
         #if LCP
         self.lcpFulfillmentHandler.delegate = self
@@ -653,46 +679,7 @@ import PalaceCatalog
     }
 
     private func requestCredentialsAndStartDownload(for book: TPPBook) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-
-            guard !self.credentialRequestState.isRequestingCredentials else {
-                NSLog("Already requesting credentials for authentication, skipping duplicate request for: \(book.title)")
-                return
-            }
-
-            self.credentialRequestState.isRequestingCredentials = true
-
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                self?.credentialRequestState.isRequestingCredentials = false
-            }
-
-            #if FEATURE_DRM_CONNECTOR
-            if AdobeCertificate.defaultCertificate?.hasExpired ?? false {
-                self.credentialRequestState.isRequestingCredentials = false
-                TPPAlertUtils.presentFromViewControllerOrNil(alertController: TPPAlertUtils.expiredAdobeDRMAlert(), viewController: nil, animated: true, completion: nil)
-                return
-            }
-            #endif
-
-            SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
-                guard let self = self else { return }
-
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.credentialRequestState.isRequestingCredentials = false
-
-                    if self.userAccount.hasCredentials() == true {
-                        self.startDownload(for: book)
-                    } else {
-                        Log.info(#file, "Sign-in cancelled or failed for '\(book.title)' - cleaning up download state")
-                        // Clean up download coordinator since we registered a start but won't proceed
-                        await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
-                    }
-                }
-            }
-        }
+        credentialPromptCoordinator.requestCredentialsAndStartDownload(for: book)
     }
 
     var isWifiOnlyEnforced: Bool {
@@ -1649,6 +1636,12 @@ extension MyBooksDownloadCenter: BookSignInRedirectHandlerDelegate {
 #if FEATURE_OVERDRIVE
 extension MyBooksDownloadCenter: OverdriveDownloadHandlerDelegate {}
 #endif
+
+// MARK: - CredentialPromptCoordinatorDelegate
+//
+// `startDownload(for:withRequest:)` already exists on MBDC. Empty conformance.
+
+extension MyBooksDownloadCenter: CredentialPromptCoordinatorDelegate {}
 
 // MARK: - BookReturnServiceDelegate
 //
