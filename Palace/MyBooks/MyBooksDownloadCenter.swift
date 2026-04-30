@@ -90,6 +90,14 @@ import PalaceCatalog
     /// non-HTTPS downgrades. Stateless — counters live in
     /// stateManager.downloadCoordinator.
     private let redirectPolicy: RedirectPolicy
+    /// Owns the start-download dispatch flow: the unregistered-state
+    /// seed, the credential-bound dispatch (borrow / Overdrive /
+    /// regular), and the inner regular-download routing (re-borrow,
+    /// auto-borrow, Wi-Fi guard, request resolution, SAML branch,
+    /// addDownloadTask handoff). MBDC's startDownloadAsync calls into
+    /// this dispatcher after the active-cap / throttling / credential-
+    /// prompt branches have settled.
+    private let startDispatcher: DownloadStartDispatcher
     /// Shared with `BorrowErrorPresenter` so the borrow-error path and
     /// the start-download path can't both fire concurrent sign-in modals.
     private let credentialRequestState = CredentialRequestState()
@@ -210,6 +218,7 @@ import PalaceCatalog
         taskLifecycleService: DownloadTaskLifecycleService? = nil,
         cancellationHandler: DownloadCancellationHandler? = nil,
         redirectPolicy: RedirectPolicy? = nil,
+        startDispatcher: DownloadStartDispatcher? = nil,
         errorActivityTracker: ErrorActivityTracker = .shared,
         userRetryTracker: UserRetryTracker = .shared,
         reachability: Reachability = AppContainer.production().reachability,
@@ -495,6 +504,34 @@ import PalaceCatalog
             bookRegistry: bookRegistry,
             stateManager: stateManager
         )
+        // DownloadStartDispatcher takes the same userAccount provider /
+        // settings / reachability / memory monitor MBDC owns so the
+        // Wi-Fi-only check + bearer-auth resolution + auto-borrow flow
+        // sees the same view of the world the rest of MBDC does.
+        // Overdrive gating is per-target — the dispatcher accepts the
+        // overdrive handler when FEATURE_OVERDRIVE is on so its
+        // distributor=Overdrive branch can dispatch without a back-
+        // delegate hop into MBDC.
+        let resolveAccountForDispatcher2: () -> TPPUserAccount = {
+            userAccount ?? accountsManager.currentUserAccount
+        }
+        let dispatcherReachability = reachability
+        #if FEATURE_OVERDRIVE
+        self.startDispatcher = startDispatcher ?? DownloadStartDispatcher(
+            userAccountProvider: resolveAccountForDispatcher2,
+            settings: settings,
+            isOnWiFi: { dispatcherReachability.isOnWiFi },
+            memoryPressureMonitor: memoryPressureMonitor,
+            overdriveHandler: self.overdriveDownloadHandler
+        )
+        #else
+        self.startDispatcher = startDispatcher ?? DownloadStartDispatcher(
+            userAccountProvider: resolveAccountForDispatcher2,
+            settings: settings,
+            isOnWiFi: { dispatcherReachability.isOnWiFi },
+            memoryPressureMonitor: memoryPressureMonitor
+        )
+        #endif
         #if LCP
         // Build the LCP handler from the same shared services MBDC already
         // wired (registry / state / reporter / presenter / file manager /
@@ -548,6 +585,7 @@ import PalaceCatalog
         #endif
         self.credentialPromptCoordinator.delegate = self
         self.rightsDispatcher.delegate = self
+        self.startDispatcher.delegate = self
         self.taskLifecycleService.delegate = self
         self.cancellationHandler.delegate = self
         self.queueOrchestrator.delegate = self
@@ -739,7 +777,7 @@ import PalaceCatalog
 
         switch state {
         case .unregistered:
-            state = processUnregisteredState(
+            state = startDispatcher.processUnregisteredState(
                 for: book,
                 location: location,
                 loginRequired: loginRequired
@@ -776,17 +814,12 @@ import PalaceCatalog
             requestCredentialsAndStartDownload(for: book)
         } else {
             Log.info(#file, "Credentials available, processing download for '\(book.title)'")
-            processDownloadWithCredentials(for: book, withState: state, andRequest: initedRequest)
+            startDispatcher.processDownloadWithCredentials(for: book, withState: state, andRequest: initedRequest)
         }
     }
 
-    private func processUnregisteredState(for book: TPPBook, location: TPPBookLocation?, loginRequired: Bool?) -> TPPBookState {
-        if book.defaultAcquisitionIfBorrow == nil && (book.defaultAcquisitionIfOpenAccess != nil || !(loginRequired ?? false)) {
-            bookRegistry.addBook(book, location: location, state: .downloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
-            return .downloadNeeded
-        }
-        return .unregistered
-    }
+    // processUnregisteredState moved to DownloadStartDispatcher
+    // (called via startDispatcher.processUnregisteredState above).
 
     private func requestCredentialsAndStartDownload(for book: TPPBook) {
         credentialPromptCoordinator.requestCredentialsAndStartDownload(for: book)
@@ -810,27 +843,7 @@ import PalaceCatalog
         Task { await self.downloadCoordinator.registerCompletion(identifier: book.identifier) }
     }
 
-    private func processDownloadWithCredentials(
-        for book: TPPBook,
-        withState state: TPPBookState,
-        andRequest initedRequest: URLRequest?
-    ) {
-        if state == .unregistered || state == .holding {
-            startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
-        } else {
-            #if FEATURE_OVERDRIVE
-            if book.distributor == OverdriveDistributorKey && book.defaultBookContentType == .audiobook {
-                if Self.shouldDeferOverdriveFulfillment(for: book, state: state) {
-                    deferOverdriveFulfillment(for: book)
-                    return
-                }
-                processOverdriveDownload(for: book, withState: state)
-                return
-            }
-            #endif
-            processRegularDownload(for: book, withState: state, andRequest: initedRequest)
-        }
-    }
+    // processDownloadWithCredentials moved to DownloadStartDispatcher.
 
     /// Returns `true` when a book would be routed to the Overdrive fulfillment
     /// path but its default acquisition is still a borrow relation — meaning
@@ -847,97 +860,13 @@ import PalaceCatalog
         return book.defaultAcquisitionIfBorrow != nil
     }
 
-    #if FEATURE_OVERDRIVE
-    private func deferOverdriveFulfillment(for book: TPPBook) {
-        overdriveDownloadHandler.deferOverdriveFulfillment(for: book)
-    }
-    #endif
+    // deferOverdriveFulfillment / processOverdriveDownload / handleOverdriveResponse
+    // live on OverdriveDownloadHandler. The DownloadStartDispatcher's
+    // processDownloadWithCredentials calls them directly when
+    // FEATURE_OVERDRIVE is on and the book's distributor matches.
+    // processRegularDownload moved to DownloadStartDispatcher.
 
-    #if FEATURE_OVERDRIVE
-    private func processOverdriveDownload(for book: TPPBook, withState state: TPPBookState) {
-        overdriveDownloadHandler.processOverdriveDownload(for: book, withState: state)
-    }
-    #endif
-
-    // handleOverdriveResponse moved to OverdriveDownloadHandler
-    // (private there).
-
-    private func processRegularDownload(for book: TPPBook, withState state: TPPBookState, andRequest initedRequest: URLRequest?) {
-        // The book parameter might be stale (from before borrowing completed)
-        let currentBook = bookRegistry.book(forIdentifier: book.identifier) ?? book
-
-        if currentBook.isExpired && currentBook.defaultAcquisitionIfBorrow != nil {
-            Log.warn(#file, "Book \(book.identifier) is expired. Attempting to re-borrow before download.")
-            bookRegistry.setState(.unregistered, for: book.identifier)
-            startBorrow(for: currentBook, attemptDownload: true, borrowCompletion: nil)
-            return
-        }
-
-        // Check if book needs to be borrowed before download
-        // Using currentBook ensures we have the latest acquisition links
-        if state == .downloadNeeded && currentBook.defaultAcquisitionIfBorrow != nil {
-            Log.info(#file, "Book \(book.identifier) is downloadNeeded with borrow acquisition - auto-borrowing before download")
-            bookRegistry.setState(.unregistered, for: book.identifier)
-            startBorrow(for: currentBook, attemptDownload: true) { [weak self] in
-                guard let self else { return }
-                let newState = self.bookRegistry.state(for: book.identifier)
-                Log.debug(#file, "Auto-borrow completed for \(book.identifier), new state: \(newState)")
-
-                // If still not in a downloadable state, something went wrong
-                if newState != .downloading && newState != .downloadSuccessful && newState != .downloadNeeded {
-                    Log.warn(#file, "Auto-borrow completed but book is not downloadable, state: \(newState)")
-                }
-            }
-            return
-        }
-
-        if isWifiOnlyEnforced {
-            failWithWifiRequired(for: currentBook)
-            return
-        }
-
-        // Use currentBook for download URL to ensure we have the latest fulfillment link
-        let request: URLRequest
-        if let initedRequest = initedRequest {
-            request = initedRequest
-        } else if let url = currentBook.defaultAcquisition?.hrefURL {
-            request = TPPNetworkExecutor.bearerAuthorized(request: URLRequest(url: url, applyingCustomUserAgent: true))
-        } else {
-            logInvalidURLRequest(for: currentBook, withState: state, url: nil, request: nil)
-            return
-        }
-
-        guard request.url != nil else {
-            logInvalidURLRequest(for: currentBook, withState: state, url: currentBook.defaultAcquisition?.hrefURL, request: request)
-            return
-        }
-
-        // Reclaim space only when free disk is genuinely low. The previous
-        // unconditional `enforceContentDiskBudgetIfNeeded(adding: 0)` ran on
-        // every new download against a tight 2.5 GB budget, silently evicting
-        // older books to make room — the root cause of "titles revert to
-        // Download Needed after quits/library changes." The reclaim call
-        // below handles actual low-disk scenarios without that collateral.
-        self.memoryPressureMonitor.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
-
-        if state == .SAMLStarted, let cookies = userAccount.cookies {
-            Log.info(#file, "SAML authentication flow for '\(currentBook.title)'")
-            handleSAMLStartedState(for: currentBook, withRequest: request, cookies: cookies)
-        } else {
-            // Apply saved cookies (if any) and proceed with download
-            // Server will return 401 if cookies are expired, triggering re-auth
-            if userAccount.authToken != nil {
-                Log.debug(#file, "Auth token present for '\(currentBook.title)', proceeding with download")
-            } else if userAccount.cookies != nil {
-                Log.debug(#file, "Using saved SAML cookies for '\(currentBook.title)', proceeding with download")
-            }
-            clearAndSetCookies()
-            // Use currentBook to ensure registry has correct book object
-            addDownloadTask(with: request, book: currentBook)
-        }
-    }
-
-    private func logInvalidURLRequest(for book: TPPBook, withState state: TPPBookState, url: URL?, request: URLRequest?) {
+    func logInvalidURLRequest(for book: TPPBook, withState state: TPPBookState, url: URL?, request: URLRequest?) {
         bookRegistry.setState(.SAMLStarted, for: book.identifier)
         guard let someCookies = self.userAccount.cookies, var mutableRequest = request else { return }
 
@@ -977,7 +906,7 @@ import PalaceCatalog
         }
     }
 
-    private func handleSAMLStartedState(for book: TPPBook, withRequest request: URLRequest, cookies: [HTTPCookie]) {
+    func handleSAMLStartedState(for book: TPPBook, withRequest request: URLRequest, cookies: [HTTPCookie]) {
         signInRedirectHandler.handleSAMLStartedState(for: book, withRequest: request, cookies: cookies)
     }
 
@@ -992,7 +921,7 @@ import PalaceCatalog
         signInRedirectHandler.handleProblem(for: book, problemDocument: problemDocument)
     }
 
-    private func clearAndSetCookies() {
+    func clearAndSetCookies() {
         signInRedirectHandler.clearAndSetCookies()
     }
 
@@ -1488,6 +1417,16 @@ extension MyBooksDownloadCenter: RightsManagementDispatcherDelegate {}
 extension MyBooksDownloadCenter: DownloadTaskLifecycleServiceDelegate {}
 
 extension MyBooksDownloadCenter: DownloadCancellationHandlerDelegate {}
+
+// MARK: - DownloadStartDispatcherDelegate
+//
+// Every required surface already exists on MBDC: `bookRegistry` (Provider
+// getter), `startBorrow`, `addDownloadTask`, `clearAndSetCookies`
+// (delegator to signInRedirectHandler), `handleSAMLStartedState`
+// (delegator to signInRedirectHandler), `failWithWifiRequired`,
+// `logInvalidURLRequest` (kept on MBDC because it presents
+// TPPCookiesWebViewController and is heavily UIKit-coupled).
+extension MyBooksDownloadCenter: DownloadStartDispatcherDelegate {}
 
 // MARK: - TokenRefreshInterceptorDelegate
 //
