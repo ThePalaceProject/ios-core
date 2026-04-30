@@ -28,10 +28,16 @@ permissions:
   pull-requests: write
 
 jobs:
+  # Skipped (not failed) when no [macos, palace-ios] runner is available
+  # OR no replays exist yet. Set ENABLE_CHAOS_QA_RUNNER repo variable to
+  # "true" once the runner is provisioned and at least one curated replay
+  # is in the corpus.
   replay:
     runs-on: [self-hosted, macos, palace-ios]
     timeout-minutes: 30
-    if: ${{ hashFiles('.specterqa/replays/chaos/**.yaml') != '' }}
+    if: |
+      vars.ENABLE_CHAOS_QA_RUNNER == 'true' &&
+      hashFiles('.specterqa/replays/chaos/**.yaml') != ''
     steps:
       - name: Checkout PR
         uses: actions/checkout@v4

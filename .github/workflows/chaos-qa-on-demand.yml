@@ -69,8 +69,14 @@ jobs:
           echo "max_paths=${mp:-30}" >> "$GITHUB_OUTPUT"
           echo "max_minutes=${mm:-15}" >> "$GITHUB_OUTPUT"
 
+  # Skipped (not failed) when no [macos, palace-ios] runner is available.
+  # The runner doesn't exist yet at the time this workflow lands; without
+  # this guard, jobs would queue indefinitely and look like CI failures.
+  # Once the runner is provisioned, set the ENABLE_CHAOS_QA_RUNNER repo
+  # variable to "true".
   chaos:
     needs: guard
+    if: ${{ vars.ENABLE_CHAOS_QA_RUNNER == 'true' }}
     runs-on: [self-hosted, macos, palace-ios]
     timeout-minutes: 45
     env:
