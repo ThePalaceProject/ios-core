@@ -85,6 +85,12 @@ import PalaceCatalog
     /// adobeDRMService.cancelFulfillment so it can drive its own
     /// state machine.
     private let cancellationHandler: DownloadCancellationHandler
+    /// Owns startBorrow + startDownloadAsync + startDownloadIfAvailable.
+    /// MBDC's `startBorrow` / `startDownload` / `startDownloadAsync`
+    /// methods stay as 1-line delegators so the @objc public surface
+    /// and the DownloadStartDispatcherDelegate.startBorrow hop both
+    /// remain intact.
+    private let startCoordinator: DownloadStartCoordinator
     /// Owns the URLSession willPerformHTTPRedirection decision: cap
     /// the redirect chain at the configured max + reject HTTPS →
     /// non-HTTPS downgrades. Stateless — counters live in
@@ -217,6 +223,7 @@ import PalaceCatalog
         rightsDispatcher: RightsManagementDispatcher? = nil,
         taskLifecycleService: DownloadTaskLifecycleService? = nil,
         cancellationHandler: DownloadCancellationHandler? = nil,
+        startCoordinator: DownloadStartCoordinator? = nil,
         redirectPolicy: RedirectPolicy? = nil,
         startDispatcher: DownloadStartDispatcher? = nil,
         errorActivityTracker: ErrorActivityTracker = .shared,
@@ -532,6 +539,33 @@ import PalaceCatalog
             memoryPressureMonitor: memoryPressureMonitor
         )
         #endif
+        // Owns the four borrow/start entry points lifted out of MBDC.
+        // The userAccountProvider closure preserves library-switch
+        // resolution semantics. Constructed AFTER startDispatcher /
+        // queueOrchestrator / credentialPromptCoordinator so the
+        // coordinator can hold those concrete services directly
+        // (smaller delegate surface than routing through MBDC).
+        let resolveAccountForStart: () -> TPPUserAccount = {
+            userAccount ?? accountsManager.currentUserAccount
+        }
+        let coordinatorDispatcher = self.startDispatcher
+        let coordinatorCredentialPrompt = self.credentialPromptCoordinator
+        self.startCoordinator = startCoordinator ?? DownloadStartCoordinator(
+            stateManager: stateManager,
+            bookRegistry: bookRegistry,
+            userAccountProvider: resolveAccountForStart,
+            errorActivityTracker: errorActivityTracker,
+            queueOrchestrator: self.queueOrchestrator,
+            processUnregistered: { book, location, loginRequired in
+                coordinatorDispatcher.processUnregisteredState(for: book, location: location, loginRequired: loginRequired)
+            },
+            processWithCredentials: { book, state, request in
+                coordinatorDispatcher.processDownloadWithCredentials(for: book, withState: state, andRequest: request)
+            },
+            requestCredentials: { book in
+                coordinatorCredentialPrompt.requestCredentialsAndStartDownload(for: book)
+            }
+        )
         #if LCP
         // Build the LCP handler from the same shared services MBDC already
         // wired (registry / state / reporter / presenter / file manager /
@@ -588,6 +622,7 @@ import PalaceCatalog
         self.startDispatcher.delegate = self
         self.taskLifecycleService.delegate = self
         self.cancellationHandler.delegate = self
+        self.startCoordinator.delegate = self
         self.queueOrchestrator.delegate = self
         #if LCP
         self.lcpFulfillmentHandler.delegate = self
@@ -701,47 +736,16 @@ import PalaceCatalog
         downloadAnnouncementService.announceDownloadCompleted(for: book)
     }
 
-    /// Legacy callback-based borrow method - wraps the modern async implementation
+    /// Legacy callback-based borrow entry. Delegated to
+    /// DownloadStartCoordinator; preserved here as a 1-line forwarder
+    /// because external callers (and DownloadStartDispatcherDelegate)
+    /// reach it by name on MBDC.
     func startBorrow(for book: TPPBook, attemptDownload shouldAttemptDownload: Bool, borrowCompletion: (() -> Void)? = nil) {
-        Task {
-            do {
-                _ = try await borrowAsync(book, attemptDownload: shouldAttemptDownload)
-
-                // CRITICAL: If borrow succeeded but resulted in holding state (not downloadable),
-                // release the download slot. Otherwise downloads get stuck in queue.
-                let newState = bookRegistry.state(for: book.identifier)
-                if newState == .holding {
-                    await downloadCoordinator.registerCompletion(identifier: book.identifier)
-                    let remainingCount = await downloadCoordinator.activeCount
-                    Log.info(#file, "📊 Borrow resulted in hold for '\(book.title)', released slot, remaining active: \(remainingCount)")
-                    schedulePendingStartsIfPossible()
-                }
-
-                borrowCompletion?()
-            } catch {
-                Log.error(#file, "Borrow failed: \(error.localizedDescription)")
-                // CRITICAL: Release the download slot when borrow fails
-                // Otherwise the slot is never freed and downloads get stuck in queue
-                await downloadCoordinator.registerCompletion(identifier: book.identifier)
-                let remainingCount = await downloadCoordinator.activeCount
-                Log.info(#file, "📊 Borrow failed for '\(book.title)', released slot, remaining active: \(remainingCount)")
-                schedulePendingStartsIfPossible()
-                borrowCompletion?()
-            }
-        }
+        startCoordinator.startBorrow(for: book, attemptDownload: shouldAttemptDownload, borrowCompletion: borrowCompletion)
     }
 
     private func startDownloadIfAvailable(book: TPPBook) {
-        let downloadAction = { [weak self] in
-            self?.startDownload(for: book)
-        }
-
-        book.defaultAcquisition?.availability.match(unavailable: 
-            nil,
-            limited: { _ in downloadAction() },
-            unlimited: { _ in downloadAction() },
-            reserved: nil,
-            ready: { _ in downloadAction() })
+        startCoordinator.startDownloadIfAvailable(book: book)
     }
 
     private func process(error: [String: Any]?, for book: TPPBook) {
@@ -761,61 +765,7 @@ import PalaceCatalog
     }
 
     func startDownloadAsync(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) async {
-        let existingInfo = await downloadInfoAsync(forBookIdentifier: book.identifier)
-        if existingInfo != nil {
-            Log.debug(#file, "Download already in progress for '\(book.title)', skipping duplicate start")
-            return
-        }
-
-        var state = bookRegistry.state(for: book.identifier)
-        let location = bookRegistry.location(forIdentifier: book.identifier)
-        let loginRequired = (userAccount.authDefinition?.needsAuth ?? false) && !userAccount.hasCredentials()
-
-        Log.info(#file, "📥 Starting download for '\(book.title)' - state: \(state), hasCredentials: \(userAccount.hasCredentials()), loginRequired: \(loginRequired)")
-
-        await self.errorActivityTracker.log("Starting download for '\(book.title)'", category: .download)
-
-        switch state {
-        case .unregistered:
-            state = startDispatcher.processUnregisteredState(
-                for: book,
-                location: location,
-                loginRequired: loginRequired
-            )
-        case .downloading:
-            Log.debug(#file, "Book '\(book.title)' is already downloading (state check), skipping")
-            return
-        case .downloadFailed, .downloadNeeded, .holding, .SAMLStarted:
-            break
-        case .downloadSuccessful, .used, .unsupported, .returning:
-            NSLog("Ignoring nonsensical download request.")
-            return
-        }
-
-        let canStart = await downloadCoordinator.canStartDownload(maxConcurrent: maxConcurrentDownloads)
-        let activeCount = await downloadCoordinator.activeCount
-
-        if !canStart {
-            Log.debug(#file, "Max concurrent downloads reached (\(activeCount)/\(maxConcurrentDownloads)), enqueueing '\(book.title)'")
-            queueOrchestrator.enqueuePending(book)
-            return
-        }
-
-        let throttleDelay = await downloadCoordinator.shouldThrottleStart()
-        if throttleDelay > 0 {
-            Log.info(#file, "⏱️ Throttling download start for '\(book.title)' by \(String(format: "%.1f", throttleDelay))s")
-            try? await Task.sleep(nanoseconds: UInt64(throttleDelay * 1_000_000_000))
-        }
-
-        await downloadCoordinator.registerStart(identifier: book.identifier)
-
-        if loginRequired {
-            Log.info(#file, "Login required for '\(book.title)', requesting credentials")
-            requestCredentialsAndStartDownload(for: book)
-        } else {
-            Log.info(#file, "Credentials available, processing download for '\(book.title)'")
-            startDispatcher.processDownloadWithCredentials(for: book, withState: state, andRequest: initedRequest)
-        }
+        await startCoordinator.startDownloadAsync(for: book, withRequest: initedRequest)
     }
 
     // processUnregisteredState moved to DownloadStartDispatcher
@@ -1417,6 +1367,8 @@ extension MyBooksDownloadCenter: RightsManagementDispatcherDelegate {}
 extension MyBooksDownloadCenter: DownloadTaskLifecycleServiceDelegate {}
 
 extension MyBooksDownloadCenter: DownloadCancellationHandlerDelegate {}
+
+extension MyBooksDownloadCenter: DownloadStartCoordinatorDelegate {}
 
 // MARK: - DownloadStartDispatcherDelegate
 //
