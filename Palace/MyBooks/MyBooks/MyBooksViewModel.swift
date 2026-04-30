@@ -41,6 +41,13 @@ enum Group: Int {
     private let downloadCenter: MyBooksDownloadCenter
     private var allBooks: [TPPBook] = []
 
+    /// Decides whether `loadData()` may show the registry contents. Defaults
+    /// to consulting the injected `accountsManager`: if the current account
+    /// requires auth and has no credentials, the registry is hidden (anti-
+    /// stale-data guard from F-007). Tests can override this closure to
+    /// bypass the guard when seeding a registry with mock books.
+    private let isUserAuthorizedForRegistry: () -> Bool
+
     /// Tracks whether the My Books tab is currently visible. When false,
     /// notification-driven reloads are deferred until the tab reappears,
     /// avoiding unnecessary sort + diff work while the user is on another tab.
@@ -69,7 +76,8 @@ enum Group: Int {
         bookRegistry: TPPBookRegistryProvider,
         accountsManager: AccountsManager,
         settings: TPPSettings,
-        downloadCenter: MyBooksDownloadCenter
+        downloadCenter: MyBooksDownloadCenter,
+        isUserAuthorizedForRegistry: (() -> Bool)? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
@@ -81,6 +89,11 @@ enum Group: Int {
             facets: [.title, .author],
             accountsManager: accountsManager
         )
+        // Default: consult the injected accountsManager. F-007 guard.
+        self.isUserAuthorizedForRegistry = isUserAuthorizedForRegistry ?? { [weak accountsManager] in
+            guard let acc = accountsManager?.currentUserAccount else { return false }
+            return !acc.needsAuth || acc.hasCredentials()
+        }
         super.init()
 
         registerPublishers()
@@ -99,9 +112,9 @@ enum Group: Int {
         isLoading = true
 
         // If the account requires authentication and user is not logged in,
-        // don't show any books from the registry (they may be stale from a previous session)
-        let account = accountsManager.currentUserAccount
-        if account.needsAuth && !account.hasCredentials() {
+        // don't show any books from the registry (they may be stale from a
+        // previous session). F-007 guard. Closure is overridable in tests.
+        if !isUserAuthorizedForRegistry() {
             Log.info(#file, "User not logged in - showing empty My Books")
             self.allBooks = []
             self.books = []
