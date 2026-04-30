@@ -87,10 +87,16 @@ final class NotificationEventTypeContractTests: XCTestCase {
         }
     }
 
-    func testUnknownEventType_ReturnsNil() {
-        let unknown = NotificationService.NotificationEventType(rawValue: "SomeNewType")
-        XCTAssertNil(unknown,
-            "Unknown event types should return nil so fallback classification kicks in")
+    /// Unknown raw values return nil — production classifier falls back
+    /// to APS keyword matching. Pin multiple distinct unknown values
+    /// (including empty string) so a mutant that special-cases one
+    /// unknown into a default enum case fails on a distinct row.
+    func testUnknownEventType_returnsNilForAllUnrecognizedRawValues() {
+        for rawValue in ["SomeNewType", "FutureEvent_v3", "garbage", ""] {
+            XCTAssertNil(
+                NotificationService.NotificationEventType(rawValue: rawValue),
+                "Unknown raw value '\(rawValue)' must return nil — required for APS-keyword fallback")
+        }
     }
 }
 
@@ -132,17 +138,25 @@ final class NotificationPayloadContractTests: XCTestCase {
         }
     }
 
-    func testAllPayloads_HaveIdentifierField() {
-        for (key, payload) in payloads {
-            XCTAssertNotNil(payload["identifier"] as? String,
-                "\(key): must have 'identifier' field (book identifier value)")
-        }
-    }
+    /// `identifier` and `library` are both required, non-empty string
+    /// fields on every CM notification payload. iOS uses `identifier` to
+    /// deduplicate and `library` to route to the right account. Pin both
+    /// fields' presence + non-emptiness in one test so a mutant that
+    /// drops emptiness validation on one of them is caught.
+    func testAllPayloads_haveIdentifierAndLibraryAsNonEmptyStrings() {
+        XCTAssertGreaterThanOrEqual(payloads.count, 4,
+                                    "Fixture must have all 4 payload types — guards against an empty fixture mutant")
 
-    func testAllPayloads_HaveLibraryField() {
         for (key, payload) in payloads {
-            XCTAssertNotNil(payload["library"] as? String,
-                "\(key): must have 'library' field (library short name)")
+            let identifier = payload["identifier"] as? String
+            XCTAssertNotNil(identifier, "\(key): missing 'identifier' field")
+            XCTAssertFalse(identifier?.isEmpty ?? true,
+                           "\(key): 'identifier' must be non-empty — empty would break dedup logic")
+
+            let library = payload["library"] as? String
+            XCTAssertNotNil(library, "\(key): missing 'library' field")
+            XCTAssertFalse(library?.isEmpty ?? true,
+                           "\(key): 'library' must be non-empty — empty would break per-account routing")
         }
     }
 
