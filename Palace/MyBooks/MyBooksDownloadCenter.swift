@@ -52,6 +52,7 @@ import PalaceCatalog
     private let alertPresenter: DownloadAlertPresenter
     private let authRetryHandler: DownloadAuthRetryHandler
     private let throttlingService: DownloadThrottlingService
+    private let queueOrchestrator: DownloadQueueOrchestrator
     #if LCP
     private let lcpFulfillmentHandler: LCPFulfillmentHandler
     #endif
@@ -157,6 +158,7 @@ import PalaceCatalog
         alertPresenter: DownloadAlertPresenter? = nil,
         authRetryHandler: DownloadAuthRetryHandler? = nil,
         throttlingService: DownloadThrottlingService? = nil,
+        queueOrchestrator: DownloadQueueOrchestrator? = nil,
         stateManager: DownloadStateManager = DownloadStateManager(),
         tokenInterceptor: TokenRefreshInterceptor? = nil,
         backgroundDownloadHandler: BackgroundDownloadHandler? = nil,
@@ -288,6 +290,16 @@ import PalaceCatalog
         self.throttlingService = throttlingService ?? DownloadThrottlingService(
             stateManager: stateManager
         )
+        // DownloadQueueOrchestrator shares the same DownloadStateManager
+        // (so the active-count + max-concurrent-downloads + dequeue all
+        // resolve through one state owner) and the same TPPBookRegistry
+        // so the `.downloading` UI state set on enqueue stays coherent
+        // with the rest of the registry. The delegate (this MBDC
+        // instance) is wired after `super.init()` below.
+        self.queueOrchestrator = queueOrchestrator ?? DownloadQueueOrchestrator(
+            bookRegistry: bookRegistry,
+            stateManager: stateManager
+        )
         #if LCP
         // Build the LCP handler from the same shared services MBDC already
         // wired (registry / state / reporter / presenter / file manager /
@@ -334,6 +346,7 @@ import PalaceCatalog
         self.returnService.delegate = self
         self.authRetryHandler.delegate = self
         self.throttlingService.delegate = self
+        self.queueOrchestrator.delegate = self
         #if LCP
         self.lcpFulfillmentHandler.delegate = self
         #endif
@@ -604,7 +617,7 @@ import PalaceCatalog
         }
     }
 
-    private func startDownloadAsync(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) async {
+    func startDownloadAsync(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) async {
         let existingInfo = await downloadInfoAsync(forBookIdentifier: book.identifier)
         if existingInfo != nil {
             Log.debug(#file, "Download already in progress for '\(book.title)', skipping duplicate start")
@@ -641,7 +654,7 @@ import PalaceCatalog
 
         if !canStart {
             Log.debug(#file, "Max concurrent downloads reached (\(activeCount)/\(maxConcurrentDownloads)), enqueueing '\(book.title)'")
-            enqueuePending(book)
+            queueOrchestrator.enqueuePending(book)
             return
         }
 
@@ -1649,44 +1662,19 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
 
 // MARK: - Download Throttling and Disk Budget
 extension MyBooksDownloadCenter {
-    private func enqueuePending(_ book: TPPBook) {
-        // CRITICAL UI FIX: Update book state so button shows "Downloading" feedback
-        // Otherwise button appears unresponsive when hitting queue limit
-        bookRegistry.setState(.downloading, for: book.identifier)
-
-        Task {
-            await downloadCoordinator.enqueuePending(book)
-            let queueSize = await downloadCoordinator.queueCount
-            Log.debug(#file, "📋 Enqueued '\(book.title)' for download, queue size: \(queueSize)")
-
-            // Notify UI to refresh
-            runOnMainAsync {
-                NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: self)
-            }
-        }
-    }
+    // Pending-download queue management lifted into
+    // `DownloadQueueOrchestrator`. The two pump methods stay on MBDC's
+    // surface as 1-line delegators so external callers (the
+    // BackgroundDownloadHandler / DownloadAlertPresenter delegate
+    // protocols + the URLSession completion paths inside MBDC) keep the
+    // exact signatures they relied on.
 
     func schedulePendingStartsIfPossible() {
-        Task {
-            await schedulePendingStartsAsync()
-        }
+        queueOrchestrator.schedulePendingStartsIfPossible()
     }
 
     func schedulePendingStartsAsync() async {
-        let activeCount = await downloadCoordinator.activeCount
-        let capacity = maxConcurrentDownloads - activeCount
-
-        guard capacity > 0 else { return }
-
-        let toStart = await downloadCoordinator.dequeuePending(capacity: capacity)
-        guard !toStart.isEmpty else { return }
-
-        let queueRemaining = await downloadCoordinator.queueCount
-        Log.info(#file, "📋 Starting \(toStart.count) pending downloads (capacity: \(capacity), queue remaining: \(queueRemaining))")
-
-        for book in toStart {
-            await startDownloadAsync(for: book, withRequest: nil)
-        }
+        await queueOrchestrator.schedulePendingStartsAsync()
     }
 
     /// Enforces a soft content disk budget. If `adding` is >0, assumes that many bytes will be added
@@ -1949,6 +1937,15 @@ extension MyBooksDownloadCenter: DownloadAlertPresenterDelegate {}
 // — no synthesis needed.
 
 extension MyBooksDownloadCenter: DownloadThrottlingServiceDelegate {}
+
+// MARK: - DownloadQueueOrchestratorDelegate
+//
+// `startDownloadAsync(for:withRequest:)` is internal (promoted in this
+// commit from private) and matches the protocol's surface. Empty
+// conformance — the orchestrator drives MBDC's existing per-book
+// download workflow when a queued book is dequeued.
+
+extension MyBooksDownloadCenter: DownloadQueueOrchestratorDelegate {}
 
 // MARK: - DownloadAuthRetryHandlerDelegate
 //
