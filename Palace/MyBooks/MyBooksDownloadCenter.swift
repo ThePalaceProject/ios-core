@@ -66,6 +66,12 @@ import PalaceCatalog
     /// canCompleteDownload guard. Returns a typed result MBDC's
     /// per-rights dispatch switch consumes.
     private let completionParser: DownloadCompletionParser
+    /// Owns the per-rights-management dispatch step that follows
+    /// successful parsing: routes Adobe / LCP / bearer-token /
+    /// Overdrive / open-content payloads to the right service and
+    /// returns the (failureRequiringAlert, failureError) update the
+    /// auth-retry / alert tail consumes.
+    private let rightsDispatcher: RightsManagementDispatcher
     /// Shared with `BorrowErrorPresenter` so the borrow-error path and
     /// the start-download path can't both fire concurrent sign-in modals.
     private let credentialRequestState = CredentialRequestState()
@@ -182,6 +188,7 @@ import PalaceCatalog
         tokenInterceptor: TokenRefreshInterceptor? = nil,
         backgroundDownloadHandler: BackgroundDownloadHandler? = nil,
         completionParser: DownloadCompletionParser? = nil,
+        rightsDispatcher: RightsManagementDispatcher? = nil,
         errorActivityTracker: ErrorActivityTracker = .shared,
         userRetryTracker: UserRetryTracker = .shared,
         reachability: Reachability = AppContainer.production().reachability,
@@ -273,6 +280,32 @@ import PalaceCatalog
             routing: self.backgroundDownloadHandler,
             stateManager: stateManager
         )
+        // Per-rights-management dispatcher. Shares stateManager (for
+        // bearer-token re-registration), backgroundDownloadHandler (for
+        // overdrive/none file ops), bookRegistry (for the Adobe failure
+        // path), and a userAccount provider closure that resolves
+        // through the just-resolved accountsManager — same library-
+        // switch semantics as the rest of MBDC. Adobe DRM service is
+        // wired only when FEATURE_DRM_CONNECTOR is on.
+        let resolveAccountForDispatcher: () -> TPPUserAccount = {
+            userAccount ?? accountsManager.currentUserAccount
+        }
+        #if FEATURE_DRM_CONNECTOR
+        self.rightsDispatcher = rightsDispatcher ?? RightsManagementDispatcher(
+            stateManager: stateManager,
+            fileOps: self.backgroundDownloadHandler,
+            bookRegistry: bookRegistry,
+            userAccountProvider: resolveAccountForDispatcher,
+            adobeDRMService: .shared
+        )
+        #else
+        self.rightsDispatcher = rightsDispatcher ?? RightsManagementDispatcher(
+            stateManager: stateManager,
+            fileOps: self.backgroundDownloadHandler,
+            bookRegistry: bookRegistry,
+            userAccountProvider: resolveAccountForDispatcher
+        )
+        #endif
         // Build the DownloadProgressReporter from the same announcer the
         // download center uses, AND share the same DownloadAnnouncementService
         // instance. The reporter's lifecycle announce wrappers delegate to
@@ -455,6 +488,7 @@ import PalaceCatalog
         self.overdriveDownloadHandler.delegate = self
         #endif
         self.credentialPromptCoordinator.delegate = self
+        self.rightsDispatcher.delegate = self
         self.queueOrchestrator.delegate = self
         #if LCP
         self.lcpFulfillmentHandler.delegate = self
@@ -1099,79 +1133,16 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         } else {
             TPPProblemDocumentCacheManager.sharedInstance().clearCachedDoc(book.identifier)
 
-            switch rights {
-            case .unknown:
-                Log.error(#file, "❌ Rights management is unknown for book: \(book.identifier) - LCP fulfillment will NOT be called")
-                logBookDownloadFailure(book, reason: "Unknown rights management", downloadTask: task, metadata: nil)
-                failureRequiringAlert = true
-            case .adobe:
-                #if FEATURE_DRM_CONNECTOR
-                if let acsmData = try? Data(contentsOf: location),
-                   let acsmString = String(data: acsmData, encoding: .utf8),
-                   acsmString.contains(">application/pdf</dc:format>") {
-                    let msg = NSLocalizedString("\(book.title) is an Adobe PDF, which is not supported.", comment: "")
-                    failureError = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.ignore.rawValue, userInfo: [NSLocalizedDescriptionKey: msg])
-                    logBookDownloadFailure(book, reason: "Received PDF for AdobeDRM rights", downloadTask: task, metadata: nil)
-                    failureRequiringAlert = true
-                } else if let acsmData = try? Data(contentsOf: location) {
-                    // Ensure Adobe DRM device is activated before attempting ACSM fulfillment.
-                    // PP-3649 deferred activation from login to borrow time, but the download-retry
-                    // path bypasses the borrow flow — so activation must also be checked here.
-                    Task { [weak self] in
-                        guard let self else { return }
-                        do {
-                            try await self.adobeDRMService.ensureDeviceActivated()
-                            let ua = self.userAccount
-                            Log.info(#file, "Adobe DRM activated — fulfilling ACSM for '\(book.title)' with userID: \(ua.userID ?? "nil")")
-                            await MainActor.run {
-                                self.adobeDRMService.fulfill(withACSMData: acsmData, tag: book.identifier, userID: ua.userID, deviceID: ua.deviceID)
-                            }
-                        } catch {
-                            Log.error(#file, "Adobe DRM activation failed for '\(book.title)': \(error.localizedDescription)")
-                            await MainActor.run {
-                                self.bookRegistry.setState(.downloadFailed, for: book.identifier)
-                                self.alertForProblemDocument(nil, error: error, book: book)
-                            }
-                        }
-                    }
-                }
-                #endif
-            case .lcp:
-                fulfillLCPLicense(fileUrl: location, forBook: book, downloadTask: task)
-            case .simplifiedBearerTokenJSON:
-                if let data = try? Data(contentsOf: location) {
-                    if let dictionary = TPPJSONObjectFromData(data) as? [String: Any],
-                       let simplifiedBearerToken = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: dictionary) {
-                        let cmFulfillURL = task.originalRequest?.url
-                        simplifiedBearerToken.fulfillURL = cmFulfillURL
-
-                        var mutableRequest = URLRequest(url: simplifiedBearerToken.location, applyingCustomUserAgent: true)
-                        mutableRequest.setValue("Bearer \(simplifiedBearerToken.accessToken)", forHTTPHeaderField: "Authorization")
-                        let newTask = session.downloadTask(with: mutableRequest as URLRequest)
-                        let downloadInfo = MyBooksDownloadInfo(
-                            downloadProgress: 0.0,
-                            downloadTask: newTask,
-                            rightsManagement: .none,
-                            bearerToken: simplifiedBearerToken
-                        )
-                        await bookIdentifierToDownloadInfo.set(book.identifier, value: downloadInfo)
-                        book.bearerToken = simplifiedBearerToken.accessToken
-                        book.bearerTokenFulfillURL = cmFulfillURL
-                        await taskIdentifierToBook.set(newTask.taskIdentifier, value: book)
-                        newTask.resume()
-                    } else {
-                        logBookDownloadFailure(book, reason: "No Simplified Bearer Token in deserialized data", downloadTask: task, metadata: nil)
-                        failDownloadWithAlert(for: book)
-                    }
-                } else {
-                    logBookDownloadFailure(book, reason: "No Simplified Bearer Token data available on disk", downloadTask: task, metadata: nil)
-                    failDownloadWithAlert(for: book)
-                }
-            case .overdriveManifestJSON:
-                failureRequiringAlert = !backgroundDownloadHandler.replaceBook(book, withFileAtURL: location, forDownloadTask: task)
-            case .none:
-                failureRequiringAlert = !backgroundDownloadHandler.moveFile(at: location, toDestinationForBook: book, forDownloadTask: task)
-            }
+            let dispatchResult = await rightsDispatcher.dispatch(
+                book: book,
+                task: task,
+                location: location,
+                session: session,
+                rights: rights,
+                failureError: failureError
+            )
+            failureRequiringAlert = dispatchResult.failureRequiringAlert
+            failureError = dispatchResult.failureError
         }
 
         if failureRequiringAlert {
@@ -1551,6 +1522,8 @@ extension MyBooksDownloadCenter: AdobeDRMHandlerDelegate {
 // delegate methods through this handler instead of duplicating the helper
 // logic that already lives there.
 extension MyBooksDownloadCenter: BackgroundDownloadHandlerDelegate {}
+
+extension MyBooksDownloadCenter: RightsManagementDispatcherDelegate {}
 
 // MARK: - TokenRefreshInterceptorDelegate
 //
