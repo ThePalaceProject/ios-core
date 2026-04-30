@@ -78,6 +78,13 @@ import PalaceCatalog
     /// callback's redirect cleanup + completion registration +
     /// real-error alerting for `handleTaskCompletionError`.
     private let taskLifecycleService: DownloadTaskLifecycleService
+    /// Owns the cancelDownload(for:) state machine: the no-task
+    /// path (state-based cancellation during a borrow request /
+    /// retry wait) and the with-task path (URLSessionDownloadTask
+    /// cancel + dictionary cleanup). Adobe DRM short-circuits to
+    /// adobeDRMService.cancelFulfillment so it can drive its own
+    /// state machine.
+    private let cancellationHandler: DownloadCancellationHandler
     /// Shared with `BorrowErrorPresenter` so the borrow-error path and
     /// the start-download path can't both fire concurrent sign-in modals.
     private let credentialRequestState = CredentialRequestState()
@@ -196,6 +203,7 @@ import PalaceCatalog
         completionParser: DownloadCompletionParser? = nil,
         rightsDispatcher: RightsManagementDispatcher? = nil,
         taskLifecycleService: DownloadTaskLifecycleService? = nil,
+        cancellationHandler: DownloadCancellationHandler? = nil,
         errorActivityTracker: ErrorActivityTracker = .shared,
         userRetryTracker: UserRetryTracker = .shared,
         reachability: Reachability = AppContainer.production().reachability,
@@ -322,6 +330,23 @@ import PalaceCatalog
             bookRegistry: bookRegistry,
             downloadAnnouncementService: downloadAnnouncementService
         )
+        // Cancellation handler owns the cancelDownload state machine.
+        // Shares stateManager (for SafeDictionaries + downloadCoordinator)
+        // + registry. Adobe DRM service is wired only when
+        // FEATURE_DRM_CONNECTOR is on so the .adobe rights short-circuit
+        // can call adobeDRMService.cancelFulfillment.
+        #if FEATURE_DRM_CONNECTOR
+        self.cancellationHandler = cancellationHandler ?? DownloadCancellationHandler(
+            stateManager: stateManager,
+            bookRegistry: bookRegistry,
+            adobeDRMService: .shared
+        )
+        #else
+        self.cancellationHandler = cancellationHandler ?? DownloadCancellationHandler(
+            stateManager: stateManager,
+            bookRegistry: bookRegistry
+        )
+        #endif
         // Build the DownloadProgressReporter from the same announcer the
         // download center uses, AND share the same DownloadAnnouncementService
         // instance. The reporter's lifecycle announce wrappers delegate to
@@ -506,6 +531,7 @@ import PalaceCatalog
         self.credentialPromptCoordinator.delegate = self
         self.rightsDispatcher.delegate = self
         self.taskLifecycleService.delegate = self
+        self.cancellationHandler.delegate = self
         self.queueOrchestrator.delegate = self
         #if LCP
         self.lcpFulfillmentHandler.delegate = self
@@ -953,61 +979,7 @@ import PalaceCatalog
     }
 
     @objc func cancelDownload(for identifier: String) {
-        let state = bookRegistry.state(for: identifier)
-
-        // Handle case where there's no download task (e.g., during borrow request, waiting for retry, etc.)
-        guard let info = downloadInfo(forBookIdentifier: identifier) else {
-            // Allow cancellation for states that indicate a download/borrow is in progress
-            let cancellableStates: [TPPBookState] = [.downloading, .downloadFailed, .SAMLStarted]
-
-            if cancellableStates.contains(state) {
-                Log.info(#file, "📊 Cancelling download without task for '\(identifier)' (state: \(state.stringValue()))")
-                bookRegistry.setState(.downloadNeeded, for: identifier)
-                broadcastUpdate()
-
-                Task {
-                    // Clean up coordinator even without a download task
-                    await self.downloadCoordinator.removeCachedDownloadInfo(for: identifier)
-                    await self.downloadCoordinator.registerCompletion(identifier: identifier)
-                    let remainingCount = await self.downloadCoordinator.activeCount
-                    Log.info(#file, "📊 Download cancelled (no task) for '\(identifier)', remaining active: \(remainingCount)")
-                    self.schedulePendingStartsIfPossible()
-                }
-                return
-            }
-
-            NSLog("Ignoring nonsensical cancellation request for state: \(state.stringValue())")
-            return
-        }
-
-        #if FEATURE_DRM_CONNECTOR
-        if info.rightsManagement == .adobe {
-            self.adobeDRMService.cancelFulfillment(withTag: identifier)
-            return
-        }
-        #endif
-
-        let taskId = info.downloadTask.taskIdentifier
-
-        // First, update UI immediately so user sees feedback
-        bookRegistry.setState(.downloadNeeded, for: identifier)
-        broadcastUpdate()
-
-        // Then cancel the task
-        info.downloadTask.cancel { [weak self] _ in
-            guard let self else { return }
-
-            Task {
-                // CRITICAL: Remove from tracking dictionaries so retry works
-                await self.bookIdentifierToDownloadInfo.remove(identifier)
-                await self.taskIdentifierToBook.remove(taskId)
-                await self.downloadCoordinator.removeCachedDownloadInfo(for: identifier)
-                await self.downloadCoordinator.registerCompletion(identifier: identifier)
-                let remainingCount = await self.downloadCoordinator.activeCount
-                Log.info(#file, "📊 Download cancelled for '\(identifier)', remaining active: \(remainingCount)")
-                self.schedulePendingStartsIfPossible()
-            }
-        }
+        cancellationHandler.cancelDownload(for: identifier)
     }
 }
 
@@ -1514,6 +1486,8 @@ extension MyBooksDownloadCenter: BackgroundDownloadHandlerDelegate {}
 extension MyBooksDownloadCenter: RightsManagementDispatcherDelegate {}
 
 extension MyBooksDownloadCenter: DownloadTaskLifecycleServiceDelegate {}
+
+extension MyBooksDownloadCenter: DownloadCancellationHandlerDelegate {}
 
 // MARK: - TokenRefreshInterceptorDelegate
 //
