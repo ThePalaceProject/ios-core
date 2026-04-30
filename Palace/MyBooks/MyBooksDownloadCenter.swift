@@ -53,6 +53,10 @@ import PalaceCatalog
     private let authRetryHandler: DownloadAuthRetryHandler
     private let throttlingService: DownloadThrottlingService
     private let queueOrchestrator: DownloadQueueOrchestrator
+    private let borrowErrorPresenter: BorrowErrorPresenter
+    /// Shared with `BorrowErrorPresenter` so the borrow-error path and
+    /// the start-download path can't both fire concurrent sign-in modals.
+    private let credentialRequestState = CredentialRequestState()
     #if LCP
     private let lcpFulfillmentHandler: LCPFulfillmentHandler
     #endif
@@ -158,6 +162,7 @@ import PalaceCatalog
         alertPresenter: DownloadAlertPresenter? = nil,
         authRetryHandler: DownloadAuthRetryHandler? = nil,
         throttlingService: DownloadThrottlingService? = nil,
+        borrowErrorPresenter: BorrowErrorPresenter? = nil,
         queueOrchestrator: DownloadQueueOrchestrator? = nil,
         stateManager: DownloadStateManager = DownloadStateManager(),
         tokenInterceptor: TokenRefreshInterceptor? = nil,
@@ -290,6 +295,20 @@ import PalaceCatalog
         self.throttlingService = throttlingService ?? DownloadThrottlingService(
             stateManager: stateManager
         )
+        // BorrowErrorPresenter shares the credentialRequestState with
+        // MBDC's `requestCredentialsAndStartDownload` so concurrent
+        // sign-in modals across the borrow + start-download paths are
+        // prevented at the source.
+        let resolveAccountForBorrow: () -> TPPUserAccount = {
+            userAccount ?? accountsManager.currentUserAccount
+        }
+        self.borrowErrorPresenter = borrowErrorPresenter ?? BorrowErrorPresenter(
+            progressReporter: reporter,
+            userRetryTracker: userRetryTracker,
+            reauthenticator: reauthenticator,
+            userAccountProvider: resolveAccountForBorrow,
+            credentialRequestState: self.credentialRequestState
+        )
         // DownloadQueueOrchestrator shares the same DownloadStateManager
         // (so the active-count + max-concurrent-downloads + dequeue all
         // resolve through one state owner) and the same TPPBookRegistry
@@ -346,6 +365,7 @@ import PalaceCatalog
         self.returnService.delegate = self
         self.authRetryHandler.delegate = self
         self.throttlingService.delegate = self
+        self.borrowErrorPresenter.delegate = self
         self.queueOrchestrator.delegate = self
         #if LCP
         self.lcpFulfillmentHandler.delegate = self
@@ -502,114 +522,15 @@ import PalaceCatalog
             ready: { _ in downloadAction() })
     }
 
-    @MainActor private var hasAttemptedAuthentication = false
-    @MainActor private var isRequestingCredentials = false
-
     private func process(error: [String: Any]?, for book: TPPBook) {
-        guard let errorType = error?["type"] as? String else {
-            showGenericBorrowFailedAlert(for: book)
-            return
-        }
-
-        let alertTitle = DisplayStrings.borrowFailed
-
-        switch errorType {
-        case TPPProblemDocument.TypeLoanAlreadyExists:
-            let alertMessage = DisplayStrings.loanAlreadyExistsAlertMessage
-            runOnMainAsync {
-                self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, kind: .borrow))
-            }
-
-        case TPPProblemDocument.TypeInvalidCredentials:
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-
-                guard !self.hasAttemptedAuthentication else {
-                    self.showAlert(for: book, with: error, alertTitle: alertTitle)
-                    return
-                }
-
-                guard !self.isRequestingCredentials else {
-                    NSLog("Already requesting credentials, skipping re-authentication for: \(book.title)")
-                    return
-                }
-
-                self.hasAttemptedAuthentication = true
-                self.isRequestingCredentials = true
-
-                Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    self?.isRequestingCredentials = false
-                }
-
-                await self.handleInvalidCredentials(for: book)
-            }
-            return
-
-        default:
-            showAlert(for: book, with: error, alertTitle: alertTitle)
-        }
+        borrowErrorPresenter.process(error: error, for: book)
     }
 
-    @MainActor private func handleInvalidCredentials(for book: TPPBook) {
-        reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self] in
-            guard let self = self else { return }
-
-            Task { @MainActor [weak self] in
-                self?.isRequestingCredentials = false
-
-                if self?.userAccount.hasCredentials() == true {
-                    self?.startDownload(for: book)
-                } else {
-                    NSLog("Authentication completed but no credentials present, user may have cancelled")
-                }
-            }
-        }
-    }
-
-    private func showAlert(for book: TPPBook, with error: [String: Any]?, alertTitle: String) {
-        var alertMessage = String(format: DisplayStrings.borrowFailedMessage, book.title)
-
-        if let error = error {
-            let problemDoc = TPPProblemDocument.fromDictionary(error)
-            if let detail = problemDoc.detail {
-                alertMessage = "\(alertMessage)\n\n\(detail)"
-            }
-        }
-
-        // Legacy borrow errors from problem documents - offer retry for transient issues
-        let retryAction: (() -> Void)? = {
-            let operationId = "borrow-\(book.identifier)"
-            guard self.userRetryTracker.canRetry(operationId: operationId) else { return nil }
-            return { [weak self] in
-                guard let self else { return }
-                self.userRetryTracker.recordRetry(operationId: operationId)
-                self.startBorrow(for: book, attemptDownload: true)
-            }
-        }()
-
-        runOnMainAsync {
-            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, kind: .borrow, retryAction: retryAction))
-        }
-    }
-
-    private func showGenericBorrowFailedAlert(for book: TPPBook) {
-        let formattedMessage = String(format: DisplayStrings.borrowFailedMessage, book.title)
-
-        let retryAction: (() -> Void)? = {
-            let operationId = "borrow-\(book.identifier)"
-            guard self.userRetryTracker.canRetry(operationId: operationId) else { return nil }
-            return { [weak self] in
-                guard let self else { return }
-                self.userRetryTracker.recordRetry(operationId: operationId)
-                self.startBorrow(for: book, attemptDownload: true)
-            }
-        }()
-
-        runOnMainAsync {
-            self.publishAndAnnounceError(DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.borrowFailed, message: formattedMessage, kind: .borrow, retryAction: retryAction))
-        }
-    }
+    // process / showAlert / showGenericBorrowFailedAlert / handleInvalidCredentials
+    // moved to BorrowErrorPresenter. The `hasAttemptedAuthentication` flag
+    // moved with them. `isRequestingCredentials` lives on the shared
+    // `credentialRequestState` (see property above) so the borrow-error path
+    // and the start-download path can't both fire concurrent sign-in modals.
 
     @objc func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) {
         Task {
@@ -687,21 +608,21 @@ import PalaceCatalog
         Task { @MainActor [weak self] in
             guard let self else { return }
 
-            guard !self.isRequestingCredentials else {
+            guard !self.credentialRequestState.isRequestingCredentials else {
                 NSLog("Already requesting credentials for authentication, skipping duplicate request for: \(book.title)")
                 return
             }
 
-            self.isRequestingCredentials = true
+            self.credentialRequestState.isRequestingCredentials = true
 
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
-                self?.isRequestingCredentials = false
+                self?.credentialRequestState.isRequestingCredentials = false
             }
 
             #if FEATURE_DRM_CONNECTOR
             if AdobeCertificate.defaultCertificate?.hasExpired ?? false {
-                self.isRequestingCredentials = false
+                self.credentialRequestState.isRequestingCredentials = false
                 TPPAlertUtils.presentFromViewControllerOrNil(alertController: TPPAlertUtils.expiredAdobeDRMAlert(), viewController: nil, animated: true, completion: nil)
                 return
             }
@@ -712,7 +633,7 @@ import PalaceCatalog
 
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    self.isRequestingCredentials = false
+                    self.credentialRequestState.isRequestingCredentials = false
 
                     if self.userAccount.hasCredentials() == true {
                         self.startDownload(for: book)
@@ -1077,19 +998,19 @@ import PalaceCatalog
                     TPPPresentationUtils.safelyPresent(alert)
                 }
 
-                guard !self.isRequestingCredentials else { return }
+                guard !self.credentialRequestState.isRequestingCredentials else { return }
 
-                self.isRequestingCredentials = true
+                self.credentialRequestState.isRequestingCredentials = true
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    self.isRequestingCredentials = false
+                    self.credentialRequestState.isRequestingCredentials = false
                 }
 
                 // Show sign-in modal WITHOUT signing out - let user re-authenticate gracefully
                 Log.info(#file, "Showing sign-in modal for session refresh")
                 self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
                     Task { @MainActor in
-                        self?.isRequestingCredentials = false
+                        self?.credentialRequestState.isRequestingCredentials = false
                         if self?.userAccount.hasCredentials() == true {
                             Log.info(#file, "Sign-in completed, retrying download")
                             self?.startDownload(for: book)
@@ -1125,21 +1046,21 @@ import PalaceCatalog
             Task { @MainActor [weak self] in
                 guard let self else { return }
 
-                guard !self.isRequestingCredentials else {
+                guard !self.credentialRequestState.isRequestingCredentials else {
                     NSLog("Already requesting credentials, skipping re-authentication in handleProblem for: \(book.title)")
                     return
                 }
 
-                self.isRequestingCredentials = true
+                self.credentialRequestState.isRequestingCredentials = true
 
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    self?.isRequestingCredentials = false
+                    self?.credentialRequestState.isRequestingCredentials = false
                 }
 
                 self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
                     Task { @MainActor [weak self] in
-                        self?.isRequestingCredentials = false
+                        self?.credentialRequestState.isRequestingCredentials = false
 
                         if self?.userAccount.hasCredentials() == true {
                             self?.startDownload(for: book)
@@ -1954,6 +1875,13 @@ extension MyBooksDownloadCenter: DownloadQueueOrchestratorDelegate {}
 // MBDC's surface. Empty conformance.
 
 extension MyBooksDownloadCenter: DownloadAuthRetryHandlerDelegate {}
+
+// MARK: - BorrowErrorPresenterDelegate
+//
+// `startBorrow` and `startDownload(for:withRequest:)` already exist on
+// MBDC's surface. Empty conformance.
+
+extension MyBooksDownloadCenter: BorrowErrorPresenterDelegate {}
 
 // MARK: - BookReturnServiceDelegate
 //
