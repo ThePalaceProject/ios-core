@@ -127,7 +127,23 @@ final class BookmarkManagerTests: XCTestCase {
         )!
     }
 
+    /// Synchronously waits for BookRegistryStore's concurrent-queue work
+    /// (barrier mutation + onComplete) to land before returning.
+    ///
+    /// Previously this was just `drainMainQueue()`, which only flushed the
+    /// MAIN queue. But `mutateRegistry` enqueues two barrier blocks on the
+    /// store's internal concurrent queue: the mutation, then the onComplete
+    /// (which calls `save`). Neither hops through main, so draining main
+    /// didn't actually wait for the save closure to fire — the next test
+    /// step could land before `saveCallCount` was incremented, manifesting
+    /// as the long-standing `test_everyMutationCallsSave` flake (saw 4
+    /// instead of 5 saves).
+    ///
+    /// Fix: a sync read on the store. `readRegistry` calls `performSync`,
+    /// which blocks behind ALL prior enqueued barriers — guaranteeing the
+    /// preceding mutation + onComplete are done by the time it returns.
     private func waitForBarrier() {
+        _ = store.readRegistry { _ in }
         drainMainQueue()
     }
 
