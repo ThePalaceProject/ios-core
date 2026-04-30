@@ -85,6 +85,11 @@ import PalaceCatalog
     /// adobeDRMService.cancelFulfillment so it can drive its own
     /// state machine.
     private let cancellationHandler: DownloadCancellationHandler
+    /// Owns the URLSession willPerformHTTPRedirection decision: cap
+    /// the redirect chain at the configured max + reject HTTPS →
+    /// non-HTTPS downgrades. Stateless — counters live in
+    /// stateManager.downloadCoordinator.
+    private let redirectPolicy: RedirectPolicy
     /// Shared with `BorrowErrorPresenter` so the borrow-error path and
     /// the start-download path can't both fire concurrent sign-in modals.
     private let credentialRequestState = CredentialRequestState()
@@ -204,6 +209,7 @@ import PalaceCatalog
         rightsDispatcher: RightsManagementDispatcher? = nil,
         taskLifecycleService: DownloadTaskLifecycleService? = nil,
         cancellationHandler: DownloadCancellationHandler? = nil,
+        redirectPolicy: RedirectPolicy? = nil,
         errorActivityTracker: ErrorActivityTracker = .shared,
         userRetryTracker: UserRetryTracker = .shared,
         reachability: Reachability = AppContainer.production().reachability,
@@ -347,6 +353,18 @@ import PalaceCatalog
             bookRegistry: bookRegistry
         )
         #endif
+        // Closures route through stateManager.downloadCoordinator so the
+        // per-task redirect counters stay in the same actor-isolated store
+        // the rest of MBDC reads via `downloadCoordinator.*`.
+        let redirectCoordinator = stateManager.downloadCoordinator
+        self.redirectPolicy = redirectPolicy ?? RedirectPolicy(
+            getRedirectAttempts: { taskID in
+                await redirectCoordinator.getRedirectAttempts(for: taskID)
+            },
+            incrementRedirectAttempts: { taskID in
+                await redirectCoordinator.incrementRedirectAttempts(for: taskID)
+            }
+        )
         // Build the DownloadProgressReporter from the same announcer the
         // download center uses, AND share the same DownloadAnnouncementService
         // instance. The reporter's lifecycle announce wrappers delegate to
@@ -1218,31 +1236,13 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
         newRequest request: URLRequest,
         completionHandler: @escaping (URLRequest?) -> Void
     ) {
-        let maxRedirectAttempts: UInt = 10
-
         Task {
-            let redirectAttempts = await downloadCoordinator.getRedirectAttempts(for: task.taskIdentifier)
-
-            if redirectAttempts >= maxRedirectAttempts {
-                completionHandler(nil)
-                return
-            }
-
-            await downloadCoordinator.incrementRedirectAttempts(for: task.taskIdentifier)
-
-            // Prevent redirection from HTTPS to a non-HTTPS URL.
-            if task.originalRequest?.url?.scheme == "https" && request.url?.scheme != "https" {
-                completionHandler(nil)
-                return
-            }
-
-            // Do NOT forward any auth headers on redirects.
-            // For No DRM (open access): The redirect target doesn't need auth - content is open.
-            // For Bearer Token protected: We receive a JSON document (not a redirect) with
-            // the distributor's specific token, which we use in a NEW request.
-            // URLSession already strips Authorization headers on redirects for security;
-            // we simply allow that behavior and don't re-add them.
-            completionHandler(request)
+            let decision = await redirectPolicy.decide(
+                taskIdentifier: task.taskIdentifier,
+                originalScheme: task.originalRequest?.url?.scheme,
+                newRequest: request
+            )
+            completionHandler(decision)
         }
     }
 
