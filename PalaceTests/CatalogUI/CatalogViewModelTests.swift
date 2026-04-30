@@ -185,7 +185,13 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         let exp = XCTestExpectation(description: "error")
         vm.$state.sink { if case .error = $0 { exp.fulfill() } }.store(in: &cancellables)
         await vm.load()
-        await fulfillment(of: [exp], timeout: 1.0)
+        // 5s timeout: load() spawns currentLoadTask but does NOT await it,
+        // so the @Published state transition lands when the Task gets
+        // scheduled. The 1-second window flaked under macos-26 CI load
+        // (testLoad_WithError saw a timeout in PR #889 CI). 5s matches
+        // drainMainQueue/awaitCondition defaults — generous in CI without
+        // hiding a real hang.
+        await fulfillment(of: [exp], timeout: 5.0)
         guard case .error = vm.state else {
             return XCTFail("Expected .error state after load failure, got \(vm.state)")
         }
@@ -197,7 +203,13 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         let exp = XCTestExpectation(description: "error")
         vm.$state.sink { if case .error = $0 { exp.fulfill() } }.store(in: &cancellables)
         await vm.load()
-        await fulfillment(of: [exp], timeout: 1.0)
+        // 5s timeout: load() spawns currentLoadTask but does NOT await it,
+        // so the @Published state transition lands when the Task gets
+        // scheduled. The 1-second window flaked under macos-26 CI load
+        // (testLoad_WithError saw a timeout in PR #889 CI). 5s matches
+        // drainMainQueue/awaitCondition defaults — generous in CI without
+        // hiding a real hang.
+        await fulfillment(of: [exp], timeout: 5.0)
         guard case .error = vm.state else {
             return XCTFail("Expected .error state after nil result, got \(vm.state)")
         }
@@ -238,7 +250,13 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         let exp = XCTestExpectation(description: "loading")
         vm.$state.sink { if case .loading = $0 { exp.fulfill() } }.store(in: &cancellables)
         await vm.forceRefresh()
-        await fulfillment(of: [exp], timeout: 1.0)
+        // 5s timeout: load() spawns currentLoadTask but does NOT await it,
+        // so the @Published state transition lands when the Task gets
+        // scheduled. The 1-second window flaked under macos-26 CI load
+        // (testLoad_WithError saw a timeout in PR #889 CI). 5s matches
+        // drainMainQueue/awaitCondition defaults — generous in CI without
+        // hiding a real hang.
+        await fulfillment(of: [exp], timeout: 5.0)
         XCTAssertGreaterThanOrEqual(mockRepository.loadTopLevelCatalogCallCount, 1,
                                     "forceRefresh must invoke the repository at least once")
     }
