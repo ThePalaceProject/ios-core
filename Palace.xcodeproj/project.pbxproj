@@ -669,6 +669,7 @@
 		916929D75B10E9973EDED0B0 /* DownloadProgressPublisherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 678E47FC2F39F84744921B33 /* DownloadProgressPublisherTests.swift */; };
 		B79B3346513ABE6BF7880C79 /* BookFileManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 048C9EBED1F572EC6A7EA7E9 /* BookFileManagerTests.swift */; };
 		4E0F1B6A8D7C5F23E9B0A1C4 /* DiskBudgetManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1A2C7B9E8D6A34F0C1B2D5 /* DiskBudgetManagerTests.swift */; };
+		8C9DAEBFC0D1E2F30415263A /* DownloadAuthRetryHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DAEBFC0D1E2F304152637AB /* DownloadAuthRetryHandlerTests.swift */; };
 		B501B7DE2AD6E37E38642B99 /* AdobeDRMHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28B6ED44D40E09EC72287887 /* AdobeDRMHandlerTests.swift */; };
 		CF16C9CEFF972B187420D537 /* DownloadAnnouncementServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DCF14A6A237EADD5978E148 /* DownloadAnnouncementServiceTests.swift */; };
 		917D628924F123B7A30238CE /* TPPLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C7D04F855F2DA251329CDD /* TPPLocalization.swift */; };
@@ -1934,6 +1935,7 @@
 		678E47FC2F39F84744921B33 /* DownloadProgressPublisherTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DownloadProgressPublisherTests.swift; sourceTree = "<group>"; };
 		048C9EBED1F572EC6A7EA7E9 /* BookFileManagerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookFileManagerTests.swift; sourceTree = "<group>"; };
 		5F1A2C7B9E8D6A34F0C1B2D5 /* DiskBudgetManagerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DiskBudgetManagerTests.swift; sourceTree = "<group>"; };
+		9DAEBFC0D1E2F304152637AB /* DownloadAuthRetryHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DownloadAuthRetryHandlerTests.swift; sourceTree = "<group>"; };
 		28B6ED44D40E09EC72287887 /* AdobeDRMHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AdobeDRMHandlerTests.swift; sourceTree = "<group>"; };
 		4DCF14A6A237EADD5978E148 /* DownloadAnnouncementServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DownloadAnnouncementServiceTests.swift; sourceTree = "<group>"; };
 		67CD20B0A844EE53B3370192 /* UIFont+TPPSystemFontOverride.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "UIFont+TPPSystemFontOverride.swift"; sourceTree = "<group>"; };
@@ -4581,6 +4583,7 @@
 				678E47FC2F39F84744921B33 /* DownloadProgressPublisherTests.swift */,
 				048C9EBED1F572EC6A7EA7E9 /* BookFileManagerTests.swift */,
 				5F1A2C7B9E8D6A34F0C1B2D5 /* DiskBudgetManagerTests.swift */,
+				9DAEBFC0D1E2F304152637AB /* DownloadAuthRetryHandlerTests.swift */,
 				28B6ED44D40E09EC72287887 /* AdobeDRMHandlerTests.swift */,
 				4DCF14A6A237EADD5978E148 /* DownloadAnnouncementServiceTests.swift */,
 				EEE0C3EAFC52054E7144B795 /* DownloadStateManagerTests.swift */,
@@ -6074,6 +6077,7 @@
 				916929D75B10E9973EDED0B0 /* DownloadProgressPublisherTests.swift in Sources */,
 				B79B3346513ABE6BF7880C79 /* BookFileManagerTests.swift in Sources */,
 				4E0F1B6A8D7C5F23E9B0A1C4 /* DiskBudgetManagerTests.swift in Sources */,
+				8C9DAEBFC0D1E2F30415263A /* DownloadAuthRetryHandlerTests.swift in Sources */,
 				B501B7DE2AD6E37E38642B99 /* AdobeDRMHandlerTests.swift in Sources */,
 				CF16C9CEFF972B187420D537 /* DownloadAnnouncementServiceTests.swift in Sources */,
 				DFF555639FA1B81BE6A9DFCE /* DownloadStateManagerTests.swift in Sources */,
