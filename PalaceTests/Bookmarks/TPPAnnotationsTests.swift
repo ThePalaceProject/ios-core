@@ -806,16 +806,27 @@ final class TPPAnnotationsTests: XCTestCase {
 
     // MARK: - TPPAnnotationsWrapper Protocol Conformance Tests
 
-    /// Test that TPPAnnotationsWrapper correctly implements AnnotationsManager protocol
-    func testTPPAnnotationsWrapper_ImplementsProtocol() {
-        // Arrange
-        let wrapper = TPPAnnotationsWrapper()
+    /// `TPPAnnotationsWrapper` is the concrete implementation injected at
+    /// the AnnotationsManager protocol seam. Lock that the wrapper is
+    /// usable polymorphically AND that the protocol-typed call returns
+    /// the same value as the concrete-typed call. The `is` check the
+    /// original test used was a tautology the compiler enforces.
+    func testTPPAnnotationsWrapper_isUsablePolymorphicallyThroughProtocolWithStableValue() {
+        let concrete = TPPAnnotationsWrapper()
+        let manager: AnnotationsManager = concrete
 
-        // Assert - verify protocol conformance
-        XCTAssertTrue(wrapper is AnnotationsManager)
+        // Protocol dispatch must reach the same value as the concrete call —
+        // a mutant that breaks the witness table or shadows the property
+        // would yield divergent results.
+        let viaProtocol = manager.syncIsPossibleAndPermitted
+        let viaConcrete = concrete.syncIsPossibleAndPermitted
+        XCTAssertEqual(viaProtocol, viaConcrete,
+                       "Protocol-dispatched call must match concrete call — guards against witness-table mutation")
 
-        // Verify syncIsPossibleAndPermitted is accessible
-        _ = wrapper.syncIsPossibleAndPermitted
+        // Repeat call must be stable (referentially transparent within
+        // the test; sync-permission state isn't changed here).
+        XCTAssertEqual(manager.syncIsPossibleAndPermitted, viaProtocol,
+                       "Repeated protocol-dispatched calls must yield the same value")
     }
 
     // MARK: - Edge Cases and Error Handling
@@ -1556,23 +1567,23 @@ class AnnotationDeviceIDTests: XCTestCase {
                       "Device ID must use urn:uuid: format to match W3C Annotation convention. Got: \(deviceID)")
     }
 
-    func testAnnotationDeviceID_IsStableAcrossCalls() {
-        // The device ID must be the same value every time — if it changed
-        // between calls, the sync comparison would never match "same device"
-        let first = AnnotationDevice.currentID()
-        let second = AnnotationDevice.currentID()
-
-        XCTAssertEqual(first, second,
-                       "Device ID must be stable across calls — unstable IDs break same-device detection")
-    }
-
-    func testAnnotationDeviceID_MatchesFirebaseManagerFormat() {
-        // Verify the returned ID contains the FirebaseManager UUID
-        // (since we're in a test environment without Adobe DRM)
-        let deviceID = AnnotationDevice.currentID()
+    /// AnnotationDevice.currentID() must be stable across many calls AND
+    /// derive from the FirebaseManager deviceID in test environments
+    /// (no Adobe DRM). Pin both invariants in one body. Stability across
+    /// 5 calls (instead of 2) catches a mutant that randomly regenerates
+    /// after the first call.
+    func testAnnotationDeviceID_isStableAndDerivedFromFirebaseInTestEnvironment() {
         let firebaseID = FirebaseManager.shared.deviceID
 
-        XCTAssertTrue(deviceID.contains(firebaseID),
-                      "Without Adobe DRM, annotation device ID should contain the Firebase device UUID")
+        // Stability across multiple calls.
+        let ids = (0..<5).map { _ in AnnotationDevice.currentID() }
+        XCTAssertEqual(Set(ids).count, 1,
+                       "Device ID must be stable across 5 consecutive calls — unstable IDs break same-device sync detection")
+
+        // Derivation from Firebase: each ID contains firebaseID.
+        for (i, id) in ids.enumerated() {
+            XCTAssertTrue(id.contains(firebaseID),
+                          "Call #\(i): annotation device ID must contain the FirebaseManager deviceID — broken derivation breaks cross-device detection")
+        }
     }
 }
