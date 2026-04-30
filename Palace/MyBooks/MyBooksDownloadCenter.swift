@@ -72,6 +72,12 @@ import PalaceCatalog
     /// returns the (failureRequiringAlert, failureError) update the
     /// auth-retry / alert tail consumes.
     private let rightsDispatcher: RightsManagementDispatcher
+    /// Owns URL-session task lifecycle bookkeeping: post-creation
+    /// state seeding + resume() + .downloading registry transition
+    /// for `addDownloadTask`, and the `didCompleteWithError`
+    /// callback's redirect cleanup + completion registration +
+    /// real-error alerting for `handleTaskCompletionError`.
+    private let taskLifecycleService: DownloadTaskLifecycleService
     /// Shared with `BorrowErrorPresenter` so the borrow-error path and
     /// the start-download path can't both fire concurrent sign-in modals.
     private let credentialRequestState = CredentialRequestState()
@@ -189,6 +195,7 @@ import PalaceCatalog
         backgroundDownloadHandler: BackgroundDownloadHandler? = nil,
         completionParser: DownloadCompletionParser? = nil,
         rightsDispatcher: RightsManagementDispatcher? = nil,
+        taskLifecycleService: DownloadTaskLifecycleService? = nil,
         errorActivityTracker: ErrorActivityTracker = .shared,
         userRetryTracker: UserRetryTracker = .shared,
         reachability: Reachability = AppContainer.production().reachability,
@@ -306,6 +313,15 @@ import PalaceCatalog
             userAccountProvider: resolveAccountForDispatcher
         )
         #endif
+        // URL-session task lifecycle bookkeeping. Shares the same
+        // stateManager / registry / announcer MBDC owns so the
+        // taskIdentifierToBook map and `.downloading` state stay
+        // coherent with the rest of the download flow.
+        self.taskLifecycleService = taskLifecycleService ?? DownloadTaskLifecycleService(
+            stateManager: stateManager,
+            bookRegistry: bookRegistry,
+            downloadAnnouncementService: downloadAnnouncementService
+        )
         // Build the DownloadProgressReporter from the same announcer the
         // download center uses, AND share the same DownloadAnnouncementService
         // instance. The reporter's lifecycle announce wrappers delegate to
@@ -489,6 +505,7 @@ import PalaceCatalog
         #endif
         self.credentialPromptCoordinator.delegate = self
         self.rightsDispatcher.delegate = self
+        self.taskLifecycleService.delegate = self
         self.queueOrchestrator.delegate = self
         #if LCP
         self.lcpFulfillmentHandler.delegate = self
@@ -1268,22 +1285,7 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
     }
 
     func handleTaskCompletionError(task: URLSessionTask, error: Error?) async {
-        guard let book = await taskIdentifierToBook.get(task.taskIdentifier) else {
-            return
-        }
-
-        await downloadCoordinator.clearRedirectAttempts(for: task.taskIdentifier)
-        await downloadCoordinator.registerCompletion(identifier: book.identifier)
-        let remainingCount = await downloadCoordinator.activeCount
-        Log.info(#file, "📊 Download completed for '\(book.title)', remaining active: \(remainingCount)")
-
-        if let error = error as NSError?, error.code != NSURLErrorCancelled {
-            logBookDownloadFailure(book, reason: "networking error", downloadTask: task, metadata: ["urlSessionError": error])
-            failDownloadWithAlert(for: book)
-            return
-        }
-
-        schedulePendingStartsIfPossible()
+        await taskLifecycleService.handleTaskCompletionError(task: task, error: error)
     }
 
     func addDownloadTask(with request: URLRequest, book: TPPBook) {
@@ -1303,38 +1305,12 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
             return
         }
 
-        let downloadInfo = MyBooksDownloadInfo(
-            downloadProgress: 0.0,
-            downloadTask: task,
-            rightsManagement: .unknown
-        )
-
         Task {
-            await self.bookIdentifierToDownloadInfo.set(book.identifier, value: downloadInfo)
-            await self.taskIdentifierToBook.set(task.taskIdentifier, value: book)
-
-            let currentCount = await downloadCoordinator.activeCount
-            Log.info(#file, "📊 Active downloads: \(currentCount)/\(maxConcurrentDownloads) (started '\(book.title)')")
-
-            // Resume task AFTER storage to ensure delegate callbacks can find it
-            task.resume()
-
-            // Update registry and notify
-            self.bookRegistry.addBook(book,
-                                      location: self.bookRegistry.location(forIdentifier: book.identifier),
-                                      state: .downloading,
-                                      fulfillmentId: nil,
-                                      readiumBookmarks: nil,
-                                      genericBookmarks: nil)
-
-            self.downloadAnnouncementService.announceDownloadStarted(for: book)
-
-            runOnMainAsync {
-                NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: self)
-            }
-
-            // After starting one, see if we can start pending ones within capacity
-            self.schedulePendingStartsIfPossible()
+            await self.taskLifecycleService.registerStartedTask(
+                task,
+                book: book,
+                maxConcurrentDownloads: self.maxConcurrentDownloads
+            )
         }
     }
 }
@@ -1350,6 +1326,18 @@ extension MyBooksDownloadCenter {
 
     func schedulePendingStartsIfPossible() {
         queueOrchestrator.schedulePendingStartsIfPossible()
+    }
+
+    /// Posts the legacy `.TPPMyBooksDownloadCenterDidChange` notification
+    /// from the MBDC instance so subscribers that filter on `object: self`
+    /// keep working. Used by services (e.g. DownloadTaskLifecycleService)
+    /// that need to broadcast a state change without holding a back-
+    /// reference to MBDC.
+    func notifyDownloadCenterDidChange() {
+        runOnMainAsync { [weak self] in
+            guard let self else { return }
+            NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: self)
+        }
     }
 
     func schedulePendingStartsAsync() async {
@@ -1524,6 +1512,8 @@ extension MyBooksDownloadCenter: AdobeDRMHandlerDelegate {
 extension MyBooksDownloadCenter: BackgroundDownloadHandlerDelegate {}
 
 extension MyBooksDownloadCenter: RightsManagementDispatcherDelegate {}
+
+extension MyBooksDownloadCenter: DownloadTaskLifecycleServiceDelegate {}
 
 // MARK: - TokenRefreshInterceptorDelegate
 //
