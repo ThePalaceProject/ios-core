@@ -284,6 +284,28 @@ class BookRegistrySync {
     else { return }
     let accountUUID = currentAccount.uuid
 
+    // Skip the loans fetch when no credentials are stored for the current
+    // account. The `loansUrl` from the OPDS auth document is only useful
+    // when we can authenticate the request — without credentials we get a
+    // guaranteed 401 (or get blocked by the test stub during instrumented
+    // runs). Originally written as `!needsAuth && !hasCredentials` to
+    // target anonymous libraries, but chaos-qa dogfood-4 surfaced that
+    // `needsAuth` returns conservatively-true during the relaunch
+    // hydration race (auth document not yet loaded), defeating the gate.
+    // The `hasCredentials` check alone is sufficient: post-sign-in the
+    // auth-state-changed observer triggers a fresh sync(); during the
+    // unhydrated window we just defer.
+    //
+    // Discovered by chaos-qa dogfood-3 → F-007 (PP-4164).
+    // Refined by chaos-qa dogfood-4 → F-DG4-001.
+    let userAccount = TPPUserAccount.sharedAccount(libraryUUID: accountUUID)
+    if !userAccount.hasCredentials() {
+      Log.debug(#file, "Skipping loans sync — no credentials for account \(accountUUID)")
+      setState(.loaded)
+      completion?(nil, false)
+      return
+    }
+
     if currentState == .syncing { return }
 
     setState(.syncing)

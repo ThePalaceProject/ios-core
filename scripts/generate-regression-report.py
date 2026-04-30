@@ -283,6 +283,14 @@ nav a:hover { color: var(--text); border-bottom-color: var(--accent); }
 .section-collapse summary h2 { font-size: 1.5rem; margin-bottom: 8px; display: inline; }
 .section-desc { color: var(--text-muted); margin-bottom: 24px; font-size: 0.95rem; }
 
+.coverage-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.coverage-table th, .coverage-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+.coverage-table th { background: var(--surface-2); font-weight: 600; }
+.coverage-table code { background: var(--surface-2); padding: 1px 6px; border-radius: 3px; font-size: 0.85rem; }
+.cov-full { color: #16a34a; }
+.cov-partial { color: #ca8a04; }
+.cov-miss { color: #dc2626; }
+
 /* Finding cards */
 .finding-card {
   background: var(--surface);
@@ -631,6 +639,129 @@ def _render_hero_video(video_path: str) -> str:
 # Full report assembly
 # ---------------------------------------------------------------------------
 
+def _render_visual_coverage(
+    fixtures_dir: Path,
+    baseline_version: str,
+    candidate_version: str,
+) -> str:
+    """Render a fixture coverage matrix from .specterqa/fixtures/baselines/<version>/<flow>/.
+
+    For each (version, flow) pair, count steps and report:
+      - PNG count   = visual evidence captured
+      - JSON count  = structured marks fixtures (assertion targets)
+      - Steps shared between versions = effective regression coverage
+
+    A flow only present in one version is a coverage gap. A flow with PNGs but no
+    JSON is a regression in fixture-corpus quality (assertion targets missing).
+    """
+    if not fixtures_dir.exists():
+        return ""
+
+    versions = sorted([d for d in fixtures_dir.iterdir() if d.is_dir()])
+    if not versions:
+        return ""
+
+    # Discover all flows across all versions.
+    flows: Dict[str, Dict[str, Dict[str, int]]] = {}  # flow → version → {png, json, steps}
+    for vdir in versions:
+        for flow_dir in sorted(vdir.iterdir()):
+            if not flow_dir.is_dir():
+                continue
+            pngs = sum(1 for p in flow_dir.glob("*.png"))
+            jsons = sum(1 for p in flow_dir.glob("*.json"))
+            steps = len({p.stem for p in flow_dir.glob("*.png")} | {p.stem for p in flow_dir.glob("*.json")})
+            flows.setdefault(flow_dir.name, {})[vdir.name] = {
+                "png": pngs, "json": jsons, "steps": steps,
+            }
+
+    if not flows:
+        return ""
+
+    version_names = sorted({v for fmap in flows.values() for v in fmap.keys()})
+
+    # Header row.
+    rows: List[str] = [
+        "<thead><tr>"
+        "<th>Flow</th>"
+        + "".join(f"<th>{esc(v)}</th>" for v in version_names)
+        + "<th>Shared steps</th>"
+        + "<th>Status</th>"
+        + "</tr></thead>"
+    ]
+
+    body_rows: List[str] = []
+    for flow in sorted(flows.keys()):
+        vmap = flows[flow]
+        cells = []
+        version_step_sets: List[set[str]] = []
+        for v in version_names:
+            entry = vmap.get(v)
+            if not entry:
+                cells.append('<td class="cov-miss">—</td>')
+                version_step_sets.append(set())
+                continue
+            label = f'{entry["png"]} png · {entry["json"]} json'
+            css = "cov-full" if entry["json"] >= entry["png"] and entry["png"] > 0 else \
+                  "cov-partial" if entry["png"] > 0 else "cov-miss"
+            cells.append(f'<td class="{css}">{label}</td>')
+            # Compute the shared step set (file stems) for this version.
+            flow_dir = fixtures_dir / v / flow
+            stems = {p.stem for p in flow_dir.glob("*.json")}
+            version_step_sets.append(stems)
+
+        # Shared step count = intersection across all populated versions.
+        populated = [s for s in version_step_sets if s]
+        shared = set.intersection(*populated) if populated else set()
+        shared_n = len(shared)
+
+        # Status.
+        if not populated:
+            status, status_css = "no fixtures", "cov-miss"
+        elif len(populated) == 1:
+            status, status_css = "single-version (no diff possible)", "cov-partial"
+        elif shared_n == 0:
+            status, status_css = "no shared steps (corpora out of sync)", "cov-miss"
+        elif all(s == populated[0] for s in populated):
+            status, status_css = "synchronized", "cov-full"
+        else:
+            status, status_css = f"partial overlap ({shared_n} shared)", "cov-partial"
+
+        body_rows.append(
+            f"<tr><td><code>{esc(flow)}</code></td>"
+            + "".join(cells)
+            + f"<td>{shared_n}</td>"
+            + f'<td class="{status_css}">{esc(status)}</td>'
+            + "</tr>"
+        )
+
+    table = (
+        "<table class=\"coverage-table\">"
+        + "".join(rows)
+        + "<tbody>"
+        + "".join(body_rows)
+        + "</tbody>"
+        + "</table>"
+    )
+
+    description = (
+        "Per-flow visual fixture coverage. Each row is one captured user flow; "
+        "each column is a version's fixture corpus. <code>png</code> counts the "
+        "screenshot evidence; <code>json</code> counts the structured marks "
+        "fixtures consumed by <code>MarksFixture.swift</code>. Diff-able coverage "
+        "requires both versions to have the same set of step JSONs."
+    )
+
+    return f"""
+<div class="section-wrap" id="visual-coverage"><div class="container">
+<details class="section-collapse" open>
+<summary><h2>Visual Coverage Matrix ({len(flows)} flow{'s' if len(flows) != 1 else ''})</h2></summary>
+<p class="section-desc">{description}</p>
+{table}
+</details>
+</div></div>
+"""
+
+
 def generate_html(
     findings: List[Dict[str, str]],
     *,
@@ -640,6 +771,7 @@ def generate_html(
     video_path: Optional[str],
     jira_url: str,
     screenshots_rel: str,
+    fixtures_dir: Optional[Path] = None,
 ) -> str:
     """Assemble the complete HTML report string."""
     groups = classify_findings(findings)
@@ -667,6 +799,10 @@ def generate_html(
             )
         )
 
+    # Visual coverage matrix (only if fixtures dir provided).
+    if fixtures_dir is not None:
+        body_sections.append(_render_visual_coverage(fixtures_dir, baseline_version, candidate_version))
+
     # All Findings index (includes superseded).
     toc_html = _render_toc(findings)
     superseded_count = len(groups.get("superseded", []))
@@ -691,6 +827,8 @@ def generate_html(
         else:
             if groups.get("behavior-change") or groups.get("new-feature"):
                 nav_items.append(f'<a href="#{sec_id}">{sec_title}</a>')
+    if fixtures_dir is not None:
+        nav_items.append('<a href="#visual-coverage">Visual Coverage</a>')
     nav_items.append('<a href="#all-findings">All Findings</a>')
 
     # Stats grid.
@@ -759,6 +897,8 @@ def main() -> None:
                         help="Validate screenshot references and exit")
     parser.add_argument("--strict", action="store_true",
                         help="Exit 1 if any findings are unverified")
+    parser.add_argument("--fixtures-dir", type=Path, default=None,
+                        help="Path to .specterqa/fixtures/baselines/ to render Visual Coverage Matrix")
 
     args = parser.parse_args()
 
@@ -808,6 +948,7 @@ def main() -> None:
         video_path=args.video,
         jira_url=args.jira_url,
         screenshots_rel=screenshots_rel,
+        fixtures_dir=args.fixtures_dir,
     )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

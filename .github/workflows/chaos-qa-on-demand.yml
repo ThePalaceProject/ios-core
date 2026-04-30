@@ -1,0 +1,173 @@
+# chaos-qa-on-demand.yml
+#
+# Runs the chaos-qa adversarial QA agent against a PR's changed surface
+# when a maintainer comments `@chaos-qa investigate` on the PR.
+#
+# Why on-demand instead of every PR:
+#   - Live chaos exploration is non-deterministic (different findings each
+#     run) — running it on every PR would create flaky checks.
+#   - LLM + simulator time costs real $$. Opting in keeps costs scoped.
+#   - The PR's REPLAY corpus (under .specterqa/replays/chaos/) runs
+#     deterministically on every PR via a separate workflow; THAT is the
+#     guard. Live chaos is for discovery, not regression-prevention.
+#
+# Requires a self-hosted macOS runner with:
+#   - Xcode 16.1+, iOS sim available
+#   - simdrive installed (pip install simdrive)
+#   - Claude Code CLI (`claude`) authenticated
+#   - The Palace.app candidate build artifact for the PR (built in a
+#     sibling job or fetched from a previous run)
+#
+# Trigger: a maintainer comments exactly `@chaos-qa investigate` on a PR.
+# Other text in the comment is ignored. Optional `@chaos-qa investigate
+# --max-paths 50` allows budget overrides.
+
+name: chaos-qa-on-demand
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write   # to post the findings comment back
+
+jobs:
+  guard:
+    # Only run when the trigger phrase is present AND the comment is on a
+    # PR (not a free-standing issue) AND the commenter is a maintainer.
+    if: |
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '@chaos-qa investigate') &&
+      contains(fromJson('["MEMBER", "OWNER", "COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    outputs:
+      pr_branch: ${{ steps.pr.outputs.branch }}
+      pr_sha: ${{ steps.pr.outputs.sha }}
+      max_paths: ${{ steps.parse.outputs.max_paths }}
+      max_minutes: ${{ steps.parse.outputs.max_minutes }}
+    steps:
+      - name: Resolve PR ref
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              pull_number: context.payload.issue.number,
+            });
+            core.setOutput('branch', pr.data.head.ref);
+            core.setOutput('sha', pr.data.head.sha);
+
+      - name: Parse budget overrides
+        id: parse
+        run: |
+          body="${{ github.event.comment.body }}"
+          mp=$(echo "$body" | grep -oE '\-\-max-paths +[0-9]+' | awk '{print $2}' | head -1)
+          mm=$(echo "$body" | grep -oE '\-\-max-minutes +[0-9]+' | awk '{print $2}' | head -1)
+          echo "max_paths=${mp:-30}" >> "$GITHUB_OUTPUT"
+          echo "max_minutes=${mm:-15}" >> "$GITHUB_OUTPUT"
+
+  # Skipped (not failed) when no [macos, palace-ios] runner is available.
+  # The runner doesn't exist yet at the time this workflow lands; without
+  # this guard, jobs would queue indefinitely and look like CI failures.
+  # Once the runner is provisioned, set the ENABLE_CHAOS_QA_RUNNER repo
+  # variable to "true".
+  chaos:
+    needs: guard
+    if: ${{ vars.ENABLE_CHAOS_QA_RUNNER == 'true' }}
+    runs-on: [self-hosted, macos, palace-ios]
+    timeout-minutes: 45
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.guard.outputs.pr_sha }}
+          fetch-depth: 0
+
+      - name: Compute changed files vs base
+        id: diff
+        run: |
+          BASE_SHA=$(git merge-base origin/develop HEAD)
+          git diff --name-only "$BASE_SHA" HEAD > /tmp/changed-files.txt
+          echo "count=$(wc -l < /tmp/changed-files.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          echo "Changed files:"
+          cat /tmp/changed-files.txt
+
+      - name: Pick / build candidate sim
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices iPhone | awk '/Booted/ {print $NF; exit}' | tr -d '()')
+          if [[ -z "$UDID" ]]; then
+            UDID=$(xcrun simctl create chaos-qa "iPhone 16 Pro" "iOS 18.4")
+            xcrun simctl boot "$UDID"
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          # Build the PR candidate. (The runner's repo has all deps wired —
+          # symlinks for Carthage / submodules / RMSDK headers are kept
+          # under /opt/palace-runner-deps and bind-mounted by the runner
+          # script before this step.)
+          xcodebuild -project Palace.xcodeproj -scheme Palace \
+            -destination "platform=iOS Simulator,id=$UDID" \
+            -derivedDataPath /tmp/dd-chaos-pr build > /tmp/build.log 2>&1
+          xcrun simctl install "$UDID" \
+            /tmp/dd-chaos-pr/Build/Products/Debug-iphonesimulator/Palace.app
+          echo "app_path=/tmp/dd-chaos-pr/Build/Products/Debug-iphonesimulator/Palace.app" >> "$GITHUB_OUTPUT"
+
+      - name: Run chaos-qa
+        run: |
+          ./scripts/run-chaos-pass.sh \
+            --udid "${{ steps.sim.outputs.udid }}" \
+            --app-path "${{ steps.sim.outputs.app_path }}" \
+            --diff-files-from /tmp/changed-files.txt \
+            --max-paths ${{ needs.guard.outputs.max_paths }} \
+            --max-minutes ${{ needs.guard.outputs.max_minutes }}
+
+      - name: Locate latest run dir
+        id: run
+        run: |
+          DIR=$(ls -dt ~/.specterqa/chaos-runs/*/ | head -1)
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Format PR comment
+        id: format
+        run: |
+          DIR="${{ steps.run.outputs.dir }}"
+          SUMMARY=$(cat "$DIR/summary.json" 2>/dev/null || echo '{"total_findings":0}')
+          BODY="**chaos-qa results** (PR ${{ github.event.issue.number }})\n\n"
+          BODY+="\`\`\`json\n$SUMMARY\n\`\`\`\n\n"
+          if [[ -s "$DIR/findings.csv" ]]; then
+            BODY+="<details><summary>Findings (CSV preview)</summary>\n\n\`\`\`\n"
+            BODY+=$(head -20 "$DIR/findings.csv")
+            BODY+="\n\`\`\`\n</details>\n\n"
+          fi
+          BODY+="Full artifacts: \`$DIR\` on the runner.\n"
+          BODY+="Replays: \`$DIR/replays/\`.\n"
+          # Escape for github-script.
+          {
+            echo "body<<EOF"
+            echo -e "$BODY"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `${{ steps.format.outputs.body }}`,
+            });
+
+      - name: Upload run dir as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-qa-${{ github.event.issue.number }}-${{ github.run_id }}
+          path: ${{ steps.run.outputs.dir }}
+          retention-days: 30

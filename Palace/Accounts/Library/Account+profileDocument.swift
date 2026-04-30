@@ -19,6 +19,21 @@ extension Account {
             return
         }
 
+        // The user-profile endpoint is authenticated; without credentials it
+        // returns 401 with an OPDS auth-document body. Anonymous libraries
+        // (Palace Bookshelf / DPLA) advertise a `userProfileUrl` in their
+        // auth document but no app surface needs the result for an anonymous
+        // user. Skip when no credentials are stored — chaos-qa dogfood-5
+        // surfaced that NotificationService.updateToken() and deleteToken(for:)
+        // call this on every account-change rehydration, producing a
+        // /patrons/me/ 401 storm at every cold relaunch (PP-4164 → F-007 →
+        // refined by F-DG5-002).
+        let userAccount = TPPUserAccount.sharedAccount(libraryUUID: self.uuid)
+        if !userAccount.hasCredentials() {
+            completion(nil)
+            return
+        }
+
         var request = URLRequest(url: profileUrl)
         AppContainer.production().networkExecutor.executeRequest(request.applyCustomUserAgent(), enableTokenRefresh: false) { result in
             switch result {
