@@ -60,6 +60,12 @@ import PalaceCatalog
     private let overdriveDownloadHandler: OverdriveDownloadHandler
     #endif
     private let credentialPromptCoordinator: CredentialPromptCoordinator
+    /// Owns the pre-dispatch parsing of URL session download
+    /// completions: rights resolution + cache write-back, problem-doc
+    /// detection, OPDS entry / OPDS2 publication routing, and the
+    /// canCompleteDownload guard. Returns a typed result MBDC's
+    /// per-rights dispatch switch consumes.
+    private let completionParser: DownloadCompletionParser
     /// Shared with `BorrowErrorPresenter` so the borrow-error path and
     /// the start-download path can't both fire concurrent sign-in modals.
     private let credentialRequestState = CredentialRequestState()
@@ -175,6 +181,7 @@ import PalaceCatalog
         stateManager: DownloadStateManager = DownloadStateManager(),
         tokenInterceptor: TokenRefreshInterceptor? = nil,
         backgroundDownloadHandler: BackgroundDownloadHandler? = nil,
+        completionParser: DownloadCompletionParser? = nil,
         errorActivityTracker: ErrorActivityTracker = .shared,
         userRetryTracker: UserRetryTracker = .shared,
         reachability: Reachability = AppContainer.production().reachability,
@@ -258,6 +265,14 @@ import PalaceCatalog
             reauthenticator: reauthenticator
         )
         self.backgroundDownloadHandler = backgroundDownloadHandler ?? BackgroundDownloadHandler()
+        // Parses URL session download completions before MBDC's per-
+        // rights dispatch runs. Shares the same backgroundDownloadHandler
+        // (rights detection, OPDS routing) and stateManager (rights cache
+        // read/write) MBDC owns so cache + routing decisions stay coherent.
+        self.completionParser = completionParser ?? DownloadCompletionParser(
+            routing: self.backgroundDownloadHandler,
+            stateManager: stateManager
+        )
         // Build the DownloadProgressReporter from the same announcer the
         // download center uses, AND share the same DownloadAnnouncementService
         // instance. The reporter's lifecycle announce wrappers delegate to
@@ -1051,60 +1066,32 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
 
         await downloadCoordinator.clearRedirectAttempts(for: task.taskIdentifier)
 
-        var failureRequiringAlert = false
+        let parseResult = await completionParser.parse(
+            book: book,
+            task: task,
+            location: location,
+            session: session
+        )
+
+        let rights: MyBooksDownloadInfo.MyBooksDownloadRightsManagement
+        let mimeType: String
+        let problemDoc: TPPProblemDocument?
+        var failureRequiringAlert: Bool
         var failureError = task.error
-        var problemDoc: TPPProblemDocument?
-        var rights = await downloadInfoAsync(forBookIdentifier: book.identifier)?.rightsManagement ?? .unknown
 
-        if rights == .unknown, let mimeType = task.response?.mimeType {
-            Log.info(#file, "⚠️ Rights unknown, detecting from completion MIME type: \(mimeType)")
-            rights = backgroundDownloadHandler.detectRightsManagement(from: mimeType)
-            if let info = await downloadInfoAsync(forBookIdentifier: book.identifier)?.withRightsManagement(rights) {
-                await bookIdentifierToDownloadInfo.set(book.identifier, value: info)
-            }
-        }
-
-        Log.info(#file, "Download completed for \(book.identifier) with rights: \(rights)")
-
-        if let response = task.response, response.isProblemDocument() {
-            let problemDocData = (try? Data(contentsOf: location)) ?? Data()
-            problemDoc = TPPProblemDocument.fromProblemResponseData(problemDocData)
-            if problemDoc == nil {
-                TPPErrorLogger.logProblemDocumentParseError(NSError(domain: "MyBooksDownloadCenter", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not parse problem document"]), problemDocumentData: problemDocData.isEmpty ? nil : problemDocData, url: location, summary: "Error parsing problem doc downloading \(String(describing: book.distributor)) book", metadata: ["book": book.loggableShortString])
-            }
-
-            try? FileManager.default.removeItem(at: location)
+        switch parseResult {
+        case .followUpStarted:
+            return
+        case .failure(let parsedDoc, let parsedMime, let parsedRights):
             failureRequiringAlert = true
-        }
-
-        // Check for OPDS entry XML response - this may contain the actual acquisition link
-        let mimeType = task.response?.mimeType ?? ""
-        if !failureRequiringAlert && backgroundDownloadHandler.isOPDSEntryMimeType(mimeType) {
-            Log.info(#file, "📖 Received OPDS entry response for \(book.identifier), attempting to extract acquisition link")
-
-            if await backgroundDownloadHandler.handleOPDSEntryResponse(at: location, for: book, originalTask: task, session: session) {
-                // Successfully started follow-up download, don't fail this one
-                try? FileManager.default.removeItem(at: location)
-                return
-            } else {
-                Log.warn(#file, "⚠️ Failed to extract acquisition link from OPDS entry for \(book.identifier)")
-                try? FileManager.default.removeItem(at: location)
-                failureRequiringAlert = true
-            }
-        } else if !failureRequiringAlert && backgroundDownloadHandler.isOPDS2PublicationMimeType(mimeType) {
-            Log.info(#file, "📖 Received OPDS2 publication JSON for \(book.identifier), extracting fulfillment link")
-
-            if await backgroundDownloadHandler.handleOPDS2PublicationResponse(at: location, for: book, originalTask: task, session: session) {
-                try? FileManager.default.removeItem(at: location)
-                return
-            } else {
-                Log.warn(#file, "⚠️ Failed to extract fulfillment link from OPDS2 publication for \(book.identifier)")
-                try? FileManager.default.removeItem(at: location)
-                failureRequiringAlert = true
-            }
-        } else if !book.canCompleteDownload(withContentType: mimeType) {
-            try? FileManager.default.removeItem(at: location)
-            failureRequiringAlert = true
+            problemDoc = parsedDoc
+            mimeType = parsedMime
+            rights = parsedRights
+        case .proceed(let parsedRights, let parsedMime):
+            failureRequiringAlert = false
+            problemDoc = nil
+            rights = parsedRights
+            mimeType = parsedMime
         }
 
         if failureRequiringAlert {
