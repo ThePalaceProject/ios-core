@@ -55,6 +55,7 @@ import PalaceCatalog
     private let queueOrchestrator: DownloadQueueOrchestrator
     private let borrowErrorPresenter: BorrowErrorPresenter
     private let signInRedirectHandler: BookSignInRedirectHandler
+    private let contentResetService: BookContentResetService
     /// Shared with `BorrowErrorPresenter` so the borrow-error path and
     /// the start-download path can't both fire concurrent sign-in modals.
     private let credentialRequestState = CredentialRequestState()
@@ -165,6 +166,7 @@ import PalaceCatalog
         throttlingService: DownloadThrottlingService? = nil,
         borrowErrorPresenter: BorrowErrorPresenter? = nil,
         signInRedirectHandler: BookSignInRedirectHandler? = nil,
+        contentResetService: BookContentResetService? = nil,
         queueOrchestrator: DownloadQueueOrchestrator? = nil,
         stateManager: DownloadStateManager = DownloadStateManager(),
         tokenInterceptor: TokenRefreshInterceptor? = nil,
@@ -326,6 +328,18 @@ import PalaceCatalog
             reauthenticator: reauthenticator,
             userAccountProvider: resolveAccountForBorrow,
             credentialRequestState: self.credentialRequestState
+        )
+        // BookContentResetService runs the bulk-reset flows; shares the
+        // same registry / state / file-manager / progress reporter /
+        // local-content-service MBDC owns so cleanup observers see one
+        // coherent state transition.
+        self.contentResetService = contentResetService ?? BookContentResetService(
+            bookRegistry: bookRegistry,
+            accountsManager: accountsManager,
+            stateManager: stateManager,
+            bookFileManager: self.bookFileManager,
+            progressReporter: reporter,
+            localContentService: self.localContentService
         )
         // DownloadQueueOrchestrator shares the same DownloadStateManager
         // (so the active-count + max-concurrent-downloads + dequeue all
@@ -1560,97 +1574,30 @@ extension MyBooksDownloadCenter {
 
 extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
     func reset(_ libraryID: String!) {
-        reset(account: libraryID)
+        contentResetService.reset(account: libraryID)
+        bookIdentifierOfBookToRemove = nil
     }
 
     func reset(account: String) {
+        contentResetService.reset(account: account)
         if accountsManager.currentAccountId == account {
-            reset()
-        } else {
-            deleteAudiobooks(forAccount: account)
-            do {
-                if let url = contentDirectoryURL(account) {
-                    try FileManager.default.removeItem(at: url)
-                }
-            } catch {
-                // Handle error, if needed
-            }
+            bookIdentifierOfBookToRemove = nil
         }
     }
 
+    /// Required by MyBooksDownloadCenterProviding. Resets the current
+    /// account.
     func reset() {
-        guard let currentAccountId = accountsManager.currentAccountId else {
-            return
-        }
-
-        deleteAudiobooks(forAccount: currentAccountId)
-
-        Task {
-            let allInfo = await bookIdentifierToDownloadInfo.values()
-            for info in allInfo {
-                info.downloadTask.cancel(byProducingResumeData: { _ in })
-            }
-
-            await bookIdentifierToDownloadInfo.removeAll()
-            await taskIdentifierToBook.removeAll()
-            await downloadCoordinator.reset()
-        }
-
+        contentResetService.reset()
         bookIdentifierOfBookToRemove = nil
-
-        do {
-            if let url = contentDirectoryURL(currentAccountId) {
-                try FileManager.default.removeItem(at: url)
-            }
-        } catch {
-            // Handle error, if needed
-        }
-
-        broadcastUpdate()
     }
 
     func deleteAudiobooks(forAccount account: String) {
-        bookRegistry.with(account: account) { registry in
-            let books = registry.allBooks
-            for book in books {
-                if book.defaultBookContentType == .audiobook {
-                    deleteLocalContent(for: book.identifier, account: account)
-                }
-            }
-        }
+        contentResetService.deleteAudiobooks(forAccount: account)
     }
 
-    // Purge cached audio fragments (e.g., streaming or decrypted chunks) from the Caches directory.
-    // If `force` is false, purges only when there are no active audiobooks in the registry.
     func purgeAllAudiobookCaches(force: Bool = false) {
-        if !force && hasActiveAudiobooks() { return }
-        let fm = FileManager.default
-        guard let cachesDir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
-        let audioExtensions: Set<String> = ["mp3", "m4a", "mp4", "aac", "oga", "wav"]
-        if let contents = try? fm.contentsOfDirectory(at: cachesDir, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey], options: [.skipsHiddenFiles]) {
-            for url in contents {
-                do {
-                    let rv = try url.resourceValues(forKeys: [.isDirectoryKey])
-                    if rv.isDirectory == true { continue }
-                    if audioExtensions.contains(url.pathExtension.lowercased()) {
-                        try? fm.removeItem(at: url)
-                    }
-                } catch {
-                    // ignore
-                }
-            }
-        }
-    }
-
-    private func hasActiveAudiobooks() -> Bool {
-        let matchingStates: [TPPBookState] = [ .downloadNeeded, .downloading, .downloadSuccessful, .used ]
-        var hasActive = false
-        let accountId = accountsManager.currentAccountId ?? ""
-        bookRegistry.with(account: accountId) { registry in
-            let audiobooks = registry.myBooks.filter { $0.defaultBookContentType == .audiobook }
-            hasActive = audiobooks.contains { matchingStates.contains(registry.state(for: $0.identifier)) }
-        }
-        return hasActive
+        contentResetService.purgeAllAudiobookCaches(force: force)
     }
 
     @objc func downloadProgress(for bookIdentifier: String) -> Double {

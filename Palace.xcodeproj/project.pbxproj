@@ -42,6 +42,7 @@
 		D2A3B4C5E6F7081929A2B3C4 /* DownloadQueueOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4C5D6E7F8091A2B3C4D5E6F /* DownloadQueueOrchestrator.swift */; };
 		485A6B7C8D9E0F1021324354 /* BorrowErrorPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 596B7C8D9E0F10213243546F /* BorrowErrorPresenter.swift */; };
 		7B8D9E0F102132435465A1B2 /* BookSignInRedirectHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E0F102132435465A1B2C3 /* BookSignInRedirectHandler.swift */; };
+		AE0F102132435465A1B2C3D4 /* BookContentResetService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF102132435465A1B2C3D4E5 /* BookContentResetService.swift */; };
 		0B1838E6F21342A31DC01D12 /* AdobeDRMHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */; };
 		14342D20DADCD5B6AA7ECC97 /* DownloadAnnouncementService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D85D6FFA9CEBA4295D91F15 /* DownloadAnnouncementService.swift */; };
 		067E92BE15024B84A6E5E0B0 /* TPPBookmarkFactoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6515A1241D6D4D08A1866E72 /* TPPBookmarkFactoryTests.swift */; };
@@ -116,6 +117,7 @@
 		E3B4C5D6F7081929A2B3C4D5 /* DownloadQueueOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4C5D6E7F8091A2B3C4D5E6F /* DownloadQueueOrchestrator.swift */; };
 		6A7C8D9E0F102132435465A0 /* BorrowErrorPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 596B7C8D9E0F10213243546F /* BorrowErrorPresenter.swift */; };
 		9D0F102132435465A1B2C3D4 /* BookSignInRedirectHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E0F102132435465A1B2C3 /* BookSignInRedirectHandler.swift */; };
+		C12132435465A1B2C3D4E5F6 /* BookContentResetService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF102132435465A1B2C3D4E5 /* BookContentResetService.swift */; };
 		9C2F146198FD9E8862E88B57 /* AdobeDRMHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */; };
 		AD27B6FD04FB3A7966122D83 /* DownloadAnnouncementService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D85D6FFA9CEBA4295D91F15 /* DownloadAnnouncementService.swift */; };
 		173F0823241AAA4E00A64658 /* TPPBookStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 173F0822241AAA4E00A64658 /* TPPBookStateTests.swift */; };
@@ -1871,6 +1873,7 @@
 		F4C5D6E7F8091A2B3C4D5E6F /* DownloadQueueOrchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueOrchestrator.swift; sourceTree = "<group>"; };
 		596B7C8D9E0F10213243546F /* BorrowErrorPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorrowErrorPresenter.swift; sourceTree = "<group>"; };
 		8C9E0F102132435465A1B2C3 /* BookSignInRedirectHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSignInRedirectHandler.swift; sourceTree = "<group>"; };
+		BF102132435465A1B2C3D4E5 /* BookContentResetService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookContentResetService.swift; sourceTree = "<group>"; };
 		FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdobeDRMHandler.swift; sourceTree = "<group>"; };
 		6D85D6FFA9CEBA4295D91F15 /* DownloadAnnouncementService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadAnnouncementService.swift; sourceTree = "<group>"; };
 		3DDE892E38D34061A2DBE2F2 /* CatalogRepositoryMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogRepositoryMock.swift; sourceTree = "<group>"; };
@@ -3566,6 +3569,7 @@
 				F4C5D6E7F8091A2B3C4D5E6F /* DownloadQueueOrchestrator.swift */,
 				596B7C8D9E0F10213243546F /* BorrowErrorPresenter.swift */,
 				8C9E0F102132435465A1B2C3 /* BookSignInRedirectHandler.swift */,
+				BF102132435465A1B2C3D4E5 /* BookContentResetService.swift */,
 				FE0CCABB8C99DA55C43F3DA3 /* AdobeDRMHandler.swift */,
 				6D85D6FFA9CEBA4295D91F15 /* DownloadAnnouncementService.swift */,
 				1FDB637C01812EEB10919A6E /* BackgroundDownloadHandler.swift */,
@@ -6488,6 +6492,7 @@
 				D2A3B4C5E6F7081929A2B3C4 /* DownloadQueueOrchestrator.swift in Sources */,
 				485A6B7C8D9E0F1021324354 /* BorrowErrorPresenter.swift in Sources */,
 				7B8D9E0F102132435465A1B2 /* BookSignInRedirectHandler.swift in Sources */,
+				AE0F102132435465A1B2C3D4 /* BookContentResetService.swift in Sources */,
 				0B1838E6F21342A31DC01D12 /* AdobeDRMHandler.swift in Sources */,
 				14342D20DADCD5B6AA7ECC97 /* DownloadAnnouncementService.swift in Sources */,
 				5C5CFDA86E67C6186A24EFF9 /* BackgroundDownloadHandler.swift in Sources */,
@@ -6756,6 +6761,7 @@
 				E3B4C5D6F7081929A2B3C4D5 /* DownloadQueueOrchestrator.swift in Sources */,
 				6A7C8D9E0F102132435465A0 /* BorrowErrorPresenter.swift in Sources */,
 				9D0F102132435465A1B2C3D4 /* BookSignInRedirectHandler.swift in Sources */,
+				C12132435465A1B2C3D4E5F6 /* BookContentResetService.swift in Sources */,
 				9C2F146198FD9E8862E88B57 /* AdobeDRMHandler.swift in Sources */,
 				AD27B6FD04FB3A7966122D83 /* DownloadAnnouncementService.swift in Sources */,
 				D3101CC4442E0E2A8E6B9AE2 /* BackgroundDownloadHandler.swift in Sources */,
