@@ -1,22 +1,33 @@
 #!/usr/bin/env python3
 """Aggregate per-file palace_mutate JSON reports into a kill-rate summary.
 
-Usage: summarize-mutation-reports.py <reports-dir>
+Usage: summarize-mutation-reports.py <reports-dir> [--threshold PCT] [--strict]
 
 If the directory contains no JSON files, emits a note that mutation was run in
 dry-run mode (palace_mutate.py doesn't write a --report in dry-run).
+
+Flags:
+  --threshold PCT  Minimum acceptable per-file kill rate (default: 50).
+  --strict         Exit non-zero if ANY individual file falls below --threshold,
+                   not just the aggregate. Use this in CI to gate critical-path
+                   files (one weak file shouldn't be hidden by a strong average).
 """
+import argparse
 import json
 import sys
 from pathlib import Path
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: summarize-mutation-reports.py <reports-dir>", file=sys.stderr)
-        return 2
+    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser.add_argument("reports_dir", type=Path, help="Directory of per-file JSON reports")
+    parser.add_argument("--threshold", type=float, default=50.0,
+                        help="Minimum kill-rate %% (default: 50)")
+    parser.add_argument("--strict", action="store_true",
+                        help="Fail if any single file is below threshold (not just aggregate)")
+    args = parser.parse_args()
 
-    reports_dir = Path(sys.argv[1])
+    reports_dir = args.reports_dir
     if not reports_dir.is_dir():
         print(f"no reports dir at {reports_dir}")
         return 0
@@ -75,8 +86,23 @@ def main() -> int:
         for f in sorted(rated, key=lambda x: x["rate"])[:5]:
             print(f"  {f['rate']:5.1f}%  {f['killed']:>3}k/{f['survived']:>3}s  {f['file']}")
 
-    # Exit non-zero if overall kill rate is concerning
-    return 1 if overall_total > 0 and overall_rate < 50 else 0
+    # Threshold gate
+    threshold = args.threshold
+    weak = [f for f in rated if f["rate"] < threshold]
+
+    if args.strict and weak:
+        print()
+        print(f"::error::{len(weak)} file(s) below {threshold:g}% kill rate (strict mode):")
+        for f in weak:
+            print(f"  ::error file={f['file']}::kill rate {f['rate']:.1f}% < {threshold:g}%")
+        return 1
+
+    if overall_total > 0 and overall_rate < threshold:
+        print()
+        print(f"::warning::Aggregate kill rate {overall_rate:.1f}% below threshold {threshold:g}%")
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":

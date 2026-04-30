@@ -1,0 +1,159 @@
+name: Mutation Gate (critical paths)
+
+# Fails a PR when mutation-testing kill rates drop on touched critical-path files.
+# Triggered automatically on PRs that change files in known-risky areas (auth,
+# borrow, download, DRM, registry). Skipped otherwise to keep PR latency low.
+#
+# Background: PP-4164 surfaced AccountsManager.swift at 0% mutation kill rate.
+# This gate exists so the next 0% file is caught at PR review, not in production.
+
+on:
+  pull_request:
+    paths:
+      - 'Palace/Accounts/**/*.swift'
+      - 'Palace/SignInLogic/**/*.swift'
+      - 'Palace/Book/Models/TPPBookRegistry*.swift'
+      - 'Palace/MyBooks/MyBooksDownloadCenter*.swift'
+      - 'Palace/Reader2/ReaderStackConfiguration/AdobeDRM/**/*.swift'
+      - 'Palace/Reader2/ReaderStackConfiguration/LCP/**/*.swift'
+      - 'Palace/Settings/TPPSettings.swift'
+      - 'Palace/AppInfrastructure/AppContainer.swift'
+
+concurrency:
+  group: mutation-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutation-gate:
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Set up Xcode 26
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26'
+
+      - name: Checkout PR with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          # Private DRM submodules (adept-ios, adobe-content-filter,
+          # ios-audiobook-overdrive) require this token. Without it the
+          # checkout step fails before mutation gating ever runs.
+          # Matches the pattern in unit-testing.yml.
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
+      - name: Detect critical-path files changed in this PR
+        id: changed
+        run: |
+          set -euo pipefail
+          # Only run mutation on the curated critical-path list. The workflow's
+          # `paths:` filter is a coarse trigger; this step is the precise filter.
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          BASE="origin/${{ github.base_ref }}"
+          CHANGED=$(git diff --name-only "$BASE...HEAD" -- \
+            'Palace/Accounts/**/*.swift' \
+            'Palace/SignInLogic/**/*.swift' \
+            'Palace/Book/Models/TPPBookRegistry*.swift' \
+            'Palace/MyBooks/MyBooksDownloadCenter*.swift' \
+            'Palace/Reader2/ReaderStackConfiguration/AdobeDRM/**/*.swift' \
+            'Palace/Reader2/ReaderStackConfiguration/LCP/**/*.swift' \
+            'Palace/Settings/TPPSettings.swift' \
+            'Palace/AppInfrastructure/AppContainer.swift' \
+            | grep -v -E '(Tests|Mock)' || true)
+
+          if [[ -z "$CHANGED" ]]; then
+            echo "No critical-path source files changed; skipping mutation gate."
+            echo "files=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Critical-path files changed:"
+          echo "$CHANGED"
+          # Output as a comma-separated list for downstream steps.
+          echo "files=$(echo "$CHANGED" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
+
+      - name: Run mutation testing on changed critical-path files
+        if: steps.changed.outputs.files != ''
+        env:
+          MUTATION_FILES: ${{ steps.changed.outputs.files }}
+        run: |
+          set -euo pipefail
+
+          # Boot a sim for the underlying xcodebuild test runs. Pick the first
+          # 'iPhone 16 Pro' available; runner provides a fresh sim per job so
+          # claim/release coordination isn't needed here.
+          UDID=$(xcrun simctl list devices 'iPhone 16 Pro' \
+            | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' \
+            | head -1)
+          if [[ -z "$UDID" ]]; then
+            echo "::error::No 'iPhone 16 Pro' simulator available on runner."
+            exit 1
+          fi
+          xcrun simctl boot "$UDID" || true
+
+          mkdir -p mutation-results
+
+          # Use the regression orchestrator's auto cmd in mutation-only mode.
+          # --mutation-files passes through to palace_mutate.py which derives
+          # the right XCTest class per source file. --mutation-max-per-file 8
+          # keeps the wallclock under the timeout.
+          scripts/regression-report.sh auto \
+            --output-dir "$PWD/mutation-results" \
+            --skip-sync-tests \
+            --skip-push \
+            --mutation-run \
+            --mutation-max-per-file 8 \
+            --mutation-files "$MUTATION_FILES" \
+            --sim-id "$UDID" \
+            --yes-long-mutation
+
+      - name: Enforce kill-rate threshold (75% on critical paths)
+        if: steps.changed.outputs.files != ''
+        run: |
+          set -euo pipefail
+          REPORTS=mutation-results/automated/mutation/reports
+
+          if [[ ! -d "$REPORTS" ]]; then
+            echo "::error::No mutation reports produced; tooling failure."
+            exit 1
+          fi
+
+          python3 scripts/summarize-mutation-reports.py "$REPORTS" \
+            --threshold 75 \
+            --strict
+
+      - name: Comment kill-rate summary on PR
+        if: always() && steps.changed.outputs.files != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const reportsDir = 'mutation-results/automated/mutation/reports';
+            if (!fs.existsSync(reportsDir)) return;
+
+            const reports = fs.readdirSync(reportsDir)
+              .filter(f => f.endsWith('.json'))
+              .map(f => JSON.parse(fs.readFileSync(path.join(reportsDir, f), 'utf8')));
+
+            const lines = ['### Mutation gate — kill rates per critical-path file', '',
+              '| File | Killed / Run | Kill % | Verdict |', '|---|---|---|---|'];
+            for (const r of reports) {
+              const k = r.summary.killed, run = r.summary.killed + r.summary.survived;
+              const pct = run === 0 ? 0 : Math.round(k / run * 100);
+              const verdict = pct >= 75 ? '✅' : pct >= 50 ? '⚠️ borderline' : '❌ insufficient';
+              lines.push(`| ${r.file} | ${k} / ${run} | ${pct}% | ${verdict} |`);
+            }
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: lines.join('\n')
+            });
