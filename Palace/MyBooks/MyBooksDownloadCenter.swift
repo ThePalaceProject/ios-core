@@ -54,6 +54,7 @@ import PalaceCatalog
     private let throttlingService: DownloadThrottlingService
     private let queueOrchestrator: DownloadQueueOrchestrator
     private let borrowErrorPresenter: BorrowErrorPresenter
+    private let signInRedirectHandler: BookSignInRedirectHandler
     /// Shared with `BorrowErrorPresenter` so the borrow-error path and
     /// the start-download path can't both fire concurrent sign-in modals.
     private let credentialRequestState = CredentialRequestState()
@@ -163,6 +164,7 @@ import PalaceCatalog
         authRetryHandler: DownloadAuthRetryHandler? = nil,
         throttlingService: DownloadThrottlingService? = nil,
         borrowErrorPresenter: BorrowErrorPresenter? = nil,
+        signInRedirectHandler: BookSignInRedirectHandler? = nil,
         queueOrchestrator: DownloadQueueOrchestrator? = nil,
         stateManager: DownloadStateManager = DownloadStateManager(),
         tokenInterceptor: TokenRefreshInterceptor? = nil,
@@ -309,6 +311,22 @@ import PalaceCatalog
             userAccountProvider: resolveAccountForBorrow,
             credentialRequestState: self.credentialRequestState
         )
+        // BookSignInRedirectHandler shares stateManager + registry +
+        // reauthenticator + credentialRequestState with the rest of
+        // MBDC. cookieStorageProvider closes over `self.session` —
+        // session is set up post `super.init()`, so the closure resolves
+        // lazily at each call (matching the original code's late-bound
+        // session reference).
+        // Cookie storage is read via the delegate (MBDC) so the late-
+        // initialized session reference resolves at call time rather
+        // than at handler-init time.
+        self.signInRedirectHandler = signInRedirectHandler ?? BookSignInRedirectHandler(
+            bookRegistry: bookRegistry,
+            stateManager: stateManager,
+            reauthenticator: reauthenticator,
+            userAccountProvider: resolveAccountForBorrow,
+            credentialRequestState: self.credentialRequestState
+        )
         // DownloadQueueOrchestrator shares the same DownloadStateManager
         // (so the active-count + max-concurrent-downloads + dequeue all
         // resolve through one state owner) and the same TPPBookRegistry
@@ -366,6 +384,7 @@ import PalaceCatalog
         self.authRetryHandler.delegate = self
         self.throttlingService.delegate = self
         self.borrowErrorPresenter.delegate = self
+        self.signInRedirectHandler.delegate = self
         self.queueOrchestrator.delegate = self
         #if LCP
         self.lcpFulfillmentHandler.delegate = self
@@ -907,183 +926,22 @@ import PalaceCatalog
     }
 
     private func handleSAMLStartedState(for book: TPPBook, withRequest request: URLRequest, cookies: [HTTPCookie]) {
-        bookRegistry.setState(.SAMLStarted, for: book.identifier)
-
-        runOnMainAsync { [weak self] in
-            var mutableRequest = request
-            mutableRequest.cachePolicy = .reloadIgnoringCacheData
-
-            let loginCompletionHandler: (URL, [HTTPCookie]) -> Void = { _, newCookies in
-                guard let self = self else { return }
-
-                self.userAccount.setCookies(newCookies)
-                Log.info(#file, "SAML login completed successfully, got \(newCookies.count) cookies")
-
-                self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
-
-                Task { @MainActor in
-                    if let topVC = UIApplication.shared.mainKeyWindow?.rootViewController {
-                        var current = topVC
-                        while let presented = current.presentedViewController {
-                            current = presented
-                        }
-                        if current is UINavigationController || current is TPPCookiesWebViewController {
-                            current.presentingViewController?.dismiss(animated: true) {
-                                // After dismissal, retry download with new cookies
-                                self.startDownload(for: book)
-                            }
-                        }
-                    }
-                }
-            }
-
-            let model = TPPCookiesWebViewModel(
-                cookies: cookies,
-                request: mutableRequest,
-                loginCompletionHandler: loginCompletionHandler,
-                loginCancelHandler: {
-                    self?.handleLoginCancellation(for: book)
-                },
-                bookFoundHandler: { [weak self] request, newCookies in
-                    guard let self = self else { return }
-                    Log.info(#file, "SAML book found with \(newCookies.count) fresh cookies")
-                    self.handleBookFound(for: book, withRequest: request, cookies: newCookies)
-                },
-                problemFoundHandler: { [weak self] problemDocument in
-                    Log.warn(#file, "SAML web view encountered problem: \(problemDocument?.type ?? "unknown")")
-                    self?.handleProblem(for: book, problemDocument: problemDocument)
-                },
-                autoPresentIfNeeded: true  // Auto-present and auto-dismiss
-            )
-
-            let cookiesVC = TPPCookiesWebViewController(model: model)
-            cookiesVC.loadViewIfNeeded()
-            Log.info(#file, "SAML web view initialized for '\(book.title)'")
-        }
+        signInRedirectHandler.handleSAMLStartedState(for: book, withRequest: request, cookies: cookies)
     }
 
-    private func handleLoginCancellation(for book: TPPBook) {
-        bookRegistry.setState(.downloadNeeded, for: book.identifier)
-        cancelDownload(for: book.identifier)
-    }
-
-    private func handleBookFound(for book: TPPBook, withRequest request: URLRequest?, cookies: [HTTPCookie]) {
-        userAccount.setCookies(cookies)
-        if let request = request {
-            startDownload(for: book, withRequest: request)
-        }
-    }
-
+    // handleLoginCancellation / handleBookFound / handleProblem /
+    // clearAndSetCookies moved to BookSignInRedirectHandler. The
+    // 3 internal call sites (loginCancelHandler / bookFoundHandler /
+    // problemFoundHandler closures) are now wired in the handler. The
+    // 1 remaining external call site for handleProblem is from
+    // `handleSAMLStartedState`'s callback closure (which now lives on
+    // the handler too).
     private func handleProblem(for book: TPPBook, problemDocument: TPPProblemDocument?) {
-        let authDef = userAccount.authDefinition
-        let hasCredentials = userAccount.hasCredentials()
-        let currentState = bookRegistry.state(for: book.identifier)
-
-        // CIRCUIT BREAKER: If already in .SAMLStarted, SAML web view failed - show sign-in without signing out
-        if currentState == .SAMLStarted {
-            Log.warn(#file, "SAML re-auth already attempted for '\(book.title)' - showing sign-in modal")
-
-            Task { @MainActor in
-                await self.bookIdentifierToDownloadInfo.remove(book.identifier)
-                await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
-
-                bookRegistry.setState(.downloadFailed, for: book.identifier)
-
-                // Show the problem document message if available (session expired, etc.)
-                if let problemDoc = problemDocument {
-                    let alert = TPPAlertUtils.alert(
-                        title: problemDoc.title ?? Strings.Error.sessionExpiredTitle,
-                        message: problemDoc.detail ?? Strings.Error.sessionExpiredMessage
-                    )
-                    TPPPresentationUtils.safelyPresent(alert)
-                }
-
-                guard !self.credentialRequestState.isRequestingCredentials else { return }
-
-                self.credentialRequestState.isRequestingCredentials = true
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    self.credentialRequestState.isRequestingCredentials = false
-                }
-
-                // Show sign-in modal WITHOUT signing out - let user re-authenticate gracefully
-                Log.info(#file, "Showing sign-in modal for session refresh")
-                self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-                    Task { @MainActor in
-                        self?.credentialRequestState.isRequestingCredentials = false
-                        if self?.userAccount.hasCredentials() == true {
-                            Log.info(#file, "Sign-in completed, retrying download")
-                            self?.startDownload(for: book)
-                        }
-                    }
-                }
-            }
-            return
-        }
-
-        // For SAML with expired cookies, try SAML flow once
-        if authDef?.isSaml == true && hasCredentials {
-            Log.info(#file, "SAML cookies expired - triggering SAML re-auth flow")
-
-            Task {
-                await self.bookIdentifierToDownloadInfo.remove(book.identifier)
-                await self.downloadCoordinator.registerCompletion(identifier: book.identifier)
-
-                await MainActor.run {
-                    self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
-                    Log.info(#file, "Cleared download state, retrying with SAML re-auth")
-                    self.startDownload(for: book)
-                }
-            }
-            return
-        }
-
-        // For non-SAML or no credentials, set to downloadNeeded and show sign-in if needed
-        bookRegistry.setState(.downloadNeeded, for: book.identifier)
-
-        // Only show sign-in if truly no credentials
-        if !hasCredentials {
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-
-                guard !self.credentialRequestState.isRequestingCredentials else {
-                    NSLog("Already requesting credentials, skipping re-authentication in handleProblem for: \(book.title)")
-                    return
-                }
-
-                self.credentialRequestState.isRequestingCredentials = true
-
-                Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    self?.credentialRequestState.isRequestingCredentials = false
-                }
-
-                self.reauthenticator.authenticateIfNeeded(self.userAccount, usingExistingCredentials: false) { [weak self] in
-                    Task { @MainActor [weak self] in
-                        self?.credentialRequestState.isRequestingCredentials = false
-
-                        if self?.userAccount.hasCredentials() == true {
-                            self?.startDownload(for: book)
-                        } else {
-                            NSLog("Authentication completed but no credentials present, user may have cancelled")
-                        }
-                    }
-                }
-            }
-        } else {
-            // Has credentials but download failed - log for debugging
-            Log.warn(#file, "Download failed for authenticated user: \(book.identifier)")
-        }
+        signInRedirectHandler.handleProblem(for: book, problemDocument: problemDocument)
     }
 
     private func clearAndSetCookies() {
-        let cookieStorage = self.session.configuration.httpCookieStorage
-        cookieStorage?.cookies?.forEach { cookie in
-            cookieStorage?.deleteCookie(cookie)
-        }
-        self.userAccount.cookies?.forEach { cookie in
-            cookieStorage?.setCookie(cookie)
-        }
+        signInRedirectHandler.clearAndSetCookies()
     }
 
     @objc func cancelDownload(for identifier: String) {
@@ -1882,6 +1740,17 @@ extension MyBooksDownloadCenter: DownloadAuthRetryHandlerDelegate {}
 // MBDC's surface. Empty conformance.
 
 extension MyBooksDownloadCenter: BorrowErrorPresenterDelegate {}
+
+// MARK: - BookSignInRedirectHandlerDelegate
+//
+// `cancelDownload(for:)` and `startDownload(for:withRequest:)` already
+// exist on MBDC's surface. Empty conformance.
+
+extension MyBooksDownloadCenter: BookSignInRedirectHandlerDelegate {
+    var cookieStorage: HTTPCookieStorage? {
+        session.configuration.httpCookieStorage
+    }
+}
 
 // MARK: - BookReturnServiceDelegate
 //
