@@ -42,6 +42,11 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
+          # Private DRM submodules (adept-ios, adobe-content-filter,
+          # ios-audiobook-overdrive) require this token. Without it the
+          # checkout step fails before mutation gating ever runs.
+          # Matches the pattern in unit-testing.yml.
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
 
       - name: Detect critical-path files changed in this PR
         id: changed
