@@ -78,13 +78,22 @@ final class BookCellModelActionTests: XCTestCase {
         )
     }
 
-    func testReturn_AlertHasCancelButton() {
+    /// Return confirmation alert must have BOTH a primary action AND a
+    /// secondary (Cancel) button — the secondary button is what
+    /// HalfSheetView keys off to show the destructive Retry+Cancel branch.
+    /// Original test only checked secondary; this one also pins the
+    /// primary button title presence and that the two are distinct
+    /// (catches a copy-paste mutant).
+    func testReturn_AlertHasBothPrimaryAndDistinctCancelButton() {
         let model = makeModel()
-
         model.callDelegate(for: .return)
 
+        XCTAssertNotNil(model.showAlert?.buttonTitle,
+                        "Primary button title must be present")
         XCTAssertNotNil(model.showAlert?.secondaryButtonTitle,
-            "Confirmation alert must have a Cancel button")
+                        "Cancel button title must be present — HalfSheetView keys off this for the two-button branch")
+        XCTAssertNotEqual(model.showAlert?.buttonTitle, model.showAlert?.secondaryButtonTitle,
+                          "Primary and Cancel must be DISTINCT strings — catches a copy-paste mutant")
     }
 
     // MARK: - Return: confirming the alert starts the return
@@ -170,13 +179,18 @@ final class BookCellModelActionTests: XCTestCase {
         )
     }
 
-    func testCancelHold_AlertHasCancelButton() {
+    /// CancelHold confirmation alert must have BOTH primary AND distinct
+    /// secondary buttons — same contract as return but for the hold flow.
+    /// Pin both buttons + the inequality so a copy-paste mutant fails.
+    func testCancelHold_AlertHasBothPrimaryAndDistinctCancelButton() {
         let model = makeHoldModel()
-
         model.callDelegate(for: .cancelHold)
 
+        XCTAssertNotNil(model.showAlert?.buttonTitle)
         XCTAssertNotNil(model.showAlert?.secondaryButtonTitle,
-            "Confirmation alert must have a Cancel button")
+                        "Cancel button required for the destructive-confirm branch")
+        XCTAssertNotEqual(model.showAlert?.buttonTitle, model.showAlert?.secondaryButtonTitle,
+                          "Primary and Cancel must be DISTINCT")
     }
 
     // MARK: - Cancel Hold: confirming the alert starts the return
@@ -205,13 +219,27 @@ final class BookCellModelActionTests: XCTestCase {
 
     // MARK: - Remove (local delete) should still be immediate — no confirmation
 
-    func testRemove_DoesNotShowAlert_ProceedsImmediately() {
+    /// `.remove` is a local-only delete that proceeds immediately — no
+    /// confirmation alert AND no secondary alert appears later. Pin both
+    /// the immediate post-call state AND a follow-up check after a short
+    /// drain to catch a mutant that defers the alert via Task.
+    func testRemove_doesNotShowAlertImmediatelyOrAfterDrain() {
         let model = makeModel()
+        XCTAssertNil(model.showAlert, "Pre-condition: no alert before action")
 
         model.callDelegate(for: .remove)
 
         XCTAssertNil(model.showAlert,
-            "Remove (local delete) should not show a confirmation alert")
+                     "Remove (local delete) must NOT show a confirmation alert")
+
+        // Drain main queue to catch a mutant that defers the alert via
+        // DispatchQueue.main.async or Task { @MainActor }.
+        let drain = expectation(description: "main queue drain")
+        DispatchQueue.main.async { drain.fulfill() }
+        wait(for: [drain], timeout: 1.0)
+
+        XCTAssertNil(model.showAlert,
+                     "Remove must STILL show no alert after a main-queue drain")
     }
 
     // MARK: - Reader presentation debounce (PP-4116)
