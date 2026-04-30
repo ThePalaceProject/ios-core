@@ -62,6 +62,9 @@ final class BackgroundDownloadHandler: NSObject {
             return .none
         case ContentTypeBearerToken:
             return .simplifiedBearerTokenJSON
+        case ContentTypeOPDSPublication:
+            // Intermediate type — will be handled by handleOPDS2PublicationResponse.
+            return .none
         #if FEATURE_OVERDRIVE
         case "application/json":
             return .overdriveManifestJSON
@@ -82,6 +85,54 @@ final class BackgroundDownloadHandler: NSObject {
             lowercased == "text/xml" ||
             lowercased.contains("atom+xml") ||
             lowercased.contains("opds-catalog")
+    }
+
+    /// Checks if the MIME type indicates an OPDS 2 publication JSON response.
+    /// Borrow endpoints sometimes redirect to a publication JSON whose
+    /// fulfillment link is the actual content URL — see
+    /// `handleOPDS2PublicationResponse`.
+    func isOPDS2PublicationMimeType(_ mimeType: String) -> Bool {
+        let lowercased = mimeType.lowercased()
+        return lowercased.contains("opds-publication+json") ||
+            lowercased.contains("opds+json")
+    }
+
+    /// Handles an OPDS 2 publication JSON response by parsing it and
+    /// following the actual acquisition link. The borrow endpoint returns a
+    /// publication JSON with fulfillment links — we parse it, extract the
+    /// direct content link, and start a new download for the actual content.
+    /// Returns `true` when a follow-up download was successfully started;
+    /// the caller should treat that as success and stop processing the
+    /// current task.
+    func handleOPDS2PublicationResponse(
+        at location: URL,
+        for book: TPPBook,
+        originalTask: URLSessionDownloadTask,
+        session: URLSession
+    ) async -> Bool {
+        guard let jsonData = try? Data(contentsOf: location) else {
+            Log.error(#file, "Failed to read OPDS2 publication JSON for \(book.identifier)")
+            return false
+        }
+
+        // Parse the OPDS2 publication. The publication payload comes in two
+        // shapes — `OPDS2Publication` (the lean form) and `OPDS2Full
+        // Publication`. Try the lean form first; on decode failure fall back
+        // to the full form before bailing out.
+        if let publication = try? JSONDecoder().decode(OPDS2Publication.self, from: jsonData),
+           let updatedBook = publication.toBook() {
+            return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
+        }
+
+        do {
+            let fullPub = try JSONDecoder().decode(OPDS2FullPublication.self, from: jsonData)
+            if let updatedBook = fullPub.toBook() {
+                return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
+            }
+        } catch {
+            Log.error(#file, "Failed to decode OPDS2 publication JSON for \(book.identifier): \(error)")
+        }
+        return false
     }
 
     // MARK: - Progress Handling
@@ -144,10 +195,6 @@ final class BackgroundDownloadHandler: NSObject {
         originalTask: URLSessionDownloadTask,
         session: URLSession
     ) async -> Bool {
-        guard let delegate = delegate else { return false }
-        let stateManager = delegate.stateManager
-        let bookRegistry = delegate.bookRegistry
-
         guard let xmlData = try? Data(contentsOf: location) else {
             Log.error(#file, "Failed to read OPDS entry XML for \(book.identifier)")
             return false
@@ -163,18 +210,36 @@ final class BackgroundDownloadHandler: NSObject {
             return false
         }
 
+        return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
+    }
+
+    /// Shared follow-up step for both OPDS-entry XML and OPDS2 JSON publication
+    /// paths. Given a book whose `defaultAcquisition` resolves to a direct
+    /// content URL (not another opds-catalog), this swaps the original task
+    /// out of stateManager, registers the updated book with `.downloading`,
+    /// kicks off a new authenticated downloadTask, and returns true on success.
+    func followAcquisitionLink(
+        from updatedBook: TPPBook,
+        originalBook: TPPBook,
+        originalTask: URLSessionDownloadTask,
+        session: URLSession
+    ) async -> Bool {
+        guard let delegate = delegate else { return false }
+        let stateManager = delegate.stateManager
+        let bookRegistry = delegate.bookRegistry
+
         guard let acquisition = updatedBook.defaultAcquisition,
               !acquisition.type.lowercased().contains("opds-catalog") else {
-            Log.warn(#file, "No direct acquisition link in OPDS entry for \(book.identifier)")
+            Log.warn(#file, "No direct acquisition link for \(originalBook.identifier)")
             return false
         }
 
         let acquisitionURL = acquisition.hrefURL
-        Log.info(#file, "Following acquisition link from OPDS entry: \(acquisitionURL)")
+        Log.info(#file, "Following acquisition link: \(acquisitionURL)")
 
         await stateManager.taskIdentifierToBook.remove(originalTask.taskIdentifier)
 
-        let registryLocation = bookRegistry.location(forIdentifier: book.identifier)
+        let registryLocation = bookRegistry.location(forIdentifier: originalBook.identifier)
         bookRegistry.addBook(
             updatedBook,
             location: registryLocation,
@@ -187,7 +252,7 @@ final class BackgroundDownloadHandler: NSObject {
         let newRights = detectRightsManagement(from: acquisition.type)
 
         var request = URLRequest(url: acquisitionURL, applyingCustomUserAgent: true)
-        if let token = AppContainer.production().accountsManager.currentUserAccount.authToken {
+        if let token = delegate.userAccount.authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 

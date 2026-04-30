@@ -9,15 +9,30 @@ import Foundation
 import PalaceLogging
 import PalaceCatalog
 
+/// Narrow protocol that BookReturnService and similar callers depend on so
+/// tests can substitute a fixture / failing fetcher without standing up the
+/// full actor + URL stack. Production code passes an OPDSFeedService instance
+/// that satisfies this protocol via the conformance below.
+protocol OPDSFeedFetching: Sendable {
+    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed
+}
+
 /// Modern async/await service for OPDS feed operations
 /// Wraps legacy Objective-C TPPOPDSFeed with type-safe async API
-actor OPDSFeedService {
+actor OPDSFeedService: OPDSFeedFetching {
 
     private var inflightRequests: [URL: Task<TPPOPDSFeed, Error>] = [:]
 
     init() {}
 
     // MARK: - Feed Fetching
+
+    /// `OPDSFeedFetching` conformance — single-arg form so callers can
+    /// depend on the narrow protocol instead of the full actor surface.
+    /// Delegates to the canonical 3-arg method with production defaults.
+    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
+        try await fetchFeed(from: url, resetCache: false, useToken: true)
+    }
 
     /// Fetches an OPDS feed from the given URL
     /// - Parameters:

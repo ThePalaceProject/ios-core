@@ -43,6 +43,7 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
     // MARK: - Dependencies
 
     private let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
+    private let downloadAnnouncementService: DownloadAnnouncementService
 
     // MARK: - Broadcast throttling
 
@@ -55,8 +56,16 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
 
     // MARK: - Init
 
-    init(accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter()) {
+    init(
+        accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
+        downloadAnnouncementService: DownloadAnnouncementService? = nil
+    ) {
         self.accessibilityAnnouncements = accessibilityAnnouncements
+        // The reporter and the service must share an underlying announcer
+        // so deduplication / progress-bucket state are coherent across the
+        // announceStatus path (used by publishAndAnnounceError) and the
+        // book-level announce paths (used by the lifecycle wrappers below).
+        self.downloadAnnouncementService = downloadAnnouncementService ?? DownloadAnnouncementService(announcer: accessibilityAnnouncements)
     }
 
     // MARK: - Progress
@@ -116,50 +125,50 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
     }
 
     // MARK: - Accessibility Announcements
+    //
+    // All book-level announce paths route through DownloadAnnouncementService —
+    // the single source of truth for the book→title (+identifier) bridge.
+    // Kept here as thin wrappers because BackgroundDownloadHandler reaches
+    // these methods via `delegate.progressReporter.announceXxx(for:)`; that
+    // call shape stays stable until the broker extraction lets us flatten it.
 
     func announceDownloadStarted(for book: TPPBook) {
-        accessibilityAnnouncements.announceDownloadStarted(title: book.title)
+        downloadAnnouncementService.announceDownloadStarted(for: book)
     }
 
     func announceDownloadProgress(for book: TPPBook, progress: Double) {
-        accessibilityAnnouncements.announceDownloadProgress(
-            title: book.title,
-            identifier: book.identifier,
-            progress: progress
-        )
+        downloadAnnouncementService.announceDownloadProgress(for: book, progress: progress)
     }
 
     func announceDownloadCompleted(for book: TPPBook) {
-        accessibilityAnnouncements.announceDownloadCompleted(title: book.title)
-        accessibilityAnnouncements.resetProgress(identifier: book.identifier)
+        downloadAnnouncementService.announceDownloadCompleted(for: book)
     }
 
     func announceDownloadFailed(for book: TPPBook) {
-        accessibilityAnnouncements.announceDownloadFailed(title: book.title)
-        accessibilityAnnouncements.resetProgress(identifier: book.identifier)
+        downloadAnnouncementService.announceDownloadFailed(for: book)
     }
 
     func announceBorrowStarted(for book: TPPBook) {
-        accessibilityAnnouncements.announceBorrowStarted(title: book.title)
+        downloadAnnouncementService.announceBorrowStarted(for: book)
     }
 
     func announceBorrowSucceeded(for book: TPPBook) {
-        accessibilityAnnouncements.announceBorrowSucceeded(title: book.title)
+        downloadAnnouncementService.announceBorrowSucceeded(for: book)
     }
 
     func announceBorrowFailed(for book: TPPBook) {
-        accessibilityAnnouncements.announceBorrowFailed(title: book.title)
+        downloadAnnouncementService.announceBorrowFailed(for: book)
     }
 
     func announceReturnStarted(for book: TPPBook) {
-        accessibilityAnnouncements.announceReturnStarted(title: book.title)
+        downloadAnnouncementService.announceReturnStarted(for: book)
     }
 
     func announceReturnSucceeded(for book: TPPBook) {
-        accessibilityAnnouncements.announceReturnSucceeded(title: book.title)
+        downloadAnnouncementService.announceReturnSucceeded(for: book)
     }
 
     func announceReturnFailed(for book: TPPBook) {
-        accessibilityAnnouncements.announceReturnFailed(title: book.title)
+        downloadAnnouncementService.announceReturnFailed(for: book)
     }
 }
