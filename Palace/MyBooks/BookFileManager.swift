@@ -18,7 +18,10 @@ import Foundation
 /// Resolves the on-disk URL for a book download. Per-account, hashed
 /// identifier, LCP-aware file extension. Creates the content directory on
 /// demand. No network, no DRM logic — just paths.
-final class BookFileManager {
+/// Non-final to allow test-only subclassing in `SpyBookFileManager`
+/// (LocalBookContentServiceTests). The dynamic-dispatch cost is
+/// negligible — `fileUrl(for:)` is not on a hot path.
+class BookFileManager {
 
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
