@@ -278,7 +278,12 @@ final class AccountDetailViewModelTests: XCTestCase {
         let selectedAuth = businessLogic.selectedAuthentication
         // selectedAuthentication may be nil if no auth is configured, but must not crash
         if let auth = selectedAuth {
-            XCTAssertTrue(auth.isOauth || auth.isSaml || auth.isBasic, "Authentication must be one of oauth/saml/basic")
+            // Test was originally written before token + oidc auth types existed.
+            // Accept any concrete auth type the codebase recognises today.
+            XCTAssertTrue(
+                auth.isOauth || auth.isSaml || auth.isBasic || auth.isToken || auth.isOidc,
+                "Authentication must be one of oauth/saml/basic/token/oidc — got an unrecognised type"
+            )
         }
     }
 
