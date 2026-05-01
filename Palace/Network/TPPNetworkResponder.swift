@@ -401,10 +401,26 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
         }
 
         // Mark credentials as stale - preserves Adobe DRM activation
-        AccountsManager.shared.userAccount(for: accountId ?? "").markCredentialsStale()
+        let user = AccountsManager.shared.userAccount(for: accountId ?? "")
+        user.markCredentialsStale()
 
         if authDef?.reauthStrategy == .browser {
-            Log.info(#file, "Server returned 401 for browser-based auth - credentials marked stale, will trigger re-auth flow")
+            // SAML/OIDC: a 401 here means the IdP cookie/assertion expired.
+            // markCredentialsStale() above only fires the publisher on the
+            // .loggedIn → .credentialsStale transition; once stale, subsequent
+            // 401s are no-ops. So we hand off to SAMLReauthCoordinator on
+            // every 401 — its own single-flight + foreground gates dedupe,
+            // which also handles the case where the account was already
+            // stale at app launch (publisher quiet, but UI still missing).
+            // HelpSpot 17716 (Cornell SAML).
+            Log.info(#file, "Server returned 401 for browser-based auth - credentials marked stale, requesting SAML reauth")
+            Task { @MainActor in
+                SAMLReauthCoordinator.shared.requestReauth(
+                    for: user,
+                    authDef: authDef,
+                    triggerURL: originalURL
+                )
+            }
             return false
         }
 

@@ -8,6 +8,16 @@ final class TPPPerAccountIsolationTests: XCTestCase {
     private let uuidA = "urn:uuid:isolation-test-library-a"
     private let uuidB = "urn:uuid:isolation-test-library-b"
 
+    override func setUpWithError() throws {
+        // GitHub Actions iOS Simulator runners have no keychain entitlement,
+        // so SecItemAdd fails with errSecMissingEntitlement (-34018) and
+        // every credential read returns nil. These tests REQUIRE a writable
+        // keychain (they assert credential isolation across accounts), so
+        // skip them in that environment rather than report false failures.
+        try super.setUpWithError()
+        try KeychainAvailability.skipIfUnavailable()
+    }
+
     override func tearDown() {
         // Clean up any keychain data written during tests
         AccountsManager.shared.userAccount(for: uuidA).removeAll()

@@ -620,13 +620,28 @@ final class BookDetailViewModel: ObservableObject {
                 guard let self = self else { return }
 
                 let account = AccountsManager.shared.currentUserAccount
-                if account.needsAuth && !account.hasCredentials() {
+                let needsSignIn = account.needsAuth && !account.hasCredentials()
+                // .credentialsStale means we still hold credentials but a 401
+                // has marked the session expired. Reading the cached book
+                // proceeds straight to a hung reader (no fresh fulfillment,
+                // no fresh DRM grant) without an intervening sign-in. Force
+                // re-auth here so the user has a path to recover without
+                // reinstalling. HelpSpot 17716 (Cornell SAML).
+                let needsReauth = account.authState == .credentialsStale
+                if needsSignIn || needsReauth {
+                    Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: needsSignIn=\(needsSignIn) needsReauth=\(needsReauth)")
                     self.showHalfSheet = false
                     SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
                         guard let self else { return }
-                        // Only proceed if user successfully logged in, not if they cancelled
-                        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
-                            Log.info(#file, "Sign-in cancelled or failed, not proceeding with action")
+                        let post = AccountsManager.shared.currentUserAccount
+                        // Proceed only if the user actually re-authenticated
+                        // — they have credentials AND state is loggedIn.
+                        // Cancelling the modal leaves authState unchanged
+                        // (still .credentialsStale) and we should NOT call
+                        // the action; otherwise we'd hand the reader a stale
+                        // book and reproduce the original hang.
+                        guard post.hasCredentials() && post.authState == .loggedIn else {
+                            Log.info(#file, "[SAML-REAUTH] Sign-in cancelled or incomplete (hasCredentials=\(post.hasCredentials()) authState=\(post.authState)) — not proceeding with action")
                             // Clear any processing state for download-related buttons
                             self.processingButtons.remove(.download)
                             self.processingButtons.remove(.get)
