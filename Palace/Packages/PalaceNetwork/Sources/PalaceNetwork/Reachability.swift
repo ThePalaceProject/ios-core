@@ -20,7 +20,7 @@ extension Notification.Name {
 }
 
 @objcMembers
-public class Reachability: NSObject {
+open class Reachability: NSObject {
     private let connectionMonitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "NetworkMonitor")
     private let stateLock = NSLock()
@@ -29,7 +29,7 @@ public class Reachability: NSObject {
     private let connectivitySubject = CurrentValueSubject<Bool, Never>(false)
 
     /// Publisher for connectivity state. Use instead of observing `.TPPReachabilityChanged`.
-    public var connectivityPublisher: AnyPublisher<Bool, Never> {
+    open var connectivityPublisher: AnyPublisher<Bool, Never> {
         connectivitySubject
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
@@ -83,7 +83,7 @@ public class Reachability: NSObject {
 
     // MARK: - Reachability Check
 
-    public func isConnectedToNetwork() -> Bool {
+    open func isConnectedToNetwork() -> Bool {
         if connectionMonitor.currentPath.status == .satisfied {
             return true
         }

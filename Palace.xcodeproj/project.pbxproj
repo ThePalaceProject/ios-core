@@ -1552,6 +1552,8 @@
 		TSETUP01BTST00000001 /* PalaceTestSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = TSETUP01FREF00000001 /* PalaceTestSetup.swift */; };
 		UAAS00010001SIMPLYE001 /* UserAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = UAAS00010000FILEREF01 /* UserAccountAuthState.swift */; };
 		UAAS00010002PALACE0001 /* UserAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = UAAS00010000FILEREF01 /* UserAccountAuthState.swift */; };
+		PP4114MOCKREACH00000001 /* MockReachability.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP4114MOCKREACHREF00001 /* MockReachability.swift */; };
+		PP4114OFFLINETESTS00001 /* BookCellModelOfflineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP4114OFFLINETESTSREF1 /* BookCellModelOfflineTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2782,6 +2784,8 @@
 		SETVM003T260955EF008E1DC3 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
 		TSETUP01FREF00000001 /* PalaceTestSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PalaceTestSetup.swift; sourceTree = "<group>"; };
 		UAAS00010000FILEREF01 /* UserAccountAuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAccountAuthState.swift; sourceTree = "<group>"; };
+		PP4114MOCKREACHREF00001 /* MockReachability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockReachability.swift; sourceTree = "<group>"; };
+		PP4114OFFLINETESTSREF1 /* BookCellModelOfflineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModelOfflineTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -3570,6 +3574,7 @@
 				6C493684B84FF9EDBEBCD104 /* MockCredentialsProvider.swift */,
 				79DE74A085DC8D24F0CC2348 /* MockBackgroundDownloadDelegate.swift */,
 				3432D61958317AD796B90005 /* MockFeatureFlagProvider.swift */,
+				PP4114MOCKREACHREF00001 /* MockReachability.swift */,
 			);
 			path = Mocks;
 			sourceTree = "<group>";
@@ -4717,6 +4722,7 @@
 				4DCF14A6A237EADD5978E148 /* DownloadAnnouncementServiceTests.swift */,
 				EEE0C3EAFC52054E7144B795 /* DownloadStateManagerTests.swift */,
 				D96122327A49810CC4ACD7CB /* TokenRefreshInterceptorTests.swift */,
+				PP4114OFFLINETESTSREF1 /* BookCellModelOfflineTests.swift */,
 			);
 			path = MyBooks;
 			sourceTree = "<group>";
@@ -6304,6 +6310,8 @@
 				7D39F891C8E9A0B7DC2A2306 /* MockFeatureFlagProvider.swift in Sources */,
 				DD6A760B2C7336C887F0B1C7 /* MarksFixture.swift in Sources */,
 				C911BB897D0420A06D49D6CA /* AnonymousBorrowFixtureTests.swift in Sources */,
+				PP4114MOCKREACH00000001 /* MockReachability.swift in Sources */,
+				PP4114OFFLINETESTS00001 /* BookCellModelOfflineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -627,6 +627,8 @@ struct Strings {
         static let libraryLoadErrorLegacy = NSLocalizedString("We can\u{2019}t get your library right now. Please close and reopen the app to try again.", comment: "Alert message when library data fails to load, no retry available")
         static let wifiRequired = Strings.Settings.wifiRequired
         static let downloadRestrictedToWiFi = Strings.Settings.downloadRestrictedToWiFi
+        static let noConnectionTitle = NSLocalizedString("No Connection", comment: "Alert title shown when the user attempts to download or reserve a book while offline")
+        static let noConnectionMessage = NSLocalizedString("You don\u{2019}t appear to be connected to the internet. Reconnect and try again.", comment: "Alert message shown when the user attempts to download or reserve a book while offline")
     }
 
     struct BookDetailView {
