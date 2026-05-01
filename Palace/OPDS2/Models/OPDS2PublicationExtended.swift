@@ -295,6 +295,13 @@ extension OPDS2Publication {
             TPPBookAuthor(authorName: $0.name, relatedBooksURL: $0.links?.first?.hrefURL)
         }
 
+        // PP-4230: surface narrator into TPPBook.contributors so audiobook
+        // details show the "Narrator" row. Mirrors OPDS2FullPublication.toBook().
+        var contributors: [String: Any]?
+        if let narrators = metadata.narrator, !narrators.isEmpty {
+            contributors = ["nrt": narrators.map { $0.name }]
+        }
+
         return TPPBook(
             acquisitions: acquisitions,
             authors: authors,
@@ -318,7 +325,7 @@ extension OPDS2Publication {
             revokeURL: specialLinks.revoke,
             reportURL: specialLinks.report,
             timeTrackingURL: specialLinks.timeTracking,
-            contributors: nil,
+            contributors: contributors,
             bookDuration: nil,
             imageCache: ImageCache.shared
         )

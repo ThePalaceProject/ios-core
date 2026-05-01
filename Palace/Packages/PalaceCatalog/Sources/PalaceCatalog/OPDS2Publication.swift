@@ -15,19 +15,21 @@ public struct OPDS2Publication: Codable, Equatable, Sendable {
         public let id: String
         public let title: String
         public let author: [OPDS2Contributor]?
+        public let narrator: [OPDS2Contributor]?
 
         private enum CodingKeys: String, CodingKey {
-            case updated, description, id, title, author
+            case updated, description, id, title, author, narrator
             case atId = "@id"
             case identifier
         }
 
-        public init(updated: Date? = nil, description: String? = nil, id: String, title: String, author: [OPDS2Contributor]? = nil) {
+        public init(updated: Date? = nil, description: String? = nil, id: String, title: String, author: [OPDS2Contributor]? = nil, narrator: [OPDS2Contributor]? = nil) {
             self.updated = updated
             self.description = description
             self.id = id
             self.title = title
             self.author = author
+            self.narrator = narrator
         }
 
         public init(from decoder: Decoder) throws {
@@ -46,6 +48,18 @@ public struct OPDS2Publication: Codable, Equatable, Sendable {
                 author = [single]
             } else {
                 author = nil
+            }
+
+            // Narrator follows the same array-or-single shape — PP-4230
+            // regression was that we never decoded this field at all on the
+            // lightweight publication, so audiobook details lost the narrator
+            // row whenever a feed served the lean publication shape.
+            if let list = try? container.decodeIfPresent([OPDS2Contributor].self, forKey: .narrator) {
+                narrator = list
+            } else if let single = try? container.decodeIfPresent(OPDS2Contributor.self, forKey: .narrator) {
+                narrator = [single]
+            } else {
+                narrator = nil
             }
 
             // id can come as "id", "@id", or "identifier"
@@ -67,6 +81,7 @@ public struct OPDS2Publication: Codable, Equatable, Sendable {
             try container.encodeIfPresent(updated, forKey: .updated)
             try container.encodeIfPresent(description, forKey: .description)
             try container.encodeIfPresent(author, forKey: .author)
+            try container.encodeIfPresent(narrator, forKey: .narrator)
         }
     }
 
