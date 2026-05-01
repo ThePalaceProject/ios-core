@@ -218,12 +218,25 @@ actor OPDSFeedService: OPDSFeedFetching {
         return .parsing(.opdsFeedInvalid)
     }
 
-    private func parseProblemDocument(_ problemDoc: TPPProblemDocument) -> PalaceError {
+    func parseProblemDocument(_ problemDoc: TPPProblemDocument) -> PalaceError {
         guard let type = problemDoc.type else {
             // Unknown problem document - use title/detail if available
             let message = problemDoc.title ?? problemDoc.detail ?? "Unknown server error"
             Log.warn(#file, "Problem document with no type: \(message)")
             return .network(.serverError)
+        }
+
+        // The explicit switch below only covers the librarysimplified.org namespace.
+        // palaceproject.io serves auth state via /auth/recoverable/* and /auth/unrecoverable/*
+        // namespaces — recognise them so callers see the recoverability signal instead
+        // of a generic credentials/server error.
+        if problemDoc.isRecoverableAuthError {
+            Log.info(#file, "Recoverable auth problem document '\(type)' — credentials should be marked stale")
+            return .authentication(.tokenExpired)
+        }
+        if problemDoc.isUnrecoverableAuthError {
+            Log.info(#file, "Unrecoverable auth problem document '\(type)' — re-auth will not help")
+            return .authentication(.invalidCredentials)
         }
 
         switch type {
