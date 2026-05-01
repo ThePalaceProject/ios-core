@@ -46,14 +46,20 @@ class TPPBookCreationTests: XCTestCase {
         XCTAssertNoThrow(book?.loggableShortString())
         XCTAssertNoThrow(book?.loggableDictionary())
 
+        // Missing UpdatedKey: production relaxed to use .distantPast rather than
+        // dropping the book (TPPBook.swift:282) — older catalog feeds occasionally
+        // omit this. Verify the book is still constructed with a sentinel updated.
         let bookNoUpdatedDate = TPPBook(dictionary: [
             "acquisitions": acquisitions,
             "categories": ["Fantasy"],
             "id": "666",
             "title": "The Lord of the Rings"
         ])
-        XCTAssertNil(bookNoUpdatedDate)
+        XCTAssertNotNil(bookNoUpdatedDate, "Missing 'updated' must not drop the book — defaults to .distantPast")
+        XCTAssertEqual(bookNoUpdatedDate?.updated, .distantPast)
 
+        // Missing TitleKey: production drops the book (TPPBook.swift:225). A book
+        // with no title is unrenderable, so this stricter guard remains.
         let bookNoTitle = TPPBook(dictionary: [
             "acquisitions": acquisitions,
             "categories": ["Fantasy"],
@@ -62,6 +68,7 @@ class TPPBookCreationTests: XCTestCase {
         ])
         XCTAssertNil(bookNoTitle)
 
+        // Missing IdentifierKey: production drops the book (TPPBook.swift:221).
         let bookNoId = TPPBook(dictionary: [
             "acquisitions": acquisitions,
             "categories": ["Fantasy"],
@@ -70,13 +77,16 @@ class TPPBookCreationTests: XCTestCase {
         ])
         XCTAssertNil(bookNoId)
 
+        // Missing CategoriesKey: production relaxed to default to [] rather than
+        // dropping (TPPBook.swift:230) — categories are optional metadata.
         let bookNoCategories = TPPBook(dictionary: [
             "acquisitions": acquisitions,
             "id": "666",
             "title": "The Lord of the Rings",
             "updated": "2020-09-08T09:22:45Z"
         ])
-        XCTAssertNil(bookNoCategories)
+        XCTAssertNotNil(bookNoCategories, "Missing 'categories' must not drop the book — defaults to []")
+        XCTAssertEqual(bookNoCategories?.categoryStrings, [])
 
         /*
          Note that we do not test the absence of acquisitions. The current code

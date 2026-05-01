@@ -621,8 +621,15 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 @MainActor
 final class AccountDetailPINVisibilityTests: XCTestCase {
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // CI iOS Simulator runners lack keychain entitlement (errSec -34018).
+        // Most tests in this class call `account.setBarcode(..., PIN: ...)`
+        // and assert against subsequent reads — every one of those will fail
+        // with `nil != Optional("barcode")` on a keychain-less host. Skip
+        // rather than report false negatives. Local hosts and runners with
+        // entitlement continue to exercise the full suite.
+        try KeychainAvailability.skipIfUnavailable()
         // Reset shared user account state to prevent test pollution from
         // previous tests (in this class or elsewhere) that set credentials.
         if let libraryID = AccountsManager.shared.currentAccountId {
