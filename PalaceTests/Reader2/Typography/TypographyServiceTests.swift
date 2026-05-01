@@ -285,11 +285,17 @@ final class TypographyServiceTests: XCTestCase {
     func testSettingsPersistedAfterDebounce() {
         let expectation = expectation(description: "Settings persisted")
 
+        // Capture into locals so the async block doesn't reach back through
+        // self.testDefaults — under CI load the asyncAfter can fire after
+        // tearDown has already nulled the implicitly-unwrapped optional,
+        // crashing the next test that's running. Captured locals keep the
+        // UserDefaults and service alive for the closure's lifetime.
+        let capturedDefaults = testDefaults!
         service.updateFontSize(28)
 
         // Wait for debounce (500ms + buffer)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            let reloaded = TypographyService(userDefaults: self.testDefaults)
+            let reloaded = TypographyService(userDefaults: capturedDefaults)
             XCTAssertEqual(reloaded.currentSettings.fontSize, 28, "Font size should be persisted")
             // Other default settings should also be preserved on reload
             XCTAssertEqual(reloaded.currentSettings.fontFamily, .georgia,
@@ -297,7 +303,10 @@ final class TypographyServiceTests: XCTestCase {
             expectation.fulfill()
         }
 
-        waitForExpectations(timeout: 2)
+        // Bumped 2s → 10s for CI: the main queue is shared across the entire
+        // test bundle and 700ms asyncAfter scheduling can drift well beyond 2s
+        // under load (same fix pattern as F-010 TokenRefreshInterceptorTests).
+        waitForExpectations(timeout: 10)
     }
 
     func testSettingsPublisherEmitsOnChange() {
