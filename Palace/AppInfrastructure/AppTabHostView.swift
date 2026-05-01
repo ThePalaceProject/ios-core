@@ -107,6 +107,45 @@ struct AppTabHostView: View {
     }
 }
 
+extension AppTabHostView {
+    /// Pure helpers extracted for unit testability — these were previously
+    /// inline closures inside `updateHoldsBadge()` that could not be exercised
+    /// by tests, leaving mutations like `+= 1` → `-= 1` undetected.
+    static func computeReadyCount(books: [TPPBook]) -> Int {
+        var count = 0
+        for book in books {
+            book.defaultAcquisition?.availability.match(
+                unavailable: nil,
+                limited: nil,
+                unlimited: nil,
+                reserved: nil,
+                ready: { _ in count += 1 }
+            )
+        }
+        return count
+    }
+
+    static func computeReservedCount(books: [TPPBook]) -> Int {
+        var count = 0
+        for book in books {
+            book.defaultAcquisition?.availability.match(
+                unavailable: nil,
+                limited: nil,
+                unlimited: nil,
+                reserved: { _ in count += 1 },
+                ready: nil
+            )
+        }
+        return count
+    }
+
+    /// `state == .loaded || state == .synced` factored out of `updateHoldsBadge`
+    /// so the OR/equality conditions can be exercised by tests directly.
+    static func shouldUpdateBadge(for state: TPPBookRegistry.RegistryState) -> Bool {
+        return state == .loaded || state == .synced
+    }
+}
+
 private extension AppTabHostView {
     /// VoiceOver announcement label for each tab (matches tab item text).
     static func accessibilityLabel(for tab: AppTab) -> String {
@@ -120,7 +159,7 @@ private extension AppTabHostView {
     }
 
     func updateHoldsBadge() {
-        guard bookRegistry.state == .loaded || bookRegistry.state == .synced else {
+        guard Self.shouldUpdateBadge(for: bookRegistry.state) else {
             return
         }
 
@@ -136,23 +175,11 @@ private extension AppTabHostView {
             let held = bookRegistry.heldBooks
             #endif
 
-            var readyCount = 0
-
-            for book in held {
-                book.defaultAcquisition?.availability.match(unavailable: nil,
-                                                                       limited: nil,
-                                                                       unlimited: nil,
-                                                                       reserved: nil,
-                                                                       ready: { _ in readyCount += 1 })
-            }
+            let readyCount = Self.computeReadyCount(books: held)
 
             #if DEBUG
             if debugSettings.isBadgeLoggingEnabled {
-                var reservedCount = 0
-                for book in held {
-                    book.defaultAcquisition?.availability.match(unavailable: nil, limited: nil, unlimited: nil,
-                                                                           reserved: { _ in reservedCount += 1 }, ready: nil)
-                }
+                let reservedCount = Self.computeReservedCount(books: held)
                 Log.info(#file, "[DEBUG-BADGE] updateHoldsBadge: source=\(usingTestBooks ? "TEST BOOKS" : "registry"), totalHeld=\(held.count), reserved=\(reservedCount), ready=\(readyCount)")
                 for (index, book) in held.enumerated() {
                     var status = "unknown"

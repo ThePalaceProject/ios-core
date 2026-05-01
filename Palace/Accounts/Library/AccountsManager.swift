@@ -168,7 +168,7 @@ struct CatalogCacheMetadata: Codable {
             TPPErrorLogger.setUserID(self.currentUserAccount.barcode)
             // isAccountSwitching is reset asynchronously by cleanupActiveContentBeforeAccountSwitch
             // after navigation cleanup completes — NOT here, to avoid premature reset (F-032).
-            if previousAccountId == newAccountId || previousAccountId == nil {
+            if Self.shouldFinishSwitchingImmediately(previousAccountId: previousAccountId, newAccountId: newAccountId) {
                 isAccountSwitching = false
             }
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
@@ -186,7 +186,7 @@ struct CatalogCacheMetadata: Codable {
                 let pathCount = coordinator.path.count
                 Log.debug(#file, "  Navigation path has \(pathCount) items")
 
-                if pathCount > 0 {
+                if Self.shouldPopToRoot(navigationPathCount: pathCount) {
                     Log.info(#file, "  🔄 Popping to root to clean up active content before account switch")
                     coordinator.popToRoot()
 
@@ -608,13 +608,43 @@ struct CatalogCacheMetadata: Codable {
 
     /// Returns true if cache exists and is stale (needs background refresh)
     private func isCacheStale(hash: String) -> Bool {
-        guard let metadata = readCacheMetadata(hash: hash) else {
+        let metadata = readCacheMetadata(hash: hash)
+        let serverMaxAge = readCrawlState(hash: hash)?.serverMaxAge
+        return Self.isCacheStale(metadata: metadata, serverMaxAge: serverMaxAge)
+    }
+
+    /// Pure variant of `isCacheStale(hash:)` that doesn't touch the file
+    /// system. Returns `true` when metadata is missing OR when the metadata
+    /// reports staleness against `serverMaxAge`. Extracted from the private
+    /// version so tests can exercise the nil-metadata → refresh path that
+    /// previously had no test coverage (F-013).
+    static func isCacheStale(
+        metadata: CatalogCacheMetadata?,
+        serverMaxAge: TimeInterval?
+    ) -> Bool {
+        guard let metadata else {
             // No metadata means we should refresh
             return true
         }
-        // Use server's Cache-Control max-age if available from crawl state
-        let serverMaxAge = readCrawlState(hash: hash)?.serverMaxAge
         return metadata.isStale(serverMaxAge: serverMaxAge)
+    }
+
+    /// Pure helper for `cleanupActiveContentBeforeAccountSwitch`'s
+    /// `pathCount > 0` guard — extracted so the bound check is testable.
+    static func shouldPopToRoot(navigationPathCount: Int) -> Bool {
+        return navigationPathCount > 0
+    }
+
+    /// Pure helper for the `currentAccount.didSet` decision of whether to
+    /// finish the account-switch synchronously. The previous implementation
+    /// had `previousAccountId == newAccountId || previousAccountId == nil`
+    /// inline in the setter; extracting it keeps the equality and identity
+    /// branches testable and kills the surviving == ↔ != mutants.
+    static func shouldFinishSwitchingImmediately(
+        previousAccountId: String?,
+        newAccountId: String?
+    ) -> Bool {
+        return previousAccountId == newAccountId || previousAccountId == nil
     }
 
     /// Reads crawl state for the given hash (used for dynamic TTL adjustment)
