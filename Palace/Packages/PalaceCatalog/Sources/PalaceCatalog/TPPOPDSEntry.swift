@@ -100,7 +100,14 @@ import PalaceLogging
     var contribs = [String: [String]]()
 
     for contributorNode in entryXML.childrenWithName("contributor") {
-      let role = (contributorNode.attributes as? [String: String])?["opf:role"] ?? ""
+      // PP-4230: Foundation's XMLParser with shouldProcessNamespaces=true
+      // strips the `opf:` prefix from attribute names when the feed declares
+      // `xmlns:opf` (real-world feeds do — A1QA, Bibliotheca, BiblioBoard,
+      // ODL providers). The unprefixed `"role"` is the canonical key in that
+      // case; legacy feeds without the namespace declaration keep the literal
+      // `"opf:role"`. Read either, prefer the unprefixed form.
+      let attrs = (contributorNode.attributes as? [String: String]) ?? [:]
+      let role = attrs["role"] ?? attrs["opf:role"] ?? ""
       if let name = contributorNode.firstChild(withName: "name")?.value.stringByDecodingHTMLEntities {
         contribs[role, default: []].append(name)
       }
