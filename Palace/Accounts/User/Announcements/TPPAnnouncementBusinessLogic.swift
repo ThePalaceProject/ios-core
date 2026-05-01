@@ -89,18 +89,20 @@ class TPPAnnouncementBusinessLogic {
             UIAlertController.init(title: title, message: $0.content, preferredStyle: .alert)
         }
 
-        // Present another alert when the current alert is being dismiss
-        // Add the presented announcement to the presentedAnnouncement document
-        for (i, alert) in alerts.enumerated() {
-            if i > 0 {
-                let action = UIAlertAction.init(title: DisplayStrings.ok,
-                                                style: .default) { [weak self] _ in
-                    TPPPresentationUtils.safelyPresent(alert, animated: true, completion: nil)
-                    self?.addPresentedAnnouncement(id: announcements[i - 1].id)
-                }
-                currentAlert?.addAction(action)
+        // Present another alert when the current alert is being dismiss.
+        // For announcement count N, alerts[k-1] gets the action that presents
+        // alerts[k] and marks announcements[k-1] as presented (1 ≤ k ≤ N-1).
+        for pair in Self.chainAttachmentIndices(forAnnouncementCount: alerts.count) {
+            let nextAlert = alerts[pair.present]
+            let action = UIAlertAction.init(title: DisplayStrings.ok,
+                                            style: .default) { [weak self] _ in
+                TPPPresentationUtils.safelyPresent(nextAlert, animated: true, completion: nil)
+                self?.addPresentedAnnouncement(id: announcements[pair.attach].id)
             }
-            currentAlert = alert
+            alerts[pair.attach].addAction(action)
+        }
+        if let last = alerts.last {
+            currentAlert = last
         }
 
         // Add dismiss button to the last announcement
@@ -111,6 +113,18 @@ class TPPAnnouncementBusinessLogic {
         }
 
         return alerts.first
+    }
+}
+
+extension TPPAnnouncementBusinessLogic {
+    /// For an announcement count of N, returns N-1 (attach, present) pairs:
+    /// `alerts[attach]` gets a tap-action that presents `alerts[present]`.
+    /// Pure helper extracted from `alert(announcements:)` so the i > 0 / i - 1
+    /// conditional logic that was previously embedded in the loop body can
+    /// be exercised by unit tests.
+    static func chainAttachmentIndices(forAnnouncementCount count: Int) -> [(attach: Int, present: Int)] {
+        guard count > 1 else { return [] }
+        return (1..<count).map { i in (attach: i - 1, present: i) }
     }
 }
 

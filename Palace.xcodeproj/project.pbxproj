@@ -746,6 +746,9 @@
 		9D5DE68418C31F9D88044C89 /* ReadingStatsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F16E79F7C14C0F72FC36B3 /* ReadingStatsStoreTests.swift */; };
 		9D907CE6820AD963A7C1AD9C /* FuzzCorpus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E49448110C43EB199A09AD3 /* FuzzCorpus.swift */; };
 		9E482D5D89E03F23F7451DE6 /* MyBooksViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB9CA89B135C85E23F0D907B /* MyBooksViewModelTests.swift */; };
+		F0130001ABC0DEF000000001 /* AppTabHostViewBadgeCountTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0130000ABC0DEF000000001 /* AppTabHostViewBadgeCountTests.swift */; };
+		F0130003ABC0DEF000000003 /* AnnouncementChainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0130002ABC0DEF000000003 /* AnnouncementChainTests.swift */; };
+		F0130005ABC0DEF000000005 /* AccountsManagerHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0130004ABC0DEF000000005 /* AccountsManagerHelpersTests.swift */; };
 		9EB44CD30C94D33258B12A16 /* DebugSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E709829F912BC2766AEA30 /* DebugSettingsTests.swift */; };
 		A00ED9F1A5D549B6B9685E48 /* TPPAlertUtilsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD3401E6313A459D9496ECF2 /* TPPAlertUtilsTests.swift */; };
 		A06CCF8F38B4B5ADA1C02BE2 /* PlaybackBootstrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9E7460F23BAEC7FED016069 /* PlaybackBootstrapper.swift */; };
@@ -2357,6 +2360,9 @@
 		CAE35BBA1B86289500BF9BC5 /* Palace.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Palace.xcconfig; path = ../Palace.xcconfig; sourceTree = "<group>"; };
 		CB84A55CE7F9823DCEFBAE90 /* TPPAccountAuthStateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPAccountAuthStateTests.swift; sourceTree = "<group>"; };
 		CB9CA89B135C85E23F0D907B /* MyBooksViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyBooksViewModelTests.swift; sourceTree = "<group>"; };
+		F0130000ABC0DEF000000001 /* AppTabHostViewBadgeCountTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppTabHostViewBadgeCountTests.swift; sourceTree = "<group>"; };
+		F0130002ABC0DEF000000003 /* AnnouncementChainTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AnnouncementChainTests.swift; sourceTree = "<group>"; };
+		F0130004ABC0DEF000000005 /* AccountsManagerHelpersTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountsManagerHelpersTests.swift; sourceTree = "<group>"; };
 		CBA39820CBA75D6BA9B763E2 /* CatalogRepositoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogRepositoryTests.swift; sourceTree = "<group>"; };
 		CBBDD4C17EA45C71D8076A34 /* PerformanceMetric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceMetric.swift; sourceTree = "<group>"; };
 		CCB1E4A5E6A1E450001D2751 /* TPPProblemReportViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPProblemReportViewController.swift; sourceTree = "<group>"; };
@@ -4417,6 +4423,9 @@
 				TSETUP01FREF00000001 /* PalaceTestSetup.swift */,
 				DR41NMQUEUE2026042760BBFE /* XCTestCase+drainMainQueue.swift */,
 				E50546742E6201D4007CCFAB /* OPDSFeedParsingTests.swift */,
+				F0130000ABC0DEF000000001 /* AppTabHostViewBadgeCountTests.swift */,
+				F0130002ABC0DEF000000003 /* AnnouncementChainTests.swift */,
+				F0130004ABC0DEF000000005 /* AccountsManagerHelpersTests.swift */,
 				2D2B47761D08F808007F7764 /* Info.plist */,
 				2D2B47621D08F1ED007F7764 /* PalaceTests-Bridging-Header.h */,
 				730EF23226093DE3008E1DC3 /* Bookmarks */,
@@ -6050,6 +6059,9 @@
 				681FBB4C5C3E2B2A10DAD273 /* CatalogViewModelTests.swift in Sources */,
 				653039BB32BF46048D5DFEA0 /* CatalogLaneRowViewAccessibilityTests.swift in Sources */,
 				9E482D5D89E03F23F7451DE6 /* MyBooksViewModelTests.swift in Sources */,
+				F0130001ABC0DEF000000001 /* AppTabHostViewBadgeCountTests.swift in Sources */,
+				F0130003ABC0DEF000000003 /* AnnouncementChainTests.swift in Sources */,
+				F0130005ABC0DEF000000005 /* AccountsManagerHelpersTests.swift in Sources */,
 				E5A09A7F2F0D72B500CC23EA /* DeviceOrientationTests.swift in Sources */,
 				1E021B71311B221A7777B6F7 /* EPUBPositionTests.swift in Sources */,
 				3F950AC5136B638265B1AB87 /* BookDetailViewModelTests.swift in Sources */,
