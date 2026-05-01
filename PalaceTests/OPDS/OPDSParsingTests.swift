@@ -411,6 +411,78 @@ final class OPDSParsingTests: XCTestCase {
         XCTAssertEqual(entry.contributors?["editor"]?.first, "Chief Editor")
     }
 
+    /// PP-4230: real OPDS 1.x feeds (e.g. A1QA Test Library, Bibliotheca,
+    /// BiblioBoard) declare `xmlns:opf="http://www.idpf.org/2007/opf"` at
+    /// the feed root. Foundation's XMLParser with `shouldProcessNamespaces`
+    /// then STRIPS the `opf:` prefix from attribute names — so what the
+    /// element-attribute dict actually contains is the unprefixed `"role"`,
+    /// not `"opf:role"`. Before this fix, the parser only looked up
+    /// `"opf:role"` and dropped narrator/editor data into an empty-string
+    /// key, which TPPBook.narrators (reads `contributors["nrt"]`) never
+    /// surfaced. Result: audiobook details for Dune, A Game of Thrones,
+    /// Dungeon Crawler Carl, etc. all hid the narrator row even though
+    /// the feed served it.
+    func testEntryWithNamespacedContributorRoles_ParsesNarrator() {
+        let xml = """
+        <entry xmlns="http://www.w3.org/2005/Atom"
+               xmlns:opf="http://www.idpf.org/2007/opf">
+            <id>urn:uuid:dune-test</id>
+            <title>Dune</title>
+            <updated>2024-01-19T12:00:00Z</updated>
+            <author><name>Frank Herbert</name></author>
+            <contributor opf:role="nrt">
+                <name>Scott Brick</name>
+            </contributor>
+            <contributor opf:role="nrt">
+                <name>Orlagh Cassidy</name>
+            </contributor>
+            <link href="https://example.org/acquire" rel="http://opds-spec.org/acquisition/borrow" type="application/audiobook+json"/>
+        </entry>
+        """
+        guard let data = xml.data(using: .utf8),
+              let xmlDoc = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xmlDoc) else {
+            XCTFail("Failed to create entry")
+            return
+        }
+
+        XCTAssertNotNil(entry.contributors, "Namespaced contributors should still parse")
+        XCTAssertEqual(entry.contributors?["nrt"]?.count, 2,
+                       "PP-4230: both narrators must be stored under \"nrt\" — the key TPPBook.narrators reads")
+        XCTAssertTrue(entry.contributors?["nrt"]?.contains("Scott Brick") == true)
+        XCTAssertTrue(entry.contributors?["nrt"]?.contains("Orlagh Cassidy") == true)
+        XCTAssertNil(entry.contributors?[""],
+                     "PP-4230: contributors must not collect under an empty-string key when xmlns:opf is declared")
+    }
+
+    /// Negative: parsing must still work when the feed does NOT declare
+    /// `xmlns:opf` (older feed shapes). The attribute key is then the literal
+    /// `opf:role`. Catches a fix that over-corrects and only handles the
+    /// stripped form.
+    func testEntryWithUnnamespacedContributorRole_StillParses() {
+        let xml = """
+        <entry xmlns="http://www.w3.org/2005/Atom">
+            <id>urn:uuid:legacy-test</id>
+            <title>Legacy Feed</title>
+            <updated>2024-01-19T12:00:00Z</updated>
+            <author><name>Author</name></author>
+            <contributor opf:role="nrt">
+                <name>Legacy Narrator</name>
+            </contributor>
+            <link href="https://example.org/acquire" rel="http://opds-spec.org/acquisition/borrow" type="application/audiobook+json"/>
+        </entry>
+        """
+        guard let data = xml.data(using: .utf8),
+              let xmlDoc = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xmlDoc) else {
+            XCTFail("Failed to create entry")
+            return
+        }
+
+        XCTAssertEqual(entry.contributors?["nrt"]?.count, 1,
+                       "Feed without xmlns:opf must still surface the narrator under \"nrt\"")
+    }
+
     func testEntryWithCategories() {
         guard let data = entryWithCategoriesXML.data(using: .utf8),
               let xml = TPPXML(data: data),
