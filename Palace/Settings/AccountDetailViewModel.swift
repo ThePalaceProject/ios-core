@@ -391,7 +391,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         let isReauth = forceReauthMode && selectedUserAccount.authState == .credentialsStale
         guard !isSignedIn || isReauth else {
             isSigningOut = true
-            presentSignOutAlert()
+            confirmSignOut()
             return
         }
 
@@ -421,7 +421,15 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         TPPPresentationUtils.safelyPresent(alert, animated: true)
     }
 
-    private func presentSignOutAlert() {
+    /// Entry point for the Sign Out button. Presents a confirmation alert so
+    /// the user does not get signed out by an accidental tap (PP-4229).
+    /// Confirmed sign-outs route through signOut() → logOutOrWarn(), which
+    /// preserves the secondary sync/DRM-in-progress warning.
+    func confirmSignOut() {
+        TPPPresentationUtils.safelyPresent(makeSignOutConfirmationAlert(), animated: true)
+    }
+
+    func makeSignOutConfirmationAlert() -> UIAlertController {
         let alert = UIAlertController(
             title: DisplayStrings.signOut,
             message: nil,
@@ -439,7 +447,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             style: .cancel
         ))
 
-        TPPPresentationUtils.safelyPresent(alert, animated: true)
+        return alert
     }
 
     func togglePINVisibility() {

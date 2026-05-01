@@ -401,7 +401,7 @@ struct AccountDetailView: View {
     private var logInSignOutCell: some View {
         Button(action: {
             if viewModel.isSignedIn {
-                viewModel.signOut()
+                viewModel.confirmSignOut()
             } else {
                 viewModel.signIn()
             }
