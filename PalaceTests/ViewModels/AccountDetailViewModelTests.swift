@@ -1058,3 +1058,93 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         XCTAssertFalse(viewModel.isPINHidden)
     }
 }
+
+// MARK: - PP-4229: Sign-Out Confirmation Alert Tests
+//
+// Regression: tapping the Sign Out button signed the user out immediately,
+// with no confirmation dialog. The view model now routes the button through
+// confirmSignOut(), which presents a UIAlertController; only the destructive
+// "Sign Out" action invokes the real sign-out flow.
+
+@MainActor
+final class AccountDetailSignOutConfirmationTests: XCTestCase {
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        try KeychainAvailability.skipIfUnavailable()
+        if let libraryID = AppContainer.production().accountsManager.currentAccountId {
+            TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
+        }
+    }
+
+    override func tearDown() {
+        if let libraryID = AppContainer.production().accountsManager.currentAccountId {
+            TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
+        }
+        super.tearDown()
+    }
+
+    /// PP-4229: tapping Sign Out must show a confirmation alert, not sign the
+    /// user out immediately. Before the fix, the button called signOut() →
+    /// logOutOrWarn() → performLogOut() directly when no sync/DRM was in
+    /// progress, which deauthorized the user with zero UX safeguard.
+    func testConfirmSignOut_WhenSignedIn_DoesNotImmediatelyDeauthorize() async {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+
+        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        account.setBarcode("user1234", PIN: "9999")
+        account.setAuthState(.loggedIn)
+
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
+        vm.refreshSignInState()
+        XCTAssertTrue(vm.isSignedIn, "Precondition: user must be signed in")
+        XCTAssertTrue(account.hasCredentials(), "Precondition: account must have credentials")
+
+        vm.confirmSignOut()
+
+        // Credentials must remain — the alert is up but the user has not
+        // confirmed. Mutating confirmSignOut() to call signOut() directly
+        // (skipping the alert) must fail this test.
+        XCTAssertTrue(account.hasCredentials(),
+                      "PP-4229: confirmSignOut must not deauthorize the user before confirmation")
+        XCTAssertEqual(account.authState, .loggedIn,
+                       "PP-4229: authState must remain .loggedIn until the user confirms in the alert")
+        XCTAssertTrue(vm.isSignedIn,
+                      "PP-4229: isSignedIn must remain true while the confirmation alert is awaiting input")
+    }
+
+    /// Structural guard: the alert returned by makeSignOutConfirmationAlert
+    /// must offer Sign Out (destructive) and Cancel actions. Catches mutations
+    /// that downgrade the destructive style or drop the cancel action.
+    func testMakeSignOutConfirmationAlert_HasDestructiveSignOutAndCancelActions() async {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
+
+        let alert = vm.makeSignOutConfirmationAlert()
+
+        XCTAssertEqual(alert.preferredStyle, .alert,
+                       "Sign-out confirmation must be an alert (modal), not an action sheet")
+        XCTAssertEqual(alert.title, Strings.Settings.signOut,
+                       "Alert title must be the localized Sign Out string")
+        XCTAssertEqual(alert.actions.count, 2,
+                       "Alert must offer exactly two actions: destructive Sign Out and Cancel")
+
+        let destructive = alert.actions.first { $0.style == .destructive }
+        XCTAssertNotNil(destructive,
+                        "Alert must include a destructive action — confirmation must be intentional")
+        XCTAssertEqual(destructive?.title, Strings.Settings.signOut,
+                       "Destructive action title must read Sign Out")
+
+        let cancel = alert.actions.first { $0.style == .cancel }
+        XCTAssertNotNil(cancel,
+                        "Alert must include a cancel action so users can back out")
+        XCTAssertEqual(cancel?.title, Strings.Generic.cancel,
+                       "Cancel action title must be the localized Cancel string")
+    }
+}
