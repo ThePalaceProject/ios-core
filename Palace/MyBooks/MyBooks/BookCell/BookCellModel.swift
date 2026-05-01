@@ -12,6 +12,7 @@ import SwiftUI
 import SafariServices
 import PalaceAudiobookToolkit
 import PalaceLogging
+import PalaceNetwork
 
 enum BookCellState {
     case normal(BookButtonState)
@@ -69,6 +70,7 @@ class BookCellModel: ObservableObject {
     private let accountsManager: AccountsManager
     private let samplePreviewManager: SamplePreviewManager
     private let readerService: ReaderService
+    private let reachability: Reachability
     private var isFetchingImage = false
     #if LCP
     private var didPrefetchLCPStreaming = false
@@ -125,7 +127,8 @@ class BookCellModel: ObservableObject {
             downloadCenter: appContainer.downloadCenter,
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            reachability: appContainer.reachability
         )
     }
 
@@ -138,7 +141,8 @@ class BookCellModel: ObservableObject {
         downloadCenter: MyBooksDownloadCenter,
         accountsManager: AccountsManager,
         samplePreviewManager: SamplePreviewManager,
-        readerService: ReaderService
+        readerService: ReaderService,
+        reachability: Reachability = AppContainer.production().reachability
     ) {
         self.book = book
         self.bookRegistry = bookRegistry
@@ -146,6 +150,7 @@ class BookCellModel: ObservableObject {
         self.accountsManager = accountsManager
         self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
+        self.reachability = reachability
         self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
         self.currentBookIdentifier = book.identifier
         self.imageCache = imageCache
@@ -169,6 +174,7 @@ class BookCellModel: ObservableObject {
         registerForNotifications()
         loadBookCoverImage()
         bindRegistryState()
+        bindReachability()
         setupStableButtonState()
         #if LCP
         prefetchLCPStreamingIfPossible()
@@ -349,6 +355,45 @@ class BookCellModel: ObservableObject {
             .assign(to: &$stableButtonState)
     }
 
+    /// PP-4114: react to mid-flight network drops. The pre-flight check on
+    /// Download/Reserve handles the cold-offline tap; this subscription
+    /// handles the case where reachability drops AFTER the user already
+    /// kicked off a borrow/download (so isLoading is true and the spinner
+    /// would otherwise sit there for ~60s waiting on URLSession's timeout).
+    /// `dropFirst()` skips the CurrentValueSubject's replay so we only act
+    /// on actual transitions.
+    private func bindReachability() {
+        reachability.connectivityPublisher
+            .dropFirst()
+            .filter { !$0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, self.isLoading else { return }
+                self.isLoading = false
+                self.presentOfflineAlert()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func presentOfflineAlert() {
+        // The retry routes back through `callDelegate(for: .download)` (not
+        // straight into `didSelectDownload`) so the pre-flight reachability
+        // check fires again. If the user taps Retry while still offline, the
+        // alert reappears — same UX as a fresh tap, no spinner-of-death.
+        let alert = AlertModel.retryable(
+            title: Strings.MyDownloadCenter.noConnectionTitle,
+            message: Strings.MyDownloadCenter.noConnectionMessage,
+            retryAction: { [weak self] in self?.callDelegate(for: .download) }
+        )
+        if showHalfSheet {
+            downloadErrorAlert = alert
+            showAlert = nil
+        } else {
+            showAlert = alert
+            downloadErrorAlert = nil
+        }
+    }
+
     // MARK: - State Consistency Validation
 
     /// Validates that the model's state is consistent with the registry.
@@ -401,6 +446,23 @@ class BookCellModel: ObservableObject {
 
 extension BookCellModel {
     func callDelegate(for action: BookButtonType) {
+        // PP-4114 pre-flight: Download/Retry/Get/Reserve all hit the network
+        // (borrow → fulfillment → download). If we're offline, surface the
+        // retryable no-connection alert instead of setting isLoading=true and
+        // waiting ~60s for URLSession to time out (the original "stale button"
+        // bug). Other actions (Read, Listen, Cancel, Return, Remove) are
+        // either local or have their own confirmation paths and don't need
+        // a connection to begin.
+        switch action {
+        case .download, .retry, .get, .reserve:
+            if !reachability.isConnectedToNetwork() {
+                presentOfflineAlert()
+                return
+            }
+        default:
+            break
+        }
+
         // Set loading state for actions that need it.
         // .return and .cancelHold are excluded here because they show a
         // confirmation alert first; loading starts only after the patron confirms.
