@@ -65,6 +65,85 @@ final class OPDSFeedServiceTests: XCTestCase {
         let service2 = await OPDSFeedService.shared
         XCTAssertTrue(service === service2, "fetchCatalogRoot lives on the shared singleton")
     }
+
+    // MARK: - Problem Document Mapping
+
+    /// SAML session expiry returns a recoverable-auth problem document under the
+    /// palaceproject.io namespace. Before this hotfix, OPDSFeedService only knew
+    /// the librarysimplified.org namespace and fell through to .network(.serverError)
+    /// or generic .invalidCredentials, hiding the recoverability signal from
+    /// callers (loans refresh, /patrons/me/, /annotations/).
+    func testParseProblemDocument_recoverableSAMLSessionExpired_returnsTokenExpired() async {
+        let dict: [String: Any] = [
+            "type": "http://palaceproject.io/terms/problem/auth/recoverable/saml/session-expired",
+            "title": "SAML session expired",
+            "status": 401
+        ]
+        let problemDoc = TPPProblemDocument.fromDictionary(dict)
+        let service = OPDSFeedService.shared
+
+        let result = await service.parseProblemDocument(problemDoc)
+
+        guard case .authentication(.tokenExpired) = result else {
+            XCTFail("Expected .authentication(.tokenExpired) for recoverable SAML, got \(result)")
+            return
+        }
+    }
+
+    func testParseProblemDocument_recoverableTokenExpired_returnsTokenExpired() async {
+        let dict: [String: Any] = [
+            "type": "http://palaceproject.io/terms/problem/auth/recoverable/token/expired",
+            "title": "Token expired",
+            "status": 401
+        ]
+        let problemDoc = TPPProblemDocument.fromDictionary(dict)
+        let service = OPDSFeedService.shared
+
+        let result = await service.parseProblemDocument(problemDoc)
+
+        guard case .authentication(.tokenExpired) = result else {
+            XCTFail("Expected .authentication(.tokenExpired) for recoverable token, got \(result)")
+            return
+        }
+    }
+
+    func testParseProblemDocument_unrecoverableNoActiveAccount_returnsInvalidCredentials() async {
+        let dict: [String: Any] = [
+            "type": "http://palaceproject.io/terms/problem/auth/unrecoverable/no-active-account",
+            "title": "No active account",
+            "status": 403
+        ]
+        let problemDoc = TPPProblemDocument.fromDictionary(dict)
+        let service = OPDSFeedService.shared
+
+        let result = await service.parseProblemDocument(problemDoc)
+
+        guard case .authentication(.invalidCredentials) = result else {
+            XCTFail("Expected .authentication(.invalidCredentials) for unrecoverable, got \(result)")
+            return
+        }
+    }
+
+    /// Mutation guard: a truly unrecognised type that is neither recoverable nor
+    /// unrecoverable auth must still fall through to the existing HTTP-status mapping.
+    /// This catches a regression where the new branches accidentally swallow non-auth
+    /// problem documents.
+    func testParseProblemDocument_unrecognisedTypeWith404_returnsNetworkNotFound() async {
+        let dict: [String: Any] = [
+            "type": "http://example.com/problem/something-weird",
+            "title": "Something weird",
+            "status": 404
+        ]
+        let problemDoc = TPPProblemDocument.fromDictionary(dict)
+        let service = OPDSFeedService.shared
+
+        let result = await service.parseProblemDocument(problemDoc)
+
+        guard case .network(.notFound) = result else {
+            XCTFail("Expected .network(.notFound) for unrecognised type with 404, got \(result)")
+            return
+        }
+    }
 }
 
 // MARK: - Palace Error Tests

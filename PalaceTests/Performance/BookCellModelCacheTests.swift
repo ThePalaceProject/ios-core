@@ -424,28 +424,40 @@ final class BookCellModelCacheTests: XCTestCase {
         XCTAssertEqual(model1.book.identifier, originalBook.identifier)
     }
 
-    /// Tests that older book versions don't trigger updates
-    func testModelUpdate_WithOlderBook_DoesNotUpdate() async throws {
-        let oldDate = Date(timeIntervalSince1970: 1000)
-        let newDate = Date(timeIntervalSince1970: 2000)
+    /// Cache update semantics: identity beats timestamp.
+    ///
+    /// Historical note: the cache used to gate updates on
+    /// `book.updated >= cached.book.updated`, but that left MyBooks cells
+    /// rendering stale metadata when a fresh registry fetch produced a
+    /// TPPBook with a slightly-older `updated` (sub-second disk round-trip
+    /// drift between the catalog feed and the loans feed). The fix:
+    /// trust identity — if the registry hands us a different TPPBook
+    /// instance for the same identifier, that's the authoritative one,
+    /// regardless of timestamp. See BookCellModelCache.swift:135-147.
+    /// This test pins the new contract.
+    func testModelUpdate_DifferentBookInstance_UpdatesRegardlessOfTimestamp() async throws {
+        let newerDate = Date(timeIntervalSince1970: 2000)
+        let olderDate = Date(timeIntervalSince1970: 1000)
 
-        let newBook = makeTestBook(identifier: "older-test", title: "New Title", updated: newDate)
-        let oldBook = makeTestBook(identifier: "older-test", title: "Old Title", updated: oldDate)
+        let firstBook = makeTestBook(identifier: "older-test", title: "First Title", updated: newerDate)
+        let secondBook = makeTestBook(identifier: "older-test", title: "Second Title", updated: olderDate)
 
-        // Cache the newer book first
-        let model = sut.model(for: newBook)
-        XCTAssertEqual(model.book.title, "New Title")
+        let model = sut.model(for: firstBook)
+        XCTAssertEqual(model.book.title, "First Title")
 
-        // Request with older book - should not update
-        let sameModel = sut.model(for: oldBook)
-        XCTAssertTrue(model === sameModel)
+        // Different instance for the same identifier — must update the
+        // cached model even though `updated` is older.
+        let sameModel = sut.model(for: secondBook)
+        XCTAssertTrue(model === sameModel,
+                      "Same identifier must return the same cached model instance")
 
-        // Yield to allow any deferred Task { @MainActor } a chance to run (it shouldn't update)
+        // Update is dispatched to MainActor; yield to drain it.
         await Task.yield(); await Task.yield(); await Task.yield()
 
-        // Book should still be the newer version
-        XCTAssertEqual(model.book.title, "New Title")
-        XCTAssertEqual(model.book.updated, newDate)
+        XCTAssertEqual(model.book.title, "Second Title",
+                       "Identity-over-timestamp: different TPPBook instance must overwrite the cached book")
+        XCTAssertEqual(model.book.updated, olderDate,
+                       "Updated timestamp must mirror the new instance, even if older")
     }
 
     // MARK: - Helpers

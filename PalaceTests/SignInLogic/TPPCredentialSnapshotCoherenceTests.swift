@@ -33,8 +33,14 @@ final class TPPCredentialSnapshotCoherenceTests: XCTestCase {
     private var writer: TPPUserAccount!
     private var reader: TPPUserAccount!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // CI iOS Simulator runners have no keychain entitlement, so every
+        // setBarcode/setAuthToken silently no-ops and these cache-coherence
+        // assertions all fail with `nil != "test-barcode"`. Skip rather
+        // than report false negatives — the regression these tests guard
+        // against can only happen on a host with a real keychain.
+        try KeychainAvailability.skipIfUnavailable()
         writer = TPPUserAccount(libraryUUID: testLibraryUUID)
         reader = TPPUserAccount(libraryUUID: testLibraryUUID)
         writer.removeAll()

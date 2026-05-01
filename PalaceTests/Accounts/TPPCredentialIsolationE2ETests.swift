@@ -10,6 +10,15 @@ final class TPPCredentialIsolationE2ETests: XCTestCase {
     private let uuidB = "urn:uuid:e2e-isolation-library-b"
     private let uuidC = "urn:uuid:e2e-isolation-library-c"
 
+    override func setUpWithError() throws {
+        // CI iOS Simulator runners lack keychain entitlement (errSec -34018)
+        // — every credential read/write returns nil and the isolation
+        // assertions fall through to "nil != Optional(barcode)" failures.
+        // Skip rather than report false negatives.
+        try super.setUpWithError()
+        try KeychainAvailability.skipIfUnavailable()
+    }
+
     override func tearDown() {
         AccountsManager.shared.userAccount(for: uuidA).removeAll()
         AccountsManager.shared.userAccount(for: uuidB).removeAll()

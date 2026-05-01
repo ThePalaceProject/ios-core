@@ -439,6 +439,11 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
     /// Initiates process of signing in with the server.
     @objc func logIn(with tokenURL: URL? = nil) {
+        // Nothing to do without a selected auth method. Posting TPPIsSigningIn
+        // here would leave downstream observers stuck in a "signing in" state
+        // while we silently bail. (Forward-port of develop's logIn early-return.)
+        guard let wrapped = selectedAuthentication else { return }
+
         NotificationCenter.default.post(name: .TPPIsSigningIn, object: true)
 
         capturedBarcode = uiDelegate?.username
@@ -448,11 +453,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             self.uiDelegate?.businessLogicWillSignIn(self)
         }
 
-        switch selectedAuthentication {
-        case .none:
-            return
-        case .some(let wrapped):
-            switch wrapped.authType {
+        switch wrapped.authType {
             case .oauthIntermediary:
                 oauthLogIn()
             case .saml:
@@ -473,7 +474,6 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                 getBearerToken(username: username, password: password, tokenURL: tokenURL)
             default:
                 validateCredentials()
-            }
         }
     }
 
