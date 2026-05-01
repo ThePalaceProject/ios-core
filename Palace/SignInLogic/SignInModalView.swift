@@ -45,6 +45,38 @@ struct SignInModalView: View {
     }
 }
 
+/// UIHostingController subclass that fires a callback when the underlying
+/// UIKit dismissal transition fully completes — used to delay clearing
+/// `SignInModalPresenter.isPresenting` until the modal is actually gone,
+/// not just when SwiftUI's `dismiss()` was called. SwiftUI's dismiss is
+/// non-blocking; without this, fast user re-taps race the in-flight
+/// dismiss and produce "transitioning already" stuck-modal lock-ups.
+private final class SignInModalHostingController<Content: View>: UIHostingController<Content> {
+    private let onDidFullyDismiss: () -> Void
+    private var firedOnce = false
+
+    init(rootView: Content, onDidFullyDismiss: @escaping () -> Void) {
+        self.onDidFullyDismiss = onDidFullyDismiss
+        super.init(rootView: rootView)
+    }
+
+    @objc required dynamic init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) is not used; SignInModalHostingController is constructed programmatically")
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        // viewDidDisappear fires for reasons other than dismissal (e.g. a
+        // view controller pushed on top within an embedded nav stack). We
+        // only want to reset isPresenting when this hosting controller is
+        // actually torn down — `presentingViewController == nil` is true
+        // after dismissal has fully completed.
+        guard !firedOnce, presentingViewController == nil else { return }
+        firedOnce = true
+        onDidFullyDismiss()
+    }
+}
+
 /// Bridge class to present SignInModalView from Objective-C.
 /// @MainActor ensures `isPresenting` reads/writes are serialized — prevents
 /// duplicate modals from concurrent 401 responses on different threads.
@@ -76,12 +108,23 @@ class SignInModalPresenter: NSObject {
         let view = SignInModalView(
             libraryAccountID: libraryAccountID,
             completion: {
-                isPresenting = false
+                // CRITICAL: do NOT flip isPresenting here. SwiftUI's dismiss()
+                // schedules the UIKit dismissal but returns immediately — the
+                // transition itself takes ~300ms. If isPresenting flips false
+                // now, a fast user re-tap (e.g. user cancels, then immediately
+                // taps Borrow again on book detail) calls present() while the
+                // previous modal is still mid-dismiss. UIKit refuses with
+                // "trying to dismiss the presentation controller while
+                // transitioning already" and the form sheet sticks half-mounted
+                // — observed on hotfix-branch device test (HelpSpot 17716
+                // follow-up). The reset fires from the hosting controller's
+                // own viewDidDisappear instead, which only runs once the UIKit
+                // transition has actually completed.
                 completion?()
             }
         )
 
-        let vc = UIHostingController(rootView: view)
+        let vc = SignInModalHostingController(rootView: view) { isPresenting = false }
         vc.modalPresentationStyle = .formSheet
 
         TPPPresentationUtils.safelyPresent(vc, animated: true)
