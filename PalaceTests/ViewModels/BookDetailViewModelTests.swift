@@ -1017,11 +1017,27 @@ final class BookDetailViewModelTests: XCTestCase {
         let (vm, registry, book) = makeVM(state: .downloadSuccessful)
         vm.bookState = .returning
 
-        // Override should prevent state changing back to .downloadSuccessful from registry event
-        let exp = expectation(description: "registry emission processed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
+        // The override should prevent bookState reverting to .downloadSuccessful
+        // when the registry emits. The pre-fix version of this test "synced"
+        // with the registry pipeline by `DispatchQueue.main.asyncAfter(0.1)
+        // { exp.fulfill() }` — but that fulfills regardless of whether the
+        // production sink (which routes via .receive(on: RunLoop.main)) has
+        // actually run. Under CI scheduling pressure the run-loop hop can take
+        // longer than 100 ms, so on slow runners the assertion fired before
+        // the override path was even exercised. Worse, on really backed-up
+        // runners the asyncAfter itself didn't fire within the 1 s wait,
+        // tripping the timeout — that's the recurring flake on develop.
+        //
+        // Real fix: drain the main queue with a sentinel. DispatchQueue.main
+        // .async runs after currently-pending main events (incl. Combine's
+        // .receive(on: RunLoop.main) deliveries), so when this fulfills, the
+        // production sink has been called and bookState has settled. Same
+        // pattern is used at line 923-925 in this file.
         registry.setState(.downloadSuccessful, for: book.identifier)
-        wait(for: [exp], timeout: 1.0)
+        let drain = expectation(description: "main-queue events drained")
+        DispatchQueue.main.async { drain.fulfill() }
+        wait(for: [drain], timeout: 5.0)
+
         XCTAssertEqual(vm.bookState, .returning,
                        "While override=.returning, non-unregistered registry state should be ignored")
     }
