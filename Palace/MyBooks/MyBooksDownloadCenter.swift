@@ -125,6 +125,11 @@ import PalaceCatalog
     let errorActivityTracker: ErrorActivityTracker
     let userRetryTracker: UserRetryTracker
     let reachability: Reachability
+    /// Holds the connectivityPublisher subscription installed by
+    /// `bindReachability()`. PP-4114 follow-up: lets a mid-flight reachability
+    /// drop trigger `failActiveDownloadsForNetworkLoss()` without parking the
+    /// subscription on a Set we don't otherwise need.
+    private var reachabilityCancellable: AnyCancellable?
     let memoryPressureMonitor: MemoryPressureMonitor
     let bookmarkDeletionLog: TPPBookmarkDeletionLog
     let deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor
@@ -751,6 +756,71 @@ import PalaceCatalog
         // Setup intelligent download management — observer registration
         // lives on the throttlingService which holds the handle for cleanup.
         self.throttlingService.setupNetworkMonitoring()
+
+        // PP-4114 follow-up: react to mid-flight reachability drops. PR #901
+        // fixed the borrow path on BookCellModel; the parallel gap on this
+        // side was that an in-progress URLSession download could sit in
+        // flight for up to 60 s (per-request default) or longer (no resource
+        // timeout set on the background session) before iOS surfaced
+        // didCompleteWithError. Result: spinner forever, no alert. Mirror
+        // the BookCellModel pattern — dropFirst() skips the
+        // CurrentValueSubject's initial-value replay so we only act on real
+        // transitions.
+        self.bindReachability()
+    }
+
+    // MARK: - PP-4114: mid-flight network drop handling
+
+    /// Subscribe to reachability transitions and fail any in-flight downloads
+    /// when connectivity drops. Mirrors the BookCellModel.bindReachability()
+    /// pattern from PR #901, but covers the in-progress-download case rather
+    /// than the borrow-button case.
+    ///
+    /// `dropFirst()` skips the `CurrentValueSubject`'s replay of its initial
+    /// `true` value so the suite of regression tests around fresh init don't
+    /// trip the failure path on a fully-online sim. `.filter { !$0 }` only
+    /// admits actual offline transitions.
+    private func bindReachability() {
+        reachabilityCancellable = reachability.connectivityPublisher
+            .dropFirst()
+            .filter { !$0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.failActiveDownloadsForNetworkLoss()
+            }
+    }
+
+    /// For every active download, transition the book to `.downloadFailed`,
+    /// surface a retryable alert, and cancel the URLSession task so iOS
+    /// frees the connection. The cancelled completion that fires later is
+    /// filtered by `DownloadTaskLifecycleService.handleTaskCompletionError`,
+    /// so there's no double-alert.
+    func failActiveDownloadsForNetworkLoss() {
+        Task { [weak self] in
+            guard let self else { return }
+            // Snapshot active state before mutations — failDownloadWithAlert
+            // empties the dicts asynchronously.
+            let activePairs = await self.stateManager.taskIdentifierToBook.allPairs()
+            let activeInfos = await self.stateManager.bookIdentifierToDownloadInfo.values()
+            guard !activePairs.isEmpty else { return }
+
+            // Cancel pending tasks first so iOS stops trying to drive them.
+            for info in activeInfos {
+                info.downloadTask.cancel()
+            }
+
+            // Surface the alert + state transition for each book.
+            let message = NSLocalizedString(
+                "The connection was lost during the download.",
+                comment: "Body for the network-loss alert that fires when reachability drops mid-download (PP-4114)."
+            )
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                for (_, book) in activePairs {
+                    self.failDownloadWithAlert(for: book, withMessage: message)
+                }
+            }
+        }
     }
 
     /// Phase 4 (Architectural Triad) convenience init that pulls injectable
