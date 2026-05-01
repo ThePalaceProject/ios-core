@@ -183,6 +183,41 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         _ = center
     }
 
+    // MARK: - Retry-while-offline pre-flight
+
+    /// PP-4114 follow-up: tapping Retry on the failure alert while still
+    /// offline must error out IMMEDIATELY, not start a fresh URLSession task
+    /// that spins until iOS surfaces a timeout. The Retry button routes
+    /// through DownloadAlertPresenter.makeRetryAction → MBDC.startDownload,
+    /// which bypasses BookCellModel.bindReachability's pre-flight. Without
+    /// the guard added in MBDC.startDownload, tapping Retry from an
+    /// already-offline state reproduces the original bug: spinner forever,
+    /// no alert.
+    func testStartDownload_WhenOffline_FailsImmediatelyWithoutSpawningTask() async {
+        let offlineReachability = MockReachability(initiallyConnected: false)
+        let book = makeBook(id: "retry-while-offline")
+        mockRegistry.addBook(book, state: .downloadFailed)
+
+        let center = MyBooksDownloadCenter(
+            bookRegistry: mockRegistry,
+            stateManager: stateManager,
+            reachability: offlineReachability
+        )
+        await drainMainQueueAsync()
+
+        // Simulate the Retry-button path — direct call to startDownload.
+        center.startDownload(for: book, withRequest: nil)
+        await waitForState(.downloadFailed, on: book.identifier)
+
+        XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadFailed,
+                       "PP-4114: startDownload while offline must short-circuit to .downloadFailed, not spawn a hanging URLSession task")
+        // Active dictionaries must remain empty — the pre-flight short-circuit
+        // bails out BEFORE addDownloadTask runs, so no task is registered.
+        let activeCount = await stateManager.taskIdentifierToBook.values().count
+        XCTAssertEqual(activeCount, 0,
+                       "Pre-flight bail must not register any URLSession task")
+    }
+
     /// A reachability transition with no active downloads is a harmless
     /// no-op. Catches a fix that crashes or asserts when the active-set
     /// is empty.

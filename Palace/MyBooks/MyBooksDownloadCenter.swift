@@ -909,6 +909,20 @@ import PalaceCatalog
     // and the start-download path can't both fire concurrent sign-in modals.
 
     @objc func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) {
+        // PP-4114 follow-up: pre-flight reachability before kicking off a new
+        // URLSession download task. The Retry button on the failure alert
+        // routes through DownloadAlertPresenter.makeRetryAction → this method,
+        // bypassing BookCellModel's pre-flight. Without this guard, tapping
+        // Retry while still offline would spin the same way the original bug
+        // did. Re-surface the same retryable alert (idempotent — registry
+        // state is already .downloadFailed, the user just needs the prompt).
+        if !reachability.isConnectedToNetwork() {
+            failDownloadWithAlert(
+                for: book,
+                withMessage: Strings.MyDownloadCenter.noConnectionMessage
+            )
+            return
+        }
         Task {
             await startDownloadAsync(for: book, withRequest: initedRequest)
         }
