@@ -406,21 +406,26 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
 
         if authDef?.reauthStrategy == .browser {
             // SAML/OIDC: a 401 here means the IdP cookie/assertion expired.
-            // markCredentialsStale() above only fires the publisher on the
-            // .loggedIn → .credentialsStale transition; once stale, subsequent
-            // 401s are no-ops. So we hand off to SAMLReauthCoordinator on
-            // every 401 — its own single-flight + foreground gates dedupe,
-            // which also handles the case where the account was already
-            // stale at app launch (publisher quiet, but UI still missing).
-            // HelpSpot 17716 (Cornell SAML).
-            Log.info(#file, "Server returned 401 for browser-based auth - credentials marked stale, requesting SAML reauth")
-            Task { @MainActor in
-                SAMLReauthCoordinator.shared.requestReauth(
-                    for: user,
-                    authDef: authDef,
-                    triggerURL: originalURL
-                )
-            }
+            // We mark stale (above) so user-action paths (borrow / read) can
+            // detect the condition via `BookDetailViewModel.ensureAuthAndExecute`
+            // and `DownloadAuthRetryHandler.handleBrowserSessionExpired`, which
+            // are the right entry points to drive the SAML re-auth modal.
+            //
+            // Originally this site also auto-presented the modal directly via
+            // SAMLReauthCoordinator on every browser-401. That was too eager:
+            // Gorgon (and many institutional SAML deployments) accept the
+            // bearer token for borrow + fulfillment even after the SAML
+            // session cookie expires, so /patrons/me/ keeps 401-ing as a
+            // background poll while the user can still borrow and read fine.
+            // Auto-prompting from here meant a re-auth modal on every app
+            // launch even though nothing was actually broken. HelpSpot 17716
+            // follow-up, observed on hotfix-branch device test.
+            //
+            // The user-action gates remain — Adam's "open the app and books
+            // won't render" path still recovers, because his download/read
+            // attempt fails through ensureAuthAndExecute / DownloadAuthRetry
+            // and surfaces the modal then.
+            Log.info(#file, "Server returned 401 for browser-based auth - credentials marked stale; user-action paths will surface re-auth on next interaction")
             return false
         }
 
