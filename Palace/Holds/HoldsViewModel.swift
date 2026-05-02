@@ -89,14 +89,17 @@ final class HoldsViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Force a registry sync + reload when the user transitions from
-        // logged-out to logged-in. Mirrors the same observer in
-        // MyBooksViewModel — the post-sign-in registry sync occasionally
-        // doesn't propagate to this view in time, leaving the Holds tab
-        // empty until the user toggles libraries.
-        UserAccountPublisher.shared.didSignInPublisher
+        // Force a registry sync + reload on any transition into `.loggedIn`
+        // (fresh sign-in OR SAML re-auth from `.credentialsStale`). See the
+        // matching observer in MyBooksViewModel for the full reasoning —
+        // short version: `hasCredentials`-based publishers miss the SAML
+        // re-auth case because `hasCredentials` stays true through stale →
+        // loggedIn, but `authState` flips, so observe that.
+        UserAccountPublisher.shared.authStateDidChangePublisher
+            .dropFirst()
+            .filter { $0 == .loggedIn }
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] in
+            .sink { [weak self] _ in
                 self?.refresh()
             }
             .store(in: &cancellables)
