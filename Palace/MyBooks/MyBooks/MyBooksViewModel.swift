@@ -290,20 +290,29 @@ enum Group: Int {
             }
             .store(in: &observers)
 
-        // Force a registry sync + reload when the user transitions from
-        // logged-out to logged-in. The post-sign-in `bookRegistry.sync()`
-        // wired into `TPPSignInBusinessLogic.updateUserAccount` is supposed
-        // to repopulate the loans, but in practice the My Books tab still
-        // shows empty until the user toggles libraries (which forces the
-        // registry's `accountDidChangeCancellable` to re-load from disk +
-        // sync). Subscribing to `didSignInPublisher` makes the My Books
-        // refresh independent of whichever sign-in path the user hit
-        // (book-detail borrow re-auth, settings sign-in, SAML coordinator
-        // auto-prompt, deep-link sign-in). Idempotent — `reloadData`'s
-        // `!isLoading` guard collapses concurrent triggers.
-        UserAccountPublisher.shared.didSignInPublisher
+        // Force a registry sync + reload when authState transitions into
+        // `.loggedIn`. We can't use `didSignInPublisher` here — that
+        // watches `hasCredentials` flipping false → true, but
+        // `hasCredentials` is true for both `.credentialsStale` AND
+        // `.loggedIn` (it just checks the keychain for a token/PIN). On
+        // SAML re-auth the user starts in `.credentialsStale` with a
+        // stale token already in keychain, signs in successfully, and
+        // ends in `.loggedIn` — `hasCredentials` stays true the whole
+        // time, no signal fires, the My Books tab sits on stale empty
+        // state until the user toggles libraries (which forces the
+        // registry's `accountDidChangeCancellable` to re-load + sync).
+        //
+        // `authState` is the authoritative signal: it goes
+        // `.credentialsStale → .loggedIn` on re-auth and
+        // `.loggedOut → .loggedIn` on fresh sign-in. Either transition
+        // means "user just gained valid creds; refresh data".
+        // `dropFirst()` skips the initial value so users already
+        // logged in at app launch don't get a redundant reload.
+        UserAccountPublisher.shared.authStateDidChangePublisher
+            .dropFirst()
+            .filter { $0 == .loggedIn }
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] in
+            .sink { [weak self] _ in
                 self?.reloadData()
             }
             .store(in: &observers)
