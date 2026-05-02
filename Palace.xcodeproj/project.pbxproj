@@ -687,6 +687,9 @@
 		8CE9C471237F84820072E964 /* TPPBookDetailsProblemDocumentViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE9C470237F84820072E964 /* TPPBookDetailsProblemDocumentViewController.swift */; };
 		8DB340CF4268405FAA8954D2 /* SignInModalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53CCA7049DE640BABC8D20B8 /* SignInModalView.swift */; };
 		8DB340D04268405FAA8954D3 /* SignInModalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53CCA7049DE640BABC8D20B8 /* SignInModalView.swift */; };
+		SIGWEBVMODL000BUILDREFP1 /* SignInWebSheetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SIGWEBVMODL000FILEREF001 /* SignInWebSheetViewModel.swift */; };
+		SIGWEBVMODL000BUILDREFD1 /* SignInWebSheetViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SIGWEBVMODL000FILEREF001 /* SignInWebSheetViewModel.swift */; };
+		SIGWEBVMTSTS00BUILDREF01 /* SignInWebSheetViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SIGWEBVMTSTS00FILEREF001 /* SignInWebSheetViewModelTests.swift */; };
 		8E487777D9FBC42EE44B84B6 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60385D9D3FD8ED6E19C7608D /* AppContainer.swift */; };
 		8F0F91D96D8F6EA8F3588475 /* FontManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFA10178BD2885EBF24673F3 /* FontManager.swift */; };
 		8F33160CFC0FC38329D8A903 /* OPDSFeedServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CFCFF5C7BF41D65666565EC /* OPDSFeedServiceTests.swift */; };
@@ -1963,6 +1966,8 @@
 		502761BDE732D3752808C4C4 /* TPPBookButtonsState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPBookButtonsState.swift; sourceTree = "<group>"; };
 		52226B7262C85C91578DB3A7 /* TPPJSON.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPJSON.swift; sourceTree = "<group>"; };
 		53CCA7049DE640BABC8D20B8 /* SignInModalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInModalView.swift; sourceTree = "<group>"; };
+		SIGWEBVMODL000FILEREF001 /* SignInWebSheetViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInWebSheetViewModel.swift; sourceTree = "<group>"; };
+		SIGWEBVMTSTS00FILEREF001 /* SignInWebSheetViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInWebSheetViewModelTests.swift; sourceTree = "<group>"; };
 		54172B43D47BE5FCE8A1B975 /* TPPAttributedString.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPAttributedString.swift; sourceTree = "<group>"; };
 		5431B832D502714505B6EAF5 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
 		545D0B43631D0433B5E9C100 /* PlatformTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformTab.swift; sourceTree = "<group>"; };
@@ -3507,6 +3512,7 @@
 			children = (
 				E5E2F8D32CB631C100A95840 /* TPPSAMLHelper.swift */,
 				53CCA7049DE640BABC8D20B8 /* SignInModalView.swift */,
+				SIGWEBVMODL000FILEREF001 /* SignInWebSheetViewModel.swift */,
 				089E42C5249A823800310360 /* TPPCookiesWebViewController.swift */,
 				734B78982565F7DE006FB8AD /* TPPReauthenticator.swift */,
 				731A5B1124621F2B00B5E663 /* TPPSignInBusinessLogic.swift */,
@@ -4160,6 +4166,7 @@
 		9AA35EB189630201A9761FA2 /* SignInLogic */ = {
 			isa = PBXGroup;
 			children = (
+				SIGWEBVMTSTS00FILEREF001 /* SignInWebSheetViewModelTests.swift */,
 				A2E5C9EA3B9B15FEF2555CE3 /* TPPBasicAuthTests.swift */,
 				22D5C28E71B1D177EAF1E5F9 /* TPPReauthenticatorTests.swift */,
 				1DC9FC06EF6CCEED742C0D44 /* TPPSignInBusinessLogicExtendedTests.swift */,
@@ -6272,6 +6279,7 @@
 				CE9909A4CDA78EEE1B7B1936 /* PlaybackRateTests.swift in Sources */,
 				9EB44CD30C94D33258B12A16 /* DebugSettingsTests.swift in Sources */,
 				9131F05942C27772C1CA21E7 /* SAMLHelperTests.swift in Sources */,
+				SIGWEBVMTSTS00BUILDREF01 /* SignInWebSheetViewModelTests.swift in Sources */,
 				AUTHREDTESTSBUILDFILE01ZZZ /* AuthReducerTests.swift in Sources */,
 				184131D3C04F95ED70463EB4 /* TPPCredentialsCoverageTests.swift in Sources */,
 				E4828A0C02FBF2DBC8894ED8 /* TPPSignInAdobeSkipTests.swift in Sources */,
@@ -6729,6 +6737,7 @@
 				E50546C42E621981007CCFAB /* NavigationHostView.swift in Sources */,
 				E5515EC22AD8E843000BDFE9 /* UIHostingController+Extensions.swift in Sources */,
 				8DB340D04268405FAA8954D3 /* SignInModalView.swift in Sources */,
+				SIGWEBVMODL000BUILDREFD1 /* SignInWebSheetViewModel.swift in Sources */,
 				73EB0B1F25821DF4006BC997 /* UserProfileDocument.swift in Sources */,
 				21E41777292810E000A78606 /* TPPPDFDocumentMetadata.swift in Sources */,
 				E76AD92C296DCB76008ECC61 /* NotificationService.swift in Sources */,
@@ -7227,6 +7236,7 @@
 				C7A10003AAAA000100000001 /* TPPBook+Presentation.swift in Sources */,
 				089E430C24A2459100310360 /* TPPLoginCellTypes.swift in Sources */,
 				8DB340CF4268405FAA8954D2 /* SignInModalView.swift in Sources */,
+				SIGWEBVMODL000BUILDREFP1 /* SignInWebSheetViewModel.swift in Sources */,
 				E59526EB28D24FC000C179DA /* AudiobookSample.swift in Sources */,
 				E5B2B8DA275952EC00150ED4 /* TPPSettingsView.swift in Sources */,
 				SETVM004T260955EF008E1DC3 /* SettingsViewModel.swift in Sources */,
