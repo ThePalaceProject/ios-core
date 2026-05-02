@@ -289,5 +289,23 @@ enum Group: Int {
                 self.sortData()
             }
             .store(in: &observers)
+
+        // Force a registry sync + reload when the user transitions from
+        // logged-out to logged-in. The post-sign-in `bookRegistry.sync()`
+        // wired into `TPPSignInBusinessLogic.updateUserAccount` is supposed
+        // to repopulate the loans, but in practice the My Books tab still
+        // shows empty until the user toggles libraries (which forces the
+        // registry's `accountDidChangeCancellable` to re-load from disk +
+        // sync). Subscribing to `didSignInPublisher` makes the My Books
+        // refresh independent of whichever sign-in path the user hit
+        // (book-detail borrow re-auth, settings sign-in, SAML coordinator
+        // auto-prompt, deep-link sign-in). Idempotent — `reloadData`'s
+        // `!isLoading` guard collapses concurrent triggers.
+        UserAccountPublisher.shared.didSignInPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                self?.reloadData()
+            }
+            .store(in: &observers)
     }
 }
