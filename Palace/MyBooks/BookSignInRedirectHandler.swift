@@ -88,24 +88,25 @@ final class BookSignInRedirectHandler {
 
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
-                    if let topVC = UIApplication.shared.mainKeyWindow?.rootViewController {
-                        var current = topVC
-                        while let presented = current.presentedViewController {
-                            current = presented
+                    // The sign-in sheet is presented via SignInWebSheetPresenter,
+                    // which keeps a strong reference to the hosting VC. Dismiss
+                    // through it so the keep-alive map gets cleared and the
+                    // SwiftUI view tree deallocates cleanly.
+                    if SignInWebSheetPresenter.isPresenting {
+                        SignInWebSheetPresenter.dismissTop(animated: true) {
+                            self.delegate?.startDownload(for: book, withRequest: nil)
                         }
-                        if current is UINavigationController || current is TPPCookiesWebViewController {
-                            current.presentingViewController?.dismiss(animated: true) {
-                                // After dismissal, retry download with new cookies
-                                self.delegate?.startDownload(for: book, withRequest: nil)
-                            }
-                        }
+                    } else {
+                        self.delegate?.startDownload(for: book, withRequest: nil)
                     }
                 }
             }
 
-            let model = TPPCookiesWebViewModel(
+            let model = SignInWebSheetViewModel(
                 cookies: cookies,
                 request: mutableRequest,
+                universalLinksURL: AppContainer.production().settings.universalLinksURL,
+                autoPresentIfNeeded: true,
                 loginCompletionHandler: loginCompletionHandler,
                 loginCancelHandler: { [weak self] in
                     self?.handleLoginCancellation(for: book)
@@ -118,12 +119,10 @@ final class BookSignInRedirectHandler {
                 problemFoundHandler: { [weak self] problemDocument in
                     Log.warn(#file, "SAML web view encountered problem: \(problemDocument?.type ?? "unknown")")
                     self?.handleProblem(for: book, problemDocument: problemDocument)
-                },
-                autoPresentIfNeeded: true  // Auto-present and auto-dismiss
+                }
             )
 
-            let cookiesVC = TPPCookiesWebViewController(model: model)
-            cookiesVC.loadViewIfNeeded()
+            SignInWebSheetPresenter.presentOnTop(model: model)
             Log.info(#file, "SAML web view initialized for '\(book.title)'")
         }
     }

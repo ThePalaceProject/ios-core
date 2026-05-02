@@ -190,25 +190,28 @@ private class LegacySAMLWebViewPresenter: SAMLWebViewPresenting {
     func presentSAMLWebView(url: URL, cookies: [HTTPCookie],
                             loginCompletion: @escaping (URL, [HTTPCookie]) -> Void,
                             loginCancel: @escaping () -> Void) {
-        guard let businessLogic = businessLogic else { return }
+        guard let businessLogic = businessLogic,
+              let uiDelegate = businessLogic.uiDelegate as? UIViewController else { return }
 
-        let model = TPPCookiesWebViewModel(
-            cookies: cookies,
-            request: URLRequest(url: url),
-            loginCompletionHandler: loginCompletion,
-            loginCancelHandler: loginCancel,
-            bookFoundHandler: nil,
-            problemFoundHandler: nil,
-            autoPresentIfNeeded: false
-        )
+        let universalLinks = AppContainer.production().settings.universalLinksURL
+        let request = URLRequest(url: url)
 
-        let cookiesVC = TPPCookiesWebViewController(model: model)
-        let navigationWrapper = UINavigationController(rootViewController: cookiesVC)
-
-        businessLogic.uiDelegate?.present(navigationWrapper, animated: true, completion: nil)
+        Task { @MainActor in
+            let model = SignInWebSheetViewModel(
+                cookies: cookies,
+                request: request,
+                universalLinksURL: universalLinks,
+                autoPresentIfNeeded: false,
+                loginCompletionHandler: loginCompletion,
+                loginCancelHandler: loginCancel
+            )
+            SignInWebSheetPresenter.present(model: model, from: uiDelegate)
+        }
     }
 
     func dismissSAMLWebView(animated: Bool, completion: (() -> Void)?) {
-        businessLogic?.uiDelegate?.dismiss(animated: animated, completion: completion)
+        Task { @MainActor in
+            SignInWebSheetPresenter.dismissTop(animated: animated, completion: completion)
+        }
     }
 }
