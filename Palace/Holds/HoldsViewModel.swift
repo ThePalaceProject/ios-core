@@ -89,6 +89,18 @@ final class HoldsViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Force a registry sync + reload when the user transitions from
+        // logged-out to logged-in. Mirrors the same observer in
+        // MyBooksViewModel — the post-sign-in registry sync occasionally
+        // doesn't propagate to this view in time, leaving the Holds tab
+        // empty until the user toggles libraries.
+        UserAccountPublisher.shared.didSignInPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                self?.refresh()
+            }
+            .store(in: &cancellables)
+
         reloadData()
     }
 
