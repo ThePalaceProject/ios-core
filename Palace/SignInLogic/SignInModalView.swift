@@ -26,9 +26,23 @@ struct SignInModalView: View {
                 .toolbarBackground(Color(UIColor.systemGroupedBackground), for: .navigationBar)
                 .onChange(of: accountPublisher.authState) { authState in
                     // Auto-dismiss when user successfully signs in (including re-auth from stale state)
+                    //
+                    // We deliberately do NOT call `completion?()` here. SwiftUI's `dismiss()` is
+                    // non-blocking — it schedules the modal's ~300ms UIKit teardown and returns
+                    // immediately. If we fire completion synchronously, downstream UI mutations
+                    // (e.g., BookDetailViewModel.startDownloadAfterAuth setting
+                    // `showHalfSheet = true`) try to present a NEW sheet on the same presenter
+                    // chain while the sign-in modal is still animating away. UIKit refuses, the
+                    // half-sheet binding goes into a stuck state, and the user-reported lock-up
+                    // appears: book detail view is gesture-locked until app restart.
+                    //
+                    // The completion is wired through `SignInModalHostingController.onDidFullyDismiss`
+                    // (see SignInModalPresenter), which fires from `viewDidDisappear` with
+                    // `presentingViewController == nil` — i.e. AFTER the UIKit transition has
+                    // fully completed. Downstream sheet presentation then runs on a clean
+                    // presenter chain.
                     if authState == .loggedIn {
                         dismiss()
-                        completion?()
                     }
                 }
         }
@@ -37,10 +51,12 @@ struct SignInModalView: View {
 
     private var cancelButton: some View {
         Button(Strings.Generic.cancel) {
+            // Same race-window argument as the auto-dismiss above — completion fires from
+            // SignInModalHostingController.onDidFullyDismiss, not here. Cancel callers
+            // (e.g. BookDetailViewModel.ensureAuthAndExecute's outer completion) check
+            // `hasCredentials()`/`authState` to decide what to do, so the cancel path
+            // works the same regardless of when the completion runs.
             dismiss()
-            // Call completion on cancel so callers can clean up UI state (e.g., remove processing spinners)
-            // IMPORTANT: Callers MUST check hasCredentials() before proceeding with their action
-            completion?()
         }
     }
 }
@@ -105,26 +121,26 @@ class SignInModalPresenter: NSObject {
         }
         isPresenting = true
 
+        // SignInModalView no longer fires the completion itself (its inline
+        // dismiss() is non-blocking and racing the completion against the
+        // ~300ms UIKit teardown is what produced the BookDetail nav lock —
+        // see comment in SignInModalView.body). Pass nil to the view; the
+        // outer caller's completion is wired through the hosting controller's
+        // onDidFullyDismiss callback so it fires AFTER the UIKit transition.
         let view = SignInModalView(
             libraryAccountID: libraryAccountID,
-            completion: {
-                // CRITICAL: do NOT flip isPresenting here. SwiftUI's dismiss()
-                // schedules the UIKit dismissal but returns immediately — the
-                // transition itself takes ~300ms. If isPresenting flips false
-                // now, a fast user re-tap (e.g. user cancels, then immediately
-                // taps Borrow again on book detail) calls present() while the
-                // previous modal is still mid-dismiss. UIKit refuses with
-                // "trying to dismiss the presentation controller while
-                // transitioning already" and the form sheet sticks half-mounted
-                // — observed on hotfix-branch device test (HelpSpot 17716
-                // follow-up). The reset fires from the hosting controller's
-                // own viewDidDisappear instead, which only runs once the UIKit
-                // transition has actually completed.
-                completion?()
-            }
+            completion: nil
         )
 
-        let vc = SignInModalHostingController(rootView: view) { isPresenting = false }
+        let vc = SignInModalHostingController(rootView: view) {
+            // Order matters: clear the guard BEFORE running completion so
+            // anything completion does (e.g. presenting a half-sheet) works
+            // against a clean presenter chain. Completion sees isPresenting
+            // already false, which is the correct state once dismissal has
+            // completed.
+            isPresenting = false
+            completion?()
+        }
         vc.modalPresentationStyle = .formSheet
 
         TPPPresentationUtils.safelyPresent(vc, animated: true)
