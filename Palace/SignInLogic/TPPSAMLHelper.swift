@@ -190,9 +190,11 @@ private class LegacySAMLWebViewPresenter: SAMLWebViewPresenting {
     func presentSAMLWebView(url: URL, cookies: [HTTPCookie],
                             loginCompletion: @escaping (URL, [HTTPCookie]) -> Void,
                             loginCancel: @escaping () -> Void) {
-        guard let businessLogic = businessLogic,
-              let uiDelegate = businessLogic.uiDelegate as? UIViewController else { return }
-
+        // The uiDelegate (e.g. AccountDetailViewModel) is not a UIViewController —
+        // it's an ObservableObject that implements the TPPSignInBusinessLogicUIDelegate
+        // protocol's present/dismiss surface by walking to the topmost VC itself.
+        // We do the same walk here via SignInWebSheetPresenter.presentOnTop, which
+        // gives us identical reach without forcing the delegate to be a VC.
         let universalLinks = AppContainer.production().settings.universalLinksURL
         let request = URLRequest(url: url)
 
@@ -205,7 +207,7 @@ private class LegacySAMLWebViewPresenter: SAMLWebViewPresenting {
                 loginCompletionHandler: loginCompletion,
                 loginCancelHandler: loginCancel
             )
-            SignInWebSheetPresenter.present(model: model, from: uiDelegate)
+            SignInWebSheetPresenter.presentOnTop(model: model)
         }
     }
 
