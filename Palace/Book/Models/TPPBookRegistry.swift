@@ -246,26 +246,53 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     func load() { load(account: nil, completion: nil) }
 
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
-        // If the in-memory registry hasn't been loaded yet, load from disk
-        // first and chain sync off the completion. `BookRegistrySync.sync`
-        // bails when state is `.unloaded`/`.loading` to protect against the
-        // feed-only reconciliation path overwriting on-disk records — but
-        // post-sign-in (and any other caller hitting an un-loaded registry)
-        // legitimately wants a sync. Chaining via load() lets the protective
-        // guard stay strict while still getting the user's books refreshed.
+        // `BookRegistrySync.sync` bails when state is `.unloaded`/`.loading`
+        // to protect against the feed-only reconciliation path overwriting
+        // on-disk records — but post-sign-in (and any other caller hitting
+        // a not-yet-loaded registry) legitimately wants a sync.
         //
-        // Observed in production for SAML re-auth: after sign-out the
-        // registry can be in `.unloaded`, and the post-sign-in `sync()`
-        // wired through `TPPSignInBusinessLogic.updateUserAccount` was
-        // silently skipped, leaving My Books empty until the user killed
-        // the app (which forced a fresh load on next launch).
-        if state == .unloaded {
-            load { [weak self] in
-                self?.runSync(completion: completion)
+        // Two races land us here in production for SAML re-auth:
+        //   (a) state == .unloaded — sign-out cleared the in-memory store
+        //       and nothing has triggered a re-load yet.
+        //   (b) state == .loading — a load is already in flight; calling
+        //       `load()` again returns its completion immediately via the
+        //       duplicate-skip guard inside BookRegistrySync, so chaining
+        //       sync off `load()`'s completion misses the in-flight load
+        //       and runs sync against still-unloaded state.
+        //
+        // Both cases: subscribe to `TPPBookRegistryStateDidChange` and run
+        // sync once state reaches `.loaded`/`.synced`. Then kick off a
+        // load (no-op if one is already in flight). Either path drives
+        // the observer to the .loaded transition.
+        if state == .unloaded || state == .loading {
+            waitForLoadThenRunSync(completion: completion)
+            if state == .unloaded {
+                load()
             }
             return
         }
         runSync(completion: completion)
+    }
+
+    /// Subscribes to the registry state-change notification and runs sync
+    /// the first time state reaches `.loaded`/`.synced`. The observer
+    /// removes itself on first match so it's a one-shot.
+    private func waitForLoadThenRunSync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {
+        var token: NSObjectProtocol?
+        token = NotificationCenter.default.addObserver(
+            forName: .TPPBookRegistryStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else {
+                if let token { NotificationCenter.default.removeObserver(token) }
+                return
+            }
+            if self.state == .loaded || self.state == .synced {
+                if let token { NotificationCenter.default.removeObserver(token) }
+                self.runSync(completion: completion)
+            }
+        }
     }
 
     private func runSync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {
