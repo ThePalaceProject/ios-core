@@ -313,7 +313,22 @@ enum Group: Int {
             .filter { $0 == .loggedIn }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.reloadData()
+                // Only fire reloadData when the user actually has credentials
+                // on the *injected* accountsManager. In tests the
+                // `UserAccountPublisher.shared` singleton's `authState` can
+                // transition to `.loggedIn` from prior test mutations even
+                // though the test's account has no real credentials —
+                // observed in MyBooksViewModelExtendedTests etc. Without this
+                // guard, the observer fires `reloadData → loadData`, which
+                // sees `!hasCredentials()` and clears the test's mock books,
+                // breaking 18 tests that pass in isolation. The guard makes
+                // the observer a no-op when credentials are absent (which is
+                // also the right production behavior — there's nothing to
+                // sync if we don't have creds).
+                guard let self,
+                      self.accountsManager.currentUserAccount.hasCredentials()
+                else { return }
+                self.reloadData()
             }
             .store(in: &observers)
     }
