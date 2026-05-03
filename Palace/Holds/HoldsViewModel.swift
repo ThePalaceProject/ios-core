@@ -100,7 +100,14 @@ final class HoldsViewModel: ObservableObject {
             .filter { $0 == .loggedIn }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.refresh()
+                // See the same guard in MyBooksViewModel — UserAccountPublisher.shared
+                // is a singleton whose authState leaks across XCTest cases; without the
+                // hasCredentials check, the observer fires in tests against a mock
+                // account that has no real credentials and silently clobbers test state.
+                guard let self,
+                      self.accountsManager.currentUserAccount.hasCredentials()
+                else { return }
+                self.refresh()
             }
             .store(in: &cancellables)
 
