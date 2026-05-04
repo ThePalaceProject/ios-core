@@ -1554,6 +1554,7 @@
 		UAAS00010002PALACE0001 /* UserAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = UAAS00010000FILEREF01 /* UserAccountAuthState.swift */; };
 		PP4114MOCKREACH00000001 /* MockReachability.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP4114MOCKREACHREF00001 /* MockReachability.swift */; };
 		PP4114OFFLINETESTS00001 /* BookCellModelOfflineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP4114OFFLINETESTSREF1 /* BookCellModelOfflineTests.swift */; };
+		PP4114MBDCOFFLINE00001 /* MyBooksDownloadCenterOfflineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP4114MBDCOFFLINEREF1 /* MyBooksDownloadCenterOfflineTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2786,6 +2787,7 @@
 		UAAS00010000FILEREF01 /* UserAccountAuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserAccountAuthState.swift; sourceTree = "<group>"; };
 		PP4114MOCKREACHREF00001 /* MockReachability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockReachability.swift; sourceTree = "<group>"; };
 		PP4114OFFLINETESTSREF1 /* BookCellModelOfflineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookCellModelOfflineTests.swift; sourceTree = "<group>"; };
+		PP4114MBDCOFFLINEREF1 /* MyBooksDownloadCenterOfflineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyBooksDownloadCenterOfflineTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -4723,6 +4725,7 @@
 				EEE0C3EAFC52054E7144B795 /* DownloadStateManagerTests.swift */,
 				D96122327A49810CC4ACD7CB /* TokenRefreshInterceptorTests.swift */,
 				PP4114OFFLINETESTSREF1 /* BookCellModelOfflineTests.swift */,
+				PP4114MBDCOFFLINEREF1 /* MyBooksDownloadCenterOfflineTests.swift */,
 			);
 			path = MyBooks;
 			sourceTree = "<group>";
@@ -6312,6 +6315,7 @@
 				C911BB897D0420A06D49D6CA /* AnonymousBorrowFixtureTests.swift in Sources */,
 				PP4114MOCKREACH00000001 /* MockReachability.swift in Sources */,
 				PP4114OFFLINETESTS00001 /* BookCellModelOfflineTests.swift in Sources */,
+				PP4114MBDCOFFLINE00001 /* MyBooksDownloadCenterOfflineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
