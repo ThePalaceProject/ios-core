@@ -27,6 +27,13 @@ final class SignInWebSheetPresenter: NSObject {
     /// `TPPCookiesWebViewController.automaticBrowserStorage` keep-alive.
     private static var activeHosts: [String: UIViewController] = [:]
 
+    /// Per-presentation dismissal delegates. Held strongly here because
+    /// `UIViewController.presentationController?.delegate` is `weak`, so
+    /// without our retain the delegate would be deallocated as soon as
+    /// `makeHostingController` returns and swipe-down dismiss would silently
+    /// no-op. Mirrors `activeHosts` keying.
+    private static var dismissalDelegates: [String: SignInWebSheetDismissalDelegate] = [:]
+
     // MARK: - Public API
 
     /// Presents the SwiftUI sign-in web sheet from the given presenter.
@@ -67,28 +74,42 @@ final class SignInWebSheetPresenter: NSObject {
         }
         let presenter = host.presentingViewController ?? host
         presenter.dismiss(animated: animated) {
-            activeHosts[uuid] = nil
+            cleanup(uuid: uuid)
             completion?()
         }
     }
 
     // MARK: - Internal helpers
 
+    /// Single cleanup site so explicit dismiss, swipe-down dismiss, and
+    /// future paths can't drift apart. Idempotent.
+    fileprivate static func cleanup(uuid: String) {
+        activeHosts[uuid] = nil
+        dismissalDelegates[uuid] = nil
+    }
+
     private static func makeHostingController(model: SignInWebSheetViewModel) -> UIHostingController<SignInWebSheet> {
         let uuid = UUID().uuidString
         weak var weakHost: UIHostingController<SignInWebSheet>?
         let view = SignInWebSheet(viewModel: model) {
-            // Cancel button or programmatic dismiss request from the sheet.
-            // The SwiftUI view has already called recordCancel(); we just
-            // need to take the modal off-screen.
+            // Cancel button — dismiss; cleanup runs in the dismiss completion.
             weakHost?.dismiss(animated: true) {
-                activeHosts[uuid] = nil
+                cleanup(uuid: uuid)
             }
         }
         let host = UIHostingController(rootView: view)
         host.modalPresentationStyle = .formSheet
         weakHost = host
         activeHosts[uuid] = host
+
+        // Wire up swipe-down dismiss → recordCancel + cleanup. Without this,
+        // the user can swipe the sheet off-screen and we never learn about
+        // it — the calling business logic stays waiting for a terminal
+        // callback that never arrives, and `isPresenting` stays true forever.
+        let delegate = SignInWebSheetDismissalDelegate(model: model, uuid: uuid)
+        dismissalDelegates[uuid] = delegate
+        host.presentationController?.delegate = delegate
+
         return host
     }
 
@@ -106,5 +127,29 @@ final class SignInWebSheetPresenter: NSObject {
             topPresenter = presented
         }
         topPresenter.present(host, animated: animated, completion: completion)
+    }
+}
+
+// MARK: - Dismissal delegate
+
+/// `UIAdaptivePresentationControllerDelegate` adapter that surfaces
+/// swipe-down dismiss as a `recordCancel()` on the model and tears down
+/// the presenter's keep-alive references for this presentation.
+@MainActor
+final class SignInWebSheetDismissalDelegate: NSObject, UIAdaptivePresentationControllerDelegate {
+    private let model: SignInWebSheetViewModel
+    private let uuid: String
+
+    init(model: SignInWebSheetViewModel, uuid: String) {
+        self.model = model
+        self.uuid = uuid
+        super.init()
+    }
+
+    nonisolated func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        Task { @MainActor in
+            self.model.recordCancel()
+            SignInWebSheetPresenter.cleanup(uuid: self.uuid)
+        }
     }
 }
