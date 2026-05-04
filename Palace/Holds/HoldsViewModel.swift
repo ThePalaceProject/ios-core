@@ -132,6 +132,27 @@ final class HoldsViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Force a registry refresh on any transition into `.loggedIn`
+        // (fresh sign-in OR SAML re-auth from `.credentialsStale`). See the
+        // matching observer in MyBooksViewModel for the full reasoning.
+        // Short version: `hasCredentials`-based publishers miss SAML
+        // re-auth because `hasCredentials` stays true through stale →
+        // loggedIn; `authState` flips, so observe that. The hasCredentials
+        // check inside the sink is for test isolation —
+        // `UserAccountPublisher.shared` is singleton-backed and leaks
+        // authState across XCTest cases.
+        UserAccountPublisher.shared.authStateDidChangePublisher
+            .dropFirst()
+            .filter { $0 == .loggedIn }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self,
+                      self.accountsManager.currentUserAccount.hasCredentials()
+                else { return }
+                self.refresh()
+            }
+            .store(in: &cancellables)
+
         reloadData()
     }
 

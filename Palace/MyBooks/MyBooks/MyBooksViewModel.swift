@@ -321,5 +321,39 @@ enum Group: Int {
                 self.sortData()
             }
             .store(in: &observers)
+
+        // Force a registry sync + reload on any transition into `.loggedIn`
+        // (fresh sign-in OR SAML re-auth from `.credentialsStale`). The
+        // post-sign-in `bookRegistry.sync()` wired into
+        // `TPPSignInBusinessLogic.updateUserAccount` is supposed to
+        // repopulate loans, but in practice the propagation through
+        // `TPPBookRegistryDidChange` doesn't always reach this view model
+        // in time — especially when the registry is in the `.unloaded`
+        // race window between sign-out and sign-in (handled at the
+        // TPPBookRegistry.sync wrapper level, but the safety net here
+        // covers the case where sync itself didn't fire).
+        //
+        // We can't use a `hasCredentials`-based publisher because
+        // `hasCredentials` is true for both `.credentialsStale` AND
+        // `.loggedIn` — SAML re-auth keeps the keychain populated through
+        // both states, no false→true transition fires.
+        //
+        // The hasCredentials guard inside the sink is for test isolation:
+        // `UserAccountPublisher.shared` is a singleton whose authState
+        // leaks across XCTest cases, so without the guard the observer
+        // fires in tests against a mock account that has no real
+        // credentials and clobbers test fixtures (18 MyBooks tests
+        // regressed locally without this guard during 3.0.1 hotfix work).
+        UserAccountPublisher.shared.authStateDidChangePublisher
+            .dropFirst()
+            .filter { $0 == .loggedIn }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self,
+                      self.accountsManager.currentUserAccount.hasCredentials()
+                else { return }
+                self.reloadData()
+            }
+            .store(in: &observers)
     }
 }
