@@ -287,6 +287,26 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                 // Success! Clear retry tracking for this URL
                 clearRetry(url: requestURL)
                 result = .success(info.progressData, task.response)
+
+                // Self-heal: a 2xx from an authenticated request means the
+                // server accepted our credentials. If our local state is
+                // `.credentialsStale` we should reconcile to `.loggedIn` —
+                // otherwise a transient /patrons/me/ 401 from a prior session
+                // can persist across launches and prompt the user to re-sign-in
+                // even though their bearer token is still valid (the SAML
+                // two-surface case: IdP cookie expires but bearer stays good).
+                // Only heal on requests that actually carried an Authorization
+                // header, so we don't false-heal off /authentication_document
+                // or other unauthenticated discovery calls.
+                let sentAuthHeader = (task.originalRequest?.value(forHTTPHeaderField: "Authorization") != nil)
+                    || (task.currentRequest?.value(forHTTPHeaderField: "Authorization") != nil)
+                if sentAuthHeader {
+                    let user = AccountsManager.shared.currentUserAccount
+                    if user.authState == .credentialsStale {
+                        Log.info(#file, "Authenticated request \(taskID) returned \(http.statusCode) — server accepted credentials, reconciling authState credentialsStale → loggedIn")
+                        user.setAuthState(.loggedIn)
+                    }
+                }
             }
         } else {
             let err = NSError(domain: "Api call with failure HTTP status",
@@ -400,29 +420,50 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
             return false
         }
 
-        // Mark credentials as stale - preserves Adobe DRM activation
-        let user = AccountsManager.shared.userAccount(for: accountId ?? "")
-        user.markCredentialsStale()
-
         if authDef?.reauthStrategy == .browser {
-            // SAML/OIDC: a 401 here means the IdP cookie/assertion expired.
-            // markCredentialsStale() above only fires the publisher on the
-            // .loggedIn → .credentialsStale transition; once stale, subsequent
-            // 401s are no-ops. So we hand off to SAMLReauthCoordinator on
-            // every 401 — its own single-flight + foreground gates dedupe,
-            // which also handles the case where the account was already
-            // stale at app launch (publisher quiet, but UI still missing).
-            // HelpSpot 17716 (Cornell SAML).
-            Log.info(#file, "Server returned 401 for browser-based auth - credentials marked stale, requesting SAML reauth")
-            Task { @MainActor in
-                SAMLReauthCoordinator.shared.requestReauth(
-                    for: user,
-                    authDef: authDef,
-                    triggerURL: originalURL
-                )
+            // SAML/OIDC have TWO auth surfaces: the bearer token (used for
+            // /borrow, /fulfillment, /loans/) and the IdP session cookie
+            // (used only for /patrons/me/). The IdP cookie expires faster
+            // than the bearer in Gorgon and many institutional deployments,
+            // so /patrons/me/ keeps 401-ing as a background poll while the
+            // user can still borrow and read fine.
+            //
+            // The previous behavior was to mark credentials stale here on
+            // ANY browser-auth 401 (including /patrons/me/), which left
+            // authState=credentialsStale persisted across app launches. The
+            // moment the user touched a book detail view, ensureAuthAndExecute
+            // saw the stale state and prompted re-auth — even though the
+            // user's bearer token was still good and nothing was broken.
+            // Reported by Maurice on hotfix-branch device test, 2026-05-01.
+            //
+            // Narrow the rule: only mark stale on browser-auth 401s from
+            // ACTION endpoints (borrow, fulfillment, loans). A 401 from the
+            // user-profile endpoint is non-actionable noise — let it pass.
+            // The borrow/download path's `handleBorrowAuthErrorIfNeeded`
+            // marks stale itself when an actual borrow fails, and that is
+            // the right time to surface the modal.
+            let isUserProfilePoll = originalURL.flatMap { url -> Bool in
+                let path = url.path
+                return path.contains("/patrons/me") || path.hasSuffix("/patrons/me/")
+            } ?? false
+
+            if isUserProfilePoll {
+                Log.info(#file, "Browser-auth 401 from /patrons/me/ poll — IdP cookie expired but bearer still likely valid; not marking credentials stale (user-action paths will mark stale only on a real borrow/fulfillment failure)")
+                return false
             }
+
+            // Mark credentials as stale - preserves Adobe DRM activation
+            let user = AccountsManager.shared.userAccount(for: accountId ?? "")
+            user.markCredentialsStale()
+            Log.info(#file, "Server returned 401 for browser-based auth on action endpoint - credentials marked stale; user-action paths will surface re-auth on next interaction")
             return false
         }
+
+        // Non-browser auth (basic, token, oauth): a 401 here is unambiguous —
+        // the credential we sent is no longer accepted. Mark stale and fall
+        // through to the token-refresh path below.
+        let user = AccountsManager.shared.userAccount(for: accountId ?? "")
+        user.markCredentialsStale()
 
         let canRefreshToken = (authDef?.isToken == true || authDef?.isOauth == true) &&
             authDef?.tokenURL != nil &&

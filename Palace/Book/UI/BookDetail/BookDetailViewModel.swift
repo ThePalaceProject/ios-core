@@ -630,6 +630,7 @@ final class BookDetailViewModel: ObservableObject {
                 let needsReauth = account.authState == .credentialsStale
                 if needsSignIn || needsReauth {
                     Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: needsSignIn=\(needsSignIn) needsReauth=\(needsReauth)")
+                    let halfSheetWasShowing = self.showHalfSheet
                     self.showHalfSheet = false
                     SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
                         guard let self else { return }
@@ -642,12 +643,26 @@ final class BookDetailViewModel: ObservableObject {
                         // book and reproduce the original hang.
                         guard post.hasCredentials() && post.authState == .loggedIn else {
                             Log.info(#file, "[SAML-REAUTH] Sign-in cancelled or incomplete (hasCredentials=\(post.hasCredentials()) authState=\(post.authState)) — not proceeding with action")
-                            // Clear any processing state for download-related buttons
-                            self.processingButtons.remove(.download)
-                            self.processingButtons.remove(.get)
-                            self.processingButtons.remove(.retry)
-                            self.processingButtons.remove(.reserve)
+                            // Clear ALL processing state. A bailed-out modal can
+                            // leave .read/.listen/.reserve/etc. stuck in the set,
+                            // and `handleAction` ignores any tap whose button is
+                            // already processing — i.e. the next Read tap is
+                            // silently dropped until the view is recreated.
+                            self.processingButtons.removeAll()
+                            // Restore the half-sheet so the patron can retry. We
+                            // only re-show it if the caller had it open before
+                            // the modal stole the screen (e.g. download in
+                            // flight); pure book-detail actions like Read don't
+                            // use the half-sheet and shouldn't summon it now.
+                            if halfSheetWasShowing {
+                                self.showHalfSheet = true
+                            }
                             return
+                        }
+                        // Restore the half-sheet on the success path too — it
+                        // was only dismissed to make room for the SAML modal.
+                        if halfSheetWasShowing {
+                            self.showHalfSheet = true
                         }
                         action()
                     }

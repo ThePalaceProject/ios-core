@@ -237,16 +237,32 @@ actor OPDSFeedService {
             return .bookRegistry(.invalidState)
         case TPPProblemDocument.TypeCannotRender:
             return .parsing(.contentNotSupported)
+        case TPPProblemDocument.TypePatronLoanLimit,
+             TPPProblemDocument.TypePatronHoldLimit:
+            // Patron quota errors. NOT auth — re-signing in won't help. Surface as
+            // an invalid-state book registry error so the caller shows the server's
+            // title/detail rather than spuriously triggering a re-auth modal.
+            return .bookRegistry(.invalidState)
+        case TPPProblemDocument.TypeCredentialsSuspended:
+            return .authentication(.invalidCredentials)
         default:
             // Unknown problem document type - log it for future support
             let message = problemDoc.title ?? problemDoc.detail ?? "Unknown error"
             Log.warn(#file, "⚠️ Unknown problem document type '\(type)': \(message)")
 
-            // Determine appropriate error category based on HTTP status if available
+            // Determine appropriate error category based on HTTP status if available.
+            // CAUTION: do NOT auto-classify 401/403 as `.authentication` here — many
+            // non-auth problem docs (e.g. loan-limit-reached, hold-limit-reached)
+            // arrive with status 403 and used to be misclassified as auth failures,
+            // which flipped authState to `.credentialsStale` and triggered a
+            // spurious re-auth modal on every borrow attempt. The dedicated cases
+            // above (and `isRecoverableAuthError` / `isUnrecoverableAuthError` checks
+            // earlier in this method) already cover auth — anything reaching this
+            // default with 401/403 is an unrecognized server condition, not auth.
             if let status = problemDoc.status {
                 switch status {
                 case 401, 403:
-                    return .authentication(.invalidCredentials)
+                    return .network(.forbidden)
                 case 404:
                     return .network(.notFound)
                 case 429:
