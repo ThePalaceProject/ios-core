@@ -43,6 +43,7 @@ Today's run (5 journeys): all 5 pass. 3 stateless journeys gated on structural c
 | [settings-tour-stateless](settings-tour-stateless.yaml) | stateless | 4 | Settings sections render, no toggle drift, return to catalog |
 | [search-flow-stateful](search-flow-stateful.yaml) | stateful | 3 | UITextField focus on iOS 26 (the regression simdrive was built for); auto-capitalize; auto-submit |
 | [reader2-page-forward](reader2-page-forward.yaml) | stateful | 9 | Readium WKWebView reachability — OCR sees page content and chrome (back, TT). The use case with no XCTest equivalent. |
+| [audiobook-download-indicator-stateful](audiobook-download-indicator-stateful.yaml) | stateful | 3 | PP-4156 regression — download indicator visible (text + percentage) while an LCP audiobook is mid-download. Catches both visibility-rule and color-contrast bugs. |
 
 ## How replays work
 

@@ -1,0 +1,96 @@
+scenario:
+  id: audiobook-download-indicator-stateful
+  name: "Audiobook player — download indicator visible while downloading"
+  description: >
+    Open a borrowed-but-not-yet-downloaded LCP audiobook from My Books on the
+    A1QA Test Library, tap Listen, and assert the download-indicator capsule is
+    visible (icon + percentage + "Downloading..." caption). Catches PP-4156-class
+    regressions: either (a) the rule that drives indicator visibility silently
+    excludes a player type (LCPStreamingPlayer was hidden in commit e5d5f13), or
+    (b) the indicator's foreground colors collapse to white-on-white against the
+    light-mode player background (introduced in commit 4f738d9, the "modern
+    download progress" UI refresh). Both bugs were silent — the indicator
+    rendered with zero visual height or zero visual contrast, so playback worked
+    fine and only the download feedback was missing.
+  tags: [tier1, ios, audiobook, lcp, pp-4156, download-indicator]
+  tier: stateful
+  blocking: false   # smoke-only — depends on network speed, A1QA library state
+
+  preconditions:
+    - "Palace app launched, signed into A1QA Test Library"
+    - "An LCP audiobook from the 'Unlimited Listens ODL Feed' has been borrowed but NOT yet fully downloaded"
+    - "Recommended: borrow a long audiobook (e.g., Anna Karenina, 40+ hr) to ensure the download window outlasts the journey"
+    - "If only a short audiobook is borrowed, return + re-borrow before running this journey to reset the download state"
+
+  state_reset:
+    - "If the audiobook's tracks are already cached, the indicator will hide at 100% and the journey will fail the structural check"
+    - "Reset: in My Books, tap the audiobook → Return → re-borrow from the catalog → run journey immediately"
+
+  recording:
+    path: "~/.simdrive/recordings/audiobook-download-indicator-stateful/recording.yaml"
+    captured_with: "simdrive 0.1.0a1"
+    captured_on: "2026-05-04"
+    note: |
+      Stable IDs below are placeholders — re-record on the target sim with
+      `record_start/record_stop` to populate `~/.simdrive/recordings/<id>/`.
+      The structural_checks below are the load-bearing assertions and are
+      independent of stable_id drift.
+
+  steps:
+    - { id: tap_my_books,    description: "Tap 'My Books' tab",                                  tap_target: { text: "My Books" } }
+    - { id: tap_listen,      description: "Tap 'Listen' on the borrowed LCP audiobook",          tap_target: { text: "Listen" } }
+    - { id: settle,          description: "Allow the player to load and download to register",   wait: { ms: 2000 } }
+
+  expected_invariants:
+    - "Player screen renders cover, title, author, playback slider"
+    - "Download indicator is visible: '↓' arrow, percentage label, 'Downloading...' caption"
+    - "Indicator percentage is non-zero (download has begun)"
+    - "Indicator percentage is less than 100% (download is still in progress at the moment of capture)"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn   # cover varies; download progress changes per run
+
+  structural_checks:
+    - after_step: 3
+      required_text: ["Downloading"]
+      required_text_regex: ['\\d+%']
+      min_marks: 8
+      rationale: |
+        PP-4156 invariant: the audiobook player MUST render a "Downloading..."
+        caption + a percentage label whenever overall download progress is
+        below 100%. The text "Downloading" is the literal string from
+        Strings.ScrubberView.downloading. The percentage regex \\d+% catches
+        any value 0–99 (100% would imply the download finished mid-journey,
+        which falsifies the precondition rather than the invariant).
+
+        Two regression classes this catches:
+        1. Visibility-rule bug (e5d5f13): if a player-type branch hard-codes
+           isDownloading=false, the indicator's frame collapses to height 0
+           and neither "Downloading" nor a percentage will appear in OCR.
+        2. Color-contrast bug (4f738d9): if foreground colors are white-on-
+           light-background, OCR cannot extract the rendered text — both
+           assertions fail even though the view tree is correct.
+
+        Both failure modes manifest as the same observable outcome (no
+        visible feedback during a real download), and both are caught here.
+
+  rationale: |
+    PP-4156 was a layered regression: an LCP-specific binding bug on top of a
+    shared color-contrast bug. Either alone would have been less harmful; the
+    combination silently broke download feedback for every audiobook on every
+    light-mode device. Code review missed both bugs (each was a 1-line change
+    in a "polish" commit), unit tests didn't cover the rendering path, and the
+    issue surfaced only in production via a Helpspot-equivalent ticket.
+
+    This journey closes the gap by asserting on the *user-visible* outcome:
+    text on screen during a real download. It can't be unit-tested because the
+    bug only manifests when SwiftUI's view tree resolves against the live
+    color scheme — and it can't be replaced with a snapshot test alone because
+    the cover and percentage churn between runs. Structural OCR + a percentage
+    regex is the right granularity.
+
+  known_issues:
+    - "Stateful preconditions: this journey requires a freshly-borrowed LCP audiobook. If the only borrowed audiobook in My Books has already finished downloading, the structural check fails."
+    - "The journey does not assert *which* LCP title is open — A1QA's ODL feed contents may change."
+    - "If the simulator is offline or the LCP DRM service is unreachable, the indicator may stay at 0% with no progress events; the structural check still passes (0% counts as < 100%) but the test isn't exercising the regression path. Verify by manual inspection on first runs."
