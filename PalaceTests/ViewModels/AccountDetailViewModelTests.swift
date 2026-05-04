@@ -398,14 +398,32 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 
     private var userAccount: TPPUserAccountMock!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // CI iOS Simulator runners lack keychain entitlement (errSec -34018).
+        // Every test in this class writes through `TPPUserAccount.sharedAccount(...)`
+        // via setBarcode / setAuthToken and asserts viewModel.isSignedIn against
+        // the read-back. Without keychain entitlement those writes silently fail
+        // and the asserts produce false negatives on GH Actions macos runners.
+        // Same gate as AccountDetailPINVisibilityTests below — local hosts and
+        // self-hosted runners with entitlement still run the full suite.
+        try KeychainAvailability.skipIfUnavailable()
         userAccount = TPPUserAccountMock()
+        // Reset the shared account for the current library so residual
+        // credentials from other test classes don't poison the sharedAccount
+        // reads inside isSignedIn.
+        if let libraryID = AccountsManager.shared.currentAccountId {
+            TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
+        }
     }
 
     override func tearDown() {
-        userAccount.removeAll()
+        userAccount?.removeAll()
         userAccount = nil
+        // Same reset on the way out to avoid polluting downstream classes.
+        if let libraryID = AccountsManager.shared.currentAccountId {
+            TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
+        }
         super.tearDown()
     }
 
