@@ -1006,17 +1006,19 @@ import PalaceCatalog
                 self.handleProblem(for: book, problemDocument: problemDocument)
             }
 
-            let model = TPPCookiesWebViewModel(
+            let model = SignInWebSheetViewModel(
                 cookies: someCookies,
                 request: mutableRequest,
+                universalLinksURL: AppContainer.production().settings.universalLinksURL,
+                autoPresentIfNeeded: true,
                 loginCompletionHandler: nil,
                 loginCancelHandler: loginCancelHandler,
                 bookFoundHandler: bookFoundHandler,
-                problemFoundHandler: problemFoundHandler,
-                autoPresentIfNeeded: true
+                problemFoundHandler: problemFoundHandler
             )
-            let cookiesVC = TPPCookiesWebViewController(model: model)
-            cookiesVC.loadViewIfNeeded()
+            Task { @MainActor in
+                SignInWebSheetPresenter.presentOnTop(model: model)
+            }
         }
     }
 

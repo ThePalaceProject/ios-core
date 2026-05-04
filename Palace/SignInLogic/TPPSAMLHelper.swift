@@ -190,25 +190,30 @@ private class LegacySAMLWebViewPresenter: SAMLWebViewPresenting {
     func presentSAMLWebView(url: URL, cookies: [HTTPCookie],
                             loginCompletion: @escaping (URL, [HTTPCookie]) -> Void,
                             loginCancel: @escaping () -> Void) {
-        guard let businessLogic = businessLogic else { return }
+        // The uiDelegate (e.g. AccountDetailViewModel) is not a UIViewController —
+        // it's an ObservableObject that implements the TPPSignInBusinessLogicUIDelegate
+        // protocol's present/dismiss surface by walking to the topmost VC itself.
+        // We do the same walk here via SignInWebSheetPresenter.presentOnTop, which
+        // gives us identical reach without forcing the delegate to be a VC.
+        let universalLinks = AppContainer.production().settings.universalLinksURL
+        let request = URLRequest(url: url)
 
-        let model = TPPCookiesWebViewModel(
-            cookies: cookies,
-            request: URLRequest(url: url),
-            loginCompletionHandler: loginCompletion,
-            loginCancelHandler: loginCancel,
-            bookFoundHandler: nil,
-            problemFoundHandler: nil,
-            autoPresentIfNeeded: false
-        )
-
-        let cookiesVC = TPPCookiesWebViewController(model: model)
-        let navigationWrapper = UINavigationController(rootViewController: cookiesVC)
-
-        businessLogic.uiDelegate?.present(navigationWrapper, animated: true, completion: nil)
+        Task { @MainActor in
+            let model = SignInWebSheetViewModel(
+                cookies: cookies,
+                request: request,
+                universalLinksURL: universalLinks,
+                autoPresentIfNeeded: false,
+                loginCompletionHandler: loginCompletion,
+                loginCancelHandler: loginCancel
+            )
+            SignInWebSheetPresenter.presentOnTop(model: model)
+        }
     }
 
     func dismissSAMLWebView(animated: Bool, completion: (() -> Void)?) {
-        businessLogic?.uiDelegate?.dismiss(animated: animated, completion: completion)
+        Task { @MainActor in
+            SignInWebSheetPresenter.dismissTop(animated: animated, completion: completion)
+        }
     }
 }
