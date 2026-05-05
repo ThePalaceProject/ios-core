@@ -366,6 +366,10 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
         // Hide loading indicator when page finishes loading
         hideLoading()
 
+        let host = webView.url?.host ?? "unknown"
+        let path = webView.url?.path ?? ""
+        Log.info(#file, "[SAML-REAUTH-FIX] webview didFinish navigation, host=\(host), path=\(path)")
+
         // when loading just finished
         // and this controller is asked to autopresent itself if needed
         if model?.autoPresentIfNeeded == true {
@@ -394,18 +398,33 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         // Hide loading indicator on navigation failure
         hideLoading()
+        let host = webView.url?.host ?? "unknown"
+        let path = webView.url?.path ?? ""
+        let nsError = error as NSError
+        let failingURL = (nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String) ?? "unknown"
+        Log.error(#file, "[SAML-REAUTH-FIX] webview didFail navigation, host=\(host), path=\(path), errorDomain=\(nsError.domain), errorCode=\(nsError.code), failingURL=\(failingURL), description=\(error.localizedDescription)")
         Log.error(#file, "WebView navigation failed: \(error.localizedDescription)")
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         // Hide loading indicator on provisional navigation failure (e.g., network errors)
         hideLoading()
+        let host = webView.url?.host ?? "unknown"
+        let path = webView.url?.path ?? ""
+        let nsError = error as NSError
+        let failingURL = (nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String) ?? "unknown"
+        // CRITICAL: this is the "Frame load interrupted" path Adam Chandler hits.
+        // Log the full context so we can correlate to the bandage's effect.
+        Log.error(#file, "[SAML-REAUTH-FIX] webview didFailProvisionalNavigation, host=\(host), path=\(path), errorDomain=\(nsError.domain), errorCode=\(nsError.code), failingURL=\(failingURL), description=\(error.localizedDescription)")
         Log.error(#file, "WebView provisional navigation failed: \(error.localizedDescription)")
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         // Show loading indicator when navigation starts (for subsequent navigations)
         showLoading()
+        let host = webView.url?.host ?? "unknown"
+        let path = webView.url?.path ?? ""
+        Log.info(#file, "[SAML-REAUTH-FIX] webview didStartProvisionalNavigation, host=\(host), path=\(path)")
     }
 }
 

@@ -70,8 +70,14 @@ class TPPSAMLHelper {
     // MARK: - Login
 
     func logIn(loginCancelHandler: @escaping () -> Void) {
-        guard let context = context else { return }
-        guard let idpURL = context.selectedIDP?.url else { return }
+        guard let context = context else {
+            Log.warn(#file, "[SAML-REAUTH-FIX] logIn aborted: context is nil")
+            return
+        }
+        guard let idpURL = context.selectedIDP?.url else {
+            Log.warn(#file, "[SAML-REAUTH-FIX] logIn aborted: selectedIDP url is nil")
+            return
+        }
 
         var urlComponents = URLComponents(url: idpURL, resolvingAgainstBaseURL: true)
         let redirectURI = URLQueryItem(name: "redirect_uri", value: context.urlSettingsProvider.universalLinksURL.absoluteString)
@@ -81,22 +87,73 @@ class TPPSAMLHelper {
             urlComponents?.queryItems?.append(redirectURI)
         }
 
-        guard let url = urlComponents?.url else { return }
-
-        // Phase 3: Filter expired cookies before sending to IdP
-        let savedCookies = context.savedCookies.filter { cookie in
-            guard let expires = cookie.expiresDate else { return true }
-            return expires > Date()
+        guard let url = urlComponents?.url else {
+            Log.warn(#file, "[SAML-REAUTH-FIX] logIn aborted: url construction failed")
+            return
         }
 
-        let filteredCount = context.savedCookies.count - savedCookies.count
-        if filteredCount > 0 {
-            Log.info(#file, "SAML: filtered \(filteredCount) expired cookie(s)")
+        // ============================================================================
+        // [SAML-REAUTH-FIX] HelpSpot 17716 — Cornell Shibboleth stuck-state bandage
+        // ============================================================================
+        // Hypothesis: stale cookies in `userAccount.cookies` (persisted across
+        // sessions) are being injected into the SAML re-auth WKWebView. For some
+        // IdP/cookie-state combinations (Cornell Shibboleth specifically) this
+        // produces a redirect chain the webview can't follow, surfacing as
+        // "WebView provisional navigation failed: Frame load interrupted" — which
+        // is exactly the pattern in Adam Chandler's sysdiagnose (4 Frame-load-
+        // interrupted events on 2026-04-30, all preceded by /patrons/me/ 401s).
+        //
+        // Bandage: pass an empty cookie array to the SAML webview. The webview
+        // is already on `WKWebsiteDataStore.nonPersistent()` (verified at
+        // TPPCookiesWebViewController.swift line 94/101), so this gives the
+        // webview a truly clean state. The IdP will either honor any existing
+        // session cookie it holds device-wide (Safari/system) or prompt for
+        // credentials. Either path is recoverable; the stale-injection path is
+        // not.
+        //
+        // Trade-off: returning patrons may see a credential prompt more often.
+        // For stuck patrons on Cornell SAML, "occasional prompt" is strictly
+        // better than "spinner forever for 3 weeks." Targeted at TestFlight
+        // verification on Adam's device first.
+        let originalSavedCookieCount = context.savedCookies.count
+        let originalSavedCookieNames = context.savedCookies.map { $0.name }
+        let cookiesToInject: [HTTPCookie] = []
+
+        Log.info(#file, "[SAML-REAUTH-FIX] BANDAGE ACTIVE — passing 0 cookies to SAML webview (was \(originalSavedCookieCount) cookies). Cookie names dropped: \(originalSavedCookieNames). IdP host: \(idpURL.host ?? "unknown")")
+
+        // Belt-and-suspenders: also wipe WKWebsiteDataStore.default() cookies
+        // for the IdP domain. The cookies VC uses nonPersistent() so the data
+        // store doesn't carry these into the auth flow, but other parts of the
+        // app (e.g., previous TPPCookiesWebViewController instances) may have
+        // leaked cookies into the default store. Force a clean slate.
+        let dataStore = WKWebsiteDataStore.default()
+        let cookieDataType: Set<String> = [WKWebsiteDataTypeCookies]
+        dataStore.fetchDataRecords(ofTypes: cookieDataType) { records in
+            let total = records.count
+            let idpHost = idpURL.host?.lowercased() ?? ""
+            let idpRecords = records.filter { record in
+                let name = record.displayName.lowercased()
+                // Heuristic match: any record whose displayName overlaps the IdP host.
+                // Shibboleth typically lives at shibboleth.<institution>.edu or
+                // weblogin.<institution>.edu — match on second-level domain too.
+                if idpHost.contains(name) || name.contains(idpHost) { return true }
+                let parts = idpHost.split(separator: ".")
+                if parts.count >= 2 {
+                    let registrable = parts.suffix(2).joined(separator: ".")
+                    if name.contains(registrable) { return true }
+                }
+                return false
+            }
+            Log.info(#file, "[SAML-REAUTH-FIX] WKWebsiteDataStore default — found \(total) cookie records, \(idpRecords.count) match IdP host '\(idpHost)'. Wiping the matches.")
+            dataStore.removeData(ofTypes: cookieDataType, for: idpRecords) {
+                Log.info(#file, "[SAML-REAUTH-FIX] WKWebsiteDataStore wipe complete for IdP host '\(idpHost)'")
+            }
         }
 
         let loginCompletionHandler: (URL, [HTTPCookie]) -> Void = { [weak self] url, cookies in
             guard let self = self else { return }
             self.cookies = cookies
+            Log.info(#file, "[SAML-REAUTH-FIX] auth completed — captured \(cookies.count) cookie(s) from IdP. Cookie names: \(cookies.map { $0.name }). Redirect URL host: \(url.host ?? "unknown")")
 
             context.handleSAMLRedirect(url: url, cookies: cookies) { error, errorTitle, errorMessage in
                 self.presenter?.dismissSAMLWebView(animated: true) {
@@ -104,15 +161,19 @@ class TPPSAMLHelper {
                     // In the legacy path, context is LegacySAMLAuthContext which
                     // delegates error reporting to businessLogic.uiDelegate.
                     if let error = error, let errorTitle = errorTitle, let errorMessage = errorMessage {
+                        Log.warn(#file, "[SAML-REAUTH-FIX] post-auth error title=\(errorTitle), message=\(errorMessage), error=\(error.localizedDescription)")
                         context.reportError(error, title: errorTitle, message: errorMessage)
+                    } else {
+                        Log.info(#file, "[SAML-REAUTH-FIX] post-auth completed successfully (no error)")
                     }
                 }
             }
         }
 
+        Log.info(#file, "[SAML-REAUTH-FIX] presenting SAML webview, idpHost=\(idpURL.host ?? "unknown"), passing 0 cookies (bandage), redirectURI=\(context.urlSettingsProvider.universalLinksURL.absoluteString)")
         presenter?.presentSAMLWebView(
             url: url,
-            cookies: savedCookies,
+            cookies: cookiesToInject,
             loginCompletion: loginCompletionHandler,
             loginCancel: loginCancelHandler
         )

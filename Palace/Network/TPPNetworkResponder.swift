@@ -400,6 +400,16 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
             return false
         }
 
+        // [SAML-REAUTH-FIX] Log every 401 with originating URL host+path so we can
+        // count /patrons/me/ vs other endpoint 401s in the TestFlight logs.
+        let urlHost = originalURL?.host ?? "unknown"
+        let urlPath = originalURL?.path ?? ""
+        let strategyDesc: String = {
+            guard let authDef = authDef else { return "nil" }
+            return String(describing: authDef.reauthStrategy)
+        }()
+        Log.info(#file, "[SAML-REAUTH-FIX] 401 received, host=\(urlHost), path=\(urlPath), authStrategy=\(strategyDesc)")
+
         // Mark credentials as stale - preserves Adobe DRM activation
         let user = AccountsManager.shared.userAccount(for: accountId ?? "")
         user.markCredentialsStale()
@@ -413,6 +423,7 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
             // which also handles the case where the account was already
             // stale at app launch (publisher quiet, but UI still missing).
             // HelpSpot 17716 (Cornell SAML).
+            Log.info(#file, "[SAML-REAUTH-FIX] browser-strategy 401 — handing off to SAMLReauthCoordinator. host=\(urlHost), path=\(urlPath)")
             Log.info(#file, "Server returned 401 for browser-based auth - credentials marked stale, requesting SAML reauth")
             Task { @MainActor in
                 SAMLReauthCoordinator.shared.requestReauth(
