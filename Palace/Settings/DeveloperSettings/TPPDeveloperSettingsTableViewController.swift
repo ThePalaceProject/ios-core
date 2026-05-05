@@ -958,18 +958,34 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             return
         }
 
+        let user = accountsManager.currentUserAccount
+
         // 1. Simulate "we think we registered FCM but actually didn't" — the
         //    PP-4275 silent-failure mode that Reset Account heals on next launch.
         account.hasUpdatedToken = true
 
         // 2. Simulate stale SAML/OIDC session — the credentialsStale state that
         //    triggers the audiobook-OPEN re-auth in PP-4276 and that Reset clears.
-        accountsManager.currentUserAccount.markCredentialsStale()
+        user.markCredentialsStale()
 
-        // 3. Pre-set the one-shot ephemeral flag to the OPPOSITE of what Reset
-        //    sets, so we can confirm Reset (a) sets it AND (b) the OIDC path
-        //    consumes-and-clears it. (No-op for non-OIDC libraries — see step 3
-        //    cell.)
+        // 3. ACTUALLY corrupt the bearer token so server-side operations
+        //    (borrow, return, sync, fulfillment) start returning 401. Without
+        //    this step, the simulation only flips flags and the bearer keeps
+        //    working — patrons reported "I can still borrow", which proves
+        //    the previous simulation was too soft. Preserves barcode + pin so
+        //    the next sign-in flow is the natural credential-prompt path.
+        let corruptedToken = "INVALID_SIMULATED_STUCK_STATE_BEARER_TOKEN"
+        let pastDate = Date(timeIntervalSinceNow: -3600)
+        user.setAuthToken(
+            corruptedToken,
+            barcode: user.barcode,
+            pin: user.PIN,
+            expirationDate: pastDate
+        )
+
+        // 4. Pre-clear the one-shot ephemeral flag so we can confirm Reset
+        //    (a) sets it AND (b) the OIDC path consumes-and-clears it.
+        //    (No-op for non-OIDC libraries — see step 3 cell.)
         UserDefaults.standard.removeObject(forKey: TPPSignInBusinessLogic.nextOIDCSessionEphemeralKey)
 
         presentResetAccountAlert(
@@ -978,11 +994,15 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 Set on \(account.name):
                 • hasUpdatedToken = true (push-reg short-circuit)
                 • authState = credentialsStale
+                • bearer token = corrupted (next borrow/sync will 401)
+                • token expirationDate = 1 hour ago
                 • nextOIDCSessionEphemeral flag = unset (cleared)
 
-                Now: Settings → Accounts → tap \(account.name) → Reset This Library Account.
+                Now: try a borrow or pull-to-refresh — should fail with auth error. THEN: Settings → Accounts → tap \(account.name) → Reset This Library Account.
 
                 After Reset, come back here and tap Inspect — every line should look CLEAN (false / loggedOut / true for the ephemeral flag if the library is OIDC).
+
+                NOTE — Reset Account does NOT clear Adobe DRM device activation. If a patron's symptom is "can borrow but can't READ", that's PP-3649 (Adobe DRM regression in 3.0.0) and lives in the private DRM submodule. Reset Account fixes the SAML/OIDC/push-token surfaces; PP-3649 needs its own fix.
                 """
         )
     }
