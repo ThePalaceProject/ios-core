@@ -132,9 +132,14 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     }
 
     /// Save token to the server
-    /// - Parameter token: FCM token value
-    private func saveToken(_ token: String, endpointUrl: URL) {
+    /// - Parameters:
+    ///   - token: FCM token value
+    ///   - endpointUrl: device-registration endpoint
+    ///   - completion: invoked with `true` only when the PUT returned a 2xx
+    ///     status. Used by `updateToken` to gate `hasUpdatedToken`.
+    private func saveToken(_ token: String, endpointUrl: URL, completion: ((Bool) -> Void)? = nil) {
         guard let requestBody = TokenData(token: token).data else {
+            completion?(false)
             return
         }
         var request = URLRequest(url: endpointUrl, applyingCustomUserAgent: true)
@@ -151,35 +156,99 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                                             "statusCode": (response as? HTTPURLResponse)?.statusCode ?? 0
                                         ]
                 )
+                completion?(false)
+                return
             }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            completion?((200..<300).contains(status))
         }
     }
 
     /// Sends FCM to the backend
     ///
-    /// Update token when user account changes
+    /// Update token when user account changes.
+    ///
+    /// Why `hasUpdatedToken` is set only on confirmed success (HelpSpot 17680):
+    /// previously the flag was latched optimistically before `/patrons/me/` was
+    /// even called. When SAML credentials had gone stale, the profile fetch
+    /// returned nil, the device-registration endpoint was never resolved, and
+    /// the FCM token was never sent to the Circulation Manager — so the CM
+    /// could not push hold-availability notifications. The flag stayed `true`,
+    /// blocking every subsequent retry until app cold-launch / sign-out / library
+    /// switch reset it. Now the flag is set only when the token is confirmed
+    /// registered on the server (already-exists OR save succeeded).
     func updateToken() {
         guard !(accountsManager.currentAccount?.hasUpdatedToken ?? false) else {
             return
         }
 
-        accountsManager.currentAccount?.hasUpdatedToken = true
-        accountsManager.currentAccount?.getProfileDocument { profileDocument in
+        accountsManager.currentAccount?.getProfileDocument { [weak self] profileDocument in
+            guard let self else { return }
             guard let endpointHref = profileDocument?.linksWith(.deviceRegistration).first?.href,
                   let endpointUrl = URL(string: endpointHref)
             else {
                 return
             }
-            Messaging.messaging().token { token, _ in
-                if let token {
-                    self.checkTokenExists(token, endpointUrl: endpointUrl) { exists, _ in
-                        if let exists = exists, !exists {
-                            self.saveToken(token, endpointUrl: endpointUrl)
+            Messaging.messaging().token { [weak self] token, _ in
+                guard let self, let token else { return }
+                self.checkTokenExists(token, endpointUrl: endpointUrl) { [weak self] exists, _ in
+                    guard let self else { return }
+                    guard let exists = exists else {
+                        // Inconclusive (non-200/404 status). Leave flag false so
+                        // the next sign-in / account-change observer retries.
+                        return
+                    }
+                    if exists {
+                        self.markTokenRegistered()
+                    } else {
+                        self.saveToken(token, endpointUrl: endpointUrl) { [weak self] succeeded in
+                            guard let self, succeeded else { return }
+                            self.markTokenRegistered()
                         }
                     }
                 }
             }
         }
+    }
+
+    /// Latches `hasUpdatedToken = true` on the account once the FCM token is
+    /// confirmed live on the server. Centralized so the success contract has a
+    /// single set-site (see `updateToken`'s doc comment for the why).
+    private func markTokenRegistered() {
+        accountsManager.currentAccount?.hasUpdatedToken = true
+    }
+
+    /// Pure success-decision helper used by `updateToken` and locked by unit
+    /// tests. Returns true ONLY when the FCM token is confirmed registered with
+    /// the Circulation Manager — i.e., every prerequisite succeeded AND either
+    /// the token already exists on the server (no save needed) or a save
+    /// attempt completed successfully. Returning false here means "leave the
+    /// `hasUpdatedToken` flag false so the next sign-in observer can retry."
+    ///
+    /// - Parameters:
+    ///   - profileDocument: the `/patrons/me/` document, or nil on auth failure.
+    ///   - hasDeviceRegistrationLink: true iff the profile doc advertised a
+    ///     device-registration link.
+    ///   - fcmToken: the FCM token from Firebase Messaging, or nil if unavailable.
+    ///   - existsResult: result of the token-exists check (true = already
+    ///     registered, false = needs save, nil = inconclusive status).
+    ///   - saveSucceeded: nil if save wasn't attempted (because exists==true or
+    ///     an earlier guard short-circuited), otherwise true/false from PUT.
+    static func shouldMarkTokenRegistered(
+        profileDocumentPresent: Bool,
+        hasDeviceRegistrationLink: Bool,
+        fcmTokenPresent: Bool,
+        existsResult: Bool?,
+        saveSucceeded: Bool?
+    ) -> Bool {
+        guard profileDocumentPresent,
+              hasDeviceRegistrationLink,
+              fcmTokenPresent,
+              let exists = existsResult else {
+            return false
+        }
+        if exists { return true }
+        return saveSucceeded == true
     }
 
     private func deleteToken(_ token: String, endpointUrl: URL) {
