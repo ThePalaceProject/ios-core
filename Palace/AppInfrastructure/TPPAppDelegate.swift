@@ -27,7 +27,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
         let iosVersion = UIDevice.current.systemVersion
         let deviceModel = UIDevice.current.model
-        Log.error(#file, "[SAML-REAUTH-FIX] BUILD MARKER — testflight/cornell-saml-cookie-bandage on top of 3.0.1 hotfix. App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel). HelpSpot 17716 verification build.")
+        Log.error(#file, "[SAML-REAUTH-FIX] BUILD MARKER — release/3.0.2 (Cornell SAML bandage + Reset Account fallback). App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel). HelpSpot 17716 verification build.")
 
         // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts
         // This ensures MPRemoteCommandCenter handlers are registered before any UI loads
