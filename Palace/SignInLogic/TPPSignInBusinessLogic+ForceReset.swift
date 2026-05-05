@@ -40,7 +40,6 @@
 
 import Foundation
 import WebKit
-import PalaceLogging
 
 extension TPPSignInBusinessLogic {
 
@@ -59,7 +58,7 @@ extension TPPSignInBusinessLogic {
         let value = UserDefaults.standard.bool(forKey: nextOIDCSessionEphemeralKey)
         if value {
             UserDefaults.standard.removeObject(forKey: nextOIDCSessionEphemeralKey)
-            Log.info(#file, "[RESET_ACCOUNT] consumed nextOIDCSessionEphemeral flag — next ASWebAuthenticationSession will use ephemeral cookies")
+            Log.error(#file, "[RESET_ACCOUNT] consumed nextOIDCSessionEphemeral flag — next ASWebAuthenticationSession will use ephemeral cookies")
         }
         return value
     }
@@ -71,7 +70,7 @@ extension TPPSignInBusinessLogic {
     /// - Parameter completion: invoked on the main queue after every
     ///   cleanup step has finished (or skipped). Always called exactly once.
     @objc public func performForceReset(completion: @escaping () -> Void) {
-        Log.info(#file, "[RESET_ACCOUNT] start — libraryAccountID=\(libraryAccountID)")
+        Log.error(#file, "[RESET_ACCOUNT] start — libraryAccountID=\(libraryAccountID)")
 
         // 1. Best-effort DELETE FCM token from CM. Don't gate any cleanup on
         //    the result — that's the bug Sign Out has when the patron's app
@@ -79,15 +78,15 @@ extension TPPSignInBusinessLogic {
         if let account = libraryAccountsProvider.account(libraryAccountID) {
             NotificationService.shared.deleteToken(for: account)
             account.hasUpdatedToken = false
-            Log.info(#file, "[RESET_ACCOUNT] step 1 ok — FCM token DELETE dispatched (fire-and-forget); hasUpdatedToken cleared")
+            Log.error(#file, "[RESET_ACCOUNT] step 1 ok — FCM token DELETE dispatched (fire-and-forget); hasUpdatedToken cleared")
         } else {
-            Log.warn(#file, "[RESET_ACCOUNT] step 1 skipped — no Account for libraryAccountID=\(libraryAccountID)")
+            Log.error(#file, "[RESET_ACCOUNT] step 1 skipped — no Account for libraryAccountID=\(libraryAccountID)")
         }
 
         // 2. Reset book downloads + registry for this library.
         bookDownloadsCenter.reset(libraryAccountID)
         bookRegistry.reset(libraryAccountID)
-        Log.info(#file, "[RESET_ACCOUNT] step 2 ok — bookDownloadsCenter + bookRegistry reset for \(libraryAccountID)")
+        Log.error(#file, "[RESET_ACCOUNT] step 2 ok — bookDownloadsCenter + bookRegistry reset for \(libraryAccountID)")
 
         // 2.5. Best-effort Adobe DRM device deauthorize. CRITICAL for the
         //      patron-visible "can borrow but can't read" symptom: server-side
@@ -115,19 +114,19 @@ extension TPPSignInBusinessLogic {
         userAccount.removeAll()
         selectedIDP = nil
         samlHelper.clearState()
-        Log.info(#file, "[RESET_ACCOUNT] step 3 ok — userAccount.removeAll, selectedIDP=nil, samlHelper.clearState")
+        Log.error(#file, "[RESET_ACCOUNT] step 3 ok — userAccount.removeAll, selectedIDP=nil, samlHelper.clearState")
 
         // 4. Network + URL caches. Catches any cached responses that might
         //    replay stale auth state on next request.
-        AppContainer.production().networkExecutor.clearCache()
+        TPPNetworkExecutor.shared.clearCache()
         URLCache.shared.removeAllCachedResponses()
-        Log.info(#file, "[RESET_ACCOUNT] step 4 ok — networkExecutor cache + URLCache cleared")
+        Log.error(#file, "[RESET_ACCOUNT] step 4 ok — networkExecutor cache + URLCache cleared")
 
         // 5. Set the one-shot ephemeral-session flag for the next OIDC
         //    sign-in. Defeats Safari-shared-cookie reuse that otherwise
         //    survives app deletion for OIDC libraries.
         UserDefaults.standard.set(true, forKey: Self.nextOIDCSessionEphemeralKey)
-        Log.info(#file, "[RESET_ACCOUNT] step 5 ok — nextOIDCSessionEphemeral flag set")
+        Log.error(#file, "[RESET_ACCOUNT] step 5 ok — nextOIDCSessionEphemeral flag set")
 
         // 6. WKWebsiteDataStore — ALL data types, unconditionally. This is
         //    the big one Sign Out gates on auth-type routing; reset doesn't.
@@ -135,8 +134,8 @@ extension TPPSignInBusinessLogic {
         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
         let epoch = Date(timeIntervalSince1970: 0)
         dataStore.removeData(ofTypes: dataTypes, modifiedSince: epoch) {
-            Log.info(#file, "[RESET_ACCOUNT] step 6 ok — WKWebsiteDataStore wiped (all types, since epoch)")
-            Log.info(#file, "[RESET_ACCOUNT] complete — patron should be returned to sign-in flow")
+            Log.error(#file, "[RESET_ACCOUNT] step 6 ok — WKWebsiteDataStore wiped (all types, since epoch)")
+            Log.error(#file, "[RESET_ACCOUNT] complete — patron should be returned to sign-in flow")
             DispatchQueue.main.async {
                 completion()
             }
@@ -156,11 +155,11 @@ extension TPPSignInBusinessLogic {
     /// no Adobe state to clear and the rest of Reset proceeds unchanged.
     private func deauthorizeDeviceForReset() {
         guard let drmAuthorizer = drmAuthorizer else {
-            Log.info(#file, "[RESET_ACCOUNT] step 2.5 skipped — no drmAuthorizer (likely -noDRM build)")
+            Log.error(#file, "[RESET_ACCOUNT] step 2.5 skipped — no drmAuthorizer (likely -noDRM build)")
             return
         }
         guard let licensor = userAccount.licensor else {
-            Log.info(#file, "[RESET_ACCOUNT] step 2.5 skipped — no licensor on userAccount (patron never activated)")
+            Log.error(#file, "[RESET_ACCOUNT] step 2.5 skipped — no licensor on userAccount (patron never activated)")
             return
         }
 
@@ -173,7 +172,7 @@ extension TPPSignInBusinessLogic {
         let adobeUserID = userAccount.userID
         let adobeDeviceID = userAccount.deviceID
 
-        Log.info(#file, "[RESET_ACCOUNT] step 2.5 — dispatching DRM deauthorize (fire-and-forget)")
+        Log.error(#file, "[RESET_ACCOUNT] step 2.5 — dispatching DRM deauthorize (fire-and-forget)")
 
         drmAuthorizer.deauthorize(
             withUsername: tokenUsername,
@@ -184,7 +183,7 @@ extension TPPSignInBusinessLogic {
             // Non-success is expected for stuck patrons (E_DEACT_USER_MISMATCH
             // or similar) — RMSDK still clears local activation, which is what
             // matters for the next sign-in's clean re-activation.
-            Log.info(#file, "[RESET_ACCOUNT] step 2.5 — DRM deauthorize callback (success=\(success), error=\(error?.localizedDescription ?? "nil")). Local activation cleared regardless.")
+            Log.error(#file, "[RESET_ACCOUNT] step 2.5 — DRM deauthorize callback (success=\(success), error=\(error?.localizedDescription ?? "nil")). Local activation cleared regardless.")
         }
     }
 }
