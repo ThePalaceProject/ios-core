@@ -368,7 +368,7 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
 
         let host = webView.url?.host ?? "unknown"
         let path = webView.url?.path ?? ""
-        Log.info(#file, "[SAML-REAUTH-FIX] webview didFinish navigation, host=\(host), path=\(path)")
+        Log.error(#file, "[SAML-REAUTH-FIX] webview didFinish navigation, host=\(host), path=\(path)")
 
         // when loading just finished
         // and this controller is asked to autopresent itself if needed
@@ -424,7 +424,7 @@ class TPPCookiesWebViewController: UIViewController, WKNavigationDelegate {
         showLoading()
         let host = webView.url?.host ?? "unknown"
         let path = webView.url?.path ?? ""
-        Log.info(#file, "[SAML-REAUTH-FIX] webview didStartProvisionalNavigation, host=\(host), path=\(path)")
+        Log.error(#file, "[SAML-REAUTH-FIX] webview didStartProvisionalNavigation, host=\(host), path=\(path)")
     }
 }
 

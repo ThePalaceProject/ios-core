@@ -119,7 +119,7 @@ class TPPSAMLHelper {
         let originalSavedCookieNames = context.savedCookies.map { $0.name }
         let cookiesToInject: [HTTPCookie] = []
 
-        Log.info(#file, "[SAML-REAUTH-FIX] BANDAGE ACTIVE — passing 0 cookies to SAML webview (was \(originalSavedCookieCount) cookies). Cookie names dropped: \(originalSavedCookieNames). IdP host: \(idpURL.host ?? "unknown")")
+        Log.error(#file, "[SAML-REAUTH-FIX] BANDAGE ACTIVE — passing 0 cookies to SAML webview (was \(originalSavedCookieCount) cookies). Cookie names dropped: \(originalSavedCookieNames). IdP host: \(idpURL.host ?? "unknown")")
 
         // Belt-and-suspenders: also wipe WKWebsiteDataStore.default() cookies
         // for the IdP domain. The cookies VC uses nonPersistent() so the data
@@ -144,16 +144,16 @@ class TPPSAMLHelper {
                 }
                 return false
             }
-            Log.info(#file, "[SAML-REAUTH-FIX] WKWebsiteDataStore default — found \(total) cookie records, \(idpRecords.count) match IdP host '\(idpHost)'. Wiping the matches.")
+            Log.error(#file, "[SAML-REAUTH-FIX] WKWebsiteDataStore default — found \(total) cookie records, \(idpRecords.count) match IdP host '\(idpHost)'. Wiping the matches.")
             dataStore.removeData(ofTypes: cookieDataType, for: idpRecords) {
-                Log.info(#file, "[SAML-REAUTH-FIX] WKWebsiteDataStore wipe complete for IdP host '\(idpHost)'")
+                Log.error(#file, "[SAML-REAUTH-FIX] WKWebsiteDataStore wipe complete for IdP host '\(idpHost)'")
             }
         }
 
         let loginCompletionHandler: (URL, [HTTPCookie]) -> Void = { [weak self] url, cookies in
             guard let self = self else { return }
             self.cookies = cookies
-            Log.info(#file, "[SAML-REAUTH-FIX] auth completed — captured \(cookies.count) cookie(s) from IdP. Cookie names: \(cookies.map { $0.name }). Redirect URL host: \(url.host ?? "unknown")")
+            Log.error(#file, "[SAML-REAUTH-FIX] auth completed — captured \(cookies.count) cookie(s) from IdP. Cookie names: \(cookies.map { $0.name }). Redirect URL host: \(url.host ?? "unknown")")
 
             context.handleSAMLRedirect(url: url, cookies: cookies) { error, errorTitle, errorMessage in
                 self.presenter?.dismissSAMLWebView(animated: true) {
@@ -164,13 +164,13 @@ class TPPSAMLHelper {
                         Log.warn(#file, "[SAML-REAUTH-FIX] post-auth error title=\(errorTitle), message=\(errorMessage), error=\(error.localizedDescription)")
                         context.reportError(error, title: errorTitle, message: errorMessage)
                     } else {
-                        Log.info(#file, "[SAML-REAUTH-FIX] post-auth completed successfully (no error)")
+                        Log.error(#file, "[SAML-REAUTH-FIX] post-auth completed successfully (no error)")
                     }
                 }
             }
         }
 
-        Log.info(#file, "[SAML-REAUTH-FIX] presenting SAML webview, idpHost=\(idpURL.host ?? "unknown"), passing 0 cookies (bandage), redirectURI=\(context.urlSettingsProvider.universalLinksURL.absoluteString)")
+        Log.error(#file, "[SAML-REAUTH-FIX] presenting SAML webview, idpHost=\(idpURL.host ?? "unknown"), passing 0 cookies (bandage), redirectURI=\(context.urlSettingsProvider.universalLinksURL.absoluteString)")
         presenter?.presentSAMLWebView(
             url: url,
             cookies: cookiesToInject,
