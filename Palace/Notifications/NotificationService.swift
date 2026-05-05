@@ -182,27 +182,53 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             return
         }
 
+        // [FCM_REG] grep marker for support-collected logs. Each branch
+        // below logs its outcome with this prefix so a sysdiagnose from a
+        // patron complaining about missing hold notifications can be
+        // searched for the exact step that blocked registration. The CM
+        // is blind to the SAML-stale-zero-token case (no metric surfaces
+        // it server-side per the cross-platform audit on 2026-05-05) so
+        // these client-side logs are the canonical signal.
+        let authState = accountsManager.currentUserAccount.authState
+        Log.info(#file, "[FCM_REG] updateToken start — authState=\(authState)")
+
         accountsManager.currentAccount?.getProfileDocument { [weak self] profileDocument in
             guard let self else { return }
-            guard let endpointHref = profileDocument?.linksWith(.deviceRegistration).first?.href,
-                  let endpointUrl = URL(string: endpointHref)
-            else {
+            guard let profileDocument else {
+                Log.warn(#file, "[FCM_REG] FAIL: profile_doc_missing — /patrons/me/ returned nil. Common causes: SAML-stale credentials, no credentials, network failure. authState=\(self.accountsManager.currentUserAccount.authState)")
                 return
             }
-            Messaging.messaging().token { [weak self] token, _ in
-                guard let self, let token else { return }
+            guard let endpointHref = profileDocument.linksWith(.deviceRegistration).first?.href,
+                  let endpointUrl = URL(string: endpointHref)
+            else {
+                Log.warn(#file, "[FCM_REG] FAIL: device_registration_link_missing — profile doc returned but had no deviceRegistration link. Library may not support push.")
+                return
+            }
+            Messaging.messaging().token { [weak self] token, error in
+                guard let self else { return }
+                guard let token else {
+                    Log.warn(#file, "[FCM_REG] FAIL: fcm_token_unavailable — Firebase Messaging returned no token. error=\(error?.localizedDescription ?? "nil")")
+                    return
+                }
                 self.checkTokenExists(token, endpointUrl: endpointUrl) { [weak self] exists, _ in
                     guard let self else { return }
                     guard let exists = exists else {
                         // Inconclusive (non-200/404 status). Leave flag false so
                         // the next sign-in / account-change observer retries.
+                        Log.warn(#file, "[FCM_REG] FAIL: exists_check_inconclusive — token-exists check returned non-200/non-404 (likely 401 or 5xx). Will retry on next sign-in / account-change.")
                         return
                     }
                     if exists {
+                        Log.info(#file, "[FCM_REG] SUCCESS: token_already_registered — CM has the FCM token, no save needed")
                         self.markTokenRegistered()
                     } else {
                         self.saveToken(token, endpointUrl: endpointUrl) { [weak self] succeeded in
-                            guard let self, succeeded else { return }
+                            guard let self else { return }
+                            guard succeeded else {
+                                Log.warn(#file, "[FCM_REG] FAIL: save_failed — PUT to deviceRegistration endpoint did not return 2xx. CM does not have the token. Will retry on next sign-in / account-change.")
+                                return
+                            }
+                            Log.info(#file, "[FCM_REG] SUCCESS: token_saved — CM accepted the new FCM token (PUT 2xx)")
                             self.markTokenRegistered()
                         }
                     }
