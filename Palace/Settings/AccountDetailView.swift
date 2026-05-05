@@ -283,6 +283,8 @@ struct AccountDetailView: View {
             pinInputCell
         case .logInSignOut:
             logInSignOutCell
+        case .resetAccount:
+            resetAccountCell
         case .ageCheck:
             ageCheckCell
         case .syncButton:
@@ -431,6 +433,26 @@ struct AccountDetailView: View {
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .accessibilityIdentifier(AccessibilityID.SignIn.signInButton)
         .accessibilityLabel(viewModel.isSignedIn ? DisplayStrings.signOut : Strings.Generic.signin)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityRemoveTraits(.isStaticText)
+    }
+
+    /// PP-4282 / HelpSpot 17716: destructive "Reset This Library Account"
+    /// button. Patron-self-service recovery for stuck-state cases that
+    /// Sign Out alone can't fix (CM DELETE hangs, broken-state-survives-
+    /// reinstall, etc.). See `TPPSignInBusinessLogic+ForceReset.swift`.
+    private var resetAccountCell: some View {
+        Button(action: {
+            viewModel.confirmResetAccount()
+        }, label: {
+            Text(NSLocalizedString("Reset This Library Account", comment: "Destructive reset-account button label"))
+                .foregroundColor(.red)
+                .horizontallyCentered()
+        })
+        .buttonStyle(.plain)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+        .accessibilityLabel(NSLocalizedString("Reset This Library Account", comment: "Accessibility label for the destructive reset-account button"))
+        .accessibilityHint(NSLocalizedString("Deletes downloads, bookmarks, and sign-in for this library so you can start fresh", comment: "Accessibility hint for the reset-account button"))
         .accessibilityAddTraits(.isButton)
         .accessibilityRemoveTraits(.isStaticText)
     }

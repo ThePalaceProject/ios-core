@@ -364,11 +364,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         // OIDC was missing here, so signed-in OIDC accounts were rendering
         // the barcode/PIN/sign-in cells inappropriately.
         if auth.isOauth || auth.isOidc {
-            return [.logInSignOut]
+            return appendResetIfSignedIn([.logInSignOut])
         }
 
         if auth.isSaml && isSignedIn {
-            return [.logInSignOut]
+            return appendResetIfSignedIn([.logInSignOut])
         }
 
         if auth.isSaml {
@@ -376,10 +376,17 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         }
 
         if auth.pinKeyboard != .none {
-            return [.barcode, .pin, .logInSignOut]
+            return appendResetIfSignedIn([.barcode, .pin, .logInSignOut])
         }
 
-        return [.barcode, .logInSignOut]
+        return appendResetIfSignedIn([.barcode, .logInSignOut])
+    }
+
+    /// Conditionally appends the destructive `.resetAccount` cell. Reset is
+    /// only meaningful when there's actually signed-in state to clear, so
+    /// signed-out renderings (e.g., SAML IdP picker) don't get the button.
+    private func appendResetIfSignedIn(_ cells: [CellType]) -> [CellType] {
+        isSignedIn ? cells + [.resetAccount] : cells
     }
 
     // MARK: - Actions
@@ -448,6 +455,56 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         ))
 
         return alert
+    }
+
+    // MARK: - Reset Account (PP-4282 / HelpSpot 17716)
+
+    /// Entry point for the destructive "Reset This Library Account" button.
+    /// Presents a confirmation alert before tearing down all local state.
+    /// See `TPPSignInBusinessLogic+ForceReset.swift` for the cleanup contract.
+    func confirmResetAccount() {
+        TPPPresentationUtils.safelyPresent(makeResetAccountConfirmationAlert(), animated: true)
+    }
+
+    /// Builds the destructive confirmation alert. Library name is interpolated
+    /// into the message so the patron can confirm they're resetting the right
+    /// account (relevant for multi-library installs).
+    func makeResetAccountConfirmationAlert() -> UIAlertController {
+        let libraryName = businessLogic.libraryAccount?.name ?? DisplayStrings.account
+        let alert = UIAlertController(
+            title: NSLocalizedString("Reset \(libraryName)?", comment: "Title for the reset-account confirmation alert"),
+            message: NSLocalizedString(
+                "This will sign you out, delete your downloaded books and bookmarks for this library, and clear local sign-in state. Your loans and holds on the server are not affected. You'll need to sign in again.",
+                comment: "Body for the reset-account confirmation alert"
+            ),
+            preferredStyle: .alert
+        )
+
+        alert.addAction(UIAlertAction(
+            title: NSLocalizedString("Reset", comment: "Destructive confirmation button for reset-account"),
+            style: .destructive,
+            handler: { [weak self] _ in self?.performResetAccount() }
+        ))
+
+        alert.addAction(UIAlertAction(
+            title: Strings.Generic.cancel,
+            style: .cancel
+        ))
+
+        return alert
+    }
+
+    /// Invokes the unconditional cleanup. After completion, refreshes the
+    /// view-model's sign-in state so the UI shows the unsigned state and
+    /// the patron can sign back in immediately. Diagnostic logging lives
+    /// inside `performForceReset(...)` itself.
+    func performResetAccount() {
+        isSigningOut = true
+        businessLogic.performForceReset { [weak self] in
+            guard let self = self else { return }
+            self.isSigningOut = false
+            self.refreshSignInState()
+        }
     }
 
     func togglePINVisibility() {
@@ -606,6 +663,7 @@ enum CellType: Hashable {
     case barcode
     case pin
     case logInSignOut
+    case resetAccount
     case registration
     case syncButton
     case about
@@ -631,6 +689,8 @@ enum CellType: Hashable {
             hasher.combine("pin")
         case .logInSignOut:
             hasher.combine("logInSignOut")
+        case .resetAccount:
+            hasher.combine("resetAccount")
         case .registration:
             hasher.combine("registration")
         case .syncButton:
