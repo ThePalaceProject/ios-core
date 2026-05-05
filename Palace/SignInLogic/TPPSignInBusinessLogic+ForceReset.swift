@@ -89,6 +89,26 @@ extension TPPSignInBusinessLogic {
         bookRegistry.reset(libraryAccountID)
         Log.info(#file, "[RESET_ACCOUNT] step 2 ok — bookDownloadsCenter + bookRegistry reset for \(libraryAccountID)")
 
+        // 2.5. Best-effort Adobe DRM device deauthorize. CRITICAL for the
+        //      patron-visible "can borrow but can't read" symptom: server-side
+        //      operations (borrow/return/sync) use the CM bearer token, but
+        //      reading requires the local Adobe RMSDK device activation to
+        //      decrypt the EPUB. When activation gets desynced (PP-3649,
+        //      Crashlytics "On-demand Adobe device activation failed" — 89
+        //      events / 15 users on 3.0.0), the patron downloads books fine
+        //      but Read just spins. Without this deauth, Reset Account would
+        //      clear credentials but the local activation files would persist
+        //      — the next sign-in would try to refresh the broken activation
+        //      instead of doing a clean activation, and the patron would stay
+        //      stuck. Mirrors the call site in TPPSignInBusinessLogic+SignOut.swift
+        //      `deauthorizeDevice()`. Fire-and-forget: RMSDK clears local
+        //      activation state regardless of network result; success=false
+        //      with E_DEACT_USER_MISMATCH or similar is expected for stuck
+        //      patrons and that's exactly the case we want to recover.
+        //      MUST run BEFORE step 3 (credential clear) — deauth needs the
+        //      licensor + Adobe userID/deviceID stored on userAccount.
+        deauthorizeDeviceForReset()
+
         // 3. Wipe stored credentials. After this, hasCredentials() returns
         //    false and any in-flight authenticated request will fail cleanly
         //    instead of replaying a stale token.
@@ -120,6 +140,51 @@ extension TPPSignInBusinessLogic {
             DispatchQueue.main.async {
                 completion()
             }
+        }
+    }
+
+    /// Best-effort Adobe DRM device deauthorize. Mirrors the licensor-parsing
+    /// + deauthorize call from `TPPSignInBusinessLogic+SignOut.swift:337-396`,
+    /// but fire-and-forget — Reset Account explicitly does NOT gate downstream
+    /// cleanup on the deauth callback (the callback may never fire if Adobe's
+    /// deauth endpoint is the thing that's broken). RMSDK clears the local
+    /// activation files regardless of network result; that's what enables a
+    /// clean re-activation on the next sign-in.
+    ///
+    /// Skipped (with log) when there's no DRM authorizer (e.g. -noDRM build)
+    /// or no licensor (e.g. patron never activated). In those cases there's
+    /// no Adobe state to clear and the rest of Reset proceeds unchanged.
+    private func deauthorizeDeviceForReset() {
+        guard let drmAuthorizer = drmAuthorizer else {
+            Log.info(#file, "[RESET_ACCOUNT] step 2.5 skipped — no drmAuthorizer (likely -noDRM build)")
+            return
+        }
+        guard let licensor = userAccount.licensor else {
+            Log.info(#file, "[RESET_ACCOUNT] step 2.5 skipped — no licensor on userAccount (patron never activated)")
+            return
+        }
+
+        var licensorItems = (licensor["clientToken"] as? String)?
+            .replacingOccurrences(of: "\n", with: "")
+            .components(separatedBy: "|")
+        let tokenPassword = licensorItems?.last
+        licensorItems?.removeLast()
+        let tokenUsername = licensorItems?.joined(separator: "|")
+        let adobeUserID = userAccount.userID
+        let adobeDeviceID = userAccount.deviceID
+
+        Log.info(#file, "[RESET_ACCOUNT] step 2.5 — dispatching DRM deauthorize (fire-and-forget)")
+
+        drmAuthorizer.deauthorize(
+            withUsername: tokenUsername,
+            password: tokenPassword,
+            userID: adobeUserID,
+            deviceID: adobeDeviceID
+        ) { success, error in
+            // Non-success is expected for stuck patrons (E_DEACT_USER_MISMATCH
+            // or similar) — RMSDK still clears local activation, which is what
+            // matters for the next sign-in's clean re-activation.
+            Log.info(#file, "[RESET_ACCOUNT] step 2.5 — DRM deauthorize callback (success=\(success), error=\(error?.localizedDescription ?? "nil")). Local activation cleared regardless.")
         }
     }
 }
