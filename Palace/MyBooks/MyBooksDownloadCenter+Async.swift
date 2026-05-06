@@ -28,10 +28,14 @@ extension MyBooksDownloadCenter {
     }
 
     /// Pure mapping helper exposed for integration-test callers.
-    /// See `BorrowOperation.borrowResponseState(for:)` for the canonical
-    /// implementation and PP-4178 rationale.
-    static func borrowResponseState(for book: TPPBook) -> (state: TPPBookState, error: PalaceError?) {
-        BorrowOperation.borrowResponseState(for: book)
+    /// See `BorrowOperation.borrowResponseState(for:preBorrowBook:)` for
+    /// the canonical implementation, PP-4178 rationale, and Place Hold
+    /// disambiguation.
+    static func borrowResponseState(
+        for postBorrowBook: TPPBook,
+        preBorrowBook: TPPBook? = nil
+    ) -> (state: TPPBookState, error: PalaceError?) {
+        BorrowOperation.borrowResponseState(for: postBorrowBook, preBorrowBook: preBorrowBook)
     }
 
     /// Pure error-message builder exposed for TPPAlertUtilsTests.
