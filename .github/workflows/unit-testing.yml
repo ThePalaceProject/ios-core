@@ -363,9 +363,21 @@ jobs:
             echo "**$TESTS tests** | **$PASSED passed** | **$FAILED failed** | **$SKIPPED skipped** | ⏱️ $DURATION | 📊 $PASS_RATE$COVERAGE_DISPLAY" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             
-            # Class breakdown table
+            # Class breakdown table — collapsed by default. Auto-expand
+            # if any class had failures (so triage detail is visible
+            # without an extra click on red runs).
             if [ -n "$CLASS_SUMMARY" ]; then
-              echo "### Tests by Class" >> $GITHUB_STEP_SUMMARY
+              CLASS_COUNT=$(echo "$CLASS_SUMMARY" | wc -l | tr -d ' ')
+              FAILED_CLASS_COUNT=$(echo "$CLASS_SUMMARY" | awk -F'|' '$4 != "0" { c++ } END { print c+0 }')
+              if [ "$FAILED_CLASS_COUNT" -gt 0 ]; then
+                SUMMARY_LABEL="<strong>Tests by Class</strong> — $CLASS_COUNT classes, <strong>$FAILED_CLASS_COUNT with failures</strong>"
+                DETAILS_OPEN=" open"
+              else
+                SUMMARY_LABEL="<strong>Tests by Class</strong> — $CLASS_COUNT classes (click to expand)"
+                DETAILS_OPEN=""
+              fi
+              echo "<details${DETAILS_OPEN}>" >> $GITHUB_STEP_SUMMARY
+              echo "<summary>$SUMMARY_LABEL</summary>" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "| Class | Tests | Passed | Failed | Duration |" >> $GITHUB_STEP_SUMMARY
               echo "|-------|-------|--------|--------|----------|" >> $GITHUB_STEP_SUMMARY
@@ -376,6 +388,8 @@ jobs:
                   echo "| ❌ $class | $total | $passed | **$failed** | $duration |" >> $GITHUB_STEP_SUMMARY
                 fi
               done
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "</details>" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
             fi
           else
@@ -725,20 +739,25 @@ jobs:
               }
               body += `**${tests} tests** | **${passed} passed** | **${failed} failed** | **${skipped} skipped** | ⏱️ ${duration} | 📊 ${passRate}${coverageDisplay}\n\n`;
               
-              // Class breakdown table
+              // Class breakdown table — collapsed by default. Per-class
+              // rows are valuable when triaging a failure but noise on a
+              // green PR. Reviewers click through to expand.
               if (classSummary && classSummary.trim()) {
-                body += `### Tests by Class\n\n`;
+                const classLines = classSummary.trim().split('\n').filter(l => l.split('|')[0]);
+                const failedClasses = classLines.filter(l => l.split('|')[3] !== '0').length;
+                const summaryLabel = failedClasses > 0
+                  ? `<strong>Tests by Class</strong> — ${classLines.length} classes, <strong>${failedClasses} with failures</strong>`
+                  : `<strong>Tests by Class</strong> — ${classLines.length} classes (click to expand)`;
+                body += `<details${failedClasses > 0 ? ' open' : ''}>\n<summary>${summaryLabel}</summary>\n\n`;
                 body += `| Class | Tests | Passed | Failed | Duration |\n`;
                 body += `|-------|-------|--------|--------|----------|\n`;
-                classSummary.trim().split('\n').forEach(line => {
+                classLines.forEach(line => {
                   const [cls, total, pass, fail, dur] = line.split('|');
-                  if (cls) {
-                    const icon = fail === '0' ? '✅' : '❌';
-                    const failCell = fail === '0' ? fail : `**${fail}**`;
-                    body += `| ${icon} ${cls} | ${total} | ${pass} | ${failCell} | ${dur} |\n`;
-                  }
+                  const icon = fail === '0' ? '✅' : '❌';
+                  const failCell = fail === '0' ? fail : `**${fail}**`;
+                  body += `| ${icon} ${cls} | ${total} | ${pass} | ${failCell} | ${dur} |\n`;
                 });
-                body += '\n';
+                body += `\n</details>\n\n`;
               }
             } else {
               if (testOutcome === 'success') {
