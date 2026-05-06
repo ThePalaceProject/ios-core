@@ -382,11 +382,15 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         return appendResetIfSignedIn([.barcode, .logInSignOut])
     }
 
-    /// Conditionally appends the destructive `.resetAccount` cell. Reset is
-    /// only meaningful when there's actually signed-in state to clear, so
-    /// signed-out renderings (e.g., SAML IdP picker) don't get the button.
+    /// Conditionally appends the destructive `.resetAccount` cell. Two gates:
+    /// (1) signed-in (no state to clear when signed-out), (2) the
+    /// `reset_account_enabled` feature flag is on for this device. Default in
+    /// production is OFF; support enables it per-patron via Firebase Remote
+    /// Config (`reset_account_enabled_device_<id>`) when a stuck-state ticket
+    /// comes in, then disables it again after the patron recovers.
     private func appendResetIfSignedIn(_ cells: [CellType]) -> [CellType] {
-        isSignedIn ? cells + [.resetAccount] : cells
+        guard isSignedIn, RemoteFeatureFlags.shared.isResetAccountEnabled else { return cells }
+        return cells + [.resetAccount]
     }
 
     // MARK: - Actions
