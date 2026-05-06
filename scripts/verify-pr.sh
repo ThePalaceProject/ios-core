@@ -26,7 +26,11 @@ cd "$REPO_ROOT"
 QUICK=false
 REPORT_FILE=""
 SIMDRIVE=false
-SIM_ID="DF4A2A27-9888-429D-A749-2E157A049A37"
+# Sim selection. Honors the harness allocator's per-session UDID so parallel
+# agents on the same machine don't collide on one device. Falls back to the
+# pool default when the harness isn't claiming. CLAUDE.md: "NEVER hardcode a
+# sim UDID" — this default is the documented fallback, not a hardcode.
+SIM_ID="${HARNESS_SESSION_SIM_UDID:-DF4A2A27-9888-429D-A749-2E157A049A37}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
