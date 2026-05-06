@@ -1,5 +1,6 @@
 import MessageUI
 import SwiftUI
+import WebKit
 import PalaceCatalog
 
 @objcMembers
@@ -18,6 +19,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case errorSimulation
         #if DEBUG
         case mockBackend
+        case resetAccountTesting
         #endif
     }
 
@@ -106,6 +108,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             #endif
         #if DEBUG
         case .mockBackend: return 1
+        case .resetAccountTesting: return 3  // simulate stuck state + inspect + set ephemeral flag
         #endif
         default: return 1
         }
@@ -163,6 +166,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         #if DEBUG
         case .mockBackend:
             return cellForMockBackend()
+        case .resetAccountTesting:
+            switch indexPath.row {
+            case 0: return cellForResetAccountSimulateStuck()
+            case 1: return cellForResetAccountInspect()
+            default: return cellForResetAccountSetEphemeral()
+            }
         #endif
         }
     }
@@ -193,6 +202,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         #if DEBUG
         case .mockBackend:
             return "Mock Backend"
+        case .resetAccountTesting:
+            return "Reset Account Testing (PP-4282)"
         #endif
         }
     }
@@ -662,6 +673,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         #if DEBUG
         case .mockBackend:
             showMockBackendPicker()
+        case .resetAccountTesting:
+            switch indexPath.row {
+            case 0: simulateResetAccountStuckState()
+            case 1: inspectResetAccountState()
+            default: setNextOIDCEphemeralFlagForTesting()
+            }
         #endif
 
         default:
@@ -893,6 +910,170 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     func mailComposeController(_ controller: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?) {
         controller.dismiss(animated: true, completion: nil)
     }
+
+    // MARK: - Reset Account Testing (PP-4282 / HelpSpot 17716)
+    //
+    // Test harness for the patron-self-service Reset Account button. Lets QA
+    // and support reproduce the stuck-state condition (so they can verify
+    // Reset Account actually unblocks the patron) and inspect post-reset
+    // state. All three handlers are #if DEBUG so the section + code never
+    // ship to production builds.
+
+    #if DEBUG
+    private func cellForResetAccountSimulateStuck() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "resetAccountSimulateStuckCell")
+        cell.textLabel?.text = "1. Simulate Stuck State"
+        cell.detailTextLabel?.text = "Marks current account as if push-reg silently failed and SAML credentials went stale. Then go tap Reset Account."
+        cell.detailTextLabel?.numberOfLines = 0
+        cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+
+    private func cellForResetAccountInspect() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "resetAccountInspectCell")
+        cell.textLabel?.text = "2. Inspect Account State"
+        cell.detailTextLabel?.text = "Shows current values for everything Reset Account touches. Use after Simulate (state should look broken) and after Reset (state should look clean)."
+        cell.detailTextLabel?.numberOfLines = 0
+        cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+
+    private func cellForResetAccountSetEphemeral() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "resetAccountSetEphemeralCell")
+        cell.textLabel?.text = "3. Set One-Shot Ephemeral Flag"
+        cell.detailTextLabel?.text = "Manually sets the next-OIDC-session-ephemeral flag without running a full Reset. Lets you verify the OIDC consume path independently."
+        cell.detailTextLabel?.numberOfLines = 0
+        cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+
+    /// Step 1: programmatically force the patron's app into the broken state
+    /// that Reset Account is designed to recover from. Sets the flags +
+    /// state Reset Account checks for, but does NOT actually break network
+    /// access (so post-Reset sign-in can succeed).
+    private func simulateResetAccountStuckState() {
+        guard let account = accountsManager.currentAccount else {
+            presentResetAccountAlert(title: "No Current Account",
+                                     message: "Add and select a library first, then come back here.")
+            return
+        }
+
+        let user = accountsManager.currentUserAccount
+
+        // 1. Simulate "we think we registered FCM but actually didn't" — the
+        //    PP-4275 silent-failure mode that Reset Account heals on next launch.
+        account.hasUpdatedToken = true
+
+        // 2. Simulate stale SAML/OIDC session — the credentialsStale state that
+        //    triggers the audiobook-OPEN re-auth in PP-4276 and that Reset clears.
+        user.markCredentialsStale()
+
+        // 3. ACTUALLY corrupt the bearer token so server-side operations
+        //    (borrow, return, sync, fulfillment) start returning 401. Without
+        //    this step, the simulation only flips flags and the bearer keeps
+        //    working — patrons reported "I can still borrow", which proves
+        //    the previous simulation was too soft. Preserves barcode + pin so
+        //    the next sign-in flow is the natural credential-prompt path.
+        let corruptedToken = "INVALID_SIMULATED_STUCK_STATE_BEARER_TOKEN"
+        let pastDate = Date(timeIntervalSinceNow: -3600)
+        user.setAuthToken(
+            corruptedToken,
+            barcode: user.barcode,
+            pin: user.PIN,
+            expirationDate: pastDate
+        )
+
+        // 4. Pre-clear the one-shot ephemeral flag so we can confirm Reset
+        //    (a) sets it AND (b) the OIDC path consumes-and-clears it.
+        //    (No-op for non-OIDC libraries — see step 3 cell.)
+        UserDefaults.standard.removeObject(forKey: TPPSignInBusinessLogic.nextOIDCSessionEphemeralKey)
+
+        presentResetAccountAlert(
+            title: "Stuck State Simulated",
+            message: """
+                Set on \(account.name):
+                • hasUpdatedToken = true (push-reg short-circuit)
+                • authState = credentialsStale
+                • bearer token = corrupted (next borrow/sync will 401)
+                • token expirationDate = 1 hour ago
+                • nextOIDCSessionEphemeral flag = unset (cleared)
+
+                Now: try a borrow or pull-to-refresh — should fail with auth error. THEN: Settings → Accounts → tap \(account.name) → Reset This Library Account.
+
+                After Reset, come back here and tap Inspect — every line should look CLEAN (false / loggedOut / true for the ephemeral flag if the library is OIDC).
+
+                NOTE — Reset Account does NOT clear Adobe DRM device activation. If a patron's symptom is "can borrow but can't READ", that's PP-3649 (Adobe DRM regression in 3.0.0) and lives in the private DRM submodule. Reset Account fixes the SAML/OIDC/push-token surfaces; PP-3649 needs its own fix.
+                """
+        )
+    }
+
+    /// Step 2: dump the state Reset Account touches. Lets QA confirm
+    /// before/after.
+    private func inspectResetAccountState() {
+        guard let account = accountsManager.currentAccount else {
+            presentResetAccountAlert(title: "No Current Account",
+                                     message: "Add and select a library first.")
+            return
+        }
+        let user = accountsManager.currentUserAccount
+
+        // We use UserDefaults.bool here rather than the consume helper so
+        // inspecting doesn't side-effect-clear the flag.
+        let ephemeralFlagSet = UserDefaults.standard.bool(forKey: TPPSignInBusinessLogic.nextOIDCSessionEphemeralKey)
+
+        let webDataStore = WKWebsiteDataStore.default()
+        webDataStore.fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { [weak self] records in
+            DispatchQueue.main.async {
+                let lines = [
+                    "Library: \(account.name) (\(account.uuid))",
+                    "",
+                    "hasUpdatedToken: \(account.hasUpdatedToken)",
+                    "authState: \(user.authState)",
+                    "hasCredentials: \(user.hasCredentials())",
+                    "barcode present: \(user.barcode != nil)",
+                    "PIN present: \(user.PIN != nil)",
+                    "authToken present: \(user.authToken != nil)",
+                    "",
+                    "WKWebsiteDataStore records: \(records.count)",
+                    "  (cookies, local storage, IndexedDB, etc. across ALL hosts — Reset wipes everything)",
+                    "",
+                    "nextOIDCSessionEphemeral flag: \(ephemeralFlagSet ? "SET (next OIDC session will be ephemeral)" : "unset (silent SSO active)")",
+                    "",
+                    "Expected after Reset: hasUpdatedToken=false, authState=loggedOut, hasCredentials=false, ephemeral flag SET (consumed-and-cleared by next OIDC sign-in)."
+                ]
+                self?.presentResetAccountAlert(
+                    title: "Account State",
+                    message: lines.joined(separator: "\n")
+                )
+            }
+        }
+    }
+
+    /// Step 3: directly set the one-shot flag (without running a full Reset).
+    /// Use this to test the OIDC consume path in isolation — sign in to an
+    /// OIDC library and confirm the ASWebAuthenticationSession was created
+    /// with prefersEphemeralWebBrowserSession = true (visible if the patron
+    /// is forced through a real IdP login instead of silent SSO).
+    private func setNextOIDCEphemeralFlagForTesting() {
+        UserDefaults.standard.set(true, forKey: TPPSignInBusinessLogic.nextOIDCSessionEphemeralKey)
+        presentResetAccountAlert(
+            title: "Ephemeral Flag Set",
+            message: """
+                The next OIDC ASWebAuthenticationSession will be created with prefersEphemeralWebBrowserSession = true.
+
+                To verify: sign out of an OIDC library, then sign back in. You should be forced through a real IdP authentication (not a silent SSO redirect).
+
+                After that one session, the flag self-clears and silent SSO is restored.
+                """
+        )
+    }
+
+    private func presentResetAccountAlert(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+    #endif
 }
 
 extension TPPDeveloperSettingsTableViewController: TPPRegistryDebugger {}

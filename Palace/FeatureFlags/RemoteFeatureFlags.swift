@@ -34,6 +34,7 @@ final class RemoteFeatureFlags {
         case opds2Enabled = "opds2_enabled"
         case readingStatsEnabled = "reading_stats_enabled"
         case advancedTypographyEnabled = "advanced_typography_enabled"
+        case resetAccountEnabled = "reset_account_enabled"
 
         var defaultValue: Bool {
             switch self {
@@ -61,8 +62,23 @@ final class RemoteFeatureFlags {
                 return .carPlayEnabled
             case .opds2Enabled:
                 return .opds2Enabled
+            case .resetAccountEnabled:
+                return .resetAccountEnabled
             default:
                 return nil
+            }
+        }
+
+        /// Whether this flag also looks up a per-device override key
+        /// (`<rawValue>_device_<sanitizedDeviceID>`). Used for staged rollouts
+        /// where support enables a feature for one patron at a time via
+        /// Firebase Remote Config conditions.
+        var supportsDeviceSpecificOverride: Bool {
+            switch self {
+            case .enhancedErrorLogging, .resetAccountEnabled:
+                return true
+            default:
+                return false
             }
         }
     }
@@ -114,7 +130,7 @@ final class RemoteFeatureFlags {
         if let managerKey = feature.managerKey {
             return FirebaseManager.shared.getBoolValue(
                 forKey: managerKey,
-                checkingDeviceSpecific: feature == .enhancedErrorLogging
+                checkingDeviceSpecific: feature.supportsDeviceSpecificOverride
             )
         }
 
@@ -166,6 +182,25 @@ final class RemoteFeatureFlags {
     /// Default: true. Set to false in Firebase Remote Config to disable.
     var isOPDS2Enabled: Bool {
         isFeatureEnabled(.opds2Enabled)
+    }
+
+    /// PP-4282: UserDefaults override that lets QA / support force the Reset
+    /// Account button on for a specific device without a Firebase round-trip.
+    /// Settable from `TPPDeveloperSettingsTableViewController`. Falls through
+    /// to the Remote Config flag when nil.
+    static let resetAccountLocalOverrideKey = "RemoteFeatureFlags.resetAccountLocalOverride"
+
+    /// PP-4282 / HelpSpot 17716: gate for the destructive "Reset This Library
+    /// Account" button in `AccountDetailView`. Defaults OFF in production.
+    /// Enable per-patron via Firebase Remote Config key
+    /// `reset_account_enabled_device_<sanitizedDeviceID>` (support workflow),
+    /// or globally via `reset_account_enabled` (broad rollout). Local override
+    /// via `resetAccountLocalOverrideKey` UserDefault is for QA only.
+    var isResetAccountEnabled: Bool {
+        if let override = UserDefaults.standard.object(forKey: Self.resetAccountLocalOverrideKey) as? Bool {
+            return override
+        }
+        return isFeatureEnabled(.resetAccountEnabled)
     }
 
     // MARK: - Device Info for Targeting
