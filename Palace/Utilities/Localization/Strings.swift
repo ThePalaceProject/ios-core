@@ -34,6 +34,8 @@ struct Strings {
         static let loadFailedError = NSLocalizedString("The page could not load due to a conection error.", comment: "")
         static let invalidCredentialsErrorTitle = NSLocalizedString("Invalid Credentials", comment: "")
         static let invalidCredentialsErrorMessage = NSLocalizedString("Please check your username and password and try again.", comment: "")
+        static let networkUnavailableErrorTitle = NSLocalizedString("No Internet Connection", comment: "Title shown when sign-in fails because the device lost connectivity")
+        static let networkUnavailableErrorMessage = NSLocalizedString("Check your connection and try again.", comment: "Message shown when sign-in fails because the device lost connectivity")
         static let sessionExpiredTitle = NSLocalizedString("Session Expired", comment: "Title for session expired alert")
         static let sessionExpiredMessage = NSLocalizedString("Your session has expired. Please sign in again to continue.", comment: "Message explaining that the user's session has expired")
         static let unknownRequestError = NSLocalizedString("An unknown error occurred. Please check your connection or try again later.", comment: "A generic error message for when a network request fails")
@@ -100,6 +102,10 @@ struct Strings {
 
         // Accessibility - Catalog
         static let moreBooksInLane = NSLocalizedString("More books in %@", comment: "VoiceOver: See more books in a catalog lane")
+        static let horizontalLaneHint = NSLocalizedString("Swipe horizontally to browse. Double tap to open a book.", comment: "VoiceOver: Hint for horizontal book lanes")
+        static let catalogRegion = NSLocalizedString("Catalog", comment: "VoiceOver: Label for main catalog / browse region")
+        static let catalogFilter = NSLocalizedString("Filter by format", comment: "VoiceOver: Label for the catalog format filter (All, Ebooks, Audiobooks)")
+        static let booksListLabel = NSLocalizedString("Books list", comment: "VoiceOver: Label for a list of books")
         static let expandSection = NSLocalizedString("Expand section", comment: "VoiceOver: Expand a collapsible section")
         static let collapseSection = NSLocalizedString("Collapse section", comment: "VoiceOver: Collapse an expanded section")
 
@@ -120,6 +126,32 @@ struct Strings {
         static let nextPage = NSLocalizedString("Next page", comment: "Full Keyboard Access: Custom action to go to next page (Tab-Z menu)")
         static let previousPage = NSLocalizedString("Previous page", comment: "Full Keyboard Access: Custom action to go to previous page (Tab-Z menu)")
         static let toggleToolbar = NSLocalizedString("Toggle toolbar", comment: "Full Keyboard Access: Custom action to show/hide reader toolbar (Tab-Z menu)")
+
+        // Accessibility - Book cell labels (PP-3968)
+        static func bookByAuthor(title: String, author: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, by %2$@", comment: "VoiceOver: book cell label, e.g. 'The Great Gatsby, by F. Scott Fitzgerald'"),
+                title, author
+            )
+        }
+        static func audiobookNarratedBy(title: String, narrator: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, narrated by %2$@", comment: "VoiceOver: audiobook cell label without author, e.g. 'Title, narrated by Narrator'"),
+                title, narrator
+            )
+        }
+        static func audiobookByAuthorNarratedBy(title: String, author: String, narrator: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, by %2$@, narrated by %3$@", comment: "VoiceOver: audiobook cell label with author and narrator"),
+                title, author, narrator
+            )
+        }
+        static func audiobookByAuthor(title: String, author: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%1$@, audiobook, by %2$@", comment: "VoiceOver: audiobook cell label with author but no narrator"),
+                title, author
+            )
+        }
     }
 
     struct DownloadAnnouncements {
@@ -149,6 +181,20 @@ struct Strings {
             String.localizedStringWithFormat(
                 NSLocalizedString("Download failed for %@.", comment: "VoiceOver announcement when a download fails"),
                 title
+            )
+        }
+
+        static func downloadingTitle(_ title: String) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("Downloading %@", comment: "VoiceOver accessibility label for download progress indicator, %@ is the book title"),
+                title
+            )
+        }
+
+        static func percentComplete(_ percent: Int) -> String {
+            String.localizedStringWithFormat(
+                NSLocalizedString("%d percent complete", comment: "VoiceOver accessibility value for download progress"),
+                percent
             )
         }
 
@@ -239,6 +285,25 @@ struct Strings {
                 query
             )
         }
+
+        static func searchResultsListValue(bookCount: Int) -> String {
+            switch bookCount {
+            case 0:
+                return NSLocalizedString("No results", comment: "Accessibility value when search has no results")
+            case 1:
+                return NSLocalizedString("1 book", comment: "Accessibility value when search has one result")
+            default:
+                return String.localizedStringWithFormat(
+                    NSLocalizedString("%d books", comment: "Accessibility value for search results count. %d is number of books"),
+                    bookCount
+                )
+            }
+        }
+
+        static let searchResultsListHint = NSLocalizedString(
+            "Swipe to browse results. Double tap to open a book.",
+            comment: "Accessibility hint for search results list"
+        )
 
         static func searchFailed() -> String {
             NSLocalizedString(
@@ -339,6 +404,12 @@ struct Strings {
         static let syncDescription = NSLocalizedString("Save your reading position and bookmarks to all your other devices.", comment: "")
         static let authenticateToRevealPIN = NSLocalizedString("Authenticate to reveal your PIN.", comment: "")
         static let deleteServerData = NSLocalizedString("Delete Server Data", comment: "")
+        static let downloads = NSLocalizedString("Downloads", comment: "Section header for download-related settings")
+        static let aboutSectionHeader = NSLocalizedString("About and legal", comment: "VoiceOver: Settings list section header for About, Privacy, Licenses")
+        static let downloadOnlyOnWiFi = NSLocalizedString("Download Only on Wi-Fi", comment: "Toggle label to restrict downloads to Wi-Fi connections")
+        static let downloadOnlyOnWiFiDescription = NSLocalizedString("When enabled, books and audiobooks will only download over Wi-Fi. Downloads will be blocked on cellular data.", comment: "Description for Download Only on Wi-Fi setting")
+        static let downloadRestrictedToWiFi = NSLocalizedString("Downloads are restricted to Wi-Fi in Settings. Connect to a Wi-Fi network or change your download settings to continue.", comment: "Alert message when download is blocked due to Wi-Fi only setting")
+        static let wifiRequired = NSLocalizedString("Wi-Fi Required", comment: "Alert title when download is blocked due to Wi-Fi only setting")
     }
 
     struct AccountDetail {
@@ -518,6 +589,8 @@ struct Strings {
         static let returnMessage = NSLocalizedString("Are you sure you want to return \"%@\"?", comment: "Message shown in an alert to the user prior to returning a title")
         static let removeReservation = NSLocalizedString("Remove Reservation", comment: "")
         static let removeReservationMessage = NSLocalizedString("Are you sure you want ot remove \"%@\" from your reservations? You will no longer be in line for this book.", comment: "Message shown in an alert to the user prior to returning a reserved title.")
+        static let removeHold = NSLocalizedString("Remove Hold", comment: "")
+        static let removeHoldMessage = NSLocalizedString("Are you sure you want to remove \"%@\" from your holds? You will no longer be in line for this book.", comment: "Message shown in an alert to the user prior to removing a held title.")
         static let downloading = NSLocalizedString("Downloading", comment: "")
         static let downloadFailedMessage = NSLocalizedString("The download could not be completed.", comment: "")
     }
@@ -529,6 +602,12 @@ struct Strings {
         static let deniedLocationAccessMessage = NSLocalizedString("The Palace App requires a one-time location check in order to verify your library service area. You have disabled location services for this app. To enable, please select the 'Open Settings' button below then continue with card creation.", comment: "Registration message shown to user when location access has been denied.")
         static let deniedLocationAccessMessageBoldText = NSLocalizedString("You have disabled location services for this app.", comment: "Registration message shown to user when location access has been denied.")
         static let openSettings = NSLocalizedString("Open Settings", comment: "")
+    }
+
+    struct ExpiredLoan {
+        static let title = NSLocalizedString("Your Loan Has Expired", comment: "Alert title when a book's DRM license has expired")
+        static let message = NSLocalizedString("This title is no longer available because your loan period ended. It has been removed from your device.", comment: "Alert message when a book loan expires without a known end date")
+        static let messageWithDate = NSLocalizedString("This title is no longer available because your loan ended on %@. It has been removed from your device.", comment: "Alert message when a book loan expires; %@ is the formatted end date")
     }
 
     struct MyDownloadCenter {
@@ -545,6 +624,8 @@ struct Strings {
         static let bookmarkSyncError = NSLocalizedString("There was an error syncing bookmarks to the server. Ensure your device is connected to the internet.", comment: "Alert message when bookmark sync fails")
         static let libraryLoadError = NSLocalizedString("We can\u{2019}t get your library right now. Please try again.", comment: "Alert message when library data fails to load, with retry option")
         static let libraryLoadErrorLegacy = NSLocalizedString("We can\u{2019}t get your library right now. Please close and reopen the app to try again.", comment: "Alert message when library data fails to load, no retry available")
+        static let wifiRequired = Strings.Settings.wifiRequired
+        static let downloadRestrictedToWiFi = Strings.Settings.downloadRestrictedToWiFi
     }
 
     struct BookDetailView {
@@ -601,11 +682,15 @@ struct Strings {
     }
 
     struct HoldsView {
-        static let reservations = NSLocalizedString("Reservations", comment: "Nav title")
+        static let reservations = NSLocalizedString("Holds", comment: "Nav title for Holds tab")
         static let emptyMessage = NSLocalizedString("""
             When you reserve a book from the catalog, it will show up here. \
             Look here from time to time to see if your book is available to download.
             """, comment: "")
         static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "")
+        static let syncFailedMessage = NSLocalizedString(
+            "There was a problem loading your holds. Please try again later.",
+            comment: "Error message when holds sync fails"
+        )
     }
 }

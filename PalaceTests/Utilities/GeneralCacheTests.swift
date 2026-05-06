@@ -27,16 +27,21 @@ final class GeneralCacheTests: XCTestCase {
     func testSet_andGet_returnsValue() {
         cache.set("Hello World", for: "greeting")
         XCTAssertEqual(cache.get(for: "greeting"), "Hello World")
+        XCTAssertNil(cache.get(for: "farewell"), "Unset key must return nil")
     }
 
     func testGet_unknownKey_returnsNil() {
         XCTAssertNil(cache.get(for: "nonexistent"))
+        // Setting a different key must not affect the unknown key
+        cache.set("something", for: "other-key")
+        XCTAssertNil(cache.get(for: "nonexistent"), "Unknown key must remain nil after setting an unrelated key")
     }
 
     func testSet_overwrite_updatesValue() {
         cache.set("Old", for: "key")
         cache.set("New", for: "key")
         XCTAssertEqual(cache.get(for: "key"), "New")
+        XCTAssertNotEqual(cache.get(for: "key"), "Old", "Old value must not be accessible after overwrite")
     }
 
     // MARK: - Remove
@@ -45,10 +50,19 @@ final class GeneralCacheTests: XCTestCase {
         cache.set("Value", for: "key")
         cache.remove(for: "key")
         XCTAssertNil(cache.get(for: "key"))
+        // The cache must still accept new entries after removal
+        cache.set("NewValue", for: "key")
+        XCTAssertEqual(cache.get(for: "key"), "NewValue", "Cache must accept new value after removal")
     }
 
     func testRemove_nonexistentKey_doesNotCrash() {
         cache.remove(for: "nonexistent")
+        // After removing a non-existent key, cache should remain empty
+        XCTAssertNil(cache.get(for: "nonexistent"), "Non-existent key should still return nil after remove")
+        // Other keys should be unaffected
+        cache.set("existing", for: "real-key")
+        cache.remove(for: "nonexistent")
+        XCTAssertEqual(cache.get(for: "real-key"), "existing", "Real key should survive removal of non-existent key")
     }
 
     // MARK: - Clear
@@ -66,16 +80,22 @@ final class GeneralCacheTests: XCTestCase {
 
     func testClearMemory_removesMemoryEntries() {
         cache.set("Value", for: "key")
+        cache.set("Another", for: "key2")
         cache.clearMemory()
 
-        // For memoryOnly cache, this should remove the value
-        XCTAssertNil(cache.get(for: "key"))
+        // For memoryOnly cache, this should remove all values
+        XCTAssertNil(cache.get(for: "key"), "clearMemory must remove previously cached values")
+        XCTAssertNil(cache.get(for: "key2"), "clearMemory must remove all entries, not just the first")
     }
 
     // MARK: - Expiration
 
     func testSet_withExpiration_isAvailableBeforeExpiry() {
         cache.set("Temporary", for: "key", expiresIn: 60)
+        XCTAssertEqual(cache.get(for: "key"), "Temporary")
+        // A different key should still be nil
+        XCTAssertNil(cache.get(for: "other-key"))
+        // The value should be consistent across reads before expiry
         XCTAssertEqual(cache.get(for: "key"), "Temporary")
     }
 
@@ -126,8 +146,10 @@ final class GeneralCacheTests: XCTestCase {
         bothCache.set("Both", for: "both-key")
 
         XCTAssertEqual(bothCache.get(for: "both-key"), "Both")
+        XCTAssertNil(bothCache.get(for: "missing-key"), "Unset key must return nil in memoryAndDisk mode")
 
         bothCache.clear()
+        XCTAssertNil(bothCache.get(for: "both-key"), "clear() must remove memoryAndDisk entries")
     }
 
     // MARK: - None Mode
@@ -137,6 +159,9 @@ final class GeneralCacheTests: XCTestCase {
         noneCache.set("Ghost", for: "key")
 
         XCTAssertNil(noneCache.get(for: "key"), "None mode should not store values")
+        // A second key must also not be stored
+        noneCache.set("Phantom", for: "key2")
+        XCTAssertNil(noneCache.get(for: "key2"), "None mode must not store any key")
     }
 
     // MARK: - Cache Policy (async)
@@ -185,5 +210,92 @@ final class GeneralCacheTests: XCTestCase {
     func testFileURL_returnsURL() {
         let url = cache.fileURL(for: "some-key")
         XCTAssertFalse(url.absoluteString.isEmpty)
+        // Different keys must produce different file URLs
+        let url2 = cache.fileURL(for: "another-key")
+        XCTAssertNotEqual(url, url2, "Different keys must map to different file URLs")
+    }
+
+    // MARK: - Directory Recreation
+
+    /// Regression: `clearCacheOnUpdate()` at launch wipes non-Adobe cache dirs
+    /// including the cache's own directory. Subsequent `set()` must not fail
+    /// with "The folder doesn't exist" — saveToDisk must recreate the dir.
+    func testSet_afterExternalDirectoryDeletion_recreatesAndSucceeds() {
+        let diskCache = GeneralCache<String, Data>(
+            cacheName: "DirDeletionRegression-\(UUID().uuidString)",
+            mode: .diskOnly
+        )
+        // Prime cache so we know the URL and directory exist
+        let firstKey = "warmup"
+        diskCache.set(Data("seed".utf8), for: firstKey)
+
+        let firstURL = diskCache.fileURL(for: firstKey)
+        let cacheDir = firstURL.deletingLastPathComponent()
+
+        // Give the async barrier write a moment to complete
+        let readExp = expectation(description: "seed written")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
+            readExp.fulfill()
+        }
+        wait(for: [readExp], timeout: 1.0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cacheDir.path),
+                      "Precondition: cache directory exists after first write")
+
+        // Simulate clearCacheOnUpdate() wiping the directory
+        try? FileManager.default.removeItem(at: cacheDir)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cacheDir.path),
+                       "Precondition: cache directory is gone")
+
+        // The new write must recreate the directory and succeed
+        let payload = Data("after-delete".utf8)
+        diskCache.set(payload, for: "recovered")
+
+        let recoveredURL = diskCache.fileURL(for: "recovered")
+        let writeExp = expectation(description: "recovered written")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) {
+            writeExp.fulfill()
+        }
+        wait(for: [writeExp], timeout: 1.5)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cacheDir.path),
+                      "saveToDisk should recreate the cache directory")
+        XCTAssertEqual(try? Data(contentsOf: recoveredURL), payload,
+                       "Data should be written after directory recovery")
+
+        try? FileManager.default.removeItem(at: cacheDir)
+    }
+
+    /// `clearAllCaches()` must preserve the app's bundle-id directory (which
+    /// hosts the system `URLCache` Cache.db). Wiping it causes NSURLStorage
+    /// errors on launch.
+    func testClearAllCaches_preservesBundleIDDirectory() throws {
+        guard let cachesDir = FileManager.default.urls(for: .cachesDirectory,
+                                                       in: .userDomainMask).first,
+              let bundleID = Bundle.main.bundleIdentifier
+        else {
+            XCTFail("Caches dir or bundle ID unavailable")
+            return
+        }
+
+        let bundleDir = cachesDir.appendingPathComponent(bundleID, isDirectory: true)
+        let createdForTest = !FileManager.default.fileExists(atPath: bundleDir.path)
+        if createdForTest {
+            try FileManager.default.createDirectory(at: bundleDir,
+                                                    withIntermediateDirectories: true)
+        }
+        let sentinel = bundleDir.appendingPathComponent("sentinel.txt")
+        try Data("sentinel".utf8).write(to: sentinel)
+
+        GeneralCache<String, Data>.clearAllCaches()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: bundleDir.path),
+                      "Bundle-id dir must survive clearAllCaches (hosts URLCache)")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sentinel.path),
+                      "Sentinel file must survive clearAllCaches")
+
+        try? FileManager.default.removeItem(at: sentinel)
+        if createdForTest {
+            try? FileManager.default.removeItem(at: bundleDir)
+        }
     }
 }

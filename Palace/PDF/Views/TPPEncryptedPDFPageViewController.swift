@@ -10,7 +10,6 @@ import UIKit
 import SwiftUI
 
 /// Single page view controller
-// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 class TPPEncryptedPDFPageViewController: UIViewController {
 
     private let contentInset: CGFloat = 5
@@ -27,8 +26,6 @@ class TPPEncryptedPDFPageViewController: UIViewController {
         }
     }
 
-    /// PDF page image view with accessibility configured
-    // accesslint:disable A11Y.UIKIT.IMAGE_DECORATIVE - Accessibility configured in closure below (lines 38-40)
     private lazy var pdfImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFit
@@ -42,7 +39,7 @@ class TPPEncryptedPDFPageViewController: UIViewController {
         imageView.accessibilityTraits = .image
         return imageView
     }()
-    // accesslint:enable A11Y.UIKIT.IMAGE_DECORATIVE
+
     private var doubleTap = UITapGestureRecognizer()
 
     @available(*, unavailable)
@@ -54,11 +51,11 @@ class TPPEncryptedPDFPageViewController: UIViewController {
         self.document = encryptedPdf
         self.pageNumber = pageNumber
         super.init(nibName: nil, bundle: nil)
+        title = String(format: NSLocalizedString("Page %d", comment: "PDF page number title"), pageNumber + 1)
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = String(format: NSLocalizedString("Page %d", comment: "PDF page number title"), pageNumber + 1)
         view.backgroundColor = .systemBackground
 
         doubleTap.numberOfTapsRequired = 2

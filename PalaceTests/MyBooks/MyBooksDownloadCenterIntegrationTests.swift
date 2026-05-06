@@ -426,35 +426,209 @@ final class DownloadStateMachineIntegrationTests: XCTestCase {
         XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadSuccessful)
     }
 
-    // MARK: - Hold State Tests
+    // MARK: - Borrow Response Mapping (PP-4178 + Place Hold disambiguation)
 
-    func testState_borrowResultsInHold_setsHoldingState() {
-        // Given an unregistered book
-        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        mockBookRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+    // The mapping must distinguish two scenarios that share the borrowAsync code path:
+    //   1. Place Hold tap on a no-copies title (pre=unavailable). A `.holding` response
+    //      is the expected outcome — no error should fire.
+    //   2. Borrow tap on a Borrow-eligible title (pre=limited/unlimited/ready/reserved)
+    //      that comes back `.holding`. That IS the CM Loan→Hold race; surface the error
+    //      so the patron sees why the borrow failed.
 
-        // When borrow results in hold (book not available)
-        mockBookRegistry.setState(.holding, for: book.identifier)
+    // MARK: Place Hold path — pre availability == unavailable
 
-        // Then book should be in holding state
-        XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .holding)
+    /// Place Hold on a no-copies title is a success when CM responds `unavailable`
+    /// (patron is now queued). The pre-PP-4178 alert was incorrectly firing here.
+    func testBorrowResponseState_placeHold_unavailableResponse_noError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
+            copiesHeld: 3,
+            copiesTotal: 3
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
+            copiesHeld: 3,
+            copiesTotal: 3
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .holding)
+        XCTAssertNil(result.error, "Place Hold tap on an unavailable title returning `unavailable` is a successful queue placement, not a race loss")
     }
 
-    func testState_holdReadyToDownload_transitionsCorrectly() {
-        // Given a book on hold that becomes ready
-        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        mockBookRegistry.addBook(book, location: nil, state: .holding, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+    /// Place Hold tap can also produce a `reserved` response when a copy frees up
+    /// between the tap and the server-side reservation (e.g. another patron returns).
+    /// The patron is now hold-ready — still not an error.
+    func testBorrowResponseState_placeHold_reservedResponse_noError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
+            copiesHeld: 3,
+            copiesTotal: 3
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReserved(
+            holdPosition: 1,
+            copiesTotal: 3,
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 7)
+        ))
 
-        // When hold becomes ready, transition to downloadNeeded
-        mockBookRegistry.setState(.downloadNeeded, for: book.identifier)
-        XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadNeeded)
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
 
-        // Then can proceed with download
-        mockBookRegistry.setState(.downloading, for: book.identifier)
-        XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloading)
+        XCTAssertEqual(result.state, .holding)
+        XCTAssertNil(result.error, "Place Hold path must not fire the Loan→Hold race error")
+    }
 
-        mockBookRegistry.setState(.downloadSuccessful, for: book.identifier)
-        XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadSuccessful)
+    // MARK: Borrow race-loss path — pre availability was Borrow-eligible
+
+    /// Original PP-4178 race: Borrow on a `ready` (hold became available for this patron)
+    /// title returns `unavailable` because another patron consumed the copy first. The
+    /// alert exists for this scenario and must keep firing.
+    func testBorrowResponseState_borrowFromReady_unavailableResponse_returnsRaceLossError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReady(
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 3)
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
+            copiesHeld: 3,
+            copiesTotal: 3
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .holding, "Registry must reflect that the patron is back on the hold queue")
+        guard case .bookRegistry(.holdCopyUnavailable) = result.error else {
+            XCTFail("Expected race-loss error for ready→unavailable, got \(String(describing: result.error))")
+            return
+        }
+    }
+
+    /// OverDrive-class regression Courtney's QA flagged: title shows Borrow because the
+    /// catalog availability is stale (`unlimited`/cached as available), but CM has already
+    /// loaned the last copy. Borrow tap returns `unavailable`. The alert is the only
+    /// signal the patron gets that the catalog state was wrong.
+    func testBorrowResponseState_borrowFromUnlimited_unavailableResponse_returnsRaceLossError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
+            copiesHeld: 1,
+            copiesTotal: 1
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .holding)
+        guard case .bookRegistry(.holdCopyUnavailable) = result.error else {
+            XCTFail("Stale Borrow availability that resolves to unavailable must surface the alert, got \(String(describing: result.error))")
+            return
+        }
+    }
+
+    /// Borrow on a `limited` title that comes back `reserved` — CM placed the patron
+    /// on hold instead of granting the loan. Race loss variant.
+    func testBorrowResponseState_borrowFromLimited_reservedResponse_returnsRaceLossError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityLimited(
+            copiesAvailable: 1,
+            copiesTotal: 3,
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 21)
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReserved(
+            holdPosition: 2,
+            copiesTotal: 3,
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 7)
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .holding)
+        guard case .bookRegistry(.holdCopyUnavailable) = result.error else {
+            XCTFail("Expected race-loss error for limited→reserved, got \(String(describing: result.error))")
+            return
+        }
+    }
+
+    // MARK: Successful loan path — post availability is loan-class
+
+    func testBorrowResponseState_postLimited_returnsDownloadNeededWithNoError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReady(
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 3)
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityLimited(
+            copiesAvailable: 2,
+            copiesTotal: 3,
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 21)
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .downloadNeeded)
+        XCTAssertNil(result.error)
+    }
+
+    func testBorrowResponseState_postUnlimited_returnsDownloadNeededWithNoError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnlimited())
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .downloadNeeded)
+        XCTAssertNil(result.error)
+    }
+
+    func testBorrowResponseState_postReady_returnsDownloadNeededWithNoError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReady(
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 3)
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReady(
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 3)
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .downloadNeeded)
+        XCTAssertNil(result.error)
+    }
+
+    // MARK: Helpers
+
+    private static func makeBook(withAvailability availability: TPPOPDSAcquisitionAvailability) -> TPPBook {
+        let url = URL(string: "https://example.com/pp-4178-test")!
+        let acquisition = TPPOPDSAcquisition(
+            relation: .generic,
+            type: "application/epub+zip",
+            hrefURL: url,
+            indirectAcquisitions: [],
+            availability: availability
+        )
+        return TPPBook(
+            acquisitions: [acquisition],
+            authors: [TPPBookAuthor(authorName: "Author", relatedBooksURL: nil)],
+            categoryStrings: ["Fiction"],
+            distributor: "Test",
+            identifier: "pp-4178-\(UUID().uuidString)",
+            imageURL: url,
+            imageThumbnailURL: url,
+            published: Date(),
+            publisher: "Test",
+            subtitle: nil,
+            summary: "Test book",
+            title: "Test Title",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: url,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: ImageCache.shared
+        )
     }
 }
 
@@ -547,30 +721,45 @@ final class RightsManagementDetectionTests: XCTestCase {
         let mimeType = "application/vnd.adobe.adept+xml"
         let rights = detectRightsManagement(from: mimeType)
         XCTAssertEqual(rights, .adobe)
+        // Adobe must be distinct from LCP and none
+        XCTAssertNotEqual(rights, .lcp, "Adobe ADEPT must not be misidentified as LCP")
+        XCTAssertNotEqual(rights, .none, "Adobe ADEPT must not be misidentified as no-DRM")
     }
 
     func testMimeType_lcpLicense_detectsLCPRights() {
         let mimeType = "application/vnd.readium.lcp.license.v1.0+json"
         let rights = detectRightsManagement(from: mimeType)
         XCTAssertEqual(rights, .lcp)
+        // LCP must be distinct from Adobe and bearer token
+        XCTAssertNotEqual(rights, .adobe, "LCP must not be misidentified as Adobe ADEPT")
+        XCTAssertNotEqual(rights, .simplifiedBearerTokenJSON, "LCP must not be misidentified as bearer token")
     }
 
     func testMimeType_epubZip_detectsNoRights() {
         let mimeType = "application/epub+zip"
         let rights = detectRightsManagement(from: mimeType)
         XCTAssertEqual(rights, .none)
+        // No-DRM epub must be distinct from DRM types
+        XCTAssertNotEqual(rights, .adobe, "Open EPUB must not be flagged as Adobe DRM")
+        XCTAssertNotEqual(rights, .lcp, "Open EPUB must not be flagged as LCP DRM")
     }
 
     func testMimeType_bearerToken_detectsBearerTokenRights() {
         let mimeType = "application/vnd.librarysimplified.bearer-token+json"
         let rights = detectRightsManagement(from: mimeType)
         XCTAssertEqual(rights, .simplifiedBearerTokenJSON)
+        // Bearer token is a specific rights management type — must not fall through to unknown
+        XCTAssertNotEqual(rights, .unknown, "Bearer token MIME must not be classified as unknown")
     }
 
     func testMimeType_unknown_detectsUnknown() {
         let mimeType = "application/unknown-type"
         let rights = detectRightsManagement(from: mimeType)
         XCTAssertEqual(rights, .unknown)
+        // Unknown must not be any of the known DRM types
+        XCTAssertNotEqual(rights, .adobe)
+        XCTAssertNotEqual(rights, .lcp)
+        XCTAssertNotEqual(rights, .none)
     }
 
     // Helper that mimics MyBooksDownloadCenter's logic
@@ -736,6 +925,9 @@ final class RedirectHandlingIntegrationTests: XCTestCase {
 
         // Then should block the insecure redirect
         XCTAssertTrue(shouldBlock, "HTTPS to HTTP redirect should be blocked for security")
+        // Verify the underlying scheme comparison that drives the decision
+        XCTAssertEqual(originalURL.scheme, "https", "Original must be HTTPS")
+        XCTAssertEqual(redirectURL.scheme, "http", "Redirect must be HTTP for this scenario")
     }
 
     func testRedirect_httpsToHttps_allowed() {
@@ -748,6 +940,9 @@ final class RedirectHandlingIntegrationTests: XCTestCase {
 
         // Then should allow the secure redirect
         XCTAssertFalse(shouldBlock, "HTTPS to HTTPS redirect should be allowed")
+        // Both URLs must be HTTPS for this test scenario
+        XCTAssertEqual(originalURL.scheme, redirectURL.scheme, "Both URLs must share the same scheme")
+        XCTAssertEqual(redirectURL.scheme, "https", "Redirect must be HTTPS")
     }
 
     func testRedirect_maxAttempts_enforced() async {
@@ -943,6 +1138,10 @@ final class DiskBudgetTests: XCTestCase {
 
         // Then free space should be positive
         XCTAssertGreaterThan(freeSpace, 0, "System should have available disk space")
+        // The total size must also be positive and greater than or equal to free space
+        let totalSize = attributes?[.systemSize] as? Int64 ?? 0
+        XCTAssertGreaterThan(totalSize, 0, "Total disk size must be positive")
+        XCTAssertGreaterThanOrEqual(totalSize, freeSpace, "Total disk size must be at least as large as free space")
     }
 
     func testContentDirectory_createdOnAccess() {

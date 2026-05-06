@@ -28,7 +28,7 @@ import UIKit
     }
 
     private func prettyDate(forRFC3339String dateStr: String) -> String {
-        guard let date = (NSDate(rfc3339String: dateStr) as Date?) else {
+        guard let date = NSDate.date(withRFC3339String: dateStr) as Date? else {
             return ""
         }
 

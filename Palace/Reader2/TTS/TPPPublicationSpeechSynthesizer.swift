@@ -97,8 +97,8 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
         self.synthesizer.delegate = self
         self.voiceOverAnnouncementCancellable = NotificationCenter.default.publisher(for: UIAccessibility.announcementDidFinishNotification)
             .receive(on: RunLoop.main)
-            .sink { _ in
-                self.didFinishUtterance()
+            .sink { [weak self] _ in
+                self?.didFinishUtterance()
             }
 
     }

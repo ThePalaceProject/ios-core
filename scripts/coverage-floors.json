@@ -1,0 +1,14 @@
+{
+  "overall": 0.46,
+  "modules": {
+    "MyBooksDownloadCenter": 0.40,
+    "TPPBookRegistry": 0.50,
+    "TPPSignInBusinessLogic": 0.50,
+    "TPPNetworkExecutor": 0.30,
+    "TPPNetworkResponder": 0.30,
+    "AudiobookSessionManager": 0.44,
+    "TPPAnnotations": 0.40,
+    "AudiobookBookmarkBusinessLogic": 0.36
+  },
+  "_comment": "Phase 1: floors set to current baseline (no regression). Ratchet upward in Phase 2 toward master test plan targets."
+}

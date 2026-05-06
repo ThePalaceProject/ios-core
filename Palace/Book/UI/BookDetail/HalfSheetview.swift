@@ -12,6 +12,12 @@ protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
 
     /// Error alert to present via SwiftUI `.alert` on the half sheet.
     var downloadErrorAlert: AlertModel? { get set }
+
+    /// Confirmation alert (return, cancel-hold) that must render ON the
+    /// half-sheet so it is visible and interactive. Previously this was
+    /// only bound to the BookCell behind the sheet, making Cancel Hold
+    /// non-functional (SQ-008).
+    var showAlert: AlertModel? { get set }
 }
 
 extension HalfSheetProvider {
@@ -37,15 +43,26 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     @ObservedObject var viewModel: ViewModel
     var backgroundColor: Color
     @Binding var coverImage: UIImage?
+    @AccessibilityFocusState private var isBookTitleFocused: Bool
     @State private var originalState: TPPBookState = .unregistered
     @State private var didChangeState: Bool = false
+    let accountsManager: AccountsManager
+    let bookRegistry: TPPBookRegistryProvider
+
+    init(viewModel: ViewModel, backgroundColor: Color, coverImage: Binding<UIImage?>, accountsManager: AccountsManager = AccountsManager.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+        self.viewModel = viewModel
+        self.backgroundColor = backgroundColor
+        self._coverImage = coverImage
+        self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: viewModel.isFullSize ? 20 : 10) {
 
             headerView
 
-            Text(AccountsManager.shared.currentAccount?.name ?? "")
+            Text(accountsManager.currentAccount?.name ?? "")
                 .font(.headline)
 
             bookInfoView
@@ -68,7 +85,14 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                         DispatchQueue.main.async {
                             viewModel.handleAction(for: type)
                         }
-                    case .return, .remove:
+                    case .return:
+                        if viewModel.isReturning {
+                            didChangeState = true
+                            viewModel.handleAction(for: .return)
+                        } else {
+                            viewModel.bookState = .returning
+                        }
+                    case .remove:
                         didChangeState = true
                         viewModel.handleAction(for: type)
                     default:
@@ -88,7 +112,14 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                         DispatchQueue.main.async {
                             viewModel.handleAction(for: type)
                         }
-                    case .return, .remove:
+                    case .return:
+                        if viewModel.isReturning {
+                            didChangeState = true
+                            viewModel.handleAction(for: .return)
+                        } else {
+                            viewModel.bookState = .returning
+                        }
+                    case .remove:
                         didChangeState = true
                         viewModel.handleAction(for: type)
                     default:
@@ -98,47 +129,68 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                 })
             }
         }
-        .padding()
+        .padding([.horizontal, .top])
+        .padding(.bottom, 40) // SQ-008: ensure Cancel Hold button clears the home indicator safe area
         .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.bookState)
         .accessibleAnimation(.easeInOut(duration: 0.2), value: viewModel.buttonState)
         .accessibleAnimation(.easeInOut(duration: 0.15), value: viewModel.downloadProgress)
-        .presentationDetents([UIDevice.current.isIpad ? .height(540) : .medium])
+        .presentationDetents(viewModel.isManagingHold
+            ? [.medium, .large]  // SQ-008: Cancel Hold button needs more room than .medium provides
+            : [UIDevice.current.isIpad ? .height(540) : .medium])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(viewModel.isProcessing(for: .returning))
+        // Single .alert(item:) — stacking two .alert modifiers on the same
+        // view silently suppresses whichever was added first (SwiftUI bug /
+        // quirk), which is why the Wi-Fi-required downloadErrorAlert was
+        // never rendering on the half-sheet. Priority: downloadErrorAlert
+        // takes precedence over showAlert so a late-arriving download error
+        // can't be hidden behind a stale confirmation alert.
         .alert(
             item: Binding(
-                get: { viewModel.downloadErrorAlert },
-                set: { viewModel.downloadErrorAlert = $0 }
+                get: { viewModel.downloadErrorAlert ?? viewModel.showAlert },
+                set: { _ in
+                    viewModel.downloadErrorAlert = nil
+                    viewModel.showAlert = nil
+                }
             )
-        ) { errorAlert in
-            if errorAlert.secondaryButtonTitle != nil {
+        ) { alertModel in
+            if let secondary = alertModel.secondaryButtonTitle {
                 Alert(
-                    title: Text(errorAlert.title),
-                    message: Text(errorAlert.message),
-                    primaryButton: .default(
-                        Text(errorAlert.buttonTitle ?? Strings.MyDownloadCenter.retry),
-                        action: errorAlert.primaryAction
-                    ),
+                    title: Text(alertModel.title),
+                    message: Text(alertModel.message),
+                    primaryButton: alertModel.isPrimaryDestructive
+                        ? .destructive(
+                            Text(alertModel.buttonTitle ?? Strings.Generic.ok),
+                            action: alertModel.primaryAction
+                        )
+                        : .default(
+                            Text(alertModel.buttonTitle ?? Strings.MyDownloadCenter.retry),
+                            action: alertModel.primaryAction
+                        ),
                     secondaryButton: .cancel(
-                        Text(errorAlert.secondaryButtonTitle ?? Strings.Generic.cancel),
-                        action: errorAlert.secondaryAction
+                        Text(secondary),
+                        action: alertModel.secondaryAction
                     )
                 )
             } else {
-                // Non-retryable or max retries exceeded — show OK only
                 Alert(
-                    title: Text(errorAlert.title),
-                    message: Text(errorAlert.message),
-                    dismissButton: .default(Text(errorAlert.buttonTitle ?? Strings.Generic.ok))
+                    title: Text(alertModel.title),
+                    message: Text(alertModel.message),
+                    dismissButton: .default(Text(alertModel.buttonTitle ?? Strings.Generic.ok))
                 )
             }
         }
+        .accessibilityIdentifier(AccessibilityID.BookDetail.halfSheet)
         .onAppear {
-            originalState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+            originalState = bookRegistry.state(for: viewModel.book.identifier)
+            NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                isBookTitleFocused = true
+            }
         }
         .onDisappear {
             // Always sync to latest registry state to avoid reverting the UI after a successful download
-            viewModel.bookState = TPPBookRegistry.shared.state(for: viewModel.book.identifier)
+            viewModel.bookState = bookRegistry.state(for: viewModel.book.identifier)
             if let cellModel = viewModel as? BookCellModel {
                 cellModel.isManagingHold = false
             }
@@ -196,7 +248,8 @@ private extension HalfSheetView {
                         .scaledToFit()
                         .frame(width: 60, height: 90)
                         .cornerRadius(4)
-                        .accessibilityHidden(true) // Book title provides context
+                        .adaptiveShadowLight(radius: 2)
+                        .accessibilityHidden(true)
                 } else {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.gray.opacity(0.25))
@@ -208,6 +261,7 @@ private extension HalfSheetView {
                     Text(viewModel.book.title)
                         .font(.body)
                         .foregroundColor(.primary)
+                        .accessibilityFocused($isBookTitleFocused)
 
                     if let authors = viewModel.book.authors, !authors.isEmpty {
                         Text(authors)

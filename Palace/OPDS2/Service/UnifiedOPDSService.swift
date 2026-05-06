@@ -91,6 +91,7 @@ actor UnifiedOPDSService {
     private let opds2Cache: OPDS2FeedCache
     private let opds1Cache: OPDS1FeedCache
     private let urlSession: URLSession
+    private let opds1FeedService: OPDSFeedService
 
     // MARK: - State
 
@@ -105,11 +106,13 @@ actor UnifiedOPDSService {
     public init(
         opds2Cache: OPDS2FeedCache = .shared,
         opds1Cache: OPDS1FeedCache = .shared,
-        urlSession: URLSession = .shared
+        urlSession: URLSession = .shared,
+        opds1FeedService: OPDSFeedService = .shared
     ) {
         self.opds2Cache = opds2Cache
         self.opds1Cache = opds1Cache
         self.urlSession = urlSession
+        self.opds1FeedService = opds1FeedService
     }
 
     // MARK: - Primary API
@@ -295,7 +298,7 @@ actor UnifiedOPDSService {
         useToken: Bool
     ) async throws -> TPPOPDSFeed {
         // Use existing OPDSFeedService for OPDS1 compatibility
-        return try await OPDSFeedService.shared.fetchFeed(
+        return try await opds1FeedService.fetchFeed(
             from: url,
             resetCache: true,
             useToken: useToken
@@ -307,7 +310,7 @@ actor UnifiedOPDSService {
     private func addAuthHeaders(to request: inout URLRequest, useToken: Bool) {
         guard useToken else { return }
 
-        let userAccount = TPPUserAccount.sharedAccount()
+        let userAccount = AccountsManager.shared.currentUserAccount
 
         if let authToken = userAccount.authToken {
             request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")

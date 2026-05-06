@@ -18,7 +18,12 @@ final class SEMigrationsTests: XCTestCase {
     func testRunMigrations_doesNotCrash() {
         // Running migrations on a test environment should not crash
         // even if no migrations need to run
+        let versionBefore = TPPSettings.shared.appVersion
         TPPMigrationManager.runMigrations()
+        // Settings must remain accessible and appVersion must be consistent
+        XCTAssertNotNil(TPPSettings.shared, "Settings should still be accessible after migrations")
+        XCTAssertEqual(TPPSettings.shared.appVersion, versionBefore,
+                       "appVersion must be unchanged after migration run in test environment")
     }
 
     func testRunMigrations_withCurrentVersion_doesNotMigrate() {
@@ -31,14 +36,23 @@ final class SEMigrationsTests: XCTestCase {
 
         // Restore
         TPPSettings.shared.appVersion = originalVersion
+
+        // Verify version was restored correctly
+        XCTAssertEqual(TPPSettings.shared.appVersion, originalVersion,
+                       "App version should be restored to original value after test")
+        XCTAssertNotNil(TPPSettings.shared, "Settings should still be accessible after migration skip")
     }
 
     func testRunMigrations_multipleCallsAreSafe() {
         // Running migrations multiple times should be idempotent
+        let versionBefore = TPPSettings.shared.appVersion
         TPPMigrationManager.runMigrations()
         TPPMigrationManager.runMigrations()
         TPPMigrationManager.runMigrations()
-        // Should not crash
+        // Should not crash and settings should remain consistent
+        XCTAssertEqual(TPPSettings.shared.appVersion, versionBefore,
+                       "App version should be unchanged after idempotent migration calls")
+        XCTAssertNotNil(TPPSettings.shared, "Settings should still be accessible")
     }
 
     // MARK: - Version Parsing Edge Cases
@@ -52,6 +66,11 @@ final class SEMigrationsTests: XCTestCase {
 
         // Restore
         TPPSettings.shared.appVersion = originalVersion
+
+        // Verify settings remain accessible
+        XCTAssertEqual(TPPSettings.shared.appVersion, originalVersion,
+                       "App version should be restored after nil-version migration")
+        XCTAssertNotNil(TPPSettings.shared, "Settings object should survive nil-version migration")
     }
 
     func testRunMigrations_emptyVersion_handlesGracefully() {
@@ -63,6 +82,11 @@ final class SEMigrationsTests: XCTestCase {
 
         // Restore
         TPPSettings.shared.appVersion = originalVersion
+
+        // Verify settings remain accessible after migration with empty version
+        XCTAssertEqual(TPPSettings.shared.appVersion, originalVersion,
+                       "App version should be restored after empty-version migration")
+        XCTAssertNotNil(TPPSettings.shared, "Settings object should survive empty-version migration")
     }
 
     // MARK: - Migration Artifacts

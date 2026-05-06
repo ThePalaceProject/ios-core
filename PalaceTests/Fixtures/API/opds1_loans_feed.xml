@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opds="http://opds-spec.org/2010/catalog"
+      xmlns:schema="http://schema.org/"
+      xmlns:dcterms="http://purl.org/dc/terms/"
+      xmlns:bibframe="http://bibframe.org/vocab/"
+      xmlns:simplified="http://librarysimplified.org/terms/"
+      xmlns:drm="http://librarysimplified.org/terms/drm">
+
+  <id>https://gorgon.staging.palaceproject.io/testlib/loans</id>
+  <title>Active Loans</title>
+  <updated>2024-06-15T12:00:00Z</updated>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/loans" rel="self" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+
+  <!-- Entry 1: EPUB with Adobe DRM -->
+  <entry schema:additionalType="http://schema.org/Book">
+    <id>urn:librarysimplified.org/terms/id/TestLib%20ID/epub-adobe-001</id>
+    <title>The Midnight Garden</title>
+    <author>
+      <name>Eleanor Ashford</name>
+      <link href="https://gorgon.staging.palaceproject.io/testlib/works/contributor/Eleanor%20Ashford" type="application/atom+xml;profile=opds-catalog;kind=acquisition" rel="contributor" title="Eleanor Ashford"/>
+    </author>
+    <summary type="html">A captivating tale of a botanist who discovers a garden that only blooms at midnight, revealing secrets about her family&#8217;s past and a centuries-old mystery hidden beneath the roots.</summary>
+    <updated>2024-06-10T09:30:00Z</updated>
+    <published>2023-03-15T00:00:00Z</published>
+    <dcterms:language>en</dcterms:language>
+    <dcterms:publisher>Thornfield Press</dcterms:publisher>
+    <category term="Adult" scheme="http://schema.org/audience" label="Adult"/>
+    <category term="http://librarysimplified.org/terms/fiction/Fiction" scheme="http://librarysimplified.org/terms/fiction/" label="Fiction"/>
+    <category term="http://librarysimplified.org/terms/genres/Simplified/Mystery" scheme="http://librarysimplified.org/terms/genres/Simplified/" label="Mystery"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/midnight-garden-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/midnight-garden-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/epub-adobe-001" type="application/atom+xml;type=entry;profile=opds-catalog" rel="alternate"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/epub-adobe-001/report" rel="issues"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/epub-adobe-001/fulfill" rel="http://opds-spec.org/acquisition" type="application/atom+xml;type=entry;profile=opds-catalog">
+      <opds:indirectAcquisition type="application/vnd.adobe.adept+xml">
+        <opds:indirectAcquisition type="application/epub+zip"/>
+      </opds:indirectAcquisition>
+      <opds:availability status="available" since="2024-06-01T10:00:00Z" until="2024-07-01T10:00:00Z"/>
+      <opds:copies available="2" total="5"/>
+    </link>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/epub-adobe-001/revoke" rel="http://librarysimplified.org/terms/rel/revoke" type="application/atom+xml;type=entry;profile=opds-catalog"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/annotations/TestLib%20ID/epub-adobe-001/" type="application/ld+json; profile=&quot;http://www.w3.org/ns/anno.jsonld&quot;" rel="http://www.w3.org/ns/oa#annotationService"/>
+    <bibframe:distribution bibframe:ProviderName="Bibliotheca"/>
+    <simplified:pwid>a1b2c3d4-5678-9abc-def0-112233445566</simplified:pwid>
+  </entry>
+
+  <!-- Entry 2: Open-Access PDF -->
+  <entry schema:additionalType="http://schema.org/Book">
+    <id>urn:librarysimplified.org/terms/id/TestLib%20ID/pdf-open-002</id>
+    <title>Introduction to Urban Beekeeping</title>
+    <author>
+      <name>Marcus Chen</name>
+    </author>
+    <summary type="html">A comprehensive guide to maintaining honeybee colonies in urban environments, covering hive placement, local regulations, seasonal management, and honey harvesting techniques for city dwellers.</summary>
+    <updated>2024-06-12T14:00:00Z</updated>
+    <published>2022-09-01T00:00:00Z</published>
+    <dcterms:language>en</dcterms:language>
+    <dcterms:publisher>Open Meadow Publishing</dcterms:publisher>
+    <category term="Adult" scheme="http://schema.org/audience" label="Adult"/>
+    <category term="http://librarysimplified.org/terms/fiction/Nonfiction" scheme="http://librarysimplified.org/terms/fiction/" label="Nonfiction"/>
+    <category term="http://librarysimplified.org/terms/genres/Simplified/Gardening" scheme="http://librarysimplified.org/terms/genres/Simplified/" label="Gardening"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/urban-beekeeping-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/urban-beekeeping-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/pdf-open-002" type="application/atom+xml;type=entry;profile=opds-catalog" rel="alternate"/>
+    <link href="https://gorgon.staging.palaceproject.io/open-access/urban-beekeeping.pdf" type="application/pdf" rel="http://opds-spec.org/acquisition/open-access">
+      <opds:availability status="available"/>
+    </link>
+    <bibframe:distribution bibframe:ProviderName="Standard Ebooks"/>
+  </entry>
+
+  <!-- Entry 3: Audiobook -->
+  <entry schema:additionalType="http://schema.org/Audiobook">
+    <id>urn:librarysimplified.org/terms/id/TestLib%20ID/audio-003</id>
+    <title>Echoes of the Forgotten</title>
+    <author>
+      <name>Priya Ramanathan</name>
+    </author>
+    <summary type="html">An immersive audiobook following three generations of a family as they uncover the truth about a wartime secret that shaped their destinies. Narrated by award-winning voice artist David Okonkwo.</summary>
+    <updated>2024-06-14T08:45:00Z</updated>
+    <published>2024-01-10T00:00:00Z</published>
+    <dcterms:language>en</dcterms:language>
+    <dcterms:publisher>Silverbell Audio</dcterms:publisher>
+    <category term="Adult" scheme="http://schema.org/audience" label="Adult"/>
+    <category term="http://librarysimplified.org/terms/fiction/Fiction" scheme="http://librarysimplified.org/terms/fiction/" label="Fiction"/>
+    <category term="http://librarysimplified.org/terms/genres/Simplified/Historical%20Fiction" scheme="http://librarysimplified.org/terms/genres/Simplified/" label="Historical Fiction"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/echoes-forgotten-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+    <link href="https://gorgon.staging.palaceproject.io/images/echoes-forgotten-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/audio-003" type="application/atom+xml;type=entry;profile=opds-catalog" rel="alternate"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/audio-003/fulfill" rel="http://opds-spec.org/acquisition" type="application/atom+xml;type=entry;profile=opds-catalog">
+      <opds:indirectAcquisition type="application/audiobook+json"/>
+      <opds:availability status="available" since="2024-06-10T00:00:00Z" until="2024-07-01T00:00:00Z"/>
+      <opds:copies available="1" total="3"/>
+    </link>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/audio-003/revoke" rel="http://librarysimplified.org/terms/rel/revoke" type="application/atom+xml;type=entry;profile=opds-catalog"/>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/audio-003/time-tracking" rel="http://palaceproject.io/terms/timeTracking" type="application/json"/>
+    <bibframe:distribution bibframe:ProviderName="Bibliotheca"/>
+  </entry>
+
+</feed>

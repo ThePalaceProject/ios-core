@@ -23,5 +23,16 @@ class TPPBookmarkSpecTests: XCTestCase {
             TPPBookmarkSpec.Motivation.bookmark.rawValue
                 .contains(TPPBookmarkSpec.Motivation.bookmarkingKeyword)
         )
+        // The bookmark raw value should be a well-formed URI
+        XCTAssertFalse(TPPBookmarkSpec.Motivation.bookmark.rawValue.isEmpty,
+                       "Bookmark motivation raw value should not be empty")
+        // The bookmarking keyword itself should not be empty
+        XCTAssertFalse(TPPBookmarkSpec.Motivation.bookmarkingKeyword.isEmpty,
+                       "Bookmarking keyword should not be empty")
+        // The keyword should be a substring of the full motivation URI
+        let fullMotivation = TPPBookmarkSpec.Motivation.bookmark.rawValue
+        let keyword = TPPBookmarkSpec.Motivation.bookmarkingKeyword
+        let range = fullMotivation.range(of: keyword)
+        XCTAssertNotNil(range, "Bookmarking keyword should be found within the motivation URI")
     }
 }

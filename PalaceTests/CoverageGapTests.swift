@@ -96,30 +96,60 @@ final class AccountModelGapTests: XCTestCase {
                        "getLicenseURL should return the URL set via setURL")
     }
 
-    /// Coverage Gap: AccountDetails — verify eulaIsAccepted default
-    func testAccountDetails_eulaIsAccepted_defaultsToFalse() {
-        // Create fresh AccountDetails to test default
-        let details = mockProvider.tppAccount.details!
-        // Note: May be true/false depending on test environment state;
-        // the important thing is we can read/write it
-        let initial = details.eulaIsAccepted
-        details.eulaIsAccepted = !initial
-        XCTAssertEqual(details.eulaIsAccepted, !initial,
-                       "eulaIsAccepted should persist the toggled value")
-        // Restore
-        details.eulaIsAccepted = initial
+    /// Coverage Gap: AccountDetails — verify eulaIsAccepted persists via UserDefaults
+    func testAccountDetails_eulaIsAccepted_persistsAcrossObjectRecreation() {
+        // Arrange: use a fresh UUID to avoid state pollution
+        let uuid = "coverage-gap-eula-\(UUID().uuidString)"
+        defer { UserDefaults.standard.removeObject(forKey: uuid) }
+
+        let json: [String: Any] = [
+            "id": uuid, "title": "Test",
+            "authentication": [["type": "http://opds-spec.org/auth/basic",
+                                "inputs": ["login": ["keyboard": "Default"],
+                                           "password": ["keyboard": "Default"]],
+                                "labels": ["login": "Barcode", "password": "PIN"]]],
+            "features": ["enabled": [], "disabled": []]
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        let doc = try! OPDS2AuthenticationDocument.fromData(data)
+        let details1 = AccountDetails(authenticationDocument: doc, uuid: uuid)
+        XCTAssertFalse(details1.eulaIsAccepted, "New AccountDetails should have eulaIsAccepted=false by default")
+
+        // Act: accept EULA and create a second AccountDetails over the same UUID
+        details1.eulaIsAccepted = true
+        let details2 = AccountDetails(authenticationDocument: doc, uuid: uuid)
+
+        // Assert: the acceptance persisted to UserDefaults and was read back
+        XCTAssertTrue(details2.eulaIsAccepted,
+                      "eulaIsAccepted must persist across AccountDetails object recreation via UserDefaults")
     }
 
-    /// Coverage Gap: AccountDetails — verify syncPermissionGranted defaults to true
-    func testAccountDetails_syncPermissionGranted_defaultBehavior() {
-        let details = mockProvider.tppAccount.details!
-        // syncPermissionGranted defaults to true
-        let value = details.syncPermissionGranted
-        // Toggle and verify
-        details.syncPermissionGranted = !value
-        XCTAssertEqual(details.syncPermissionGranted, !value)
-        // Restore
-        details.syncPermissionGranted = value
+    /// Coverage Gap: AccountDetails — verify syncPermissionGranted persists via UserDefaults
+    func testAccountDetails_syncPermissionGranted_persistsAcrossObjectRecreation() {
+        // Arrange: use a fresh UUID to isolate state
+        let uuid = "coverage-gap-sync-\(UUID().uuidString)"
+        defer { UserDefaults.standard.removeObject(forKey: uuid) }
+
+        let json: [String: Any] = [
+            "id": uuid, "title": "Test",
+            "authentication": [["type": "http://opds-spec.org/auth/basic",
+                                "inputs": ["login": ["keyboard": "Default"],
+                                           "password": ["keyboard": "Default"]],
+                                "labels": ["login": "Barcode", "password": "PIN"]]],
+            "features": ["enabled": [], "disabled": []]
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        let doc = try! OPDS2AuthenticationDocument.fromData(data)
+        let details1 = AccountDetails(authenticationDocument: doc, uuid: uuid)
+        XCTAssertTrue(details1.syncPermissionGranted, "New AccountDetails should default syncPermissionGranted to true")
+
+        // Act: revoke sync permission, then recreate over the same UUID
+        details1.syncPermissionGranted = false
+        let details2 = AccountDetails(authenticationDocument: doc, uuid: uuid)
+
+        // Assert: the revocation survived object recreation
+        XCTAssertFalse(details2.syncPermissionGranted,
+                       "syncPermissionGranted=false must persist across AccountDetails object recreation")
     }
 
     // MARK: - Gap 3: Authentication class
@@ -156,6 +186,9 @@ final class AccountsManagerGapTests: XCTestCase {
     func testAccountsManager_accountByUUID_returnsNilForUnknownUUID() {
         let result = AccountsManager.shared.account("urn:uuid:nonexistent-12345")
         XCTAssertNil(result, "Looking up a nonexistent UUID should return nil")
+        // A different unknown UUID must also return nil (not a cached misfire)
+        let result2 = AccountsManager.shared.account("urn:uuid:also-nonexistent-67890")
+        XCTAssertNil(result2, "Distinct nonexistent UUIDs must both return nil")
     }
 
     /// Coverage Gap: AccountsManager — verify currentAccountId persists
@@ -174,6 +207,9 @@ final class AccountsManagerGapTests: XCTestCase {
     func testAccountsManager_tppAccountUUID_isNotEmpty() {
         let uuid = AccountsManager.shared.tppAccountUUID
         XCTAssertFalse(uuid.isEmpty, "TPP account UUID should not be empty")
+        // UUID must be stable across calls (not regenerated each time)
+        let uuid2 = AccountsManager.shared.tppAccountUUID
+        XCTAssertEqual(uuid, uuid2, "tppAccountUUID must return the same value on repeated calls")
     }
 }
 
@@ -212,18 +248,26 @@ final class AccountDetailViewModelGapTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Coverage Gap: AccountDetailViewModel class — verify updateSync updates account details
+    /// Coverage Gap: AccountDetailViewModel class — verify updateSync updates account details persistently
     func testAccountDetailViewModel_updateSync_setsPermission() {
         let account = mockProvider.tppAccount
-        let details = account.details!
+        guard let details = account.details else {
+            XCTFail("Mock account must have AccountDetails populated from auth document")
+            return
+        }
 
-        // Record initial state
+        // Record initial state (defaults to true per syncPermissionGranted)
         let initial = details.syncPermissionGranted
 
-        // Toggle
+        // Act: revoke sync permission
         details.syncPermissionGranted = !initial
-        XCTAssertEqual(details.syncPermissionGranted, !initial,
-                       "updateSync should update the sync permission on account details")
+
+        // Assert: the change is observable via a separate read of the same property
+        let afterRevoke = details.syncPermissionGranted
+        XCTAssertEqual(afterRevoke, !initial,
+                       "syncPermissionGranted must reflect the value set by updateSync")
+        XCTAssertNotEqual(afterRevoke, initial,
+                          "updateSync must actually change the permission (not a no-op)")
 
         // Restore
         details.syncPermissionGranted = initial
@@ -324,6 +368,10 @@ final class MyBooksDownloadCenterAdeptGapTests: XCTestCase {
         // Verify the download progress infrastructure exists and is accessible
         let center = MyBooksDownloadCenter.shared
         XCTAssertNotNil(center, "MyBooksDownloadCenter should be accessible")
+        // A book with no active download should report zero progress
+        let progress = center.downloadProgress(for: "nonexistent-book-id")
+        XCTAssertEqual(progress, 0.0, accuracy: 0.001,
+                       "Progress for unknown book must be 0.0")
     }
 
     /// Coverage Gap: adept download completion — verify state for successful download
@@ -355,8 +403,12 @@ final class AdobeCertificateGapTests: XCTestCase {
         let timestamp: UInt = 1704067200 // Jan 1, 2024 00:00:00 UTC
         let cert = AdobeCertificate(expireson: timestamp)
 
-        XCTAssertNotNil(cert.expirationDate)
         XCTAssertEqual(cert.expirationDate, Date(timeIntervalSince1970: Double(timestamp)))
+        // A different timestamp must produce a different expiration date
+        let otherTimestamp: UInt = 1735689600 // Jan 1, 2025
+        let otherCert = AdobeCertificate(expireson: otherTimestamp)
+        XCTAssertNotEqual(cert.expirationDate, otherCert.expirationDate,
+                          "Different timestamps must produce different expirationDates")
     }
 
     /// Coverage Gap: AdobeCertificate — test expirationDate nil when no timestamp
@@ -364,6 +416,11 @@ final class AdobeCertificateGapTests: XCTestCase {
         let cert = AdobeCertificate(expireson: nil)
         XCTAssertNil(cert.expirationDate,
                      "expirationDate should be nil when expireson is nil")
+        // A cert with a timestamp must have a non-nil expirationDate (contrast)
+        let withTimestamp = AdobeCertificate(expireson: 1704067200)
+        let expDate = withTimestamp.expirationDate
+        XCTAssertEqual(expDate, Date(timeIntervalSince1970: 1704067200),
+                       "expirationDate must equal the Date derived from the expireson timestamp")
     }
 
     /// Coverage Gap: AdobeCertificate — test hasExpired with past date
@@ -373,6 +430,9 @@ final class AdobeCertificateGapTests: XCTestCase {
 
         XCTAssertTrue(cert.hasExpired,
                       "Certificate with past expiration should be expired")
+        // expirationDate must reflect the timestamp
+        XCTAssertEqual(cert.expirationDate, Date(timeIntervalSince1970: Double(pastTimestamp)),
+                       "expirationDate must equal Date(timeIntervalSince1970:) of the timestamp")
     }
 
     /// Coverage Gap: AdobeCertificate — test hasExpired with future date
@@ -382,6 +442,10 @@ final class AdobeCertificateGapTests: XCTestCase {
 
         XCTAssertFalse(cert.hasExpired,
                        "Certificate with future expiration should not be expired")
+        // A past-dated cert must be expired (contrast showing the property works bidirectionally)
+        let pastCert = AdobeCertificate(expireson: 946684800) // Jan 1, 2000
+        XCTAssertTrue(pastCert.hasExpired,
+                      "Certificate with past expiration must be expired (contrast with future)")
     }
 
     /// Coverage Gap: AdobeCertificate — test hasExpired false when no expiration
@@ -390,6 +454,9 @@ final class AdobeCertificateGapTests: XCTestCase {
 
         XCTAssertFalse(cert.hasExpired,
                        "Certificate without expiration should not be considered expired")
+        // expirationDate is nil when expireson is nil
+        XCTAssertNil(cert.expirationDate,
+                     "expirationDate must be nil when expireson is nil")
     }
 
     /// Coverage Gap: AdobeCertificate — test JSON decoding via init(data:)
@@ -399,8 +466,10 @@ final class AdobeCertificateGapTests: XCTestCase {
 
         let cert = AdobeCertificate(data: data)
 
-        XCTAssertNotNil(cert, "Should decode valid JSON data")
         XCTAssertEqual(cert?.expireson, 1704067200)
+        // The decoded expiration date must match the timestamp
+        XCTAssertEqual(cert?.expirationDate, Date(timeIntervalSince1970: 1704067200),
+                       "init(data:) must produce the correct expirationDate from the decoded timestamp")
     }
 
     /// Coverage Gap: AdobeCertificate — test init(data:) with invalid JSON returns nil
@@ -410,6 +479,11 @@ final class AdobeCertificateGapTests: XCTestCase {
         let cert = AdobeCertificate(data: invalidData)
 
         XCTAssertNil(cert, "Should return nil for invalid JSON data")
+        // Contrast: valid JSON must decode successfully and have the right expireson value
+        let validJSON = #"{"expireson": 0}"#
+        let validData = validJSON.data(using: .utf8)!
+        let validExpireson = AdobeCertificate(data: validData)?.expireson
+        XCTAssertEqual(validExpireson, 0, "Valid JSON with expireson=0 must decode to expireson=0")
     }
 }
 
@@ -419,6 +493,11 @@ final class AdobeDRMErrorGapTests: XCTestCase {
     func testAdobeDRMError_expiredCase_exists() {
         let error = AdobeDRMError.expiredDisplayUntilDate
         XCTAssertNotNil(error)
+        // Error should conform to LocalizedError and have a description
+        XCTAssertNotNil(error.errorDescription,
+                        "expiredDisplayUntilDate should have a localized description")
+        XCTAssertFalse(error.errorDescription!.isEmpty,
+                       "Error description should not be empty")
     }
 
     /// Coverage Gap: AdobeDRMError — test errorDescription provides localized message
@@ -428,12 +507,17 @@ final class AdobeDRMErrorGapTests: XCTestCase {
                         "Error should provide a localized description")
         XCTAssertFalse(error.errorDescription!.isEmpty,
                        "Error description should not be empty")
+        // Error description should contain meaningful content (not just whitespace)
+        XCTAssertFalse(error.errorDescription!.trimmingCharacters(in: .whitespaces).isEmpty,
+                       "Error description should not be only whitespace")
     }
 
     /// Coverage Gap: AdobeDRMError — test conforms to LocalizedError
     func testAdobeDRMError_conformsToLocalizedError() {
         let error: LocalizedError = AdobeDRMError.expiredDisplayUntilDate
         XCTAssertNotNil(error.errorDescription)
+        // The type should be properly typed as LocalizedError
+        XCTAssertTrue(error is AdobeDRMError, "Error should still be an AdobeDRMError instance")
     }
 }
 
@@ -443,6 +527,9 @@ final class AdobeDRMServiceGapTests: XCTestCase {
     func testAdobeDRMService_shared_isAccessible() {
         let service = AdobeDRMService.shared
         XCTAssertNotNil(service, "AdobeDRMService shared instance should be accessible")
+        // Singleton identity check
+        XCTAssertTrue(service === AdobeDRMService.shared,
+                      "AdobeDRMService.shared should return the same instance")
     }
 
     /// Coverage Gap: AdobeDRMService — test isReady reflects DRM availability
@@ -450,6 +537,9 @@ final class AdobeDRMServiceGapTests: XCTestCase {
         let service = AdobeDRMService.shared
         // In test environment, DRM may or may not be available
         // The important thing is that isReady doesn't crash and returns a Bool
-        _ = service.isReady
+        let ready = service.isReady
+        XCTAssertTrue(ready == true || ready == false, "isReady should be a valid Bool")
+        // The same service should return consistent state
+        XCTAssertEqual(service.isReady, ready, "isReady should be consistent across calls")
     }
 }

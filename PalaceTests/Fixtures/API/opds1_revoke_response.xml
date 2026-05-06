@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom"
+       xmlns:opds="http://opds-spec.org/2010/catalog"
+       xmlns:schema="http://schema.org/"
+       xmlns:dcterms="http://purl.org/dc/terms/"
+       xmlns:bibframe="http://bibframe.org/vocab/"
+       xmlns:simplified="http://librarysimplified.org/terms/"
+       schema:additionalType="http://schema.org/Book">
+
+  <id>urn:librarysimplified.org/terms/id/TestLib%20ID/epub-adobe-001</id>
+  <title>The Midnight Garden</title>
+  <author>
+    <name>Eleanor Ashford</name>
+  </author>
+  <updated>2024-06-15T14:00:00Z</updated>
+  <published>2023-03-15T00:00:00Z</published>
+  <dcterms:language>en</dcterms:language>
+  <dcterms:publisher>Thornfield Press</dcterms:publisher>
+  <category term="Adult" scheme="http://schema.org/audience" label="Adult"/>
+  <category term="http://librarysimplified.org/terms/fiction/Fiction" scheme="http://librarysimplified.org/terms/fiction/" label="Fiction"/>
+  <link href="https://gorgon.staging.palaceproject.io/images/midnight-garden-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+  <link href="https://gorgon.staging.palaceproject.io/images/midnight-garden-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/epub-adobe-001" type="application/atom+xml;type=entry;profile=opds-catalog" rel="alternate"/>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/epub-adobe-001/borrow" rel="http://opds-spec.org/acquisition/borrow" type="application/atom+xml;type=entry;profile=opds-catalog">
+    <opds:indirectAcquisition type="application/vnd.adobe.adept+xml">
+      <opds:indirectAcquisition type="application/epub+zip"/>
+    </opds:indirectAcquisition>
+    <opds:availability status="available"/>
+    <opds:copies available="3" total="5"/>
+  </link>
+  <bibframe:distribution bibframe:ProviderName="Bibliotheca"/>
+</entry>

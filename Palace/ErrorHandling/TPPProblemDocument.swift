@@ -31,6 +31,10 @@ import Foundation
     static let TypePatronHoldLimit =
         "http://librarysimplified.org/terms/problem/hold-limit-reached"
 
+    /// Feedbooks/LCP: DRM license term limit reached; the loan is already expired server-side.
+    /// Appears in the `detail` field of a 500 problem document returned by the revoke endpoint.
+    static let DetailLoanTermLimitReached = "loan_term_limit_reached"
+
     private static let noStatus: Int = -1
 
     private static let typeKey = "type"
@@ -104,7 +108,45 @@ import Foundation
         let jsonDecoder = JSONDecoder()
         jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
 
-        return try jsonDecoder.decode(TPPProblemDocument.self, from: data)
+        do {
+            return try jsonDecoder.decode(TPPProblemDocument.self, from: data)
+        } catch {
+            // The server may return duplicated JSON (two concatenated objects).
+            // Extract and parse just the first well-formed JSON object.
+            if let firstObjectData = extractFirstJSONObject(from: data),
+               firstObjectData.count < data.count {
+                return try jsonDecoder.decode(TPPProblemDocument.self, from: firstObjectData)
+            }
+            throw error
+        }
+    }
+
+    /// Extracts the first top-level JSON object (`{...}`) from data that may
+    /// contain concatenated objects (a known server bug where the response body
+    /// is duplicated).
+    private static func extractFirstJSONObject(from data: Data) -> Data? {
+        guard let string = String(data: data, encoding: .utf8) else { return nil }
+
+        var depth = 0
+        var inString = false
+        var escaped = false
+
+        for (offset, char) in string.unicodeScalars.enumerated() {
+            if escaped { escaped = false; continue }
+            if char == "\\" && inString { escaped = true; continue }
+            if char == "\"" { inString = !inString; continue }
+            if inString { continue }
+
+            if char == "{" { depth += 1 }
+            if char == "}" {
+                depth -= 1
+                if depth == 0 {
+                    let endIndex = string.index(string.startIndex, offsetBy: offset + 1)
+                    return String(string[..<endIndex]).data(using: .utf8)
+                }
+            }
+        }
+        return nil
     }
 
     /// When the server returns application/api-problem+json but strict RFC 7807 decode fails,
@@ -113,7 +155,8 @@ import Foundation
         if let doc = try? fromData(data) {
             return doc
         }
-        guard let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+        let parseableData = extractFirstJSONObject(from: data) ?? data
+        guard let dict = (try? JSONSerialization.jsonObject(with: parseableData)) as? [String: Any] else {
             return nil
         }
         let detail = (dict["detail"] as? String)
@@ -166,7 +209,7 @@ import Foundation
     }
 
     @objc var stringValue: String {
-        return "\(title == nil ? "" : title! + ": ")\(detail ?? "")"
+        return "\(title.map { $0 + ": " } ?? "")\(detail ?? "")"
     }
 
     // MARK: - Auth Error Categories

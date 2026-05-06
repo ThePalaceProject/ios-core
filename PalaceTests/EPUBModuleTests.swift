@@ -26,7 +26,11 @@ final class EPUBModuleTests: XCTestCase {
         // Verify EPUBModule conforms to the expected protocol
         // The actual protocol conformance is checked at compile time
         // This test documents the expected behavior
-        XCTAssertTrue(true, "EPUBModule should conform to ReaderFormatModule")
+        let isClass = EPUBModule.self is AnyClass
+        XCTAssertTrue(isClass, "EPUBModule should be a class type")
+        // EPUBModule must be a class (not struct) so it can hold references
+        let metatype: Any.Type = EPUBModule.self
+        XCTAssertNotNil(metatype, "EPUBModule type should be accessible")
     }
 
     // MARK: - ReaderError Tests
@@ -35,10 +39,17 @@ final class EPUBModuleTests: XCTestCase {
         // Verify the error case used by EPUBModule exists
         let error = ReaderError.epubNotValid
         XCTAssertNotNil(error)
+        // Error description should be non-empty
+        let description = error.localizedDescription
+        XCTAssertFalse(description.isEmpty, "epubNotValid should have a non-empty localized description")
     }
 
     func testReaderError_epubNotValid_isError() {
         let error: Error = ReaderError.epubNotValid
         XCTAssertNotNil(error.localizedDescription)
+        // Two instances of the same case should behave identically
+        let error2: Error = ReaderError.epubNotValid
+        XCTAssertEqual(error.localizedDescription, error2.localizedDescription,
+                       "Same error case should produce consistent descriptions")
     }
 }

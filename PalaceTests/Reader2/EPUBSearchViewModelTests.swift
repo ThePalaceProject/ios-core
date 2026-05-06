@@ -116,7 +116,7 @@ final class MockEPUBSearchDelegate: EPUBSearchDelegate {
 
 extension Locator {
     /// Creates a test locator with the given parameters
-    static func testLocator(
+    static func makeLocator(
         href: String = "/chapter1.xhtml",
         title: String? = "Chapter 1",
         progression: Double? = 0.5,
@@ -138,7 +138,7 @@ extension Locator {
 
 extension LocatorCollection {
     /// Creates a test collection with the given locators
-    static func testCollection(locators: [Locator]) -> LocatorCollection {
+    static func makeCollection(locators: [Locator]) -> LocatorCollection {
         LocatorCollection(locators: locators)
     }
 }
@@ -147,7 +147,7 @@ extension LocatorCollection {
 
 extension Publication {
     /// Creates a test Publication with a mock search service
-    static func testPublication(searchService: SearchService?) -> Publication {
+    static func makePublication(searchService: SearchService?) -> Publication {
         let manifest = Manifest(metadata: Metadata(title: "Test Book"))
 
         var servicesBuilder = PublicationServicesBuilder()
@@ -178,7 +178,7 @@ final class EPUBSearchViewModelTests: XCTestCase {
         super.setUp()
         mockSearchService = MockSearchService()
         mockDelegate = MockEPUBSearchDelegate()
-        publication = Publication.testPublication(searchService: mockSearchService)
+        publication = Publication.makePublication(searchService: mockSearchService)
         viewModel = EPUBSearchViewModel(publication: publication)
         viewModel.delegate = mockDelegate
         cancellables = Set<AnyCancellable>()
@@ -257,10 +257,10 @@ final class EPUBSearchViewModelTests: XCTestCase {
 
     func testSearch_WithResults_UpdatesResults() async {
         let testLocators = [
-            Locator.testLocator(href: "/ch1.xhtml", title: "Chapter 1", progression: 0.1),
-            Locator.testLocator(href: "/ch2.xhtml", title: "Chapter 2", progression: 0.5)
+            Locator.makeLocator(href: "/ch1.xhtml", title: "Chapter 1", progression: 0.1),
+            Locator.makeLocator(href: "/ch2.xhtml", title: "Chapter 2", progression: 0.5)
         ]
-        let collection = LocatorCollection.testCollection(locators: testLocators)
+        let collection = LocatorCollection.makeCollection(locators: testLocators)
         mockSearchService.mockIterator = MockSearchIterator(results: [collection, nil])
 
         await viewModel.search(with: "test")
@@ -321,7 +321,7 @@ final class EPUBSearchViewModelTests: XCTestCase {
     // MARK: - Navigation Tests
 
     func testSelectResult_NavigatesToLocation() {
-        let testLocator = Locator.testLocator()
+        let testLocator = Locator.makeLocator()
 
         viewModel.userSelected(testLocator)
 
@@ -331,20 +331,23 @@ final class EPUBSearchViewModelTests: XCTestCase {
 
     func testSelectResult_WithNilDelegate_DoesNotCrash() {
         viewModel.delegate = nil
-        let testLocator = Locator.testLocator()
+        let testLocator = Locator.makeLocator()
 
         // Should not crash
         viewModel.userSelected(testLocator)
 
-        // No assertion needed - test passes if no crash occurs
+        // Verify the view model state is still consistent after nil-delegate call
+        XCTAssertNil(viewModel.delegate, "Delegate should still be nil after selection with nil delegate")
+        // The delegate (set before nil) should not have been called
+        XCTAssertEqual(mockDelegate.didSelectCallCount, 0, "Nil delegate must not be called")
     }
 
     // MARK: - Clear Search Tests
 
     func testClearSearch_ResetsState() async {
         // First, perform a search with results
-        let testLocators = [Locator.testLocator()]
-        let collection = LocatorCollection.testCollection(locators: testLocators)
+        let testLocators = [Locator.makeLocator()]
+        let collection = LocatorCollection.makeCollection(locators: testLocators)
         mockSearchService.mockIterator = MockSearchIterator(results: [collection, nil])
 
         await viewModel.search(with: "test")
@@ -367,8 +370,8 @@ final class EPUBSearchViewModelTests: XCTestCase {
 
     func testSearch_CancelsInFlight_OnNewQuery() async {
         // Set up first search with results
-        let firstLocators = [Locator.testLocator(href: "/first.xhtml", title: "First")]
-        let firstCollection = LocatorCollection.testCollection(locators: firstLocators)
+        let firstLocators = [Locator.makeLocator(href: "/first.xhtml", title: "First")]
+        let firstCollection = LocatorCollection.makeCollection(locators: firstLocators)
         mockSearchService.mockIterator = MockSearchIterator(results: [firstCollection, nil])
 
         await viewModel.search(with: "first query")
@@ -377,10 +380,10 @@ final class EPUBSearchViewModelTests: XCTestCase {
 
         // Now start a second search - this should cancel/clear previous results
         let secondLocators = [
-            Locator.testLocator(href: "/second1.xhtml", title: "Second 1"),
-            Locator.testLocator(href: "/second2.xhtml", title: "Second 2")
+            Locator.makeLocator(href: "/second1.xhtml", title: "Second 1"),
+            Locator.makeLocator(href: "/second2.xhtml", title: "Second 2")
         ]
-        let secondCollection = LocatorCollection.testCollection(locators: secondLocators)
+        let secondCollection = LocatorCollection.makeCollection(locators: secondLocators)
         mockSearchService.mockIterator = MockSearchIterator(results: [secondCollection, nil])
 
         await viewModel.search(with: "second query")
@@ -423,13 +426,13 @@ final class EPUBSearchViewModelTests: XCTestCase {
 
     func testFetchNextBatch_WithMoreResults_AppendsResults() async {
         // First search to get into idle state with some results
-        let firstBatch = [Locator.testLocator(href: "/ch1.xhtml", title: "Chapter 1")]
-        let secondBatch = [Locator.testLocator(href: "/ch2.xhtml", title: "Chapter 2")]
+        let firstBatch = [Locator.makeLocator(href: "/ch1.xhtml", title: "Chapter 1")]
+        let secondBatch = [Locator.makeLocator(href: "/ch2.xhtml", title: "Chapter 2")]
 
         // Create iterator that returns two batches then nil
         mockSearchService.mockIterator = MockSearchIterator(results: [
-            LocatorCollection.testCollection(locators: firstBatch),
-            LocatorCollection.testCollection(locators: secondBatch),
+            LocatorCollection.makeCollection(locators: firstBatch),
+            LocatorCollection.makeCollection(locators: secondBatch),
             nil
         ])
 
@@ -449,15 +452,15 @@ final class EPUBSearchViewModelTests: XCTestCase {
 
     func testSearch_GroupsResultsByTitle() async {
         let locatorsChapter1 = [
-            Locator.testLocator(href: "/ch1.xhtml", title: "Chapter 1", progression: 0.1),
-            Locator.testLocator(href: "/ch1.xhtml", title: "Chapter 1", progression: 0.5)
+            Locator.makeLocator(href: "/ch1.xhtml", title: "Chapter 1", progression: 0.1),
+            Locator.makeLocator(href: "/ch1.xhtml", title: "Chapter 1", progression: 0.5)
         ]
         let locatorsChapter2 = [
-            Locator.testLocator(href: "/ch2.xhtml", title: "Chapter 2", progression: 0.3)
+            Locator.makeLocator(href: "/ch2.xhtml", title: "Chapter 2", progression: 0.3)
         ]
 
         let allLocators = locatorsChapter1 + locatorsChapter2
-        let collection = LocatorCollection.testCollection(locators: allLocators)
+        let collection = LocatorCollection.makeCollection(locators: allLocators)
         mockSearchService.mockIterator = MockSearchIterator(results: [collection, nil])
 
         await viewModel.search(with: "test")
@@ -470,7 +473,7 @@ final class EPUBSearchViewModelTests: XCTestCase {
     // MARK: - Duplicate Handling Tests
 
     func testSearch_FiltersDuplicateResults() async {
-        let duplicateLocator = Locator.testLocator(
+        let duplicateLocator = Locator.makeLocator(
             href: "/ch1.xhtml",
             title: "Chapter 1",
             progression: 0.5,
@@ -478,7 +481,7 @@ final class EPUBSearchViewModelTests: XCTestCase {
         )
 
         // Same locator appears twice
-        let collection = LocatorCollection.testCollection(locators: [duplicateLocator, duplicateLocator])
+        let collection = LocatorCollection.makeCollection(locators: [duplicateLocator, duplicateLocator])
         mockSearchService.mockIterator = MockSearchIterator(results: [collection, nil])
 
         await viewModel.search(with: "test")
@@ -490,7 +493,7 @@ final class EPUBSearchViewModelTests: XCTestCase {
 
     func testSearch_PublicationNotSearchable_SetsFailureState() async {
         // Create publication without search service
-        let nonSearchablePublication = Publication.testPublication(searchService: nil)
+        let nonSearchablePublication = Publication.makePublication(searchService: nil)
         let nonSearchableViewModel = EPUBSearchViewModel(publication: nonSearchablePublication)
 
         await nonSearchableViewModel.search(with: "test")

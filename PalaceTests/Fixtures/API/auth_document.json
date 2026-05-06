@@ -1,0 +1,64 @@
+{
+  "title": "A1QA Test Library",
+  "service_description": "A test library for QA verification.",
+  "id": "https://gorgon.staging.palaceproject.io/a1qa-test/authentication_document",
+  "color_scheme": "blue",
+  "authentication": [
+    {
+      "type": "http://palaceproject.io/authtype/Basic",
+      "description": "Library Card",
+      "labels": {
+        "login": "Barcode",
+        "password": "PIN"
+      },
+      "inputs": {
+        "login": {
+          "keyboard": "DEFAULT",
+          "maximum_length": 14,
+          "barcode_format": "Codabar"
+        },
+        "password": {
+          "keyboard": "NUMBER_PAD"
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "rel": "start",
+      "href": "https://gorgon.staging.palaceproject.io/a1qa-test/",
+      "type": "application/atom+xml;profile=opds-catalog"
+    },
+    {
+      "rel": "http://opds-spec.org/shelf",
+      "href": "https://gorgon.staging.palaceproject.io/a1qa-test/loans",
+      "type": "application/atom+xml;profile=opds-catalog"
+    },
+    {
+      "rel": "http://www.w3.org/ns/oa#annotationService",
+      "href": "https://gorgon.staging.palaceproject.io/a1qa-test/annotations",
+      "type": "application/ld+json"
+    },
+    {
+      "rel": "help",
+      "href": "mailto:support@librarysimplifiedhelp.zendesk.com"
+    },
+    {
+      "rel": "logo",
+      "href": "data:image/png;base64,iVBORw0KGgoAAAANS"
+    },
+    {
+      "rel": "terms-of-service",
+      "href": "https://thepalaceproject.org/terms/"
+    },
+    {
+      "rel": "privacy-policy",
+      "href": "https://thepalaceproject.org/privacy/"
+    }
+  ],
+  "features": {
+    "enabled": ["reservations"],
+    "disabled": []
+  },
+  "announcements": []
+}

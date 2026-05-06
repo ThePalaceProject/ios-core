@@ -46,7 +46,7 @@ actor OPDSFeedService {
                 ) { feed, errorDict in
                     if let feed = feed {
                         continuation.resume(returning: feed)
-                    } else if let errorDict = errorDict {
+                    } else if let errorDict = errorDict as? [AnyHashable: Any] {
                         // Try to extract problem document for user-friendly error messages
                         let problemDoc = Self.problemDocumentFromDictionary(errorDict)
                         let error = self.parseError(from: errorDict, url: url)
@@ -203,12 +203,25 @@ actor OPDSFeedService {
         return .parsing(.opdsFeedInvalid)
     }
 
-    private func parseProblemDocument(_ problemDoc: TPPProblemDocument) -> PalaceError {
+    func parseProblemDocument(_ problemDoc: TPPProblemDocument) -> PalaceError {
         guard let type = problemDoc.type else {
             // Unknown problem document - use title/detail if available
             let message = problemDoc.title ?? problemDoc.detail ?? "Unknown server error"
             Log.warn(#file, "Problem document with no type: \(message)")
             return .network(.serverError)
+        }
+
+        // The explicit switch below only covers the librarysimplified.org namespace.
+        // palaceproject.io serves auth state via /auth/recoverable/* and /auth/unrecoverable/*
+        // namespaces — recognise them so callers see the recoverability signal instead
+        // of a generic credentials/server error.
+        if problemDoc.isRecoverableAuthError {
+            Log.info(#file, "Recoverable auth problem document '\(type)' — credentials should be marked stale")
+            return .authentication(.tokenExpired)
+        }
+        if problemDoc.isUnrecoverableAuthError {
+            Log.info(#file, "Unrecoverable auth problem document '\(type)' — re-auth will not help")
+            return .authentication(.invalidCredentials)
         }
 
         switch type {
@@ -269,8 +282,8 @@ actor OPDSFeedService {
 
 extension OPDSFeedService {
     /// Fetches the user's loans feed
-    func fetchLoans() async throws -> TPPOPDSFeed {
-        guard let loansURL = AccountsManager.shared.currentAccount?.loansUrl else {
+    func fetchLoans(accountsManager: AccountsManager = AccountsManager.shared) async throws -> TPPOPDSFeed {
+        guard let loansURL = accountsManager.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
 
@@ -278,8 +291,8 @@ extension OPDSFeedService {
     }
 
     /// Fetches the catalog root
-    func fetchCatalogRoot() async throws -> TPPOPDSFeed {
-        guard let catalogURLString = AccountsManager.shared.currentAccount?.catalogUrl,
+    func fetchCatalogRoot(accountsManager: AccountsManager = AccountsManager.shared) async throws -> TPPOPDSFeed {
+        guard let catalogURLString = accountsManager.currentAccount?.catalogUrl,
               let catalogURL = URL(string: catalogURLString) else {
             throw PalaceError.authentication(.accountNotFound)
         }

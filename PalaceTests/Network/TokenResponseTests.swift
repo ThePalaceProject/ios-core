@@ -34,6 +34,10 @@ final class TokenResponseTests: XCTestCase {
         )
 
         XCTAssertEqual(response.accessToken, "")
+        XCTAssertTrue(response.accessToken.isEmpty, "Empty token must be stored as empty string")
+        // Other fields must be unaffected by an empty access token
+        XCTAssertEqual(response.tokenType, "Bearer", "tokenType must be stored independently")
+        XCTAssertEqual(response.expiresIn, 3600, "expiresIn must be stored independently")
     }
 
     func testInit_WithZeroExpiresIn_StoresZero() {
@@ -44,6 +48,11 @@ final class TokenResponseTests: XCTestCase {
         )
 
         XCTAssertEqual(response.expiresIn, 0)
+        // A zero expiresIn means the token expires immediately (at creation time)
+        let now = Date()
+        XCTAssertEqual(response.expirationDate.timeIntervalSince1970,
+                       now.timeIntervalSince1970, accuracy: 1.0,
+                       "expiresIn=0 must produce an expiration date approximately equal to now")
     }
 
     func testInit_WithNegativeExpiresIn_StoresNegativeValue() {
@@ -55,6 +64,10 @@ final class TokenResponseTests: XCTestCase {
         )
 
         XCTAssertEqual(response.expiresIn, -100)
+        // A negative expiresIn must produce a past expiration date
+        let now = Date()
+        XCTAssertLessThan(response.expirationDate, now,
+                          "Negative expiresIn must produce an expiration date in the past")
     }
 
     // MARK: - Expiration Date Tests
@@ -155,6 +168,11 @@ final class TokenResponseTests: XCTestCase {
 
         // 31536000 seconds = 1 year
         XCTAssertEqual(response.expiresIn, 31536000)
+        // The expiration date must be approximately one year from now
+        let oneYearFromNow = Date().addingTimeInterval(Double(31536000))
+        XCTAssertEqual(response.expirationDate.timeIntervalSince1970,
+                       oneYearFromNow.timeIntervalSince1970, accuracy: 2.0,
+                       "Large expiresIn must produce correct far-future expiration date")
     }
 
     func testDecode_WithDifferentTokenType_ParsesCorrectly() throws {
@@ -172,6 +190,11 @@ final class TokenResponseTests: XCTestCase {
         let response = try decoder.decode(TokenResponse.self, from: json)
 
         XCTAssertEqual(response.tokenType, "MAC")
+        // Other fields must be parsed correctly even with a non-Bearer token type
+        XCTAssertEqual(response.accessToken, "token",
+                       "access_token must parse correctly for non-Bearer type")
+        XCTAssertEqual(response.expiresIn, 3600,
+                       "expires_in must parse correctly for non-Bearer type")
     }
 
     func testDecode_WithMissingAccessToken_ThrowsError() {

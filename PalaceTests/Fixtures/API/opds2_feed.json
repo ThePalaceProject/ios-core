@@ -1,0 +1,161 @@
+{
+  "metadata": {
+    "title": "A1QA Test Library",
+    "itemsPerPage": 50,
+    "modified": "2026-04-13T10:30:00Z"
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "https://gorgon.staging.palaceproject.io/a1qa-test/",
+      "type": "application/opds+json"
+    },
+    {
+      "rel": "search",
+      "href": "https://gorgon.staging.palaceproject.io/a1qa-test/search{?query}",
+      "type": "application/opds+json",
+      "templated": true
+    }
+  ],
+  "publications": [
+    {
+      "metadata": {
+        "identifier": "urn:uuid:b309a3a0-1234-5678-abcd-ef0123456789",
+        "type": "http://schema.org/Book",
+        "title": "Agnes Grey",
+        "author": [
+          {
+            "name": "Anne Bront\u00eb",
+            "links": [
+              {
+                "rel": "contributor",
+                "href": "https://gorgon.staging.palaceproject.io/a1qa-test/works/contributor/Anne%20Bront%C3%AB"
+              }
+            ]
+          }
+        ],
+        "published": "2020-01-15",
+        "language": ["en"],
+        "subject": [
+          {
+            "scheme": "http://librarysimplified.org/terms/fiction/",
+            "name": "Fiction",
+            "code": "Fiction"
+          }
+        ],
+        "description": "From its opening sentences Agnes Grey introduces a heroine who is honest, perceptive and charming."
+      },
+      "images": [
+        {
+          "href": "https://gorgon.staging.palaceproject.io/images/agnes-grey-cover.jpg",
+          "type": "image/jpeg",
+          "width": 600,
+          "height": 900
+        },
+        {
+          "href": "https://gorgon.staging.palaceproject.io/images/agnes-grey-thumb.jpg",
+          "type": "image/jpeg",
+          "width": 150,
+          "height": 225,
+          "rel": "http://opds-spec.org/image/thumbnail"
+        }
+      ],
+      "links": [
+        {
+          "rel": "http://opds-spec.org/acquisition/borrow",
+          "href": "https://gorgon.staging.palaceproject.io/a1qa-test/works/b309a3a0/borrow",
+          "type": "application/atom+xml;type=entry;profile=opds-catalog",
+          "properties": {
+            "availability": {
+              "state": "available",
+              "since": "2026-01-15T10:00:00Z"
+            },
+            "copies": {
+              "total": 9999,
+              "available": 9999
+            }
+          }
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "identifier": "urn:uuid:audio-1234-5678-abcd-ef0123456789",
+        "type": "http://schema.org/Audiobook",
+        "title": "Animal Farm",
+        "author": [
+          {
+            "name": "George Orwell"
+          }
+        ],
+        "published": "2019-06-01",
+        "language": ["en"],
+        "duration": 10800
+      },
+      "images": [
+        {
+          "href": "https://gorgon.staging.palaceproject.io/images/animal-farm-cover.jpg",
+          "type": "image/jpeg"
+        }
+      ],
+      "links": [
+        {
+          "rel": "http://opds-spec.org/acquisition/borrow",
+          "href": "https://gorgon.staging.palaceproject.io/a1qa-test/works/audio-1234/borrow",
+          "type": "application/atom+xml;type=entry;profile=opds-catalog",
+          "properties": {
+            "availability": {
+              "state": "available"
+            },
+            "copies": {
+              "total": 5,
+              "available": 3
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "metadata": {
+        "title": "Unlimited Listens ODL Feed"
+      },
+      "links": [
+        {
+          "rel": "self",
+          "href": "https://gorgon.staging.palaceproject.io/a1qa-test/groups/unlimited-listens",
+          "type": "application/opds+json"
+        }
+      ],
+      "publications": []
+    }
+  ],
+  "facets": [
+    {
+      "metadata": {
+        "title": "Format"
+      },
+      "links": [
+        {
+          "rel": "http://opds-spec.org/facet",
+          "href": "https://gorgon.staging.palaceproject.io/a1qa-test/?entrypoint=All",
+          "title": "All",
+          "properties": {
+            "activeFacet": true
+          }
+        },
+        {
+          "rel": "http://opds-spec.org/facet",
+          "href": "https://gorgon.staging.palaceproject.io/a1qa-test/?entrypoint=eBooks",
+          "title": "eBooks"
+        },
+        {
+          "rel": "http://opds-spec.org/facet",
+          "href": "https://gorgon.staging.palaceproject.io/a1qa-test/?entrypoint=Audiobooks",
+          "title": "Audiobooks"
+        }
+      ]
+    }
+  ]
+}

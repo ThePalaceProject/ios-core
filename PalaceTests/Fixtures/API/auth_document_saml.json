@@ -1,0 +1,73 @@
+{
+  "title": "Metropolitan University Library",
+  "service_description": "A university library providing digital access to students and faculty via SAML single sign-on.",
+  "id": "https://gorgon.staging.palaceproject.io/metrouni/authentication_document",
+  "color_scheme": "blue",
+  "authentication": [
+    {
+      "type": "http://librarysimplified.org/authtype/SAML-2.0",
+      "description": "University SSO Login",
+      "links": [
+        {
+          "href": "https://gorgon.staging.palaceproject.io/metrouni/saml/authenticate",
+          "rel": "authenticate",
+          "type": "text/html"
+        },
+        {
+          "href": "https://gorgon.staging.palaceproject.io/metrouni/saml/logout",
+          "rel": "logout",
+          "type": "text/html"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "rel": "start",
+      "href": "https://gorgon.staging.palaceproject.io/metrouni/",
+      "type": "application/atom+xml;profile=opds-catalog"
+    },
+    {
+      "rel": "http://opds-spec.org/shelf",
+      "href": "https://gorgon.staging.palaceproject.io/metrouni/loans",
+      "type": "application/atom+xml;profile=opds-catalog"
+    },
+    {
+      "rel": "http://www.w3.org/ns/oa#annotationService",
+      "href": "https://gorgon.staging.palaceproject.io/metrouni/annotations",
+      "type": "application/ld+json"
+    },
+    {
+      "rel": "http://librarysimplified.org/terms/rel/user-profile",
+      "href": "https://gorgon.staging.palaceproject.io/metrouni/patrons/me/",
+      "type": "vnd.librarysimplified/user-profile+json"
+    },
+    {
+      "rel": "help",
+      "href": "mailto:libhelp@metrouni.edu"
+    },
+    {
+      "rel": "logo",
+      "href": "https://gorgon.staging.palaceproject.io/metrouni/logo.png",
+      "type": "image/png"
+    },
+    {
+      "rel": "terms-of-service",
+      "href": "https://gorgon.staging.palaceproject.io/metrouni/terms"
+    },
+    {
+      "rel": "privacy-policy",
+      "href": "https://gorgon.staging.palaceproject.io/metrouni/privacy"
+    }
+  ],
+  "features": {
+    "enabled": ["https://librarysimplified.org/rel/policy/reservations"],
+    "disabled": []
+  },
+  "announcements": [
+    {
+      "id": "ann-001",
+      "content": "Summer reading hours: The digital library is available 24/7 during break."
+    }
+  ]
+}

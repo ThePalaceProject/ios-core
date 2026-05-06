@@ -5,6 +5,7 @@
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
 
+import AuthenticationServices
 import Foundation
 
 /// Modern async/await extensions for MyBooksDownloadCenter
@@ -33,6 +34,77 @@ extension MyBooksDownloadCenter {
         borrowReauthLock.lock()
         defer { borrowReauthLock.unlock() }
         borrowReauthAttempted.remove(bookId)
+    }
+
+    /// Clears all borrow re-auth tracking state. Called on account switch
+    /// to prevent stale circuit breaker state from the previous account.
+    static func clearAllBorrowReauthState() {
+        borrowReauthLock.lock()
+        defer { borrowReauthLock.unlock() }
+        borrowReauthAttempted.removeAll()
+    }
+
+    // MARK: - Borrow Response Evaluation (PP-4178)
+
+    /// Maps a book returned from a Borrow/Place-Hold request to the resulting registry
+    /// state and any error that should be surfaced to the user.
+    ///
+    /// Both buttons share `borrowAsync`, but the same OPDS response carries different
+    /// meaning depending on what the user tapped:
+    ///
+    /// - Place Hold (pre availability == `unavailable`) → an `unavailable`/`reserved`
+    ///   response is the expected queue placement, NOT a failure.
+    /// - Borrow (pre availability is loan-class: `limited`/`unlimited`/`ready`/`reserved`)
+    ///   → an `unavailable`/`reserved` response means CM lost the Loan→Hold race and
+    ///   the loan was downgraded to a hold. Surface the alert so the patron knows
+    ///   why the borrow didn't grant a loan.
+    static func borrowResponseState(
+        for postBorrowBook: TPPBook,
+        preBorrowBook: TPPBook
+    ) -> (state: TPPBookState, error: PalaceError?) {
+        guard let availability = postBorrowBook.defaultAcquisition?.availability else {
+            return (.downloadNeeded, nil)
+        }
+
+        let userTappedPlaceHold = preBorrowWasUnavailable(preBorrowBook)
+
+        var state: TPPBookState = .downloadNeeded
+        var error: PalaceError?
+
+        availability.match(
+            unavailable: { _ in
+                state = .holding
+                if !userTappedPlaceHold {
+                    error = .bookRegistry(.holdCopyUnavailable)
+                }
+            },
+            limited: { _ in state = .downloadNeeded },
+            unlimited: { _ in state = .downloadNeeded },
+            reserved: { _ in
+                state = .holding
+                if !userTappedPlaceHold {
+                    error = .bookRegistry(.holdCopyUnavailable)
+                }
+            },
+            ready: { _ in state = .downloadNeeded }
+        )
+
+        return (state, error)
+    }
+
+    private static func preBorrowWasUnavailable(_ book: TPPBook) -> Bool {
+        guard let availability = book.defaultAcquisition?.availability else {
+            return false
+        }
+        var wasUnavailable = false
+        availability.match(
+            unavailable: { _ in wasUnavailable = true },
+            limited: { _ in },
+            unlimited: { _ in },
+            reserved: { _ in },
+            ready: { _ in }
+        )
+        return wasUnavailable
     }
 
     // MARK: - Async Borrow Operations
@@ -65,6 +137,16 @@ extension MyBooksDownloadCenter {
             throw simulated.error
         }
 
+        // PP-3649: If this book requires Adobe DRM, ensure the device is activated
+        // before proceeding with the borrow. This is the on-demand activation that
+        // replaces the previous login-time activation.
+        #if FEATURE_DRM_CONNECTOR
+        if book.requiresAdobeDRM {
+            Task { await ErrorActivityTracker.shared.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
+            try await AdobeDRMService.shared.ensureDeviceActivated()
+        }
+        #endif
+
         // Use modern OPDSFeedService instead of legacy callback-based TPPOPDSFeed
         guard let acquisitionURL = book.defaultAcquisition?.hrefURL else {
             Task { await ErrorActivityTracker.shared.log("No acquisition URL found for '\(book.title)'", category: .borrow) }
@@ -75,13 +157,13 @@ extension MyBooksDownloadCenter {
 
         // Set processing state - this shows a spinner in the UI
         await MainActor.run {
-            TPPBookRegistry.shared.setProcessing(true, for: bookIdentifier)
+            self.bookRegistry.setProcessing(true, for: bookIdentifier)
         }
 
         // Helper to clear processing state on all exit paths
         // Using @MainActor func instead of detached Task to ensure immediate execution
         @MainActor func clearProcessingState() {
-            TPPBookRegistry.shared.setProcessing(false, for: bookIdentifier)
+            self.bookRegistry.setProcessing(false, for: bookIdentifier)
         }
 
         do {
@@ -102,37 +184,42 @@ extension MyBooksDownloadCenter {
             await clearProcessingState()
 
             // Preserve existing location
-            let location = TPPBookRegistry.shared.location(forIdentifier: borrowedBook.identifier)
+            let location = self.bookRegistry.location(forIdentifier: borrowedBook.identifier)
 
-            // Determine correct registry state based on availability
-            var newState: TPPBookState = .downloadNeeded
-            borrowedBook.defaultAcquisition?.availability.matchUnavailable(
-                { _ in newState = .holding },
-                limited: { _ in newState = .downloadNeeded },
-                unlimited: { _ in newState = .downloadNeeded },
-                reserved: { _ in newState = .holding },
-                ready: { _ in newState = .downloadNeeded }
-            )
+            // PP-4178: Evaluate the borrow response. If CM returned a Hold (race where
+            // another patron consumed the copy between the ready-push and this tap),
+            // update the registry with the true hold state so the UI is accurate, then
+            // throw so the user sees an explicit error instead of a silent revert.
+            // Pre-borrow availability disambiguates Place Hold (no error) from race loss.
+            let mapping = Self.borrowResponseState(for: borrowedBook, preBorrowBook: book)
 
-            // Add to registry
-            TPPBookRegistry.shared.addBook(
+            self.bookRegistry.addBook(
                 borrowedBook,
                 location: location,
-                state: newState,
+                state: mapping.state,
                 fulfillmentId: nil as String?,
                 readiumBookmarks: nil as [TPPReadiumBookmark]?,
                 genericBookmarks: nil as [TPPBookLocation]?
             )
 
             // Emit explicit state update so SwiftUI lists refresh immediately
-            TPPBookRegistry.shared.setState(newState, for: borrowedBook.identifier)
+            self.bookRegistry.setState(mapping.state, for: borrowedBook.identifier)
 
-            Task { await ErrorActivityTracker.shared.log("Borrow succeeded for '\(borrowedBook.title)', state: \(newState)", category: .borrow) }
+            if let raceError = mapping.error {
+                Task { await ErrorActivityTracker.shared.log(
+                    "Borrow for '\(borrowedBook.title)' returned \(mapping.state) — CM Loan→Hold race (PP-4178)",
+                    category: .borrow
+                ) }
+                TPPErrorLogger.logError(raceError, summary: "Borrow race: CM returned hold for '\(borrowedBook.title)'")
+                throw raceError
+            }
+
+            Task { await ErrorActivityTracker.shared.log("Borrow succeeded for '\(borrowedBook.title)', state: \(mapping.state)", category: .borrow) }
 
             announceBorrowSucceeded(for: borrowedBook)
 
             // Optionally start download
-            if attemptDownload && newState == .downloadNeeded {
+            if attemptDownload && mapping.state == .downloadNeeded {
                 await MainActor.run {
                     startDownload(for: borrowedBook)
                 }
@@ -142,10 +229,10 @@ extension MyBooksDownloadCenter {
             // holdPosition=0 for holds. The real position is only available from
             // the shelf/loans feed. Trigger a sync after a short delay so the UI
             // can update with the correct hold position.
-            if newState == .holding {
+            if mapping.state == .holding {
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    TPPBookRegistry.shared.sync()
+                    (self.bookRegistry as? TPPBookRegistry)?.sync()
                 }
             }
 
@@ -202,7 +289,7 @@ extension MyBooksDownloadCenter {
         attemptDownload: Bool,
         problemDocument: TPPProblemDocument? = nil
     ) async -> Bool {
-        let userAccount = TPPUserAccount.sharedAccount()
+        let userAccount = self.userAccount
         let authDef = userAccount.authDefinition
         let hasCredentials = userAccount.hasCredentials()
 
@@ -227,12 +314,12 @@ extension MyBooksDownloadCenter {
                     return true
                 }
 
-                // PP-3716: "no-active-loan" with SAML credentials is likely a session
+                // PP-3716: "no-active-loan" with SAML/OIDC credentials is likely a session
                 // expiry — the server returns 400 instead of 401 in some cases
                 if problemDoc.type == TPPProblemDocument.TypeNoActiveLoan,
-                   authDef?.isSaml == true,
+                   (authDef?.isSaml == true || authDef?.isOidc == true),
                    hasCredentials {
-                    Log.info(#file, "SAML: 'no-active-loan' with active credentials — treating as auth error (PP-3716)")
+                    Log.info(#file, "SAML/OIDC: 'no-active-loan' with active credentials — treating as auth error (PP-3716)")
                     return true
                 }
             }
@@ -246,6 +333,34 @@ extension MyBooksDownloadCenter {
         }()
 
         guard isAuthError else {
+            return false
+        }
+
+        // SQ-007: A borrow failure cannot be a credentials problem if the user
+        // already has an active loan for this book. The download flow's
+        // auto-re-borrow path (`processRegularDownload` line 559) re-fetches
+        // the borrow URL whenever the registry's copy still has a `.borrow`
+        // primary acquisition — even for already-borrowed books. The server
+        // responds with 401 (loan-already-exists / cannot-issue-loan) which
+        // the network responder codes as `invalidCredentials`. Without this
+        // gate the user gets a "Sign in" modal showing their *signed-in*
+        // account view (Sign out button visible, no input fields), trapping
+        // them. The reauth modal makes no sense here — credentials are valid;
+        // the borrow simply isn't needed.
+        let registeredState = self.bookRegistry.state(for: book.identifier)
+        let alreadyHasLoan: Bool = {
+            switch registeredState {
+            case .downloadNeeded, .downloading, .downloadSuccessful,
+                 .downloadFailed, .holding, .SAMLStarted, .used, .returning:
+                return true
+            case .unregistered, .unsupported:
+                return false
+            @unknown default:
+                return false
+            }
+        }()
+        if alreadyHasLoan && hasCredentials {
+            Log.warn(#file, "[SQ-007] Borrow auth-error suppressed for '\(book.title)' — book is already in registry with state \(registeredState) and credentials are present. Treating as benign auto-re-borrow failure, not a credentials problem.")
             return false
         }
 
@@ -264,35 +379,28 @@ extension MyBooksDownloadCenter {
         }
 
         // Handle based on auth type
-        if authDef?.isSaml == true && hasCredentials {
-            // SAML: Session cookies expired - need to re-auth via IDP
-            Log.info(#file, "SAML session expired during borrow - credentials marked stale, triggering re-auth flow")
-
-            await MainActor.run { [weak self] in
-                SignInModalPresenter.presentSignInModalForCurrentAccount {
-                    guard let self else { return }
-
-                    // Only proceed if user successfully logged in, not if they cancelled
-                    guard self.userAccount.hasCredentials() else {
-                        Log.info(#file, "SAML re-auth cancelled or failed, not retrying borrow for '\(book.title)'")
-                        Self.clearBorrowReauthAttempted(for: book.identifier)
-                        return
-                    }
-
-                    Log.info(#file, "SAML re-auth completed, retrying borrow for '\(book.title)'")
-
-                    // Clear the re-auth flag after successful auth so future attempts can also re-auth
+        let needsBrowserReauth = (authDef?.isSaml == true || authDef?.isOidc == true) && hasCredentials
+        if needsBrowserReauth {
+            if authDef?.isOidc == true {
+                Log.info(#file, "OIDC session expired during borrow - attempting silent re-auth via ASWebAuthenticationSession")
+                let oidcSuccess = await attemptOIDCSilentReauth()
+                if oidcSuccess {
+                    Log.info(#file, "OIDC silent re-auth succeeded, retrying borrow for '\(book.title)'")
                     Self.clearBorrowReauthAttempted(for: book.identifier)
-
-                    // Retry the borrow
                     Task {
                         do {
                             _ = try await self.borrowAsync(book, attemptDownload: attemptDownload)
                         } catch {
-                            Log.error(#file, "Retry borrow failed after SAML re-auth: \(error.localizedDescription)")
+                            Log.error(#file, "Retry borrow failed after OIDC re-auth: \(error.localizedDescription)")
                         }
                     }
+                } else {
+                    Log.info(#file, "OIDC silent re-auth failed/cancelled - falling back to sign-in modal")
+                    await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "OIDC")
                 }
+            } else {
+                Log.info(#file, "SAML session expired during borrow - credentials marked stale, triggering re-auth flow")
+                await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "SAML")
             }
             return true
 
@@ -326,9 +434,9 @@ extension MyBooksDownloadCenter {
             return true
         }
 
-        // For OAuth/Token auth, the network layer should have already tried token refresh
-        // If we got here, refresh failed - show the error
-        Log.warn(#file, "Auth error for non-SAML auth type - token refresh likely failed")
+        // For OAuth/Token auth, the network layer should have already tried token refresh.
+        // For other types, there's no automatic recovery path.
+        Log.warn(#file, "Auth error for \(authDef?.authType.rawValue ?? "unknown") auth type - no automatic recovery")
         return false
     }
 
@@ -445,5 +553,114 @@ extension MyBooksDownloadCenter {
         }
 
         return baseMessage
+    }
+
+    // MARK: - OIDC Silent Re-auth
+
+    /// Attempts OIDC re-authentication using `ASWebAuthenticationSession`.
+    /// Returns `true` if a new token was obtained, `false` on failure/cancel.
+    private func attemptOIDCSilentReauth() async -> Bool {
+        guard let authDef = userAccount.authDefinition,
+              let oidcURL = authDef.oidcAuthenticationUrl else {
+            return false
+        }
+
+        let callbackScheme = TPPSignInBusinessLogic.oidcCallbackScheme
+        let callbackHost = TPPSignInBusinessLogic.oidcCallbackHost
+        let redirectURI = "\(callbackScheme)://\(callbackHost)/callback"
+
+        guard var urlComponents = URLComponents(url: oidcURL, resolvingAgainstBaseURL: true) else {
+            return false
+        }
+
+        let redirectParam = URLQueryItem(name: "redirect_uri", value: redirectURI)
+        if urlComponents.queryItems != nil {
+            urlComponents.queryItems?.append(redirectParam)
+        } else {
+            urlComponents.queryItems = [redirectParam]
+        }
+
+        guard let finalURL = urlComponents.url else { return false }
+
+        return await withCheckedContinuation { continuation in
+            Task { @MainActor in
+                let session = ASWebAuthenticationSession(
+                    url: finalURL,
+                    callbackURLScheme: callbackScheme
+                ) { [weak self] callbackURL, error in
+                    guard let self else {
+                        continuation.resume(returning: false)
+                        return
+                    }
+
+                    if error != nil {
+                        continuation.resume(returning: false)
+                        return
+                    }
+
+                    guard let callbackURL,
+                          let payload = callbackURL.query ?? callbackURL.fragment else {
+                        continuation.resume(returning: false)
+                        return
+                    }
+
+                    var kvpairs = [String: String]()
+                    for param in payload.components(separatedBy: "&") {
+                        let elts = param.components(separatedBy: "=")
+                        guard elts.count >= 2, let key = elts.first else { continue }
+                        kvpairs[key] = elts.dropFirst().joined(separator: "=")
+                    }
+
+                    guard let accessToken = kvpairs["access_token"] else {
+                        continuation.resume(returning: false)
+                        return
+                    }
+
+                    let ua = self.userAccount
+                    ua.setAuthToken(accessToken, barcode: ua.barcode, pin: ua.PIN, expirationDate: nil)
+                    Log.info(#file, "OIDC silent re-auth: token updated successfully")
+                    continuation.resume(returning: true)
+                }
+
+                session.presentationContextProvider = OIDCBorrowPresentationContext.shared
+                session.prefersEphemeralWebBrowserSession = false
+                session.start()
+            }
+        }
+    }
+
+    /// Presents the sign-in modal and retries the borrow on success.
+    private func presentSignInModalAndRetryBorrow(book: TPPBook, attemptDownload: Bool, authLabel: String) async {
+        await MainActor.run { [weak self] in
+            SignInModalPresenter.presentSignInModalForCurrentAccount {
+                guard let self else { return }
+
+                guard self.userAccount.hasCredentials() else {
+                    Log.info(#file, "\(authLabel) re-auth cancelled or failed, not retrying borrow for '\(book.title)'")
+                    Self.clearBorrowReauthAttempted(for: book.identifier)
+                    return
+                }
+
+                Log.info(#file, "\(authLabel) re-auth completed, retrying borrow for '\(book.title)'")
+                Self.clearBorrowReauthAttempted(for: book.identifier)
+
+                Task {
+                    do {
+                        _ = try await self.borrowAsync(book, attemptDownload: attemptDownload)
+                    } catch {
+                        Log.error(#file, "Retry borrow failed after \(authLabel) re-auth: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Provides a window anchor for `ASWebAuthenticationSession` in the borrow flow.
+private final class OIDCBorrowPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
+    static let shared = OIDCBorrowPresentationContext()
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        UIApplication.shared.mainKeyWindow ?? ASPresentationAnchor()
     }
 }

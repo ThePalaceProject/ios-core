@@ -16,6 +16,10 @@ struct AlertModel: Identifiable {
     var primaryAction: () -> Void = {}
     var secondaryButtonTitle: String?
     var secondaryAction: () -> Void = {}
+    /// When true, the primary button renders in the destructive style
+    /// (used for confirmation prompts like Return / Cancel Hold). Defaults
+    /// to false so download/error alerts keep the default button style.
+    var isPrimaryDestructive: Bool = false
 
     /// Creates a retryable alert with "Retry" and "Cancel" buttons.
     static func retryable(

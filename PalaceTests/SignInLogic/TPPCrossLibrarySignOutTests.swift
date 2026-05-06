@@ -63,6 +63,12 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
         super.setUp()
         TPPMultiLibraryAccountMock.resetAccounts()
         libraryMock = TPPLibraryAccountMock()
+        // Route business-logic userAccount reads through the multi-library
+        // mock so each library gets its own mock instance — required for
+        // cross-library sign-out isolation assertions.
+        libraryMock.userAccountResolver = { libraryUUID in
+            TPPMultiLibraryAccountMock.sharedAccount(libraryUUID: libraryUUID)
+        }
         targetLibraryUUID = libraryMock.tppAccountUUID
         activeUIDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
         targetUIDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
@@ -141,9 +147,19 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
 
     /// Verifies that each library gets its own separate user account via the mock.
     func testMultiLibraryMock_returnsSeparateAccountsPerUUID() {
+        // Cross-library account isolation is a safety invariant (PP-4020 F-034):
+        // if two business-logic instances for different libraries shared a
+        // user-account instance, credentials from library A would leak to
+        // library B. Assert instance identity AND distinct libraryAccountIDs
+        // so a mutation that re-introduces a shared singleton can't pass this.
         XCTAssertFalse(
             activeBusinessLogic.userAccount === targetBusinessLogic.userAccount,
             "Each library should have its own user account instance"
+        )
+        XCTAssertNotEqual(
+            activeBusinessLogic.libraryAccountID,
+            targetBusinessLogic.libraryAccountID,
+            "Precondition: the two business-logic instances must be for different libraries"
         )
     }
 

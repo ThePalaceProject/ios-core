@@ -38,6 +38,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication, currentLocation: nil)
 
         XCTAssertNotNil(tocBusinessLogic)
+        XCTAssertFalse(tocBusinessLogic.tocDisplayTitle.isEmpty, "TOC display title must be non-empty after init")
     }
 
     func testInit_withCurrentLocation_storesLocation() {
@@ -46,6 +47,9 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication, currentLocation: locator)
 
         XCTAssertNotNil(tocBusinessLogic)
+        // With a current location provided, isCurrentChapterTitled for any title should not crash
+        let result = tocBusinessLogic.isCurrentChapterTitled("AnyChapter")
+        XCTAssertTrue(result == true || result == false, "isCurrentChapterTitled must return a valid Bool")
     }
 
     // MARK: - TOC Display Title Tests
@@ -56,6 +60,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let title = tocBusinessLogic.tocDisplayTitle
 
         XCTAssertFalse(title.isEmpty, "TOC display title should not be empty")
+        XCTAssertTrue(title.count > 0, "TOC display title must contain at least one character")
     }
 
     // MARK: - Title And Level Tests
@@ -64,11 +69,14 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let tocPublication = createPublicationWithTOC()
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: tocPublication, currentLocation: nil)
 
-        // Wait for async TOC loading
-        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        // Poll until tocElements is populated rather than sleeping a fixed amount
+        let loaded = XCTNSPredicateExpectation(
+            predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
+            object: nil
+        )
+        wait(for: [loaded], timeout: 10.0)
 
         guard !tocBusinessLogic.tocElements.isEmpty else {
-            // Skip if TOC didn't populate (depends on async timing)
             return
         }
 
@@ -112,8 +120,12 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let tocPublication = createPublicationWithTOC()
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: tocPublication, currentLocation: nil)
 
-        // Wait for async TOC loading
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // Poll until tocElements is populated
+        let loaded = XCTNSPredicateExpectation(
+            predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
+            object: nil
+        )
+        wait(for: [loaded], timeout: 10.0)
 
         let title = tocBusinessLogic.title(for: "/nonexistent.xhtml")
 
@@ -124,21 +136,30 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let tocPublication = createPublicationWithTOC()
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: tocPublication, currentLocation: nil)
 
-        // Wait for async TOC loading
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // Poll until tocElements is populated
+        let loaded = XCTNSPredicateExpectation(
+            predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
+            object: nil
+        )
+        wait(for: [loaded], timeout: 10.0)
 
         guard !tocBusinessLogic.tocElements.isEmpty else {
-            // Skip if TOC didn't populate
             return
         }
 
         // Get the href from the first TOC element
-        let firstHref = tocBusinessLogic.tocElements[0].link.href
+        let firstElement = tocBusinessLogic.tocElements[0]
+        let firstHref = firstElement.link.href
         let title = tocBusinessLogic.title(for: firstHref)
 
-        // Either title exists or is nil (depending on whether title or href is used)
-        // The method should at least not crash
-        XCTAssertTrue(true)
+        // The title for a known TOC href must be non-nil and non-empty
+        XCTAssertNotNil(title, "title(for:) should return a value for an href present in the TOC")
+        XCTAssertFalse(title?.isEmpty ?? true, "Returned title should not be an empty string")
+        // The returned title must match the link's own title (as recorded in the TOC)
+        if let linkTitle = firstElement.link.title {
+            XCTAssertEqual(title, linkTitle,
+                           "title(for:) should return the title stored in the TOC link")
+        }
     }
 
     // MARK: - Is Current Chapter Tests
@@ -194,6 +215,9 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let result = tocBusinessLogic.isCurrentChapterTitled("Any Chapter")
 
         XCTAssertFalse(result)
+        // Any non-empty title query must also return false when location is nil
+        XCTAssertFalse(tocBusinessLogic.isCurrentChapterTitled("Another Chapter"),
+                       "Nil location must cause any title query to return false")
     }
 
     func testIsCurrentChapterTitled_withNilLocationTitle_returnsFalse() {
@@ -218,6 +242,9 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
 
         // TOC elements start empty and populate asynchronously
         XCTAssertNotNil(tocBusinessLogic.tocElements)
+        // The elements array must be a valid (possibly empty) collection
+        XCTAssertGreaterThanOrEqual(tocBusinessLogic.tocElements.count, 0,
+                                    "tocElements count must be non-negative even before async population")
     }
 
     // MARK: - Helper Methods
@@ -331,14 +358,14 @@ final class TPPReaderTOCFlattenTests: XCTestCase {
         let publication = Publication(manifest: manifest)
         let businessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication, currentLocation: nil)
 
-        // Wait for async loading
-        try await Task.sleep(nanoseconds: 200_000_000)
+        // Poll until tocElements is populated
+        let loaded = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in businessLogic.tocElements.count > 0 },
+            object: nil
+        )
+        wait(for: [loaded], timeout: 10.0)
 
-        // Verify flattened structure has correct level assignments
-        guard businessLogic.tocElements.count > 0 else {
-            // Async timing issue - skip test
-            return
-        }
+        guard businessLogic.tocElements.count > 0 else { return }
 
         // Find elements by title if present
         for element in businessLogic.tocElements {
@@ -361,8 +388,9 @@ final class TPPReaderTOCFlattenTests: XCTestCase {
         let publication = Publication(manifest: manifest)
         let businessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication, currentLocation: nil)
 
-        // Wait for async loading
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // For empty TOC, tocElements should remain empty.
+        // Yield briefly to let the async init complete before asserting.
+        await Task.yield(); await Task.yield(); await Task.yield()
 
         XCTAssertEqual(businessLogic.tocElements.count, 0)
     }

@@ -34,11 +34,29 @@ enum Group: Int {
     var activeFacetSort: Facet
     let facetViewModel: FacetViewModel
     private var observers = Set<AnyCancellable>()
-    private var bookRegistry: TPPBookRegistry { TPPBookRegistry.shared }
+    private let bookRegistry: TPPBookRegistryProvider
+    private let accountsManager: AccountsManager
+    private let settings: TPPSettings
     private var allBooks: [TPPBook] = []
 
+    /// Tracks whether the My Books tab is currently visible. When false,
+    /// notification-driven reloads are deferred until the tab reappears,
+    /// avoiding unnecessary sort + diff work while the user is on another tab.
+    var isVisible: Bool = false {
+        didSet {
+            if isVisible && needsReloadOnAppear {
+                needsReloadOnAppear = false
+                loadData()
+            }
+        }
+    }
+    private var needsReloadOnAppear = false
+
     // MARK: - Initialization
-    override init() {
+    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
+        self.bookRegistry = bookRegistry
+        self.accountsManager = accountsManager
+        self.settings = settings
         self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
             groupName: DisplayStrings.sortBy,
@@ -63,7 +81,7 @@ enum Group: Int {
 
         // If the account requires authentication and user is not logged in,
         // don't show any books from the registry (they may be stale from a previous session)
-        let account = TPPUserAccount.sharedAccount()
+        let account = AccountsManager.shared.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
             Log.info(#file, "User not logged in - showing empty My Books")
             self.allBooks = []
@@ -74,11 +92,44 @@ enum Group: Int {
         }
 
         let registryBooks = bookRegistry.myBooks
-        let isConnected = Reachability.shared.isConnectedToNetwork()
 
-        let newBooks = isConnected
-            ? registryBooks
-            : registryBooks.filter { !$0.isExpired }
+        // Always filter out expired books. Previously this only happened offline,
+        // relying on sync to remove expired books when online. But if sync hasn't
+        // run yet (or is delayed), expired books would remain visible with stale UI.
+        let (active, expired) = registryBooks.reduce(into: ([TPPBook](), [TPPBook]())) { result, book in
+            if book.isExpired {
+                result.1.append(book)
+            } else {
+                result.0.append(book)
+            }
+        }
+
+        if !expired.isEmpty {
+            Log.info(#file, "📚 Removing \(expired.count) expired book(s) from My Books")
+            for book in expired {
+                Log.info(#file, "  → '\(book.title)' expired")
+                MyBooksDownloadCenter.shared.deleteLocalContent(for: book.identifier)
+                bookRegistry.setState(.unregistered, for: book.identifier)
+            }
+        }
+
+        let newBooks = active
+
+        // Skip re-publish when nothing visible changed. The registry fires
+        // TPPBookRegistryDidChange on every sync — even when the response is
+        // structurally identical to what we already have — and each such
+        // reload forces a new allBooks assignment, which in turn swaps the
+        // TPPBook instances in BookCellModelCache. SwiftUI sees new object
+        // identity and re-evaluates every cell; any book whose coverImage is
+        // not yet assigned on the new instance shows a skeleton flash before
+        // the cache lookup resolves. Gate on a content signature so pure
+        // no-op refreshes don't touch the UI at all.
+        if !isLoading && Self.contentSignature(for: newBooks, registry: bookRegistry)
+            == Self.contentSignature(for: allBooks, registry: bookRegistry)
+        {
+            self.isLoading = false
+            return
+        }
 
         // Update published properties
         self.allBooks = newBooks
@@ -88,16 +139,48 @@ enum Group: Int {
         self.isLoading = false
     }
 
+    /// Stable per-book signature for deciding whether a registry update is
+    /// actually worth re-publishing to the view. Includes only the fields
+    /// that visibly affect a MyBooks cell — identifier (for ordering +
+    /// identity), registry state (drives the action button), and the two
+    /// metadata fields we currently render in the cell body.
+    ///
+    /// Intentionally excludes fields like `updated` and `acquisitions` that
+    /// can change on the registry record without altering the visible row —
+    /// we want no-op sync responses to be invisible to SwiftUI.
+    private static func contentSignature(
+        for books: [TPPBook],
+        registry: TPPBookRegistryProvider
+    ) -> [String] {
+        books.map { book in
+            let state = registry.state(for: book.identifier).rawValue
+            let authors = book.authors ?? ""
+            return "\(book.identifier)|\(state)|\(book.title)|\(authors)"
+        }
+    }
+
     func reloadData() {
         guard !isLoading else { return }
 
-        if TPPUserAccount.sharedAccount().needsAuth, !TPPUserAccount.sharedAccount().hasCredentials() {
+        if AccountsManager.shared.currentUserAccount.needsAuth, !AccountsManager.shared.currentUserAccount.hasCredentials() {
             SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
         } else {
             bookRegistry.sync { [weak self] _, _ in
                 self?.loadData()
             }
         }
+    }
+
+    /// Silent background refresh on appear — syncs without showing loading
+    /// spinner if we already have cached books to display. The UI updates
+    /// smoothly via registry notification → loadData() when sync completes.
+    func refreshInBackground() {
+        guard !isLoading else { return }
+        guard AccountsManager.shared.currentUserAccount.hasCredentials() else { return }
+        // Only do a silent sync if we already have books displayed —
+        // if empty, the user sees the empty state and can pull to refresh
+        guard !books.isEmpty else { return }
+        bookRegistry.sync(completion: nil)
     }
 
     @MainActor
@@ -127,8 +210,8 @@ enum Group: Int {
         account.loadAuthenticationDocument { [weak self] success in
             guard let self = self, success else { return }
 
-            if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-                TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+            if !settings.settingsAccountIdsList.contains(account.uuid) {
+                settings.settingsAccountIdsList.append(account.uuid)
             }
             self.loadAccount(account)
         }
@@ -160,15 +243,15 @@ enum Group: Int {
     }
 
     private func updateFeed(_ account: Account) {
-        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-            TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+        if !settings.settingsAccountIdsList.contains(account.uuid) {
+            settings.settingsAccountIdsList.append(account.uuid)
         }
 
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
 
-        AccountsManager.shared.currentAccount = account
+        accountsManager.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
 
@@ -186,7 +269,14 @@ enum Group: Int {
             .merge(with: syncEnd)
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.loadData()
+                guard let self else { return }
+                if self.isVisible {
+                    self.loadData()
+                } else {
+                    // Defer reload until the tab becomes visible again.
+                    // Avoids sorting + diffing the book list while offscreen.
+                    self.needsReloadOnAppear = true
+                }
             }
             .store(in: &observers)
     }

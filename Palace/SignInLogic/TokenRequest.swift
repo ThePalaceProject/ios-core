@@ -40,18 +40,34 @@ import Foundation
     func execute(session: URLSession = .shared) async -> Result<TokenResponse, Error> {
         Log.info(#file, "Requesting token from: \(url.absoluteString)")
 
+        let looksLikeBarcode = username.allSatisfy({ $0.isNumber }) && username.count >= 5
+        let looksLikeOAuthToken = username.count > 50 || username.contains(".")
+        Log.info(#file, "  Credential shape: usernameLen=\(username.count), pinLen=\(password.count), looksLikeBarcode=\(looksLikeBarcode), looksLikeOAuthToken=\(looksLikeOAuthToken)")
+
+        guard !username.isEmpty else {
+            Log.error(#file, "Aborting token request: empty username")
+            return .failure(NSError(domain: "TokenRequest", code: -1,
+                                    userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty username"]))
+        }
+        // Note: empty password is valid for libraries that don't require a PIN.
+        // Basic Auth with "barcode:" (empty password) is the correct format for
+        // pinless authentication. The original guard (!password.isEmpty) broke
+        // pinless login for libraries like Wolcott Public Library and Bentley
+        // Memorial Library (PP-4045).
+
         var request = URLRequest(url: url, applyingCustomUserAgent: true)
+        request.assumesHTTP3Capable = false
         request.httpMethod = HTTPMethodType.POST.rawValue
 
         let loginString = "\(username):\(password)"
         guard let loginData = loginString.data(using: .utf8) else {
-            Log.error(#file, "Failed to encode credentials")
+            Log.error(#file, "Failed to encode credentials - contains non-UTF8 characters?")
             return .failure(URLError(.badURL))
         }
         let base64LoginString = loginData.base64EncodedString()
         request.addValue("Basic \(base64LoginString)", forHTTPHeaderField: "Authorization")
 
-        Log.debug(#file, "Sending POST request with Basic Auth")
+        Log.debug(#file, "Sending POST with Basic Auth (base64 len=\(base64LoginString.count))")
 
         do {
             let (data, response) = try await session.data(for: request)

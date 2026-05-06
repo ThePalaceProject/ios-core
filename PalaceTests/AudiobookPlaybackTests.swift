@@ -91,6 +91,9 @@ class AudiobookPlaybackTests: XCTestCase {
         let newTimestamp = currentTimestamp + skipAmount
 
         XCTAssertEqual(newTimestamp, 130.0, "Skip ahead should add 30 seconds")
+        XCTAssertGreaterThan(newTimestamp, currentTimestamp, "Skip ahead must produce a later timestamp")
+        XCTAssertEqual(newTimestamp - currentTimestamp, skipAmount, accuracy: 0.001,
+                       "Skip delta must equal exactly the skip amount")
     }
 
     func testSkipBehind_Subtracts30Seconds() {
@@ -100,6 +103,9 @@ class AudiobookPlaybackTests: XCTestCase {
         let newTimestamp = max(0, currentTimestamp - skipAmount)
 
         XCTAssertEqual(newTimestamp, 70.0, "Skip behind should subtract 30 seconds")
+        XCTAssertLessThan(newTimestamp, currentTimestamp, "Skip behind must produce an earlier timestamp")
+        XCTAssertEqual(currentTimestamp - newTimestamp, skipAmount, accuracy: 0.001,
+                       "Skip delta must equal exactly the skip amount when not clamped")
     }
 
     func testSkipBehind_ClampsToZero() {
@@ -109,6 +115,9 @@ class AudiobookPlaybackTests: XCTestCase {
         let newTimestamp = max(0, currentTimestamp - skipAmount)
 
         XCTAssertEqual(newTimestamp, 0.0, "Skip behind should clamp to zero when would go negative")
+        XCTAssertGreaterThanOrEqual(newTimestamp, 0.0, "Skip behind must never produce a negative timestamp")
+        XCTAssertLessThan(currentTimestamp, skipAmount,
+                          "Precondition: current must be less than skip amount for clamping to occur")
     }
 
     func testSkipAhead_WithinTrackDuration() {
@@ -141,6 +150,10 @@ class AudiobookPlaybackTests: XCTestCase {
         let effectiveDuration = originalDuration / playbackSpeed
 
         XCTAssertEqual(effectiveDuration, 80.0, accuracy: 0.01, "0.75x speed should take 80 seconds to play 60 seconds of audio")
+        XCTAssertGreaterThan(effectiveDuration, originalDuration,
+                             "Slowing down must increase effective playback duration")
+        XCTAssertEqual(effectiveDuration * playbackSpeed, originalDuration, accuracy: 0.01,
+                       "Content played = effectiveDuration × speed must equal original duration")
     }
 
     func testPlaybackSpeed_1_0x_CalculatesCorrectDuration() {
@@ -150,6 +163,8 @@ class AudiobookPlaybackTests: XCTestCase {
         let effectiveDuration = originalDuration / playbackSpeed
 
         XCTAssertEqual(effectiveDuration, 60.0, accuracy: 0.01, "1.0x speed should take 60 seconds")
+        XCTAssertEqual(effectiveDuration, originalDuration, accuracy: 0.01,
+                       "At 1.0x speed, effective duration must equal original duration")
     }
 
     func testPlaybackSpeed_1_25x_CalculatesCorrectDuration() {
@@ -159,6 +174,10 @@ class AudiobookPlaybackTests: XCTestCase {
         let effectiveDuration = originalDuration / playbackSpeed
 
         XCTAssertEqual(effectiveDuration, 48.0, accuracy: 0.01, "1.25x speed should take 48 seconds")
+        XCTAssertLessThan(effectiveDuration, originalDuration,
+                          "Speeding up must reduce effective playback duration")
+        XCTAssertEqual(effectiveDuration * playbackSpeed, originalDuration, accuracy: 0.01,
+                       "Content played = effectiveDuration × speed must equal original duration")
     }
 
     func testPlaybackSpeed_1_5x_CalculatesCorrectDuration() {
@@ -168,6 +187,10 @@ class AudiobookPlaybackTests: XCTestCase {
         let effectiveDuration = originalDuration / playbackSpeed
 
         XCTAssertEqual(effectiveDuration, 40.0, accuracy: 0.01, "1.5x speed should take 40 seconds")
+        XCTAssertLessThan(effectiveDuration, originalDuration,
+                          "1.5x speed must reduce effective duration below original")
+        XCTAssertEqual(effectiveDuration * playbackSpeed, originalDuration, accuracy: 0.01,
+                       "Inverse check: effectiveDuration × speed must equal original content length")
     }
 
     func testPlaybackSpeed_2_0x_CalculatesCorrectDuration() {
@@ -177,6 +200,10 @@ class AudiobookPlaybackTests: XCTestCase {
         let effectiveDuration = originalDuration / playbackSpeed
 
         XCTAssertEqual(effectiveDuration, 30.0, accuracy: 0.01, "2.0x speed should take 30 seconds")
+        XCTAssertEqual(effectiveDuration, originalDuration / 2, accuracy: 0.01,
+                       "2.0x speed must halve the effective duration")
+        XCTAssertLessThan(effectiveDuration, originalDuration,
+                          "2.0x speed must be faster than real-time")
     }
 
     func testPlaybackSpeed_ContentPlayedCalculation() {
@@ -187,6 +214,10 @@ class AudiobookPlaybackTests: XCTestCase {
         let contentPlayed = realTimeElapsed * playbackSpeed
 
         XCTAssertEqual(contentPlayed, 10.0, accuracy: 0.01, "At 1.25x, 8 real seconds = 10 seconds of content")
+        XCTAssertGreaterThan(contentPlayed, realTimeElapsed,
+                             "Content played must exceed real time elapsed when speed > 1.0x")
+        XCTAssertEqual(contentPlayed / playbackSpeed, realTimeElapsed, accuracy: 0.01,
+                       "Inverse: contentPlayed / speed must equal real time elapsed")
     }
 
     // MARK: - Chapter Navigation Tests
@@ -231,6 +262,8 @@ class AudiobookPlaybackTests: XCTestCase {
         let previousChapterIndex = max(0, currentChapterIndex - 1)
 
         XCTAssertEqual(previousChapterIndex, 0, "Previous chapter should clamp to 0")
+        XCTAssertGreaterThanOrEqual(previousChapterIndex, 0, "Chapter index must never be negative")
+        XCTAssertEqual(currentChapterIndex, 0, "Precondition: must be at first chapter for clamping to apply")
     }
 
     func testChapterNavigation_NextChapter_AtEnd() {
@@ -251,18 +284,24 @@ class AudiobookPlaybackTests: XCTestCase {
         let sleepDuration: TimeInterval = 15 * 60 // 15 minutes in seconds
 
         XCTAssertEqual(sleepDuration, 900.0, "15 minutes should be 900 seconds")
+        XCTAssertEqual(sleepDuration / 60, 15.0, accuracy: 0.001, "Duration divided by 60 must equal 15 minutes")
+        XCTAssertGreaterThan(sleepDuration, 0, "Sleep duration must be positive")
     }
 
     func testSleepTimer_30Minutes() {
         let sleepDuration: TimeInterval = 30 * 60
 
         XCTAssertEqual(sleepDuration, 1800.0, "30 minutes should be 1800 seconds")
+        XCTAssertEqual(sleepDuration, 2 * (15 * 60), accuracy: 0.001,
+                       "30-minute timer must be exactly double the 15-minute timer")
     }
 
     func testSleepTimer_60Minutes() {
         let sleepDuration: TimeInterval = 60 * 60
 
         XCTAssertEqual(sleepDuration, 3600.0, "60 minutes should be 3600 seconds")
+        XCTAssertEqual(sleepDuration, 2 * (30 * 60), accuracy: 0.001,
+                       "60-minute timer must be exactly double the 30-minute timer")
     }
 
     func testSleepTimer_RemainingTime() {
@@ -272,6 +311,9 @@ class AudiobookPlaybackTests: XCTestCase {
         let remainingTime = sleepDuration - elapsedTime
 
         XCTAssertEqual(remainingTime, 600.0, "After 5 minutes, 10 minutes should remain")
+        XCTAssertEqual(remainingTime + elapsedTime, sleepDuration, accuracy: 0.001,
+                       "remainingTime + elapsedTime must equal total sleepDuration")
+        XCTAssertGreaterThan(remainingTime, 0, "Timer must not yet be expired at 5 of 15 minutes")
     }
 
     func testSleepTimer_Expired() {
@@ -281,6 +323,9 @@ class AudiobookPlaybackTests: XCTestCase {
         let remainingTime = max(0, sleepDuration - elapsedTime)
 
         XCTAssertEqual(remainingTime, 0.0, "Timer should show 0 when expired")
+        XCTAssertGreaterThanOrEqual(remainingTime, 0.0, "Remaining time must never be negative")
+        XCTAssertGreaterThan(elapsedTime, sleepDuration,
+                             "Precondition: elapsed must exceed sleep duration for timer to expire")
     }
 
     // MARK: - Position Tracking Tests
@@ -330,6 +375,8 @@ class AudiobookPlaybackTests: XCTestCase {
         let cappedDuration = min(60, duration)
 
         XCTAssertEqual(cappedDuration, 60, "Duration should be capped at 60 seconds")
+        XCTAssertLessThanOrEqual(cappedDuration, 60, "Capped duration must never exceed 60 seconds")
+        XCTAssertGreaterThan(duration, 60, "Precondition: input must exceed 60 for capping to apply")
     }
 
     func testAudiobookTimeEntry_ValidDuration() {
@@ -337,5 +384,7 @@ class AudiobookPlaybackTests: XCTestCase {
         let cappedDuration = min(60, duration)
 
         XCTAssertEqual(cappedDuration, 45, "Duration under 60 should remain unchanged")
+        XCTAssertEqual(cappedDuration, duration, "When input < 60, capped duration must equal input exactly")
+        XCTAssertLessThanOrEqual(cappedDuration, 60, "Capped duration must never exceed 60 seconds")
     }
 }

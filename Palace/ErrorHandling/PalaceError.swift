@@ -162,6 +162,7 @@ enum BookRegistryError: Int, LocalizedError {
     case invalidState = 5
     case concurrencyViolation = 6
     case alreadyBorrowed = 7
+    case holdCopyUnavailable = 8
 
     var errorDescription: String? {
         switch self {
@@ -181,6 +182,8 @@ enum BookRegistryError: Int, LocalizedError {
             return "A concurrency error occurred"
         case .alreadyBorrowed:
             return "This book is already borrowed"
+        case .holdCopyUnavailable:
+            return "This title isn't ready for checkout yet"
         }
     }
 
@@ -200,6 +203,8 @@ enum BookRegistryError: Int, LocalizedError {
             return "Please restart the app and try again."
         case .alreadyBorrowed:
             return "The book is already in your library. Please check My Books."
+        case .holdCopyUnavailable:
+            return "Another patron checked out the copy first. You're still in line — we'll notify you when another copy becomes available."
         }
     }
 }

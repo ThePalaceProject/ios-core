@@ -50,7 +50,13 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
 
     public init(cacheName: String = "GeneralCache", mode: CachingMode = .memoryAndDisk) {
         self.mode = mode
-        let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        guard let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            cacheDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(cacheName, isDirectory: true)
+            try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+            configureCacheLimits()
+            setupMemoryWarningHandler()
+            return
+        }
         cacheDirectory = cachesDir.appendingPathComponent(cacheName, isDirectory: true)
         try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
 
@@ -69,15 +75,18 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
         let cacheMemoryMB: Int
         let itemCountLimit: Int
 
+        // PP-4020: Reduced limits — GeneralCache backs ImageCache's compressed JPEG
+        // store. Combined with the decoded UIImage NSCache layer, old limits allowed
+        // too much data to accumulate (50 MB ImageIO in footprint).
         if deviceMemoryMB < 2048 {
-            cacheMemoryMB = 50
-            itemCountLimit = 200
+            cacheMemoryMB = 20
+            itemCountLimit = 100
         } else if deviceMemoryMB < 4096 {
-            cacheMemoryMB = 100
-            itemCountLimit = 400
+            cacheMemoryMB = 40
+            itemCountLimit = 150
         } else {
-            cacheMemoryMB = 150
-            itemCountLimit = 600
+            cacheMemoryMB = 60
+            itemCountLimit = 200
         }
 
         memoryCache.totalCostLimit = cacheMemoryMB * 1024 * 1024
@@ -242,6 +251,9 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     private func saveToDisk(_ entry: Entry, for key: Key) {
         let url = fileURL(for: key)
         do {
+            if !fileManager.fileExists(atPath: cacheDirectory.path) {
+                try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+            }
             let raw: Data
             if Value.self == Data.self, let d = entry.value as? Data {
                 raw = d
@@ -282,7 +294,8 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
 
     public static func clearAllCaches() {
         let fileManager = FileManager.default
-        let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        guard let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+        let bundleID = Bundle.main.bundleIdentifier?.lowercased()
         do {
             let contents = try fileManager.contentsOfDirectory(at: cachesDir, includingPropertiesForKeys: nil)
             for url in contents {
@@ -298,6 +311,7 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
                     filename.hasPrefix("acsm") ||
                     filename.contains("rights") ||
                     filename.contains("license") ||
+                    (bundleID != nil && filename == bundleID) ||
                     fullPath.contains("adobe") ||
                     fullPath.contains("adept") ||
                     fullPath.contains("/drm/") ||

@@ -273,14 +273,18 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
             }
         }
 
-        // Also delete server bookmarks that match device ID (original behavior)
-        // This handles the case where deletion log wasn't used
+        // Also delete server bookmarks that match device ID (original behavior).
+        // This handles the case where deletion log wasn't used.
+        // A same-device bookmark absent locally was deleted on this device —
+        // re-adding it would resurrect user-intentional deletions.
         for serverBookmark in serverBookmarks {
             if let deviceID = serverBookmark.device, let drmDeviceID = drmDeviceID, deviceID == drmDeviceID {
                 if !localBookmarks.contains(where: { $0.annotationId == serverBookmark.annotationId }) {
                     if !serverBookmarksToDelete.contains(where: { $0.annotationId == serverBookmark.annotationId }) {
                         serverBookmarksToDelete.append(serverBookmark)
                     }
+                    // Remove from add list — must not re-add a locally-deleted same-device bookmark
+                    serverBookmarksToAdd.removeAll(where: { $0.annotationId == serverBookmark.annotationId })
                 }
             }
         }
@@ -312,7 +316,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
         Log.info(#file, message)
 
         // Check if we should attempt re-authentication
-        let userAccount = TPPUserAccount.sharedAccount()
+        let userAccount = AccountsManager.shared.currentUserAccount
         let isCredentialsStale = userAccount.authState == .credentialsStale
 
         if shouldAttemptReauth && isCredentialsStale && !hasAttemptedReauthDuringSync {

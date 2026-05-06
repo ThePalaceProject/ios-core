@@ -13,13 +13,18 @@ final class TPPSettingsTests: XCTestCase {
     // MARK: - Shared Instance
 
     func testShared_isNotNil() {
-        XCTAssertNotNil(TPPSettings.shared)
+        let shared = TPPSettings.shared
+        XCTAssertTrue(shared is TPPSettings, "shared must be a TPPSettings instance")
+        // Verify it's the same singleton
+        XCTAssertTrue(shared === TPPSettings.shared, "shared must always return the same singleton object")
     }
 
     func testSharedSettings_returnsSameInstance() {
         let a = TPPSettings.shared
         let b = TPPSettings.sharedSettings()
-        XCTAssertTrue(a === b)
+        XCTAssertTrue(a === b, "sharedSettings() must return the same instance as shared")
+        // Verify identity transitively
+        XCTAssertTrue(a === TPPSettings.shared, "shared property must equal shared singleton")
     }
 
     // MARK: - Static URL Strings
@@ -54,8 +59,10 @@ final class TPPSettingsTests: XCTestCase {
         // Save current value, test default, restore
         let original = TPPSettings.shared.useBetaLibraries
         TPPSettings.shared.useBetaLibraries = false
+        let captured = TPPSettings.shared.useBetaLibraries
 
-        XCTAssertFalse(TPPSettings.shared.useBetaLibraries)
+        XCTAssertFalse(captured, "useBetaLibraries must be false after explicit false assignment")
+        XCTAssertFalse(TPPSettings.shared.useBetaLibraries, "Value must persist within same test")
 
         TPPSettings.shared.useBetaLibraries = original
     }
@@ -104,7 +111,10 @@ final class TPPSettingsTests: XCTestCase {
         let original = TPPSettings.shared.appVersion
 
         TPPSettings.shared.appVersion = "1.2.3"
-        XCTAssertEqual(TPPSettings.shared.appVersion, "1.2.3")
+        let capturedVersion = TPPSettings.shared.appVersion
+
+        XCTAssertEqual(capturedVersion, "1.2.3", "appVersion must persist after assignment")
+        XCTAssertTrue(capturedVersion?.contains(".") ?? false, "Version string must contain dot separators")
 
         TPPSettings.shared.appVersion = original
     }
@@ -114,15 +124,22 @@ final class TPPSettingsTests: XCTestCase {
     func testCustomMainFeedURL_defaultIsNil() {
         // Custom URL should be nil by default in test environment
         let url = TPPSettings.shared.customMainFeedURL
-        // Just verify it doesn't crash
-        _ = url
+        // In a clean test environment, no custom feed URL should be set
+        XCTAssertNil(url, "customMainFeedURL must be nil by default in a clean test environment")
+        // customLibraryRegistryServer is separate — should be independently nil
+        XCTAssertTrue(url == nil, "customMainFeedURL must consistently be nil in clean test environment")
     }
 
     func testCustomLibraryRegistryServer_canBeSet() {
         let original = TPPSettings.shared.customLibraryRegistryServer
 
         TPPSettings.shared.customLibraryRegistryServer = "https://custom.registry.example.com"
-        XCTAssertEqual(TPPSettings.shared.customLibraryRegistryServer, "https://custom.registry.example.com")
+        let capturedServer = TPPSettings.shared.customLibraryRegistryServer
+
+        XCTAssertEqual(capturedServer, "https://custom.registry.example.com",
+                       "Custom registry server must be retrievable after setting")
+        XCTAssertTrue(capturedServer?.hasPrefix("https://") ?? false,
+                      "Custom registry server must use HTTPS scheme")
 
         TPPSettings.shared.customLibraryRegistryServer = original
     }
@@ -138,6 +155,9 @@ final class TPPSettingsTests: XCTestCase {
         TPPSettings.shared.useBetaLibraries = !original
 
         wait(for: [expectation], timeout: 2.0)
+        // The setting must actually have changed
+        XCTAssertNotEqual(TPPSettings.shared.useBetaLibraries, original,
+                          "useBetaLibraries must differ from original after toggling")
 
         // Restore
         TPPSettings.shared.useBetaLibraries = original

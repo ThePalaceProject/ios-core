@@ -1,22 +1,33 @@
 import SwiftUI
 import Combine
+import UIKit
+
+// MARK: - Accessibility focus target (PP-3834: move VoiceOver to results after search)
+private enum SearchAccessibilityFocus: Hashable {
+    case searchField
+    case resultsArea
+}
 
 // MARK: - SearchView
 struct CatalogSearchView: View {
     @StateObject private var viewModel: CatalogSearchViewModel
     @FocusState private var isSearchFieldFocused: Bool
+    @AccessibilityFocusState private var accessibilityFocus: SearchAccessibilityFocus?
     let books: [TPPBook]
     let onBookSelected: (TPPBook) -> Void
+    let downloadCenter: MyBooksDownloadCenter
 
     init(
         repository: CatalogRepositoryProtocol,
         baseURL: @escaping () -> URL?,
         books: [TPPBook],
-        onBookSelected: @escaping (TPPBook) -> Void
+        onBookSelected: @escaping (TPPBook) -> Void,
+        downloadCenter: MyBooksDownloadCenter = .shared
     ) {
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: repository, baseURL: baseURL))
         self.books = books
         self.onBookSelected = onBookSelected
+        self.downloadCenter = downloadCenter
     }
 
     init(
@@ -31,36 +42,26 @@ struct CatalogSearchView: View {
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: dummyRepository, baseURL: { nil }))
         self.books = books
         self.onBookSelected = onBookSelected
+        self.downloadCenter = .shared
     }
 
     var body: some View {
         VStack(spacing: 0) {
             searchBar
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    BookListView(
-                        books: viewModel.filteredBooks,
-                        isLoading: $viewModel.isLoading,
-                        onSelect: onBookSelected,
-                        onLoadMore: { @MainActor in await viewModel.loadNextPage() },
-                        isLoadingMore: viewModel.isLoadingMore,
-                        previewEnabled: false
-                    )
-                    .id("search-results-top")
-                }
-                .scrollDismissesKeyboard(.immediately)
-                .simultaneousGesture(
-                    TapGesture().onEnded { isSearchFieldFocused = false }
-                )
-                .onChange(of: viewModel.searchId) { _ in
-                    // Scroll to top only for new searches, not pagination
-                    proxy.scrollTo("search-results-top", anchor: .top)
-                }
+            if viewModel.formatEntries.count > 1 {
+                formatFilterRow
             }
+
+            resultsScrollView
         }
         .onAppear {
             viewModel.updateBooks(books)
+            viewModel.loadFormatEntryPoints()
+            // PP-4115: when returning from book detail, registry state may have
+            // changed (cancel hold, return, etc.) while a throttled notification
+            // was in flight or the view was off-screen. Force a full reconcile.
+            viewModel.applyRegistryUpdates(changedIdentifier: nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 isSearchFieldFocused = true
             }
@@ -87,7 +88,7 @@ struct CatalogSearchView: View {
     }
 
     private var downloadProgressPublisher: AnyPublisher<String, Never> {
-        MyBooksDownloadCenter.shared.downloadProgressPublisher
+        downloadCenter.downloadProgressPublisher
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .map { $0.0 }
             .removeDuplicates()
@@ -97,6 +98,75 @@ struct CatalogSearchView: View {
 
 // MARK: - Private Views
 private extension CatalogSearchView {
+    var resultsScrollView: some View {
+        ScrollViewReader { proxy in
+            resultsContent
+                .scrollDismissesKeyboard(.immediately)
+                .simultaneousGesture(
+                    TapGesture().onEnded { isSearchFieldFocused = false }
+                )
+                .onChange(of: viewModel.searchId) { _ in
+                    proxy.scrollTo("search-results-top", anchor: .top)
+                }
+                .onChange(of: viewModel.isLoading) { isLoading in
+                    announceSearchResults(isLoading: isLoading)
+                }
+        }
+    }
+
+    var resultsContent: some View {
+        ScrollView {
+            BookListView(
+                books: viewModel.filteredBooks,
+                isLoading: $viewModel.isLoading,
+                onSelect: onBookSelected,
+                onLoadMore: { @MainActor in await viewModel.loadNextPage() },
+                isLoadingMore: viewModel.isLoadingMore,
+                previewEnabled: false
+            )
+            .id("search-results-top")
+        }
+        .accessibilityIdentifier(AccessibilityID.Search.resultsScrollView)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(NSLocalizedString("Search results list", comment: "VoiceOver label for search results area"))
+        .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count))
+        .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
+        .accessibilityFocused($accessibilityFocus, equals: .resultsArea)
+    }
+
+    func announceSearchResults(isLoading: Bool) {
+        if !isLoading, !viewModel.searchQuery.isEmpty, UIAccessibility.isVoiceOverRunning {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count)
+                let listLabel = NSLocalizedString("Search results list", comment: "VoiceOver label for search results area")
+                UIAccessibility.post(notification: .announcement, argument: "\(listLabel), \(value)")
+            }
+        }
+    }
+
+    var formatFilterRow: some View {
+        HStack {
+            Picker(
+                NSLocalizedString("Format", comment: "Format filter picker label"),
+                selection: Binding(
+                    get: { viewModel.selectedFormatIndex },
+                    set: { viewModel.selectFormat(at: $0) }
+                )
+            ) {
+                ForEach(viewModel.formatEntries.indices, id: \.self) { idx in
+                    Text(viewModel.formatEntries[idx].title).tag(idx)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 44)
+            .accessibilityIdentifier(AccessibilityID.Search.formatFilterRow)
+        }
+        .frame(maxWidth: 700)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
+    }
+
     var searchBar: some View {
         ZStack {
             TextField(

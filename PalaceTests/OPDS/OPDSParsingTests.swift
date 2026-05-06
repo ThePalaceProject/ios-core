@@ -252,7 +252,6 @@ final class OPDSParsingTests: XCTestCase {
 
         let feed = TPPOPDSFeed(xml: xml)
 
-        XCTAssertNotNil(feed, "Feed should be created from minimal valid XML")
         XCTAssertEqual(feed?.identifier, "http://example.org/feed")
         XCTAssertEqual(feed?.title, "Test Feed")
         XCTAssertNotNil(feed?.updated, "Updated date should be parsed")
@@ -269,7 +268,6 @@ final class OPDSParsingTests: XCTestCase {
 
         let feed = TPPOPDSFeed(xml: xml)
 
-        XCTAssertNotNil(feed, "Feed should be created from complete XML")
         XCTAssertEqual(feed?.identifier, "http://example.org/catalog")
         XCTAssertEqual(feed?.title, "Library Catalog")
         XCTAssertNotNil(feed?.updated)
@@ -286,7 +284,6 @@ final class OPDSParsingTests: XCTestCase {
 
         let feed = TPPOPDSFeed(xml: xml)
 
-        XCTAssertNotNil(feed, "Feed should be created from single entry XML")
         XCTAssertEqual(feed?.entries.count, 1, "Feed should contain exactly one entry")
 
         if let entry = feed?.entries.first as? TPPOPDSEntry {
@@ -306,7 +303,6 @@ final class OPDSParsingTests: XCTestCase {
 
         let feed = TPPOPDSFeed(xml: xml)
 
-        XCTAssertNotNil(feed, "Feed should be created")
         XCTAssertEqual(feed?.authorizationIdentifier, "12345678", "Authorization identifier should be parsed")
         XCTAssertNotNil(feed?.licensor, "Licensor should be present")
         XCTAssertEqual(feed?.licensor?["vendor"] as? String, "Adobe")
@@ -955,6 +951,76 @@ final class OPDSParsingTests: XCTestCase {
         }
 
         XCTAssertNotNil(entry.previewLink, "Preview link should be parsed")
+    }
+
+    func testPalaceMarketplaceHTMLPreviewIsAccepted() {
+        let entryXML = """
+            <entry xmlns="http://www.w3.org/2005/Atom"
+                   xmlns:bibframe="http://bibframe.org/vocab/">
+                <id>urn:uuid:pm-html-preview-001</id>
+                <title>PM PDF Book</title>
+                <updated>2024-01-20T08:00:00Z</updated>
+                <bibframe:distribution bibframe:ProviderName="Palace Marketplace"/>
+                <link href="http://example.org/preview.html" rel="preview" type="text/html"/>
+            </entry>
+            """
+
+        guard let data = entryXML.data(using: .utf8),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml) else {
+            XCTFail("Failed to create entry")
+            return
+        }
+
+        XCTAssertEqual(entry.providerName, "Palace Marketplace")
+        XCTAssertNotNil(entry.previewLink, "HTML preview should be accepted for Palace Marketplace")
+        XCTAssertEqual(entry.previewLink?.type, "text/html")
+    }
+
+    func testPreviewLinkUsesFirstAvailable() {
+        let entryXML = """
+            <entry xmlns="http://www.w3.org/2005/Atom"
+                   xmlns:bibframe="http://bibframe.org/vocab/">
+                <id>urn:uuid:pm-mixed-preview-001</id>
+                <title>PM Mixed Preview Book</title>
+                <updated>2024-01-20T08:00:00Z</updated>
+                <bibframe:distribution bibframe:ProviderName="Palace Marketplace"/>
+                <link href="http://example.org/preview.html" rel="preview" type="text/html"/>
+                <link href="http://example.org/preview.epub" rel="preview" type="application/epub+zip"/>
+            </entry>
+            """
+
+        guard let data = entryXML.data(using: .utf8),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml) else {
+            XCTFail("Failed to create entry")
+            return
+        }
+
+        XCTAssertNotNil(entry.previewLink, "First preview link should be used")
+        XCTAssertEqual(entry.previewLink?.type, "text/html", "Should use the first preview link encountered")
+    }
+
+    func testNonMarketplaceHTMLPreviewIsAccepted() {
+        let entryXML = """
+            <entry xmlns="http://www.w3.org/2005/Atom"
+                   xmlns:bibframe="http://bibframe.org/vocab/">
+                <id>urn:uuid:overdrive-preview-001</id>
+                <title>OverDrive Book</title>
+                <updated>2024-01-20T08:00:00Z</updated>
+                <bibframe:distribution bibframe:ProviderName="OverDrive"/>
+                <link href="http://example.org/preview.html" rel="preview" type="text/html"/>
+            </entry>
+            """
+
+        guard let data = entryXML.data(using: .utf8),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml) else {
+            XCTFail("Failed to create entry")
+            return
+        }
+
+        XCTAssertNotNil(entry.previewLink, "HTML preview should be accepted for non-Marketplace providers")
     }
 
     // MARK: - HTML Entity Decoding Test

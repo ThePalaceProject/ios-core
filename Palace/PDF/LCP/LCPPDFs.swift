@@ -9,6 +9,7 @@
 #if LCP
 
 import Foundation
+import PalaceAudiobookToolkit
 import ReadiumShared
 import ReadiumStreamer
 import ReadiumLCP
@@ -46,7 +47,7 @@ import ReadiumZIPFoundation
         }
         self.pdfUrl = url
 
-        let httpClient = DefaultHTTPClient()
+        let httpClient = LCPCredentialStrippingHTTPClient()
         self.assetRetriever = AssetRetriever(httpClient: httpClient)
         self.publicationOpener = PublicationOpener(
             parser: DefaultPublicationParser(

@@ -1,0 +1,16 @@
+replay:
+  name: library-picker
+  bundle_id: org.thepalaceproject.palace
+  device_id: booted
+  recorded_at: '2026-04-08T15:39:36'
+  steps:
+  - action: tap
+    element_index: 1
+    element_label: Switch Library
+    x: 32.0
+    y: 69.0
+    expect_elements:
+    - A1QA Test Library
+    - Add Library
+    - Cancel
+    screenshot_threshold: 5.0

@@ -719,8 +719,7 @@ final class TPPLastReadPositionSynchronizerIntegrationTests: XCTestCase {
         )
 
         // Create real synchronizer
-        let synchronizer = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
-        XCTAssertNotNil(synchronizer)
+        _ = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
 
         // Verify registry contains the book location
         let storedLocation = mockRegistry.location(forIdentifier: book.identifier)
@@ -740,11 +739,9 @@ final class TPPLastReadPositionSynchronizerIntegrationTests: XCTestCase {
         mockRegistry.addBook(book2, location: location2, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
         // Act
-        let synchronizer = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
+        _ = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
 
         // Assert
-        XCTAssertNotNil(synchronizer)
-
         let stored1 = mockRegistry.location(forIdentifier: book1.identifier)
         let stored2 = mockRegistry.location(forIdentifier: book2.identifier)
 
@@ -1467,8 +1464,7 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
         XCTAssertEqual(results.count, 100)
     }
 
-    func testMultipleSynchronizersWithSameRegistry_DoNotConflict() {
-        // Arrange
+    func testMultipleSynchronizersWithSameRegistry_DoNotConflict() {        // Arrange
         let sync1 = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
         let sync2 = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
 

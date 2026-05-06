@@ -1,0 +1,14 @@
+{
+  "id": "server_down",
+  "displayName": "Server Down (502)",
+  "description": "All backend endpoints return 502 Bad Gateway. Tests offline/error handling.",
+  "routes": [
+    {
+      "pathPattern": ".*",
+      "fixtureName": "problem_documents",
+      "fixtureKey": "remote_integration_failed",
+      "statusCode": 502,
+      "contentType": "application/problem+json"
+    }
+  ]
+}

@@ -1,0 +1,168 @@
+replay:
+  name: epub-reading
+  bundle_id: org.thepalaceproject.palace
+  device_id: booted
+  recorded_at: '2026-04-08T15:25:32'
+  steps:
+  - action: tap
+    element_index: 54
+    element_label: My Books
+    x: 146.5
+    y: 786.0
+    expect_elements:
+    - Switch Library
+    - A1QA Test Library
+    - Search Books
+    - Sort
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 14
+    element_label: Holds
+    x: 244.0
+    y: 786.0
+    expect_elements:
+    - Switch Library
+    - A1QA Test Library
+    - Search Holds
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 9
+    element_label: Settings
+    x: 341.5
+    y: 786.0
+    expect_elements:
+    - Settings
+    - Libraries
+    - About App
+    - Privacy Policy
+    - User Agreement
+    - Software Licenses
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 10
+    element_label: Catalog
+    x: 49.0
+    y: 786.0
+    expect_elements:
+    - Switch Library
+    - A1QA Test Library
+    - Search Catalog
+    - Catalog
+    - All
+    - Ebooks
+    - Audiobooks
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 6
+    element_label: Ebooks
+    x: 194.5
+    y: 131.0
+    expect_elements:
+    - Switch Library
+    - A1QA Test Library
+    - Search Catalog
+    - Catalog
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 7
+    element_label: Audiobooks
+    x: 317.0
+    y: 131.0
+    expect_elements:
+    - Switch Library
+    - A1QA Test Library
+    - Search Catalog
+    - Catalog
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 5
+    element_label: All
+    x: 72.5
+    y: 131.0
+    expect_elements:
+    - Switch Library
+    - A1QA Test Library
+    - Search Catalog
+    - Catalog
+    - tab.bar.label
+    - My Books
+    - Holds
+    - Settings
+    - All
+    - Ebooks
+    - Audiobooks
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 3
+    element_label: Search Catalog
+    x: 358.0
+    y: 69.0
+    expect_elements:
+    - Switch Library
+    - A1QA Test Library
+    screenshot_threshold: 5.0
+  - action: type
+    text: Lupin
+    expect_elements:
+    - Switch Library
+    - A1QA Test Library
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 9
+    element_label: Arsène Lupin
+    x: 144.1666717529297
+    y: 315.0
+    expect_elements:
+    - Go back
+    - Back
+    - Arsène Lupin
+    - Borrow
+    - DESCRIPTION
+    - More
+    - INFORMATION
+    - FORMAT
+    - ePub
+    - PUBLISHED
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Borrow
+    x: 195.0
+    y: 510.0
+    expect_elements:
+    - sheet.grabber
+    - A1QA Test Library
+    - Arsène Lupin
+    - Maurice Leblanc
+    - Read
+    - Return
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 5
+    element_label: Read
+    x: 49.0
+    y: 726.6666666666665
+    expect_elements:
+    - Page 1 of 182
+    - Arsène Lupin
+    screenshot_threshold: 5.0

@@ -19,14 +19,6 @@ final class EpubSampleFactoryTests: XCTestCase {
         XCTAssertEqual(sampleURL.url, testURL)
     }
 
-    func testEpubLocationSampleURL_urlIsAccessible() {
-        let testURL = URL(string: "https://example.com/sample.epub")!
-        let sampleURL = EpubLocationSampleURL(url: testURL)
-
-        XCTAssertNotNil(sampleURL.url)
-        XCTAssertEqual(sampleURL.url.absoluteString, "https://example.com/sample.epub")
-    }
-
     // MARK: - EpubSampleWebURL Tests
 
     func testEpubSampleWebURL_isSubclassOfEpubLocationSampleURL() {
@@ -99,8 +91,14 @@ final class EpubSampleFactoryTests: XCTestCase {
         // Create a book without a sample (hasSample: false is the default)
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
 
-        // Just verify the method can be called without crashing
-        // The mock book has no sample, so this should handle that gracefully
-        EpubSampleFactory.createSample(book: book) { _, _ in }
+        let completed = XCTestExpectation(description: "createSample completion fires")
+        var receivedError: Error?
+        EpubSampleFactory.createSample(book: book) { _, error in
+            receivedError = error
+            completed.fulfill()
+        }
+        wait(for: [completed], timeout: 3.0)
+        XCTAssertNotNil(receivedError,
+                        "A book without a sample must yield an error via the completion")
     }
 }

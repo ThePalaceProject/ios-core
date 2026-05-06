@@ -1,0 +1,83 @@
+# Place and cancel a hold. Covers C3, C4, PP-4033.
+scenario:
+  id: place-hold
+  name: "Place and Cancel a Hold"
+  description: "Verify a user can place a hold on an unavailable book, see it in Holds, and cancel it."
+  tags: [tier1, ios, critical_path, HOLD-001, PP-4033]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: onboard_app
+      description: "Dismiss first-launch alerts and open the Catalog on A1QA"
+      goal: >
+        If a SpringBoard "Would Like to Send You Notifications" alert is on
+        screen, tap "Don't Allow" to dismiss it. If the Add Library picker
+        appears, select "A1QA Test Library" (use the search field if it
+        isn't visible in the initial list). Wait for the Catalog screen on
+        A1QA to appear before proceeding.
+      checkpoint: app_ready_on_a1qa
+      max_iterations: 10
+
+    - id: sign_in
+      description: "Sign in to A1QA Test Library"
+      goal: >
+        Open Settings → Libraries → A1QA Test Library (or tap "Sign In" on a
+        catalog row that requires auth). Enter barcode and PIN from
+        ~/.specterqa/credentials/a1qa-test.env (A1QA_BARCODE, A1QA_PIN).
+        Submit and wait for the authenticated state (signed-in indicator
+        shown, My Books / Holds populate).
+      checkpoint: user_authenticated
+      max_iterations: 10
+
+    - id: find_holdable_book
+      description: "Find a book that requires a hold (not immediately available)"
+      goal: >
+        Launch the Palace app on A1QA Test Library. Navigate to the Catalog tab.
+        Search for "MySQL Cookbook" or browse until you find a book with a
+        "Reserve" or "Place Hold" button (not "Borrow" or "Get"). Tap on the
+        book to open its detail screen.
+      checkpoint: holdable_book_detail
+      max_iterations: 20
+
+    - id: place_hold
+      description: "Place the hold"
+      goal: >
+        Tap the "Reserve" or "Place Hold" button. Wait for the action to complete.
+        The button should change to indicate the hold was placed (e.g., "Cancel Hold"
+        or "Remove Hold" or "Manage Hold"). No error alerts should appear.
+      checkpoint: hold_placed
+      max_iterations: 15
+
+    - id: verify_in_holds
+      description: "Navigate to Holds and verify the book appears"
+      goal: >
+        Tap the "Holds" or "Reservations" tab in the bottom tab bar. Confirm the
+        Holds screen now shows the book that was just held. The book title should
+        be visible.
+      checkpoint: book_in_holds
+      max_iterations: 15
+
+    - id: cancel_hold
+      description: "Cancel the hold"
+      goal: >
+        On the Holds screen, find the held book. Tap "Manage Hold" or the book
+        itself to see options. Tap "Cancel Hold" or "Remove Hold". If a
+        confirmation dialog appears, confirm it. Wait for the action to complete.
+        The book should be removed from the Holds list. No silent failures --
+        if something goes wrong, an error message should appear.
+      checkpoint: hold_cancelled
+      max_iterations: 20
+
+    - id: teardown_sign_out
+      description: "Sign out of A1QA to release the DRM device activation"
+      goal: >
+        After the journey body is complete, navigate Settings → Libraries →
+        A1QA Test Library and tap "Sign Out". Confirm in any presented alert.
+        Verify the user is no longer authenticated. This step is required at
+        the end of every authenticated journey so the test account does not
+        accumulate Adobe/ADEPT device activations (they are limited per user).
+      checkpoint: signed_out
+      max_iterations: 8

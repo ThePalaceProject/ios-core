@@ -1,0 +1,48 @@
+# Palace Test Matrix Configuration
+#
+# Defines test plans and their target test suites.
+# Used by the palace-test orchestrator to determine which tests to run.
+
+simulator:
+  default_id: "DF4A2A27-9888-429D-A749-2E157A049A37"
+  default_device: "iPhone 16 Pro"
+  os_version: "18.4"
+
+project:
+  path: "Palace.xcodeproj"
+  scheme: "Palace"
+
+# Unit test configuration
+unit_tests:
+  target: "PalaceTests"
+  code_coverage: true
+  parallel: true
+  timeout_minutes: 30
+
+# UI test plans
+ui_test_plans:
+  smoke:
+    description: "Quick validation of critical flows"
+    timeout_minutes: 15
+    targets:
+      - "PalaceUITests/SmokeTests"
+
+  tier1:
+    description: "Core user journeys and navigation"
+    timeout_minutes: 30
+    targets:
+      - "PalaceUITests/SmokeTests"
+      - "PalaceUITests/NavigationTests"
+      - "PalaceUITests/BookDetailTests"
+
+  full:
+    description: "Complete UI test suite"
+    timeout_minutes: 60
+    targets: []  # Empty = run all UI tests
+
+# CI-specific overrides
+ci:
+  runner: "macos-26"
+  xcode_version: "26"
+  retry_on_failure: false
+  artifact_retention_days: 14

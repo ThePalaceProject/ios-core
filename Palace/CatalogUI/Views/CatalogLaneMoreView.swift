@@ -12,7 +12,12 @@ struct CatalogLaneMoreView: View {
     // MARK: - Account & Logo State
 
     @StateObject private var logoObserver = CatalogLogoObserver()
-    @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+    @State private var currentAccountUUID: String = ""
+
+    // PP-4065: scroll-to-top should fire exactly once, on the first appearance
+    // of this view, and never again. After that, refresh and cell actions
+    // (borrow/return/hold) must preserve the user's scroll position.
+    @State private var didScrollToTopOnFirstAppear = false
 
     // MARK: - Initialization
 
@@ -39,10 +44,13 @@ struct CatalogLaneMoreView: View {
                 if viewModel.showSearch {
                     Button(action: { dismissSearch() }, label: {
                         Text(Strings.Generic.cancel)
+                            .frame(minHeight: 44)
                     })
                 } else {
                     Button(action: { presentSearch() }, label: {
                         ImageProviders.MyBooksView.search
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     })
                     .accessibilityLabel(Strings.Generic.searchCatalog)
                 }
@@ -206,7 +214,7 @@ struct CatalogLaneMoreView: View {
                 .padding(.top, 12)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(viewModel.sortFacets, id: \.id) { facet in
+                    ForEach(viewModel.displayedSortFacets, id: \.id) { facet in
                         Button(action: {
                             Task {
                                 await viewModel.applyOPDSFacet(facet, coordinator: coordinator)
@@ -372,8 +380,12 @@ private extension CatalogLaneMoreView {
             .refreshable {
                 await viewModel.fetchAndApplyFeed(at: viewModel.url, clearFilters: false)
             }
-            .onChange(of: viewModel.ungroupedBooks) { _ in
-                // Scroll to top when books change (new results loaded)
+            .onAppear {
+                // PP-4065: scroll to top on the FIRST appearance only.
+                // Refresh and registry updates (borrow/return/hold) must not
+                // scroll — they keep the user's place in the list.
+                guard !didScrollToTopOnFirstAppear else { return }
+                didScrollToTopOnFirstAppear = true
                 proxy.scrollTo("books-list-top", anchor: .top)
             }
         }

@@ -29,7 +29,6 @@ final class TPPReadiumBookmarkTests: XCTestCase {
             device: "test-device"
         )
 
-        XCTAssertNotNil(bookmark)
         XCTAssertEqual(bookmark?.annotationId, "test-annotation-123")
         XCTAssertEqual(bookmark?.href, "/chapter1.xhtml")
         XCTAssertEqual(bookmark?.chapter, "Chapter 1")
@@ -71,8 +70,7 @@ final class TPPReadiumBookmarkTests: XCTestCase {
             device: nil
         )
 
-        XCTAssertNotNil(bookmark)
-        XCTAssertFalse(bookmark!.time.isEmpty, "Time should be set automatically")
+        XCTAssertFalse(bookmark?.time.isEmpty ?? true, "Time should be set automatically")
     }
 
     // MARK: - Progress Display Tests
@@ -342,7 +340,6 @@ final class TPPReadiumBookmarkTests: XCTestCase {
 
         let bookmark = TPPReadiumBookmark(dictionary: dict)
 
-        XCTAssertNotNil(bookmark)
         XCTAssertEqual(bookmark?.annotationId, "dict-annotation")
         XCTAssertEqual(bookmark?.href, "/chapter.xhtml")
         XCTAssertEqual(bookmark?.chapter, "From Dict")
@@ -371,8 +368,10 @@ final class TPPReadiumBookmarkTests: XCTestCase {
 
         let bookmark = TPPReadiumBookmark(dictionary: dict)
 
-        XCTAssertNotNil(bookmark)
+        // Successful init (bookmark != nil) implied by the nil-check on annotationId below
         XCTAssertNil(bookmark?.annotationId, "Empty annotation ID should become nil")
+        XCTAssertEqual(bookmark?.href, "/chapter.xhtml",
+                       "href must still be preserved even when annotationId is empty")
     }
 
     // MARK: - JSON Dictionary Tests

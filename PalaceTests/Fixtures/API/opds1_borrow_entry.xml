@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom"
+       xmlns:opds="http://opds-spec.org/2010/catalog"
+       xmlns:schema="http://schema.org/"
+       xmlns:dcterms="http://purl.org/dc/terms/"
+       xmlns:bibframe="http://bibframe.org/vocab/"
+       xmlns:simplified="http://librarysimplified.org/terms/"
+       schema:additionalType="http://schema.org/Book">
+
+  <id>urn:librarysimplified.org/terms/id/TestLib%20ID/lcp-borrow-001</id>
+  <title>The Cartographer's Daughter</title>
+  <author>
+    <name>Sofia Lindqvist</name>
+    <link href="https://gorgon.staging.palaceproject.io/testlib/works/contributor/Sofia%20Lindqvist" type="application/atom+xml;profile=opds-catalog;kind=acquisition" rel="contributor" title="Sofia Lindqvist"/>
+  </author>
+  <summary type="html">In 1890s Stockholm, a young woman inherits her father&#8217;s map shop and discovers that his final, unfinished map holds the key to a hidden treasure&#8212;and a dangerous conspiracy that reaches the highest levels of government.</summary>
+  <updated>2024-06-01T15:30:00Z</updated>
+  <published>2024-02-20T00:00:00Z</published>
+  <dcterms:language>en</dcterms:language>
+  <dcterms:publisher>Nordic Ink Press</dcterms:publisher>
+  <category term="Adult" scheme="http://schema.org/audience" label="Adult"/>
+  <category term="http://librarysimplified.org/terms/fiction/Fiction" scheme="http://librarysimplified.org/terms/fiction/" label="Fiction"/>
+  <category term="http://librarysimplified.org/terms/genres/Simplified/Historical%20Fiction" scheme="http://librarysimplified.org/terms/genres/Simplified/" label="Historical Fiction"/>
+  <category term="http://librarysimplified.org/terms/genres/Simplified/Adventure" scheme="http://librarysimplified.org/terms/genres/Simplified/" label="Adventure"/>
+  <link href="https://gorgon.staging.palaceproject.io/images/cartographers-daughter-cover.jpg" type="image/jpeg" rel="http://opds-spec.org/image"/>
+  <link href="https://gorgon.staging.palaceproject.io/images/cartographers-daughter-thumb.jpg" type="image/jpeg" rel="http://opds-spec.org/image/thumbnail"/>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/lcp-borrow-001" type="application/atom+xml;type=entry;profile=opds-catalog" rel="alternate"/>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/lcp-borrow-001/report" rel="issues"/>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/lcp-borrow-001/fulfill" rel="http://opds-spec.org/acquisition" type="application/atom+xml;type=entry;profile=opds-catalog">
+    <opds:indirectAcquisition type="application/vnd.readium.lcp.license.v1.0+json">
+      <opds:indirectAcquisition type="application/epub+zip"/>
+    </opds:indirectAcquisition>
+    <opds:availability status="available" since="2024-06-01T10:00:00Z" until="2024-06-15T10:00:00Z"/>
+    <opds:copies available="3" total="5"/>
+  </link>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/lcp-borrow-001/revoke" rel="http://librarysimplified.org/terms/rel/revoke" type="application/atom+xml;type=entry;profile=opds-catalog"/>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/annotations/TestLib%20ID/lcp-borrow-001/" type="application/ld+json; profile=&quot;http://www.w3.org/ns/anno.jsonld&quot;" rel="http://www.w3.org/ns/oa#annotationService"/>
+  <link href="https://gorgon.staging.palaceproject.io/testlib/works/TestLib%20ID/lcp-borrow-001/related_books" type="application/atom+xml;profile=opds-catalog;kind=acquisition" rel="related" title="Recommended Works"/>
+  <bibframe:distribution bibframe:ProviderName="Palace"/>
+  <simplified:pwid>f1e2d3c4-b5a6-7890-cdef-aabbccddeeff</simplified:pwid>
+</entry>

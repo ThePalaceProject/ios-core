@@ -328,12 +328,16 @@ final class BookmarkSyncTests: XCTestCase {
     }
 
     func testUpdateLocalBookmarks_handlesEmptyServerList() {
-        // Just verify the method can be called without crashing
+        let completed = XCTestExpectation(description: "updateLocalBookmarks invokes completion")
         businessLogic.updateLocalBookmarks(
             serverBookmarks: [],
             localBookmarks: [],
             bookmarksFailedToUpload: []
-        ) { }
+        ) { completed.fulfill() }
+        wait(for: [completed], timeout: 1.0)
+        // With no input bookmarks, the registry must remain empty
+        XCTAssertTrue(bookRegistryMock.readiumBookmarks(forIdentifier: testBook.identifier).isEmpty,
+                      "No bookmarks should be added when server and local lists are both empty")
     }
 
     func testUpdateLocalBookmarks_preservesFailedUploads() {
@@ -800,8 +804,11 @@ final class BookmarkDeletionLogTests: XCTestCase {
 
         waitForExpectations(timeout: 1)
 
-        // The bookmark should have been queued for deletion, not added locally
-        // (Actual server deletion depends on network - we test the logic path)
+        // The server bookmark matched a logged local deletion, so it must NOT
+        // be added back to the local registry (that would resurrect a deletion).
+        let localBookmarks = bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier)
+        XCTAssertFalse(localBookmarks.contains(where: { $0.annotationId == annotationId }),
+                       "Server bookmark matching a pending local deletion must not be re-added locally")
     }
 
     func testUpdateLocalBookmarks_serverBookmarkNotDeleted_addsLocally() {
@@ -1093,9 +1100,12 @@ final class BookmarkDeviceIdMatchingTests: XCTestCase {
 
         waitForExpectations(timeout: 1)
 
-        // Assert - bookmark should be queued for deletion from server
-        // (Not added locally because it's from same device and not present locally)
-        // This behavior ensures orphaned bookmarks from previous sessions get cleaned up
+        // Assert: server bookmark from same device that's absent locally must NOT
+        // be added back locally — the device already deleted it in a prior session,
+        // so restoring it would resurrect user-intentional deletions.
+        let localBookmarks = bookRegistryMock.readiumBookmarks(forIdentifier: bookIdentifier)
+        XCTAssertFalse(localBookmarks.contains(where: { $0.annotationId == "server-same-device" }),
+                       "Same-device server bookmark not present locally must not be re-added")
     }
 
     func testUpdateLocalBookmarks_ServerBookmarkFromDifferentDevice_AddedLocally() {

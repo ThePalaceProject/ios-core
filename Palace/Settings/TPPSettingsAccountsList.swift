@@ -3,7 +3,6 @@ import SwiftUI
 
 /// UITableView to display or add library accounts that the user
 /// can then log in and adjust settings after selecting Accounts.
-// accesslint:disable A11Y.UIKIT.VC_TITLE - Title set in viewDidLoad
 @objcMembers class TPPSettingsAccountsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, TPPLoadingViewController {
 
     enum LoadState {
@@ -25,14 +24,17 @@ import SwiftUI
     fileprivate var libraryAccounts: [Account]
     fileprivate var userAddedSecondaryAccounts: [Account]!
     fileprivate let manager: AccountsManager
+    fileprivate let settings: TPPSettings
     fileprivate var accountsLoadingLogos: Set<String> = []
 
-    required init(accounts: [Account]) {
+    required init(accounts: [Account], manager: AccountsManager = .shared, settings: TPPSettings = .shared) {
         self.accounts = accounts
-        self.manager = AccountsManager.shared
+        self.manager = manager
+        self.settings = settings
         self.libraryAccounts = manager.accounts()
 
         super.init(nibName: nil, bundle: nil)
+        title = NSLocalizedString("Accounts", comment: "Library accounts list screen title")
     }
 
     deinit {
@@ -48,7 +50,6 @@ import SwiftUI
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = NSLocalizedString("Accounts", comment: "Library accounts list screen title")
     }
 
     override func loadView() {
@@ -74,7 +75,7 @@ import SwiftUI
         var accountsToRemove = [String]()
 
         for account in accounts {
-            if AccountsManager.shared.account(account.uuid) == nil {
+            if manager.account(account.uuid) == nil {
                 accountsToRemove.append(account.uuid)
             }
         }
@@ -83,7 +84,7 @@ import SwiftUI
             accounts = accounts.filter { $0.uuid == remove }
         }
 
-        self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != AccountsManager.shared.currentAccount?.uuid }
+        self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != manager.currentAccount?.uuid }
 
         updateSettingsAccountList()
         NotificationCenter.default.addObserver(self,
@@ -144,7 +145,7 @@ import SwiftUI
     }
 
     func reloadAfterAccountChange() {
-        accounts = TPPSettings.shared.settingsAccountsList
+        accounts = settings.settingsAccountsList
         self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != manager.currentAccount?.uuid }
         DispatchQueue.main.async {
             self.tableView.reloadData()
@@ -152,7 +153,7 @@ import SwiftUI
     }
 
     func catalogChangeHandler() {
-        self.libraryAccounts = AccountsManager.shared.accounts()
+        self.libraryAccounts = manager.accounts()
         DispatchQueue.main.async {
             self.updateNavBar()
         }
@@ -161,7 +162,7 @@ import SwiftUI
     private func updateNavBar() {
         var enable = self.userAddedSecondaryAccounts.count + 1 < self.libraryAccounts.count
 
-        if TPPSettings.shared.customLibraryRegistryServer != nil {
+        if settings.customLibraryRegistryServer != nil {
             enable = self.userAddedSecondaryAccounts.count < self.libraryAccounts.count
         }
 
@@ -177,10 +178,10 @@ import SwiftUI
         navigationController?.popViewController(animated: false)
 
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
 
-        AccountsManager.shared.currentAccount = account
+        manager.currentAccount = account
 
         account.loadAuthenticationDocument { _ in }
 
@@ -198,7 +199,7 @@ import SwiftUI
                 self?.authenticateAccount(account) {
                     self?.updateList(withAccount: account)
                 }
-                self?.libraryAccounts = AccountsManager.shared.accounts()
+                self?.libraryAccounts = self?.manager.accounts() ?? []
             }
         }
         navigationController?.pushViewController(listVC, animated: true)
@@ -251,7 +252,7 @@ import SwiftUI
         showLoadingUI(loadState: .success)
         var array = (userAddedSecondaryAccounts ?? []).map { $0.uuid }
         array.append(uuid)
-        TPPSettings.shared.settingsAccountIdsList = array
+        settings.settingsAccountIdsList = array
     }
 
     // MARK: UITableViewDataSource

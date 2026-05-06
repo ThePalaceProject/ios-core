@@ -18,6 +18,10 @@ final class StringExtensionTests: XCTestCase {
         let hash2 = input.md5hex()
 
         XCTAssertEqual(hash1, hash2)
+        // MD5 is always 32 hex characters
+        XCTAssertEqual(hash1.count, 32)
+        // Only hex characters should appear
+        XCTAssertTrue(hash1.allSatisfy { $0.isHexDigit }, "MD5 hex output should only contain hex digits")
     }
 
     func testMd5hex_differsByInput() {
@@ -25,6 +29,9 @@ final class StringExtensionTests: XCTestCase {
         let input2 = "test2@example.com"
 
         XCTAssertNotEqual(input1.md5hex(), input2.md5hex())
+        // Both should still produce valid 32-char hashes
+        XCTAssertEqual(input1.md5hex().count, 32)
+        XCTAssertEqual(input2.md5hex().count, 32)
     }
 
     func testMd5hex_emptyString() {
@@ -33,6 +40,9 @@ final class StringExtensionTests: XCTestCase {
 
         XCTAssertNotNil(hash)
         XCTAssertFalse(hash.isEmpty)
+        // Empty string MD5 is a well-known constant
+        XCTAssertEqual(hash, "d41d8cd98f00b204e9800998ecf8427e")
+        XCTAssertEqual(hash.count, 32)
     }
 
     func testMd5hex_length() {
@@ -41,6 +51,8 @@ final class StringExtensionTests: XCTestCase {
 
         // MD5 produces 32 character hex string
         XCTAssertEqual(hash.count, 32)
+        // The hash should be lowercase hex
+        XCTAssertEqual(hash, hash.lowercased(), "MD5 hex output should be lowercase")
     }
 
     // MARK: - HTML Entity Tests
@@ -63,6 +75,10 @@ final class StringExtensionTests: XCTestCase {
         let parsed = invalidJSON.parseJSONString
 
         XCTAssertNil(parsed)
+        // A valid JSON string on the other hand must parse successfully
+        let validJSON = "{\"key\": \"value\"}"
+        let validParsed = validJSON.parseJSONString
+        XCTAssertNotNil(validParsed, "Valid JSON must parse to a non-nil result")
     }
 
     func testParseJSONString_emptyString() {
@@ -70,6 +86,10 @@ final class StringExtensionTests: XCTestCase {
         let parsed = empty.parseJSONString
 
         XCTAssertNil(parsed)
+        // Whitespace-only strings must also fail to parse
+        let whitespace = "   "
+        XCTAssertNil(whitespace.parseJSONString,
+                     "Whitespace-only string must return nil from parseJSONString")
     }
 
     func testParseJSONString_arrayJSON() {
@@ -92,6 +112,9 @@ final class StringNYPLAdditionsTests: XCTestCase {
         let whitespace = "   "
         XCTAssertFalse(whitespace.isEmpty)
         XCTAssertTrue(whitespace.trimmingCharacters(in: .whitespaces).isEmpty)
+        // Mixed whitespace should also trim to empty
+        let mixed = "\t\n  \r"
+        XCTAssertTrue(mixed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     func testStringContains_caseInsensitive() {
@@ -99,6 +122,8 @@ final class StringNYPLAdditionsTests: XCTestCase {
 
         XCTAssertTrue(input.lowercased().contains("hello"))
         XCTAssertTrue(input.lowercased().contains("world"))
+        // Case-sensitive check: original still has uppercase
+        XCTAssertFalse(input.contains("hello"), "Case-sensitive contains should not find 'hello' in 'Hello World'")
     }
 
     func testStringPrefix_matching() {
@@ -106,6 +131,9 @@ final class StringNYPLAdditionsTests: XCTestCase {
 
         XCTAssertTrue(input.hasPrefix("https://"))
         XCTAssertFalse(input.hasPrefix("http://"))
+        // No prefix should also work correctly
+        XCTAssertFalse(input.hasPrefix("ftp://"))
+        XCTAssertTrue(input.hasPrefix("https"), "Partial prefix should still match")
     }
 
     func testStringSuffix_matching() {
@@ -113,5 +141,8 @@ final class StringNYPLAdditionsTests: XCTestCase {
 
         XCTAssertTrue(input.hasSuffix(".pdf"))
         XCTAssertFalse(input.hasSuffix(".epub"))
+        // Case sensitivity check
+        XCTAssertFalse(input.hasSuffix(".PDF"), "hasSuffix is case-sensitive")
+        XCTAssertTrue(input.hasSuffix("pdf"), "Partial suffix (without dot) should still match")
     }
 }

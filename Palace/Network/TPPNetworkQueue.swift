@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import SQLite
 
 /**
@@ -25,14 +26,11 @@ final class NetworkQueue: NSObject {
     typealias Expression = SQLite.Expression
 
     static let sharedInstance = NetworkQueue()
+    private var cancellables = Set<AnyCancellable>()
 
     // For Objective-C classes
     @objc static func shared() -> NetworkQueue {
         return NetworkQueue.sharedInstance
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
     }
 
     static let StatusCodes = [NSURLErrorTimedOut,
@@ -46,7 +44,7 @@ final class NetworkQueue: NSObject {
                               NSURLErrorSecureConnectionFailed]
     let MaxRetriesInQueue = 5
 
-    let serialQueue = DispatchQueue(label: Bundle.main.bundleIdentifier!
+    let serialQueue = DispatchQueue(label: (Bundle.main.bundleIdentifier ?? "org.thepalaceproject.palace")
                                         + "."
                                         + String(describing: NetworkQueue.self))
 
@@ -71,7 +69,10 @@ final class NetworkQueue: NSObject {
     // MARK: - Public Functions
 
     @objc func addObserverForOfflineQueue() {
-        NotificationCenter.default.addObserver(self, selector: #selector(retryQueue), name: .TPPReachabilityChanged, object: nil)
+        Reachability.shared.connectivityPublisher
+            .filter { $0 }
+            .sink { [weak self] _ in self?.retryQueue() }
+            .store(in: &cancellables)
     }
 
     func addRequest(_ libraryID: String,
@@ -88,8 +89,8 @@ final class NetworkQueue: NSObject {
             let dateCreated = NSKeyedArchiver.archivedData(withRootObject: Date())
 
             let headerData: Data?
-            if headers != nil {
-                headerData = NSKeyedArchiver.archivedData(withRootObject: headers!)
+            if let headers = headers {
+                headerData = NSKeyedArchiver.archivedData(withRootObject: headers)
             } else {
                 headerData = nil
             }
@@ -233,11 +234,13 @@ final class NetworkQueue: NSObject {
 
         let task = URLSession.shared.dataTask(with: urlRequest) { (_, response, _) in
             self.serialQueue.async {
-                if let response = response as? HTTPURLResponse {
-                    if response.statusCode == 200 {
-                        Log.info(#file, "Queued Request Upload: Success")
-                        self.deleteRow(db, id: requestRow[self.sqlID])
-                    }
+                if let response = response as? HTTPURLResponse,
+                   (200...299).contains(response.statusCode) {
+                    Log.info(#file, "Queued Request Upload: Success (\(response.statusCode))")
+                    self.deleteRow(db, id: requestRow[self.sqlID])
+                } else {
+                    let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                    Log.warn(#file, "Queued Request retry failed with status \(code)")
                 }
                 self.retryRequestCount -= 1
             }
