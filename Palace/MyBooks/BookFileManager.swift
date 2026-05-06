@@ -84,7 +84,7 @@ class BookFileManager {
                 return nil
             }
         }
-        BackupExclusionMigration.excludeFromBackup(directoryURL)
+        directoryURL.excludeFromBackup()
 
         return directoryURL
     }

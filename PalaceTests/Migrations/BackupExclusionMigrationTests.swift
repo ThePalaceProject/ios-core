@@ -2,9 +2,10 @@
 //  BackupExclusionMigrationTests.swift
 //  PalaceTests
 //
-//  Tests the iCloud backup exclusion helpers used by the 3.1.0 migration
-//  (PP-4179): downloaded books, audiobook chapter mp3s, logs, network queue,
-//  and accounts state must not be replicated into the patron's iCloud quota.
+//  Tests the 3.1.0 upgrade-pass walker (PP-4179) that recursively flags
+//  every existing entry under Application Support and Documents as
+//  excluded from iCloud backup. URL.excludeFromBackup() primitive has
+//  its own tests in URL+BackupExclusionTests.swift.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -25,37 +26,6 @@ final class BackupExclusionMigrationTests: XCTestCase {
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: sandbox)
         sandbox = nil
-    }
-
-    // MARK: - excludeFromBackup(_:)
-
-    func test_excludeFromBackup_setsFlag_onExistingDirectory() throws {
-        let dir = sandbox.appendingPathComponent("subdir")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        XCTAssertEqual(try isExcluded(dir), false,
-                       "Pre-state: a freshly created directory must not be excluded from backup")
-
-        XCTAssertTrue(BackupExclusionMigration.excludeFromBackup(dir),
-                      "excludeFromBackup must return true on success")
-
-        XCTAssertEqual(try isExcluded(dir), true,
-                       "Directory must report isExcludedFromBackup == true after the helper runs")
-    }
-
-    func test_excludeFromBackup_setsFlag_onExistingFile() throws {
-        let file = sandbox.appendingPathComponent("file.txt")
-        try Data("hello".utf8).write(to: file)
-        XCTAssertEqual(try isExcluded(file), false)
-
-        XCTAssertTrue(BackupExclusionMigration.excludeFromBackup(file))
-
-        XCTAssertEqual(try isExcluded(file), true)
-    }
-
-    func test_excludeFromBackup_returnsFalse_whenURLDoesNotExist() {
-        let missing = sandbox.appendingPathComponent("does-not-exist-\(UUID())")
-        XCTAssertFalse(BackupExclusionMigration.excludeFromBackup(missing),
-                       "Missing URLs must report failure rather than silently succeed")
     }
 
     // MARK: - run(directories:)
@@ -128,47 +98,6 @@ final class BackupExclusionMigrationTests: XCTestCase {
                        "Second run must flag the file added between runs — proves run() does real work on every invocation, not just the first")
         XCTAssertEqual(try isExcluded(firstFile), true,
                        "Second run must not regress the first file's flag")
-    }
-
-    // MARK: - makeDirectoryExcluded(at:) — forward-fix helper
-
-    /// Forward-fix helper used at every `createDirectory` call site in the
-    /// app. It must (a) create the directory if missing, and (b) set the
-    /// exclusion flag whether the directory is new or pre-existing.
-    func test_makeDirectoryExcluded_createsDirAndSetsFlag() throws {
-        let dir = sandbox.appendingPathComponent("created-by-helper")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.path),
-                       "Pre-state: dir must not exist before the helper runs")
-
-        XCTAssertTrue(BackupExclusionMigration.makeDirectoryExcluded(at: dir))
-
-        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.path),
-                      "Helper must create the directory if missing")
-        XCTAssertEqual(try isExcluded(dir), true,
-                       "Newly-created directory must be flagged at creation time")
-    }
-
-    func test_makeDirectoryExcluded_isIdempotent_onPreExistingDirectory() throws {
-        let dir = sandbox.appendingPathComponent("existing")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // Note: pre-existing dir starts unflagged. The helper must flip it.
-
-        XCTAssertTrue(BackupExclusionMigration.makeDirectoryExcluded(at: dir))
-        XCTAssertTrue(BackupExclusionMigration.makeDirectoryExcluded(at: dir),
-                      "Second call must succeed and remain idempotent")
-
-        XCTAssertEqual(try isExcluded(dir), true)
-    }
-
-    func test_makeDirectoryExcluded_failsCleanly_whenPathBlockedByFile() throws {
-        // If something else has already written a regular file at the target
-        // path, the helper must not crash. It should report failure so the
-        // caller can decide how to handle it.
-        let blocker = sandbox.appendingPathComponent("blocked")
-        try Data().write(to: blocker)
-
-        XCTAssertFalse(BackupExclusionMigration.makeDirectoryExcluded(at: blocker),
-                       "Helper must fail cleanly when a file blocks the target path")
     }
 
     // MARK: - Helpers

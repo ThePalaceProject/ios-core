@@ -126,4 +126,53 @@ final class SEMigrationsTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: prodFile.path),
                        "Old prod cache file should be removed")
     }
+
+    /// Verifies the version-gate dispatch wires migrate3_1_0 → BackupExclusionMigration.run().
+    /// A refactor that drops the `< [3, 1, 0]` gate or wires the wrong function
+    /// would silently regress PP-4179 without any helper-class test failing.
+    /// PP-4179 / HelpSpot 17517.
+    func testMigrate3_1_0_backupExclusion_isDispatchedForOldVersion() throws {
+        let appSupport = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let sentinel = appSupport.appendingPathComponent("pp4179-sentinel-\(UUID().uuidString).json")
+        try Data("sentinel".utf8).write(to: sentinel)
+        defer { try? FileManager.default.removeItem(at: sentinel) }
+
+        XCTAssertEqual(try isExcluded(sentinel), false,
+                       "Pre-state: sentinel must not be flagged before migration runs")
+
+        settings.appVersion = "3.0.0"
+        TPPMigrationManager.runMigrations(settings: settings)
+
+        XCTAssertEqual(try isExcluded(sentinel), true,
+                       "migrate3_1_0 must flag entries under Application Support when appVersion < 3.1.0")
+    }
+
+    func testMigrate3_1_0_backupExclusion_isSkippedForCurrentVersion() throws {
+        let appSupport = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let sentinel = appSupport.appendingPathComponent("pp4179-skip-\(UUID().uuidString).json")
+        try Data("sentinel".utf8).write(to: sentinel)
+        defer { try? FileManager.default.removeItem(at: sentinel) }
+
+        settings.appVersion = "3.1.0"
+        TPPMigrationManager.runMigrations(settings: settings)
+
+        XCTAssertEqual(try isExcluded(sentinel), false,
+                       "migrate3_1_0 must NOT run when appVersion >= 3.1.0 — proves the version gate short-circuits")
+    }
+
+    private func isExcluded(_ url: URL) throws -> Bool {
+        let fresh = URL(fileURLWithPath: url.path)
+        let values = try fresh.resourceValues(forKeys: [.isExcludedFromBackupKey])
+        return values.isExcludedFromBackup ?? false
+    }
 }

@@ -21,7 +21,7 @@ class AudiobookFileLogger {
             if !fileManager.fileExists(atPath: logsPath.path) {
                 try? fileManager.createDirectory(at: logsPath, withIntermediateDirectories: true, attributes: nil)
             }
-            BackupExclusionMigration.excludeFromBackup(logsPath)
+            logsPath.excludeFromBackup()
         }
         return logsPath
     }
