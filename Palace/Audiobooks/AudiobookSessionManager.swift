@@ -352,6 +352,33 @@ public final class AudiobookSessionManager: ObservableObject {
                         // doesn't flash an error on screen.
                         if case .cancelled = loadError {
                             // no-op
+                        } else if Self.shouldTriggerSAMLReauthForLoadFailure(
+                            loadError: loadError,
+                            userAccount: self.accountsManager.currentUserAccount,
+                            currentBook: self.currentBook
+                        ) {
+                            // HelpSpot 17727: SAML credentials went stale upstream
+                            // (network layer marked them so on a 401). Showing the
+                            // generic "Try Again" alert is useless — Try Again will
+                            // hit the same 401. Trigger SAML re-auth and re-attempt
+                            // the open after credentials refresh.
+                            Log.info(#file, "SAML credentials stale on audiobook open failure — triggering re-auth before showing error (HelpSpot 17727)")
+                            let userAccount = self.accountsManager.currentUserAccount
+                            let reauthenticator = TPPReauthenticator()
+                            reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true) { [weak self] in
+                                Task { @MainActor in
+                                    guard let self else { return }
+                                    // Same-book guard — a newer open may have superseded this one.
+                                    guard self.currentBook?.identifier == book.identifier else { return }
+                                    guard self.accountsManager.currentUserAccount.hasCredentials() else {
+                                        Log.info(#file, "SAML re-auth cancelled or failed — falling back to standard try-again error")
+                                        BookService.showAudiobookTryAgainError(book: book, onFinish: nil)
+                                        return
+                                    }
+                                    Log.info(#file, "SAML re-auth succeeded — re-attempting audiobook open")
+                                    _ = await self.openAudiobook(book, startPlaying: startPlaying)
+                                }
+                            }
                         } else {
                             BookService.showAudiobookTryAgainError(book: book, onFinish: nil)
                         }
@@ -718,6 +745,39 @@ public final class AudiobookSessionManager: ObservableObject {
     }
 
     // MARK: - Private Methods
+
+    /// HelpSpot 17727: Returns true when an audiobook OPEN (load) failed and the
+    /// user's account is in `.credentialsStale` state (set upstream by the network
+    /// layer when an authenticated request returned 401 / a recoverable auth doc),
+    /// AND the account is SAML with credentials, AND there's a current book to
+    /// re-open after re-auth. This is the load-path counterpart to
+    /// `shouldTriggerSAMLReauthForPlaybackFailure` (PP-3703, which handles the
+    /// playback-time 401 from OpenAccessPlayer).
+    ///
+    /// Why predicate on `authState == .credentialsStale` instead of inspecting the
+    /// load error's underlying NSError: most `AudiobookLoadError` cases don't
+    /// carry an HTTP-status-bearing underlying error (e.g. `manifestFetchFailed`
+    /// is a bare case, no associated value). The credentials-stale signal is
+    /// already propagated by `TPPNetworkResponder` / interceptors when any
+    /// authenticated request returns 401, so by the time the loader returns
+    /// failure we already know whether the credentials need refresh — just check
+    /// the latched signal rather than try to re-derive it from a partial error.
+    ///
+    /// Cancellation never triggers re-auth (a superseded open shouldn't drag the
+    /// user through a sign-in sheet they didn't ask for).
+    static func shouldTriggerSAMLReauthForLoadFailure(
+        loadError: AudiobookLoadError,
+        userAccount: TPPUserAccount,
+        currentBook: TPPBook?
+    ) -> Bool {
+        if case .cancelled = loadError {
+            return false
+        }
+        return userAccount.authState == .credentialsStale
+            && userAccount.authDefinition?.isSaml == true
+            && userAccount.hasCredentials()
+            && currentBook != nil
+    }
 
     /// PP-3703: Returns true when playback failed due to bearer token refresh (e.g. 401 on CM fulfill)
     /// and the account is SAML with credentials, so we should trigger re-auth and re-open the audiobook.
