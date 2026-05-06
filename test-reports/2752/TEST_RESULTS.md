@@ -1,6 +1,6 @@
 # 🧪 Palace iOS Unit Test Results
 
-**Generated:** 2026-05-05 05:14:39 UTC
+**Generated:** 2026-05-06 03:58:19 UTC
 **Commit:** `18fdc247ca03`
 **Branch:** `fix/audiobook-401-saml-reauth-on-open`
 
