@@ -102,7 +102,7 @@ The pragmatic counterargument: stacked PRs have their own friction in GitHub (au
 
 ### 4. Move the ForgeOS governance tooling out of the public repo
 
-The `scripts/forgeos-*.sh` and the references in `CLAUDE.md` to mandatory governance gates are Synctek-internal tooling that doesn't belong in a public open-source repo. Outside contributors see scripts that require an API key they don't have, and a CLAUDE.md that tells them to follow a workflow they can't follow. Tracked as a separate cleanup. The governance work itself is great (the gate model produced real discipline this round); it's just published in the wrong place.
+The `scripts/forgeos-*.sh` and the references in `CLAUDE.md` to mandatory governance gates are maintainer-internal tooling that doesn't belong in a public open-source repo. Outside contributors see scripts that require an API key they don't have, and a CLAUDE.md that tells them to follow a workflow they can't follow. Tracked as a separate cleanup. The governance work itself is great (the gate model produced real discipline this round); it's just published in the wrong place.
 
 ## Process improvements for next epic
 

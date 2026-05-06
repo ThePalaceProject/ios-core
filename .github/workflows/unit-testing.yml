@@ -453,40 +453,15 @@ jobs:
             fi
           fi
 
-          # SpecterQA E2E journey coverage: count journeys that have a recorded
-          # replay with the matching filename. Note this measures recording
-          # coverage, not execution pass/fail — replays are not run in this job.
-          JOURNEY_COUNT=$(find .simdrive/journeys -name "*.yaml" 2>/dev/null | wc -l | tr -d ' ')
-          RECORDED_COUNT=0
-          if [ "$JOURNEY_COUNT" -gt 0 ] 2>/dev/null; then
-            for j in $(ls .simdrive/journeys/*.yaml 2>/dev/null | sed 's|.*/||;s|\.yaml||' | sort); do
-              [ -f ".simdrive/replays/$j.yaml" ] && RECORDED_COUNT=$((RECORDED_COUNT + 1))
-            done
-            echo "**E2E Journey Recording Coverage (SpecterQA): ${RECORDED_COUNT}/${JOURNEY_COUNT} journeys have recorded replays**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "<details>" >> $GITHUB_STEP_SUMMARY
-            echo "<summary>Journey inventory</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Journey | Replay |" >> $GITHUB_STEP_SUMMARY
-            echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
-            for j in $(ls .simdrive/journeys/*.yaml 2>/dev/null | sed 's|.*/||;s|\.yaml||' | sort); do
-              if [ -f ".simdrive/replays/$j.yaml" ]; then
-                echo "| ✅ $j | recorded |" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "| ⬜ $j | pending |" >> $GITHUB_STEP_SUMMARY
-              fi
-            done
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
-          fi
+          # E2E journey coverage moved to chaos-replay-on-pr.yml (simdrive). See docs/architecture/.
 
           # Coverage context note
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> **Why two coverage numbers + SpecterQA?** Testable coverage subtracts files that " >> $GITHUB_STEP_SUMMARY
+          echo "> **Why two coverage numbers?** Testable coverage subtracts files that " >> $GITHUB_STEP_SUMMARY
           echo "> can't be exercised from xcodebuild — SwiftUI views, UIKit VCs, AppDelegate/SceneDelegate " >> $GITHUB_STEP_SUMMARY
           echo "> lifecycle (see \`scripts/coverage-exclude.json\`) — so raising it means more _testable_ " >> $GITHUB_STEP_SUMMARY
           echo "> logic is tested, not that we shipped less UI. Total coverage is kept for continuity. " >> $GITHUB_STEP_SUMMARY
-          echo "> The excluded paths are covered by SpecterQA E2E journeys driving the real app on a simulator." >> $GITHUB_STEP_SUMMARY
+          echo "> The excluded paths are covered by simdrive E2E journeys (see \`chaos-replay-on-pr.yml\`)." >> $GITHUB_STEP_SUMMARY
           
           # History/Trends
           if [ -n "$NEW_FAILURES" ] || [ -n "$FIXED_TESTS" ] || [ -n "$FLAKY_TESTS" ] || [ -n "$TEST_COUNT_CHANGE" ]; then
@@ -802,34 +777,13 @@ jobs:
               }
             }
 
-            // SpecterQA E2E journey recording coverage: count only journeys
-            // that have a replay with the matching filename. Measures recording
-            // coverage, not execution pass/fail — replays are not run here.
-            const journeyDir = '.simdrive/journeys';
-            const replayDir = '.simdrive/replays';
-            try {
-              const journeys = fs.readdirSync(journeyDir).filter(f => f.endsWith('.yaml')).sort();
-              const replays = new Set(fs.readdirSync(replayDir).filter(f => f.endsWith('.yaml')));
-              if (journeys.length > 0) {
-                const recorded = journeys.filter(j => replays.has(j)).length;
-                body += `**E2E Journey Recording Coverage (SpecterQA): ${recorded}/${journeys.length} journeys have recorded replays**\n\n`;
-                body += `<details>\n<summary>Journey inventory</summary>\n\n`;
-                body += `| Journey | Replay |\n`;
-                body += `|---------|--------|\n`;
-                journeys.forEach(j => {
-                  const name = j.replace('.yaml', '');
-                  const hasReplay = replays.has(j);
-                  body += `| ${hasReplay ? '✅' : '⬜'} ${name} | ${hasReplay ? 'recorded' : 'pending'} |\n`;
-                });
-                body += `\n</details>\n\n`;
-              }
-            } catch (e) { /* no journeys dir */ }
+            // E2E journey coverage moved to chaos-replay-on-pr.yml (simdrive). See docs/architecture/.
 
-            body += `> **Why two coverage numbers + SpecterQA?** Testable coverage subtracts files that `;
+            body += `> **Why two coverage numbers?** Testable coverage subtracts files that `;
             body += `can't be exercised from xcodebuild — SwiftUI views, UIKit VCs, lifecycle `;
             body += `(see \`scripts/coverage-exclude.json\`) — so raising it means more _testable_ logic is tested, `;
             body += `not that we shipped less UI. Total coverage is kept for continuity. `;
-            body += `The excluded paths are covered by SpecterQA E2E journeys driving the real app on a simulator.\n\n`;
+            body += `The excluded paths are covered by simdrive E2E journeys (see \`chaos-replay-on-pr.yml\`).\n\n`;
             
             // Trends
             if (newFailures || fixedTests || flakyTests || testCountChange) {

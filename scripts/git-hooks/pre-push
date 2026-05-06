@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# pre-push
+#
+# Purpose:
+#   Run the local pre-PR self-check before pushing, so failures surface here
+#   instead of burning a CI cycle. Preserves Git LFS push behavior and chains
+#   to the maintainer's harness gate hook when installed.
+#
+#   Set SKIP_VERIFY_PR=1 to bypass the verify-pr.sh run on a one-off
+#   (e.g. when pushing a docs-only branch you've already validated):
+#       SKIP_VERIFY_PR=1 git push
+#
+# Install:
+#   git config core.hooksPath scripts/git-hooks
+#   (run from the repo root; one-time)
+#
+# Arguments:
+#   $@ — forwarded to git lfs pre-push (and the harness hook) verbatim.
+
+set -euo pipefail
+
+# --- Git LFS first ------------------------------------------------------------
+# If LFS is configured for this repo OR the user has a global LFS install,
+# delegate to git-lfs first so binary blobs continue to flow.
+LFS_REQUIRED=$(git config --get filter.lfs.required 2>/dev/null || echo "")
+if [[ "$LFS_REQUIRED" == "true" || -d "$HOME/.git/lfs" ]]; then
+  if command -v git-lfs >/dev/null 2>&1; then
+    git lfs pre-push "$@"
+  fi
+fi
+
+# --- verify-pr.sh -------------------------------------------------------------
+REPO_ROOT=$(git rev-parse --show-toplevel)
+VERIFY="$REPO_ROOT/scripts/verify-pr.sh"
+
+if [[ -x "$VERIFY" && "${SKIP_VERIFY_PR:-}" != "1" ]]; then
+  echo "pre-push: running scripts/verify-pr.sh --quick (set SKIP_VERIFY_PR=1 to bypass)"
+  if ! "$VERIFY" --quick; then
+    cat >&2 <<EOF
+
+ERROR: pre-push hook — scripts/verify-pr.sh --quick failed
+
+The local self-check failed. CI will fail too. Fix the failures and try again.
+
+To push anyway (e.g. you've already verified out-of-band, or the failure is
+unrelated to your change), use:
+
+    SKIP_VERIFY_PR=1 git push
+
+EOF
+    exit 1
+  fi
+fi
+
+# --- Optional harness gate chain ----------------------------------------------
+# If the maintainer's harness is installed, defer to its richer gate logic
+# (ForgeOS, etc.) AFTER verify-pr.sh has succeeded.
+HARNESS_HOOK="$HOME/harness/core/hooks/pre-push-check.sh"
+if [[ -x "$HARNESS_HOOK" ]]; then
+  exec "$HARNESS_HOOK" "$@"
+fi
+
+exit 0

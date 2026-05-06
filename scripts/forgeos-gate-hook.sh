@@ -12,7 +12,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
-API_URL="https://forgeos-api.synctek.io"
+API_URL="${FORGEOS_API_URL:?FORGEOS_API_URL must be set in your environment (see scripts/README.md)}"
 PROJECT_ID="proj_87884c17"
 
 # Read API key

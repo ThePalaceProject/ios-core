@@ -23,12 +23,12 @@
 #   forgeos-orchestrate.sh stale-check [hours]
 #   forgeos-orchestrate.sh report
 #
-# Requires: FORGEOS_API_KEY env var or reads from .cursor/mcp.json
-# All ForgeOS data is private — this script is gitignored.
+# Requires: FORGEOS_API_URL + FORGEOS_API_KEY env vars (typically set via ~/harness/.env).
+# See scripts/README.md for setup. Outside contributors do not run this.
 
 set -euo pipefail
 
-API_URL="https://forgeos-api.synctek.io"
+API_URL="${FORGEOS_API_URL:?FORGEOS_API_URL must be set in your environment (see scripts/README.md)}"
 PROJECT_ID="proj_87884c17"
 
 # Read API key from env or .cursor/mcp.json
