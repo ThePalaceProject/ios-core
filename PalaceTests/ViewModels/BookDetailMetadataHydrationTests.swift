@@ -197,7 +197,9 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         categoryStrings: [String]?,
         alternateURL: URL?,
         relatedWorksURL: URL? = nil,
-        revokeURL: URL? = nil
+        revokeURL: URL? = nil,
+        audience: String? = nil,
+        language: String? = nil
     ) -> TPPBook {
         let identifier = "test-\(UUID().uuidString)"
         let defaultAcquisition = TPPOPDSAcquisition(
@@ -232,7 +234,84 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
             timeTrackingURL: nil,
             contributors: nil,
             bookDuration: nil,
+            audience: audience,
+            language: language,
             imageCache: MockImageCache()
         )
+    }
+
+    // MARK: - PP-4046: Hydrate audience + language
+
+    func testHydrate_PopulatesAudienceAndLanguageFromAlternateFeed() async throws {
+        let sparse = makeBook(
+            published: nil,
+            publisher: nil,
+            distributor: nil,
+            categoryStrings: nil,
+            alternateURL: alternateURL,
+            audience: nil,
+            language: nil
+        )
+        let fresh = makeBook(
+            published: iso("2015-08-04"),
+            publisher: "Disney-Hyperion",
+            distributor: "OverDrive",
+            categoryStrings: ["Juvenile Fiction"],
+            alternateURL: alternateURL,
+            audience: "Young Adult",
+            language: "en"
+        )
+
+        let vm = BookDetailViewModel(
+            book: sparse,
+            registry: TPPBookRegistryMock(),
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            opdsFeedService: AppContainer.production().opdsFeedService,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService,
+            metadataHydrator: { _ in fresh }
+        )
+
+        await vm.hydrateMetadataIfNeeded()
+
+        XCTAssertEqual(vm.book.audience, "Young Adult",
+                       "Hydration must fill in audience from the alternate feed")
+        XCTAssertEqual(vm.book.language, "en",
+                       "Hydration must fill in language from the alternate feed")
+    }
+
+    func testHydrate_TriggeredWhenOnlyAudienceOrLanguageMissing_DoesNotFireIfOthersPopulated() async {
+        // If everything else is populated, a missing audience/language alone is
+        // not worth a network round-trip — we only hydrate when the row is
+        // *fully* empty. This guards against a hot-path regression where every
+        // sparse-on-audience book triggers an alternate-feed fetch.
+        let mostlyPopulated = makeBook(
+            published: iso("2015-08-04"),
+            publisher: "Disney-Hyperion",
+            distributor: "OverDrive",
+            categoryStrings: ["Juvenile Fiction"],
+            alternateURL: alternateURL,
+            audience: nil,
+            language: nil
+        )
+        var fetchCount = 0
+        let vm = BookDetailViewModel(
+            book: mostlyPopulated,
+            registry: TPPBookRegistryMock(),
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            opdsFeedService: AppContainer.production().opdsFeedService,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService,
+            metadataHydrator: { _ in fetchCount += 1; return nil }
+        )
+
+        await vm.hydrateMetadataIfNeeded()
+
+        XCTAssertEqual(fetchCount, 0,
+                       "Audience/language alone are not strong enough signals to trigger hydration")
     }
 }

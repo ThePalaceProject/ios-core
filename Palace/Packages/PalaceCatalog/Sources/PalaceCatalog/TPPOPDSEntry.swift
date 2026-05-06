@@ -26,6 +26,14 @@ import PalaceLogging
   @objc public private(set) var timeTrackingLink: TPPOPDSLink?
   @objc public private(set) var duration: String?
 
+  /// Patron audience ("Adult", "Young Adult", "Children", ...). Sourced from
+  /// the `<category scheme="http://schema.org/audience">` entry — distinct
+  /// from the genre categories surfaced via `categories`.
+  @objc public private(set) var audience: String?
+
+  /// BCP-47 / ISO 639 language code from `<dcterms:language>`.
+  @objc public private(set) var language: String?
+
   @objc public var groupAttributes: TPPOPDSEntryGroupAttributes? {
     for link in links {
       if link.rel == TPPOPDSRelationGroup {
@@ -62,6 +70,21 @@ import PalaceLogging
 
     publisher = entryXML.firstChild(withName: "publisher")?.value
     summary = entryXML.firstChild(withName: "summary")?.value.stringByDecodingHTMLEntities
+
+    // PP-4046 — Audience is published as `<category scheme="schema.org/audience">`;
+    // extract the label/term so the detail view can render it as its own row
+    // independent from the genre category list.
+    audience = categories.first(where: {
+      $0.scheme?.absoluteString == "http://schema.org/audience"
+    }).map { $0.label ?? $0.term }
+
+    // PP-4046 — `<dcterms:language>` is normally namespace-stripped to
+    // `language` (TPPXML sets shouldProcessNamespaces=true); legacy feeds
+    // that omit the `xmlns:dcterms` declaration leave the literal prefix in
+    // place. Read either, prefer the unprefixed form. Same defensive pattern
+    // as the role/opf:role lookup in parseContributors (PP-4230).
+    language = entryXML.firstChild(withName: "language")?.value
+      ?? entryXML.firstChild(withName: "dcterms:language")?.value
 
     guard parseTitle(from: entryXML) else { return nil }
     guard parseUpdatedDate(from: entryXML) else { return nil }

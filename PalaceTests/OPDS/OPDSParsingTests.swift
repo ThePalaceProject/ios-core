@@ -524,6 +524,101 @@ final class OPDSParsingTests: XCTestCase {
         XCTAssertEqual(entry.duration, "PT10H30M", "Duration should be parsed for audiobooks")
     }
 
+    // MARK: - Audience + Language (PP-4046)
+
+    private let entryWithAudienceAndLanguageXML = """
+        <entry xmlns="http://www.w3.org/2005/Atom"
+               xmlns:dcterms="http://purl.org/dc/terms/">
+            <id>urn:uuid:audience-001</id>
+            <title>Audience Book</title>
+            <updated>2024-01-20T08:00:00Z</updated>
+            <dcterms:language>en</dcterms:language>
+            <category term="Young Adult" scheme="http://schema.org/audience" label="Young Adult"/>
+            <category term="Fiction" scheme="http://librarysimplified.org/terms/fiction/" label="Fiction"/>
+            <category term="Mystery" scheme="http://librarysimplified.org/terms/genres/Simplified/" label="Mystery"/>
+            <link href="http://example.org/entry" rel="alternate" type="application/atom+xml"/>
+            <link href="http://example.org/acquire" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip"/>
+        </entry>
+        """
+
+    /// Some legacy feeds don't declare the dcterms namespace, so the parser
+    /// sees the literal "dcterms:language" element name instead of the
+    /// stripped form. Mirrors the role/opf:role pattern from PP-4230.
+    private let entryWithUnnamespacedLanguageXML = """
+        <entry xmlns="http://www.w3.org/2005/Atom">
+            <id>urn:uuid:audience-002</id>
+            <title>Legacy Language Book</title>
+            <updated>2024-01-20T08:00:00Z</updated>
+            <dcterms:language>fr</dcterms:language>
+            <link href="http://example.org/entry" rel="alternate" type="application/atom+xml"/>
+            <link href="http://example.org/acquire" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip"/>
+        </entry>
+        """
+
+    func testEntry_ParsesAudienceFromSchemaOrgCategory() {
+        guard let data = entryWithAudienceAndLanguageXML.data(using: .utf8),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml) else {
+            XCTFail("Failed to create entry")
+            return
+        }
+
+        XCTAssertEqual(entry.audience, "Young Adult",
+                       "Audience must be the label of the schema.org/audience category")
+    }
+
+    func testEntry_AudienceCategoryIsNotInRegularCategoryList() {
+        // After PP-4046, audience is its own field. The audience category
+        // should not leak into TPPBook.categoryStrings (which is filtered to
+        // Simplified-genre + unscoped categories — but a regression here would
+        // mean the audience scheme reappears as a generic category badge).
+        guard let data = entryWithAudienceAndLanguageXML.data(using: .utf8),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml) else {
+            XCTFail("Failed to create entry")
+            return
+        }
+        let categoryStrings = TPPBook.categoryStringsFromCategories(categories: entry.categories)
+        XCTAssertFalse(categoryStrings.contains("Young Adult"),
+                       "Audience-scheme category must not leak into categoryStrings")
+        XCTAssertTrue(categoryStrings.contains("Mystery"),
+                      "Simplified-genre categories must still pass through")
+    }
+
+    func testEntry_ParsesLanguageWithDctermsNamespace() {
+        guard let data = entryWithAudienceAndLanguageXML.data(using: .utf8),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml) else {
+            XCTFail("Failed to create entry")
+            return
+        }
+        XCTAssertEqual(entry.language, "en")
+    }
+
+    func testEntry_ParsesLanguageWithoutNamespaceDeclaration() {
+        guard let data = entryWithUnnamespacedLanguageXML.data(using: .utf8),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml) else {
+            XCTFail("Failed to create entry")
+            return
+        }
+        XCTAssertEqual(entry.language, "fr",
+                       "Legacy feeds without xmlns:dcterms must still yield language")
+    }
+
+    func testEntry_AudienceAndLanguageNilWhenAbsent() {
+        // The pre-existing entryWithCategoriesXML omits both fields.
+        guard let data = entryWithCategoriesXML.data(using: .utf8),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml) else {
+            XCTFail("Failed to create entry")
+            return
+        }
+        // entryWithCategoriesXML has an `Adult` audience category.
+        XCTAssertEqual(entry.audience, "Adult")
+        XCTAssertNil(entry.language, "Language must be nil when no <language> element is present")
+    }
+
     // MARK: - TPPOPDSLink Relation Handling Tests
 
     func testLinkRelationAlternate() {
