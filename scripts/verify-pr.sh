@@ -46,6 +46,29 @@ BASE=$(detect_base_branch)
 CHANGED_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep -v 'Tests/' || true)
 CHANGED_TEST_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep 'Tests/' || true)
 CHANGED_UI=$(echo "$CHANGED_SWIFT" | grep -E 'UI/|View|Cell|Controller' || true)
+ALL_CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null || true)
+
+# Docs-only fast-path. If every changed file matches a documentation or
+# repo-meta pattern, skip the build/test/lint/coverage/mutation/a11y battery.
+# The battery exists to gate behavioral risk; pure documentation cannot
+# regress runtime behavior, so running 15-30 min of xcodebuild for it is
+# policy without substance. Honest evidence in seconds beats expensive
+# evidence that asserts the same thing.
+#
+# Allowlist (any other path triggers the full battery):
+#   docs/**           — generated and hand-written docs
+#   *.md, *.txt       — markdown / plain text anywhere in the tree
+#   README*           — readmes
+#   LICENSE*, NOTICE  — legal/attribution files
+#   CHANGELOG*        — release notes
+#   .gitignore, .gitattributes — repo metadata
+DOCS_ONLY=false
+if [ -n "$ALL_CHANGED" ]; then
+  NON_DOCS=$(echo "$ALL_CHANGED" | grep -vE '^docs/|\.md$|\.txt$|(^|/)README|(^|/)LICENSE|(^|/)NOTICE|(^|/)CHANGELOG|(^|/)\.gitignore$|(^|/)\.gitattributes$' || true)
+  if [ -z "$NON_DOCS" ]; then
+    DOCS_ONLY=true
+  fi
+fi
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -67,6 +90,50 @@ echo "=== Palace Pre-PR Verification ==="
 echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
 echo "Changed files: $(echo "$CHANGED_SWIFT" | wc -l | tr -d ' ') production, $(echo "$CHANGED_TEST_SWIFT" | wc -l | tr -d ' ') test"
 echo ""
+
+# Docs-only fast-path: skip build/test/lint/coverage/mutation/a11y when no
+# source files changed. Honest pass records, written to JSON report and stdout
+# the same as the full battery would emit, just with explicit "skipped" detail.
+if [ "$DOCS_ONLY" = "true" ]; then
+  echo "--- Docs-only fast-path ---"
+  echo "All changed files match the docs/meta allowlist. Skipping the full battery."
+  echo "Changed files:"
+  echo "$ALL_CHANGED" | sed 's/^/  /'
+  echo ""
+  record "build" "pass" "Skipped — docs-only PR (no source files changed)"
+  record "unit_tests" "pass" "Skipped — docs-only PR (no source files changed)"
+  record "test_quality" "pass" "Skipped — docs-only PR (no test files changed)"
+  record "coverage_floors" "pass" "Skipped — docs-only PR (no source files changed)"
+  record "mutation" "pass" "Skipped — docs-only PR (no production Swift changed)"
+  record "accessibility" "pass" "Skipped — docs-only PR (no UI files changed)"
+  TEST_PASS=0
+  TEST_FAIL=0
+
+  echo ""
+  echo "=== Summary ==="
+  echo "  Passed: $PASS_COUNT"
+  echo "  Failed: $FAIL_COUNT"
+
+  if [ -n "$REPORT_FILE" ]; then
+    RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
+    cat > "$REPORT_FILE" <<JSONEOF
+{
+  "branch": "$(git rev-parse --abbrev-ref HEAD)",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "fast_path": "docs-only",
+  "pass_count": $PASS_COUNT,
+  "fail_count": $FAIL_COUNT,
+  "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
+  "checks": [$RESULTS_JSON]
+}
+JSONEOF
+    echo "  Report written to: $REPORT_FILE"
+  fi
+
+  echo ""
+  echo "CLEAR: docs-only fast-path — full battery skipped (no behavioral risk)."
+  exit 0
+fi
 
 # 1. Build check
 echo "--- Build ---"
