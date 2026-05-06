@@ -305,11 +305,16 @@ fi
 # 8. FR↔Tests coverage matrix integrity (skipped if harness not installed —
 #    the matrix is maintained by the optional harness governance layer; outside
 #    contributors aren't blocked by its absence).
+#
+# Presence-probe: `harness srd --help` lists subcommands (exit 0 always,
+# regardless of matrix state). Don't probe with `srd coverage --json` exit
+# code — that returns 1 when the matrix is dirty (the case this step is
+# meant to catch), which would falsely route to "skipped".
 echo "--- Coverage by FR ---"
 HARNESS_BIN="$HOME/harness/bin/harness"
 if [ ! -x "$HARNESS_BIN" ]; then
   record "coverage_by_fr" "pass" "harness not installed (skipped)"
-elif ! "$HARNESS_BIN" srd coverage --json >/dev/null 2>&1; then
+elif ! "$HARNESS_BIN" srd --help 2>&1 | grep -q '\bcoverage\b'; then
   record "coverage_by_fr" "pass" "harness srd coverage subcommand not available (skipped)"
 else
   COV_JSON=$("$HARNESS_BIN" srd coverage --json 2>/dev/null)
