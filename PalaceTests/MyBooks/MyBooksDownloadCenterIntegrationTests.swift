@@ -427,75 +427,166 @@ final class DownloadStateMachineIntegrationTests: XCTestCase {
         XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadSuccessful)
     }
 
-    // MARK: - Borrow Response Mapping (PP-4178)
+    // MARK: - Borrow Response Mapping (PP-4178 + Place Hold disambiguation)
 
-    /// CM race case: borrow request loses the copy to another patron, CM falls back to
-    /// a Hold and returns 201 with a `reserved` OPDS entry. The iOS client must treat
-    /// this as a borrow failure, not a silent state revert.
-    func testBorrowResponseState_reserved_returnsHoldingAndHoldCopyUnavailableError() {
-        let book = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReserved(
+    // The mapping must distinguish two scenarios that share the borrowAsync code path:
+    //   1. Place Hold tap on a no-copies title (pre=unavailable). A `.holding` response
+    //      is the expected outcome — no error should fire.
+    //   2. Borrow tap on a Borrow-eligible title (pre=limited/unlimited/ready/reserved)
+    //      that comes back `.holding`. That IS the CM Loan→Hold race; surface the error
+    //      so the patron sees why the borrow failed.
+
+    // MARK: Place Hold path — pre availability == unavailable
+
+    /// Place Hold on a no-copies title is a success when CM responds `unavailable`
+    /// (patron is now queued). The pre-PP-4178-follow-up alert was incorrectly firing here.
+    func testBorrowResponseState_placeHold_unavailableResponse_noError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
+            copiesHeld: 3,
+            copiesTotal: 3
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
+            copiesHeld: 3,
+            copiesTotal: 3
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .holding)
+        XCTAssertNil(result.error, "Place Hold tap on an unavailable title returning `unavailable` is a successful queue placement, not a race loss")
+    }
+
+    /// Place Hold tap can also produce a `reserved` response when a copy frees up
+    /// between the tap and the server-side reservation (e.g. another patron returns).
+    /// The patron is now hold-ready — still not an error.
+    func testBorrowResponseState_placeHold_reservedResponse_noError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
+            copiesHeld: 3,
+            copiesTotal: 3
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReserved(
+            holdPosition: 1,
+            copiesTotal: 3,
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 7)
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .holding)
+        XCTAssertNil(result.error, "Place Hold path must not fire the Loan→Hold race error")
+    }
+
+    // MARK: Borrow race-loss path — pre availability was Borrow-eligible
+
+    /// Original PP-4178 race: Borrow on a `ready` (hold became available for this patron)
+    /// title returns `unavailable` because another patron consumed the copy first. The
+    /// alert exists for this scenario and must keep firing.
+    func testBorrowResponseState_borrowFromReady_unavailableResponse_returnsRaceLossError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReady(
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 3)
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
+            copiesHeld: 3,
+            copiesTotal: 3
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .holding, "Registry must reflect that the patron is back on the hold queue")
+        guard case .bookRegistry(.holdCopyUnavailable) = result.error else {
+            XCTFail("Expected race-loss error for ready→unavailable, got \(String(describing: result.error))")
+            return
+        }
+    }
+
+    /// OverDrive-class regression Courtney's QA flagged: title shows Borrow because the
+    /// catalog availability is stale (`unlimited`/cached as available), but CM has already
+    /// loaned the last copy. Borrow tap returns `unavailable`. The alert is the only
+    /// signal the patron gets that the catalog state was wrong.
+    func testBorrowResponseState_borrowFromUnlimited_unavailableResponse_returnsRaceLossError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
+            copiesHeld: 1,
+            copiesTotal: 1
+        ))
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .holding)
+        guard case .bookRegistry(.holdCopyUnavailable) = result.error else {
+            XCTFail("Stale Borrow availability that resolves to unavailable must surface the alert, got \(String(describing: result.error))")
+            return
+        }
+    }
+
+    /// Borrow on a `limited` title that comes back `reserved` — CM placed the patron
+    /// on hold instead of granting the loan. Race loss variant.
+    func testBorrowResponseState_borrowFromLimited_reservedResponse_returnsRaceLossError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityLimited(
+            copiesAvailable: 1,
+            copiesTotal: 3,
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 21)
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReserved(
             holdPosition: 2,
             copiesTotal: 3,
             since: Date(),
             until: Date().addingTimeInterval(86400 * 7)
         ))
 
-        let result = MyBooksDownloadCenter.borrowResponseState(for: book)
-
-        XCTAssertEqual(result.state, .holding, "Registry should reflect the hold state so the UI shows correct queue position")
-        guard case .bookRegistry(.holdCopyUnavailable) = result.error else {
-            XCTFail("Expected holdCopyUnavailable error for reserved response, got \(String(describing: result.error))")
-            return
-        }
-    }
-
-    /// When the license pool has no copies and the patron has no slot, the server returns
-    /// `unavailable` — same class of failure as `reserved`: the borrow did not grant a loan.
-    func testBorrowResponseState_unavailable_returnsHoldingAndHoldCopyUnavailableError() {
-        let book = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
-            copiesHeld: 3,
-            copiesTotal: 3
-        ))
-
-        let result = MyBooksDownloadCenter.borrowResponseState(for: book)
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
 
         XCTAssertEqual(result.state, .holding)
         guard case .bookRegistry(.holdCopyUnavailable) = result.error else {
-            XCTFail("Expected holdCopyUnavailable error for unavailable response, got \(String(describing: result.error))")
+            XCTFail("Expected race-loss error for limited→reserved, got \(String(describing: result.error))")
             return
         }
     }
 
-    func testBorrowResponseState_limited_returnsDownloadNeededWithNoError() {
-        let book = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityLimited(
+    // MARK: Successful loan path — post availability is loan-class
+
+    func testBorrowResponseState_postLimited_returnsDownloadNeededWithNoError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReady(
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 3)
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityLimited(
             copiesAvailable: 2,
             copiesTotal: 3,
             since: Date(),
             until: Date().addingTimeInterval(86400 * 21)
         ))
 
-        let result = MyBooksDownloadCenter.borrowResponseState(for: book)
-
-        XCTAssertEqual(result.state, .downloadNeeded)
-        XCTAssertNil(result.error, "Limited availability indicates a successful loan; no error expected")
-    }
-
-    func testBorrowResponseState_unlimited_returnsDownloadNeededWithNoError() {
-        let book = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnlimited())
-
-        let result = MyBooksDownloadCenter.borrowResponseState(for: book)
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
 
         XCTAssertEqual(result.state, .downloadNeeded)
         XCTAssertNil(result.error)
     }
 
-    func testBorrowResponseState_ready_returnsDownloadNeededWithNoError() {
-        let book = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReady(
+    func testBorrowResponseState_postUnlimited_returnsDownloadNeededWithNoError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnlimited())
+
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
+
+        XCTAssertEqual(result.state, .downloadNeeded)
+        XCTAssertNil(result.error)
+    }
+
+    func testBorrowResponseState_postReady_returnsDownloadNeededWithNoError() {
+        let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReady(
+            since: Date(),
+            until: Date().addingTimeInterval(86400 * 3)
+        ))
+        let postBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityReady(
             since: Date(),
             until: Date().addingTimeInterval(86400 * 3)
         ))
 
-        let result = MyBooksDownloadCenter.borrowResponseState(for: book)
+        let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
 
         XCTAssertEqual(result.state, .downloadNeeded)
         XCTAssertNil(result.error)

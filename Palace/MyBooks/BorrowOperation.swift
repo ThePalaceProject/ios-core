@@ -91,17 +91,33 @@ final class BorrowOperation {
 
     // MARK: - Pure Helpers
 
-    /// Maps a book returned from a Borrow request to the resulting
-    /// registry state and any error that should be surfaced.
-    /// PP-4178: when CM loses the Loan→Hold race (another patron
-    /// consumes the copy between HoldAvailable push and this borrow
-    /// tap), CM returns 201 with a `reserved`/`unavailable` OPDS entry
-    /// instead of a loan; flag that case so the caller throws an
-    /// explicit error instead of silently reverting.
-    static func borrowResponseState(for book: TPPBook) -> (state: TPPBookState, error: PalaceError?) {
-        guard let availability = book.defaultAcquisition?.availability else {
+    /// Maps a book returned from a Borrow/Place-Hold request to the
+    /// resulting registry state and any error that should be surfaced.
+    ///
+    /// Both buttons share `borrowAsync`, but the same OPDS response carries
+    /// different meaning depending on what the user tapped:
+    ///
+    /// - Place Hold (pre availability == `unavailable`) → an
+    ///   `unavailable`/`reserved` response is the expected queue placement,
+    ///   NOT a failure. (PP-4178 follow-up — pre-fix, the alert was a false
+    ///   positive for any Place Hold tap on a no-copies title.)
+    /// - Borrow (pre availability is loan-class:
+    ///   `limited`/`unlimited`/`ready`/`reserved`) → an `unavailable`/`reserved`
+    ///   response means CM lost the Loan→Hold race and the loan was
+    ///   downgraded to a hold. Surface the alert.
+    ///
+    /// Backward-compat: when `preBorrowBook` is nil, retains the original
+    /// PP-4178 behavior (treat `unavailable`/`reserved` as race losses) for
+    /// callers that don't have pre-borrow context.
+    static func borrowResponseState(
+        for postBorrowBook: TPPBook,
+        preBorrowBook: TPPBook? = nil
+    ) -> (state: TPPBookState, error: PalaceError?) {
+        guard let availability = postBorrowBook.defaultAcquisition?.availability else {
             return (.downloadNeeded, nil)
         }
+
+        let userTappedPlaceHold = preBorrowBook.map(preBorrowWasUnavailable) ?? false
 
         var state: TPPBookState = .downloadNeeded
         var error: PalaceError?
@@ -109,18 +125,39 @@ final class BorrowOperation {
         availability.match(
             unavailable: { _ in
                 state = .holding
-                error = .bookRegistry(.holdCopyUnavailable)
+                if !userTappedPlaceHold {
+                    error = .bookRegistry(.holdCopyUnavailable)
+                }
             },
             limited: { _ in state = .downloadNeeded },
             unlimited: { _ in state = .downloadNeeded },
             reserved: { _ in
                 state = .holding
-                error = .bookRegistry(.holdCopyUnavailable)
+                if !userTappedPlaceHold {
+                    error = .bookRegistry(.holdCopyUnavailable)
+                }
             },
             ready: { _ in state = .downloadNeeded }
         )
 
         return (state, error)
+    }
+
+    /// Pre-borrow availability discriminator: was the user looking at a
+    /// no-copies title and able only to Place Hold? PP-4178 follow-up.
+    private static func preBorrowWasUnavailable(_ book: TPPBook) -> Bool {
+        guard let availability = book.defaultAcquisition?.availability else {
+            return false
+        }
+        var wasUnavailable = false
+        availability.match(
+            unavailable: { _ in wasUnavailable = true },
+            limited: { _ in },
+            unlimited: { _ in },
+            reserved: { _ in },
+            ready: { _ in }
+        )
+        return wasUnavailable
     }
 
     /// Builds a user-friendly borrow error message that always uses
@@ -296,7 +333,9 @@ final class BorrowOperation {
             await clearProcessingState()
 
             let location = self.bookRegistry.location(forIdentifier: borrowedBook.identifier)
-            let mapping = Self.borrowResponseState(for: borrowedBook)
+            // PP-4178 follow-up: pass `book` (pre-borrow) so the helper can
+            // tell Place Hold success apart from a CM Loan→Hold race loss.
+            let mapping = Self.borrowResponseState(for: borrowedBook, preBorrowBook: book)
 
             self.bookRegistry.addBook(
                 borrowedBook,
