@@ -6,6 +6,25 @@ public struct AnnotationResponse {
     var timeStamp: String?
 }
 
+/// Provides a stable device identifier for annotation sync.
+///
+/// Prefers the Adobe DRM device ID (set during device activation) for
+/// backwards compatibility with existing annotations. Falls back to the
+/// Firebase-managed device ID (persisted in UserDefaults) so that
+/// non-DRM users still get working cross-device sync detection.
+///
+/// - Important: Prior to this fix, non-Adobe-DRM users sent an empty
+///   string, which made cross-device sync prompts impossible because
+///   both devices appeared to be the same device.
+enum AnnotationDevice {
+    static func currentID() -> String {
+        if let adobeID = AccountsManager.shared.currentUserAccount.deviceID, !adobeID.isEmpty {
+            return adobeID
+        }
+        return "urn:uuid:\(FirebaseManager.shared.deviceID)"
+    }
+}
+
 protocol AnnotationsManager {
     var syncIsPossibleAndPermitted: Bool { get }
     func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ response: AnnotationResponse?) -> Void)?)
@@ -43,6 +62,29 @@ protocol AnnotationsManager {
 }
 
 @objcMembers final class TPPAnnotations: NSObject {
+
+    // MARK: - Test seam
+    //
+    // TPPAnnotations historically reached `TPPNetworkExecutor.shared` directly
+    // from its static methods, making it impossible to drive failure paths in
+    // unit tests. `executorOverride` is a test-only seam: when non-nil, all
+    // network calls in this file route through it instead of `.shared`. The
+    // override defaults to `nil` so production behavior is unchanged.
+    //
+    // Test usage:
+    //   override func setUp() { TPPAnnotations.executorOverride = mockExecutor }
+    //   override func tearDown() { TPPAnnotations.executorOverride = nil }
+    //
+    // Never set this from production code.
+    nonisolated(unsafe) static var executorOverride: TPPNetworkExecutor?
+
+    /// Returns the executor TPPAnnotations should use for the current call.
+    /// In production this is always `.shared`. In tests, setting
+    /// `executorOverride` lets the test inject a stubbed executor.
+    fileprivate static var currentExecutor: TPPNetworkExecutor {
+        return executorOverride ?? TPPNetworkExecutor.shared
+    }
+
     // MARK: - Reading Position
 
     /// Asynchronously syncs the reading position of a book.
@@ -108,7 +150,7 @@ protocol AnnotationsManager {
 
         // Format bookmark for submission to server according to spec
         let bookmark = TPPBookmarkSpec(time: NSDate(),
-                                       device: TPPUserAccount.sharedAccount().deviceID ?? "",
+                                       device: AccountsManager.shared.currentUserAccount.deviceID ?? "",
                                        motivation: motivation,
                                        bookID: bookID,
                                        selectorValue: selectorValue)
@@ -152,7 +194,7 @@ protocol AnnotationsManager {
 
         let spec = TPPBookmarkSpec(
             time: NSDate(),
-            device: TPPUserAccount.sharedAccount().deviceID ?? "",
+            device: AccountsManager.shared.currentUserAccount.deviceID ?? "",
             motivation: .bookmark,
             bookID: bookID,
             selectorValue: selectorValue
@@ -209,13 +251,13 @@ protocol AnnotationsManager {
             return
         }
 
-        var request = TPPNetworkExecutor.shared.request(for: url)
+        var request = Self.currentExecutor.request(for: url)
         request.httpMethod = "POST"
         request.httpBody = jsonData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = timeout
 
-        let task = TPPNetworkExecutor.shared.POST(request, useTokenIfAvailable: true) { (data, response, error) in
+        let task = Self.currentExecutor.POST(request, useTokenIfAvailable: true) { (data, response, error) in
             if let error = error as NSError? {
                 let willQueueOffline = (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true)
 
@@ -249,7 +291,20 @@ protocol AnnotationsManager {
         task?.resume()
     }
 
-    private static func annotationID(fromNetworkData data: Data?) -> String? {
+    /// Parses the LD+JSON annotation envelope, extracts items from `first.items`,
+    /// and converts each to a domain bookmark via `TPPBookmarkFactory`.
+    /// Exposed as internal (not private) so fuzz and contract tests can exercise
+    /// the real parsing chain without needing a network call.
+    static func parseAnnotationItems(fromData data: Data) -> [[String: Any]]? {
+        guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+              let first = json["first"] as? [String: Any],
+              let items = first["items"] as? [[String: Any]] else {
+            return nil
+        }
+        return items
+    }
+
+    static func annotationID(fromNetworkData data: Data?) -> String? {
         guard let data = data else {
             Log.error(#file, "No Annotation ID saved: No data received from server.")
             return nil
@@ -266,7 +321,7 @@ protocol AnnotationsManager {
         }
     }
 
-    private static func timeStamp(fromNetworkData data: Data?) -> String? {
+    static func timeStamp(fromNetworkData data: Data?) -> String? {
         guard let data = data else {
             Log.error(#file, "No Annotation ID saved: No data received from server.")
             return nil
@@ -306,7 +361,7 @@ protocol AnnotationsManager {
 
         Log.info(#file, "📡 GET SERVER BOOKMARKS for book: \(book.identifier), URL: \(annotationURL.absoluteString), motivation: \(motivation.rawValue)")
 
-        let dataTask = TPPNetworkExecutor.shared.GET(annotationURL, useTokenIfAvailable: true) { (data, response, error) in
+        let dataTask = Self.currentExecutor.GET(annotationURL, useTokenIfAvailable: true) { (data, response, error) in
 
             if let error = error as NSError? {
                 Log.error(#file, "📡 Request Error Code: \(error.code). Description: \(error.localizedDescription)")
@@ -427,10 +482,10 @@ protocol AnnotationsManager {
             return
         }
 
-        var request = TPPNetworkExecutor.shared.request(for: url)
+        var request = Self.currentExecutor.request(for: url)
         request.timeoutInterval = TPPDefaultRequestTimeout
 
-        let task = TPPNetworkExecutor.shared.DELETE(request, useTokenIfAvailable: true) { (_, response, error) in
+        let task = Self.currentExecutor.DELETE(request, useTokenIfAvailable: true) { (_, response, error) in
             let response = response as? HTTPURLResponse
             if response?.statusCode == 200 {
                 Log.info(#file, "200: DELETE bookmark success")
@@ -492,14 +547,14 @@ protocol AnnotationsManager {
 
     /// Annotation-syncing is possible only if the given `account` is signed-in
     /// and if the currently selected library supports it.
-    static func syncIsPossible(_ account: TPPUserAccount) -> Bool {
-        let library = AccountsManager.shared.currentAccount
+    static func syncIsPossible(_ account: TPPUserAccount, accountsManager: AccountsManager = .shared) -> Bool {
+        let library = accountsManager.currentAccount
         return account.hasCredentials() && library?.details?.supportsSimplyESync == true
     }
 
-    static func syncIsPossibleAndPermitted() -> Bool {
-        let account = TPPUserAccount.sharedAccount()
-        let acct = AccountsManager.shared.currentAccount
+    static func syncIsPossibleAndPermitted(accountsManager: AccountsManager = .shared) -> Bool {
+        let account = AccountsManager.shared.currentUserAccount
+        let acct = accountsManager.currentAccount
         let hasCreds = account.hasCredentials()
         let supportsSync = acct?.details?.supportsSimplyESync == true
         let permissionGranted = acct?.details?.syncPermissionGranted == true
@@ -516,10 +571,10 @@ protocol AnnotationsManager {
         return TPPConfiguration.mainFeedURL()?.appendingPathComponent("annotations/")
     }
 
-    private static func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any]) {
-        let libraryID = AccountsManager.shared.currentAccount?.uuid ?? ""
+    private static func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any], accountsManager: AccountsManager = .shared, networkExecutor: TPPNetworkExecutor = .shared) {
+        let libraryID = accountsManager.currentAccount?.uuid ?? ""
         let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
-        let headers = TPPNetworkExecutor.shared.request(for: url).allHTTPHeaderFields
+        let headers = networkExecutor.request(for: url).allHTTPHeaderFields
         NetworkQueue.shared().addRequest(libraryID, bookID, url, .POST, parameterData, headers)
     }
 }

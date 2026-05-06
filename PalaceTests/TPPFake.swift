@@ -97,7 +97,7 @@ class TPPFake {
         let bundle = Bundle(for: TPPFake.self)
         let url = bundle.url(forResource: "NYPLOPDSAcquisitionPathEntry",
                              withExtension: "xml")!
-        let xml = try! TPPXML(data: Data(contentsOf: url))
+        let xml = TPPXML(data: try! Data(contentsOf: url))!
         let entry = TPPOPDSEntry(xml: xml)
         return entry!
     }
@@ -106,7 +106,7 @@ class TPPFake {
         let bundle = Bundle(for: TPPFake.self)
         let url = bundle.url(forResource: "NYPLOPDSAcquisitionPathEntryMinimal",
                              withExtension: "xml")!
-        return try! TPPOPDSEntry(xml: TPPXML(data: Data(contentsOf: url)))
+        return TPPOPDSEntry(xml: TPPXML(data: try! Data(contentsOf: url))!)!
     }
 
     static let validUserProfileJson = """

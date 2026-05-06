@@ -27,11 +27,15 @@ class Date_NYPLAdditionsTests: XCTestCase {
                 _ = date.rfc1123String
             }
         }
+
+        // Correctness assertion: the cached value must still produce the right output
+        XCTAssertEqual(date.rfc1123String, "Sun, 09 Sep 2001 01:46:40 GMT",
+                       "Repeated formatting must not corrupt the cached output")
     }
 
     func testISO8601FullDateParsing() {
         let dateString = "2020-06-02"
-        let iOS10Date = NSDate(iso8601DateString: dateString)
+        let iOS10Date = NSDate.date(withISO8601DateString: dateString)
         XCTAssertNotNil(iOS10Date)
         XCTAssertEqual(iOS10Date?.utcComponents().year, 2020)
         XCTAssertEqual(iOS10Date?.utcComponents().month, 6)
@@ -39,12 +43,12 @@ class Date_NYPLAdditionsTests: XCTestCase {
     }
 
     func testInvalidRFC3339Date() {
-        XCTAssertNil(NSDate(rfc3339String: "not a date"))
-        XCTAssertNil(NSDate(rfc3339String: nil))
+        XCTAssertNil(NSDate.date(withRFC3339String: "not a date"))
+        XCTAssertNil(NSDate.date(withRFC3339String: nil))
     }
 
     func testParsesRFC3339DateCorrectly() {
-        let date = NSDate(rfc3339String: "1984-09-08T08:23:45Z")
+        let date = NSDate.date(withRFC3339String: "1984-09-08T08:23:45Z")
         XCTAssertNotNil(date)
 
         let dateComponents = date?.utcComponents()
@@ -58,7 +62,7 @@ class Date_NYPLAdditionsTests: XCTestCase {
     }
 
     func testParsesRFC3339DateWithFractionalSecondsCorrectly() {
-        let date = NSDate(rfc3339String: "1984-09-08T08:23:45.99Z")
+        let date = NSDate.date(withRFC3339String: "1984-09-08T08:23:45.99Z")
         XCTAssertNotNil(date)
 
         let dateComponents = date?.utcComponents()
@@ -72,7 +76,7 @@ class Date_NYPLAdditionsTests: XCTestCase {
     }
 
     func testRFC3339RoundTrip() {
-        let date = NSDate(rfc3339String: "1984-09-08T10:23:45+0200")
+        let date = NSDate.date(withRFC3339String: "1984-09-08T10:23:45+0200")
         XCTAssertNotNil(date)
 
         let dateString = date?.rfc3339String()

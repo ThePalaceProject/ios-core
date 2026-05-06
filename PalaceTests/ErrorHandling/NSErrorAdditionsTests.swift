@@ -67,6 +67,9 @@ final class NSErrorAdditionsTests: XCTestCase {
 
         // NSError provides a default localizedDescription when none is set
         XCTAssertFalse(error.localizedDescriptionWithRecovery.isEmpty)
+        // Must not contain a double-newline separator since there is no recovery suggestion
+        XCTAssertFalse(error.localizedDescriptionWithRecovery.contains("\n\n"),
+                       "No recovery suggestion means no double-newline separator")
     }
 
     func testLocalizedDescriptionWithRecovery_bothPresent_separatedByDoubleNewline() {

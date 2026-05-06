@@ -122,6 +122,12 @@ class TPPAgeCheckTests: XCTestCase {
         ageCheck.didFailAgeCheck()
         waitForExpectations(timeout: 1, handler: nil)
 
-        XCTAssertFalse(ageCheckChoiceStorageMock.userPresentedAgeCheck)
+        // Completion must not have been called after a failed age check
+        XCTAssertFalse(ageCheckChoiceStorageMock.userPresentedAgeCheck,
+                       "userPresentedAgeCheck should remain false after a failed age check")
+        // The age-limit flag on the account should not be set to true when age check fails
+        let userAboveAgeLimit = simplyeLibraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit ?? false
+        XCTAssertFalse(userAboveAgeLimit,
+                       "userAboveAgeLimit should not be set to true when age check fails")
     }
 }

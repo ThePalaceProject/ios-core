@@ -27,6 +27,13 @@ struct BookListView: View {
                 })
                 .buttonStyle(.plain)
                 .applyBorderStyle()
+                // PP-3968: collapse the cell into a single VoiceOver element
+                // with the canonical "Title, by Author" label and drop the
+                // "button" trait so it sounds like a list item — matches the
+                // Audible/Libby UX. The cell is still tappable.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(book.voiceOverLabel)
+                .accessibilityRemoveTraits(.isButton)
                 .onAppear {
                     handleCellAppear(book: book)
                 }

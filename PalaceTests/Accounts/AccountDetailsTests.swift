@@ -18,42 +18,55 @@ final class LoginKeyboardTests: XCTestCase {
     func testInit_WithDefaultString_ReturnsStandard() {
         let keyboard = LoginKeyboard("Default")
         XCTAssertEqual(keyboard, .standard)
+        XCTAssertNotNil(keyboard)
+        XCTAssertNotEqual(keyboard, .email)
     }
 
     func testInit_WithEmailString_ReturnsEmail() {
         let keyboard = LoginKeyboard("Email address")
         XCTAssertEqual(keyboard, .email)
+        XCTAssertNotNil(keyboard)
+        XCTAssertNotEqual(keyboard, .standard)
     }
 
     func testInit_WithNumberPadString_ReturnsNumeric() {
         let keyboard = LoginKeyboard("Number pad")
         XCTAssertEqual(keyboard, .numeric)
+        XCTAssertNotNil(keyboard)
+        XCTAssertNotEqual(keyboard, .standard)
     }
 
     func testInit_WithNoInputString_ReturnsNone() {
         let keyboard = LoginKeyboard("No input")
-        XCTAssertEqual(keyboard, .none)
+        XCTAssertEqual(keyboard, LoginKeyboard.none)
+        XCTAssertNotNil(keyboard)
+        XCTAssertNotEqual(keyboard, .standard)
     }
 
     func testInit_WithNilString_ReturnsNil() {
         let keyboard = LoginKeyboard(nil)
         XCTAssertNil(keyboard)
+        // All named strings must still produce non-nil
+        XCTAssertNotNil(LoginKeyboard("Default"))
     }
 
     func testInit_WithInvalidString_ReturnsNil() {
         let keyboard = LoginKeyboard("invalid")
         XCTAssertNil(keyboard)
+        XCTAssertNotNil(LoginKeyboard("Default"), "Only known strings should succeed")
     }
 
     func testInit_WithEmptyString_ReturnsNil() {
         let keyboard = LoginKeyboard("")
         XCTAssertNil(keyboard)
+        XCTAssertNotNil(LoginKeyboard("Default"), "Non-empty known string must succeed")
     }
 
     func testInit_WithCaseSensitiveString_ReturnsNil() {
         // Case-sensitive - "default" != "Default"
         let keyboard = LoginKeyboard("default")
         XCTAssertNil(keyboard)
+        XCTAssertNotNil(LoginKeyboard("Default"), "Exact-case string must succeed")
     }
 }
 
@@ -63,31 +76,38 @@ final class AuthTypeTests: XCTestCase {
 
     func testAuthType_BasicRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.basic.rawValue, "http://opds-spec.org/auth/basic")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://opds-spec.org/auth/basic"), .basic)
     }
 
     func testAuthType_CoppaRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.coppa.rawValue, "http://librarysimplified.org/terms/authentication/gate/coppa")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://librarysimplified.org/terms/authentication/gate/coppa"), .coppa)
     }
 
     func testAuthType_AnonymousRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.anonymous.rawValue, "http://librarysimplified.org/rel/auth/anonymous")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://librarysimplified.org/rel/auth/anonymous"), .anonymous)
     }
 
     func testAuthType_OAuthRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.oauthIntermediary.rawValue, "http://librarysimplified.org/authtype/OAuth-with-intermediary")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://librarysimplified.org/authtype/OAuth-with-intermediary"), .oauthIntermediary)
     }
 
     func testAuthType_SamlRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.saml.rawValue, "http://librarysimplified.org/authtype/SAML-2.0")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://librarysimplified.org/authtype/SAML-2.0"), .saml)
     }
 
     func testAuthType_TokenRawValue_IsCorrect() {
         XCTAssertEqual(AccountDetails.AuthType.token.rawValue, "http://thepalaceproject.org/authtype/basic-token")
+        XCTAssertEqual(AccountDetails.AuthType(rawValue: "http://thepalaceproject.org/authtype/basic-token"), .token)
     }
 
     func testAuthType_InitFromInvalidString_ReturnsNil() {
         let authType = AccountDetails.AuthType(rawValue: "invalid")
         XCTAssertNil(authType)
+        XCTAssertNotNil(AccountDetails.AuthType(rawValue: "http://opds-spec.org/auth/basic"), "Valid raw value must succeed")
     }
 }
 
@@ -180,12 +200,11 @@ final class AuthenticationTests: XCTestCase {
     // MARK: - Helper Methods
 
     private func createMockAuthentication(type: AccountDetails.AuthType) -> AccountDetails.Authentication {
-        // Use reflection or create minimal mock - for now use the TestAuthentication helper
-        return TestAuthentication(authType: type)
+        return makeTestAuthentication(authType: type)
     }
 
     private func createMockAuthenticationWithCoppaUrls() -> AccountDetails.Authentication {
-        return TestAuthentication(
+        return makeTestAuthentication(
             authType: .coppa,
             coppaUnderUrl: URL(string: "https://example.com/under13"),
             coppaOverUrl: URL(string: "https://example.com/over13")
@@ -220,54 +239,26 @@ final class URLTypeTests: XCTestCase {
 
 // MARK: - Test Helper
 
-/// A test-only subclass that allows creating Authentication instances without OPDS2 documents
-private class TestAuthentication: AccountDetails.Authentication {
-
-    init(
-        authType: AccountDetails.AuthType,
-        coppaUnderUrl: URL? = nil,
-        coppaOverUrl: URL? = nil
-    ) {
-        // We need to call super.init with an OPDS2 auth document
-        // For now, we'll create a minimal mock
-        super.init(coder: TestAuthenticationCoder(
-            authType: authType,
-            coppaUnderUrl: coppaUnderUrl,
-            coppaOverUrl: coppaOverUrl
-        ))!
+/// Creates Authentication instances via JSON/Codable for testing.
+private func makeTestAuthentication(
+    authType: AccountDetails.AuthType,
+    coppaUnderUrl: URL? = nil,
+    coppaOverUrl: URL? = nil
+) -> AccountDetails.Authentication {
+    var dict: [String: Any] = [
+        "authType": authType.rawValue,
+        "authPasscodeLength": 4,
+        "patronIDKeyboard": LoginKeyboard.standard.rawValue,
+        "pinKeyboard": LoginKeyboard.numeric.rawValue,
+        "supportsBarcodeScanner": false,
+        "supportsBarcodeDisplay": false
+    ]
+    if let url = coppaUnderUrl {
+        dict["coppaUnderUrl"] = url.absoluteString
     }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
+    if let url = coppaOverUrl {
+        dict["coppaOverUrl"] = url.absoluteString
     }
-}
-
-/// Mock coder for creating test Authentication instances
-private class TestAuthenticationCoder: NSCoder {
-    let authType: AccountDetails.AuthType
-    let coppaUnderUrl: URL?
-    let coppaOverUrl: URL?
-
-    init(authType: AccountDetails.AuthType, coppaUnderUrl: URL?, coppaOverUrl: URL?) {
-        self.authType = authType
-        self.coppaUnderUrl = coppaUnderUrl
-        self.coppaOverUrl = coppaOverUrl
-        super.init()
-    }
-
-    override func decodeObject() -> Any? {
-        let mockData: [String: Any] = [
-            "authType": authType.rawValue,
-            "authPasscodeLength": 4,
-            "patronIDKeyboard": LoginKeyboard.standard.rawValue,
-            "pinKeyboard": LoginKeyboard.numeric.rawValue,
-            "supportsBarcodeScanner": false,
-            "supportsBarcodeDisplay": false,
-            "coppaUnderUrl": coppaUnderUrl?.absoluteString as Any,
-            "coppaOverUrl": coppaOverUrl?.absoluteString as Any
-        ]
-        return try? JSONSerialization.data(withJSONObject: mockData)
-    }
-
-    override var allowsKeyedCoding: Bool { true }
+    let data = try! JSONSerialization.data(withJSONObject: dict)
+    return try! JSONDecoder().decode(AccountDetails.Authentication.self, from: data)
 }

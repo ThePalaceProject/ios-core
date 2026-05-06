@@ -1,0 +1,63 @@
+scenario:
+  id: opds2-feed-parsing
+  name: "OPDS2 Feed Parsing"
+  description: "Verify OPDS2 JSON feeds load correctly with grouped lanes, entry point filters (All/Ebooks/Audiobooks), and proper book metadata display."
+  tags: [tier1, ios, opds2, OPDS2-001, OPDS2-002, OPDS2-003]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: onboard_app
+      description: "Dismiss first-launch alerts and open the catalog"
+      goal: >
+        If a SpringBoard "Would Like to Send You Notifications" alert is on
+        screen, tap "Don't Allow" to dismiss it. If the Add Library picker
+        appears, select any listed library (e.g. "Palace Bookshelf" or
+        "Allin Township Library"). Wait for the Catalog screen to appear
+        with at least one lane of book covers before proceeding.
+      checkpoint: app_ready
+      max_iterations: 10
+
+    - id: verify_opds2_catalog_loads
+      description: "Verify A1QA OPDS2 catalog loads with grouped lanes"
+      goal: >
+        Launch the Palace app on A1QA Test Library. Wait for the Catalog to load.
+        Confirm multiple lanes appear with titles (e.g., 'Unlimited Listens ODL Feed',
+        'Accessible EPUB Test', 'Audible Titles', 'Palace Marketplace', 'Palace Bookshelf',
+        'OverDrive'). Each lane should show book covers in a horizontal scroll.
+        This confirms OPDS2 grouped feed parsing works correctly.
+      checkpoint: opds2_grouped_feed_loaded
+      max_iterations: 15
+
+    - id: verify_entry_point_filters
+      description: "Test All/Ebooks/Audiobooks segmented control"
+      goal: >
+        On the Catalog screen, find the segmented control with 'All', 'Ebooks', and
+        'Audiobooks' options. Tap 'Ebooks' — confirm the catalog refreshes and shows
+        only ebook content (lanes may change). Tap 'Audiobooks' — confirm the catalog
+        shows audiobook content. Tap 'All' to restore the full catalog. Each filter
+        switch should complete without errors.
+      checkpoint: entry_point_filters_work
+      max_iterations: 20
+
+    - id: verify_book_metadata_from_opds2
+      description: "Verify book metadata is correctly parsed from OPDS2"
+      goal: >
+        Tap on a book from the 'Accessible EPUB Test' lane to open its detail screen.
+        Confirm the book detail shows: (1) a title, (2) FORMAT field showing 'ePub'
+        (not 'Unsupported format'), (3) a 'Borrow' button. The OPDS2 publication
+        metadata should be correctly converted to the book detail view.
+      checkpoint: opds2_metadata_correct
+      max_iterations: 15
+
+    - id: verify_more_link_navigation
+      description: "Tap 'More...' on a lane to see full list"
+      goal: >
+        Navigate back to the Catalog. Find a 'More...' link next to a lane title
+        (e.g., 'More books in Audible Titles'). Tap it. Confirm a full list view
+        opens showing all books in that category in a vertical list. Each book
+        should have a title and cover. Navigate back to the catalog.
+      checkpoint: more_link_works
+      max_iterations: 15

@@ -70,9 +70,6 @@ final class BookCellModelCache: ObservableObject {
 
     // MARK: - Initialization
 
-    private var memoryWarningObserver: NSObjectProtocol?
-    private var accountChangeObserver: NSObjectProtocol?
-
     public init(
         configuration: Configuration = .default,
         imageCache: ImageCacheType = ImageCache.shared,
@@ -93,32 +90,23 @@ final class BookCellModelCache: ObservableObject {
 
     deinit {
         cleanupTask?.cancel()
-        if let observer = memoryWarningObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = accountChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
     }
 
     private func setupMemoryWarningObserver() {
-        memoryWarningObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.handleMemoryWarning()
-        }
+        NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleMemoryWarning()
+            }
+            .store(in: &cancellables)
     }
 
     private func setupAccountChangeObserver() {
-        accountChangeObserver = NotificationCenter.default.addObserver(
-            forName: NSNotification.Name.TPPCurrentAccountDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.handleAccountChange()
-        }
+        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+            .sink { [weak self] _ in
+                self?.handleAccountChange()
+            }
+            .store(in: &cancellables)
     }
 
     private func handleAccountChange() {
@@ -143,10 +131,14 @@ final class BookCellModelCache: ObservableObject {
             updateAccessOrder(key)
 
             // Defer book update to avoid "Publishing changes from within view updates" warning.
-            // Use identity check (not just `updated` timestamp) because sync can update
-            // availability data (e.g. holdPosition) without changing the timestamp.
-            // Guard against replacing a newer book with an older one.
-            if entry.model.book !== book && book.updated >= entry.model.book.updated {
+            // Trust identity over timestamp: if the registry produced a different
+            // TPPBook instance than what we cached, the registry's is authoritative.
+            // The previous `book.updated >= entry.model.book.updated` guard failed for
+            // cells whose cached book had a slightly-newer `updated` (sub-second disk
+            // round-trip drift, or catalog-merged timestamp beating loans-feed
+            // timestamp), leaving the MyBooks cell rendering with stale metadata like
+            // a missing author line until the cache was wiped on library reselect.
+            if entry.model.book !== book {
                 let model = entry.model
                 let updatedBook = book
                 Task { @MainActor in

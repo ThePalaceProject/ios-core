@@ -35,23 +35,31 @@ class TPPBookCreationTests: XCTestCase {
             "title": "The Lord of the Rings",
             "updated": "2020-09-08T09:22:45Z"
         ])
-        XCTAssertNotNil(book)
-        XCTAssertNotNil(book?.acquisitions)
-        XCTAssertNotNil(book?.categoryStrings)
-        XCTAssertNotNil(book?.identifier)
-        XCTAssertNotNil(book?.title)
-        XCTAssertNotNil(book?.updated)
+        XCTAssertEqual(book?.identifier, "666",
+                       "Dictionary init must preserve 'id' as book identifier")
+        XCTAssertEqual(book?.title, "The Lord of the Rings",
+                       "Dictionary init must preserve 'title'")
+        XCTAssertEqual(book?.categoryStrings, ["Fantasy"],
+                       "Dictionary init must preserve 'categories'")
+        XCTAssertFalse(book?.acquisitions.isEmpty ?? true,
+                       "Dictionary init must preserve 'acquisitions'")
         XCTAssertNoThrow(book?.loggableShortString())
         XCTAssertNoThrow(book?.loggableDictionary())
 
+        // Missing UpdatedKey: production relaxed to use .distantPast rather than
+        // dropping the book (TPPBook.swift:282) — older catalog feeds occasionally
+        // omit this. Verify the book is still constructed with a sentinel updated.
         let bookNoUpdatedDate = TPPBook(dictionary: [
             "acquisitions": acquisitions,
             "categories": ["Fantasy"],
             "id": "666",
             "title": "The Lord of the Rings"
         ])
-        XCTAssertNil(bookNoUpdatedDate)
+        XCTAssertNotNil(bookNoUpdatedDate, "Missing 'updated' must not drop the book — defaults to .distantPast")
+        XCTAssertEqual(bookNoUpdatedDate?.updated, .distantPast)
 
+        // Missing TitleKey: production drops the book (TPPBook.swift:225). A book
+        // with no title is unrenderable, so this stricter guard remains.
         let bookNoTitle = TPPBook(dictionary: [
             "acquisitions": acquisitions,
             "categories": ["Fantasy"],
@@ -60,6 +68,7 @@ class TPPBookCreationTests: XCTestCase {
         ])
         XCTAssertNil(bookNoTitle)
 
+        // Missing IdentifierKey: production drops the book (TPPBook.swift:221).
         let bookNoId = TPPBook(dictionary: [
             "acquisitions": acquisitions,
             "categories": ["Fantasy"],
@@ -68,13 +77,16 @@ class TPPBookCreationTests: XCTestCase {
         ])
         XCTAssertNil(bookNoId)
 
+        // Missing CategoriesKey: production relaxed to default to [] rather than
+        // dropping (TPPBook.swift:230) — categories are optional metadata.
         let bookNoCategories = TPPBook(dictionary: [
             "acquisitions": acquisitions,
             "id": "666",
             "title": "The Lord of the Rings",
             "updated": "2020-09-08T09:22:45Z"
         ])
-        XCTAssertNil(bookNoCategories)
+        XCTAssertNotNil(bookNoCategories, "Missing 'categories' must not drop the book — defaults to []")
+        XCTAssertEqual(bookNoCategories?.categoryStrings, [])
 
         /*
          Note that we do not test the absence of acquisitions. The current code
@@ -88,13 +100,14 @@ class TPPBookCreationTests: XCTestCase {
     }
 
     func testBookCreationViaFactoryMethod() {
-        let bookWithNoCategories = TPPBook(entry: opdsEntryMinimal)
-        XCTAssertNotNil(bookWithNoCategories)
-        XCTAssertNotNil(bookWithNoCategories?.acquisitions)
-        XCTAssertNotNil(bookWithNoCategories?.categoryStrings)
-        XCTAssertNotNil(bookWithNoCategories?.identifier)
-        XCTAssertNotNil(bookWithNoCategories?.title)
-        XCTAssertNotNil(bookWithNoCategories?.updated)
+        let book = TPPBook(entry: opdsEntryMinimal)
+        // categoryStrings should be an empty array (not nil) even when entry has no categories
+        XCTAssertEqual(book?.categoryStrings, [],
+                       "Factory init with no-category entry must default to empty array, not nil")
+        XCTAssertFalse(book?.identifier.isEmpty ?? true,
+                       "Factory init must populate identifier from entry")
+        XCTAssertFalse(book?.title.isEmpty ?? true,
+                       "Factory init must populate title from entry")
     }
 
     // for completeness only. This test is not strictly necessary because the

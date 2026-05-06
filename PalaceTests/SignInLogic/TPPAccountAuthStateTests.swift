@@ -60,6 +60,7 @@ final class TPPUserAccountAuthStateTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         userAccount = TPPUserAccountMock()
     }
 
@@ -71,16 +72,17 @@ final class TPPUserAccountAuthStateTests: XCTestCase {
 
     // MARK: - State Transitions
 
-    func testAuthState_defaultsToLoggedOut() {
-        XCTAssertEqual(userAccount.authState, .loggedOut)
-    }
+    func testAuthState_defaultIsLoggedOut_andDerivesFromCredentialsWhenNotExplicit() {
+        // Fresh account (no credentials, no explicit state): must be loggedOut.
+        XCTAssertEqual(userAccount.authState, .loggedOut,
+                       "a fresh account without credentials must report .loggedOut")
 
-    func testAuthState_derivedFromCredentialsIfNotExplicitlySet() {
-        // Given: No explicit auth state set, but credentials exist
+        // Setting credentials without an explicit authState must derive .loggedIn.
+        // If this branch regressed to .loggedOut, callers would treat a valid
+        // user as signed-out and re-prompt for sign-in on every launch.
         userAccount._credentials = .barcodeAndPin(barcode: "test", pin: "1234")
-
-        // Then: Should derive loggedIn from credentials
-        XCTAssertEqual(userAccount.authState, .loggedIn)
+        XCTAssertEqual(userAccount.authState, .loggedIn,
+                       "credentials-present must derive .loggedIn when no explicit state is set")
     }
 
     func testMarkCredentialsStale_transitionsFromLoggedInToStale() {
@@ -107,27 +109,24 @@ final class TPPUserAccountAuthStateTests: XCTestCase {
         XCTAssertEqual(userAccount.authState, .loggedOut)
     }
 
-    func testMarkLoggedIn_transitionsFromStaleToLoggedIn() {
-        // Given: Credentials are stale
+    func testMarkLoggedIn_transitionsFromAnyReauthenticatableStateToLoggedIn() {
+        // markLoggedIn is called after a successful sign-in OR after a
+        // successful re-auth following session expiry. Both entry paths
+        // (loggedOut and credentialsStale) must land on .loggedIn. If either
+        // side regressed, users would be stuck in an auth loop.
+
+        // From loggedOut (fresh sign-in path):
+        XCTAssertEqual(userAccount.authState, .loggedOut)
+        userAccount.markLoggedIn()
+        XCTAssertEqual(userAccount.authState, .loggedIn,
+                       "markLoggedIn from loggedOut must land on loggedIn (fresh sign-in)")
+
+        // From credentialsStale (session-expiry re-auth path):
         userAccount._credentials = .barcodeAndPin(barcode: "test", pin: "1234")
         userAccount.setAuthState(.credentialsStale)
-
-        // When: Mark as logged in (after successful re-auth)
         userAccount.markLoggedIn()
-
-        // Then: State should be loggedIn
-        XCTAssertEqual(userAccount.authState, .loggedIn)
-    }
-
-    func testMarkLoggedIn_transitionsFromLoggedOutToLoggedIn() {
-        // Given: User is logged out
-        XCTAssertEqual(userAccount.authState, .loggedOut)
-
-        // When: Mark as logged in
-        userAccount.markLoggedIn()
-
-        // Then: State should be loggedIn
-        XCTAssertEqual(userAccount.authState, .loggedIn)
+        XCTAssertEqual(userAccount.authState, .loggedIn,
+                       "markLoggedIn from credentialsStale must land on loggedIn (re-auth)")
     }
 
     func testRemoveAll_resetsStateToLoggedOut() {
@@ -162,6 +161,7 @@ final class TPPAdobeActivationSkipTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
         drmAuthorizer = TPPDRMAuthorizingMock()
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
@@ -295,6 +295,7 @@ final class UserAccountPublisherAuthStateTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TPPUserAccountMock.resetShared()
         publisher = UserAccountPublisher()
         cancellables = []
     }
@@ -303,10 +304,6 @@ final class UserAccountPublisherAuthStateTests: XCTestCase {
         cancellables = nil
         publisher = nil
         super.tearDown()
-    }
-
-    func testAuthState_defaultsToLoggedOut() {
-        XCTAssertEqual(publisher.authState, .loggedOut)
     }
 
     func testMarkCredentialsStale_updatesState() {
@@ -321,15 +318,17 @@ final class UserAccountPublisherAuthStateTests: XCTestCase {
         XCTAssertEqual(publisher.authState, .credentialsStale)
     }
 
-    func testMarkCredentialsStale_doesNotChangeIfNotLoggedIn() {
-        // Given: Publisher is logged out
-        XCTAssertEqual(publisher.authState, .loggedOut)
+    func testInitialState_isLoggedOut_andMarkCredentialsStaleFromLoggedOutIsNoOp() {
+        // Initial state must be loggedOut (nothing set).
+        XCTAssertEqual(publisher.authState, .loggedOut,
+                       "a fresh UserAccountPublisher must report .loggedOut")
 
-        // When: Try to mark as stale
+        // markCredentialsStale when already loggedOut must be a no-op.
+        // If it transitioned to credentialsStale, we'd incorrectly report
+        // "has stored credentials" on an empty account.
         publisher.markCredentialsStale()
-
-        // Then: State should remain loggedOut
-        XCTAssertEqual(publisher.authState, .loggedOut)
+        XCTAssertEqual(publisher.authState, .loggedOut,
+                       "markCredentialsStale from loggedOut must stay loggedOut")
     }
 
     func testCredentialsStalePublisher_firesWhenStateBecomesStale() {
@@ -345,8 +344,10 @@ final class UserAccountPublisherAuthStateTests: XCTestCase {
         // When: Mark as stale
         publisher.markCredentialsStale()
 
-        // Then: Publisher should fire
+        // Then: Publisher should fire AND the authState must reflect the stale status
         waitForExpectations(timeout: 1)
+        XCTAssertEqual(publisher.authState, .credentialsStale,
+                       "authState must transition to .credentialsStale after markCredentialsStale()")
     }
 
     func testAuthStateDidChangePublisher_firesOnStateChanges() {

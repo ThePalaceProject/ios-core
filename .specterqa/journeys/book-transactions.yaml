@@ -1,0 +1,93 @@
+scenario:
+  id: book-transactions
+  name: "Book Transactions"
+  description: "Verify the full borrow-read-delete lifecycle from both the catalog search results and the book detail screen."
+  tags: [tier2, ios, books, BOOK-006, BOOK-007, BOOK-008]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: onboard_app
+      description: "Dismiss first-launch alerts and open the Catalog on A1QA"
+      goal: >
+        If a SpringBoard "Would Like to Send You Notifications" alert is on
+        screen, tap "Don't Allow" to dismiss it. If the Add Library picker
+        appears, select "A1QA Test Library" (use the search field if it
+        isn't visible in the initial list). Wait for the Catalog screen on
+        A1QA to appear before proceeding.
+      checkpoint: app_ready_on_a1qa
+      max_iterations: 10
+
+    - id: sign_in
+      description: "Sign in to A1QA Test Library"
+      goal: >
+        Open Settings → Libraries → A1QA Test Library (or tap "Sign In" on a
+        catalog row that requires auth). Enter barcode and PIN from
+        ~/.specterqa/credentials/a1qa-test.env (A1QA_BARCODE, A1QA_PIN).
+        Submit and wait for the authenticated state (signed-in indicator
+        shown, My Books / Holds populate).
+      checkpoint: user_authenticated
+      max_iterations: 10
+
+    - id: search_and_get_from_catalog
+      description: "Search for a book and tap Get/Borrow from the search results"
+      goal: >
+        On the Catalog screen (A1QA Test Library), tap Search. Search for a known
+        book (try a title from the 'Accessible EPUB Test' lane). In the search results,
+        find a book with a 'Borrow' or 'Get' button visible directly in the list
+        (not on the detail screen). Tap the 'Borrow'/'Get' button. Confirm the
+        button changes to 'Read' (and possibly 'Delete' appears), indicating the
+        book was successfully borrowed.
+      checkpoint: book_borrowed_from_catalog
+      max_iterations: 20
+
+    - id: read_from_catalog
+      description: "Tap Read to open the book from search results"
+      goal: >
+        Tap the 'Read' button that appeared after borrowing. Confirm the EPUB
+        reader opens showing the book content. The book title should be visible
+        in the reader or navigation. Then navigate back to the search results.
+      checkpoint: book_opened_from_catalog
+      max_iterations: 15
+
+    - id: delete_from_detail
+      description: "Open book detail and tap Delete to remove the book"
+      goal: >
+        Tap on the book cover or title to open the book detail screen. On the
+        detail screen, find the 'Delete' or 'Return' button. Tap it. Confirm the button
+        changes back to 'Borrow' or 'Get', indicating the book was removed
+        from your collection.
+      checkpoint: book_deleted_from_detail
+      max_iterations: 15
+
+    - id: get_from_detail_screen
+      description: "Borrow the same book again from the detail screen"
+      goal: >
+        On the book detail screen, tap the 'Borrow' or 'Get' button. Confirm
+        it changes to 'Read' and 'Delete'. Then tap 'Delete' again to clean up.
+        Confirm the button returns to 'Borrow'/'Get'. This tests the full
+        round-trip from the detail screen.
+      checkpoint: detail_round_trip_complete
+      max_iterations: 15
+
+    - id: verify_my_books_clean
+      description: "Verify My Books is empty after cleanup"
+      goal: >
+        Tap the 'My Books' tab. Confirm the empty state message is shown,
+        meaning no books remain in the collection. The delete operations
+        successfully removed the book. No error alerts should be present.
+      checkpoint: my_books_clean
+      max_iterations: 10
+
+    - id: teardown_sign_out
+      description: "Sign out of A1QA to release the DRM device activation"
+      goal: >
+        After the journey body is complete, navigate Settings → Libraries →
+        A1QA Test Library and tap "Sign Out". Confirm in any presented alert.
+        Verify the user is no longer authenticated. This step is required at
+        the end of every authenticated journey so the test account does not
+        accumulate Adobe/ADEPT device activations (they are limited per user).
+      checkpoint: signed_out
+      max_iterations: 8

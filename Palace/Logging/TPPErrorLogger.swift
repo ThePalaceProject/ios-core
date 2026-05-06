@@ -14,6 +14,98 @@ import FirebaseCrashlytics
 
 private let nullString = "null"
 
+/// Classifies the origin of an error for Crashlytics filtering.
+/// This lets us separate client bugs from server errors, network conditions,
+/// and vendor (DRM) issues in the dashboard.
+@objc enum TPPErrorOrigin: Int {
+    /// Error originated in client code (app logic, parsing, state)
+    case client = 0
+    /// Server returned an error response (4xx, 5xx, problem document)
+    case server = 1
+    /// Network-level failure (timeout, connection lost, DNS, no internet)
+    case network = 2
+    /// DRM vendor error (Adobe RMSDK, LCP, Overdrive)
+    case vendor = 3
+    /// Origin could not be determined
+    case unknown = 4
+
+    var stringValue: String {
+        switch self {
+        case .client: return "client"
+        case .server: return "server"
+        case .network: return "network"
+        case .vendor: return "vendor"
+        case .unknown: return "unknown"
+        }
+    }
+
+    /// Auto-classifies origin from an error code and optional HTTP response.
+    static func classify(code: TPPErrorCode, error: Error? = nil, response: URLResponse? = nil) -> TPPErrorOrigin {
+        // Network-level errors
+        if let nsErr = error as NSError? {
+            if nsErr.domain == NSURLErrorDomain || nsErr.domain == (kCFErrorDomainCFNetwork as String) {
+                switch nsErr.code {
+                case NSURLErrorTimedOut, NSURLErrorNetworkConnectionLost,
+                     NSURLErrorNotConnectedToInternet, NSURLErrorInternationalRoamingOff,
+                     NSURLErrorCallIsActive, NSURLErrorDataNotAllowed,
+                     NSURLErrorDNSLookupFailed, NSURLErrorCannotFindHost,
+                     NSURLErrorCannotConnectToHost, NSURLErrorSecureConnectionFailed:
+                    return .network
+                case NSURLErrorCancelled, NSURLErrorUserCancelledAuthentication:
+                    return .client
+                default:
+                    break
+                }
+            }
+        }
+
+        // Server errors (HTTP status code based)
+        if let http = response as? HTTPURLResponse {
+            if (400...599).contains(http.statusCode) {
+                return .server
+            }
+        }
+
+        // DRM/vendor errors
+        switch code {
+        case .adobeDRMFulfillmentFail, .lcpDRMFulfillmentFail,
+             .lcpPassphraseAuthorizationFail, .lcpPassphraseRetrievalFail,
+             .epubDecodingError, .overdriveFulfillResponseParseFail:
+            return .vendor
+        default:
+            break
+        }
+
+        // Server-originated errors (problem documents, auth failures from server)
+        switch code {
+        case .problemDocAvailable, .parseProblemDocFail, .remoteLoginError,
+             .loginErrorWithProblemDoc, .apiCall, .authDocLoadFail,
+             .userProfileDocFail, .registrySyncFailure:
+            return .server
+        default:
+            break
+        }
+
+        // Network-level codes
+        switch code {
+        case .clientSideTransientError, .noURL, .invalidURLSession,
+             .malformedURL, .invalidOrNoHTTPResponse:
+            return .network
+        case .clientSideUserInterruption:
+            return .client
+        default:
+            break
+        }
+
+        // Everything else is client-side
+        if code != .ignore {
+            return .client
+        }
+
+        return .unknown
+    }
+}
+
 @objc enum TPPSeverity: NSInteger {
     case error, warning, info
 
@@ -395,6 +487,7 @@ private let nullString = "null"
     /// to avoid flooding Crashlytics during mass failure events (e.g., a dead
     /// image host affecting every book in a swimlane).
     private static var lastImageErrorReport: [String: Date] = [:]
+    private static let imageErrorReportLock = NSLock()
     private static let imageErrorReportInterval: TimeInterval = 60
 
     /// Records a host-level image loading failure as a non-fatal error in
@@ -434,6 +527,8 @@ private let nullString = "null"
 
     private class func shouldReportImageError(key: String) -> Bool {
         let now = Date()
+        imageErrorReportLock.lock()
+        defer { imageErrorReportLock.unlock() }
         if let lastReport = lastImageErrorReport[key],
            now.timeIntervalSince(lastReport) < imageErrorReportInterval {
             return false
@@ -494,22 +589,44 @@ private let nullString = "null"
     // ----------------------------------------------------------------------------
     // MARK: - Private helpers
 
-    private class func record(error: NSError) {
-        // Check if enhanced logging is enabled (synchronous, thread-safe via FirebaseManager)
-        let isEnhanced = FirebaseManager.shared.isEnhancedLoggingEnabled()
+    private class func record(error: NSError, origin: TPPErrorOrigin = .unknown) {
+        // Set error origin as a Crashlytics custom key for dashboard filtering.
+        // This lets us separate client bugs from server/network/vendor errors.
+        FirebaseManager.shared.setCrashlyticsKey("error_origin", value: origin.stringValue)
 
-        if isEnhanced {
-            Log.info(#file, "📊 ENHANCED error logging active")
-            FirebaseManager.shared.logEnhancedErrorEvent(
-                error: error,
-                context: error.domain,
-                metadata: error.userInfo
-            )
+        // Also include the origin in the error userInfo for the individual event
+        if error.userInfo["error_origin"] == nil {
+            var userInfo = error.userInfo
+            userInfo["error_origin"] = origin.stringValue
+            let taggedError = NSError(domain: error.domain, code: error.code, userInfo: userInfo)
+
+            // Check if enhanced logging is enabled (synchronous, thread-safe via FirebaseManager)
+            let isEnhanced = FirebaseManager.shared.isEnhancedLoggingEnabled()
+
+            if isEnhanced {
+                Log.info(#file, "ENHANCED error logging active")
+                FirebaseManager.shared.logEnhancedErrorEvent(
+                    error: taggedError,
+                    context: taggedError.domain,
+                    metadata: taggedError.userInfo
+                )
+            }
+
+            FirebaseManager.shared.logError(taggedError)
+        } else {
+            let isEnhanced = FirebaseManager.shared.isEnhancedLoggingEnabled()
+
+            if isEnhanced {
+                Log.info(#file, "ENHANCED error logging active")
+                FirebaseManager.shared.logEnhancedErrorEvent(
+                    error: error,
+                    context: error.domain,
+                    metadata: error.userInfo
+                )
+            }
+
+            FirebaseManager.shared.logError(error)
         }
-
-        // Always do normal Crashlytics recording via FirebaseManager
-        // This is thread-safe and prevents recursive_mutex issues
-        FirebaseManager.shared.logError(error)
     }
 
     /// Helper to log a generic error to Crashlytics.
@@ -546,13 +663,17 @@ private let nullString = "null"
                                                                code: code,
                                                                with: originalError)
 
+        // Auto-classify error origin from code, error, and response
+        let origin = TPPErrorOrigin.classify(code: code, error: originalError, response: response)
+        metadata["error_origin"] = origin.stringValue
+
         // build error report
         let userInfo = additionalInfo(severity: severity,
                                       metadata: metadata)
         let err = NSError(domain: finalSummary,
                           code: finalCode,
                           userInfo: userInfo)
-        record(error: err)
+        record(error: err, origin: origin)
     }
 
     /// Fixes up summary and code inspecting the domain and code of a given
@@ -662,16 +783,16 @@ private let nullString = "null"
      account info to our crash reports.
      - parameter metadata: report metadata dictionary
      */
-    private class func addAccountInfoToMetadata(_ metadata: inout [String: Any]) {
-        let currentLibrary = AccountsManager.shared.currentAccount
+    private class func addAccountInfoToMetadata(_ metadata: inout [String: Any], accountsManager: AccountsManager = .shared) {
+        let currentLibrary = accountsManager.currentAccount
         metadata["currentAccountName"] = currentLibrary?.name ?? nullString
         metadata["currentAccountUUID"] = currentLibrary?.uuid ?? nullString
-        metadata["currentAccountId (from UserDefaults)"] = AccountsManager.shared.currentAccountId ?? nullString
+        metadata["currentAccountId (from UserDefaults)"] = accountsManager.currentAccountId ?? nullString
         metadata["currentAccountCatalogURL"] = currentLibrary?.catalogUrl ?? nullString
         metadata["currentAccountAuthDocURL"] = currentLibrary?.authenticationDocumentUrl ?? nullString
         metadata["currentAccountLoansURL"] = currentLibrary?.loansUrl ?? nullString
         metadata["currentAccountDetails"] = currentLibrary?.details?.debugDescription ?? nullString
-        metadata["numAccounts"] = AccountsManager.shared.accounts().count
+        metadata["numAccounts"] = accountsManager.accounts().count
     }
 
     /// Creates a dictionary with information to be logged in relation to an event.

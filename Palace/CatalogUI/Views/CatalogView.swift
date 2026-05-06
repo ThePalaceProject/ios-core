@@ -6,14 +6,19 @@ struct CatalogView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator
     @StateObject private var viewModel: CatalogViewModel
     @StateObject private var logoObserver = CatalogLogoObserver()
-    @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+    @State private var currentAccountUUID: String = ""
     @State private var showAccountDialog: Bool = false
     @State private var showAddLibrarySheet: Bool = false
     @State private var showSearch: Bool = false
 
+    private let accountsManager: AccountsManager
+    private let settings: TPPSettings
+
     // MARK: - Initialization
-    init(viewModel: CatalogViewModel) {
+    init(viewModel: CatalogViewModel, accountsManager: AccountsManager = AccountsManager.shared, settings: TPPSettings = TPPSettings.shared) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        self.accountsManager = accountsManager
+        self.settings = settings
     }
 
     // MARK: - Body
@@ -24,6 +29,7 @@ struct CatalogView: View {
             .toolbar(.visible, for: .navigationBar)
             .toolbar { toolbarContent }
             .onAppear {
+                currentAccountUUID = accountsManager.currentAccount?.uuid ?? ""
                 setupCurrentAccount()
                 coordinator.clearAllCatalogFilterStates()
             }
@@ -50,6 +56,8 @@ private extension CatalogView {
         ToolbarItem(placement: .navigationBarLeading) {
             Button(action: { showAccountDialog = true }, label: {
                 ImageProviders.MyBooksView.myLibraryIcon
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
             })
             .accessibilityIdentifier(AccessibilityID.Catalog.accountButton)
             .accessibilityLabel(Strings.Generic.switchLibrary)
@@ -60,11 +68,14 @@ private extension CatalogView {
             if showSearch {
                 Button(action: { dismissSearch() }, label: {
                     Text(Strings.Generic.cancel)
+                        .frame(minHeight: 44)
                 })
                 .accessibilityIdentifier(AccessibilityID.Search.cancelButton)
             } else {
                 Button(action: { presentSearch() }, label: {
                     ImageProviders.MyBooksView.search
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 })
                 .accessibilityIdentifier(AccessibilityID.Catalog.searchButton)
                 .accessibilityLabel(Strings.Generic.searchCatalog)
@@ -73,7 +84,7 @@ private extension CatalogView {
     }
 
     private var libraryPicker: ActionSheet {
-        var buttons: [ActionSheet.Button] = TPPSettings.shared.settingsAccountsList.map { account in
+        var buttons: [ActionSheet.Button] = settings.settingsAccountsList.map { account in
             .default(Text(account.name)) {
                 switchToAccount(account)
             }
@@ -102,87 +113,90 @@ private extension CatalogView {
     @ViewBuilder
     var content: some View {
         VStack(alignment: .leading, spacing: 0) {
-            searchSection
-            loadingSection
-            errorSection
-            mainCatalogSection
+            if showSearch {
+                CatalogSearchView(
+                    repository: viewModel.searchRepository,
+                    baseURL: viewModel.searchBaseURL,
+                    books: viewModel.state.allBooks,
+                    onBookSelected: presentBookDetail
+                )
+            } else {
+                catalogStateView
+            }
         }
     }
 
     @ViewBuilder
-    private var searchSection: some View {
-        if showSearch {
-            CatalogSearchView(
-                repository: viewModel.searchRepository,
-                baseURL: viewModel.searchBaseURL,
-                books: allBooks,
-                onBookSelected: presentBookDetail
-            )
-        } else {
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var loadingSection: some View {
-        if !showSearch && viewModel.isLoading {
+    private var catalogStateView: some View {
+        switch viewModel.state {
+        case .loading:
             skeletonList
                 .accessibilityIdentifier(AccessibilityID.Catalog.loadingIndicator)
-        } else {
-            EmptyView()
-        }
-    }
 
-    @ViewBuilder
-    private var errorSection: some View {
-        if !showSearch, let error = viewModel.errorMessage {
-            VStack(spacing: 16) {
-                Text(Strings.Generic.error)
-                    .font(.headline)
-                    .foregroundColor(.red)
+        case .error(let message):
+            errorView(message: message)
 
-                Text(error)
-                    .font(.body)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                    .accessibilityIdentifier(AccessibilityID.Catalog.errorView)
-
-                Button(action: {
-                    Task { await viewModel.forceRefresh() }
-                }, label: {
-                    HStack {
-                        Image(systemName: "arrow.clockwise")
-                            .accessibilityHidden(true)
-                        Text(Strings.Generic.reload)
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
-                })
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
-        } else {
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder
-    private var mainCatalogSection: some View {
-        if !showSearch && !viewModel.isLoading && viewModel.errorMessage == nil {
+        case .loaded(let catalogContent), .applyingFacet(let catalogContent):
             CatalogContentView(
-                viewModel: viewModel,
+                content: catalogContent,
+                isOptimisticLoading: viewModel.state.isApplyingFacet,
+                scrollGeneration: viewModel.scrollGeneration,
                 onBookSelected: presentBookDetail,
                 onLaneMoreTapped: { title, url in
                     coordinator.push(.catalogLaneMore(title: title, url: url))
-                }
+                },
+                onEntryPointSelected: { facet in
+                    Task { await viewModel.applyEntryPoint(facet) }
+                },
+                onFacetSelected: { facet in
+                    Task { await viewModel.applyFacet(facet) }
+                },
+                onRefresh: { await viewModel.refresh() }
             )
             .accessibilityIdentifier(AccessibilityID.Catalog.scrollView)
-        } else {
-            EmptyView()
+            .accessibilityLabel(Strings.Generic.catalogRegion)
+            .accessibilityElement(children: .contain)
+
+        case .switchingEntryPoint(let selectors):
+            CatalogContentView.switchingEntryPointView(
+                selectors: selectors,
+                onEntryPointSelected: { facet in
+                    Task { await viewModel.applyEntryPoint(facet) }
+                },
+                onRefresh: { await viewModel.refresh() }
+            )
         }
+    }
+
+    private func errorView(message: String) -> some View {
+        VStack(spacing: 16) {
+            Text(Strings.Generic.error)
+                .font(.headline)
+                .foregroundColor(.red)
+
+            Text(message)
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+                .accessibilityIdentifier(AccessibilityID.Catalog.errorView)
+
+            Button(action: {
+                Task { await viewModel.forceRefresh() }
+            }, label: {
+                HStack {
+                    Image(systemName: "arrow.clockwise")
+                        .accessibilityHidden(true)
+                    Text(Strings.Generic.reload)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(Color.blue)
+                .foregroundColor(.white)
+                .cornerRadius(8)
+            })
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
     }
 
     func presentBookDetail(_ book: TPPBook) {
@@ -191,7 +205,7 @@ private extension CatalogView {
     }
 
     func openLibraryHome() {
-        if let urlString = AccountsManager.shared.currentAccount?.homePageUrl, let url = URL(string: urlString) {
+        if let urlString = accountsManager.currentAccount?.homePageUrl, let url = URL(string: urlString) {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
     }
@@ -214,7 +228,7 @@ private extension CatalogView {
 
     // MARK: - Account Management
     func setupCurrentAccount() {
-        let account = AccountsManager.shared.currentAccount
+        let account = accountsManager.currentAccount
         account?.logoDelegate = logoObserver
         account?.loadLogo()
         currentAccountUUID = account?.uuid ?? ""
@@ -225,7 +239,7 @@ private extension CatalogView {
             dismissSearch()
         }
 
-        let account = AccountsManager.shared.currentAccount
+        let account = accountsManager.currentAccount
         account?.logoDelegate = logoObserver
         account?.loadLogo()
         currentAccountUUID = account?.uuid ?? ""
@@ -237,10 +251,10 @@ private extension CatalogView {
 
     func switchToAccount(_ account: Account) {
         if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            TPPSettings.shared.accountMainFeedURL = url
+            settings.accountMainFeedURL = url
         }
 
-        AccountsManager.shared.currentAccount = account
+        accountsManager.currentAccount = account
         account.loadAuthenticationDocument { _ in }
 
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
@@ -248,18 +262,15 @@ private extension CatalogView {
     }
 
     func addAndSwitchToAccount(_ account: Account) {
-        if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-            TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+        if !settings.settingsAccountIdsList.contains(account.uuid) {
+            settings.settingsAccountIdsList.append(account.uuid)
         }
         switchToAccount(account)
     }
 
     // MARK: - Computed Properties
     var allBooks: [TPPBook] {
-        if !viewModel.lanes.isEmpty {
-            return viewModel.lanes.flatMap { $0.books }
-        }
-        return viewModel.ungroupedBooks
+        viewModel.state.allBooks
     }
 
     // MARK: - Subviews
@@ -273,8 +284,7 @@ private extension CatalogView {
                     CatalogLaneSkeletonView()
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 12)
+            .padding(.vertical, 17)
         }
     }
 }

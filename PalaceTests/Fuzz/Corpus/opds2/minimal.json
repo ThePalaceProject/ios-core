@@ -1,0 +1,1 @@
+{"metadata":{"title":"Test"},"catalogs":[{"metadata":{"title":"Lib"},"links":[{"href":"https://example.com/","type":"application/opds+json","rel":"http://opds-spec.org/catalog"}]}],"links":[{"href":"https://example.com/","type":"application/opds+json","rel":"self"}]}

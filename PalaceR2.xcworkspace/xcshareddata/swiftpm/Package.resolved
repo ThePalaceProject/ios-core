@@ -29,15 +29,6 @@
       }
     },
     {
-      "identity" : "cucumberish",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Ahmed-Ali/Cucumberish.git",
-      "state" : {
-        "branch" : "master",
-        "revision" : "e7b371812f6906a8cdaecdf5fb32327f9bb446ac"
-      }
-    },
-    {
       "identity" : "differencekit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ra1028/DifferenceKit.git",

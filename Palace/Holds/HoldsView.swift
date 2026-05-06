@@ -7,7 +7,7 @@ struct HoldsView: View {
 
     @StateObject private var model = HoldsViewModel()
     @StateObject private var logoObserver = CatalogLogoObserver()
-    @State private var currentAccountUUID: String = AccountsManager.shared.currentAccount?.uuid ?? ""
+    @State private var currentAccountUUID: String = ""
     private var allBooks: [TPPBook] {
         model.reservedBookVMs.map { $0.book } + model.heldBookVMs.map { $0.book }
     }
@@ -15,6 +15,7 @@ struct HoldsView: View {
         ZStack {
             mainContent
                 .background(Color(TPPConfiguration.backgroundColor()))
+                .overlay(alignment: .bottom) { SamplePreviewBarView() }
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .principal) {
@@ -48,6 +49,10 @@ struct HoldsView: View {
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()
                     currentAccountUUID = account?.uuid ?? ""
+                    model.refreshInBackground()
+                }
+                .onDisappear {
+                    model.isVisible = false
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
                     let account = AccountsManager.shared.currentAccount
@@ -74,12 +79,37 @@ struct HoldsView: View {
 
     private var mainContent: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if let syncError = model.syncError {
+                syncErrorBanner(syncError)
+            }
             if model.showSearchSheet {
                 searchBar
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
             content
         }
+    }
+
+    private func syncErrorBanner(_ error: HoldsViewModel.SyncError) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.orange)
+            Text(error.message)
+                .font(.caption)
+                .foregroundColor(.primary)
+                .lineLimit(2)
+            Spacer()
+            Button {
+                model.dismissSyncError()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.secondary)
+            }
+            .accessibilityLabel(Strings.Generic.close)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.15))
     }
 
     @ViewBuilder
@@ -109,6 +139,7 @@ struct HoldsView: View {
                 .refreshable { model.refresh() }
                 .dismissKeyboardOnTap()
                 .accessibilityIdentifier(AccessibilityID.Holds.scrollView)
+                .animation(.easeInOut(duration: 0.3), value: model.visibleBooks.count)
             }
         }
     }
@@ -138,6 +169,8 @@ struct HoldsView: View {
             model.selectNewLibrary = true
         } label: {
             ImageProviders.MyBooksView.myLibraryIcon
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
         .accessibilityIdentifier(AccessibilityID.Holds.libraryButton)
         .accessibilityLabel(Strings.Generic.switchLibrary)
@@ -163,9 +196,11 @@ struct HoldsView: View {
             withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { model.showSearchSheet.toggle() }
         } label: {
             ImageProviders.MyBooksView.search
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
         .accessibilityIdentifier(AccessibilityID.Holds.searchButton)
-        .accessibilityLabel(NSLocalizedString("Search Reservations", comment: ""))
+        .accessibilityLabel(NSLocalizedString("Search Holds", comment: ""))
     }
 
     private func presentBookDetail(_ book: TPPBook) {
@@ -175,7 +210,7 @@ struct HoldsView: View {
 
     private var searchBar: some View {
         HStack {
-            TextField(NSLocalizedString("Search Reservations", comment: ""), text: $model.searchQuery)
+            TextField(NSLocalizedString("Search Holds", comment: ""), text: $model.searchQuery)
                 .searchBarStyle()
                 .accessibilityIdentifier(AccessibilityID.Holds.searchField)
                 .onChange(of: model.searchQuery) { query in
@@ -208,7 +243,7 @@ struct HoldsView: View {
         let holdsRoot = HoldsView()
 
         let hosting = UIHostingController(rootView: holdsRoot)
-        hosting.title = NSLocalizedString("Reservations", comment: "Nav title for Holds")
+        hosting.title = NSLocalizedString("Holds", comment: "Nav title for Holds")
         hosting.tabBarItem.image = UIImage(named: "Holds")
 
         return hosting

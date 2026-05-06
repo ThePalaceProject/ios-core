@@ -1,0 +1,726 @@
+replay:
+  name: a1qa-hold-audiobook-full-flow
+  bundle_id: org.thepalaceproject.palace
+  device_id: 31CF5C43-DD55-4889-B3B2-9A6810B4E98F
+  recorded_at: '2026-04-12T00:16:16'
+  steps:
+  - action: tap
+    element_index: 61
+    element_label: Settings
+    element_identifier: ''
+    x: 341.5
+    y: 786.0
+    expect_elements:
+    - Settings
+    - Libraries
+    - Libraries
+    - Downloads
+    - Download Only on Wi-Fi
+    - About App
+    - Privacy Policy
+    - User Agreement
+    - Software Licenses
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 3
+    element_label: Libraries
+    element_identifier: ''
+    x: 195.0
+    y: 203.66666666666666
+    expect_elements:
+    - Settings
+    - Libraries
+    - A1QA Test Library
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: A1QA Test Library
+    element_identifier: ''
+    x: 208.33333333333334
+    y: 174.5
+    expect_elements:
+    - Libraries
+    - A1QA Test Library
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 3
+    element_label: Library Card
+    element_identifier: ''
+    x: 195.0
+    y: 249.0
+    expect_elements:
+    - Libraries
+    - A1QA Test Library
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: type
+    text: '01230000000237'
+    expect_elements:
+    - Libraries
+    - A1QA Test Library
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Password
+    element_identifier: ''
+    x: 170.0
+    y: 293.1666666666667
+    expect_elements:
+    - Libraries
+    - A1QA Test Library
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: type
+    text: Lyrtest123
+    expect_elements:
+    - Libraries
+    - A1QA Test Library
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 6
+    element_label: Sign in
+    element_identifier: ''
+    x: 195.0
+    y: 337.0
+    expect_elements:
+    - Libraries
+    - A1QA Test Library
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 14
+    element_label: My Books
+    element_identifier: ''
+    x: 146.5
+    y: 786.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Books
+    - Search
+    - Sort
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 21
+    element_label: Download
+    element_identifier: ''
+    x: 212.83333333333331
+    y: 442.99999999999994
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Books
+    - Search
+    - Sort
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 21
+    element_label: Read
+    element_identifier: ''
+    x: 196.83333333333331
+    y: 442.99999999999994
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Books
+    - Search
+    - Sort
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 1
+    element_label: Do you want to move to the page on which you left off?
+    element_identifier: ''
+    x: 195.0
+    y: 417.83333333333337
+    expect_elements:
+    - Do you want to move to the page on which you left off?
+    - Stay
+    - Move
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 3
+    element_label: Move
+    element_identifier: ''
+    x: 262.6666666666667
+    y: 476.6666666666667
+    expect_elements:
+    - 'PUBLISHER’S NOTE: This is a work of fiction. Names, characters, places, and
+      incidents are either the product of the author’s imagination or are used fictitiously,
+      and any resemblance to actual persons, living or dead, business establishments,
+      events, or locales is entirely coincidental.'
+    - Library of Congress Cataloging-in-Publication Data
+    - 'Names: Chari, Sheela.'
+    - 'Title: Finding Mighty / Sheela Chari.'
+    - 'Description: New York : Amulet Books, 2017. | Summary: “Along the train lines
+      north of New York City, twelve-year-old neighbors Myla and Peter search for
+      the link between Myla’s necklace and the disappearance of Peter’s brother, Randall.
+      Thrown into a world of parkour, graffiti, and diamond-smuggling, Myla and Peter
+      encounter a band of thugs who are after the same thing as Randall. Can Myla
+      and Peter find Randall before it’s too late, and their shared family secrets
+      threaten to destroy them all?”—Provided by publisher.'
+    screenshot_threshold: 5.0
+  - action: swipe_back
+    expect_elements:
+    - 'PUBLISHER’S NOTE: This is a work of fiction. Names, characters, places, and
+      incidents are either the product of the author’s imagination or are used fictitiously,
+      and any resemblance to actual persons, living or dead, business establishments,
+      events, or locales is entirely coincidental.'
+    - Library of Congress Cataloging-in-Publication Data
+    - 'Names: Chari, Sheela.'
+    - 'Title: Finding Mighty / Sheela Chari.'
+    - 'Description: New York : Amulet Books, 2017. | Summary: “Along the train lines
+      north of New York City, twelve-year-old neighbors Myla and Peter search for
+      the link between Myla’s necklace and the disappearance of Peter’s brother, Randall.
+      Thrown into a world of parkour, graffiti, and diamond-smuggling, Myla and Peter
+      encounter a band of thugs who are after the same thing as Randall. Can Myla
+      and Peter find Randall before it’s too late, and their shared family secrets
+      threaten to destroy them all?”—Provided by publisher.'
+    - 'Identifiers: LCCN 2016042022 (print) | LCCN 2016052878 (ebook) | ISBN 9781419722967
+      (hardback) | eISBN 9781683350613 (ebook)'
+    - 'Subjects: | CYAC: Mystery and detective stories. | Family life—New York (State)—Fiction.
+      | Graffiti—Fiction. | Parkour—Fiction. | East Indian Americans—Fiction. | Racially
+      mixed people—Fiction. | Dobbs Ferry (N.Y.)–Fiction. | BISAC: JUVENILE FICTION
+      / Family / General (see also headings under Social Issues). | JUVENILE FICTION
+      / Lifestyles / City & Town Life. | JUVENILE FICTION / Art & Architecture.'
+    - 'Classification: LCC PZ7.C37368 Fin 2017 (print) | LCC PZ7.C37368 (ebook) |
+      DDC [Fic]—dc23'
+    - LC record available at
+    - https://lccn.loc.gov/2016042022
+    - Text copyright © 2017 Sheela Chari
+    - Illustrations © 2017 Reid Kikuo Johnson
+    - Book design by Pamela Notarantonio
+    - Published in 2017 by Amulet Books, an imprint of ABRAMS. All rights reserved.
+      No portion of this book may be reproduced, stored in a retrieval system, or
+      transmitted in any form or by any means, mechanical, electronic, photocopying,
+      recording, or otherwise, without written permission from the publisher.
+    - Amulet Books and Amulet Paperbacks are registered trademarks of Harry N. Abrams,
+      Inc.
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: -1
+    element_label: ''
+    element_identifier: ''
+    x: 195.0
+    y: 400.0
+    expect_elements:
+    - Go back
+    - Finding Mighty
+    - Search in book
+    - Table of contents
+    - Reader settings
+    - Add Bookmark
+    - 'PUBLISHER’S NOTE: This is a work of fiction. Names, characters, places, and
+      incidents are either the product of the author’s imagination or are used fictitiously,
+      and any resemblance to actual persons, living or dead, business establishments,
+      events, or locales is entirely coincidental.'
+    - Library of Congress Cataloging-in-Publication Data
+    - 'Names: Chari, Sheela.'
+    - 'Title: Finding Mighty / Sheela Chari.'
+    - 'Description: New York : Amulet Books, 2017. | Summary: “Along the train lines
+      north of New York City, twelve-year-old neighbors Myla and Peter search for
+      the link between Myla’s necklace and the disappearance of Peter’s brother, Randall.
+      Thrown into a world of parkour, graffiti, and diamond-smuggling, Myla and Peter
+      encounter a band of thugs who are after the same thing as Randall. Can Myla
+      and Peter find Randall before it’s too late, and their shared family secrets
+      threaten to destroy them all?”—Provided by publisher.'
+    - 'Identifiers: LCCN 2016042022 (print) | LCCN 2016052878 (ebook) | ISBN 9781419722967
+      (hardback) | eISBN 9781683350613 (ebook)'
+    - 'Subjects: | CYAC: Mystery and detective stories. | Family life—New York (State)—Fiction.
+      | Graffiti—Fiction. | Parkour—Fiction. | East Indian Americans—Fiction. | Racially
+      mixed people—Fiction. | Dobbs Ferry (N.Y.)–Fiction. | BISAC: JUVENILE FICTION
+      / Family / General (see also headings under Social Issues). | JUVENILE FICTION
+      / Lifestyles / City & Town Life. | JUVENILE FICTION / Art & Architecture.'
+    - 'Classification: LCC PZ7.C37368 Fin 2017 (print) | LCC PZ7.C37368 (ebook) |
+      DDC [Fic]—dc23'
+    - LC record available at
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 1
+    element_label: Go back
+    element_identifier: ''
+    x: 25.333333333333332
+    y: 69.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Books
+    - Search
+    - Sort
+    screenshot_threshold: 5.0
+  - action: swipe
+    direction: down
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Books
+    - Search
+    - Sort
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 28
+    element_label: Download
+    element_identifier: ''
+    x: 212.83333333333331
+    y: 475.6666666666666
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Books
+    - Search
+    - Sort
+    screenshot_threshold: 5.0
+  - action: swipe
+    direction: down
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Books
+    - Search
+    - Sort
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 28
+    element_label: Listen
+    element_identifier: ''
+    x: 200.0
+    y: 475.6666666666666
+    expect_elements:
+    - My Books
+    - Sort
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 19
+    element_label: pause
+    element_identifier: ''
+    x: 195.0
+    y: 698.0
+    expect_elements:
+    - backNavigation
+    - Back
+    - My Books
+    - tableOfContents
+    - The Confusion
+    - Neal Stephenson
+    - 'Time left in book: 32 hr 40 min remaining'
+    - 'Time elapsed: 0 minutes and 8 seconds'
+    - Dundalk, Ireland
+    - Time left in chapter 8 minutes and 49 seconds
+    - Book Cover
+    - Arrow Down Circle
+    - 100%
+    - Downloading...
+    - skipBack
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 1
+    element_label: backNavigation
+    element_identifier: ''
+    x: 61.16666666666665
+    y: 69.16666666666666
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Books
+    - Search
+    - Sort
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 43
+    element_label: Catalog
+    element_identifier: ''
+    x: 49.0
+    y: 786.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - Catalog
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Search Catalog
+    element_identifier: ''
+    x: 358.0
+    y: 69.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    screenshot_threshold: 5.0
+  - action: type
+    text: harry potter
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Cancel
+    element_identifier: ''
+    x: 343.66666666666663
+    y: 69.16666666666666
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - Catalog
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 56
+    element_label: More books in OverDrive
+    element_identifier: ''
+    x: 357.33333333333326
+    y: 1393.1666666666665
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - Catalog
+    screenshot_threshold: 5.0
+  - action: swipe
+    direction: down
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - Catalog
+    screenshot_threshold: 5.0
+  - action: swipe
+    direction: down
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - Catalog
+    screenshot_threshold: 5.0
+  - action: swipe
+    direction: down
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - Catalog
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 26
+    element_label: Gone Girl, Audiobook
+    element_identifier: ''
+    x: 814.8333333333333
+    y: 327.0
+    expect_elements:
+    - Go back
+    - Back
+    - Juror 3
+    - Borrow
+    - DESCRIPTION
+    - More
+    - INFORMATION
+    - FORMAT
+    - ePub
+    - PUBLISHED
+    - PUBLISHER
+    - CATEGORY
+    - DISTRIBUTOR
+    - 'A young attorney is defending her client in a racially charged felony case
+      -- but in a town of old money and hidden secrets, her first trial may be her
+      last in this #1 New York Times bestselling legal thriller.
+
+
+      Ruby Bozarth, a newcomer to Rosedale, Mississippi, is also fresh to the State
+      Bar -- and to the docket of Circuit Judge Baylor, who taps Ruby as defense counsel.
+
+
+      The murder of a woman from one of the town''s oldest families has Rosedale''s
+      upper crust howling for blood, and the prosecutor is counting on Ruby''s inexperience
+      to help him deliver a swift conviction. Ruby''s client is a college football
+      star who has returned home after a career-ending injury, and she is determined
+      to build a defense that will stick. She finds help in unexpected quarters from
+      Suzanne, a hard-charging attorney armed to the teeth, and Shorty, a diner cook
+      who knows more than he lets on.
+
+
+      Ruby never belonged to the country club set, but once she nearly married into
+      it. As news breaks of a second murder, Ruby''s ex-fiancé shows up on her doorstep
+      -- a Southern gentleman in need of a savior. As lurid, intertwining investigations
+      unfold, no one in Rosedale can be trusted, especially the twelve men and women
+      impaneled on the jury. They may be hiding the most incendiary secret of all. '
+    - Juror 3
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 1
+    element_label: Go back
+    element_identifier: ''
+    x: 50.0
+    y: 69.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - Catalog
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 18
+    element_label: More books in OverDrive
+    element_identifier: ''
+    x: 357.33333333333326
+    y: 223.16666666666663
+    expect_elements:
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - tab.bar.label
+    - Catalog
+    - My Books
+    - Holds
+    - Settings
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Search Catalog
+    element_identifier: ''
+    x: 358.0
+    y: 69.0
+    expect_elements:
+    - OverDrive
+    - A1QA Test Library
+    screenshot_threshold: 5.0
+  - action: type
+    text: MySQL Cookbook
+    expect_elements:
+    - OverDrive
+    - A1QA Test Library
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Cancel
+    element_identifier: ''
+    x: 343.66666666666663
+    y: 69.16666666666666
+    expect_elements:
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - Preview
+    - Preview
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 1
+    element_label: uibutton.navbar.back.button.title
+    element_identifier: ''
+    x: 22.0
+    y: 69.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - Catalog
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Search Catalog
+    element_identifier: ''
+    x: 358.0
+    y: 69.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    screenshot_threshold: 5.0
+  - action: type
+    text: MySQL Cookbook
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 12
+    element_label: Place Hold
+    element_identifier: ''
+    x: 214.0
+    y: 336.16666666666663
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 4
+    element_label: Cancel
+    element_identifier: ''
+    x: 343.66666666666663
+    y: 69.16666666666666
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Catalog
+    - Search
+    - Catalog
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 60
+    element_label: Holds
+    element_identifier: ''
+    x: 244.0
+    y: 786.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Holds
+    - Search
+    - Manage Hold
+    - Preview
+    - tab.bar.label
+    - Catalog
+    - My Books
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 10
+    element_label: Manage Hold
+    element_identifier: ''
+    x: 223.16666666666663
+    y: 218.66666666666666
+    expect_elements:
+    - sheet.grabber
+    - MANAGE HOLD
+    - A1QA Test Library
+    - MySQL Cookbook
+    - Paul DuBois
+    - You are 2nd in line. 1 copy in use.
+    - Cancel Hold
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 7
+    element_label: Cancel Hold
+    element_identifier: ''
+    x: 72.16667175292969
+    y: 757.3333129882812
+    expect_elements:
+    - sheet.grabber
+    - MANAGE HOLD
+    - A1QA Test Library
+    - MySQL Cookbook
+    - Paul DuBois
+    - You are 2nd in line. 1 copy in use.
+    - Cancel Hold
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 7
+    element_label: Cancel Hold
+    element_identifier: ''
+    x: 72.16667175292969
+    y: 757.3333129882812
+    expect_elements:
+    - sheet.grabber
+    - MANAGE HOLD
+    - A1QA Test Library
+    - MySQL Cookbook
+    - Paul DuBois
+    - You are 2nd in line. 1 copy in use.
+    - Cancel Hold
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: -1
+    element_label: ''
+    element_identifier: ''
+    x: 72.0
+    y: 757.0
+    expect_elements:
+    - sheet.grabber
+    - MANAGE HOLD
+    - A1QA Test Library
+    - MySQL Cookbook
+    - Paul DuBois
+    - You are 2nd in line. 1 copy in use.
+    - Cancel Hold
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 1
+    element_label: sheet.grabber
+    element_identifier: ''
+    x: 195.0
+    y: 395.83333333333326
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Holds
+    - Search
+    - Manage Hold
+    - Preview
+    - tab.bar.label
+    - Catalog
+    - My Books
+    screenshot_threshold: 5.0
+  - action: tap
+    element_index: 6
+    element_label: MySQL Cookbook, Paul DuBois, You are 2nd in line. 1 copy in use.
+    element_identifier: ''
+    x: 192.91668128967285
+    y: 201.0
+    expect_elements:
+    - sheet.grabber
+    - MANAGE HOLD
+    - A1QA Test Library
+    - MySQL Cookbook
+    - Paul DuBois
+    - You are 2nd in line. 1 copy in use.
+    - Cancel Hold
+    screenshot_threshold: 5.0

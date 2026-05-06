@@ -79,9 +79,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         self.userAccountProvider = userAccountProvider
         self.networker = networkExecutor
         self.drmAuthorizer = drmAuthorizer
-        self.samlHelper = TPPSAMLHelper()
+        self._samlHelper = TPPSAMLHelper()
         super.init()
-        self.samlHelper.businessLogic = self
+        self._samlHelper.businessLogic = self
     }
 
     /// Signing in and out may imply syncing the book registry.
@@ -130,14 +130,34 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     @objc let urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider
 
     /// Cookies used to authenticate. Only required for the SAML flow.
+    /// TODO: Phase 5 follow-up — migrate callers to read from samlHelper.cookies,
+    /// then remove this property. Currently both businessLogic.cookies and
+    /// samlHelper.cookies are set by the legacy bridge during SAML login.
     @objc var cookies: [HTTPCookie]?
 
     /// Performs initiation rites for SAML sign-in.
-    let samlHelper: TPPSAMLHelper
+    /// Eagerly created for backward compatibility; use `samlHelperIfNeeded`
+    /// for lazy access when SAML support is not guaranteed.
+    private let _samlHelper: TPPSAMLHelper
+
+    /// The SAML helper — always available (eagerly created in init).
+    var samlHelper: TPPSAMLHelper { _samlHelper }
+
+    /// Returns the SAML helper only if the current library supports SAML auth.
+    /// Returns nil for non-SAML libraries to avoid polluting their state.
+    var samlHelperIfNeeded: TPPSAMLHelper? {
+        guard isSamlPossible() || selectedAuthentication?.isSaml == true else {
+            return nil
+        }
+        return _samlHelper
+    }
 
     /// This overrides the sign-in state logic to behave as if the user isn't
     /// authenticated. This is useful if we already have credentials, but
     /// the session expired (e.g. SAML flow).
+    /// TODO: Remove once credentialsStale state machine is proven in production.
+    /// isSignedIn() now checks both this flag AND userAccount.authState == .credentialsStale.
+    /// Both are set/reset in tandem (refreshAuth sets both, updateUserAccount resets both).
     var ignoreSignedInState: Bool = false
 
     /// This is `true` during the process of validating credentials.
@@ -245,7 +265,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         var req = URLRequest(url: url, applyingCustomUserAgent: true)
 
         if let selectedAuth = selectedAuthentication,
-           selectedAuth.isOauth || selectedAuth.isSaml || selectedAuth.isToken {
+           selectedAuth.isOauth || selectedAuth.isSaml || selectedAuth.isToken || selectedAuth.isOidc {
 
             // The nil-coalescing on the authToken covers 2 cases:
             // - sign in, where uiDelegate has the token because we just obtained it
@@ -264,10 +284,11 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             } else {
                 Log.info(#file, "Auth token expected, but none is available.")
                 TPPErrorLogger.logError(withCode: .validationWithoutAuthToken,
-                                        summary: "Error \(authTypeStr): No token available during OAuth/SAML authentication validation",
+                                        summary: "Error \(authTypeStr): No token available during OAuth/SAML/OIDC authentication validation",
                                         metadata: [
                                             "isSAML": selectedAuth.isSaml,
                                             "isOAuth": selectedAuth.isOauth,
+                                            "isOIDC": selectedAuth.isOidc,
                                             "context": context,
                                             "uiDelegate nil?": uiDelegate == nil ? "y" : "n"])
             }
@@ -314,14 +335,10 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                 }
 
                 #if FEATURE_DRM_CONNECTOR
-                if AdobeCertificate.defaultCertificate?.hasExpired == true {
-                    self.finalizeSignIn(forDRMAuthorization: true)
-                } else if self.shouldSkipAdobeActivation() {
-                    // Refreshing stale credentials - Adobe DRM is still valid, skip activation
-                    self.finalizeSignIn(forDRMAuthorization: true)
-                } else {
-                    self.drmAuthorizeUserData(responseData, loggingContext: loggingContext)
-                }
+                // PP-3649: Save DRM credentials from profile document but defer Adobe
+                // device activation to borrow time. This avoids burning device activations
+                // for users who never borrow Adobe DRM content.
+                self.saveDRMCredentials(responseData, loggingContext: loggingContext)
                 #else
                 self.finalizeSignIn(forDRMAuthorization: true)
                 #endif
@@ -334,8 +351,8 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         }
     }
 
-    func getBearerToken(username: String, password: String, tokenURL: URL, completion: (() -> Void)? = nil) {
-        TPPNetworkExecutor.shared.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: libraryAccountID) { [weak self] result in
+    func getBearerToken(username: String, password: String, tokenURL: URL, networkExecutor: TPPNetworkExecutor = .shared, completion: (() -> Void)? = nil) {
+        networkExecutor.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: libraryAccountID) { [weak self] result in
             defer {
                 completion?()
             }
@@ -367,14 +384,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                                      problemDocument: problemDoc,
                                      metadata: loggingContext)
 
-        let title, message: String?
-        if let problemDoc = problemDoc {
-            title = problemDoc.title
-            message = problemDoc.detail
-        } else {
-            title = Strings.Error.invalidCredentialsErrorTitle
-            message = Strings.Error.invalidCredentialsErrorMessage
-        }
+        let (title, message) = Self.userFacingSignInError(for: error, problemDocument: problemDoc)
 
         TPPMainThreadRun.asyncIfNeeded {
             self.uiDelegate?.businessLogic(self,
@@ -384,12 +394,56 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         }
     }
 
+    /// Classifies a sign-in failure into a user-facing (title, message) pair.
+    /// Precedence: server-supplied problem document > network-connectivity
+    /// error > default "invalid credentials". Without the connectivity check,
+    /// a dropped Wi-Fi or LTE during sign-in was misreported as bad creds.
+    static func userFacingSignInError(
+        for error: NSError,
+        problemDocument: TPPProblemDocument?
+    ) -> (title: String?, message: String?) {
+        if let problemDocument {
+            return (problemDocument.title, problemDocument.detail)
+        }
+        if isNetworkConnectivityError(error) {
+            return (Strings.Error.networkUnavailableErrorTitle,
+                    Strings.Error.networkUnavailableErrorMessage)
+        }
+        return (Strings.Error.invalidCredentialsErrorTitle,
+                Strings.Error.invalidCredentialsErrorMessage)
+    }
+
+    /// True when the error is from URLSession indicating the request never
+    /// reached the server (lost connection, DNS failure, TLS handshake, etc).
+    static func isNetworkConnectivityError(_ error: NSError) -> Bool {
+        guard error.domain == NSURLErrorDomain else { return false }
+        switch error.code {
+        case NSURLErrorNotConnectedToInternet,
+             NSURLErrorTimedOut,
+             NSURLErrorNetworkConnectionLost,
+             NSURLErrorCannotFindHost,
+             NSURLErrorCannotConnectToHost,
+             NSURLErrorDNSLookupFailed,
+             NSURLErrorDataNotAllowed,
+             NSURLErrorInternationalRoamingOff,
+             NSURLErrorSecureConnectionFailed:
+            return true
+        default:
+            return false
+        }
+    }
+
     @objc func logIn() {
         logIn(with: nil)
     }
 
     /// Initiates process of signing in with the server.
     @objc func logIn(with tokenURL: URL? = nil) {
+        // Nothing to do without a selected auth method. Posting TPPIsSigningIn
+        // here would leave downstream observers stuck in a "signing in" state
+        // while we silently bail. (Forward-port of develop's logIn early-return.)
+        guard let wrapped = selectedAuthentication else { return }
+
         NotificationCenter.default.post(name: .TPPIsSigningIn, object: true)
 
         capturedBarcode = uiDelegate?.username
@@ -399,17 +453,15 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             self.uiDelegate?.businessLogicWillSignIn(self)
         }
 
-        switch selectedAuthentication {
-        case .none:
-            return
-        case .some(let wrapped):
-            switch wrapped.authType {
+        switch wrapped.authType {
             case .oauthIntermediary:
                 oauthLogIn()
             case .saml:
                 samlHelper.logIn {
                     self.uiDelegate?.businessLogicDidCancelSignIn(self)
                 }
+            case .oidc:
+                oidcLogIn()
             case .token:
                 guard let username = self.uiDelegate?.username,
                       let password = self.uiDelegate?.pin,
@@ -422,7 +474,6 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                 getBearerToken(username: username, password: password, tokenURL: tokenURL)
             default:
                 validateCredentials()
-            }
         }
     }
 
@@ -439,8 +490,14 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             return
         }
 
+        guard let libraryAccount = libraryAccount else {
+            Log.warn(#file, "No library account available — cannot load auth document")
+            completion(false)
+            return
+        }
+
         isAuthenticationDocumentLoading = true
-        libraryAccount?.loadAuthenticationDocument(using: self) { success in
+        libraryAccount.loadAuthenticationDocument(using: self) { success in
             self.isAuthenticationDocumentLoading = false
             completion(success)
         }
@@ -464,7 +521,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                                    completion: (() -> Void)?) -> Bool {
         guard
             let authDef = userAccount.authDefinition,
-            authDef.isBasic || authDef.isOauth || authDef.isSaml || (authDef.isToken && userAccount.authTokenHasExpired)
+            authDef.isBasic || authDef.isOauth || authDef.isSaml || authDef.isOidc || (authDef.isToken && AccountsManager.shared.currentUserAccount.authTokenHasExpired)
         else {
             completion?()
             return false
@@ -473,13 +530,15 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         refreshAuthCompletion = completion
 
         // reset authentication if needed
-        if authDef.isSaml || authDef.isOauth {
+        if authDef.isSaml || authDef.isOauth || authDef.isOidc {
             if !usingExistingCredentials {
                 // if current authentication is SAML and we don't want to use current
                 // credentials, we need to force log in process. this is for the case
                 // when we were logged in, but IDP expired our session and if this
                 // happens, we want the user to pick the idp to begin reauthentication
                 ignoreSignedInState = true
+                // Phase 4: Also mark credentials stale via state machine
+                userAccount.markCredentialsStale()
                 if authDef.isSaml {
                     selectedAuthentication = nil
                 }
@@ -521,8 +580,13 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     // MARK: - User Account Management
 
     /// The user account for the library we are signing in to.
+    ///
+    /// Returns the per-library instance owned by `libraryAccountsProvider`
+    /// (AccountsManager). This replaces the old `userAccountProvider.sharedAccount(libraryUUID:)`
+    /// path which mutated the legacy singleton's `libraryUUID` and caused
+    /// TOCTOU races during account switches.
     @objc var userAccount: TPPUserAccount {
-        return userAccountProvider.sharedAccount(libraryUUID: libraryAccountID)
+        return libraryAccountsProvider.userAccount(for: libraryAccountID)
     }
 
     /// Updates the user account for the library we are signing in to.
@@ -552,7 +616,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         let selectedAuth = selectedAuthentication
         userAccount.atomicUpdate(for: libraryAccountID) { account in
             if let selectedAuth {
-                if selectedAuth.isOauth || selectedAuth.isSaml || selectedAuth.isToken {
+                if selectedAuth.isOauth || selectedAuth.isSaml || selectedAuth.isToken || selectedAuth.isOidc {
                     if let patron {
                         account.setPatron(patron)
                     }
@@ -594,6 +658,12 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
 
     func isSignedIn() -> Bool {
+        // Phase 4: Use auth state instead of boolean flag.
+        // credentialsStale means we have credentials but the session expired
+        // (e.g. SAML IdP session timeout) — user must re-authenticate.
+        if userAccount.authState == .credentialsStale {
+            return false
+        }
         if ignoreSignedInState {
             return false
         }
@@ -607,6 +677,40 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
     @objc func isSamlPossible() -> Bool {
         libraryAccount?.details?.auths.contains { $0.isSaml } ?? false
+    }
+
+    /// Auto-select a WebView-based authentication (SAML, then OIDC) when
+    /// the library advertises multiple auth methods and none is explicitly
+    /// chosen. Fixes the regression where multi-auth SAML libraries rendered
+    /// the basic-auth credential fields instead of the SAML sign-in prompt.
+    ///
+    /// Also auto-selects the sole SAML IdP when the chosen SAML auth
+    /// advertises exactly one — without this, tapping "Sign in" on a
+    /// single-IdP SAML library is a silent no-op because
+    /// `samlHelper.logIn()` guards on `selectedIDP?.url`.
+    ///
+    /// Idempotent: only sets `selectedAuthentication` / `selectedIDP` when
+    /// they are currently nil.
+    @objc func selectPreferredAuthIfNeeded() {
+        if selectedAuthentication == nil,
+           let auths = libraryAccount?.details?.auths, auths.count > 1 {
+            if let saml = auths.first(where: { $0.isSaml }) {
+                selectedAuthentication = saml
+            } else if let oidc = auths.first(where: { $0.isOidc }) {
+                selectedAuthentication = oidc
+            }
+        }
+
+        // Auto-select the sole SAML IdP so Sign In opens the WebView
+        // immediately instead of silently no-op'ing. Multi-IdP libraries
+        // still require the user to pick via the IdP list UI.
+        if selectedIDP == nil,
+           let samlAuth = selectedAuthentication,
+           samlAuth.isSaml,
+           let idps = samlAuth.samlIdps,
+           idps.count == 1 {
+            selectedIDP = idps.first
+        }
     }
 
     @objc func shouldShowEULALink() -> Bool {

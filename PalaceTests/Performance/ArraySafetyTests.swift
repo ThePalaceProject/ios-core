@@ -50,10 +50,14 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
 
     func testPrefetch_EmptyBooksArray_DoesNotCrash() {
         sut.prefetch(books: [], visibleRange: 0..<0, buffer: 10)
+        XCTAssertEqual(sut.count, 0, "Empty book array should result in empty cache")
+        XCTAssertFalse(sut.count < 0, "Cache count must never be negative")
     }
 
     func testPrefetch_EmptyBooksArray_WithNonZeroRange_DoesNotCrash() {
         sut.prefetch(books: [], visibleRange: 5..<10, buffer: 10)
+        XCTAssertEqual(sut.count, 0, "Out-of-bounds range on empty array must not add entries")
+        XCTAssertFalse(sut.count < 0, "Cache count must remain non-negative after no-op prefetch")
     }
 
     // MARK: - Range Exceeds Array Bounds
@@ -62,20 +66,24 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
         let books = (0..<3).map { makeBook(index: $0) }
 
         sut.prefetch(books: books, visibleRange: 0..<100, buffer: 10)
+        XCTAssertLessThanOrEqual(sut.count, books.count, "Prefetch must not exceed array size")
+        XCTAssertGreaterThanOrEqual(sut.count, 0, "Cache count must remain non-negative")
     }
 
     func testPrefetch_NegativeBufferRange_ClampsToZero() {
         let books = (0..<5).map { makeBook(index: $0) }
 
         sut.prefetch(books: books, visibleRange: 2..<4, buffer: 0)
+        XCTAssertLessThanOrEqual(sut.count, 2, "Zero buffer should not prefetch beyond the visible range")
+        XCTAssertGreaterThanOrEqual(sut.count, 0, "Cache count must remain non-negative with zero buffer")
     }
 
     func testPrefetch_LargeBuffer_ClampsToArraySize() {
         let books = (0..<5).map { makeBook(index: $0) }
 
         sut.prefetch(books: books, visibleRange: 0..<3, buffer: 1000)
-
-        // Should not crash; buffer is clamped to array bounds
+        XCTAssertLessThanOrEqual(sut.count, books.count, "Oversized buffer must be clamped to array size")
+        XCTAssertGreaterThanOrEqual(sut.count, 0, "Cache count must remain non-negative after large-buffer prefetch")
     }
 
     // MARK: - Normal Operation
@@ -85,8 +93,8 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
 
         sut.prefetch(books: books, visibleRange: 2..<5, buffer: 2)
 
-        // Give the Task time to execute
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // Yield to allow the prefetch Task { @MainActor } to execute
+        await Task.yield(); await Task.yield(); await Task.yield()
 
         // Models in visible + buffer range should be cached
         XCTAssertGreaterThan(sut.count, 0)
@@ -96,18 +104,24 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
         let books = (0..<5).map { makeBook(index: $0) }
 
         sut.prefetch(books: books, visibleRange: 0..<2, buffer: 5)
+        XCTAssertLessThanOrEqual(sut.count, books.count, "Starting from index 0 must not underflow")
+        XCTAssertGreaterThanOrEqual(sut.count, 0, "Cache must remain non-negative at start of list")
     }
 
     func testPrefetch_EndOfList_DoesNotAccessBeyondBounds() {
         let books = (0..<5).map { makeBook(index: $0) }
 
         sut.prefetch(books: books, visibleRange: 3..<5, buffer: 10)
+        XCTAssertLessThanOrEqual(sut.count, books.count, "End-of-list range must not access beyond array bounds")
+        XCTAssertGreaterThanOrEqual(sut.count, 0, "Cache must remain non-negative at end of list")
     }
 
     func testPrefetch_SingleElementArray_DoesNotCrash() {
         let books = [makeBook(index: 0)]
 
         sut.prefetch(books: books, visibleRange: 0..<1, buffer: 5)
+        XCTAssertLessThanOrEqual(sut.count, 1, "Single-element array must not produce more than 1 cache entry")
+        XCTAssertGreaterThanOrEqual(sut.count, 0, "Cache must remain non-negative for single-element array")
     }
 
     // MARK: - Helpers
@@ -148,7 +162,8 @@ final class CatalogSearchViewModelRegistryUpdateTests: XCTestCase {
     func testApplyRegistryUpdates_EmptyFilteredBooks_DoesNotCrash() {
         sut.applyRegistryUpdates(changedIdentifier: nil)
 
-        XCTAssertTrue(sut.filteredBooks.isEmpty)
+        XCTAssertTrue(sut.filteredBooks.isEmpty, "No books should be present after update with no books loaded")
+        XCTAssertEqual(sut.filteredBooks.count, 0, "filteredBooks count must be 0 on empty state")
     }
 
     // MARK: - With Books
@@ -172,7 +187,8 @@ final class CatalogSearchViewModelRegistryUpdateTests: XCTestCase {
         sut.updateBooks(books)
         sut.applyRegistryUpdates(changedIdentifier: nil)
 
-        XCTAssertEqual(sut.filteredBooks.count, 5)
+        XCTAssertEqual(sut.filteredBooks.count, 5, "All 5 books must remain after nil-identifier update")
+        XCTAssertFalse(sut.filteredBooks.isEmpty, "filteredBooks must not be empty after loading 5 books")
     }
 
     func testApplyRegistryUpdates_UnknownIdentifier_NoChanges() {

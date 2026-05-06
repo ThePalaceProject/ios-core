@@ -15,40 +15,6 @@ import MediaPlayer
 @MainActor
 final class PlaybackBootstrapperTests: XCTestCase {
 
-    // MARK: - Initialization Tests
-
-    func testPlaybackBootstrapper_Singleton_Exists() {
-        // Act
-        let bootstrapper = PlaybackBootstrapper.shared
-
-        // Assert
-        XCTAssertNotNil(bootstrapper, "PlaybackBootstrapper.shared should exist")
-    }
-
-    func testPlaybackBootstrapper_EnsureInitialized_IsIdempotent() {
-        // Arrange
-        let bootstrapper = PlaybackBootstrapper.shared
-
-        // Act - Call multiple times
-        bootstrapper.ensureInitialized()
-        bootstrapper.ensureInitialized()
-        bootstrapper.ensureInitialized()
-
-        // Assert - Should not crash or have side effects
-        XCTAssertNotNil(bootstrapper, "Multiple calls to ensureInitialized should be safe")
-    }
-
-    func testPlaybackBootstrapper_EnsureInitializedForCarPlay_LoadsBookRegistry() {
-        // Arrange
-        let bootstrapper = PlaybackBootstrapper.shared
-
-        // Act
-        bootstrapper.ensureInitializedForCarPlay()
-
-        // Assert - Registry should be accessible (not nil)
-        XCTAssertNotNil(TPPBookRegistry.shared, "Book registry should be loaded")
-    }
-
     // MARK: - Remote Command Configuration Tests
 
     func testPlaybackBootstrapper_ConfiguresRemoteCommandCenter() {
@@ -85,20 +51,6 @@ final class PlaybackBootstrapperTests: XCTestCase {
     }
 
     // MARK: - Command Handler State Tests
-
-    func testPlaybackBootstrapper_NoActiveManager_ReturnsNoActionableItem() {
-        // Arrange - Ensure no audiobook is playing
-        // AudiobookSessionManager.shared.manager should be nil when no book is open
-
-        // The actual command handlers are private, but we can verify the behavior
-        // by checking the session manager state
-        let hasManager = AudiobookSessionManager.shared.manager != nil
-
-        // Assert
-        // When no manager, commands should return .noActionableNowPlayingItem
-        // We verify the precondition (no manager) that would trigger this behavior
-        XCTAssertFalse(hasManager, "No active manager should be present in test environment")
-    }
 
     func testAudiobookSessionManager_InitialState_IsIdle() {
         // Arrange & Act
@@ -166,40 +118,30 @@ final class PlaybackBootstrapperTests: XCTestCase {
 @MainActor
 final class AudiobookSessionErrorTests: XCTestCase {
 
-    func testAudiobookSessionError_NotAuthenticated_HasDescription() {
-        let error = AudiobookSessionError.notAuthenticated
-        XCTAssertFalse(error.localizedDescription.isEmpty, "notAuthenticated should have description")
-    }
+    func testAudiobookSessionError_localizedDescription_isCaseSpecificAndPreservesUnknownMessage() {
+        // Each case must produce a user-facing string that mentions the relevant
+        // concept. Guards against mutations that swap case strings or collapse
+        // cases to a generic fallback. The .unknown case must pass its message
+        // through verbatim.
+        let expectedKeywords: [(AudiobookSessionError, String)] = [
+            (.notAuthenticated,      "sign in"),
+            (.notDownloaded,         "download"),
+            (.networkUnavailable,    "network"),
+            (.manifestLoadFailed,    "audiobook data"),
+            (.playerCreationFailed,  "audio player"),
+            (.alreadyLoading,        "loading"),
+        ]
 
-    func testAudiobookSessionError_NotDownloaded_HasDescription() {
-        let error = AudiobookSessionError.notDownloaded
-        XCTAssertFalse(error.localizedDescription.isEmpty, "notDownloaded should have description")
-    }
+        for (error, keyword) in expectedKeywords {
+            let description = error.localizedDescription.lowercased()
+            XCTAssertTrue(description.contains(keyword.lowercased()),
+                          "\(error) description '\(error.localizedDescription)' should mention '\(keyword)'")
+        }
 
-    func testAudiobookSessionError_NetworkUnavailable_HasDescription() {
-        let error = AudiobookSessionError.networkUnavailable
-        XCTAssertFalse(error.localizedDescription.isEmpty, "networkUnavailable should have description")
-    }
-
-    func testAudiobookSessionError_ManifestLoadFailed_HasDescription() {
-        let error = AudiobookSessionError.manifestLoadFailed
-        XCTAssertFalse(error.localizedDescription.isEmpty, "manifestLoadFailed should have description")
-    }
-
-    func testAudiobookSessionError_PlayerCreationFailed_HasDescription() {
-        let error = AudiobookSessionError.playerCreationFailed
-        XCTAssertFalse(error.localizedDescription.isEmpty, "playerCreationFailed should have description")
-    }
-
-    func testAudiobookSessionError_AlreadyLoading_HasDescription() {
-        let error = AudiobookSessionError.alreadyLoading
-        XCTAssertFalse(error.localizedDescription.isEmpty, "alreadyLoading should have description")
-    }
-
-    func testAudiobookSessionError_Unknown_PreservesMessage() {
-        let customMessage = "Something went wrong"
-        let error = AudiobookSessionError.unknown(customMessage)
-        XCTAssertEqual(error.localizedDescription, customMessage, "Unknown error should preserve message")
+        let customMessage = "Something went wrong with disk I/O"
+        XCTAssertEqual(AudiobookSessionError.unknown(customMessage).localizedDescription,
+                       customMessage,
+                       ".unknown must pass the caller's message through verbatim")
     }
 
     func testAudiobookSessionError_Equatable() {

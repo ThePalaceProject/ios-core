@@ -33,24 +33,10 @@ final class URLSessionNetworkClient: NetworkClient {
         }
         urlRequest.httpBody = request.body
 
-        let (data, response) = try await withCheckedThrowingContinuation { continuation in
-            let completion: (NYPLResult<Data>) -> Void = { result in
-                switch result {
-                case let .success(data, response):
-                    if let http = response as? HTTPURLResponse {
-                        continuation.resume(returning: (data, http))
-                    } else {
-                        let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorUnknown, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
-                        continuation.resume(throwing: err)
-                    }
-                case let .failure(error, _):
-                    continuation.resume(throwing: error)
-                }
-            }
-
+        let (data, response): (Data, HTTPURLResponse) = try await withCheckedThrowingContinuation { continuation in
             switch request.method {
             case .GET, .HEAD:
-                _ = self.executor.GET(urlRequest.url!, useTokenIfAvailable: true) { data, response, error in
+                _ = self.executor.GET(request: urlRequest, useTokenIfAvailable: true) { data, response, error in
                     if let error { continuation.resume(throwing: error); return }
                     guard let data = data, let response = response as? HTTPURLResponse else { continuation.resume(throwing: NetworkError.invalidResponse); return }
                     continuation.resume(returning: (data, response))

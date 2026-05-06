@@ -7,12 +7,19 @@
 
 import SwiftUI
 
-/// Reusable action button with adaptive colors and loading states
+/// Reusable action button with adaptive colors and loading states.
+/// Use `.primary` for the main CTA (filled) and `.secondary` for supporting actions (outlined).
 struct ActionButtonView: View {
     typealias Constants = AccountDetailView.Layout
 
+    enum Style {
+        case primary
+        case secondary
+    }
+
     let title: String
     let isLoading: Bool
+    var style: Style = .primary
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -21,11 +28,11 @@ struct ActionButtonView: View {
         colorScheme == .dark
     }
 
-    private var buttonBackgroundColor: Color {
+    private var fillColor: Color {
         isDarkBackground ? .white : .black
     }
 
-    private var buttonTextColor: Color {
+    private var primaryTextColor: Color {
         isDarkBackground ? .black : .white
     }
 
@@ -35,7 +42,7 @@ struct ActionButtonView: View {
                 if isLoading {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle())
-                        .tint(buttonTextColor)
+                        .tint(style == .primary ? primaryTextColor : fillColor)
                 }
                 Text(title)
                     .palaceFont(.body, weight: .semibold)
@@ -43,9 +50,14 @@ struct ActionButtonView: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: Constants.buttonHeight)
-            .background(buttonBackgroundColor)
-            .foregroundColor(buttonTextColor)
+            .background(style == .primary ? fillColor : Color.clear)
+            .foregroundColor(style == .primary ? primaryTextColor : fillColor)
             .cornerRadius(Constants.buttonCornerRadius)
+            .overlay(
+                style == .secondary
+                    ? RoundedRectangle(cornerRadius: Constants.buttonCornerRadius).stroke(fillColor, lineWidth: 1.5)
+                    : nil
+            )
         }
         .disabled(isLoading)
         .buttonStyle(.plain)

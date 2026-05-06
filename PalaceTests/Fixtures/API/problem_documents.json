@@ -1,0 +1,74 @@
+{
+  "invalid_credentials": {
+    "type": "http://librarysimplified.org/terms/problem/invalid-credentials",
+    "status": 401,
+    "title": "Invalid Credentials",
+    "detail": "A valid library card barcode number and PIN are required."
+  },
+  "expired_credentials": {
+    "type": "http://librarysimplified.org/terms/problem/expired-credentials",
+    "status": 403,
+    "title": "Expired Credentials",
+    "detail": "Library card has expired."
+  },
+  "loan_limit_reached": {
+    "type": "http://librarysimplified.org/terms/problem/loan-limit-reached",
+    "status": 403,
+    "title": "Loan Limit Reached",
+    "detail": "You have reached your loan limit. Please return books before borrowing more."
+  },
+  "hold_limit_reached": {
+    "type": "http://librarysimplified.org/terms/problem/hold-limit-reached",
+    "status": 403,
+    "title": "Hold Limit Reached",
+    "detail": "You have reached your hold limit."
+  },
+  "no_licenses": {
+    "type": "http://librarysimplified.org/terms/problem/no-licenses",
+    "status": 404,
+    "title": "No Licenses",
+    "detail": "The library currently has no licenses for this book."
+  },
+  "no_available_license": {
+    "type": "http://librarysimplified.org/terms/problem/no-available-license",
+    "status": 403,
+    "title": "No Available License",
+    "detail": "All licenses for this book are loaned out."
+  },
+  "already_checked_out": {
+    "type": "http://librarysimplified.org/terms/problem/already-checked-out",
+    "status": 400,
+    "title": "Already Checked Out",
+    "detail": "You have already checked out this book."
+  },
+  "already_on_hold": {
+    "type": "http://librarysimplified.org/terms/problem/already-on-hold",
+    "status": 400,
+    "title": "Already On Hold",
+    "detail": "You have already placed a hold on this book."
+  },
+  "checkout_failed": {
+    "type": "http://librarysimplified.org/terms/problem/checkout-failed",
+    "status": 502,
+    "title": "Checkout Failed",
+    "detail": "Could not issue the loan."
+  },
+  "cannot_fulfill": {
+    "type": "http://librarysimplified.org/terms/problem/cannot-fulfill",
+    "status": 500,
+    "title": "Cannot Fulfill",
+    "detail": "Could not fulfill the loan request."
+  },
+  "remote_integration_failed": {
+    "type": "http://librarysimplified.org/terms/problem/remote-integration-failed",
+    "status": 502,
+    "title": "Remote Integration Failed",
+    "detail": "A third-party service has failed."
+  },
+  "blocked_by_policy": {
+    "type": "http://librarysimplified.org/terms/problem/blocked-by-policy",
+    "status": 403,
+    "title": "Blocked By Policy",
+    "detail": "This library card is not valid for this library."
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "@context": "http://www.w3.org/ns/anno.jsonld",
+  "total": 0,
+  "type": ["BasicContainer", "AnnotationCollection"],
+  "id": "https://example.com/annotations/",
+  "first": {
+    "items": [],
+    "type": "AnnotationPage",
+    "id": "https://example.com/annotations/?page=0"
+  }
+}

@@ -14,8 +14,10 @@ struct FacetsSelectorView: View {
                                 Text(facet.title)
                                     .padding(.vertical, 8)
                                     .padding(.horizontal, 12)
+                                    .frame(minHeight: 44)
                                     .background(facet.active ? Color.gray.opacity(0.3) : Color.clear)
                                     .clipShape(Capsule())
+                                    .contentShape(Capsule())
                             })
                             .buttonStyle(.plain)
                         }
@@ -45,11 +47,12 @@ struct EntryPointsSelectorView: View {
             }
             .pickerStyle(.segmented)
             .frame(maxWidth: .infinity)
+            .frame(minHeight: 44)
         }
         .frame(maxWidth: 700)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .accessibilityLabel(Strings.Generic.catalogFilter)
         .onAppear {
             if let idx = entryPoints.firstIndex(where: { $0.active }) {
                 selectionIndex = idx

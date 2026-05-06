@@ -16,12 +16,18 @@ final class TPPUserFriendlyErrorTests: XCTestCase {
         struct TestError: TPPUserFriendlyError {}
         let error = TestError()
         XCTAssertNil(error.userFriendlyTitle)
+        // Calling it twice must be idempotent (no side effects)
+        XCTAssertNil(error.userFriendlyTitle,
+                     "userFriendlyTitle must remain nil on repeated access")
     }
 
     func testDefaultImplementation_messageIsNil() {
         struct TestError: TPPUserFriendlyError {}
         let error = TestError()
         XCTAssertNil(error.userFriendlyMessage)
+        // The title default must also be nil — both defaults must agree
+        XCTAssertNil(error.userFriendlyTitle,
+                     "Default protocol implementation must have both title and message nil")
     }
 
     // MARK: - NSError Extension - Problem Document
@@ -61,6 +67,9 @@ final class TPPUserFriendlyErrorTests: XCTestCase {
     func testNSError_withoutProblemDocument_titleIsNil() {
         let error = NSError(domain: "TestDomain", code: 1, userInfo: nil)
         XCTAssertNil(error.userFriendlyTitle)
+        // Without a problem document there is also no structured message
+        XCTAssertNil(error.problemDocument,
+                     "NSError without a problem document must have nil problemDocument")
     }
 
     func testNSError_withoutProblemDocument_messageIsLocalizedDescription() {
@@ -76,6 +85,12 @@ final class TPPUserFriendlyErrorTests: XCTestCase {
     func testNSError_withoutProblemDocument_noUserInfo_messageIsNil() {
         let error = NSError(domain: "TestDomain", code: 1, userInfo: nil)
         XCTAssertNil(error.userFriendlyMessage)
+        // The standard localizedDescription must still be accessible (provided by NSError)
+        XCTAssertFalse(error.localizedDescription.isEmpty,
+                       "NSError must always provide a non-empty localizedDescription")
+        // But userFriendlyMessage (which requires localizedDescription from userInfo) is nil
+        XCTAssertNil(error.userFriendlyTitle,
+                     "No userInfo means both userFriendlyMessage and userFriendlyTitle are nil")
     }
 
     // MARK: - makeFromProblemDocument

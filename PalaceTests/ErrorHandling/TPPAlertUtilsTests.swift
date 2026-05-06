@@ -64,6 +64,8 @@ final class TPPAlertUtilsTests: XCTestCase {
         let alert = TPPAlertUtils.alert(title: "Error Occurred", error: nil)
 
         XCTAssertEqual(alert.title, "Error Occurred")
+        XCTAssertEqual(alert.preferredStyle, .alert)
+        XCTAssertGreaterThanOrEqual(alert.actions.count, 1, "Alert must have at least one action")
     }
 
     // MARK: - Alert with Style
@@ -226,13 +228,19 @@ final class TPPAlertUtilsTests: XCTestCase {
 
         // Should not crash
         TPPAlertUtils.setProblemDocument(controller: nil, document: problemDoc, append: true)
+        // After calling with nil controller, clientDomain remains accessible
+        XCTAssertNotNil(problemDoc, "Problem document must still be accessible after a nil-controller call")
     }
 
     func testSetProblemDocument_nilDocument_doesNotCrash() {
         let alert = TPPAlertUtils.alert(title: "Error", message: "Message")
+        let originalMessage = alert.message
 
         // Should not crash
         TPPAlertUtils.setProblemDocument(controller: alert, document: nil, append: true)
+        // Alert message must not change when document is nil
+        XCTAssertEqual(alert.message, originalMessage,
+                       "Alert message must not be modified when setProblemDocument receives nil document")
     }
 
     // MARK: - Alert Stacking Safety (Regression for Crashlytics fe741015)
@@ -320,6 +328,9 @@ final class TPPAlertUtilsTests: XCTestCase {
         }
         waitForExpectations(timeout: 2.0)
 
+        // Verify first alert is presented before attempting retry
+        XCTAssertNotNil(rootVC.presentedViewController, "First alert must be presented before retry test")
+
         // Schedule the second alert — retry logic should queue it
         let secondAlert = TPPAlertUtils.alert(title: "Error", message: "Second error")
         let secondHandled = expectation(description: "Second alert handler called")
@@ -399,6 +410,254 @@ final class TPPAlertUtilsTests: XCTestCase {
     }
 
     /// Tests that presenting an alert when no alert is showing still works correctly.
+    // MARK: - Three-arg alert(title:message:error:) overload
+
+    func testAlertTitleMessageError_withMessage_prefersMessageOverError() {
+        let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
+        let alert = TPPAlertUtils.alert(title: "T", message: "Explicit message", error: err)
+        XCTAssertEqual(alert.title, "T")
+        XCTAssertEqual(alert.message, "Explicit message")
+    }
+
+    func testAlertTitleMessageError_withNilMessage_fallsBackToError() {
+        let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
+        let alert = TPPAlertUtils.alert(title: "T", message: nil, error: err)
+        XCTAssertEqual(alert.title, "T")
+        // NotConnected key is localized; ensure non-empty and not the generic fallback
+        XCTAssertFalse(alert.message?.isEmpty ?? true)
+    }
+
+    // MARK: - NSURLError mapping
+
+    func testAlert_withNSURLErrorNotConnected_setsMessage() {
+        let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
+        let alert = TPPAlertUtils.alert(title: "Net", error: err)
+        XCTAssertEqual(alert.title, "Net")
+        XCTAssertFalse(alert.message?.isEmpty ?? true)
+        XCTAssertGreaterThanOrEqual(alert.actions.count, 1, "Alert must have at least an OK action")
+    }
+
+    func testAlert_withNSURLErrorCancelled_setsMessage() {
+        let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled)
+        let alert = TPPAlertUtils.alert(title: "C", error: err)
+        XCTAssertFalse(alert.message?.isEmpty ?? true)
+        XCTAssertEqual(alert.title, "C")
+        XCTAssertGreaterThanOrEqual(alert.actions.count, 1)
+    }
+
+    func testAlert_withNSURLErrorTimedOut_setsMessage() {
+        let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
+        let alert = TPPAlertUtils.alert(title: "C", error: err)
+        XCTAssertFalse(alert.message?.isEmpty ?? true)
+        XCTAssertEqual(alert.title, "C")
+        XCTAssertGreaterThanOrEqual(alert.actions.count, 1)
+    }
+
+    func testAlert_withNSURLErrorUnsupportedURL_setsMessage() {
+        let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorUnsupportedURL)
+        let alert = TPPAlertUtils.alert(title: "C", error: err)
+        XCTAssertFalse(alert.message?.isEmpty ?? true)
+        XCTAssertEqual(alert.preferredStyle, .alert)
+        XCTAssertGreaterThanOrEqual(alert.actions.count, 1)
+    }
+
+    func testAlert_withNSURLErrorUnknownCode_setsUnknownRequestMessage() {
+        let err = NSError(domain: NSURLErrorDomain, code: -99999)
+        let alert = TPPAlertUtils.alert(title: "C", error: err)
+        XCTAssertFalse(alert.message?.isEmpty ?? true)
+        XCTAssertEqual(alert.title, "C")
+        XCTAssertGreaterThanOrEqual(alert.actions.count, 1)
+    }
+
+    func testAlert_withUnknownDomainAndLocalizedDescription_usesDescription() {
+        let err = NSError(
+            domain: "SomeDomain", code: 123,
+            userInfo: [NSLocalizedDescriptionKey: "Specific thing failed"]
+        )
+        let alert = TPPAlertUtils.alert(title: "X", error: err)
+        XCTAssertTrue(alert.message?.contains("Specific thing failed") ?? false)
+    }
+
+    func testAlert_withUnknownDomainNoDescription_usesGenericFallback() {
+        let err = NSError(domain: "Weird", code: 1)
+        let alert = TPPAlertUtils.alert(title: "X", error: err)
+        XCTAssertFalse(alert.message?.isEmpty ?? true)
+        // Title must pass through unchanged for non-empty title
+        XCTAssertEqual(alert.title, "X", "Title must be preserved for non-empty input")
+        // Alert must have at least one action (OK button)
+        XCTAssertFalse(alert.actions.isEmpty, "Alert must include at least one action")
+    }
+
+    // MARK: - Empty/edge titles & messages
+
+    func testAlert_emptyTitle_substitutesAlertDefault() {
+        let alert = TPPAlertUtils.alert(title: "", message: "msg")
+        XCTAssertEqual(alert.title, "Alert")
+        // Non-empty title must not be substituted
+        let alertWithTitle = TPPAlertUtils.alert(title: "My Title", message: "msg")
+        XCTAssertEqual(alertWithTitle.title, "My Title", "Non-empty title must not be overridden")
+        // Message must pass through for empty-title case
+        XCTAssertEqual(alert.message, "msg", "Message must be preserved even when title is substituted")
+    }
+
+    func testAlert_emptyMessage_returnsEmptyMessage() {
+        let alert = TPPAlertUtils.alert(title: "T", message: "")
+        XCTAssertEqual(alert.message, "")
+        // Title must still be set for empty-message case
+        XCTAssertEqual(alert.title, "T", "Title must be preserved when message is empty")
+        // Alert must still have an OK action even with empty message
+        XCTAssertFalse(alert.actions.isEmpty, "Alert must include at least one action even for empty message")
+    }
+
+    func testAlert_veryLongMessage_preservesContent() {
+        let long = String(repeating: "abc ", count: 500)
+        let alert = TPPAlertUtils.alert(title: "T", message: long)
+        XCTAssertEqual(alert.message?.count, long.count)
+        // Title must not be affected by very long message
+        XCTAssertEqual(alert.title, "T", "Title must not be truncated by a long message")
+        // Shorter message must produce shorter result (alert doesn't pad)
+        let short = TPPAlertUtils.alert(title: "T", message: "Hi")
+        XCTAssertLessThan(short.message?.count ?? 0, long.count,
+                          "Shorter message must produce shorter alert message than 2000-char input")
+    }
+
+    // MARK: - OK action style
+
+    func testAlert_defaultStyle_okActionIsDefaultStyle() {
+        let alert = TPPAlertUtils.alert(title: "T", message: "M")
+        let ok = alert.actions.first { $0.title == "OK" }
+        XCTAssertEqual(ok?.style, .default)
+        // A destructive-style alert must produce a different action style
+        let destructive = TPPAlertUtils.alert(title: "T", message: "M", style: .destructive)
+        let destructiveOk = destructive.actions.first { $0.title == "OK" }
+        XCTAssertNotEqual(ok?.style, destructiveOk?.style,
+                          "Default and destructive alerts must produce different action styles")
+    }
+
+    func testAlert_destructiveStyle_okActionIsDestructive() {
+        let alert = TPPAlertUtils.alert(title: "T", message: "M", style: .destructive)
+        let ok = alert.actions.first { $0.title == "OK" }
+        XCTAssertEqual(ok?.style, .destructive)
+        // Destructive style must differ from default style
+        let defaultAlert = TPPAlertUtils.alert(title: "T", message: "M")
+        let defaultOk = defaultAlert.actions.first { $0.title == "OK" }
+        XCTAssertNotEqual(ok?.style, defaultOk?.style,
+                          "Destructive action must have a different style than default action")
+    }
+
+    func testAlert_cancelStyle_okActionIsCancel() {
+        let alert = TPPAlertUtils.alert(title: "T", message: "M", style: .cancel)
+        let ok = alert.actions.first { $0.title == "OK" }
+        XCTAssertEqual(ok?.style, .cancel)
+        // Cancel style must differ from default style
+        let defaultAlert = TPPAlertUtils.alert(title: "T", message: "M")
+        let defaultOk = defaultAlert.actions.first { $0.title == "OK" }
+        XCTAssertNotEqual(ok?.style, defaultOk?.style,
+                          "Cancel action must have a different style than default action")
+    }
+
+    // MARK: - setProblemDocument branches
+
+    func testSetProblemDocument_replaceMode_setsTitleAndDetail() {
+        let alert = TPPAlertUtils.alert(title: "Old", message: "Old msg")
+        let doc = TPPProblemDocument.fromDictionary([
+            "title": "New Title", "detail": "New Detail"
+        ])
+        TPPAlertUtils.setProblemDocument(controller: alert, document: doc, append: false)
+        XCTAssertEqual(alert.title, "New Title")
+        XCTAssertEqual(alert.message, "New Detail")
+    }
+
+    func testSetProblemDocument_replaceMode_titleOnly_fillsMessageFromDetail() {
+        let alert = TPPAlertUtils.alert(title: "Old", message: "")
+        let doc = TPPProblemDocument.fromDictionary([
+            "title": "New Title", "detail": "Some detail"
+        ])
+        TPPAlertUtils.setProblemDocument(controller: alert, document: doc, append: false)
+        XCTAssertEqual(alert.title, "New Title")
+        XCTAssertTrue(alert.message?.contains("Some detail") ?? false)
+    }
+
+    func testSetProblemDocument_appendMode_appendsDetailAfterExisting() {
+        let alert = TPPAlertUtils.alert(title: "Title", message: "Base")
+        let doc = TPPProblemDocument.fromDictionary(["detail": "Extra"])
+        TPPAlertUtils.setProblemDocument(controller: alert, document: doc, append: true)
+        XCTAssertTrue(alert.message?.contains("Base") ?? false)
+        XCTAssertTrue(alert.message?.contains("Extra") ?? false)
+    }
+
+    func testSetProblemDocument_appendMode_titleAndDetailBothAppended() {
+        let alert = TPPAlertUtils.alert(title: "AlertTitle", message: "Base")
+        let doc = TPPProblemDocument.fromDictionary([
+            "title": "DocTitle", "detail": "DocDetail"
+        ])
+        TPPAlertUtils.setProblemDocument(controller: alert, document: doc, append: true)
+        XCTAssertTrue(alert.message?.contains("DocTitle") ?? false)
+        XCTAssertTrue(alert.message?.contains("DocDetail") ?? false)
+    }
+
+    func testSetProblemDocument_emptyAlertTitle_fillsFromDoc() {
+        // Construct an alert with an explicitly empty title to hit the
+        // "alert.title.isEmpty -> copy from doc" branch.
+        let alert = UIAlertController(title: "", message: "Base", preferredStyle: .alert)
+        let doc = TPPProblemDocument.fromDictionary([
+            "title": "FromDoc", "detail": "D"
+        ])
+        TPPAlertUtils.setProblemDocument(controller: alert, document: doc, append: true)
+        XCTAssertEqual(alert.title, "FromDoc")
+    }
+
+    // MARK: - alertWithDetails action configuration
+
+    func testAlertWithDetails_withRetryAction_hasRetryAndCancelNoOK() {
+        let alert = TPPAlertUtils.alertWithDetails(
+            title: "T", message: "M", retryAction: {}
+        )
+        XCTAssertEqual(alert.actions.count, 3) // View Details + Retry + Cancel
+        XCTAssertNil(alert.actions.first { $0.title == "OK" })
+        XCTAssertNotNil(alert.actions.first { $0.style == .cancel })
+        let retry = alert.actions.first { $0.style == .default && $0.title != "View Error Details" }
+        XCTAssertNotNil(retry)
+    }
+
+    func testAlertWithDetails_retryAction_invokesClosure() {
+        var fired = false
+        let alert = TPPAlertUtils.alertWithDetails(
+            title: "T", message: "M", retryAction: { fired = true }
+        )
+        let retry = alert.actions.first { $0.style == .default && $0.title != "View Error Details" }
+        XCTAssertNotNil(retry)
+        // Invoke handler via KVC (UIAlertAction.handler is private)
+        typealias Handler = @convention(block) (UIAlertAction) -> Void
+        if let action = retry,
+           let block = action.value(forKey: "handler") {
+            let handler = unsafeBitCast(block as AnyObject, to: Handler.self)
+            handler(action)
+        }
+        XCTAssertTrue(fired, "Retry handler should have been invoked")
+    }
+
+    func testAlertWithDetails_withoutRetry_okActionIsDefaultStyle() {
+        let alert = TPPAlertUtils.alertWithDetails(title: "T", message: "M")
+        let ok = alert.actions.first { $0.title == "OK" }
+        XCTAssertEqual(ok?.style, .default)
+        // Without retry handler, there must be no "Try Again" action
+        let tryAgain = alert.actions.first { $0.title == "Try Again" }
+        XCTAssertNil(tryAgain, "Alert without retry handler must not include a Try Again action")
+        // Alert must have at least the OK action
+        XCTAssertFalse(alert.actions.isEmpty, "Alert must include at least one action")
+    }
+
+    func testAlertWithDetails_withError_buildsAlert() {
+        let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
+        let alert = TPPAlertUtils.alertWithDetails(
+            title: "Failed", message: nil, error: err
+        )
+        XCTAssertEqual(alert.title, "Failed")
+        XCTAssertNotNil(alert.actions.first { $0.title == "View Error Details" })
+        XCTAssertFalse(alert.message?.isEmpty ?? true, "Alert with a real NSError must have a non-empty message")
+    }
+
     func testPresentAlert_WhenNoAlertShowing_PresentsSuccessfully() {
         // Arrange
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 568))

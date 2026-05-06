@@ -1,0 +1,25 @@
+replay:
+  name: reservations-empty
+  bundle_id: org.thepalaceproject.palace
+  device_id: 31CF5C43-DD55-4889-B3B2-9A6810B4E98F
+  recorded_at: '2026-04-16T20:25:32'
+  steps:
+  - action: tap
+    element_index: 20
+    element_label: Holds
+    element_identifier: ''
+    x: 244.0
+    y: 786.0
+    expect_elements:
+    - Switch Library
+    - MyLibraryIcon
+    - A1QA Test Library
+    - Search Holds
+    - Search
+    - Carl's Doomsday Scenario. Audiobook., Matt Dinniman, You are 1st in line. 1
+      copy in use.
+    - Unread
+    - Audiobook
+    - Carl's Doomsday Scenario. Audiobook.
+    - Matt Dinniman
+    screenshot_threshold: 5.0

@@ -53,6 +53,7 @@ final class FirebaseManager {
         case downloadRetryEnabled = "download_retry_enabled"
         case circuitBreakerEnabled = "circuit_breaker_enabled"
         case carPlayEnabled = "carplay_enabled"
+        case opds2Enabled = "opds2_enabled"
     }
 
     // MARK: - Initialization
@@ -94,7 +95,8 @@ final class FirebaseManager {
             RemoteConfigKey.enhancedErrorLoggingEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.downloadRetryEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.circuitBreakerEnabled.rawValue: NSNumber(value: true),
-            RemoteConfigKey.carPlayEnabled.rawValue: NSNumber(value: true)
+            RemoteConfigKey.carPlayEnabled.rawValue: NSNumber(value: true),
+            RemoteConfigKey.opds2Enabled.rawValue: NSNumber(value: true)
         ])
     }
 
@@ -278,6 +280,13 @@ final class FirebaseManager {
 
         #if FEATURE_CRASH_REPORTING
         Crashlytics.crashlytics().log(message)
+        #endif
+    }
+
+    /// Sets a custom key-value pair on Crashlytics for dashboard filtering.
+    func setCrashlyticsKey(_ key: String, value: String) {
+        #if FEATURE_CRASH_REPORTING
+        Crashlytics.crashlytics().setCustomValue(value, forKey: key)
         #endif
     }
 

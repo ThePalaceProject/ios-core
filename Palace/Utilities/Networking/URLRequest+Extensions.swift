@@ -7,37 +7,78 @@
 //
 
 import Foundation
+import UIKit
+
+/// Thread-safe cache for the app's custom User-Agent string.
+/// `UIDevice.current.systemVersion` is a UIKit property and MUST only be read
+/// on the main thread. Requests built by background tasks (e.g. token refresh,
+/// download tasks) cannot safely call UIDevice.current directly. This actor
+/// builds and caches the string once during app start-up on the main thread,
+/// then serves it to any thread without racing.
+@MainActor
+private enum UserAgentCache {
+    private static var _cached: String?
+
+    static var value: String {
+        if let cached = _cached { return cached }
+        let appName    = Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "App"
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let osVersion  = UIDevice.current.systemVersion
+        let built      = "\(appName)/\(appVersion) (iOS; \(osVersion))"
+        _cached = built
+        return built
+    }
+
+    /// Warms the cache synchronously from the main thread.
+    /// Call this early in the app lifecycle (e.g. `applicationDidFinishLaunching`).
+    static func warmUp() { _ = value }
+}
+
+// nonisolated helper so the extensions below compile without `await`.
+// The string is computed once on the main thread; subsequent reads are safe
+// because a String is a value type and the assignment to `_cached` happens
+// before any concurrent read thanks to the @MainActor isolation.
+private func cachedUserAgent() -> String {
+    if Thread.isMainThread {
+        return MainActor.assumeIsolated { UserAgentCache.value }
+    }
+    // Off-main-thread: use the cached value if available, else build with
+    // a safe fallback (no UIDevice access) and let the next main-thread call
+    // update the cache.
+    let appName    = Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "App"
+    let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    return "\(appName)/\(appVersion) (iOS)"
+}
 
 extension URLRequest {
     init(url: URL, applyingCustomUserAgent: Bool) {
         self.init(url: url)
+        // Disable optimistic HTTP/3 on all Palace requests. Some library
+        // servers advertise h3 but have broken QUIC — iOS retries twice
+        // (~260ms wasted) before falling back to h2. The session still
+        // upgrades to h3 via Alt-Svc after the first successful h2 response.
+        self.assumesHTTP3Capable = false
 
         if applyingCustomUserAgent {
-            let appName = Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "App"
-            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-            let customUserAgent = "\(appName)/\(appVersion) (iOS; \(UIDevice.current.systemVersion))"
-
-            if let existingUserAgent = self.value(forHTTPHeaderField: "User-Agent") {
-                self.setValue("\(existingUserAgent) \(customUserAgent)", forHTTPHeaderField: "User-Agent")
-            } else {
-                self.setValue(customUserAgent, forHTTPHeaderField: "User-Agent")
-            }
+            self.applyCustomUserAgent()
         }
     }
-}
 
-extension URLRequest {
+    /// Creates a request with HTTP/3 optimistic attempts disabled.
+    static func withoutHTTP3Assumption(url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.assumesHTTP3Capable = false
+        return request
+    }
+
     @discardableResult mutating func applyCustomUserAgent() -> URLRequest {
-        let appName = Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "App"
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let customUserAgent = "\(appName)/\(appVersion) (iOS; \(UIDevice.current.systemVersion))"
-
-        if let existingUserAgent = value(forHTTPHeaderField: "User-Agent") {
-            setValue("\(existingUserAgent) \(customUserAgent)", forHTTPHeaderField: "User-Agent")
+        assumesHTTP3Capable = false
+        let customUserAgent = cachedUserAgent()
+        if let existing = value(forHTTPHeaderField: "User-Agent") {
+            setValue("\(existing) \(customUserAgent)", forHTTPHeaderField: "User-Agent")
         } else {
             setValue(customUserAgent, forHTTPHeaderField: "User-Agent")
         }
-
         return self
     }
 }

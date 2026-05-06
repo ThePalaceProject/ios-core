@@ -1,0 +1,122 @@
+#!/bin/bash
+#
+# palace-test - Test orchestrator for Palace iOS
+#
+# Usage:
+#   palace-test unit              Run unit tests
+#   palace-test ui [--plan P]     Run UI tests (smoke|tier1|full)
+#   palace-test all               Run unit + UI tests
+#   palace-test report            Generate summary from last run
+#
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$SCRIPT_DIR/../lib"
+CONFIG_DIR="$SCRIPT_DIR/../config"
+
+# Find project root (walk up until we find Palace.xcodeproj)
+find_project_root() {
+  local dir="$SCRIPT_DIR"
+  while [ "$dir" != "/" ]; do
+    if [ -d "$dir/Palace.xcodeproj" ]; then
+      echo "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  # Fallback: assume 3 levels up from bin/
+  echo "$(cd "$SCRIPT_DIR/../../.." && pwd)"
+}
+
+PROJECT_ROOT="$(find_project_root)"
+RESULTS_DIR="$PROJECT_ROOT/.test-results"
+SIMULATOR_ID="${PALACE_SIMULATOR_ID:-DF4A2A27-9888-429D-A749-2E157A049A37}"
+
+export PROJECT_ROOT RESULTS_DIR SIMULATOR_ID CONFIG_DIR
+
+# Source libraries
+source "$LIB_DIR/unit-runner.sh"
+source "$LIB_DIR/ui-runner.sh"
+source "$LIB_DIR/report.sh"
+
+usage() {
+  cat <<EOF
+Palace Test Orchestrator
+
+Usage:
+  palace-test unit                  Run unit tests
+  palace-test ui [--plan PLAN]      Run UI tests (smoke|tier1|full, default: smoke)
+  palace-test all [--plan PLAN]     Run unit + UI tests
+  palace-test report                Generate summary from last run
+  palace-test help                  Show this help
+
+Options:
+  --plan PLAN      Test plan for UI tests: smoke, tier1, full (default: smoke)
+  --device ID      Simulator UDID (default: $SIMULATOR_ID)
+
+Environment:
+  PALACE_SIMULATOR_ID    Override default simulator UDID
+EOF
+}
+
+# Parse arguments
+COMMAND="${1:-help}"
+shift || true
+
+UI_PLAN="smoke"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --plan)
+      UI_PLAN="${2:-smoke}"
+      shift 2
+      ;;
+    --device)
+      SIMULATOR_ID="${2:-$SIMULATOR_ID}"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+# Ensure results directory exists
+mkdir -p "$RESULTS_DIR"
+
+case "$COMMAND" in
+  unit)
+    run_unit_tests
+    ;;
+  ui)
+    run_ui_tests "$UI_PLAN"
+    ;;
+  all)
+    UNIT_EXIT=0
+    UI_EXIT=0
+    run_unit_tests || UNIT_EXIT=$?
+    run_ui_tests "$UI_PLAN" || UI_EXIT=$?
+    if [ $UNIT_EXIT -ne 0 ] || [ $UI_EXIT -ne 0 ]; then
+      echo ""
+      echo "=== Combined Results ==="
+      [ $UNIT_EXIT -ne 0 ] && echo "  Unit tests: FAILED (exit $UNIT_EXIT)"
+      [ $UNIT_EXIT -eq 0 ] && echo "  Unit tests: PASSED"
+      [ $UI_EXIT -ne 0 ] && echo "  UI tests:   FAILED (exit $UI_EXIT)"
+      [ $UI_EXIT -eq 0 ] && echo "  UI tests:   PASSED"
+      exit 1
+    fi
+    echo ""
+    echo "=== All tests passed ==="
+    ;;
+  report)
+    generate_report
+    ;;
+  help|--help|-h)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $COMMAND"
+    usage
+    exit 1
+    ;;
+esac

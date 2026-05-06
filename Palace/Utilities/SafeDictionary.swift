@@ -23,6 +23,28 @@ actor SafeDictionary<Key: Hashable, Value> {
         self.storage = initialValues
     }
 
+    // MARK: - Synchronous Read Mirror
+    //
+    // The actor provides compile-time safety but all access is async.
+    // Legacy / @objc code paths need synchronous reads. This lock-protected
+    // mirror is updated on every write so `syncGet` always returns fresh data
+    // without blocking the cooperative thread pool.
+
+    /// Lock-protected synchronous mirror. Uses `nonisolated(unsafe)` because
+    /// all reads/writes are guarded by the internal NSLock — the actor cannot
+    /// provide compile-time safety for the synchronous read path by design.
+    private nonisolated(unsafe) var _syncMirror = LockedDictionary<Key, Value>()
+
+    /// Non-isolated, lock-protected synchronous read.
+    /// Safe to call from any thread including the main thread.
+    nonisolated func syncGet(_ key: Key) -> Value? {
+        _syncMirror.get(key)
+    }
+
+    private func mirrorWrite() {
+        _syncMirror.replace(with: storage)
+    }
+
     // MARK: - Health Monitoring
 
     private var accessCount: Int = 0
@@ -52,17 +74,21 @@ actor SafeDictionary<Key: Hashable, Value> {
         accessCount += 1
         lastAccessTime = Date()
         storage[key] = value
+        mirrorWrite()
     }
 
     /// Remove value for key
     @discardableResult
     func remove(_ key: Key) -> Value? {
-        return storage.removeValue(forKey: key)
+        let removed = storage.removeValue(forKey: key)
+        mirrorWrite()
+        return removed
     }
 
     /// Remove all values
     func removeAll() {
         storage.removeAll()
+        mirrorWrite()
     }
 
     /// Check if key exists
@@ -102,6 +128,7 @@ actor SafeDictionary<Key: Hashable, Value> {
         for (key, value) in updates {
             storage[key] = value
         }
+        mirrorWrite()
     }
 
     /// Remove multiple keys atomically
@@ -109,6 +136,7 @@ actor SafeDictionary<Key: Hashable, Value> {
         for key in keys {
             storage.removeValue(forKey: key)
         }
+        mirrorWrite()
     }
 
     // MARK: - Functional Operations
@@ -172,5 +200,26 @@ extension SafeDictionary: CustomStringConvertible {
 extension SafeDictionary: CustomDebugStringConvertible {
     nonisolated var debugDescription: String {
         return "SafeDictionary<\(Key.self), \(Value.self)> (actor-isolated)"
+    }
+}
+
+// MARK: - LockedDictionary (synchronous, lock-protected)
+
+/// Minimal lock-protected dictionary for SafeDictionary's synchronous mirror.
+/// Not an actor — all operations are synchronous and guarded by NSLock.
+final class LockedDictionary<Key: Hashable, Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Key: Value] = [:]
+
+    func get(_ key: Key) -> Value? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage[key]
+    }
+
+    func replace(with dict: [Key: Value]) {
+        lock.lock()
+        storage = dict
+        lock.unlock()
     }
 }

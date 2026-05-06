@@ -11,20 +11,28 @@ import LocalAuthentication
 struct AccountDetailView: View {
     typealias DisplayStrings = Strings.Settings
 
+    enum SignInField: Hashable {
+        case barcode, pin
+    }
+
     @StateObject var viewModel: AccountDetailViewModel
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedField: SignInField?
 
     /// When true, forces showing sign-in form even if user has stale credentials.
     /// Used when presenting for re-authentication (e.g., from borrow flow after 401).
     private let forceReauthMode: Bool
+    private let settings: TPPSettings
 
-    init(libraryAccountID: String, forceReauthMode: Bool = false) {
+    init(libraryAccountID: String, forceReauthMode: Bool = false, settings: TPPSettings = TPPSettings.shared) {
         _viewModel = StateObject(wrappedValue: AccountDetailViewModel(libraryAccountID: libraryAccountID))
         self.forceReauthMode = forceReauthMode
+        self.settings = settings
     }
 
     var body: some View {
         contentView
+            .navigationTitle(DisplayStrings.account)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .tabBar)
             .toolbarBackground(Color(UIColor.systemBackground), for: .tabBar)
@@ -34,7 +42,18 @@ struct AccountDetailView: View {
                 Text(viewModel.alertMessage)
             })
             .onAppear {
+                viewModel.forceReauthMode = forceReauthMode
                 viewModel.refreshSignInState()
+            }
+            .task {
+                // Auto-trigger OIDC browser flow when presented for re-auth
+                // with stale credentials — no manual "Sign In" tap needed.
+                // The ASWebAuthenticationSession presents its own system browser sheet.
+                if forceReauthMode,
+                   viewModel.selectedUserAccount.authState == .credentialsStale,
+                   viewModel.businessLogic.selectedAuthentication?.isOidc == true {
+                    viewModel.signIn()
+                }
             }
     }
 
@@ -60,10 +79,11 @@ struct AccountDetailView: View {
         let needsSignIn = !viewModel.isSignedIn
         let needsReauth = forceReauthMode && viewModel.selectedUserAccount.authState == .credentialsStale
 
-        let isOAuthOrSAML = viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
-            viewModel.businessLogic.selectedAuthentication?.isSaml == true
+        let isBrowserBasedAuth = viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
+            viewModel.businessLogic.selectedAuthentication?.isSaml == true ||
+            viewModel.businessLogic.selectedAuthentication?.isOidc == true
 
-        return (needsSignIn || needsReauth) && isOAuthOrSAML
+        return (needsSignIn || needsReauth) && isBrowserBasedAuth
     }
 
     // MARK: - Sign In Prompt View
@@ -75,6 +95,7 @@ struct AccountDetailView: View {
             signInMessageSection
             SectionSeparator()
             signInButtonSection
+            registrationLinkIfAvailable
             reportIssueLinkIfAvailable
             Spacer()
         }
@@ -93,7 +114,8 @@ struct AccountDetailView: View {
             Text(viewModel.libraryName)
                 .palaceFont(.headline)
                 .foregroundColor(.secondary)
-                .horizontallyCentered()
+
+            Spacer()
         }
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.vertical, Layout.verticalPaddingLarge)
@@ -122,15 +144,11 @@ struct AccountDetailView: View {
     private func samlIDPList(idps: [OPDS2SamlIDP]) -> some View {
         VStack(spacing: Layout.buttonIDPSpacing) {
             ForEach(idps, id: \.displayName) { idp in
-                HStack {
-                    ActionButtonView(
-                        title: Strings.Generic.signin,
-                        isLoading: viewModel.isLoading,
-                        action: { viewModel.selectSAMLIDP(idp) }
-                    )
-                    .frame(width: Layout.buttonWidth)
-                    Spacer()
-                }
+                ActionButtonView(
+                    title: Strings.Generic.signin,
+                    isLoading: viewModel.isLoading,
+                    action: { viewModel.selectSAMLIDP(idp) }
+                )
             }
         }
         .padding(.horizontal, Layout.horizontalPadding)
@@ -140,19 +158,29 @@ struct AccountDetailView: View {
     }
 
     private var singleSignInButton: some View {
-        HStack {
-            ActionButtonView(
-                title: Strings.Generic.signin,
-                isLoading: viewModel.isLoading,
-                action: { viewModel.signIn() }
-            )
-            .frame(width: Layout.buttonWidth)
-            Spacer()
-        }
+        ActionButtonView(
+            title: Strings.Generic.signin,
+            isLoading: viewModel.isLoading,
+            action: { viewModel.signIn() }
+        )
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.top, Layout.verticalPaddingLarge)
         // Force view refresh when isLoading changes
         .id("signInButton-\(viewModel.isLoading)")
+    }
+
+    @ViewBuilder
+    private var registrationLinkIfAvailable: some View {
+        if viewModel.businessLogic.registrationIsPossible() {
+            ActionButtonView(
+                title: DisplayStrings.signUpForCard,
+                isLoading: false,
+                style: .secondary,
+                action: { viewModel.openRegistration() }
+            )
+            .padding(.horizontal, Layout.horizontalPadding)
+            .padding(.top, Layout.verticalPaddingMedium)
+        }
     }
 
     @ViewBuilder
@@ -196,6 +224,7 @@ struct AccountDetailView: View {
                 Section {
                     ForEach(Array(section.enumerated()), id: \.element) { _, cellType in
                         cellView(for: cellType)
+                            .accessibilityElement(children: .contain)
                     }
                 } footer: {
                     sectionFooter(for: sectionIndex)
@@ -231,9 +260,13 @@ struct AccountDetailView: View {
 
             Spacer()
         }
-        .padding(.vertical, Layout.verticalPaddingSmall)
         .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets())
+        .listRowInsets(EdgeInsets(
+            top: Layout.verticalPaddingSmall,
+            leading: Layout.horizontalPadding,
+            bottom: Layout.verticalPaddingSmall,
+            trailing: Layout.horizontalPadding
+        ))
     }
 
     @ViewBuilder
@@ -301,53 +334,53 @@ struct AccountDetailView: View {
     }
 
     private var barcodeInputCell: some View {
-        HStack {
-            TextField(
-                viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername,
-                text: $viewModel.usernameText
-            )
-            .textContentType(.username)
-            .autocapitalization(.none)
-            .autocorrectionDisabled()
-            .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
-            .disabled(viewModel.isSignedIn)
-            .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
-            .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
-
-            if !viewModel.isSignedIn && viewModel.businessLogic.selectedAuthentication?.supportsBarcodeScanner == true {
-                Button(action: { viewModel.scanBarcode() }, label: {
-                    Image(systemName: "camera")
-                        .foregroundColor(Color(TPPConfiguration.mainColor()))
-                })
-                .accessibilityLabel(Strings.Generic.scanBarcode)
-            }
-        }
+        TextField(
+            viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername,
+            text: $viewModel.usernameText
+        )
+        .textContentType(.username)
+        .autocapitalization(.none)
+        .autocorrectionDisabled()
+        .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
+        .disabled(viewModel.isSignedIn)
+        .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+        .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
+        .accessibilityLabel(viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername)
+        .focused($focusedField, equals: .barcode)
+        .onSubmit { focusedField = .pin }
+        .submitLabel(.next)
         .padding(.vertical, Layout.verticalPaddingInput)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+    }
+
+    private var pinLabel: String {
+        viewModel.businessLogic.selectedAuthentication?.pinLabel ?? DisplayStrings.pin
     }
 
     private var pinInputCell: some View {
         HStack {
             if viewModel.isPINHidden {
-                SecureField(
-                    viewModel.businessLogic.selectedAuthentication?.pinLabel ?? DisplayStrings.pin,
-                    text: $viewModel.pinText
-                )
-                .textContentType(.password)
-                .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
-                .disabled(viewModel.isSignedIn)
-                .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
-                .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
+                SecureField(pinLabel, text: $viewModel.pinText)
+                    .textContentType(.password)
+                    .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
+                    .disabled(viewModel.isSignedIn)
+                    .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+                    .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
+                    .accessibilityLabel(pinLabel)
+                    .focused($focusedField, equals: .pin)
+                    .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
+                    .submitLabel(.go)
             } else {
-                TextField(
-                    viewModel.businessLogic.selectedAuthentication?.pinLabel ?? DisplayStrings.pin,
-                    text: $viewModel.pinText
-                )
-                .textContentType(.password)
-                .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
-                .disabled(viewModel.isSignedIn)
-                .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
-                .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
+                TextField(pinLabel, text: $viewModel.pinText)
+                    .textContentType(.password)
+                    .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
+                    .disabled(viewModel.isSignedIn)
+                    .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+                    .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
+                    .accessibilityLabel(pinLabel)
+                    .focused($focusedField, equals: .pin)
+                    .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
+                    .submitLabel(.go)
             }
 
             if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
@@ -359,10 +392,17 @@ struct AccountDetailView: View {
         }
         .padding(.vertical, Layout.verticalPaddingInput)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+        .accessibilityElement(children: .contain)
     }
 
     private var logInSignOutCell: some View {
-        Button(action: { viewModel.signIn() }, label: {
+        Button(action: {
+            if viewModel.isSignedIn {
+                viewModel.signOut()
+            } else {
+                viewModel.signIn()
+            }
+        }, label: {
             HStack {
                 if viewModel.isLoading {
                     HStack(spacing: 8) {
@@ -387,6 +427,9 @@ struct AccountDetailView: View {
         .disabled(!viewModel.canSignIn && !viewModel.isSignedIn)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .accessibilityIdentifier(AccessibilityID.SignIn.signInButton)
+        .accessibilityLabel(viewModel.isSignedIn ? DisplayStrings.signOut : Strings.Generic.signin)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityRemoveTraits(.isStaticText)
     }
 
     private var ageCheckCell: some View {
@@ -396,7 +439,7 @@ struct AccountDetailView: View {
 
             Spacer()
 
-            if TPPSettings.shared.userPresentedAgeCheck {
+            if settings.userPresentedAgeCheck {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(.green)
                     .accessibilityLabel(NSLocalizedString("Verified", comment: "Age check verified"))
@@ -404,7 +447,7 @@ struct AccountDetailView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if !TPPSettings.shared.userPresentedAgeCheck {
+            if !settings.userPresentedAgeCheck {
                 viewModel.performAgeCheck()
             }
         }

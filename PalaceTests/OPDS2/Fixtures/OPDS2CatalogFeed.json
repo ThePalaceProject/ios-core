@@ -1,0 +1,221 @@
+{
+  "metadata": {
+    "title": "Palace Test Library",
+    "modified": "2026-03-15T12:00:00Z",
+    "numberOfItems": 150,
+    "itemsPerPage": 20,
+    "currentPage": 1
+  },
+  "links": [
+    {
+      "href": "https://library.example.com/feed",
+      "rel": "self",
+      "type": "application/opds+json"
+    },
+    {
+      "href": "https://library.example.com/feed?page=2",
+      "rel": "next",
+      "type": "application/opds+json"
+    },
+    {
+      "href": "https://library.example.com/search{?query}",
+      "rel": "search",
+      "type": "application/opds+json",
+      "templated": true
+    },
+    {
+      "href": "https://library.example.com/",
+      "rel": "start",
+      "type": "application/opds+json"
+    }
+  ],
+  "facets": [
+    {
+      "metadata": { "title": "Sort By" },
+      "links": [
+        { "href": "https://library.example.com/feed?sort=title", "title": "Title" },
+        { "href": "https://library.example.com/feed?sort=author", "title": "Author" },
+        { "href": "https://library.example.com/feed?sort=added", "title": "Recently Added", "properties": { "numberOfItems": 150 } }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "metadata": { "title": "New & Notable" },
+      "links": [
+        { "href": "https://library.example.com/new", "rel": "subsection", "type": "application/opds+json" }
+      ],
+      "publications": [
+        {
+          "metadata": {
+            "id": "urn:isbn:9780316769174",
+            "title": "The Catcher in the Rye",
+            "updated": "2026-03-10T08:00:00Z",
+            "description": "The hero-Loss of Holden Caulfield has become synonymous with youthful alienation."
+          },
+          "links": [
+            {
+              "href": "https://library.example.com/borrow/9780316769174",
+              "rel": "http://opds-spec.org/acquisition/borrow",
+              "type": "application/atom+xml;type=entry;profile=opds-catalog",
+              "properties": {
+                "availability": { "state": "available" },
+                "copies": { "total": 5, "available": 2 },
+                "indirectAcquisition": [
+                  {
+                    "type": "application/vnd.adobe.adept+xml",
+                    "child": [{ "type": "application/epub+zip" }]
+                  }
+                ]
+              }
+            },
+            {
+              "href": "https://library.example.com/detail/9780316769174",
+              "rel": "alternate",
+              "type": "text/html"
+            },
+            {
+              "href": "https://library.example.com/revoke/9780316769174",
+              "rel": "http://opds-spec.org/acquisition/revoke",
+              "type": "application/atom+xml;type=entry;profile=opds-catalog"
+            }
+          ],
+          "images": [
+            {
+              "href": "https://library.example.com/covers/9780316769174.jpg",
+              "type": "image/jpeg",
+              "rel": "http://opds-spec.org/image"
+            },
+            {
+              "href": "https://library.example.com/thumbs/9780316769174.jpg",
+              "type": "image/jpeg",
+              "rel": "http://opds-spec.org/image/thumbnail"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "id": "urn:isbn:9780061120084",
+            "title": "To Kill a Mockingbird",
+            "updated": "2026-03-12T10:30:00Z",
+            "description": "Harper Lee's Pulitzer Prize-winning masterwork."
+          },
+          "links": [
+            {
+              "href": "https://library.example.com/open/9780061120084.epub",
+              "rel": "http://opds-spec.org/acquisition/open-access",
+              "type": "application/epub+zip"
+            },
+            {
+              "href": "https://library.example.com/sample/9780061120084.epub",
+              "rel": "http://opds-spec.org/acquisition/sample",
+              "type": "application/epub+zip"
+            }
+          ],
+          "images": [
+            {
+              "href": "https://library.example.com/covers/9780061120084.jpg",
+              "type": "image/jpeg"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "metadata": { "title": "Popular Audiobooks" },
+      "links": [
+        { "href": "https://library.example.com/audiobooks", "rel": "subsection", "type": "application/opds+json" }
+      ],
+      "publications": [
+        {
+          "metadata": {
+            "id": "urn:isbn:9780735211292",
+            "title": "Atomic Habits",
+            "updated": "2026-03-01T00:00:00Z",
+            "description": "An Easy & Proven Way to Build Good Habits & Break Bad Ones"
+          },
+          "links": [
+            {
+              "href": "https://library.example.com/borrow/9780735211292",
+              "rel": "http://opds-spec.org/acquisition/borrow",
+              "type": "application/audiobook+json",
+              "properties": {
+                "availability": { "state": "unavailable" },
+                "copies": { "total": 3, "available": 0 },
+                "holds": { "total": 12, "position": null }
+              }
+            }
+          ],
+          "images": [
+            {
+              "href": "https://library.example.com/covers/9780735211292.jpg",
+              "type": "image/jpeg",
+              "rel": "http://opds-spec.org/image"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "metadata": { "title": "Staff Picks" },
+      "links": [
+        { "href": "https://library.example.com/staff-picks", "rel": "self", "type": "application/opds+json" }
+      ],
+      "publications": [
+        {
+          "metadata": {
+            "id": "urn:isbn:9780140283334",
+            "title": "On the Road",
+            "updated": "2026-02-20T14:00:00Z"
+          },
+          "links": [
+            {
+              "href": "https://library.example.com/borrow/9780140283334",
+              "rel": "http://opds-spec.org/acquisition/borrow",
+              "type": "application/vnd.readium.lcp.license.v1.0+json",
+              "properties": {
+                "availability": {
+                  "state": "reserved",
+                  "since": "2026-03-01T00:00:00Z",
+                  "until": "2026-04-01T00:00:00Z"
+                },
+                "copies": { "total": 2, "available": 0 },
+                "holds": { "total": 5, "position": 3 },
+                "indirectAcquisition": [
+                  { "type": "application/epub+zip" }
+                ]
+              }
+            },
+            {
+              "href": "https://library.example.com/preview/9780140283334.epub",
+              "rel": "preview",
+              "type": "application/epub+zip"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "id": "urn:isbn:9780143127741",
+            "title": "The Wright Brothers",
+            "updated": "2026-02-15T09:00:00Z",
+            "description": "Two-time Pulitzer Prize winner tells the dramatic story of the Wright brothers."
+          },
+          "links": [
+            {
+              "href": "https://library.example.com/borrow/9780143127741",
+              "rel": "http://opds-spec.org/acquisition/borrow",
+              "type": "application/epub+zip",
+              "properties": {
+                "availability": {
+                  "state": "ready",
+                  "since": "2026-03-25T00:00:00Z",
+                  "until": "2026-04-08T00:00:00Z"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

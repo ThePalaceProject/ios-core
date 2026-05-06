@@ -22,16 +22,19 @@ class MockURLSessionDownloadTask: URLSessionDownloadTask {
     private var _taskIdentifier: Int
     private var _state: URLSessionTask.State = .suspended
     private var _originalRequest: URLRequest?
+    private var _response: URLResponse?
 
-    init(taskIdentifier: Int, request: URLRequest? = nil) {
+    init(taskIdentifier: Int, request: URLRequest? = nil, response: URLResponse? = nil) {
         _taskIdentifier = taskIdentifier
         _originalRequest = request
+        _response = response
         super.init()
     }
 
     override var taskIdentifier: Int { _taskIdentifier }
     override var state: URLSessionTask.State { _state }
     override var originalRequest: URLRequest? { _originalRequest }
+    override var response: URLResponse? { _response }
 
     override func resume() {
         _state = .running

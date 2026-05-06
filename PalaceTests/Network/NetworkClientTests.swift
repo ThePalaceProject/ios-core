@@ -1,4 +1,4 @@
-c//
+//
 //  NetworkClientTests.swift
 //  PalaceTests
 //
@@ -103,6 +103,8 @@ final class NetworkClientTests: XCTestCase {
         let response = try await client.send(request)
 
         XCTAssertEqual(response.response.statusCode, 404)
+        XCTAssertFalse(response.data.isEmpty, "404 response should include a body")
+        XCTAssertEqual(response.data, Data("Not Found".utf8), "Body should match stub response")
     }
 
     func testGET_ServerError_Returns500() async throws {
@@ -117,6 +119,9 @@ final class NetworkClientTests: XCTestCase {
         let response = try await client.send(request)
 
         XCTAssertEqual(response.response.statusCode, 500)
+        XCTAssertGreaterThanOrEqual(response.response.statusCode, 500,
+                                    "Status code must be in 5xx range")
+        XCTAssertFalse(response.data.isEmpty, "500 response should include body")
     }
 
     func testGET_Unauthorized_Returns401() async throws {
@@ -131,6 +136,9 @@ final class NetworkClientTests: XCTestCase {
         let response = try await client.send(request)
 
         XCTAssertEqual(response.response.statusCode, 401)
+        let wwwAuth = response.response.allHeaderFields["WWW-Authenticate"] as? String
+        XCTAssertEqual(wwwAuth, "Bearer",
+                       "401 response should carry WWW-Authenticate: Bearer header")
     }
 
     func testGET_Forbidden_Returns403() async throws {
@@ -145,6 +153,10 @@ final class NetworkClientTests: XCTestCase {
         let response = try await client.send(request)
 
         XCTAssertEqual(response.response.statusCode, 403)
+        // 403 is distinct from 401 (authentication) — must not be confused
+        XCTAssertNotEqual(response.response.statusCode, 401,
+                          "Forbidden (403) must be distinct from Unauthorized (401)")
+        XCTAssertTrue(response.data.isEmpty, "403 response should have no body")
     }
 
     func testGET_BadRequest_Returns400() async throws {
@@ -159,6 +171,10 @@ final class NetworkClientTests: XCTestCase {
         let response = try await client.send(request)
 
         XCTAssertEqual(response.response.statusCode, 400)
+        XCTAssertFalse(response.data.isEmpty, "400 response should contain error body")
+        let errorBody = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any]
+        XCTAssertEqual(errorBody?["error"] as? String, "Invalid input",
+                       "400 body should contain error description from stub")
     }
 
     // MARK: - Content Type Tests
@@ -194,6 +210,10 @@ final class NetworkClientTests: XCTestCase {
         let response = try await client.send(request)
 
         XCTAssertEqual(response.response.statusCode, 200)
+        let contentType = response.response.allHeaderFields["Content-Type"] as? String
+        XCTAssertEqual(contentType, "application/xml",
+                       "Content-Type header must be application/xml")
+        XCTAssertEqual(response.data, xmlData, "XML body must be returned intact")
     }
 
     func testGET_OPDSContentType() async throws {
@@ -209,13 +229,19 @@ final class NetworkClientTests: XCTestCase {
         let response = try await client.send(request)
 
         XCTAssertEqual(response.response.statusCode, 200)
+        let contentType = response.response.allHeaderFields["Content-Type"] as? String
+        XCTAssertTrue(contentType?.contains("opds-catalog") ?? false,
+                      "Content-Type must include the opds-catalog profile")
+        XCTAssertEqual(response.data, opdsData, "OPDS body must be returned intact")
     }
 
     // MARK: - Request Method Tests
 
     func testPUT_Request() async throws {
+        var receivedMethod: String?
         HTTPStubURLProtocol.register { req in
             guard req.url?.path == "/update", req.httpMethod == "PUT" else { return nil }
+            receivedMethod = req.httpMethod
             return .init(statusCode: 200, headers: nil, body: nil)
         }
 
@@ -225,11 +251,16 @@ final class NetworkClientTests: XCTestCase {
         let response = try await client.send(request)
 
         XCTAssertEqual(response.response.statusCode, 200)
+        XCTAssertEqual(receivedMethod, "PUT",
+                       "Request must use PUT HTTP method as specified")
+        XCTAssertTrue(response.data.isEmpty, "PUT response should have no body from stub")
     }
 
     func testDELETE_Request() async throws {
+        var receivedMethod: String?
         HTTPStubURLProtocol.register { req in
             guard req.url?.path == "/delete", req.httpMethod == "DELETE" else { return nil }
+            receivedMethod = req.httpMethod
             return .init(statusCode: 204, headers: nil, body: nil)
         }
 
@@ -239,6 +270,10 @@ final class NetworkClientTests: XCTestCase {
         let response = try await client.send(request)
 
         XCTAssertEqual(response.response.statusCode, 204)
+        XCTAssertEqual(receivedMethod, "DELETE",
+                       "Request must use DELETE HTTP method as specified")
+        XCTAssertTrue(response.data.isEmpty,
+                      "204 No Content response must have an empty body")
     }
 
     // MARK: - Response Parsing Tests
@@ -428,7 +463,7 @@ final class NetworkClientTests: XCTestCase {
 
         XCTAssertEqual(response.response.statusCode, 400)
 
-        let problemData = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any]
+        let problemData = (try? JSONSerialization.jsonObject(with: response.data)) as? [String: Any]
         XCTAssertEqual(problemData?["title"] as? String, "Bad Request")
     }
 

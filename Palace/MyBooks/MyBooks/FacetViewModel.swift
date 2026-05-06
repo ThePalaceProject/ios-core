@@ -36,9 +36,12 @@ class FacetViewModel: ObservableObject {
         URL(string: currentAccount?.homePageUrl ?? "")
     }
 
-    init(groupName: String, facets: [Facet]) {
+    private let accountsManager: AccountsManager
+
+    init(groupName: String, facets: [Facet], accountsManager: AccountsManager = AccountsManager.shared) {
         self.facets = facets
         self.groupName = groupName
+        self.accountsManager = accountsManager
         activeSort = facets.first ?? .title
         registerForNotifications()
         updateAccount()
@@ -51,7 +54,7 @@ class FacetViewModel: ObservableObject {
     }
 
     @objc private func updateAccount() {
-        currentAccount = AccountsManager.shared.currentAccount
+        currentAccount = accountsManager.currentAccount
         currentAccount?.logoDelegate = self
         accountScreenURL = currentAccountURL
         logo = currentAccount?.logo

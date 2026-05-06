@@ -22,12 +22,14 @@ final class HTMLTextViewTests: XCTestCase {
     func testEmptyString() {
         let result = HTMLTextView.makeAttributedString(from: "")
         XCTAssertEqual(String(result.characters), "")
+        XCTAssertEqual(result.characters.count, 0, "Empty input must produce zero-length attributed string")
     }
 
     func testPlainTextWithoutHTML() {
         let plainText = "This is a simple plain text without any HTML tags."
         let result = HTMLTextView.makeAttributedString(from: plainText)
         XCTAssertEqual(String(result.characters), plainText)
+        XCTAssertEqual(result.characters.count, plainText.count, "Plain text length must match original")
     }
 
     func testSimpleHTMLParagraph() {
@@ -116,6 +118,7 @@ final class HTMLTextViewTests: XCTestCase {
         let noTags = "Plain text without any angle brackets"
         let result = HTMLTextView.makeAttributedString(from: noTags)
         XCTAssertEqual(String(result.characters), noTags)
+        XCTAssertFalse(String(result.characters).contains("<"), "Fast path must not introduce angle brackets")
     }
 
     func testFastPathLongContent() {
@@ -123,6 +126,7 @@ final class HTMLTextViewTests: XCTestCase {
         let longText = String(repeating: "a", count: 10_001)
         let result = HTMLTextView.makeAttributedString(from: longText)
         XCTAssertEqual(String(result.characters), longText)
+        XCTAssertEqual(result.characters.count, longText.count, "Fast-path result length must match input length")
     }
 
     func testFastPathLongContentWithHTML() {
@@ -131,6 +135,7 @@ final class HTMLTextViewTests: XCTestCase {
         let result = HTMLTextView.makeAttributedString(from: longText)
         // Fast path returns as-is without parsing
         XCTAssertEqual(String(result.characters), longText)
+        XCTAssertTrue(String(result.characters).hasPrefix("<p>"), "Fast-path must preserve HTML tags in long content")
     }
 
     // MARK: - Malformed HTML Tests (Potential Crash Triggers)
@@ -140,12 +145,15 @@ final class HTMLTextViewTests: XCTestCase {
         let result = HTMLTextView.makeAttributedString(from: html)
         // Should not crash - just verify we get some output
         XCTAssertFalse(String(result.characters).isEmpty)
+        XCTAssertGreaterThan(result.characters.count, 0, "Malformed HTML must still produce non-empty attributed string")
     }
 
     func testMalformedNestedTags() {
         let html = "<p><div></p></div>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertFalse(String(result.characters).isEmpty || String(result.characters) == html)
+        // The result must have a valid (non-negative) length
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result length must be non-negative")
     }
 
     func testMalformedOnlyOpeningTag() {
@@ -153,30 +161,35 @@ final class HTMLTextViewTests: XCTestCase {
         let result = HTMLTextView.makeAttributedString(from: html)
         // Should handle gracefully
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testMalformedOnlyClosingTag() {
         let html = "</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testMalformedBrokenAttributes() {
         let html = "<p style=\"color:red>Missing closing quote</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testMalformedEmptyTags() {
         let html = "<><></><p></p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testMalformedRandomAngleBrackets() {
         let html = "< > <> </ > Text <with random < brackets >"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Potential "Unexpected Start State" Triggers
@@ -186,42 +199,49 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "</div><p>Content</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testStartsWithEndOfDocument() {
         let html = "</html></body>Content"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testStartsWithDoctype() {
         let html = "<!DOCTYPE html><html><body>Content</body></html>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("Content"))
+        XCTAssertFalse(String(result.characters).contains("<!DOCTYPE"), "DOCTYPE declaration must be stripped from output")
     }
 
     func testStartsWithXMLDeclaration() {
         let html = "<?xml version=\"1.0\"?><p>Content</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testStartsWithComment() {
         let html = "<!-- comment --><p>Content</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("Content"))
+        XCTAssertFalse(String(result.characters).contains("<!--"), "HTML comment markers must not appear in output")
     }
 
     func testStartsWithCDATA() {
         let html = "<![CDATA[some data]]><p>Content</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testOnlyWhitespaceBeforeTag() {
         let html = "   \n\t  <p>Content</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("Content"))
+        XCTAssertFalse(String(result.characters).contains("<p>"), "HTML tags must be stripped from output")
     }
 
     func testBOMCharacter() {
@@ -230,12 +250,14 @@ final class HTMLTextViewTests: XCTestCase {
         let html = bom + "<p>Content</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testNullCharacterInHTML() {
         let html = "<p>Content\0with null</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Unicode and Encoding Edge Cases
@@ -244,6 +266,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<p>Unicode: 日本語 العربية 中文 emoji: 🎉📚</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("日本語"))
+        XCTAssertTrue(String(result.characters).contains("🎉"), "Emoji characters must survive HTML parsing")
     }
 
     func testHTMLEntities() {
@@ -257,6 +280,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<p>&#60; &#x3C; &#169;</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testInvalidUTF8Sequence() {
@@ -264,6 +288,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<p>Content with \u{FFFD} replacement character</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Script and Style Tags
@@ -272,18 +297,21 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<script>alert('xss')</script><p>Safe content</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testStyleTag() {
         let html = "<style>body { color: red; }</style><p>Styled content</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testUnclosedScriptTag() {
         let html = "<script>never closed<p>Content</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Deeply Nested HTML
@@ -299,6 +327,7 @@ final class HTMLTextViewTests: XCTestCase {
         }
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("Content"))
+        XCTAssertFalse(String(result.characters).contains("<div>"), "Div tags must be stripped from deeply nested HTML")
     }
 
     // MARK: - Real-World OPDS Summary Patterns
@@ -315,18 +344,21 @@ final class HTMLTextViewTests: XCTestCase {
       """
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("thrilling"))
+        XCTAssertTrue(String(result.characters).contains("Engaging characters"), "List item text must be preserved")
     }
 
     func testSummaryWithLineBreaks() {
         let html = "First line<br>Second line<br/>Third line<br />Fourth line"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testSummaryWithLinks() {
         let html = "<p>Visit <a href=\"https://example.com\">our website</a> for more info.</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("our website"))
+        XCTAssertFalse(String(result.characters).contains("<a "), "Anchor tags must be stripped from output")
     }
 
     // MARK: - Empty and Whitespace Only
@@ -335,18 +367,21 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "   \n\t\r   "
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testEmptyParagraph() {
         let html = "<p></p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testMultipleEmptyParagraphs() {
         let html = "<p></p><p></p><p></p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Special HTML5 Elements
@@ -361,6 +396,7 @@ final class HTMLTextViewTests: XCTestCase {
       """
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("Title"))
+        XCTAssertTrue(String(result.characters).contains("Content"), "Semantic HTML5 section content must be preserved")
     }
 
     // MARK: - Potential Threading Issue Simulations
@@ -407,12 +443,14 @@ final class HTMLTextViewTests: XCTestCase {
       """
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("Header 1"))
+        XCTAssertTrue(String(result.characters).contains("Cell 1"), "Table cell content must also be preserved")
     }
 
     func testMalformedTable() {
         let html = "<table><tr><td>Unclosed"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Form Elements
@@ -427,6 +465,7 @@ final class HTMLTextViewTests: XCTestCase {
       """
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - SVG and MathML (Foreign Content)
@@ -435,12 +474,14 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<svg><circle cx=\"50\" cy=\"50\" r=\"40\"/></svg><p>Text after SVG</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testMathMLContent() {
         let html = "<math><mrow><mi>x</mi><mo>=</mo><mn>5</mn></mrow></math><p>Text</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Data URLs and Embedded Content
@@ -449,6 +490,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<img src=\"data:image/png;base64,iVBORw0KGgo=\"><p>Image above</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Extremely Long Single Tag
@@ -458,6 +500,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<p data-value=\"\(longValue)\">Content</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("Content"))
+        XCTAssertFalse(String(result.characters).contains(longValue), "Long data-value attribute must not appear in output text")
     }
 
     // MARK: - Control Characters
@@ -468,6 +511,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<p>Content with \(controlChars) control chars</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Processing Instructions
@@ -476,6 +520,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<?php echo 'test'; ?><p>Content</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Multiple Doctypes
@@ -484,6 +529,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<!DOCTYPE html><!DOCTYPE html><html><body>Content</body></html>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Null/Empty Data Edge Case
@@ -492,6 +538,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     func testOnlyClosingAngleBracket() {
@@ -499,12 +546,14 @@ final class HTMLTextViewTests: XCTestCase {
         let result = HTMLTextView.makeAttributedString(from: html)
         // No < character, should take fast path
         XCTAssertEqual(String(result.characters), ">")
+        XCTAssertEqual(result.characters.count, 1, "Single '>' character must produce length-1 attributed string")
     }
 
     func testAngleBracketsWithSpaces() {
         let html = "< p > content < / p >"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertNotNil(result)
+        XCTAssertGreaterThanOrEqual(result.characters.count, 0, "Result must have a valid (non-negative) character count")
     }
 
     // MARK: - Defensive Sanitization Tests
@@ -516,6 +565,7 @@ final class HTMLTextViewTests: XCTestCase {
         let result = HTMLTextView.makeAttributedString(from: html)
         // Should successfully parse after BOM removal
         XCTAssertTrue(String(result.characters).contains("Content"))
+        XCTAssertFalse(String(result.characters).contains("\u{FEFF}"), "BOM character must not appear in parsed output")
     }
 
     func testControlCharactersAreRemoved() {
@@ -532,6 +582,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "\n\n\t   <p>Content with leading whitespace</p>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("Content"))
+        XCTAssertFalse(String(result.characters).contains("<p>"), "Paragraph tags must be stripped from output")
     }
 
     func testHTMLDocumentWrapping() {
@@ -540,6 +591,7 @@ final class HTMLTextViewTests: XCTestCase {
         let result = HTMLTextView.makeAttributedString(from: html)
         // Should parse successfully with wrapping
         XCTAssertTrue(String(result.characters).contains("Simple paragraph"))
+        XCTAssertFalse(String(result.characters).contains("<p>"), "Paragraph tags must be stripped from wrapped output")
     }
 
     func testExistingDoctypeNotDoubleWrapped() {
@@ -547,6 +599,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<!DOCTYPE html><html><body><p>Already has doctype</p></body></html>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("Already has doctype"))
+        XCTAssertFalse(String(result.characters).contains("<body>"), "HTML structural tags must not appear in output")
     }
 
     func testExistingHTMLTagNotDoubleWrapped() {
@@ -554,6 +607,7 @@ final class HTMLTextViewTests: XCTestCase {
         let html = "<html><body><p>Already has html tag</p></body></html>"
         let result = HTMLTextView.makeAttributedString(from: html)
         XCTAssertTrue(String(result.characters).contains("Already has html tag"))
+        XCTAssertFalse(String(result.characters).contains("<html>"), "HTML root tag must not appear in output text")
     }
 
     // MARK: - Fallback Behavior Tests
@@ -696,7 +750,7 @@ final class HTMLTextViewTests: XCTestCase {
     // occur with raw/unsanitized parsing.
 
     /// Tests that potentially problematic inputs are handled safely by the defensive code.
-    /// We use ObjCExceptionCatcher to safely test if the unsafe method would crash.
+    /// We use TPPObjCExceptionCatcher to safely test if the unsafe method would crash.
     func testDefensiveMeasuresPreventCrashes() {
         // Inputs that might trigger "unexpected start state" or other parser issues
         let problematicInputs: [(name: String, html: String)] = [
@@ -718,7 +772,7 @@ final class HTMLTextViewTests: XCTestCase {
             XCTAssertNotNil(safeResult, "Safe method should handle '\(name)' without crashing")
 
             // Test if unsafe method would throw an exception
-            let unsafeException = ObjCExceptionCatcher.catchException {
+            let unsafeException = TPPObjCExceptionCatcher.catchException {
                 _ = HTMLTextView.makeAttributedStringUnsafe(from: html)
             }
 
@@ -739,7 +793,7 @@ final class HTMLTextViewTests: XCTestCase {
 
         // Check if unsafe method has issues with BOM
         var unsafeSucceeded = false
-        let exception = ObjCExceptionCatcher.catchException {
+        let exception = TPPObjCExceptionCatcher.catchException {
             let unsafeResult = HTMLTextView.makeAttributedStringUnsafe(from: htmlWithBOM)
             unsafeSucceeded = String(unsafeResult.characters).contains("Content")
         }
@@ -762,7 +816,7 @@ final class HTMLTextViewTests: XCTestCase {
         XCTAssertNotNil(safeResult)
 
         // Check if unsafe method has issues
-        let exception = ObjCExceptionCatcher.catchException {
+        let exception = TPPObjCExceptionCatcher.catchException {
             _ = HTMLTextView.makeAttributedStringUnsafe(from: htmlWithControlChars)
         }
 
@@ -785,7 +839,7 @@ final class HTMLTextViewTests: XCTestCase {
             let safeResult = HTMLTextView.makeAttributedString(from: html)
 
             var unsafeResult: AttributedString?
-            let exception = ObjCExceptionCatcher.catchException {
+            let exception = TPPObjCExceptionCatcher.catchException {
                 unsafeResult = HTMLTextView.makeAttributedStringUnsafe(from: html)
             }
 

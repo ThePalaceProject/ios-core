@@ -17,7 +17,7 @@ struct OPDS2Feed: Codable, Equatable, Sendable {
     // MARK: - Core Properties
 
     let metadata: OPDS2FeedMetadata
-    let links: [OPDS2Link]
+    let links: [OPDS2Link]?
     let publications: [OPDS2Publication]?
     let navigation: [OPDS2NavigationLink]?
     let groups: [OPDS2Group]?
@@ -30,27 +30,27 @@ struct OPDS2Feed: Codable, Equatable, Sendable {
 
     /// URL for the next page of results
     var nextPageURL: URL? {
-        links.first { $0.rel == "next" }?.hrefURL
+        links?.first { $0.rel == "next" }?.hrefURL
     }
 
     /// URL for the previous page
     var previousPageURL: URL? {
-        links.first { $0.rel == "previous" }?.hrefURL
+        links?.first { $0.rel == "previous" }?.hrefURL
     }
 
     /// URL for search
     var searchURL: URL? {
-        links.first { $0.rel == "search" }?.hrefURL
+        links?.first { $0.rel == "search" }?.hrefURL
     }
 
     /// Self URL
     var selfURL: URL? {
-        links.first { $0.rel == "self" }?.hrefURL
+        links?.first { $0.rel == "self" }?.hrefURL
     }
 
     /// Start URL (root of catalog)
     var startURL: URL? {
-        links.first { $0.rel == "start" }?.hrefURL
+        links?.first { $0.rel == "start" }?.hrefURL
     }
 
     // MARK: - Feed Type Detection
@@ -71,7 +71,7 @@ struct OPDS2Feed: Codable, Equatable, Sendable {
 
     init(
         metadata: OPDS2FeedMetadata,
-        links: [OPDS2Link],
+        links: [OPDS2Link]? = nil,
         publications: [OPDS2Publication]? = nil,
         navigation: [OPDS2NavigationLink]? = nil,
         groups: [OPDS2Group]? = nil,
@@ -208,6 +208,34 @@ struct OPDS2FacetGroup: Codable, Equatable, Sendable, Identifiable {
 
 struct OPDS2FacetGroupMetadata: Codable, Equatable, Sendable {
     let title: String
+    /// Facet group type URI (e.g. "http://palaceproject.io/terms/rel/sort")
+    /// Encoded as `@type` in the JSON response from the registry.
+    let type: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case title
+        case type
+        case atType = "@type"
+    }
+
+    init(title: String, type: String? = nil) {
+        self.title = title
+        self.type = type
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decode(String.self, forKey: .title)
+        // Try "type" first, then "@type"
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+            ?? container.decodeIfPresent(String.self, forKey: .atType)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(type, forKey: .type)
+    }
 }
 
 struct OPDS2FacetLink: Codable, Equatable, Sendable, Identifiable {

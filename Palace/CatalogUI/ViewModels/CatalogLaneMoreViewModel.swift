@@ -21,6 +21,12 @@ class CatalogLaneMoreViewModel: ObservableObject {
   @Published var showingSortSheet = false
   @Published var showingFiltersSheet = false
   @Published var showSearch = false
+
+  /// Identifier of the sort facet the user just tapped but whose feed
+  /// hasn't finished loading yet. Set synchronously on tap so the radio
+  /// button highlights instantly; cleared when the refetched feed arrives
+  /// and the real `active` flags take over.
+  @Published var pendingSortFacetID: String?
   
   // Filter State
   @Published var facetGroups: [CatalogFilterGroup] = []
@@ -34,7 +40,9 @@ class CatalogLaneMoreViewModel: ObservableObject {
   let url: URL
   private let filterService = CatalogFilterService.self
   private let api: DefaultCatalogAPI
-  
+  private let bookRegistry: TPPBookRegistry
+  private let bookCellModelCache: BookCellModelCache
+
   private var cancellables = Set<AnyCancellable>()
   
   /// Original catalog books (before registry updates) - used to restore state after returns
@@ -59,9 +67,17 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   // MARK: - Initialization
   
-  init(title: String, url: URL, api: DefaultCatalogAPI? = nil) {
+  init(
+    title: String,
+    url: URL,
+    api: DefaultCatalogAPI? = nil,
+    bookRegistry: TPPBookRegistry = .shared,
+    bookCellModelCache: BookCellModelCache = .shared
+  ) {
     self.title = title
     self.url = url
+    self.bookRegistry = bookRegistry
+    self.bookCellModelCache = bookCellModelCache
     self.api = api ?? DefaultCatalogAPI(
       client: URLSessionNetworkClient(),
       parser: OPDSParser()
@@ -129,19 +145,30 @@ class CatalogLaneMoreViewModel: ObservableObject {
         facetGroups.removeAll()
         nextPageURL = nil
         
-        let feedObjc = feed.opdsFeed
-        extractNextPageURL(from: feedObjc)
-        
-        if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-          switch feedObjc.type {
-          case .acquisitionGrouped:
-            processGroupedFeed(entries: entries, feedObjc: feedObjc)
-          case .acquisitionUngrouped:
-            processUngroupedFeed(entries: entries, feedObjc: feedObjc)
-          case .navigation, .invalid:
-            break
-          @unknown default:
-            break
+        // OPDS 2 path
+        if let opds2 = feed.opds2Feed {
+          nextPageURL = opds2.nextPageURL
+          if opds2.isGroupedFeed {
+            processOPDS2GroupedFeed(opds2, feedURL: url)
+          } else if opds2.isPublicationFeed {
+            processOPDS2PublicationFeed(opds2, feedURL: url)
+          }
+        } else {
+          // OPDS 1 path
+          let feedObjc = feed.opdsFeed
+          extractNextPageURL(from: feedObjc)
+
+          if let entries = feedObjc.entries as? [TPPOPDSEntry] {
+            switch feedObjc.type {
+            case .acquisitionGrouped:
+              processGroupedFeed(entries: entries, feedObjc: feedObjc)
+            case .acquisitionUngrouped:
+              processUngroupedFeed(entries: entries, feedObjc: feedObjc)
+            case .navigation, .invalid:
+              break
+            @unknown default:
+              break
+            }
           }
         }
         
@@ -195,6 +222,37 @@ class CatalogLaneMoreViewModel: ObservableObject {
     )
   }
   
+  // MARK: - OPDS 2 Processing
+
+  // Exposed at internal scope so tests can directly assert that call-site
+  // URL threading is correct — the regression that broke the sort sheet
+  // was extracting facets against self.url instead of the just-fetched
+  // feed URL, and a unit test at this level catches that exact slip.
+  func processOPDS2GroupedFeed(_ feed: OPDS2Feed, feedURL: URL) {
+    guard let groups = feed.groups else { return }
+    var newLanes: [CatalogLaneModel] = []
+    for group in groups {
+      let books = (group.publications ?? []).compactMap { $0.toBook() }
+      guard !books.isEmpty else { continue }
+      newLanes.append(CatalogLaneModel(
+        title: group.title,
+        books: books,
+        moreURL: group.moreURL,
+        isLoading: books.count < 3
+      ))
+    }
+    lanes = newLanes
+    storeOriginalCatalogBooks(newLanes.flatMap { $0.books })
+    facetGroups = CatalogViewModel.extractOPDS2Facets(from: feed, currentURL: feedURL).0
+  }
+
+  func processOPDS2PublicationFeed(_ feed: OPDS2Feed, feedURL: URL) {
+    let books = (feed.publications ?? []).compactMap { $0.toBook() }
+    ungroupedBooks = books
+    storeOriginalCatalogBooks(books)
+    facetGroups = CatalogViewModel.extractOPDS2Facets(from: feed, currentURL: feedURL).0
+  }
+
   // MARK: - Pagination
   
   private func extractNextPageURL(from feed: TPPOPDSFeed) {
@@ -215,12 +273,19 @@ class CatalogLaneMoreViewModel: ObservableObject {
     
     do {
       if let feed = try await api.fetchFeed(at: nextURL) {
-        let feedObjc = feed.opdsFeed
-        extractNextPageURL(from: feedObjc)
-        
-        if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-          let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+        if let opds2 = feed.opds2Feed {
+          nextPageURL = opds2.nextPageURL
+          let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
+          let newBooks = pubs.compactMap { $0.toBook() }
           ungroupedBooks.append(contentsOf: newBooks)
+        } else {
+          let feedObjc = feed.opdsFeed
+          extractNextPageURL(from: feedObjc)
+
+          if let entries = feedObjc.entries as? [TPPOPDSEntry] {
+            let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+            ungroupedBooks.append(contentsOf: newBooks)
+          }
         }
       }
     } catch {
@@ -251,7 +316,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
           let book = books[bIdx]
           if let changedIdentifier, book.identifier != changedIdentifier { continue }
           
-          if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+          if let registryBook = bookRegistry.book(forIdentifier: book.identifier) {
             // Book is in registry - use registry version
             books[bIdx] = registryBook
             changed = true
@@ -262,7 +327,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
               books[bIdx] = originalBook
             }
             // Invalidate cached model so it gets recreated with fresh state
-            BookCellModelCache.shared.invalidate(for: book.identifier)
+            bookCellModelCache.invalidate(for: book.identifier)
             changed = true
           }
         }
@@ -284,7 +349,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
         let book = books[idx]
         if let changedIdentifier, book.identifier != changedIdentifier { continue }
         
-        if let registryBook = TPPBookRegistry.shared.book(forIdentifier: book.identifier) {
+        if let registryBook = bookRegistry.book(forIdentifier: book.identifier) {
           // Book is in registry - use registry version
           books[idx] = registryBook
           anyChanged = true
@@ -295,7 +360,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
             books[idx] = originalBook
           }
           // Invalidate cached model so it gets recreated with fresh state
-          BookCellModelCache.shared.invalidate(for: book.identifier)
+          bookCellModelCache.invalidate(for: book.identifier)
           anyChanged = true
         }
       }
@@ -344,12 +409,17 @@ class CatalogLaneMoreViewModel: ObservableObject {
       for filter in sortedFilters {
         if let filterURL = CatalogFilterService.findFilterInCurrentFacets(filter, in: currentFacetGroups) {
           if let feed = try await api.fetchFeed(at: filterURL) {
-            if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
-              ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
-            }
-            
-            if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
-              currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
+            if let opds2 = feed.opds2Feed {
+              let pubs = opds2.publications ?? opds2.groups?.flatMap { $0.publications ?? [] } ?? []
+              ungroupedBooks = pubs.compactMap { $0.toBook() }
+              currentFacetGroups = CatalogViewModel.extractOPDS2Facets(from: opds2, currentURL: filterURL).0
+            } else {
+              if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
+                ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+              }
+              if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
+                currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0
+              }
             }
           }
         }
@@ -387,11 +457,15 @@ class CatalogLaneMoreViewModel: ObservableObject {
   
   func applyOPDSFacet(_ facet: CatalogFilter, coordinator: NavigationCoordinator) async {
     guard let href = facet.href else { return }
-    
+
+    pendingSortFacetID = facet.id
     isLoading = true
     error = nil
-    defer { isLoading = false }
-    
+    defer {
+      isLoading = false
+      pendingSortFacetID = nil
+    }
+
     await fetchAndApplyFeed(at: href)
     saveFilterState(coordinator: coordinator)
   }
@@ -416,9 +490,33 @@ class CatalogLaneMoreViewModel: ObservableObject {
       .first { $0.name.lowercased().contains("sort") }?
       .filters ?? []
   }
-  
-  /// Get the currently active sort facet title (for display)
+
+  /// Sort facets with a defaulted active state: when the feed hasn't marked
+  /// any facet active (typical for OPDS 2 landing feeds before the user has
+  /// chosen a sort), treat the first one as the selected default so the
+  /// sort sheet's radio buttons match the label shown on the toolbar pill.
+  /// A pending tap (`pendingSortFacetID`) overrides everything so the
+  /// radio highlights immediately on touch, before the network roundtrip.
+  var displayedSortFacets: [CatalogFilter] {
+    let facets = sortFacets
+    if let pending = pendingSortFacetID, facets.contains(where: { $0.id == pending }) {
+      return facets.map { facet in
+        CatalogFilter(id: facet.id, title: facet.title, href: facet.href, active: facet.id == pending)
+      }
+    }
+    guard !facets.contains(where: { $0.active }) else { return facets }
+    return facets.enumerated().map { idx, facet in
+      idx == 0
+        ? CatalogFilter(id: facet.id, title: facet.title, href: facet.href, active: true)
+        : facet
+    }
+  }
+
+  /// Title shown on the sort pill. OPDS 2 feeds often don't mark any facet
+  /// active (the CM relies on URL match), so we fall back to the first
+  /// filter's title — otherwise the pill disappears and the user loses the
+  /// sort control entirely.
   var activeSortTitle: String? {
-    return sortFacets.first { $0.active }?.title
+    displayedSortFacets.first(where: { $0.active })?.title
   }
 }

@@ -1,0 +1,28 @@
+{
+  "id": "slow_network",
+  "displayName": "Slow Network (3s delay)",
+  "description": "All endpoints respond successfully but with a 3-second delay. Tests loading states and timeouts.",
+  "routes": [
+    {
+      "pathPattern": ".*/libraries.*",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/opds+json",
+      "delayMs": 3000
+    },
+    {
+      "pathPattern": ".*/authentication_document",
+      "fixtureName": "auth_document",
+      "statusCode": 200,
+      "contentType": "application/vnd.opds.authentication+json",
+      "delayMs": 3000
+    },
+    {
+      "pathPattern": ".*",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/opds+json",
+      "delayMs": 3000
+    }
+  ]
+}

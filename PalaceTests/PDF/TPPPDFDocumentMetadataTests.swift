@@ -71,6 +71,8 @@ final class TPPPDFDocumentMetadataTests: XCTestCase {
         metadata.bookmarks.insert(42)
 
         wait(for: [expectation], timeout: 1.0)
+        XCTAssertTrue(metadata.bookmarks.contains(42),
+                      "Published bookmark set must reflect the insertion")
     }
 
     func testCurrentPage_IsPublished_EmitsChanges() {
@@ -89,6 +91,8 @@ final class TPPPDFDocumentMetadataTests: XCTestCase {
         metadata.currentPage = 99
 
         wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(metadata.currentPage, 99,
+                       "Published currentPage must match the assigned value")
     }
 
     // MARK: - Edge Cases

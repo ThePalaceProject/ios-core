@@ -161,10 +161,11 @@ final class ProblemReportEmailTests: XCTestCase {
     /// Regression test: beginComposing should accept a libraryUUID so it can
     /// resolve the correct patron ID for the viewed library, not the active one.
     func testPP3651_beginComposing_acceptsLibraryUUID() {
-        // Verify the method signature exists and compiles with libraryUUID parameter
-        // This is a compile-time check — the actual email composition requires MFMailComposeViewController
-        let selector = #selector(ProblemReportEmail.beginComposing(to:presentingViewController:book:libraryUUID:))
-        XCTAssertTrue(emailService.responds(to: selector),
-                      "ProblemReportEmail should have beginComposing(to:presentingViewController:book:libraryUUID:) method")
+        // Compile-time + runtime check: the method reference with the libraryUUID
+        // overload must exist and be non-nil.
+        let methodRef: (String, UIViewController, TPPBook?, String?, AccountsManager) -> Void =
+            emailService.beginComposing(to:presentingViewController:book:libraryUUID:accountsManager:)
+        XCTAssertNotNil(methodRef as Any?,
+                        "beginComposing must expose the libraryUUID overload (PP-3651)")
     }
 }

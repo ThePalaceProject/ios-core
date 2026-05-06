@@ -9,6 +9,7 @@
 import Foundation
 import Combine
 import SwiftUI
+import SafariServices
 import PalaceAudiobookToolkit
 
 enum BookCellState {
@@ -52,11 +53,19 @@ class BookCellModel: ObservableObject {
         }
     }
 
+    // Debounce guard for the Read/Listen button. Rapid taps used to stack two
+    // reader presentations (PP-4116) because isLoading flips back to false
+    // synchronously after the presentation trigger.
+    @Published private(set) var isPresentingReader: Bool = false
+    private static let readerPresentationLockWindow: TimeInterval = 0.5
+
     @Published private var currentBookIdentifier: String?
 
     private var cancellables = Set<AnyCancellable>()
     let imageCache: ImageCacheType
     let bookRegistry: TPPBookRegistryProvider
+    let downloadCenter: MyBooksDownloadCenter
+    private let accountsManager: AccountsManager
     private var isFetchingImage = false
     #if LCP
     private var didPrefetchLCPStreaming = false
@@ -109,9 +118,11 @@ class BookCellModel: ObservableObject {
     ///   - book: The book to display
     ///   - imageCache: Cache for book cover images
     ///   - bookRegistry: Registry for book state (defaults to shared instance)
-    init(book: TPPBook, imageCache: ImageCacheType, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    init(book: TPPBook, imageCache: ImageCacheType, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared, accountsManager: AccountsManager = .shared) {
         self.book = book
         self.bookRegistry = bookRegistry
+        self.downloadCenter = downloadCenter
+        self.accountsManager = accountsManager
         self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
         self.currentBookIdentifier = book.identifier
         self.imageCache = imageCache
@@ -237,9 +248,23 @@ class BookCellModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Subscribe to download errors so the half sheet can present them via SwiftUI .alert
-        MyBooksDownloadCenter.shared.downloadErrorPublisher
+        // Subscribe to download errors so the half sheet can present them via SwiftUI .alert.
+        // Filter by error kind: borrow errors only show for unregistered books (user tapped Get),
+        // download errors only for books in download-related states.
+        downloadCenter.downloadErrorPublisher
             .filter { [weak self] in $0.bookId == self?.book.identifier }
+            .filter { [weak self] errorInfo in
+                guard let self else { return true }
+                switch errorInfo.kind {
+                case .borrow:
+                    return self.registryState == .unregistered || self.registryState == .holding
+                case .download:
+                    return self.registryState == .downloading || self.registryState == .downloadFailed
+                        || self.registryState == .downloadNeeded
+                case .general:
+                    return true
+                }
+            }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] errorInfo in
                 guard let self else { return }
@@ -353,9 +378,11 @@ class BookCellModel: ObservableObject {
 
 extension BookCellModel {
     func callDelegate(for action: BookButtonType) {
-        // Set loading state for actions that need it
+        // Set loading state for actions that need it.
+        // .return and .cancelHold are excluded here because they show a
+        // confirmation alert first; loading starts only after the patron confirms.
         switch action {
-        case .download, .retry, .get, .reserve, .return, .remove, .returning, .cancelHold, .cancel:
+        case .download, .retry, .get, .reserve, .remove, .returning, .cancel:
             isLoading = true
         default:
             break
@@ -366,8 +393,36 @@ extension BookCellModel {
             didSelectDownload()
         case .reserve:
             didSelectReserve()
-        case .return, .remove, .returning, .cancelHold:
-            // Set state for visual feedback and perform return
+        case .return:
+            showAlert = AlertModel(
+                title: DisplayStrings.return,
+                message: String(format: DisplayStrings.returnMessage, book.title),
+                buttonTitle: DisplayStrings.return,
+                primaryAction: { [weak self] in
+                    self?.isManagingHold = false
+                    self?.bookState = .returning
+                    self?.didSelectReturn()
+                },
+                secondaryButtonTitle: Strings.Generic.cancel,
+                secondaryAction: { [weak self] in self?.isLoading = false },
+                isPrimaryDestructive: true
+            )
+        case .cancelHold:
+            showAlert = AlertModel(
+                title: DisplayStrings.removeHold,
+                message: String(format: DisplayStrings.removeHoldMessage, book.title),
+                buttonTitle: DisplayStrings.removeHold,
+                primaryAction: { [weak self] in
+                    self?.isManagingHold = false
+                    self?.bookState = .returning
+                    self?.didSelectReturn()
+                },
+                secondaryButtonTitle: Strings.Generic.cancel,
+                secondaryAction: { [weak self] in self?.isLoading = false },
+                isPrimaryDestructive: true
+            )
+        case .remove, .returning:
+            // Local delete and in-progress indicator: no confirmation needed
             isManagingHold = false
             bookState = .returning
             didSelectReturn()
@@ -391,16 +446,19 @@ extension BookCellModel {
     }
 
     func didSelectRead() {
+        guard acquireReaderPresentationLock() else {
+            Log.debug(#file, "didSelectRead ignored — reader presentation already in flight")
+            return
+        }
         isLoading = true
         switch book.defaultBookContentType {
         case .epub:
             ReaderService.shared.openEPUB(book)
             self.isLoading = false
         case .pdf:
-            guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { self.isLoading = false; return }
-            let data = try? Data(contentsOf: url)
+            guard let url = downloadCenter.fileUrl(for: book.identifier) else { self.isLoading = false; return }
             let metadata = TPPPDFDocumentMetadata(with: book)
-            let document = TPPPDFDocument(data: data ?? Data())
+            let document = TPPPDFDocument(url: url)
             if let coordinator = NavigationCoordinatorHub.shared.coordinator {
                 coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
                 coordinator.push(.pdf(BookRoute(id: book.identifier)))
@@ -411,6 +469,19 @@ extension BookCellModel {
         default:
             self.isLoading = false
         }
+    }
+
+    /// Returns `true` if the caller may proceed with reader presentation.
+    /// Returns `false` if a presentation is already in flight (rapid repeat tap).
+    /// The lock auto-releases after `readerPresentationLockWindow` so the button
+    /// stays usable for legitimate re-entry.
+    func acquireReaderPresentationLock() -> Bool {
+        guard !isPresentingReader else { return false }
+        isPresentingReader = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.readerPresentationLockWindow) { [weak self] in
+            self?.isPresentingReader = false
+        }
+        return true
     }
 
     private func openAudiobookFromCell() {
@@ -426,7 +497,7 @@ extension BookCellModel {
 
     private func licenseURL(forBookIdentifier identifier: String) -> URL? {
         #if LCP
-        guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else { return nil }
+        guard let contentURL = downloadCenter.fileUrl(for: identifier) else { return nil }
         let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         return FileManager.default.fileExists(atPath: license.path) ? license : nil
         #else
@@ -437,7 +508,7 @@ extension BookCellModel {
     #if LCP
     private func prefetchLCPStreamingIfPossible() {
         guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book) else { return }
-        if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
+        if let localURL = downloadCenter.fileUrl(for: book.identifier), FileManager.default.fileExists(atPath: localURL.path) {
             return
         }
         guard let license = licenseURL(forBookIdentifier: book.identifier), let lcpAudiobooks = LCPAudiobooks(for: license) else { return }
@@ -449,7 +520,7 @@ extension BookCellModel {
     func didSelectReturn() {
         self.isLoading = true
         let identifier = self.book.identifier
-        MyBooksDownloadCenter.shared.returnBook(withIdentifier: identifier) { [weak self] in
+        downloadCenter.returnBook(withIdentifier: identifier) { [weak self] in
             self?.isLoading = false
             self?.isManagingHold = false
             self?.showHalfSheet = false
@@ -457,12 +528,12 @@ extension BookCellModel {
     }
 
     func didSelectDownload() {
-        let account = TPPUserAccount.sharedAccount()
+        let account = AccountsManager.shared.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
             SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
                 guard let self else { return }
                 // Only proceed if user successfully logged in, not if they cancelled
-                guard TPPUserAccount.sharedAccount().hasCredentials() else {
+                guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
                     Log.info(#file, "Sign-in cancelled or failed, not starting download")
                     return
                 }
@@ -477,17 +548,17 @@ extension BookCellModel {
         if case .canHold = state.buttonState {
             NotificationService.requestAuthorization()
         }
-        MyBooksDownloadCenter.shared.startDownload(for: book)
+        downloadCenter.startDownload(for: book)
     }
 
     func didSelectReserve() {
         isLoading = true
-        let account = TPPUserAccount.sharedAccount()
+        let account = AccountsManager.shared.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
             SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
                 guard let self else { return }
                 // Only proceed if user successfully logged in, not if they cancelled
-                guard TPPUserAccount.sharedAccount().hasCredentials() else {
+                guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
                     Log.info(#file, "Sign-in cancelled or failed, not proceeding with reservation")
                     self.isLoading = false
                     return
@@ -495,7 +566,7 @@ extension BookCellModel {
                 NotificationService.requestAuthorization()
                 Task {
                     do {
-                        _ = try await MyBooksDownloadCenter.shared.borrowAsync(self.book, attemptDownload: false)
+                        _ = try await self.downloadCenter.borrowAsync(self.book, attemptDownload: false)
                     } catch {
                         Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
                     }
@@ -507,7 +578,7 @@ extension BookCellModel {
         NotificationService.requestAuthorization()
         Task {
             do {
-                _ = try await MyBooksDownloadCenter.shared.borrowAsync(book, attemptDownload: false)
+                _ = try await downloadCenter.borrowAsync(book, attemptDownload: false)
             } catch {
                 Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
             }
@@ -520,14 +591,10 @@ extension BookCellModel {
         if book.defaultBookContentType == .audiobook {
             if book.sampleAcquisition?.type == "text/html" {
                 SamplePreviewManager.shared.close()
-                if let url = book.sampleAcquisition?.hrefURL {
-                    let webController = BundledHTMLViewController(
-                        fileURL: url,
-                        title: AccountsManager.shared.currentAccount?.name ?? ""
-                    )
-                    if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
-                        top.present(webController, animated: true)
-                    }
+                if let url = book.sampleAcquisition?.hrefURL,
+                   let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
+                    let safari = SFSafariViewController(url: url)
+                    top.present(safari, animated: true)
                 }
             } else {
                 SamplePreviewManager.shared.toggle(for: book)
@@ -543,9 +610,9 @@ extension BookCellModel {
                 return
             }
             if let sampleWebURL = sampleURL as? EpubSampleWebURL {
-                let web = BundledHTMLViewController(fileURL: sampleWebURL.url, title: self.book.title)
                 if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
-                    top.present(web, animated: true)
+                    let safari = SFSafariViewController(url: sampleWebURL.url)
+                    top.present(safari, animated: true)
                 }
                 return
             }
@@ -568,7 +635,7 @@ extension BookCellModel {
     }
 
     func didSelectCancel() {
-        MyBooksDownloadCenter.shared.cancelDownload(for: book.identifier)
+        downloadCenter.cancelDownload(for: book.identifier)
     }
 }
 
@@ -612,6 +679,6 @@ extension BookCellModel: HalfSheetProvider {
     }
 
     var downloadProgress: Double {
-        MyBooksDownloadCenter.shared.downloadProgress(for: book.identifier)
+        downloadCenter.downloadProgress(for: book.identifier)
     }
 }

@@ -12,6 +12,7 @@
 
 import Foundation
 import UIKit
+import PalaceAudiobookToolkit
 import ReadiumShared
 import ReadiumLCP
 import ReadiumAdapterLCPSQLite
@@ -46,8 +47,8 @@ import ReadiumAdapterLCPSQLite
                         client: TPPLCPClient(),
                         licenseRepository: licenseRepo,
                         passphraseRepository: passphraseRepo,
-                        assetRetriever: AssetRetriever(httpClient: DefaultHTTPClient()),
-                        httpClient: DefaultHTTPClient()
+                        assetRetriever: AssetRetriever(httpClient: LCPCredentialStrippingHTTPClient()),
+                        httpClient: LCPCredentialStrippingHTTPClient()
                     )
                 } catch {
                     TPPErrorLogger.logError(error, summary: "Failed to initialize LCPService", metadata: [

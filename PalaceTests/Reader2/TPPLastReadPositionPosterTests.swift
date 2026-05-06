@@ -109,9 +109,11 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
 
         poster.storeReadPosition(locator: locator)
 
-        // With 0 totalProgression and no CSS selector, should not store
-        // Note: This depends on the implementation - verify actual behavior
-        // The location might or might not be stored depending on shouldStore logic
+        // With 0 totalProgression and no CSS selector, the poster's shouldStore
+        // guard must reject the position — otherwise we'd persist a meaningless
+        // "beginning of chapter" every time the reader opens a book.
+        XCTAssertNil(bookRegistryMock.location(forIdentifier: testBook.identifier),
+                     "Zero progression + no CSS selector must not persist a position")
     }
 
     func testStoreReadPosition_positiveProgression_stores() {
@@ -259,7 +261,7 @@ final class PositionThrottlingTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func testPoster_rapidPositionUpdates_throttlesUploads() async throws {
+    func testPoster_rapidPositionUpdates_throttlesUploads() {
         let poster = TPPLastReadPositionPoster(
             book: testBook,
             publication: publication,
@@ -279,8 +281,8 @@ final class PositionThrottlingTests: XCTestCase {
             poster.storeReadPosition(locator: locator)
         }
 
-        // Small delay for serial queue processing
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // storeReadPosition saves locally (synchronous) then schedules server posting
+        // asynchronously on serialQueue. The local mock write is immediate — no wait needed.
 
         // Local storage should be updated with the latest position
         let storedLocation = bookRegistryMock.location(forIdentifier: testBook.identifier)

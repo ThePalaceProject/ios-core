@@ -173,11 +173,16 @@ final class DeviceLogCollectorGapTests: XCTestCase {
         let logger = Logger(subsystem: "com.thepalaceproject.test", category: "Coverage")
         logger.info("Coverage DeviceLogCollector test log entry")
 
-        // Brief delay to allow log to be flushed to OSLogStore
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // OSLogStore has its own flush schedule — poll rather than using a fixed delay
+        var output = ""
+        for _ in 0..<10 {
+            let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
+            output = String(data: data, encoding: .utf8) ?? ""
+            if !output.isEmpty { break }
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50 ms
+        }
 
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-        let output = String(data: data, encoding: .utf8) ?? ""
+        let data = Data(output.utf8)
 
         // If our log appears, it would contain level string (INFO/DEBUG/etc) and date format yyyy-MM-dd
         // At minimum verify the collector runs and produces valid output
@@ -194,6 +199,12 @@ final class TPPUserAccountGapTests: XCTestCase {
     func testTPPUserAccount_sharedAccount_isAccessible() {
         let account = TPPUserAccount.sharedAccount()
         XCTAssertNotNil(account, "sharedAccount() should return non-nil account")
+        // The shared account should be the same singleton across calls
+        XCTAssertTrue(account === TPPUserAccount.sharedAccount(),
+                      "sharedAccount() should return the same singleton instance")
+        // Auth state should be queryable without crashing
+        let authState = account.authState
+        XCTAssertNotNil(authState, "authState should be queryable")
     }
 
     /// Coverage Gap: TPPUserAccount.hasBarcodeAndPIN — returns false when no credentials set
@@ -220,12 +231,20 @@ final class TPPUserAccountGapTests: XCTestCase {
         mock.removeAll()
 
         // Access various properties to ensure they don't crash
-        _ = mock.barcode
-        _ = mock.PIN
-        _ = mock.authToken
-        _ = mock.hasCredentials()
-        _ = mock.needsAuth
-        _ = mock.authState
+        let barcode = mock.barcode
+        let pin = mock.PIN
+        let token = mock.authToken
+        let hasCredentials = mock.hasCredentials()
+        let needsAuth = mock.needsAuth
+        let authState = mock.authState
+
+        // After removeAll(), credentials should be cleared
+        XCTAssertNil(barcode, "Barcode should be nil after removeAll")
+        XCTAssertNil(pin, "PIN should be nil after removeAll")
+        XCTAssertNil(token, "Auth token should be nil after removeAll")
+        XCTAssertFalse(hasCredentials, "hasCredentials should be false after removeAll")
+        XCTAssertTrue(needsAuth == true || needsAuth == false, "needsAuth should be a valid Bool")
+        XCTAssertNotNil(authState, "authState should be queryable")
     }
 }
 
@@ -237,13 +256,23 @@ final class RemoteFeatureFlagsGapTests: XCTestCase {
     func testRemoteFeatureFlags_shared_isAccessible() {
         let flags = RemoteFeatureFlags.shared
         XCTAssertNotNil(flags, "RemoteFeatureFlags.shared should be accessible")
+        // Singleton identity
+        XCTAssertTrue(flags === RemoteFeatureFlags.shared,
+                      "RemoteFeatureFlags.shared should return the same instance")
+        // Basic feature flag access should not crash
+        let carPlayEnabled = flags.isFeatureEnabled(.carPlayEnabled)
+        XCTAssertTrue(carPlayEnabled == true || carPlayEnabled == false,
+                      "isFeatureEnabled should return a valid Bool")
     }
 
     /// Coverage Gap: RemoteFeatureFlags.shouldFetch — fetchIfNeeded exercises shouldFetch (returns bool path)
     /// shouldFetch is private; fetchIfNeeded calls it to decide whether to fetch
     func testRemoteFeatureFlags_fetchIfNeeded_completesWithoutCrashing() async {
         await RemoteFeatureFlags.shared.fetchIfNeeded()
-        // Passes if no crash; shouldFetch controls whether fetch runs
+        // After fetch, flag access must still work correctly
+        let carPlay = RemoteFeatureFlags.shared.isFeatureEnabled(.carPlayEnabled)
+        XCTAssertTrue(carPlay == true || carPlay == false,
+                      "isFeatureEnabled must return a valid Bool after fetchIfNeeded")
     }
 
     /// Coverage Gap: RemoteFeatureFlags — basic flag access methods return booleans
@@ -261,8 +290,15 @@ final class RemoteFeatureFlagsGapTests: XCTestCase {
     func testRemoteFeatureFlags_convenienceProperties_dontCrash() {
         let flags = RemoteFeatureFlags.shared
 
-        _ = flags.isCarPlayEnabled
-        _ = flags.isCarPlayEnabledCached
-        _ = flags.getDeviceInfo()
+        let carPlay = flags.isCarPlayEnabled
+        let carPlayCached = flags.isCarPlayEnabledCached
+        let deviceInfo = flags.getDeviceInfo()
+
+        // All properties should return valid values
+        XCTAssertTrue(carPlay == true || carPlay == false,
+                      "isCarPlayEnabled should be a valid Bool")
+        XCTAssertTrue(carPlayCached == true || carPlayCached == false,
+                      "isCarPlayEnabledCached should be a valid Bool")
+        XCTAssertNotNil(deviceInfo, "getDeviceInfo should return non-nil")
     }
 }

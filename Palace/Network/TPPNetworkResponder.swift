@@ -324,7 +324,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
             logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
 
             if httpResponse.statusCode == 401 {
-                if (TPPUserAccount.sharedAccount().authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
+                let snap = AccountsManager.shared.currentUserAccount.credentialSnapshot()
+                if (snap.authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
                     tokenRefreshAttempts += 1
                     return handleExpiredTokenIfNeeded(for: httpResponse, with: task)
                 }
@@ -367,19 +368,28 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     }
 }
 
-private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task: URLSessionTask) -> Bool {
+private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
+                                       with task: URLSessionTask,
+                                       networkExecutor: TPPNetworkExecutor = .shared) -> Bool {
     // Skip DELETE requests - intentionally don't refresh tokens for deletes
     // This prevents refresh loops when revoking/returning items
     if task.originalRequest?.httpMethod == "DELETE" {
         return false
     }
 
-    let userAccount = TPPUserAccount.sharedAccount()
-    guard userAccount.hasCredentials() else {
+    // Use atomic snapshot to prevent TOCTOU races during account switches.
+    // Previously this used TPPUserAccount.sharedAccount() which resolves to
+    // whatever account is current at call time — if the user switched accounts
+    // between sending the request and receiving the 401, the wrong account's
+    // credentials would be checked/marked stale.
+    let accountId = AccountsManager.shared.currentAccountId
+    let snapshot = AccountsManager.shared.currentUserAccount.credentialSnapshot()
+
+    guard snapshot.hasCredentials else {
         return false
     }
 
-    let authDef = userAccount.authDefinition
+    let authDef = snapshot.authDefinition
 
     if response.statusCode == 401 {
         // A 401 from a cross-domain redirect (e.g., to biblioboard.com) does NOT
@@ -391,21 +401,37 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse, with task
         }
 
         // Mark credentials as stale - preserves Adobe DRM activation
-        userAccount.markCredentialsStale()
+        let user = AccountsManager.shared.userAccount(for: accountId ?? "")
+        user.markCredentialsStale()
 
-        if authDef?.isSaml == true {
-            Log.info(#file, "Server returned 401 for SAML - credentials marked stale, will trigger re-auth flow")
+        if authDef?.reauthStrategy == .browser {
+            // SAML/OIDC: a 401 here means the IdP cookie/assertion expired.
+            // markCredentialsStale() above only fires the publisher on the
+            // .loggedIn → .credentialsStale transition; once stale, subsequent
+            // 401s are no-ops. So we hand off to SAMLReauthCoordinator on
+            // every 401 — its own single-flight + foreground gates dedupe,
+            // which also handles the case where the account was already
+            // stale at app launch (publisher quiet, but UI still missing).
+            // HelpSpot 17716 (Cornell SAML).
+            Log.info(#file, "Server returned 401 for browser-based auth - credentials marked stale, requesting SAML reauth")
+            Task { @MainActor in
+                SAMLReauthCoordinator.shared.requestReauth(
+                    for: user,
+                    authDef: authDef,
+                    triggerURL: originalURL
+                )
+            }
             return false
         }
 
         let canRefreshToken = (authDef?.isToken == true || authDef?.isOauth == true) &&
             authDef?.tokenURL != nil &&
-            userAccount.username != nil &&
-            userAccount.pin != nil
+            snapshot.barcode != nil &&
+            snapshot.pin != nil
 
         if canRefreshToken {
             Log.info(#file, "Server returned 401 - triggering token refresh (server authority)")
-            TPPNetworkExecutor.shared.refreshTokenAndResume(task: task)
+            networkExecutor.refreshTokenAndResume(task: task, accountId: accountId)
             return true
         }
     }
@@ -506,15 +532,15 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
                     task: URLSessionTask,
                     didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        let credsProvider = credentialsProvider ?? TPPUserAccount.sharedAccount()
+        let credsProvider = credentialsProvider ?? AccountsManager.shared.currentUserAccount
         let authChallenger = TPPBasicAuth(credentialsProvider: credsProvider)
         authChallenger.handleChallenge(challenge, completion: completionHandler)
     }
 
-    func refreshToken() async throws {
-        guard let tokenURL = TPPUserAccount.sharedAccount().authDefinition?.tokenURL,
-              let username = TPPUserAccount.sharedAccount().username,
-              let password = TPPUserAccount.sharedAccount().pin
+    func refreshToken(userAccount: TPPUserAccount = AccountsManager.shared.currentUserAccount) async throws {
+        guard let tokenURL = userAccount.authDefinition?.tokenURL,
+              let username = userAccount.username,
+              let password = userAccount.pin
         else { return }
 
         let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
@@ -522,7 +548,7 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
 
         switch result {
         case .success(let tokenResponse):
-            TPPUserAccount.sharedAccount().setAuthToken(tokenResponse.accessToken, barcode: username, pin: password, expirationDate: tokenResponse.expirationDate)
+            userAccount.setAuthToken(tokenResponse.accessToken, barcode: username, pin: password, expirationDate: tokenResponse.expirationDate)
         case .failure(let error):
             throw error
         }

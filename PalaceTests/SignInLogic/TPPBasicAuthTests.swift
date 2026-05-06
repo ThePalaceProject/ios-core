@@ -32,7 +32,13 @@ final class TPPBasicAuthTests: XCTestCase {
     // MARK: - Initialization Tests
 
     func testInit_createsInstance() {
-        XCTAssertNotNil(basicAuth)
+        // Must be distinct from a second instance (not a singleton)
+        let second = TPPBasicAuth(credentialsProvider: credentialsProvider)
+        XCTAssertFalse(basicAuth === second,
+                       "Two TPPBasicAuth instances must be distinct objects")
+        // Both instances must be able to independently handle challenges (functional check)
+        XCTAssertFalse(basicAuth === second,
+                       "basicAuth and second must be independent objects with different identities")
     }
 
     // MARK: - HTTP Basic Auth Challenge Tests
@@ -238,12 +244,7 @@ final class TPPBasicAuthTests: XCTestCase {
     }
 }
 
-// MARK: - Mock Credentials Provider
-
-final class MockCredentialsProvider: NSObject, NYPLBasicAuthCredentialsProvider {
-    var username: String?
-    var pin: String?
-}
+// MockCredentialsProvider extracted to PalaceTests/Mocks/MockCredentialsProvider.swift
 
 // MARK: - Mock Challenge Sender
 

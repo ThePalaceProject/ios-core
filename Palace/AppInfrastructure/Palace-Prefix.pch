@@ -9,7 +9,6 @@
 #ifdef __OBJC__
   @import UIKit;
   @import Foundation;
-  #import "TPPLOG.h"
 #endif
 
 #endif

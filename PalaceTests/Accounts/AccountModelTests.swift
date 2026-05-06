@@ -71,7 +71,11 @@ final class AccountModelTests: XCTestCase {
         let publication = makePublication(links: [helpLink])
         let account = Account(publication: publication, imageCache: mockImageCache)
 
-        XCTAssertNotNil(account.supportEmail)
+        // Verify the email is extracted correctly from the mailto: href
+        XCTAssertEqual(account.supportEmail?.rawValue, "support@example.com",
+                       "supportEmail should strip the 'mailto:' prefix and return the address")
+        XCTAssertTrue(account.hasSupportOption,
+                      "hasSupportOption should be true when a support email is present")
     }
 
     func testAccount_InitFromPublication_SetsSupportURL() {
@@ -107,11 +111,20 @@ final class AccountModelTests: XCTestCase {
         XCTAssertEqual(account.homePageUrl, "https://example.com/home")
     }
 
-    func testAccount_InitFromPublication_DefaultLogo_IsNotNil() {
+    func testAccount_InitFromPublication_DefaultLogo_IsPlaceholder() {
+        // Arrange: a publication with no image links (no remote logo URL)
         let publication = makePublication()
         let account = Account(publication: publication, imageCache: mockImageCache)
 
-        XCTAssertNotNil(account.logo)
+        // Act: the logo should be the placeholder, which is always non-nil
+        let logo = account.logo
+
+        // Assert: logo is the placeholder asset (non-nil, non-cached-image size)
+        XCTAssertNotNil(logo, "Account without a remote logo should fall back to the placeholder image")
+        XCTAssertNil(account.logoUrl, "Account without an image link should have a nil logoUrl")
+        // The placeholder is used, so the mock cache should not have been written to
+        XCTAssertNil(mockImageCache.get(for: account.uuid),
+                     "No cached logo should exist for an account with no remote logo")
     }
 
     func testAccount_InitFromPublication_DetailsAreNil() {
@@ -211,12 +224,20 @@ final class AccountModelTests: XCTestCase {
 
 final class OPDS2SamlIDPTests: XCTestCase {
 
-    func testInit_WithValidLink_CreatesInstance() {
-        let link = OPDS2Link(href: "https://idp.example.com/login")
+    func testInit_WithValidLink_MapsURLCorrectly() {
+        // Arrange: a well-formed IDP login href
+        let expectedURLString = "https://idp.example.com/login"
+        let link = OPDS2Link(href: expectedURLString)
+
+        // Act
         let idp = OPDS2SamlIDP(opdsLink: link)
 
-        XCTAssertNotNil(idp)
-        XCTAssertEqual(idp?.url.absoluteString, "https://idp.example.com/login")
+        // Assert: the IDP is created AND its url property matches the original href exactly
+        XCTAssertNotNil(idp, "OPDS2SamlIDP should be created from a valid https href")
+        XCTAssertEqual(idp?.url.absoluteString, expectedURLString,
+                       "IDP url must preserve the href from the OPDS2Link")
+        XCTAssertEqual(idp?.url.scheme, "https",
+                       "IDP url scheme should be https for a secure login endpoint")
     }
 
     func testInit_WithInvalidHref_ReturnsNil() {
@@ -271,38 +292,68 @@ final class OPDS2SamlIDPTests: XCTestCase {
         let idp = OPDS2SamlIDP(opdsLink: link)
 
         XCTAssertNil(idp?.idpDescription)
+        // The IDP itself should still be constructible even without descriptions
+        XCTAssertNotNil(idp, "IDP without descriptions must still parse successfully")
+        XCTAssertNil(idp?.idpDescription, "Absent descriptions property must produce nil idpDescription")
     }
 }
 
 // MARK: - TPPSignedInStateProvider Tests
+// These tests use TPPUserAccountMock (which extends TPPUserAccount) to verify
+// that the real TPPSignedInStateProvider conformance on TPPUserAccount reflects
+// actual credential state rather than a private stub.
 
 final class TPPSignedInStateProviderTests: XCTestCase {
 
-    func testProtocol_CanBeConformedTo() {
-        let mock = MockSignedInStateProvider(signedIn: true)
-        XCTAssertTrue(mock.isSignedIn())
+    private var mockAccount: TPPUserAccountMock!
+
+    override func setUp() {
+        super.setUp()
+        TPPUserAccountMock.resetShared()
+        mockAccount = TPPUserAccountMock()
+        mockAccount.removeAll()
     }
 
-    func testProtocol_SignedIn_ReturnsTrue() {
-        let mock = MockSignedInStateProvider(signedIn: true)
-        XCTAssertTrue(mock.isSignedIn())
+    override func tearDown() {
+        mockAccount.removeAll()
+        mockAccount = nil
+        TPPUserAccountMock.resetShared()
+        super.tearDown()
     }
 
-    func testProtocol_NotSignedIn_ReturnsFalse() {
-        let mock = MockSignedInStateProvider(signedIn: false)
-        XCTAssertFalse(mock.isSignedIn())
-    }
-}
+    func testIsSignedIn_WhenCredentialsPresent_ReturnsTrue() {
+        // Arrange: set a bearer-token credential on the account
+        mockAccount.setAuthToken("bearer-token-123", barcode: "12345", pin: nil, expirationDate: nil)
 
-private class MockSignedInStateProvider: NSObject, TPPSignedInStateProvider {
-    private let signedIn: Bool
+        // Act
+        let result = mockAccount.isSignedIn()
 
-    init(signedIn: Bool) {
-        self.signedIn = signedIn
-        super.init()
+        // Assert: the real TPPSignedInStateProvider implementation returns true
+        // because hasCredentials() sees the token credential
+        XCTAssertTrue(result, "isSignedIn() should return true when credentials are present")
     }
 
-    func isSignedIn() -> Bool {
-        return signedIn
+    func testIsSignedIn_WhenNoCredentials_ReturnsFalse() {
+        // Arrange: ensure no credentials (removeAll was called in setUp)
+        XCTAssertFalse(mockAccount.hasCredentials(), "Precondition: no credentials set")
+
+        // Act
+        let result = mockAccount.isSignedIn()
+
+        // Assert: empty credentials -> not signed in
+        XCTAssertFalse(result, "isSignedIn() should return false when no credentials are present")
+    }
+
+    func testIsSignedIn_AfterRemoveAll_ReturnsFalse() {
+        // Arrange: set credentials, then clear them
+        mockAccount.setAuthToken("tok", barcode: "bar", pin: "pin", expirationDate: nil)
+        XCTAssertTrue(mockAccount.isSignedIn(), "Precondition: signed in before removeAll")
+
+        // Act
+        mockAccount.removeAll()
+
+        // Assert: signed-out state is reflected through isSignedIn()
+        XCTAssertFalse(mockAccount.isSignedIn(),
+                       "isSignedIn() should return false after removeAll clears credentials")
     }
 }

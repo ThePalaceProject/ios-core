@@ -206,21 +206,34 @@ public class TPPBook: NSObject, ObservableObject {
             revokeURL: revoke,
             reportURL: report,
             timeTrackingURL: entry.timeTrackingLink?.href,
-            contributors: entry.contributors,
+            contributors: entry.contributors as? [String: Any],
             bookDuration: entry.duration,
             imageCache: ImageCache.shared
         )
     }
 
     @objc convenience init?(dictionary: [String: Any]) {
-        guard let categoryStrings = dictionary[CategoriesKey] as? [String],
-              let identifier = dictionary[IdentifierKey] as? String,
-              let title = dictionary[TitleKey] as? String else {
+        // Hard requirements: a book is meaningless without id + title. Everything
+        // else has a sensible default — be forgiving on read so a single malformed
+        // field doesn't wipe a downloaded book from the registry on reload.
+        // Log each missing field separately so we can diagnose registry drift.
+        guard let identifier = dictionary[IdentifierKey] as? String, !identifier.isEmpty else {
+            Log.error(#file, "TPPBook(dictionary:): missing or empty IdentifierKey — dropping")
+            return nil
+        }
+        guard let title = dictionary[TitleKey] as? String, !title.isEmpty else {
+            Log.error(#file, "TPPBook(dictionary:): missing or empty TitleKey for id='\(identifier)' — dropping")
             return nil
         }
 
+        // Optional fields: salvage the book if these are missing or malformed.
+        let categoryStrings = dictionary[CategoriesKey] as? [String] ?? []
+        if dictionary[CategoriesKey] != nil, !(dictionary[CategoriesKey] is [String]) {
+            Log.warn(#file, "TPPBook(dictionary:): CategoriesKey present but not [String] for id='\(identifier)' — defaulting to []")
+        }
+
         let acquisitions: [TPPOPDSAcquisition] = (dictionary[AcquisitionsKey] as? [[String: Any]] ?? []).compactMap {
-            TPPOPDSAcquisition(dictionary: $0)
+            TPPOPDSAcquisition.acquisition(withDictionary: $0 as NSDictionary)
         }
 
         let authorStrings: [String] = {
@@ -253,7 +266,25 @@ public class TPPBook: NSObject, ObservableObject {
         let revokeURL = URL(string: dictionary[RevokeURLKey] as? String ?? "")
         let reportURL = URL(string: dictionary[ReportURLKey] as? String ?? "")
 
-        guard let updated = NSDate(iso8601DateString: dictionary[UpdatedKey] as? String ?? "") as? Date else { return nil }
+        // UpdatedKey is written by `dictionaryRepresentation()` via `updated.rfc339String`
+        // (full RFC 3339 datetime). Parse via RFC 3339 first (matches the writer),
+        // then fall back to ISO 8601 date-only for legacy records or OPDS feeds that
+        // store a bare "2024-09-15". If both fail, log the malformed value and fall
+        // through to Date.distantPast so the book still loads — losing the timestamp
+        // is preferable to losing the downloaded book.
+        let updatedString = dictionary[UpdatedKey] as? String ?? ""
+        let updated: Date
+        if let parsed = (NSDate.date(withRFC3339String: updatedString)
+                         ?? NSDate.date(withISO8601DateString: updatedString)) as Date? {
+            updated = parsed
+        } else {
+            if updatedString.isEmpty {
+                Log.warn(#file, "TPPBook(dictionary:): UpdatedKey missing or empty for id='\(identifier)' — using .distantPast")
+            } else {
+                Log.warn(#file, "TPPBook(dictionary:): UpdatedKey value '\(updatedString)' matched neither RFC 3339 nor ISO 8601 date-only for id='\(identifier)' — using .distantPast")
+            }
+            updated = .distantPast
+        }
 
         self.init(
             acquisitions: acquisitions,
@@ -263,7 +294,7 @@ public class TPPBook: NSObject, ObservableObject {
             identifier: identifier,
             imageURL: URL(string: dictionary[ImageURLKey] as? String ?? ""),
             imageThumbnailURL: URL(string: dictionary[ImageThumbnailURLKey] as? String ?? ""),
-            published: dictionary[PublishedKey] as? Date,
+            published: (dictionary[PublishedKey] as? String).flatMap { Date.rfc1123DateFormatter.date(from: $0) } ?? (dictionary[PublishedKey] as? Date),
             publisher: dictionary[PublisherKey] as? String,
             subtitle: dictionary[SubtitleKey] as? String,
             summary: dictionary[SummaryKey] as? String,
@@ -273,7 +304,7 @@ public class TPPBook: NSObject, ObservableObject {
             analyticsURL: URL(string: dictionary[AnalyticsURLKey] as? String ?? ""),
             alternateURL: URL(string: dictionary[AlternateURLKey] as? String ?? ""),
             relatedWorksURL: URL(string: dictionary[RelatedURLKey] as? String ?? ""),
-            previewLink: (dictionary[PreviewURLKey] as? [AnyHashable: Any]).flatMap { TPPOPDSAcquisition(dictionary: $0) },
+            previewLink: (dictionary[PreviewURLKey] as? NSDictionary).flatMap { TPPOPDSAcquisition.acquisition(withDictionary: $0) },
             seriesURL: URL(string: dictionary[SeriesLinkKey] as? String ?? ""),
             revokeURL: revokeURL,
             reportURL: reportURL,
@@ -312,6 +343,65 @@ public class TPPBook: NSObject, ObservableObject {
             bookDuration: book.bookDuration,
             imageCache: self.imageCache
         )
+    }
+
+    /// Returns a book that adopts `fresh`'s state-carrying fields (acquisitions,
+    /// availability-driven `updated`) but keeps `self`'s metadata wherever
+    /// `fresh`'s is empty. Designed for the sync() reconciliation path, where
+    /// the Palace Circulation Manager's loans feed has been observed to return
+    /// entries with missing `<author>`/`<summary>`/`<category>` elements for
+    /// some books on some calls — without this guard, a lean response would
+    /// overwrite a previously-enriched registry record and the MyBooks cell
+    /// would lose its author line until a catalog visit re-filled it.
+    ///
+    /// - Parameter fresh: The incoming book from the loans feed (authoritative
+    ///                    for availability and acquisitions).
+    /// - Returns: A book with fresh state and preserved-non-empty metadata.
+    @objc func mergingPreservingMetadata(from fresh: TPPBook) -> TPPBook {
+        func preferNonEmpty(_ a: String?, _ b: String?) -> String? {
+            if let a, !a.isEmpty { return a }
+            return b
+        }
+        func preferNonEmpty<T>(_ a: [T]?, _ b: [T]?) -> [T]? {
+            if let a, !a.isEmpty { return a }
+            return b
+        }
+
+        let merged = TPPBook(
+            acquisitions: fresh.acquisitions,
+            authors: preferNonEmpty(fresh.bookAuthors, self.bookAuthors),
+            categoryStrings: preferNonEmpty(fresh.categoryStrings, self.categoryStrings),
+            distributor: preferNonEmpty(fresh.distributor, self.distributor),
+            identifier: self.identifier,
+            imageURL: fresh.imageURL ?? self.imageURL,
+            imageThumbnailURL: fresh.imageThumbnailURL ?? self.imageThumbnailURL,
+            published: fresh.published ?? self.published,
+            publisher: preferNonEmpty(fresh.publisher, self.publisher),
+            subtitle: preferNonEmpty(fresh.subtitle, self.subtitle),
+            summary: preferNonEmpty(fresh.summary, self.summary),
+            title: fresh.title.isEmpty ? self.title : fresh.title,
+            updated: fresh.updated,
+            annotationsURL: fresh.annotationsURL ?? self.annotationsURL,
+            analyticsURL: fresh.analyticsURL ?? self.analyticsURL,
+            alternateURL: fresh.alternateURL ?? self.alternateURL,
+            relatedWorksURL: fresh.relatedWorksURL ?? self.relatedWorksURL,
+            previewLink: fresh.previewLink ?? self.previewLink,
+            seriesURL: fresh.seriesURL ?? self.seriesURL,
+            revokeURL: fresh.revokeURL ?? self.revokeURL,
+            reportURL: fresh.reportURL ?? self.reportURL,
+            timeTrackingURL: fresh.timeTrackingURL ?? self.timeTrackingURL,
+            contributors: fresh.contributors ?? self.contributors,
+            bookDuration: fresh.bookDuration ?? self.bookDuration,
+            imageCache: self.imageCache
+        )
+        // Carry the resolved images onto the merged instance so the view
+        // doesn't flash a skeleton for one frame while fetchCoverImage
+        // re-hydrates them asynchronously — TPPBook.init dispatches the
+        // cache-hit assignment through DispatchQueue.main.async, which is
+        // just late enough for SwiftUI to render a nil image first.
+        merged.coverImage = self.coverImage ?? fresh.coverImage
+        merged.thumbnailImage = self.thumbnailImage ?? fresh.thumbnailImage
+        return merged
     }
 
     @objc func dictionaryRepresentation() -> [String: Any] {
@@ -379,7 +469,7 @@ public class TPPBook: NSObject, ObservableObject {
         return acquisitions.first(where: {
             !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
                 forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-                allowedRelations: sampleAndPreview,
+                allowedRelations: sampleAndPreview.rawValue,
                 acquisitions: [$0]
             ).isEmpty
         }) ?? previewLink
@@ -393,15 +483,15 @@ public class TPPBook: NSObject, ObservableObject {
     @objc func getExpirationDate() -> Date? {
         var date: Date?
 
-        defaultAcquisition?.availability.matchUnavailable(
+        defaultAcquisition?.availability.match(unavailable:
             nil,
             limited: { limited in
-                if let until = limited.until, until.timeIntervalSinceNow > 0 { date = until }
+                if let until = limited.until { date = until }
             },
             unlimited: nil,
             reserved: nil,
             ready: { ready in
-                if let until = ready.until, until.timeIntervalSinceNow > 0 { date = until }
+                if let until = ready.until { date = until }
             }
         )
 
@@ -412,7 +502,7 @@ public class TPPBook: NSObject, ObservableObject {
         var untilDate: Date?
         let reservationDetails = ReservationDetails()
 
-        defaultAcquisition?.availability.matchUnavailable(
+        defaultAcquisition?.availability.match(unavailable: 
             nil,
             limited: nil,
             unlimited: nil,
@@ -454,7 +544,7 @@ public class TPPBook: NSObject, ObservableObject {
 
     func getAvailabilityDetails() -> AvailabilityDetails {
         var details = AvailabilityDetails()
-        defaultAcquisition?.availability.matchUnavailable(nil, limited: { limited in
+        defaultAcquisition?.availability.match(unavailable: nil, limited: { limited in
             if let sinceDate = limited.since {
                 let (value, unit) = sinceDate.timeUntil()
                 details.availableSince = "\(value) \(unit)"
@@ -474,7 +564,7 @@ public class TPPBook: NSObject, ObservableObject {
                 let (value, unit) = untilDate.timeUntil()
                 details.availableUntil = "\(value) \(unit)"
             }
-        }, reserved: nil)
+        }, reserved: nil, ready: nil)
 
         return details
     }
@@ -504,6 +594,20 @@ public class TPPBook: NSObject, ObservableObject {
 
         return contentTypes.first(where: { $0 != .unsupported }) ?? .unsupported
     }
+
+    /// PP-3649: Whether this book requires Adobe DRM activation before download.
+    /// Used by MyBooksDownloadCenter to perform on-demand device activation.
+    @objc var requiresAdobeDRM: Bool {
+        guard let acquisition = defaultAcquisition else { return false }
+        let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+            forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+            allowedRelations: NYPLOPDSAcquisitionRelationSetAll,
+            acquisitions: [acquisition]
+        )
+        return paths.contains { path in
+            path.types.contains(ContentTypeAdobeAdept)
+        }
+    }
 }
 
 extension TPPBook: Identifiable {}
@@ -517,276 +621,8 @@ extension TPPBook: @unchecked Sendable {}
 
 extension TPPBook {
     func requiresAuthForReturnOrDeletion() -> Bool {
-        let userAuthRequired = TPPUserAccount.sharedAccount().authDefinition?.needsAuth ?? false
+        let userAuthRequired = AccountsManager.shared.currentUserAccount.authDefinition?.needsAuth ?? false
         return self.defaultAcquisitionIfOpenAccess == nil && userAuthRequired
-    }
-}
-
-extension TPPBook {
-    private static let coverRegistry = TPPBookCoverRegistry.shared
-
-    func fetchCoverImage() {
-        let simpleKey = identifier
-        let coverKey = "\(identifier)_cover"
-
-        if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: coverKey) {
-            DispatchQueue.main.async {
-                self.coverImage = img
-                self.updateDominantColor(using: img)
-            }
-            return
-        }
-
-        guard !isCoverLoading else { return }
-
-        DispatchQueue.main.async {
-            self.isCoverLoading = true
-        }
-
-        TPPBookCoverRegistryBridge.shared.coverImageForBook(self) { [weak self] image in
-            guard let self = self else { return }
-            let final = image ?? self.thumbnailImage
-
-            DispatchQueue.main.async {
-                self.coverImage = final
-                if let img = final {
-                    self.imageCache.set(img, for: self.identifier)
-                    self.imageCache.set(img, for: coverKey)
-                    self.updateDominantColor(using: img)
-                }
-                self.isCoverLoading = false
-            }
-        }
-    }
-
-    func fetchThumbnailImage() {
-        let simpleKey = identifier
-        let thumbnailKey = "\(identifier)_thumbnail"
-
-        if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: thumbnailKey) {
-            DispatchQueue.main.async {
-                self.thumbnailImage = img
-            }
-            return
-        }
-
-        guard !isThumbnailLoading else { return }
-
-        DispatchQueue.main.async {
-            self.isThumbnailLoading = true
-        }
-
-        TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(self) { [weak self] image in
-            guard let self = self else { return }
-
-            DispatchQueue.main.async {
-                self.thumbnailImage = image
-                if let img = image {
-                    self.imageCache.set(img, for: self.identifier)
-                    self.imageCache.set(img, for: thumbnailKey)
-                    if self.coverImage == nil {
-                        self.updateDominantColor(using: img)
-                    }
-                }
-                self.isThumbnailLoading = false
-            }
-        }
-    }
-
-    func clearCachedImages() {
-        imageCache.remove(for: identifier)
-        imageCache.remove(for: "\(identifier)_cover")
-        imageCache.remove(for: "\(identifier)_thumbnail")
-        DispatchQueue.main.async {
-            self.coverImage = nil
-            self.thumbnailImage = nil
-            self.dominantUIColor = .gray
-        }
-    }
-}
-
-extension TPPBook {
-    var wrappedCoverImage: UIImage? {
-        coverImage
-    }
-
-    @objc public class func ordinalString(for n: Int) -> String {
-        return n.ordinal()
-    }
-}
-
-// MARK: - Dominant Color (async, off main thread)
-private extension TPPBook {
-    private static let colorProcessingQueue = DispatchQueue(label: "org.thepalaceproject.dominantcolor", qos: .utility)
-    private static let sharedCIContext: CIContext = {
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
-            return CIContext()
-        }
-        return CIContext(options: [
-            .workingColorSpace: colorSpace,
-            .outputColorSpace: colorSpace,
-            .useSoftwareRenderer: false
-        ])
-    }()
-
-    func updateDominantColor(using image: UIImage) {
-        let inputImage = image
-        Self.colorProcessingQueue.async { [weak self] in
-            guard let self = self else { return }
-
-            autoreleasepool {
-                // Skip on low-memory devices to prevent crashes
-                let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
-                guard deviceMemoryMB >= 1024 else {
-                    Log.debug(#file, "Skipping dominant color extraction on low-memory device (\(deviceMemoryMB)MB)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                // Validate input image
-                guard inputImage.size.width > 0, inputImage.size.height > 0 else {
-                    Log.warn(#file, "Invalid image size for dominant color extraction: \(inputImage.size)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                guard let cgImage = inputImage.cgImage else {
-                    Log.warn(#file, "No CGImage available for dominant color extraction")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                // Check for corrupted or invalid images
-                guard cgImage.width > 0, cgImage.height > 0, cgImage.bitsPerPixel > 0 else {
-                    Log.warn(#file, "Invalid CGImage properties: width=\(cgImage.width), height=\(cgImage.height), bpp=\(cgImage.bitsPerPixel)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                let maxDimension: CGFloat = 500
-                let scaledImage: UIImage
-
-                let imageSize = inputImage.size
-                let maxSide = max(imageSize.width, imageSize.height)
-
-                if maxSide > maxDimension {
-                    let scale = maxDimension / maxSide
-                    let newSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-
-                    guard newSize.width > 0, newSize.height > 0, Int(newSize.width) > 0, Int(newSize.height) > 0 else {
-                        Log.warn(#file, "Invalid scaled size for dominant color: \(newSize)")
-                        DispatchQueue.main.async { self.dominantUIColor = .gray }
-                        return
-                    }
-
-                    // Use CGContext for thread-safe image resizing (UIGraphicsBeginImageContextWithOptions is NOT thread-safe)
-                    // Always use sRGB - source images may be CMYK, grayscale, or other formats that don't support alpha
-                    let colorSpace = CGColorSpaceCreateDeviceRGB()
-
-                    // Use premultiplied alpha which is universally supported by CGContext with RGB color space
-                    let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
-
-                    guard let context = CGContext(
-                        data: nil,
-                        width: Int(newSize.width),
-                        height: Int(newSize.height),
-                        bitsPerComponent: 8,
-                        bytesPerRow: 0,
-                        space: colorSpace,
-                        bitmapInfo: bitmapInfo.rawValue
-                    ) else {
-                        Log.warn(#file, "Failed to create CGContext for dominant color resize")
-                        DispatchQueue.main.async { self.dominantUIColor = .gray }
-                        return
-                    }
-
-                    context.interpolationQuality = .medium
-                    context.draw(cgImage, in: CGRect(origin: .zero, size: newSize))
-
-                    guard let resizedCGImage = context.makeImage() else {
-                        Log.warn(#file, "Failed to create resized CGImage for dominant color")
-                        DispatchQueue.main.async { self.dominantUIColor = .gray }
-                        return
-                    }
-
-                    scaledImage = UIImage(cgImage: resizedCGImage, scale: 1.0, orientation: inputImage.imageOrientation)
-                } else {
-                    scaledImage = inputImage
-                }
-
-                guard let ciImage = CIImage(image: scaledImage) else {
-                    Log.debug(#file, "Failed to create CIImage from UIImage for book: \(self.identifier)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                let extent = ciImage.extent
-                guard !extent.isEmpty, extent.width > 0, extent.height > 0, extent.width.isFinite, extent.height.isFinite else {
-                    Log.debug(#file, "CIImage has invalid extent for book: \(self.identifier) - \(extent)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                let filter = CIFilter.areaAverage()
-                filter.inputImage = ciImage
-                filter.extent = extent
-
-                guard let outputImage = filter.outputImage else {
-                    Log.debug(#file, "Failed to generate output image from filter for book: \(self.identifier)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                guard !outputImage.extent.isEmpty else {
-                    Log.debug(#file, "Filter output image has empty extent for book: \(self.identifier)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
-                    Log.debug(#file, "Failed to create sRGB color space for book: \(self.identifier)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                var bitmap = [UInt8](repeating: 0, count: 4)
-
-                // Wrap render in Objective-C exception handler since CoreImage can crash
-                let renderBounds = CGRect(x: 0, y: 0, width: 1, height: 1)
-                guard renderBounds.width > 0, renderBounds.height > 0 else {
-                    Log.warn(#file, "Invalid render bounds")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                do {
-                    Self.sharedCIContext.render(
-                        outputImage,
-                        toBitmap: &bitmap,
-                        rowBytes: 4,
-                        bounds: renderBounds,
-                        format: .RGBA8,
-                        colorSpace: colorSpace
-                    )
-
-                    let color = UIColor(
-                        red: CGFloat(bitmap[0]) / 255.0,
-                        green: CGFloat(bitmap[1]) / 255.0,
-                        blue: CGFloat(bitmap[2]) / 255.0,
-                        alpha: CGFloat(bitmap[3]) / 255.0
-                    )
-
-                    DispatchQueue.main.async {
-                        self.dominantUIColor = color
-                    }
-                } catch {
-                    Log.warn(#file, "Failed to extract dominant color for \(self.identifier): \(error.localizedDescription)")
-                    DispatchQueue.main.async {
-                        self.dominantUIColor = .gray
-                    }
-                }
-            }
-        }
     }
 }
 

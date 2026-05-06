@@ -14,6 +14,16 @@ import XCTest
 
 final class AccountAwareNetworkTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        HTTPStubURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        HTTPStubURLProtocol.reset()
+        super.tearDown()
+    }
+
     // MARK: - Request Creation with Account Context
 
     func testRequest_CapturesCurrentAccountToken() {
@@ -88,18 +98,15 @@ final class AccountAwareNetworkTests: XCTestCase {
         )
 
         let expectation = XCTestExpectation(description: "Refresh completes")
+        var completionCalled = false
 
         executor.refreshTokenAndResume(task: nil, accountId: "urn:uuid:test-account") { result in
-            switch result {
-            case .failure:
-                break // Expected: no credentials in test environment
-            case .success:
-                break
-            }
+            completionCalled = true
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 5.0)
+        XCTAssertTrue(completionCalled, "Completion handler must be called")
     }
 
     func testRefreshTokenAndResume_NilAccountId_DoesNotCrash() {
@@ -114,18 +121,15 @@ final class AccountAwareNetworkTests: XCTestCase {
         )
 
         let expectation = XCTestExpectation(description: "Refresh completes")
+        var callbackInvoked = false
 
         executor.refreshTokenAndResume(task: nil, accountId: nil) { result in
-            switch result {
-            case .failure:
-                break
-            case .success:
-                break
-            }
+            callbackInvoked = true
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 5.0)
+        XCTAssertTrue(callbackInvoked, "Completion must be called even with nil accountId")
     }
 
     func testRefreshTokenAndResume_DefaultAccountId_BackwardCompatible() {
@@ -140,19 +144,43 @@ final class AccountAwareNetworkTests: XCTestCase {
         )
 
         let expectation = XCTestExpectation(description: "Refresh completes")
+        var completionCallCount = 0
 
         // Call without accountId parameter (backward compatible)
         executor.refreshTokenAndResume(task: nil) { result in
+            completionCallCount += 1
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 5.0)
+        XCTAssertEqual(completionCallCount, 1, "Completion must be called exactly once")
     }
 
     // MARK: - Cancel Non-Essential Tasks
 
-    func testCancelNonEssentialTasks_DoesNotCrash() {
+    func testCancelNonEssentialTasks_DoesNotCrash_andLeavesExecutorFullyUsable() {
+        // cancelNonEssentialTasks is called on account switch and during
+        // memory pressure. After it runs, the executor must still produce
+        // valid requests for new URLs (next-account preloads land here
+        // within milliseconds of the switch).
         TPPNetworkExecutor.shared.cancelNonEssentialTasks()
+
+        let urlA = URL(string: "https://example.com/a")!
+        let urlB = URL(string: "https://example.com/b/with/path?q=1")!
+
+        let requestA = TPPNetworkExecutor.shared.request(for: urlA, useTokenIfAvailable: false)
+        let requestB = TPPNetworkExecutor.shared.request(for: urlB, useTokenIfAvailable: true)
+
+        XCTAssertEqual(requestA.url, urlA,
+                       "Executor must still build requests for URL A after cancel")
+        XCTAssertEqual(requestB.url, urlB,
+                       "Executor must also produce requests for URL B with a different token strategy")
+
+        // Second cancel must also be safe (observed under rapid account swaps).
+        TPPNetworkExecutor.shared.cancelNonEssentialTasks()
+        let requestC = TPPNetworkExecutor.shared.request(for: urlA, useTokenIfAvailable: false)
+        XCTAssertEqual(requestC.url, urlA,
+                       "Executor must survive back-to-back cancels")
     }
 
     func testCancelNonEssentialTasks_CancelsActiveTasks() {
@@ -166,23 +194,30 @@ final class AccountAwareNetworkTests: XCTestCase {
             delegateQueue: nil
         )
 
-        // Register a slow stub so the task stays active
+        let stubSemaphore = DispatchSemaphore(value: 0)
         HTTPStubURLProtocol.register { request in
-            Thread.sleep(forTimeInterval: 5.0)
+            stubSemaphore.wait(timeout: .now() + 0.5)
             return HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data())
         }
 
         let url = URL(string: "https://example.com/api/catalog")!
-        executor.GET(url, useTokenIfAvailable: false) { _ in }
+        var callbackCount = 0
+        executor.GET(url, useTokenIfAvailable: false) { _ in callbackCount += 1 }
 
         executor.cancelNonEssentialTasks()
 
         HTTPStubURLProtocol.reset()
+        // Executor must survive cancel and still be able to build requests
+        let request = executor.request(for: url, useTokenIfAvailable: false)
+        XCTAssertEqual(request.url, url, "Executor must be usable after cancel")
     }
 
     // MARK: - executeTokenRefresh Account Parameter
 
-    func testExecuteTokenRefresh_AcceptsAccountId() {
+    // `wait(for:)` blocks the main thread and deadlocks if the completion handler is
+    // dispatched back to the main thread. Use async/await + withCheckedContinuation
+    // so the test runner's cooperative thread pool handles the suspension correctly.
+    func testExecuteTokenRefresh_AcceptsAccountId() async {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
 
@@ -201,29 +236,28 @@ final class AccountAwareNetworkTests: XCTestCase {
             delegateQueue: nil
         )
 
-        let expectation = XCTestExpectation(description: "Token refresh completes")
         let tokenURL = URL(string: "https://example.com/token")!
 
-        executor.executeTokenRefresh(
-            username: "testuser",
-            password: "testpass",
-            tokenURL: tokenURL,
-            accountId: "urn:uuid:test-account"
-        ) { result in
-            switch result {
-            case .success(let response):
-                XCTAssertEqual(response.accessToken, "test")
-            case .failure:
-                break // May fail due to test environment
-            }
-            expectation.fulfill()
+        let result: Result<TokenResponse, Error> = await withCheckedContinuation { continuation in
+            executor.executeTokenRefresh(
+                username: "testuser",
+                password: "testpass",
+                tokenURL: tokenURL,
+                accountId: "urn:uuid:test-account"
+            ) { continuation.resume(returning: $0) }
         }
 
-        wait(for: [expectation], timeout: 15.0)
+        switch result {
+        case .success(let response):
+            XCTAssertEqual(response.accessToken, "test")
+        case .failure:
+            break // May fail due to test environment
+        }
+
         HTTPStubURLProtocol.reset()
     }
 
-    func testExecuteTokenRefresh_NilAccountId_BackwardCompatible() {
+    func testExecuteTokenRefresh_NilAccountId_BackwardCompatible() async {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
 
@@ -242,26 +276,25 @@ final class AccountAwareNetworkTests: XCTestCase {
             delegateQueue: nil
         )
 
-        let expectation = XCTestExpectation(description: "Token refresh completes")
         let tokenURL = URL(string: "https://example.com/token")!
 
-        // Call without accountId (default nil) — the key assertion is that this
-        // compiles and runs without the accountId parameter (backward compatibility).
-        executor.executeTokenRefresh(
-            username: "testuser",
-            password: "testpass",
-            tokenURL: tokenURL
-        ) { result in
-            expectation.fulfill()
+        // Call without accountId (default nil). Verify backward-compat overload
+        // still delivers a result (the stub returns a valid access_token).
+        let result: Result<TokenResponse, Error> = await withCheckedContinuation { continuation in
+            executor.executeTokenRefresh(
+                username: "testuser",
+                password: "testpass",
+                tokenURL: tokenURL
+            ) { continuation.resume(returning: $0) }
         }
 
-        // The session delegate chain and Task scheduling add variable latency on CI
-        // (the sibling test with accountId took ~3.2s on CI), so use a generous timeout.
-        wait(for: [expectation], timeout: 15.0)
-
-        // Keep executor alive until completion to prevent session invalidation
-        _ = executor
-
         HTTPStubURLProtocol.reset()
+        switch result {
+        case .success(let response):
+            XCTAssertEqual(response.accessToken, "compat-token",
+                           "Backward-compat overload must still return the stubbed token")
+        case .failure(let error):
+            XCTFail("Backward-compat executeTokenRefresh should succeed, got: \(error)")
+        }
     }
 }

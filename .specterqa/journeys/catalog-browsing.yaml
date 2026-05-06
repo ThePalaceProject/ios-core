@@ -1,0 +1,56 @@
+scenario:
+  id: catalog-browsing
+  name: "Catalog Browsing"
+  description: "Verify catalog lanes display correctly, horizontal and vertical scrolling works, and lane titles with 'More' buttons are present."
+  tags: [tier1, ios, catalog, CAT-001, CAT-002, CAT-003]
+
+  personas:
+    - ref: ios_tester
+      role: primary
+
+  steps:
+    - id: onboard_app
+      description: "Dismiss first-launch alerts and open the catalog"
+      goal: >
+        If a SpringBoard "Would Like to Send You Notifications" alert is on
+        screen, tap "Don't Allow" to dismiss it. If the Add Library picker
+        appears, select any listed library (e.g. "Palace Bookshelf" or
+        "Allin Township Library"). Wait for the Catalog screen to appear
+        with at least one lane of book covers before proceeding.
+      checkpoint: app_ready
+      max_iterations: 10
+
+    - id: launch_and_verify_lanes
+      description: "Launch app and verify catalog lanes with titles and book covers"
+      goal: >
+        Launch the Palace app. Confirm the Catalog screen loads with at least one
+        horizontal book lane visible. Each lane should have a title label and
+        book cover images displayed.
+      checkpoint: catalog_lanes_visible
+      max_iterations: 15
+
+    - id: horizontal_scroll_lane
+      description: "Swipe a lane horizontally to reveal more books"
+      goal: >
+        Swipe left on the first book lane to scroll it horizontally. Confirm that
+        additional book covers are revealed after the swipe. The lane should scroll
+        smoothly without UI glitches.
+      checkpoint: lane_scrolled_horizontally
+      max_iterations: 10
+
+    - id: vertical_scroll_catalog
+      description: "Scroll the catalog vertically to reveal more lanes"
+      goal: >
+        Swipe up on the catalog to scroll vertically. Confirm that additional lanes
+        with titles and book covers become visible below the fold. Look for a 'More'
+        or 'See All' button on at least one lane.
+      checkpoint: additional_lanes_visible
+      max_iterations: 10
+
+    - id: verify_no_errors
+      description: "Verify no error states during browsing"
+      goal: >
+        Confirm the app is in a stable state with no error alerts displayed.
+        Catalog content should remain loaded after all scrolling.
+      checkpoint: no_errors_detected
+      max_iterations: 5

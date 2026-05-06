@@ -38,15 +38,21 @@ final class AudiobookPlaybackStateTests: XCTestCase {
         tracker.playbackStarted()
         tracker.playbackStarted()
 
-        // Should not crash
-        XCTAssertTrue(true, "Multiple playbackStarted calls handled")
+        // Multiple starts should not crash, and should not manufacture phantom time entries.
+        // Without any receiveValue calls, zero duration means nothing is saved.
+        tracker.stopAndSave()
+        mockDataManager.flush()
+        let total = mockDataManager.savedTimeEntries.reduce(0) { $0 + $1.duration }
+        XCTAssertEqual(total, 0, "Multiple playbackStarted calls without receiveValue must not accumulate phantom time")
     }
 
     func testPlaybackStopped_canBeCalledWithoutStart() {
         tracker.playbackStopped()
 
-        // Should not crash
-        XCTAssertTrue(true, "playbackStopped without start handled")
+        // playbackStopped with no preceding start or receiveValue must save nothing.
+        mockDataManager.flush()
+        XCTAssertEqual(mockDataManager.savedTimeEntries.count, 0,
+                       "playbackStopped without prior playbackStarted must not save any entries")
     }
 
     func testPlaybackStartAndStop_cycle() {

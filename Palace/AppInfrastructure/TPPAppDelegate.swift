@@ -1,5 +1,7 @@
 import Foundation
 import FirebaseCore
+import FirebaseAnalytics
+import FirebaseCrashlytics
 import FirebaseDynamicLinks
 import BackgroundTasks
 import SwiftUI
@@ -25,19 +27,29 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         Log.info(#file, "📱 App launch - initializing playback bootstrapper")
         PlaybackBootstrapper.shared.ensureInitialized()
 
-        // Configure Firebase once at startup
+        // Configure Firebase once at startup. The SDK MUST be initialized
+        // (other code paths assume FirebaseApp.app() is non-nil and call
+        // Analytics.logEvent directly), but when running under XCTest we
+        // disable the network-firing subsystems so:
+        //   - no LocalUploadTask requests to app-analytics-services.com
+        //     build up behind suite-wide DNS timeouts (~30s each), which
+        //     were wedging the simulator partway through long runs.
+        //   - no Crashlytics uploads race test tearDown and post from a
+        //     half-torn-down process.
+        //   - no Remote Config fetch, which was already gated but left
+        //     other subsystems firing.
         FirebaseApp.configure()
 
-        // Initialize FirebaseManager (consolidated Firebase access to prevent mutex crashes)
-        // This replaces separate DeviceSpecificErrorMonitor and RemoteFeatureFlags initialization
-        Task {
-            await FirebaseManager.shared.fetchAndActivateRemoteConfig()
-            // Update feature flag cache after Remote Config is fetched
-            // This ensures isCarPlayEnabledCached has the latest value for next app launch
-            _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+        if TPPProcessInfo.isRunningTests {
+            Analytics.setAnalyticsCollectionEnabled(false)
+            Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(false)
+        } else {
+            Task {
+                await FirebaseManager.shared.fetchAndActivateRemoteConfig()
+                _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+            }
+            TPPErrorLogger.configureCrashAnalytics()
         }
-
-        TPPErrorLogger.configureCrashAnalytics()
         TPPErrorLogger.logNewAppLaunch()
 
         GeneralCache<String, Data>.clearCacheOnUpdate()
@@ -64,10 +76,17 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func performBackgroundStartupTasks() {
+        let isFreshInstall = TPPSettings.shared.appVersion == nil
         TPPKeychainManager.validateKeychain()
         TPPMigrationManager.migrate()
         NetworkQueue.shared().addObserverForOfflineQueue()
         Reachability.shared.startMonitoring()
+
+        logCredentialStateAtLaunch(isFreshInstall: isFreshInstall)
+
+        PalaceAuthTokenProvider.tokenResolver = {
+            AccountsManager.shared.currentUserAccount.authToken
+        }
 
         DispatchQueue.main.async {
             self.audiobookLifecycleManager.didFinishLaunching()
@@ -76,17 +95,72 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             // This would prevent iOS from purging downloaded audiobook files
         }
 
-        TransifexManager.setup()
+        if !TPPProcessInfo.isRunningTests {
+            TransifexManager.setup()
+        }
 
         NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil) { [weak self] notification in
             self?.signingIn(notification)
         }
     }
 
-    private func setupBookRegistryAndNotifications() {
-        DispatchQueue.global(qos: .background).async {
-            _ = TPPBookRegistry.shared
+    private func logCredentialStateAtLaunch(isFreshInstall: Bool) {
+        let account = AccountsManager.shared.currentUserAccount
+        let accountId = AccountsManager.shared.currentAccountId ?? "nil"
+        let authDef = account.authDefinition
+        let authType = authDef?.authType.rawValue ?? "none"
+        let hasCredentials = account.hasCredentials()
+        let hasBarcode = account.barcode != nil
+        let hasPin = account.PIN != nil
+        let hasToken = account.authToken != nil
+        let authState = account.authState
+        let tokenExpired = account.authTokenHasExpired
+        let tokenNearExpiry = account.authTokenNearExpiry
+        let hasTokenURL = authDef?.tokenURL != nil
+
+        Log.info(#file, "🔑 [LAUNCH] Credential state diagnostic:")
+        Log.info(#file, "  freshInstall=\(isFreshInstall), accountId=\(accountId)")
+        Log.info(#file, "  authType=\(authType), authState=\(authState)")
+        Log.info(#file, "  hasCredentials=\(hasCredentials), hasBarcode=\(hasBarcode), hasPin=\(hasPin)")
+        Log.info(#file, "  hasToken=\(hasToken), tokenExpired=\(tokenExpired), tokenNearExpiry=\(tokenNearExpiry)")
+        Log.info(#file, "  hasTokenURL=\(hasTokenURL)")
+
+        if hasBarcode, let barcode = account.barcode {
+            let barcodeShape: String
+            if barcode.allSatisfy({ $0.isNumber }) {
+                barcodeShape = "numeric"
+            } else if barcode.count > 50 {
+                barcodeShape = "token-like"
+            } else {
+                barcodeShape = "alphanumeric"
+            }
+            Log.info(#file, "  barcodeShape=\(barcodeShape), barcodeLen=\(barcode.count)")
         }
+
+        if isFreshInstall && hasCredentials {
+            Log.warn(#file, "  ⚠️ ANOMALY: Fresh install but credentials exist (keychain may not have been fully cleaned)")
+        }
+
+        if hasToken && !hasBarcode && authDef?.isToken == true {
+            Log.warn(#file, "  ⚠️ ANOMALY: Has auth token but no barcode - token refresh will fail")
+        }
+    }
+
+    private func setupBookRegistryAndNotifications() {
+        // Populate the in-memory registry from disk BEFORE any view path can
+        // trigger sync(). Previously this did a fire-and-forget singleton poke
+        // on a background queue and never called load() — so sync() calls from
+        // AppTabHostView tab switches, applicationDidBecomeActive, or the
+        // background refresh task ran against an empty in-memory store, rebuilt
+        // the registry from feed-only data, and overwrote the on-disk file.
+        // Every previously-downloaded book came back as .downloadNeeded with no
+        // location or bookmarks, showing "Download" again on relaunch.
+        //
+        // load() returns immediately — the disk I/O is dispatched onto the
+        // store's own queue — but it primes the `loadingAccount` guard and
+        // queues the state transition to .loaded. Any sync() that races it is
+        // caught by the .unloaded/.loading guard in BookRegistrySync.sync.
+        TPPBookRegistry.shared.load()
 
         NotificationService.shared.setupPushNotifications()
     }
@@ -95,7 +169,8 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     private func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: "org.thepalaceproject.palace.refresh", using: nil) { task in
-            self.handleAppRefresh(task: task as! BGAppRefreshTask)
+            guard let refreshTask = task as? BGAppRefreshTask else { return }
+            self.handleAppRefresh(task: refreshTask)
         }
     }
 
@@ -173,7 +248,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        TPPErrorLogger.setUserID(TPPUserAccount.sharedAccount().barcode)
+        TPPErrorLogger.setUserID(AccountsManager.shared.currentUserAccount.barcode)
 
         // Resume Firebase operations when app becomes active
         FirebaseManager.shared.applicationDidBecomeActive()
@@ -192,7 +267,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     /// Syncs the book registry if the user has holds to ensure fresh availability data.
     /// Throttled to prevent excessive network calls on frequent app activation.
     private func syncIfUserHasHolds() {
-        guard TPPUserAccount.sharedAccount().hasCredentials() else {
+        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
             return
         }
 
@@ -311,8 +386,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         // Legacy non-scene setup (fallback)
-        window = UIWindow()
-        configureWindow(window!)
+        let newWindow = UIWindow()
+        window = newWindow
+        configureWindow(newWindow)
     }
 
     /// Configures an existing window with the app's root view controller
@@ -325,7 +401,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     /// Creates and returns the app's root view controller
     func createRootViewController() -> UIViewController {
+        let container = AppContainer()
         let root = AppTabHostView()
+            .environment(\.appContainer, container)
         return UIHostingController(rootView: root)
     }
 
@@ -336,12 +414,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         UINavigationBar.appearance().tintColor = TPPConfiguration.iconColor()
 
-        if let defaultAppearance = TPPConfiguration.defaultAppearance() {
-            UINavigationBar.appearance().standardAppearance = defaultAppearance
-            UINavigationBar.appearance().compactAppearance = defaultAppearance
-            UINavigationBar.appearance().scrollEdgeAppearance = defaultAppearance
-            UINavigationBar.appearance().compactScrollEdgeAppearance = defaultAppearance
-        }
+        let defaultAppearance = TPPConfiguration.defaultAppearance()
+        UINavigationBar.appearance().standardAppearance = defaultAppearance
+        UINavigationBar.appearance().compactAppearance = defaultAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = defaultAppearance
+        UINavigationBar.appearance().compactScrollEdgeAppearance = defaultAppearance
     }
 }
 
@@ -488,20 +565,20 @@ final class MemoryPressureMonitor {
 
     /// Proactively cleans up caches based on severity
     private func proactiveCacheCleanup(severity: CleanupSeverity) async {
-        monitorQueue.async {
-            switch severity {
-            case .high:
-                // Aggressive cleanup
-                URLCache.shared.removeAllCachedResponses()
-                TPPNetworkExecutor.shared.clearCache()
+        switch severity {
+        case .high:
+            // Aggressive cleanup
+            URLCache.shared.removeAllCachedResponses()
+            TPPNetworkExecutor.shared.clearCache()
+            await MainActor.run {
                 MyBooksDownloadCenter.shared.pauseAllDownloads()
-                Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
-
-            case .medium:
-                // Moderate cleanup - just network caches
-                URLCache.shared.removeAllCachedResponses()
-                Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
             }
+            Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
+
+        case .medium:
+            // Moderate cleanup - just network caches
+            URLCache.shared.removeAllCachedResponses()
+            Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
         }
     }
 
@@ -515,10 +592,11 @@ final class MemoryPressureMonitor {
             URLCache.shared.removeAllCachedResponses()
             TPPNetworkExecutor.shared.clearCache()
 
-            MyBooksDownloadCenter.shared.pauseAllDownloads()
+            DispatchQueue.main.async {
+                MyBooksDownloadCenter.shared.pauseAllDownloads()
+            }
 
             self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
-
         }
     }
 

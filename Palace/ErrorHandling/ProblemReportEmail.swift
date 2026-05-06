@@ -25,8 +25,14 @@ import UIKit
         to emailAddress: String,
         presentingViewController: UIViewController,
         book: TPPBook?,
-        libraryUUID: String?) {
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryUUID ?? AccountsManager.shared.currentAccountId)
+        libraryUUID: String?,
+        accountsManager: AccountsManager = .shared) {
+        let account: TPPUserAccount
+        if let id = libraryUUID ?? accountsManager.currentAccountId {
+            account = accountsManager.userAccount(for: id)
+        } else {
+            account = accountsManager.currentUserAccount
+        }
         let patronID = account.authorizationIdentifier
         beginComposing(to: emailAddress, presentingViewController: presentingViewController, body: generateBody(book: book, patronIdentifier: patronID))
     }
@@ -59,7 +65,7 @@ import UIKit
         presentingViewController.present(mailComposeViewController, animated: true)
     }
 
-    func generateBody(book: TPPBook?, patronIdentifier: String? = nil) -> String {
+    func generateBody(book: TPPBook?, patronIdentifier: String? = nil, accountsManager: AccountsManager = .shared) -> String {
         let nativeHeight = UIScreen.main.nativeBounds.height
         let systemVersion = UIDevice.current.systemVersion
         let idiom: String
@@ -85,7 +91,7 @@ import UIKit
         }
 
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(AccountsManager.shared.currentAccount?.name ?? "")"
+        var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(accountsManager.currentAccount?.name ?? "")"
 
         if let patronIdentifier = patronIdentifier {
             body += "\nPatron ID: \(patronIdentifier)"

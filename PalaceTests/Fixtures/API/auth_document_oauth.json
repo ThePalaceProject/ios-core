@@ -1,0 +1,65 @@
+{
+  "title": "Riverside School District",
+  "service_description": "K-12 school library with Clever SSO authentication.",
+  "id": "https://gorgon.staging.palaceproject.io/riverside/authentication_document",
+  "color_scheme": "green",
+  "authentication": [
+    {
+      "type": "http://librarysimplified.org/authtype/OAuth-with-intermediary",
+      "description": "Clever authentication",
+      "links": [
+        {
+          "href": "https://gorgon.staging.palaceproject.io/riverside/oauth/authenticate?provider=Clever",
+          "rel": "authenticate",
+          "type": "text/html"
+        }
+      ]
+    },
+    {
+      "type": "http://opds-spec.org/auth/basic",
+      "description": "Library Card",
+      "labels": {
+        "login": "Student ID",
+        "password": "Password"
+      },
+      "inputs": {
+        "login": {
+          "keyboard": "DEFAULT"
+        },
+        "password": {
+          "keyboard": "DEFAULT",
+          "maximum_length": 20
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "rel": "start",
+      "href": "https://gorgon.staging.palaceproject.io/riverside/",
+      "type": "application/atom+xml;profile=opds-catalog"
+    },
+    {
+      "rel": "http://opds-spec.org/shelf",
+      "href": "https://gorgon.staging.palaceproject.io/riverside/loans",
+      "type": "application/atom+xml;profile=opds-catalog"
+    },
+    {
+      "rel": "help",
+      "href": "mailto:libsupport@riverside.k12.org"
+    },
+    {
+      "rel": "terms-of-service",
+      "href": "https://gorgon.staging.palaceproject.io/riverside/terms"
+    },
+    {
+      "rel": "privacy-policy",
+      "href": "https://gorgon.staging.palaceproject.io/riverside/privacy"
+    }
+  ],
+  "features": {
+    "enabled": [],
+    "disabled": ["https://librarysimplified.org/rel/policy/reservations"]
+  },
+  "announcements": []
+}
