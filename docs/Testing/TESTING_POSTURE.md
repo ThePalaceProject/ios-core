@@ -52,6 +52,17 @@ Last updated: 2026-04-16
 - **Coverage floors**: `scripts/enforce_coverage_floors.py` + `scripts/coverage-floors.json` — per-module thresholds (46% overall, 30-50% per module)
 - **Rule**: Every test must kill at least one mutant. Tautology and coverage-only tests are banned.
 
+### Credibility criterion (applies to ALL tests, including E2E and simdrive replays)
+
+A test counts as a regression test only when it can answer four questions with cited evidence. If any answer is "I didn't check," the result is a smoke test of the *runner*, not a regression test of the *product* — label it accordingly.
+
+1. **Pre-state controlled.** The system was reset to a starting state matching the test's preconditions. For simdrive replays this means the live screen matches the recording's `pre_screenshot` for step 1 (or the journey's documented `preconditions`). A step-1 SSIM <0.85 with `on_drift=warn` means the engine ran the recorded coords against a *different* screen — recorded stable_ids no longer point at the intended elements.
+2. **Each step verified.** For every action, observe afterward and confirm the *intended* effect. `executed: true` proves the input event dispatched; it does not prove the right element was hit. Verify with a follow-up observe + invariant check (expected text appeared, screen transitioned, mark count changed in the expected direction).
+3. **Post-state asserted.** End with a structural check (`required_text`, `required_chrome` stable_ids, `min_marks`) — not a step count. "Ran 23/23 steps without crashing" is a runner-uptime metric, not a sign-in success. For sign-in: assert "Sign out" button visible. For borrow: assert the book is in My Books. For tab nav: assert the tab indicator moved.
+4. **Evidence cited.** Pass-claims must point to the artifact (screenshot path, observed marks list, log line) that supports them. "It worked" without a pointer is a confidence score, not evidence.
+
+For unit/integration tests this criterion is enforced by mutation testing + the test-quality linter. For simdrive E2E tests this criterion is enforced by `structural_checks` blocks in `.simdrive/journeys/*.yaml`; replay-only runs (the MCP `replay` tool against a `recording.yaml`) do not execute those blocks and therefore count as smoke tests until paired with a structural assertion pass.
+
 ### E2E sim-driving — simdrive (canonical)
 - **Package**: `simdrive` (PyPI, alpha track) — see `~/harness/bin/harness simdrive status`
 - **Backend**: real CoreSimulator HID input + vision-first OCR (no XCTest runner, no accessibility-tree dependency)
