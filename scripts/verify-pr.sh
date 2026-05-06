@@ -302,6 +302,31 @@ else
   fi
 fi
 
+# 8. FR↔Tests coverage matrix integrity (skipped if harness not installed —
+#    the matrix is maintained by the optional harness governance layer; outside
+#    contributors aren't blocked by its absence).
+echo "--- Coverage by FR ---"
+HARNESS_BIN="$HOME/harness/bin/harness"
+if [ ! -x "$HARNESS_BIN" ]; then
+  record "coverage_by_fr" "pass" "harness not installed (skipped)"
+elif ! "$HARNESS_BIN" srd coverage --json >/dev/null 2>&1; then
+  record "coverage_by_fr" "pass" "harness srd coverage subcommand not available (skipped)"
+else
+  COV_JSON=$("$HARNESS_BIN" srd coverage --json 2>/dev/null)
+  COV_GAPS=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('fr_gaps', [])))" 2>/dev/null || echo "?")
+  COV_MISSING=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('missing_test_areas', [])))" 2>/dev/null || echo "?")
+  COV_STALE=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('fr_stale',[]))+len(d.get('nfr_stale',[])))" 2>/dev/null || echo "?")
+  if [ "$COV_GAPS" = "0" ] && [ "$COV_MISSING" = "0" ] && [ "$COV_STALE" = "0" ]; then
+    if "$HARNESS_BIN" srd diff --code-vs-narrative --strict >/dev/null 2>&1; then
+      record "coverage_by_fr" "pass" "FR↔Tests matrix clean (0 gaps, 0 missing, 0 stale, 0 drift)"
+    else
+      record "coverage_by_fr" "fail" "FR↔Tests matrix has code-vs-narrative drift > 10% — run: harness srd diff --code-vs-narrative"
+    fi
+  else
+    record "coverage_by_fr" "fail" "FR↔Tests matrix issues — gaps=$COV_GAPS missing=$COV_MISSING stale=$COV_STALE — run: harness srd coverage"
+  fi
+fi
+
 # Summary
 echo ""
 echo "=== Summary ==="
