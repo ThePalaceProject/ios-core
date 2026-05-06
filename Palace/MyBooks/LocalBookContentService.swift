@@ -165,6 +165,7 @@ class LocalBookContentService {
                 if !fileManager.fileExists(atPath: parentDir.path) {
                     try fileManager.createDirectory(at: parentDir, withIntermediateDirectories: true)
                 }
+                BackupExclusionMigration.excludeFromBackup(parentDir)
                 try fileManager.moveItem(at: localUrl, to: destURL)
                 Log.info(#file, "📥 [LCP RE-DOWNLOAD] ✅ .lcpa stored for '\(book.title)' — local playback now available")
             } catch {

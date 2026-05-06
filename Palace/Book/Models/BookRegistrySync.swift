@@ -464,6 +464,7 @@ class BookRegistrySync {
         if !FileManager.default.fileExists(atPath: directoryURL.path) {
           try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         }
+        BackupExclusionMigration.excludeFromBackup(directoryURL)
         let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
         try registryData.write(to: registryUrl, options: .atomic)
         DispatchQueue.main.async {
@@ -488,6 +489,7 @@ class BookRegistrySync {
       if !FileManager.default.fileExists(atPath: directoryURL.path) {
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
       }
+      BackupExclusionMigration.excludeFromBackup(directoryURL)
       let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
       try registryData.write(to: registryUrl, options: .atomic)
       Log.debug(#file, "Synchronously saved registry to disk")

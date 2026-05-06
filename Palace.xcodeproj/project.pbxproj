@@ -268,6 +268,7 @@
 		22D7A0341D12429C6B3D10A4 /* UIColor+TPPColorAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6AAE5061720AB26712416F3 /* UIColor+TPPColorAdditions.swift */; };
 		2328B4483544EAC500B592B6 /* UserAccountValidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC465C72310C5054118CBBEA /* UserAccountValidationTests.swift */; };
 		233349692EA7423D97E70B5F /* SEMigrationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE116B1078F648DCB8A52598 /* SEMigrationsTests.swift */; };
+		D746218B862BF611D0F4ADC2 /* BackupExclusionMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 040323DBE8E8E5AB1FBC517E /* BackupExclusionMigrationTests.swift */; };
 		237B6705CA505A8CE33EAE6D /* TPPDeferredAdobeActivationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557641B8197B528D886F32DB /* TPPDeferredAdobeActivationTests.swift */; };
 		24627E54AF34930D7ACEB030 /* BookCellModelCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72DCAEB765B50E04217F0CB7 /* BookCellModelCache.swift */; };
 		246ED064D298281426FEF8D5 /* KeyboardNavigationHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144BB5C0F2D1B2C0C398BD98 /* KeyboardNavigationHandler.swift */; };
@@ -444,6 +445,7 @@
 		7179B2C70F96786A9064BF4B /* BookRegistryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9234DD4339B85855A91CE3DE /* BookRegistryStore.swift */; };
 		7307A5ED23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7307A5EC23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift */; };
 		73085E3525030D27008F6244 /* SEMigrations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73085E3425030D27008F6244 /* SEMigrations.swift */; };
+		C4CDA6080F98CE135248FFC2 /* BackupExclusionMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99895C63131766252D87F554 /* BackupExclusionMigration.swift */; };
 		730B7868249AB9D7008F28B3 /* Float+TPPAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730B7867249AB9D7008F28B3 /* Float+TPPAdditions.swift */; };
 		730D17C02552124B004CAC83 /* TPPMyBooksDownloadsCenterMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730D17BF2552124B004CAC83 /* TPPMyBooksDownloadsCenterMock.swift */; };
 		730D17CC25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730D17CB25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift */; };
@@ -548,6 +550,7 @@
 		73EB0A8E25821DF4006BC997 /* TPPSignInBusinessLogic+UI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A794A525477D8F00C59CC1 /* TPPSignInBusinessLogic+UI.swift */; };
 		73EB0A9125821DF4006BC997 /* BundledHTMLViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D62568A1D412BCB0080A81F /* BundledHTMLViewController.swift */; };
 		73EB0A9625821DF4006BC997 /* SEMigrations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73085E3425030D27008F6244 /* SEMigrations.swift */; };
+		56196EA984C98839164BD951 /* BackupExclusionMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99895C63131766252D87F554 /* BackupExclusionMigration.swift */; };
 		73EB0A9A25821DF4006BC997 /* TPPUserFriendlyError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7360D0D424BFCB9700C8AD16 /* TPPUserFriendlyError.swift */; };
 		73EB0A9F25821DF4006BC997 /* DPLAAudiobooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E7E07A24FEA7E800189224 /* DPLAAudiobooks.swift */; };
 		73EB0AA825821DF4006BC997 /* TPPAppReviewPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93F9F9621CDACF700BD3B0C /* TPPAppReviewPrompt.swift */; };
@@ -2076,6 +2079,7 @@
 		7307A5EC23FF1A8500DE53DE /* TPPOpenSearchDescriptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPOpenSearchDescriptionTests.swift; sourceTree = "<group>"; };
 		73085E192502DE88008F6244 /* TPPPresentationUtils.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TPPPresentationUtils.swift; sourceTree = "<group>"; };
 		73085E3425030D27008F6244 /* SEMigrations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SEMigrations.swift; sourceTree = "<group>"; };
+		99895C63131766252D87F554 /* BackupExclusionMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupExclusionMigration.swift; sourceTree = "<group>"; };
 		730B7867249AB9D7008F28B3 /* Float+TPPAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Float+TPPAdditions.swift"; sourceTree = "<group>"; };
 		730D17BF2552124B004CAC83 /* TPPMyBooksDownloadsCenterMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPMyBooksDownloadsCenterMock.swift; sourceTree = "<group>"; };
 		730D17CB25535954004CAC83 /* TPPSignInBusinessLogic+BookmarkSyncing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+BookmarkSyncing.swift"; sourceTree = "<group>"; };
@@ -2725,6 +2729,7 @@
 		EB9B49899F1C10F43D4FAAD8 /* NowPlayingCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NowPlayingCoordinator.swift; sourceTree = "<group>"; };
 		ECEB9F995C87FE2C71DFA9BC /* BookRegistrySync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookRegistrySync.swift; sourceTree = "<group>"; };
 		EE116B1078F648DCB8A52598 /* SEMigrationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SEMigrationsTests.swift; sourceTree = "<group>"; };
+		040323DBE8E8E5AB1FBC517E /* BackupExclusionMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupExclusionMigrationTests.swift; sourceTree = "<group>"; };
 		EE20C7E18DE551AD81B9D2C6 /* NoNetworkURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoNetworkURLProtocol.swift; sourceTree = "<group>"; };
 		EE3D078322CEC4B660EC470F /* TPPPDFModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPPDFModelTests.swift; sourceTree = "<group>"; };
 		EE511C614AE46DCC9A9B642A /* BackgroundDownloadHandlerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BackgroundDownloadHandlerTests.swift; sourceTree = "<group>"; };
@@ -3426,6 +3431,7 @@
 			children = (
 				5D60D3532297353C001080D0 /* TPPMigrationManager.swift */,
 				73085E3425030D27008F6244 /* SEMigrations.swift */,
+				99895C63131766252D87F554 /* BackupExclusionMigration.swift */,
 			);
 			path = Migrations;
 			sourceTree = "<group>";
@@ -5488,6 +5494,7 @@
 			children = (
 				EE116B1078F648DCB8A52598 /* SEMigrationsTests.swift */,
 				9B3391CCE50BC961BC7A5726 /* TPPMigrationManagerTests.swift */,
+				040323DBE8E8E5AB1FBC517E /* BackupExclusionMigrationTests.swift */,
 			);
 			path = Migrations;
 			sourceTree = "<group>";
@@ -6090,6 +6097,7 @@
 				5F8040C84B5543ED9B1FEACE /* ReachabilityTests.swift in Sources */,
 				696AE19BFBC6497EB2B21825 /* TPPUserFriendlyErrorTests.swift in Sources */,
 				233349692EA7423D97E70B5F /* SEMigrationsTests.swift in Sources */,
+				D746218B862BF611D0F4ADC2 /* BackupExclusionMigrationTests.swift in Sources */,
 				98305B9FFC0E45D2B33B5582 /* TPPSettingsTests.swift in Sources */,
 				DR41NMQUEUE2026042760BB01 /* XCTestCase+drainMainQueue.swift in Sources */,
 				PP3671BF000000000000001 /* TPPAccountListDataSourceTests.swift in Sources */,
@@ -6519,6 +6527,7 @@
 				9D5BD91CC07167E673AA264A /* TPPAccountAuthState.swift in Sources */,
 				E5E2F8D52CB631C700A95840 /* TPPSAMLHelper.swift in Sources */,
 				73EB0A9625821DF4006BC997 /* SEMigrations.swift in Sources */,
+				56196EA984C98839164BD951 /* BackupExclusionMigration.swift in Sources */,
 				21E41799292813A000A78606 /* AsyncImage.swift in Sources */,
 				E50543852E5F96BC007CCFAB /* CatalogLaneSkeletonView.swift in Sources */,
 				E5B0ACF02D6EBE6D00F9B89B /* Array+Extensions.swift in Sources */,
@@ -7042,6 +7051,7 @@
 				21D746E72718A4C000C0E1B4 /* AdobeDRMError.swift in Sources */,
 				E5515EBE2AD8E13E000BDFE9 /* TPPEPUBViewController.swift in Sources */,
 				73085E3525030D27008F6244 /* SEMigrations.swift in Sources */,
+				C4CDA6080F98CE135248FFC2 /* BackupExclusionMigration.swift in Sources */,
 				E544C4EF2A395E8C00B2DC9D /* MyBooksSimplifiedBearerToken.swift in Sources */,
 				E54DD4E6275C8EAA0013C200 /* Font+Extensions.swift in Sources */,
 				E521E9BD2D4D706700C08ADF /* Date+Extensions.swift in Sources */,
@@ -7612,7 +7622,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0.0;
+				MARKETING_VERSION = 3.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -7670,7 +7680,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0.0;
+				MARKETING_VERSION = 3.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -7864,7 +7874,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0.0;
+				MARKETING_VERSION = 3.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -7926,7 +7936,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0.0;
+				MARKETING_VERSION = 3.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "App Store";

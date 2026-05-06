@@ -21,9 +21,22 @@ extension TPPMigrationManager {
         if version(appVersionTokens, isLessThan: [3, 3, 0]) { // v3.3.0
             migrate2()
         }
+        if version(appVersionTokens, isLessThan: [3, 1, 0]) { // Palace v3.1.0
+            migrate3_1_0()
+        }
 
         // Migrate Network Queue DB
         AppContainer.production().networkQueue.migrate()
+    }
+
+    // Palace v3.1.0 (PP-4179)
+    // Exclude downloaded books, audiobook chapters, logs, network queue, and
+    // accounts state from iCloud backup. Required by Apple for re-downloadable
+    // content; without it the app's iCloud quota grows linearly with patron
+    // loans (HelpSpot 17517 — patron reported 1.2 GB backup footprint).
+    private static func migrate3_1_0() {
+        Log.info(#file, "Running 3.1.0 migration — iCloud backup exclusion")
+        BackupExclusionMigration.run()
     }
 
     // v3.2.0

@@ -17,8 +17,11 @@ class AudiobookFileLogger {
     private var logsDirectoryUrl: URL? {
         let fileManager = FileManager.default
         let logsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("AudiobookLogs")
-        if let logsPath = logsPath, !fileManager.fileExists(atPath: logsPath.path) {
-            try? fileManager.createDirectory(at: logsPath, withIntermediateDirectories: true, attributes: nil)
+        if let logsPath = logsPath {
+            if !fileManager.fileExists(atPath: logsPath.path) {
+                try? fileManager.createDirectory(at: logsPath, withIntermediateDirectories: true, attributes: nil)
+            }
+            BackupExclusionMigration.excludeFromBackup(logsPath)
         }
         return logsPath
     }
