@@ -321,7 +321,6 @@ final class AudiobookLoader {
                 if !FileManager.default.fileExists(atPath: directory.path) {
                     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 }
-                directory.excludeFromBackup()
                 try data.write(to: licenseFileURL, options: .atomic)
                 Log.info(#file, "  ✅ LCP license saved to: \(licenseFileURL.lastPathComponent) (\(data.count) bytes)")
             } catch {
@@ -422,7 +421,24 @@ final class AudiobookLoader {
             return
         }
 
-        AudioBookVendorsHelper.updateVendorKey(book: jsonDict) { [weak self] error in
+        // Resolve the DRM vendor synchronously so the [String: Any] dictionary
+        // never crosses an async boundary. Crashlytics 7bf923ee shows
+        // block_destroy_helper EXC_BREAKPOINT crashes on cantook DRM books even
+        // after the jsonData pre-serialization above; passing `jsonDict` to the
+        // @objc round-trip in `updateVendorKey` was a second existential-capture
+        // path. For non-DRM books we now skip the async hop entirely.
+        let drmVendor = AudioBookVendorsHelper.feedbookVendor(for: jsonDict)
+
+        guard let drmVendor else {
+            if isCancelled {
+                completion(.failure(.cancelled))
+                return
+            }
+            finalizeBuild(book: book, jsonData: jsonData, decryptor: decryptor, completion: completion)
+            return
+        }
+
+        AudioBookVendorsHelper.updateDrmCertificate(for: drmVendor) { [weak self] error in
             Task { @MainActor in
                 guard let self else { completion(.failure(.cancelled)); return }
                 if self.isCancelled {
