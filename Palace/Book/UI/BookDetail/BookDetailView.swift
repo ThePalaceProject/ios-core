@@ -540,6 +540,12 @@ struct BookDetailView: View {
     }
 
     @ViewBuilder private var informationView: some View {
+        // PP-4046: ordered by patron decision-making priority — Format/Audience/
+        // Category/Language up top ("what is this?"), Narrators/Duration next
+        // ("what's the listening experience like?" — audiobooks only),
+        // publication metadata last. Empty fields are omitted entirely
+        // (AC #5) so we don't ship rows like "PUBLISHED  —" anymore.
+        let book = self.viewModel.book
         VStack(alignment: .leading, spacing: 5) {
             Text(DisplayStrings.information.uppercased())
                 .font(.headline)
@@ -547,24 +553,43 @@ struct BookDetailView: View {
             Divider()
                 .padding(.vertical)
 
-            infoRow(label: DisplayStrings.format.uppercased(), value: self.viewModel.book.format)
-            infoRow(label: DisplayStrings.published.uppercased(), value: self.viewModel.book.published?.monthDayYearString ?? "")
-            infoRow(label: DisplayStrings.publisher.uppercased(), value: self.viewModel.book.publisher ?? "")
+            infoRow(label: DisplayStrings.format.uppercased(),
+                    value: book.format,
+                    accessibilityID: AccessibilityID.BookDetail.formatLabel)
 
-            let categoryLabel = self.viewModel.book.categoryStrings?.count == 1 ? DisplayStrings.categories.uppercased() : DisplayStrings.category.uppercased()
-            infoRow(label: categoryLabel, value: self.viewModel.book.categories ?? "")
+            infoRow(label: DisplayStrings.audience.uppercased(),
+                    value: book.audience,
+                    accessibilityID: AccessibilityID.BookDetail.audienceLabel)
 
-            infoRow(label: DisplayStrings.distributor.uppercased(), value: self.viewModel.book.distributor ?? "")
+            let categoryLabel = book.categoryStrings?.count == 1
+                ? DisplayStrings.categories.uppercased()
+                : DisplayStrings.category.uppercased()
+            infoRow(label: categoryLabel,
+                    value: book.categories,
+                    accessibilityID: AccessibilityID.BookDetail.categoriesLabel)
 
-            if viewModel.book.isAudiobook {
-                if let narrators = self.viewModel.book.narrators {
-                    infoRow(label: DisplayStrings.narrators.uppercased(), value: narrators)
-                }
+            infoRow(label: DisplayStrings.language.uppercased(),
+                    value: book.displayLanguage,
+                    accessibilityID: AccessibilityID.BookDetail.languageLabel)
 
-                if let duration = self.viewModel.book.bookDuration {
-                    infoRow(label: DisplayStrings.duration.uppercased(), value: formatDuration(duration))
-                }
+            if book.isAudiobook {
+                infoRow(label: DisplayStrings.narrators.uppercased(),
+                        value: book.narrators,
+                        accessibilityID: AccessibilityID.BookDetail.narratorsLabel)
+                infoRow(label: DisplayStrings.duration.uppercased(),
+                        value: book.bookDuration.flatMap { formatDuration($0) },
+                        accessibilityID: AccessibilityID.BookDetail.durationLabel)
             }
+
+            infoRow(label: DisplayStrings.published.uppercased(),
+                    value: book.published?.monthDayYearString,
+                    accessibilityID: AccessibilityID.BookDetail.publishedLabel)
+            infoRow(label: DisplayStrings.publisher.uppercased(),
+                    value: book.publisher,
+                    accessibilityID: AccessibilityID.BookDetail.publisherLabel)
+            infoRow(label: DisplayStrings.distributor.uppercased(),
+                    value: book.distributor,
+                    accessibilityID: AccessibilityID.BookDetail.distributorLabel)
 
             Spacer()
         }
@@ -572,12 +597,19 @@ struct BookDetailView: View {
 
     // MARK: - Helper Functions
 
-    private func infoRow(label: String, value: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            infoLabel(label: label)
-                .frame(minWidth: 100, alignment: .leading)
-                .fixedSize(horizontal: true, vertical: false)
-            infoValue(value: value)
+    /// Renders an INFORMATION row, but only when `value` is non-nil and non-empty
+    /// (AC #5 — fields with no available data are omitted).
+    @ViewBuilder
+    private func infoRow(label: String, value: String?, accessibilityID: String) -> some View {
+        if let value, !value.isEmpty {
+            HStack(alignment: .top, spacing: 10) {
+                infoLabel(label: label)
+                    .frame(minWidth: 100, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+                infoValue(value: value)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier(accessibilityID)
         }
     }
 

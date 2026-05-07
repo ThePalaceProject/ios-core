@@ -125,8 +125,14 @@ public enum AccessibilityID {
 
         // Metadata sections
         public static let informationSection = "bookDetail.informationSection"
-        public static let publisherLabel = "bookDetail.publisherLabel"
+        public static let formatLabel = "bookDetail.formatLabel"
+        public static let audienceLabel = "bookDetail.audienceLabel"
         public static let categoriesLabel = "bookDetail.categoriesLabel"
+        public static let languageLabel = "bookDetail.languageLabel"
+        public static let narratorsLabel = "bookDetail.narratorsLabel"
+        public static let durationLabel = "bookDetail.durationLabel"
+        public static let publishedLabel = "bookDetail.publishedLabel"
+        public static let publisherLabel = "bookDetail.publisherLabel"
         public static let distributorLabel = "bookDetail.distributorLabel"
         public static let relatedBooksSection = "bookDetail.relatedBooksSection"
     }

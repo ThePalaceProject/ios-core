@@ -637,6 +637,8 @@ struct Strings {
         static let information = NSLocalizedString("Information", comment: "")
         static let preview = NSLocalizedString("Preview", comment: "")
         static let format = NSLocalizedString("Format", comment: "")
+        static let audience = NSLocalizedString("Audience", comment: "Book detail metadata label for the target reader audience (Adult, Young Adult, Children, etc.)")
+        static let language = NSLocalizedString("Language", comment: "Book detail metadata label for the work's language")
         static let published = NSLocalizedString("Published", comment: "")
         static let publisher = NSLocalizedString("Publisher", comment: "")
         static let category = NSLocalizedString("Category", comment: "")

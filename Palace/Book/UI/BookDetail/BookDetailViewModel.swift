@@ -435,6 +435,8 @@ final class BookDetailViewModel: ObservableObject {
             && (book.publisher?.isEmpty ?? true)
             && (book.distributor?.isEmpty ?? true)
             && (book.categoryStrings?.isEmpty ?? true)
+            && (book.audience?.isEmpty ?? true)
+            && (book.language?.isEmpty ?? true)
     }
 
     private static func mergeHydratedMetadata(into current: TPPBook, fresh: TPPBook) -> TPPBook {
@@ -463,6 +465,8 @@ final class BookDetailViewModel: ObservableObject {
             timeTrackingURL: current.timeTrackingURL,
             contributors: current.contributors,
             bookDuration: (current.bookDuration?.isEmpty ?? true) ? fresh.bookDuration : current.bookDuration,
+            audience: (current.audience?.isEmpty ?? true) ? fresh.audience : current.audience,
+            language: (current.language?.isEmpty ?? true) ? fresh.language : current.language,
             imageCache: current.imageCache
         )
     }

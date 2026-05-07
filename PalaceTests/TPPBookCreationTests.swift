@@ -120,6 +120,65 @@ class TPPBookCreationTests: XCTestCase {
                        "Factory init must populate title from entry")
     }
 
+    // MARK: - PP-4046: Audience + Language
+
+    func testBookCreation_FromEntry_PopulatesAudienceAndLanguage() {
+        // The NYPLOPDSAcquisitionPathEntry fixture has:
+        //   <dcterms:language>en</dcterms:language>
+        //   <category term="Adult" scheme="http://schema.org/audience" label="Adult"/>
+        let book = TPPBook(entry: opdsEntry)
+        XCTAssertEqual(book?.audience, "Adult",
+                       "Audience must be lifted out of the schema.org/audience category")
+        XCTAssertEqual(book?.language, "en")
+    }
+
+    func testBookCreation_RoundTripsAudienceAndLanguageThroughDictionary() {
+        let original = TPPBook(entry: opdsEntry)!
+        let revived = TPPBook(dictionary: original.dictionaryRepresentation())
+        XCTAssertEqual(revived?.audience, "Adult",
+                       "audience must survive disk persistence in the registry")
+        XCTAssertEqual(revived?.language, "en",
+                       "language must survive disk persistence in the registry")
+    }
+
+    func testBookCreation_FromEntry_AudienceAbsent() {
+        // The minimal entry fixture has no audience category nor language.
+        let book = TPPBook(entry: opdsEntryMinimal)
+        XCTAssertNil(book?.audience,
+                     "audience must be nil when no schema.org/audience category is present")
+        XCTAssertNil(book?.language,
+                     "language must be nil when no <language> element is present")
+    }
+
+    func testMergingPreservingMetadata_PrefersFreshThenSelf() {
+        let acquisitions = [TPPFake.genericAcquisition]
+        let stale = TPPBook(
+            acquisitions: acquisitions, authors: nil, categoryStrings: nil,
+            distributor: nil, identifier: "id-1", imageURL: nil, imageThumbnailURL: nil,
+            published: nil, publisher: nil, subtitle: nil, summary: nil,
+            title: "T", updated: Date(), annotationsURL: nil, analyticsURL: nil,
+            alternateURL: nil, relatedWorksURL: nil, previewLink: nil, seriesURL: nil,
+            revokeURL: nil, reportURL: nil, timeTrackingURL: nil, contributors: nil,
+            bookDuration: nil, audience: "Adult", language: "en",
+            imageCache: MockImageCache()
+        )
+        let freshWithEmptyMetadata = TPPBook(
+            acquisitions: acquisitions, authors: nil, categoryStrings: nil,
+            distributor: nil, identifier: "id-1", imageURL: nil, imageThumbnailURL: nil,
+            published: nil, publisher: nil, subtitle: nil, summary: nil,
+            title: "T", updated: Date(), annotationsURL: nil, analyticsURL: nil,
+            alternateURL: nil, relatedWorksURL: nil, previewLink: nil, seriesURL: nil,
+            revokeURL: nil, reportURL: nil, timeTrackingURL: nil, contributors: nil,
+            bookDuration: nil, audience: nil, language: nil,
+            imageCache: MockImageCache()
+        )
+        let merged = stale.mergingPreservingMetadata(from: freshWithEmptyMetadata)
+        XCTAssertEqual(merged.audience, "Adult",
+                       "Lean loans-feed entry must not wipe stored audience")
+        XCTAssertEqual(merged.language, "en",
+                       "Lean loans-feed entry must not wipe stored language")
+    }
+
     // for completeness only. This test is not strictly necessary because the
     // member-wise initializer is not public
     func testBookCreationViaMemberWiseInitializer() {
@@ -147,6 +206,8 @@ class TPPBookCreationTests: XCTestCase {
                            timeTrackingURL: nil,
                            contributors: nil,
                            bookDuration: nil,
+                           audience: nil,
+                           language: nil,
                            imageCache: MockImageCache()
         )
 
