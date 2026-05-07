@@ -50,6 +50,15 @@ extension AdobeCertificate {
     /// Safely checks if DRM is available and certificate is valid.
     /// Use this before attempting any DRM operations.
     @objc static var isDRMAvailable: Bool {
+        // Adobe RMSDK is not validated for the "iPad apps on Mac" runtime — its
+        // static C++ destructors race with macOS process exit and abort with
+        // recursive_mutex EINVAL during background suspension. Treating DRM as
+        // unavailable on iOS_ON_MAC keeps RMSDK from initializing at all, which
+        // eliminates the static state that crashes at teardown.
+        // (Crashlytics 9a91840677 — 89 users, 294 events, all iOS_ON_MAC.)
+        if ProcessInfo.processInfo.isiOSAppOnMac {
+            return false
+        }
         guard let cert = defaultCertificate else {
             return false
         }
