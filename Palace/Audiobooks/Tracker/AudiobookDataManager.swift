@@ -308,6 +308,7 @@ class AudiobookDataManager {
             if !FileManager.default.fileExists(atPath: storeDirectoryUrl.path) {
                 try FileManager.default.createDirectory(at: storeDirectoryUrl, withIntermediateDirectories: true)
             }
+            storeDirectoryUrl.excludeFromBackup()
             try store.jsonRepresentation?.write(to: storeUrl)
         } catch {
             TPPErrorLogger.logError(error, summary: "AudiobookDataManager error saving time tracker store")

@@ -321,6 +321,7 @@ final class AudiobookLoader {
                 if !FileManager.default.fileExists(atPath: directory.path) {
                     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 }
+                directory.excludeFromBackup()
                 try data.write(to: licenseFileURL, options: .atomic)
                 Log.info(#file, "  ✅ LCP license saved to: \(licenseFileURL.lastPathComponent) (\(data.count) bytes)")
             } catch {

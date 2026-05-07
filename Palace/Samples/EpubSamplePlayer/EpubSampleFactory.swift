@@ -63,6 +63,7 @@ import PalaceLogging
             // Create parent directory if it doesn't exist
             let parentDirectory = url.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: parentDirectory, withIntermediateDirectories: true, attributes: nil)
+            parentDirectory.excludeFromBackup()
 
             try data.write(to: url)
             Log.info(#file, "Successfully saved sample EPUB to: \(url.path)")
@@ -82,6 +83,7 @@ import PalaceLogging
         // Create samples subdirectory to avoid root directory access issues
         let samplesDirectory = documentDirectory.appendingPathComponent("Samples")
         try? FileManager.default.createDirectory(at: samplesDirectory, withIntermediateDirectories: true, attributes: nil)
+        samplesDirectory.excludeFromBackup()
 
         return samplesDirectory.appendingPathComponent(samplePath)
     }

@@ -328,6 +328,7 @@ final class BackgroundDownloadHandler: NSObject {
             if !fileManager.fileExists(atPath: parentDir.path) {
                 try fileManager.createDirectory(at: parentDir, withIntermediateDirectories: true)
             }
+            parentDir.excludeFromBackup()
 
             if fileManager.fileExists(atPath: destURL.path) {
                 _ = try fileManager.replaceItemAt(destURL, withItemAt: sourceLocation, options: .usingNewMetadataOnly)
