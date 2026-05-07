@@ -176,9 +176,11 @@ cmd_setup() {
 
 ## Test Libraries
 
-| Library | Auth Type | Credentials |
-|---------|-----------|-------------|
-| A1QA Test Library | Basic | See ~/.simdrive/credentials/a1qa-test.env |
+Credentials live in your team's QA credential store (vault, internal wiki, team lead). They are never committed to this repo. Fill in the env-var name or vault location below — never the actual credentials.
+
+| Library | Auth Type | Credentials source |
+|---------|-----------|--------------------|
+| A1QA Test Library | Basic | TBD (e.g., team vault \`a1qa-test\`) |
 | Lyrasis Reads | None | N/A |
 | Palace Bookshelf | Anonymous | N/A |
 
