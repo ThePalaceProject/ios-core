@@ -6,12 +6,12 @@
 #   forgeos-session.sh promote <changeset_id>        # promotes all gates with AI reviews
 #   forgeos-session.sh close <changeset_id>          # records outcome + closes
 #
-# Requires: FORGEOS_API_KEY env var or reads from .cursor/mcp.json
-# All ForgeOS data is private — this script is gitignored.
+# Requires: FORGEOS_API_URL + FORGEOS_API_KEY env vars (typically set via ~/harness/.env).
+# See scripts/README.md for setup. Outside contributors do not run this.
 
 set -euo pipefail
 
-API_URL="https://forgeos-api.synctek.io"
+API_URL="${FORGEOS_API_URL:?FORGEOS_API_URL must be set in your environment (see scripts/README.md)}"
 PROJECT_ID="proj_87884c17"
 
 # Auto-detect base branch (origin/main, origin/develop, or fallback)

@@ -58,11 +58,17 @@ The `scripts` directory contains a number of other scripts to build dependencies
 
 `develop` is the main development branch.
 
-Release branch names follow the convention: `release/palace/<version>`. For example, `release/palace/1.0.0`.
+Release branch names follow the convention: `release/<version>`. For example, `release/1.0.0`.
 
 Feature branch names (for features whose development is a month or more): `feature/<feature-name>`, e.g. `feature/my-new-screen`.
 
 Continuous integration is enabled on merge events on `develop` branch. Palace device builds are uploaded to [ios-binaries](https://github.com/ThePalaceProject/ios-binaries).
+
+# Contributing
+
+Tests are required for production changes. The full workflow — TDD discipline, the local self-check, and the public/private boundary between outside contributors and maintainer-internal agent tooling — is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
+CI enforces coverage floors, snapshot tests, build for both `Palace` and `Palace-noDRM` targets, and a chaos-replay regression suite. Run `scripts/verify-pr.sh --quick` locally before opening a PR to catch failures before CI does.
 
 # Palace License
 

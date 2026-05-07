@@ -120,7 +120,7 @@ Each check is recorded against the changed files only — pass/fail summary at t
 
 The mutation pass invokes `python3 scripts/palace_mutate.py` per changed Swift file, looking for ≥50% mutant kill rate (or ≥40% on legacy code with no characterization tests). Critical-path files (sign-in, borrow, download, DRM) require 100% kill rate.
 
-Internal Synctek contributors additionally run through ForgeOS governance gates that hook into `git commit` / `git push` / `gh pr create` — that pipeline is local-only and outside contributors don't need it.
+Maintainers additionally run through ForgeOS governance gates that hook into `git commit` / `git push` / `gh pr create` — that pipeline is local-only and outside contributors don't need it.
 
 ## Confidence Matrix
 
@@ -211,7 +211,7 @@ Use this for releases and for areas where automation gaps exist:
 3. **Make it pass.** Minimum production code, then refactor both sides.
 4. **Verify with `scripts/verify-pr.sh --quick`.** Build, tests, lint, coverage, accessibility — all green before pushing.
 5. **For critical-path changes** (sign-in, borrow, download, DRM, payment): also run `scripts/palace_mutate.py` against changed files and confirm 100% kill rate.
-6. **Open the PR against `develop`** (never `main`). Hooks enforce additional internal governance for Synctek contributors; outside contributors follow standard GitHub PR flow.
+6. **Open the PR against `develop`** (never `main`). Hooks enforce additional internal governance for maintainers; outside contributors follow standard GitHub PR flow.
 
 ### Every Release
 ```bash
