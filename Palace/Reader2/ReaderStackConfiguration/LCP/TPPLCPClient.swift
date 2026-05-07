@@ -8,6 +8,7 @@ import PalaceLogging
 
 enum LCPContextError: Error {
     case creationReturnedNil
+    case nativeException(name: String, reason: String)
 }
 
 let lcpService = LCPLibraryService()
@@ -38,17 +39,35 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
     ) throws -> LCPClientContext {
         var rawResult: LCPClientContext?
         var caughtError: Error?
+        var caughtNativeException: NSException?
 
+        // R2LCPClient → LCPWrapper (ObjC) → lcp::DRMService (C++) → Botan can
+        // throw C++ exceptions that escape the binary framework's bridge
+        // unhandled (notably Botan::Decoding_Error when the CRL bytes are
+        // malformed). A Swift do/catch cannot catch those — they bypass the
+        // Swift error machinery entirely and reach std::terminate. We catch
+        // both NSException AND C++ exceptions here so a bad CRL surfaces as
+        // a Swift-throwable error instead of crashing the app
+        // (Crashlytics 0ca62d8244 — 27 users, 249 events).
         contextQueue.sync {
-            do {
-                rawResult = try R2LCPClient.createContext(
-                    jsonLicense: jsonLicense,
-                    hashedPassphrase: hashedPassphrase,
-                    pemCrl: pemCrl
-                )
-            } catch {
-                caughtError = error
+            caughtNativeException = TPPObjCExceptionCatcher.catchAllExceptions {
+                do {
+                    rawResult = try R2LCPClient.createContext(
+                        jsonLicense: jsonLicense,
+                        hashedPassphrase: hashedPassphrase,
+                        pemCrl: pemCrl
+                    )
+                } catch {
+                    caughtError = error
+                }
             }
+        }
+
+        if let exception = caughtNativeException {
+            let name = exception.name.rawValue
+            let reason = exception.reason ?? "Unknown native exception"
+            Log.error(#file, "LCP createContext threw native exception: \(name) — \(reason)")
+            throw LCPContextError.nativeException(name: name, reason: reason)
         }
 
         if let error = caughtError {
