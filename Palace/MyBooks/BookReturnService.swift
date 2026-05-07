@@ -282,13 +282,39 @@ final class BookReturnService {
             return
         }
 
-        // Invalid credentials — re-authenticate and retry
-        if problemType == TPPProblemDocument.TypeInvalidCredentials {
-            Log.info(#file, "Invalid credentials on return — triggering re-auth")
+        // Auth error — re-authenticate and retry. Mirrors BorrowOperation's
+        // detection logic so SAML/OIDC token expiry on return surfaces the
+        // same sign-in modal that borrow already shows. Without the broader
+        // detection, an expired SAML bearer token returned a generic 401
+        // (no `invalid-credentials` problem-doc type) and fell through to
+        // the alert path, contradicting the borrow UX.
+        let nsError = error as NSError
+        let isAuthError: Bool = {
+            if problemType == TPPProblemDocument.TypeInvalidCredentials { return true }
+            if problemDoc?.isRecoverableAuthError == true { return true }
+            if nsError.code == TPPErrorCode.invalidCredentials.rawValue { return true }
+            return false
+        }()
+
+        if isAuthError {
+            let userAccount = userAccountProvider()
+            let authDef = userAccount.authDefinition
+            let needsBrowserReauth = (authDef?.isSaml == true || authDef?.isOidc == true)
+                && userAccount.hasCredentials()
+
+            if needsBrowserReauth {
+                // Force the SignInModal to drive a fresh browser auth instead
+                // of silently reusing the expired credentials.
+                Log.info(#file, "Auth error on return for SAML/OIDC account — marking credentials stale and presenting re-auth modal")
+                userAccount.markCredentialsStale()
+            } else {
+                Log.info(#file, "Auth error on return — triggering re-auth")
+            }
+
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                let userAccount = self.userAccountProvider()
-                self.reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self] in
+                let user = self.userAccountProvider()
+                self.reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: false) { [weak self] in
                     guard let self else { return }
                     if self.userAccountProvider().hasCredentials() {
                         self.returnBook(withIdentifier: identifier, completion: completion)
