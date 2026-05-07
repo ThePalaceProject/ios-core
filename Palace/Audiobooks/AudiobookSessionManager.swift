@@ -822,6 +822,47 @@ public final class AudiobookSessionManager: ObservableObject {
     ///     → .wifiRequired (refusing to burn their cell data against their
     ///     stated preference, and surfacing the same "connect to Wi-Fi or
     ///     change settings" alert the download path uses)
+    /// Builds a Crashlytics-ready NSError describing an audiobook playback
+    /// failure, with all available context (typed error code, HTTP status,
+    /// track URL, book id, position). Pure — straight-line unit testable
+    /// without spinning up the audiobook stack. `nonisolated` because no
+    /// app/state is read; lets tests call it off the MainActor.
+    nonisolated static func buildPlaybackFailureRecord(error: Error?, position: TrackPosition?, bookId: String?) -> NSError {
+        var userInfo: [String: Any] = [
+            "bookId": bookId ?? "unknown",
+            "trackTitle": position?.track.title ?? "unknown",
+            "trackPosition": position.map { "\($0.timestamp)" } ?? "unknown",
+        ]
+        if let trackUrl = position?.track.urls?.first?.absoluteString {
+            userInfo["trackUrl"] = trackUrl
+        }
+        if let nsError = error as NSError? {
+            userInfo["underlyingDomain"] = nsError.domain
+            userInfo["underlyingCode"] = nsError.code
+            for (key, value) in nsError.userInfo {
+                let stringKey = key as String
+                guard ["httpStatusCode", "trackKey", "url"].contains(stringKey) else { continue }
+                userInfo[stringKey] = value
+            }
+        }
+        let message = "Audiobook playback failed: \(error?.localizedDescription ?? "no underlying error")"
+        userInfo[NSLocalizedDescriptionKey] = message
+        return NSError(
+            domain: "org.thepalaceproject.palace.audiobookPlayback",
+            code: (error as NSError?)?.code ?? -1,
+            userInfo: userInfo
+        )
+    }
+
+    /// Records the playback-failure NSError to PalaceLogging + Crashlytics
+    /// non-fatal sink. Thin wrapper over `buildPlaybackFailureRecord` so the
+    /// pure construction is independently testable.
+    static func recordPlaybackFailure(error: Error?, position: TrackPosition?, bookId: String?) {
+        let nonFatal = buildPlaybackFailureRecord(error: error, position: position, bookId: bookId)
+        Log.error(#file, "Recording audiobook playback non-fatal: \(nonFatal)")
+        FirebaseManager.shared.logError(nonFatal)
+    }
+
     static func networkValidationError(
         bookState: TPPBookState,
         isConnectedToNetwork: Bool,
@@ -883,6 +924,14 @@ public final class AudiobookSessionManager: ObservableObject {
             isPlaying = false
             state = .error(bookId: bookId, message: "Playback failed")
             playbackStatePublisher.send(state)
+
+            // Record a Crashlytics non-fatal so audiobook playback failures
+            // surface in our weekly in-field signal review. Previously a
+            // 403 from BiblioBoard fell through to a generic toast and
+            // produced no Crashlytics record at all — the issue was
+            // invisible to ops. Now every playback failure includes the
+            // underlying error code, HTTP status, track URL, and book id.
+            Self.recordPlaybackFailure(error: error, position: position, bookId: bookId)
 
             // PP-3703: When BiblioBoard bearer token refresh fails due to SAML session expiration
             // (401 on CM fulfill link), trigger SAML re-login and then re-fetch fulfill to resume playback.
