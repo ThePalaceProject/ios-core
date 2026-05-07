@@ -56,6 +56,22 @@ P1_AREAS = [
     ("X5", "Book detail metadata (PP-4046)", "Audience + Language rows present, empties omitted"),
 ]
 
+# CarPlay items — manual-only (Simulator.app's CarPlay window is a separate
+# macOS process that simdrive HID injection cannot reach). To test:
+# 1. Boot iPhone sim with Palace installed and at least one borrowed audiobook.
+# 2. Open Simulator.app, bring it foreground.
+# 3. Menu → I/O → External → CarPlay (Xcode ≥ 12.x).
+# 4. CarPlay window opens; driver pixels with mouse/keyboard or accessibility.
+CARPLAY_AREAS = [
+    ("CP1", "CarPlay — first connect (cold)", "iPhone sim has audiobook in MyBooks; open Simulator.app I/O → External → CarPlay; verify Palace appears in CarPlay tab bar"),
+    ("CP2", "CarPlay — Now Playing template", "tap an audiobook → Now Playing template renders (artwork, title, transport bar, scrubber)"),
+    ("CP3", "CarPlay — Play/Pause/Skip ±30 transport", "exercise transport controls; verify state stays in sync with iPhone Now Playing"),
+    ("CP4", "CarPlay — disconnect / reconnect", "I/O → External → CarPlay (toggle) — confirm Palace doesn't crash on scene-disconnect; state preserved on reconnect"),
+    ("CP5", "CarPlay — book switching from list", "back → list template → pick a different audiobook → playback transitions cleanly"),
+    ("CP6", "CarPlay — feature-flag off", "TPPRemoteConfig.isCarPlayEnabled=false — Palace does NOT appear in CarPlay; verify graceful absence (no crash, no empty tab)"),
+    ("CP7", "CarPlay — re-enable for QA dev (PR #914 reference)", "flag re-enabled; PR #914 verified for QA build 472; confirm 3.1.0 keeps the flag in the right state"),
+]
+
 
 def render_checklist(output_dir: Path, baseline: str, candidate: str) -> str:
     changed_files: list[str] = []
@@ -150,6 +166,17 @@ def render_checklist(output_dir: Path, baseline: str, candidate: str) -> str:
     # Section 5: P1
     md.append("\n\n## 5. P1 core experience\n")
     for code, name, hint in P1_AREAS:
+        md.append(f"- [ ] **{code}** — {name}  _{hint}_")
+
+    # Section 5.5: CarPlay (manual-only)
+    md.append("\n\n## 6. CarPlay (manual-only — simdrive cannot reach the CarPlay window)\n")
+    md.append("**Setup (once per session):**\n")
+    md.append("1. Boot any iPhone sim with Palace installed.\n")
+    md.append("2. Sign in to a library and ensure at least one downloaded audiobook is in MyBooks.\n")
+    md.append("3. Open `Simulator.app`, bring it foreground.\n")
+    md.append("4. Menu: **I/O → External → CarPlay** (Xcode ≥ 12.x). CarPlay window opens — driven manually with mouse/keyboard.\n")
+    md.append("5. For PR #914 verification: confirm `TPPRemoteConfig.isCarPlayEnabled=true` for the QA dev build (471/472 line).\n\n")
+    for code, name, hint in CARPLAY_AREAS:
         md.append(f"- [ ] **{code}** — {name}  _{hint}_")
 
     md.append("\n\n## 6. Findings log\n")

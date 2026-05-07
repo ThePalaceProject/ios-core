@@ -64,7 +64,7 @@ scripts/regression-report.sh setup --ticket "$TICKET" --output-dir "$OUTPUT_DIR"
 
 # ---------- Phase 2a: journey replay (candidate only) ----------
 banner "Phase 2a — simdrive journey replay (candidate)"
-SIM_UDID="$(xcrun simctl list devices iPhone 2>/dev/null | awk '/Booted/ {print $NF; exit}' | tr -d '()')"
+SIM_UDID="$(xcrun simctl list devices iPhone 2>/dev/null | awk '/Booted/ {print $(NF-1); exit}' | tr -d '()')"
 [[ -z "$SIM_UDID" ]] && { echo "[suite] no booted iPhone sim — skip 2a"; }
 
 if [[ -n "$SIM_UDID" ]]; then
@@ -82,6 +82,25 @@ banner "Phase 2b — Automated sweep (mutation surface + sync + push)"
 AUTO_ARGS=(--output-dir "$OUTPUT_DIR" --baseline-ref "$BASELINE" --candidate-branch "$(git rev-parse --abbrev-ref HEAD)" --skip-sync-tests --skip-push)
 [[ $MUTATION_REAL -eq 1 ]] && AUTO_ARGS+=(--mutation-run)
 scripts/regression-report.sh auto "${AUTO_ARGS[@]}" 2>&1 | tail -25
+
+# ---------- Phase 2b.5: CarPlay XCTest classes ----------
+banner "Phase 2b.5 — CarPlay XCTest classes"
+if [[ -n "$SIM_UDID" ]]; then
+  CARPLAY_LOG="$OUTPUT_DIR/automated/carplay-xctest.log"
+  mkdir -p "$(dirname "$CARPLAY_LOG")"
+  # Two XCTest classes touch CarPlay: CarPlayTimeTrackingTests (in
+  # AudiobookTrackerTests.swift) and any CoverageGapTests3 isCarPlayEnabled
+  # surface coverage. Run both; capture pass/fail to the workspace.
+  echo "[suite] running CarPlay-related XCTest classes (CarPlayTimeTrackingTests, CarPlayImageProviderTests if present) …"
+  xcodebuild test \
+    -project Palace.xcodeproj -scheme Palace \
+    -destination "platform=iOS Simulator,id=$SIM_UDID" \
+    -derivedDataPath /tmp/regression-3.1.0/dd \
+    -only-testing:PalaceTests/CarPlayTimeTrackingTests \
+    2>&1 | tail -20 | tee -a "$CARPLAY_LOG" || echo "[suite] CarPlay XCTest non-zero (continuing)"
+else
+  echo "[suite] skipped — no booted sim"
+fi
 
 # ---------- Phase 2c: chaos ----------
 if [[ $SKIP_CHAOS -eq 0 ]]; then

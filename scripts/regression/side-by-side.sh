@@ -51,12 +51,12 @@ mkdir -p "$OUT"
 
 # Resolve sim B (candidate). Default: any iPhone 16 Pro that's NOT sim-A.
 if [[ -z "$SIM_B" ]]; then
-  SIM_B="$(xcrun simctl list devices iPhone 2>/dev/null | awk '/Booted/ {print $NF; exit}' | tr -d '()')"
+  SIM_B="$(xcrun simctl list devices iPhone 2>/dev/null | awk '/Booted/ {print $(NF-1); exit}' | tr -d '()')"
 fi
 
 # Resolve sim A (baseline). If not provided, find a SECOND booted sim.
 if [[ -z "$SIM_A" ]]; then
-  SIM_A="$(xcrun simctl list devices iPhone 2>/dev/null | awk '/Booted/ {print $NF}' | tr -d '()' | grep -v "$SIM_B" | head -1)"
+  SIM_A="$(xcrun simctl list devices iPhone 2>/dev/null | awk '/Booted/ {print $(NF-1)}' | tr -d '()' | grep -v "^${SIM_B}$" | head -1)"
 fi
 if [[ -z "$SIM_A" ]]; then
   echo "[side-by-side] cannot find a 2nd booted sim for baseline. Boot one with:" >&2

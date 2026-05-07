@@ -180,8 +180,27 @@ Findings with severity `major` or `blocker` and a saved replay become permanent 
 
 The suite **wraps** the existing scripts; it does not replace them. Anyone running `scripts/regression-report.sh setup` directly still gets the same workspace. The new `regression-suite.sh` is additive.
 
+## CarPlay coverage
+
+CarPlay is a tier-one Palace feature (audiobook playback in the car) but the
+CarPlay simulator window in `Simulator.app` is a separate macOS process from
+the iPhone simulator. simdrive's HID injection targets the iPhone sim's
+CoreSimulator process; it cannot drive the CarPlay window. So:
+
+| Layer | Tool | Coverage |
+|-------|------|----------|
+| Unit (XCTest) | `PalaceTests/CarPlayTimeTrackingTests` (in `AudiobookTrackerTests.swift`) | Time-tracking through CarPlay's `BookService.open() → AudiobookManager` flow. **Auto-run by suite Phase 2b.5.** |
+| Unit (XCTest) | `PalaceTests/CoverageGapTests3` `isCarPlayEnabled` surface | Feature-flag gate. **Auto-run by suite Phase 2b.** |
+| Manual (Simulator.app CarPlay window) | Section 6 in `MANUAL_CHECKLIST.md` | UI rendering, transport controls, disconnect/reconnect, feature-flag gate. **CP1–CP7 in the manual checklist.** |
+| Real device (CarPlay-capable headunit) | Out of suite scope | True hardware-side validation lives outside the iOS regression — needs a CarPlay rig. |
+
+The suite's role: run the XCTest layer automatically; surface explicit manual
+items for the Simulator.app CarPlay window in Section 6 of the checklist;
+document that real-device CarPlay validation isn't part of every regression.
+
 ## Open questions
 
 - Mutation real-run wall-clock budget — 30 min for >20 files. Probably split: smoke (~6 files, <10 min) per regression, full (~50 files, hours) per release-cycle.
 - Where does in-field signal live — workspace-local `MUST_TEST.md` only, or also a memory entry the next regression reads?
 - How does the suite handle a release-branch regression vs. a develop-tip regression — different baselines, different in-field signal scope.
+- Real-device CarPlay validation cadence — every release? Quarterly? Behind a feature-flag deployment?
