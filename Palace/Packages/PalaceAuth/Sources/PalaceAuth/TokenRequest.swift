@@ -10,36 +10,36 @@ import Foundation
 import PalaceLogging
 import PalaceCatalog
 
-@objc class TokenResponse: NSObject, Codable {
-    @objc let accessToken: String
-    let tokenType: String
-    @objc let expiresIn: Int
+@objcMembers public class TokenResponse: NSObject, Codable {
+    @objc public let accessToken: String
+    public let tokenType: String
+    @objc public let expiresIn: Int
 
-    @objc init(accessToken: String, tokenType: String, expiresIn: Int) {
+    @objc public init(accessToken: String, tokenType: String, expiresIn: Int) {
         self.accessToken = accessToken
         self.tokenType = tokenType
         self.expiresIn = expiresIn
     }
 }
 
-@objc extension TokenResponse {
+@objc public extension TokenResponse {
     var expirationDate: Date {
         Date(timeIntervalSinceNow: Double(expiresIn))
     }
 }
 
-@objc class TokenRequest: NSObject {
-    let url: URL
-    let username: String
-    let password: String
+@objcMembers public class TokenRequest: NSObject {
+    public let url: URL
+    public let username: String
+    public let password: String
 
-    @objc init(url: URL, username: String, password: String) {
+    @objc public init(url: URL, username: String, password: String) {
         self.url = url
         self.username = username
         self.password = password
     }
 
-    func execute(session: URLSession = .shared) async -> Result<TokenResponse, Error> {
+    public func execute(session: URLSession = .shared) async -> Result<TokenResponse, Error> {
         Log.info(#file, "Requesting token from: \(url.absoluteString)")
 
         let looksLikeBarcode = username.allSatisfy({ $0.isNumber }) && username.count >= 5
@@ -57,9 +57,15 @@ import PalaceCatalog
         // pinless login for libraries like Wolcott Public Library and Bentley
         // Memorial Library (PP-4045).
 
-        var request = URLRequest(url: url, applyingCustomUserAgent: true)
+        // Build the request directly — the main-target `URLRequest(url:applyingCustomUserAgent:)`
+        // initializer is not available in the package. Disable optimistic HTTP/3
+        // (some library servers advertise h3 with a broken QUIC implementation
+        // that wastes ~260ms before falling back to h2); main-target callers
+        // can layer the custom User-Agent in via `applyCustomUserAgent()` on
+        // the resulting request before mutating it.
+        var request = URLRequest(url: url)
         request.assumesHTTP3Capable = false
-        request.httpMethod = HTTPMethodType.POST.rawValue
+        request.httpMethod = "POST"
 
         let loginString = "\(username):\(password)"
         guard let loginData = loginString.data(using: .utf8) else {
@@ -108,7 +114,7 @@ import PalaceCatalog
 }
 
 extension TokenRequest {
-    @objc func execute(completion: @escaping (TokenResponse?, Error?) -> Void) {
+    @objc public func execute(completion: @escaping (TokenResponse?, Error?) -> Void) {
         Task {
             let result = await execute()
             switch result {

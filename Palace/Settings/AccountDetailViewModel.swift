@@ -10,6 +10,7 @@ import Combine
 import LocalAuthentication
 import PalaceLogging
 import PalaceNetwork
+import PalaceAuth
 
 @MainActor
 class AccountDetailViewModel: NSObject, ObservableObject {
@@ -174,7 +175,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         if let account = selectedAccount {
             frontEndValidator = TPPUserAccountFrontEndValidation(
                 account: account,
-                businessLogic: businessLogic,
+                validationContext: businessLogic,
                 inputProvider: self
             )
         }

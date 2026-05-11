@@ -9,6 +9,7 @@
 import CoreLocation
 import PalaceLogging
 import PalaceCatalog
+import PalaceAuth
 
 @objc enum TPPAuthRequestType: Int {
     case signIn = 1
@@ -32,9 +33,9 @@ import PalaceCatalog
     func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: ((Bool, Error?) -> Void)!)
 }
 
-#if FEATURE_DRM_CONNECTOR
-extension NYPLADEPT: TPPDRMAuthorizing {}
-#endif
+// NYPLADEPT's conformance to TPPDRMAuthorizing now lives at
+// `Palace/Accounts/User/NYPLADEPT+TPPDRMAuthorizing.swift` (added to xcodeproj
+// during the swarm_ea663ab6 recovery wiring stage).
 
 class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibraryAccountProvider {
     var onLocationAuthorizationCompletion: (UINavigationController?, Error?) -> Void = {_, _ in }
@@ -81,9 +82,20 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         self.userAccountProvider = userAccountProvider
         self.networker = networkExecutor
         self.drmAuthorizer = drmAuthorizer
-        self._samlHelper = TPPSAMLHelper()
+        // Pre-init the SAML adapters; cross-references are wired post-super.init.
+        let samlContext = LegacySAMLAuthContext()
+        let samlPresenter = LegacySAMLWebViewPresenter()
+        self._samlContext = samlContext
+        self._samlPresenter = samlPresenter
+        self._samlHelper = TPPSAMLHelper(
+            universalLinksProvider: UniversalLinksAdapter(provider: urlSettingsProvider),
+            context: samlContext,
+            presenter: samlPresenter
+        )
         super.init()
-        self._samlHelper.businessLogic = self
+        // Now that `self` is fully initialized, wire the back-references.
+        samlContext.businessLogic = self
+        samlPresenter.uiDelegate = self.uiDelegate
     }
 
     /// Signing in and out may imply syncing the book registry.
@@ -161,6 +173,14 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// Eagerly created for backward compatibility; use `samlHelperIfNeeded`
     /// for lazy access when SAML support is not guaranteed.
     private let _samlHelper: TPPSAMLHelper
+
+    /// Strong reference to the SAML context adapter — TPPSAMLHelper holds it
+    /// weakly, so without this retain it would be released immediately after
+    /// init returns.
+    private let _samlContext: LegacySAMLAuthContext
+
+    /// Strong reference to the SAML presenter adapter — see _samlContext.
+    private let _samlPresenter: LegacySAMLWebViewPresenter
 
     /// The SAML helper — always available (eagerly created in init).
     var samlHelper: TPPSAMLHelper { _samlHelper }
