@@ -8,13 +8,18 @@
 
 import Foundation
 
-/// This is a helper class to use with Objective-C code
-@objc public class AudioBookVendorsHelper: NSObject {
+public enum AudioBookVendorsHelper {
 
-    /// Get vendor for the book JSON data
-    /// - Parameter book: Book JSON dictionary
-    /// - Returns: AudioBookVendors vendor item, if found, `nil` otherwise
-    private static func feedbookVendor(for book: [String: Any]) -> AudioBookVendors? {
+    /// Get vendor for the book JSON data.
+    ///
+    /// Exposed (was `private`) so callers can resolve the vendor synchronously
+    /// before entering an async closure. Capturing the `[String: Any]` book
+    /// dictionary across an async boundary causes EXC_BREAKPOINT crashes in
+    /// `block_destroy_helper` when the closure tears down on cantook DRM books
+    /// (Crashlytics issue 7bf923ee). Resolving the vendor up front lets the
+    /// caller skip the async hop entirely for non-DRM books and avoid
+    /// capturing the dictionary in the DRM path.
+    static func feedbookVendor(for book: [String: Any]) -> AudioBookVendors? {
         guard let metadata = book["metadata"] as? [String: Any],
               let signature = metadata["http://www.feedbooks.com/audiobooks/signature"] as? [String: Any],
               let issuer = signature["issuer"] as? String
@@ -27,23 +32,33 @@ import Foundation
         }
     }
 
-    /// Check if vendor key is valid and update it if not.
-    /// - Parameters:
-    ///   - book: Book JSON dictionary
-    ///   - completion: completion
-    @objc public static func updateVendorKey(book: [String: Any], completion: @escaping (_ error: NSError?) -> Void) {
-        if let vendor = self.feedbookVendor(for: book) {
-            vendor.updateDrmCertificate { error in
-                completion(self.nsError(for: error))
-            }
+    /// Refresh the DRM certificate for a vendor that was already resolved
+    /// synchronously by the caller via ``feedbookVendor(for:)``. Caller is
+    /// responsible for not capturing the source `[String: Any]` book
+    /// dictionary in the completion closure.
+    static func updateDrmCertificate(
+        for vendor: AudioBookVendors,
+        completion: @escaping (_ error: NSError?) -> Void
+    ) {
+        vendor.updateDrmCertificate { error in
+            completion(self.nsError(for: error))
+        }
+    }
+
+    /// Convenience entry point that resolves vendor + refreshes cert in one
+    /// call. Prefer the two-step form (``feedbookVendor(for:)`` +
+    /// ``updateDrmCertificate(for:completion:)``) at hot async sites.
+    static func updateVendorKey(
+        book: [String: Any],
+        completion: @escaping (_ error: NSError?) -> Void
+    ) {
+        if let vendor = feedbookVendor(for: book) {
+            updateDrmCertificate(for: vendor, completion: completion)
         } else {
             completion(nil)
         }
     }
 
-    /// Creates an NSError for Objective-C code providing a readable error message for `DPLAError` errors
-    /// - Parameter error: Error object
-    /// - Returns: NSError object
     private static func nsError(for error: Error?) -> NSError? {
         guard let error = error else {
             return nil
