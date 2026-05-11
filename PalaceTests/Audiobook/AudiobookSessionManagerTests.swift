@@ -387,3 +387,101 @@ final class AudiobookPhoneAlertContentTests: XCTestCase {
         }
     }
 }
+
+// MARK: - PlaybackFailure Crashlytics Record Tests
+
+/// Covers `AudiobookSessionManager.buildPlaybackFailureRecord` — the pure
+/// builder behind the Crashlytics non-fatal recorded on every playback
+/// failure. Background: BiblioBoard 403 responses on A1QA Test Library's
+/// "Animal Farm" surfaced as a generic "A Problem Has Occurred" toast and
+/// produced **zero** Crashlytics records, so the issue was invisible to ops.
+/// These tests pin the userInfo shape so future regressions don't drop the
+/// HTTP status / track URL / book id keys.
+final class PlaybackFailureRecordTests: XCTestCase {
+
+    private let kPalaceAudiobookDomain = "org.thepalaceproject.palace.audiobookPlayback"
+    private let kOpenAccessDomain = "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer"
+
+    func testRecord_NilError_RecordsBookIdAndDefaultCode() {
+        let record = AudiobookSessionManager.buildPlaybackFailureRecord(
+            error: nil, position: nil, bookId: "book-42"
+        )
+        XCTAssertEqual(record.domain, kPalaceAudiobookDomain)
+        XCTAssertEqual(record.code, -1, "nil underlying error → record.code = -1 sentinel")
+        XCTAssertEqual(record.userInfo["bookId"] as? String, "book-42")
+        XCTAssertEqual(record.userInfo["trackTitle"] as? String, "unknown")
+        XCTAssertEqual(record.userInfo["trackPosition"] as? String, "unknown")
+        XCTAssertNil(record.userInfo["underlyingDomain"], "no underlying error → no underlyingDomain key")
+    }
+
+    func testRecord_NilBookId_FallsBackToUnknown() {
+        let record = AudiobookSessionManager.buildPlaybackFailureRecord(
+            error: nil, position: nil, bookId: nil
+        )
+        XCTAssertEqual(record.userInfo["bookId"] as? String, "unknown",
+                       "missing bookId must not fail the record — fall back to 'unknown'")
+    }
+
+    func testRecord_OpenAccess403_PreservesHttpStatusAndUrl() {
+        // Mirrors what OpenAccessDownloadTask now publishes on 403.
+        let underlying = NSError(
+            domain: kOpenAccessDomain,
+            code: 6, // OpenAccessPlayerError.contentForbidden.rawValue
+            userInfo: [
+                NSLocalizedDescriptionKey: "Title Unavailable",
+                "httpStatusCode": 403,
+                "trackKey": "https://library.biblioboard.com/ext/api/media/abc/assets/content/SID-1_0001_64k.mp3",
+                "url": "https://library.biblioboard.com/ext/api/media/abc/assets/content/SID-1_0001_64k.mp3",
+            ]
+        )
+        let record = AudiobookSessionManager.buildPlaybackFailureRecord(
+            error: underlying, position: nil, bookId: "loan-book-7"
+        )
+        // Record propagates the underlying code so Crashlytics groups by
+        // contentForbidden rather than collapsing every audiobook error.
+        XCTAssertEqual(record.code, 6, "underlying error code surfaces on the non-fatal")
+        XCTAssertEqual(record.userInfo["underlyingDomain"] as? String, kOpenAccessDomain)
+        XCTAssertEqual(record.userInfo["underlyingCode"] as? Int, 6)
+        XCTAssertEqual(record.userInfo["httpStatusCode"] as? Int, 403,
+                       "status code must round-trip — that's the whole point of this fix")
+        XCTAssertEqual(
+            record.userInfo["trackKey"] as? String,
+            "https://library.biblioboard.com/ext/api/media/abc/assets/content/SID-1_0001_64k.mp3"
+        )
+        XCTAssertEqual(record.userInfo["bookId"] as? String, "loan-book-7")
+    }
+
+    func testRecord_OnlyAllowedSubKeysPropagate_BlocksAccidentalLeakage() {
+        // The userInfo whitelist is "httpStatusCode | trackKey | url" — anything
+        // else from underlying.userInfo (e.g. an internal session token) must
+        // NOT leak into the Crashlytics record. Verify by including a junk key.
+        let underlying = NSError(
+            domain: kOpenAccessDomain,
+            code: 5,
+            userInfo: [
+                "httpStatusCode": 401,
+                "sessionToken": "DO-NOT-LOG-THIS-SECRET",
+                "url": "https://example.com/track.mp3",
+            ]
+        )
+        let record = AudiobookSessionManager.buildPlaybackFailureRecord(
+            error: underlying, position: nil, bookId: "b"
+        )
+        XCTAssertEqual(record.userInfo["httpStatusCode"] as? Int, 401)
+        XCTAssertEqual(record.userInfo["url"] as? String, "https://example.com/track.mp3")
+        XCTAssertNil(record.userInfo["sessionToken"],
+                     "sessionToken must NOT propagate — only the allow-listed keys leak through")
+    }
+
+    func testRecord_LocalizedDescriptionPrefixed() {
+        let underlying = NSError(domain: "x", code: 1, userInfo: [NSLocalizedDescriptionKey: "boom"])
+        let record = AudiobookSessionManager.buildPlaybackFailureRecord(
+            error: underlying, position: nil, bookId: nil
+        )
+        let desc = record.userInfo[NSLocalizedDescriptionKey] as? String ?? ""
+        XCTAssertTrue(desc.hasPrefix("Audiobook playback failed: "),
+                      "operator-readable summary prefix should be present")
+        XCTAssertTrue(desc.hasSuffix("boom"),
+                      "underlying message should appear at the end of the summary")
+    }
+}
