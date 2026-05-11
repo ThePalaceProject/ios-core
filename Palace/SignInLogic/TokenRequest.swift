@@ -81,21 +81,11 @@ import PalaceCatalog
                 if httpResponse.statusCode != 200 {
                     let errorMsg = String(data: data, encoding: .utf8) ?? "No error message"
                     Log.error(#file, "Token request failed with status \(httpResponse.statusCode): \(errorMsg)")
-
-                    // Attempt to surface a server-supplied problem document so callers can
-                    // show the real reason to the user (e.g. "Expired card") instead of the
-                    // generic "Invalid Credentials" fallback.
-                    if let problemDoc = TPPProblemDocument.fromProblemResponseData(data) {
-                        return .failure(NSError.makeFromProblemDocument(
-                            problemDoc,
-                            domain: "TokenRequest",
-                            code: httpResponse.statusCode,
-                            userInfo: [NSLocalizedDescriptionKey: "Server returned status \(httpResponse.statusCode)"]
-                        ))
-                    }
-
-                    return .failure(NSError(domain: "TokenRequest", code: httpResponse.statusCode,
-                                            userInfo: [NSLocalizedDescriptionKey: "Server returned status \(httpResponse.statusCode)"]))
+                    return .failure(NSError.makeFromHTTPResponse(
+                        data: data,
+                        statusCode: httpResponse.statusCode,
+                        domain: "TokenRequest",
+                        userInfo: [NSLocalizedDescriptionKey: "Server returned status \(httpResponse.statusCode)"]))
                 }
             }
 
