@@ -1,0 +1,7 @@
+# Captured state fixtures are large, machine-specific, and regenerable.
+# Keep .gitkeep tracked so the directory exists in fresh clones; ignore
+# everything else.
+*.tgz
+*.meta.json
+!.gitkeep
+!README.md
