@@ -491,9 +491,25 @@ extension TPPNetworkExecutor {
                             }
                         }
 
-                        let nsError = NSError(domain: TPPErrorLogger.clientDomain,
+                        // Preserve any RFC 7807 problem document that TokenRequest
+                        // already embedded (e.g. "Expired Card") so the sign-in UI
+                        // can show the server-supplied reason instead of falling
+                        // back to "Invalid Credentials" on token refresh failure.
+                        let userInfo: [String: Any] = [
+                            NSLocalizedDescriptionKey: "Token refresh failed: \(error.localizedDescription)"
+                        ]
+                        let nsError: NSError
+                        if let upstreamProblemDoc = (error as NSError).problemDocument {
+                            nsError = NSError.makeFromProblemDocument(
+                                upstreamProblemDoc,
+                                domain: TPPErrorLogger.clientDomain,
+                                code: TPPErrorCode.invalidCredentials.rawValue,
+                                userInfo: userInfo)
+                        } else {
+                            nsError = NSError(domain: TPPErrorLogger.clientDomain,
                                               code: TPPErrorCode.invalidCredentials.rawValue,
-                                              userInfo: [NSLocalizedDescriptionKey: "Token refresh failed: \(error.localizedDescription)"])
+                                              userInfo: userInfo)
+                        }
                         completion?(NYPLResult.failure(nsError, nil))
                     }
                 }
