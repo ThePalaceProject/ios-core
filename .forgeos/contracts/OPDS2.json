@@ -1,0 +1,35 @@
+{
+  "module": "OPDS2",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 4,
+  "shared_singleton_reads": 2,
+  "public_types": [
+    {
+      "name": "Configuration",
+      "kind": "struct",
+      "file": "Cache/OPDSFeedCache.swift",
+      "line": 59
+    },
+    {
+      "name": "OPDSCacheEntry",
+      "kind": "struct",
+      "file": "Cache/OPDSFeedCache.swift",
+      "line": 16
+    },
+    {
+      "name": "OPDSFeedCaching",
+      "kind": "protocol",
+      "file": "Cache/OPDSFeedCache.swift",
+      "line": 42
+    }
+  ],
+  "objc_surface": [],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "OPDSFeedFetching",
+      "file": "OPDSFeedService.swift",
+      "line": 16
+    }
+  ]
+}

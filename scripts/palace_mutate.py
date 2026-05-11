@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
 import json
 import os
 import random
@@ -50,6 +51,8 @@ from typing import Callable, Iterable
 
 REPO_ROOT = "/Users/mauricework/PalaceProject/ios-core"
 SIM_ID = "DF4A2A27-9888-429D-A749-2E157A049A37"
+DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".forgeos", "mutation-cache")
+CACHE_VERSION = 1  # bump when cache schema changes
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +209,62 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = 600) -> tuple
 
 
 # ---------------------------------------------------------------------------
+# Cache
+# ---------------------------------------------------------------------------
+
+def cache_key(file_content: str, tests: list[str], seed: int, max_mutations: int) -> str:
+    """Stable hash of the inputs that determine mutation results.
+
+    Cache invalidates when the file changes, the test selection changes, or
+    the run parameters change. Cache survives unrelated edits to other files.
+    """
+    h = hashlib.sha256()
+    h.update(f"v{CACHE_VERSION}\n".encode())
+    h.update(file_content.encode())
+    h.update(b"\n--tests--\n")
+    for t in sorted(tests):
+        h.update(t.encode())
+        h.update(b"\n")
+    h.update(f"--seed={seed}\n--max={max_mutations}\n".encode())
+    return h.hexdigest()[:16]
+
+
+def cache_path(cache_dir: str, file_relpath: str, key: str) -> str:
+    """Cache file path: <cache-dir>/<file-leaf>.<key>.json.
+
+    Including the file leaf in the path makes it easy to find/inspect cached
+    runs by eye; the hash makes cache lookup O(1) by exact match.
+    """
+    leaf = os.path.basename(file_relpath).replace(".swift", "")
+    return os.path.join(cache_dir, f"{leaf}.{key}.json")
+
+
+def cache_load(cache_dir: str, file_relpath: str, key: str) -> dict | None:
+    path = cache_path(cache_dir, file_relpath, key)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def cache_store(cache_dir: str, file_relpath: str, key: str, report: dict) -> str:
+    os.makedirs(cache_dir, exist_ok=True)
+    path = cache_path(cache_dir, file_relpath, key)
+    payload = {
+        "cache_version": CACHE_VERSION,
+        "cache_key": key,
+        "stored_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "report": report,
+    }
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2)
+    return path
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -219,6 +278,10 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true", help="discover mutations and exit, don't run tests")
     p.add_argument("--report", default="palace-mutate-report.json", help="output JSON report")
     p.add_argument("--quiet", action="store_true", help="suppress per-mutation output")
+    p.add_argument("--cache-dir", default=DEFAULT_CACHE_DIR,
+                   help=f"mutation result cache dir (default: {DEFAULT_CACHE_DIR})")
+    p.add_argument("--no-cache", action="store_true",
+                   help="ignore cached results and re-run mutations")
     args = p.parse_args()
 
     file_path = os.path.join(REPO_ROOT, args.file)
@@ -234,6 +297,25 @@ def main() -> int:
         print(f"No mutation points found in {args.file}")
         print("This file has no testable mutations (no comparison/boolean/return-flip operators).")
         return 1
+
+    # Cache check: if we've already mutation-tested this exact file content
+    # against this exact test selection, we can skip the (slow) re-run.
+    key = cache_key(original, args.tests, args.seed, args.max_mutations)
+    if not args.no_cache and not args.dry_run:
+        cached = cache_load(args.cache_dir, args.file, key)
+        if cached:
+            report = cached["report"]
+            summary = report.get("summary", {})
+            print(f"palace-mutate: {args.file}  [CACHED]")
+            print(f"  cache key: {key} (stored {cached.get('stored_at', '?')})")
+            print(f"  killed: {summary.get('killed')}  survived: {summary.get('survived')}  "
+                  f"errored: {summary.get('errored')}  kill rate: {summary.get('kill_rate_pct')}%")
+            with open(args.report, "w") as f:
+                json.dump(report, f, indent=2)
+            print(f"  report: {args.report}")
+            kill_rate = summary.get("kill_rate_pct", 0.0) or 0.0
+            total_run = (summary.get("killed", 0) or 0) + (summary.get("survived", 0) or 0)
+            return 1 if total_run > 0 and kill_rate < 50 else 0
 
     # Stable randomized order so each run is reproducible but covers diverse mutations.
     rng = random.Random(args.seed)
@@ -334,6 +416,13 @@ def main() -> int:
     with open(args.report, "w") as f:
         json.dump(report, f, indent=2)
     print(f"report: {args.report}")
+
+    if not args.no_cache:
+        try:
+            stored = cache_store(args.cache_dir, args.file, key, report)
+            print(f"cached: {os.path.relpath(stored, REPO_ROOT)}")
+        except OSError as e:
+            print(f"cache write failed (non-fatal): {e}", file=sys.stderr)
 
     # Exit non-zero if survival rate is concerningly high
     if total_run > 0 and kill_rate < 50:

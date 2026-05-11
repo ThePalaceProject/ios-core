@@ -158,6 +158,26 @@ A test that doesn't kill any mutants should be rewritten to test the actual beha
 
 Two build phases (two targets) — new source files need entries in both Sources sections.
 
+**Don't hand-edit `Palace.xcodeproj/project.pbxproj`.** Use the helper:
+
+```bash
+ruby scripts/pbxproj_add_swift.rb [--targets Palace,Palace-noDRM] [--group <path>] FILE [FILE ...]
+```
+
+It's idempotent, auto-routes test files (`PalaceTests/...`) to the `PalaceTests` target, and adds all 6 entries (PBXBuildFile×N, PBXFileReference, PBXGroup membership, PBXSourcesBuildPhase×N) cleanly via the `xcodeproj` Ruby gem.
+
+## Multi-module orchestration — /swarm
+
+For changes that touch ≥2 top-level modules (e.g. SPM extractions, cross-module features, refactors with cross-target API changes), use the `/swarm` skill (`.claude/skills/swarm/SKILL.md`). It runs a triage→dispatch→integrate→promote loop: an architect agent identifies modules and writes contract deltas to `.forgeos/swarms/<id>/`; parallel module-implementer subagents land changes against those contracts; `verify-pr.sh` + `forge-review` gate integration. Single-module work and bugfixes <50 LOC stay single-agent — triage overhead exceeds parallelism gain. See [`docs/architecture/swarm-workflow.md`](./docs/architecture/swarm-workflow.md) for rationale and decision log.
+
+Module contracts under `.forgeos/contracts/<module>.json` are emitted by `scripts/export-module-contracts.py` and consumed by the architect; `verify-pr.sh` calls `--check` to flag PRs that change a module's public surface without contract update.
+
+## Mutation testing
+
+Mutation results cache to `.forgeos/mutation-cache/` keyed by file SHA + test selection. `verify-pr.sh` reads the cache automatically — repeat runs on unchanged files are near-instant (<1s vs minutes).
+
+`verify-pr.sh --enforce-mutations` makes the 50% kill-rate threshold strict for ALL changed files. Default mode keeps strict-only on critical paths: `Palace/Audiobooks/`, `Palace/SignInLogic/`, `Palace/MyBooks/Download*`. Other paths warn but don't fail.
+
 ## Secrets
 
 Never commit: `APIKeys.swift`, `GoogleService-Info.plist`, `TPPSecrets.swift`, `.env` files.

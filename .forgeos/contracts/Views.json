@@ -1,0 +1,107 @@
+{
+  "module": "Views",
+  "generated_at": "2026-05-07T05:14:50+00:00",
+  "file_count": 5,
+  "shared_singleton_reads": 3,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "TPPIndeterminateProgressView",
+      "kind": "class",
+      "file": "TPPIndeterminateProgressView.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPLinearView",
+      "kind": "class",
+      "file": "TPPLinearView.swift",
+      "line": 9
+    },
+    {
+      "name": "TPPLinearViewContentVerticalAlignment",
+      "kind": "enum",
+      "file": "TPPLinearView.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPRoundedButton",
+      "kind": "class",
+      "file": "TPPRoundedButton.swift",
+      "line": 18
+    },
+    {
+      "name": "TPPRoundedButtonType",
+      "kind": "enum",
+      "file": "TPPRoundedButton.swift",
+      "line": 13
+    },
+    {
+      "name": "color",
+      "kind": "var",
+      "file": "TPPIndeterminateProgressView.swift",
+      "line": 7
+    },
+    {
+      "name": "configure",
+      "kind": "func",
+      "file": "RegistrationCell.swift",
+      "line": 85
+    },
+    {
+      "name": "configureForDeniedLocationAccess",
+      "kind": "func",
+      "file": "RegistrationCell.swift",
+      "line": 97
+    },
+    {
+      "name": "contentVerticalAlignment",
+      "kind": "var",
+      "file": "TPPLinearView.swift",
+      "line": 11
+    },
+    {
+      "name": "padding",
+      "kind": "var",
+      "file": "TPPLinearView.swift",
+      "line": 15
+    },
+    {
+      "name": "setEndDate",
+      "kind": "func",
+      "file": "TPPRoundedButton.swift",
+      "line": 56
+    },
+    {
+      "name": "setFromDetailView",
+      "kind": "func",
+      "file": "TPPRoundedButton.swift",
+      "line": 63
+    },
+    {
+      "name": "setType",
+      "kind": "func",
+      "file": "TPPRoundedButton.swift",
+      "line": 52
+    },
+    {
+      "name": "speedMultiplier",
+      "kind": "var",
+      "file": "TPPIndeterminateProgressView.swift",
+      "line": 11
+    },
+    {
+      "name": "startAnimating",
+      "kind": "func",
+      "file": "TPPIndeterminateProgressView.swift",
+      "line": 35
+    },
+    {
+      "name": "stopAnimating",
+      "kind": "func",
+      "file": "TPPIndeterminateProgressView.swift",
+      "line": 40
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": []
+}

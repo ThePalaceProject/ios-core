@@ -1,0 +1,17 @@
+{
+  "module": "CatalogUI",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 19,
+  "shared_singleton_reads": 5,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "_uuid",
+      "kind": "var",
+      "file": "Views/FacetsSelectorView.swift",
+      "line": 88
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": []
+}

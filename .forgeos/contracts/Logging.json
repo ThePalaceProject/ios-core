@@ -1,0 +1,101 @@
+{
+  "module": "Logging",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 10,
+  "shared_singleton_reads": 15,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "NSURLRequest",
+      "kind": "extension",
+      "file": "URLRequest+Logging.swift",
+      "line": 25
+    },
+    {
+      "name": "TPPCirculationAnalytics",
+      "kind": "class",
+      "file": "TPPCirculationAnalytics.swift",
+      "line": 7
+    },
+    {
+      "name": "TPPErrorCode",
+      "kind": "enum",
+      "file": "TPPErrorLogger.swift",
+      "line": 128
+    },
+    {
+      "name": "TPPErrorLogger",
+      "kind": "class",
+      "file": "TPPErrorLogger.swift",
+      "line": 241
+    },
+    {
+      "name": "TPPErrorOrigin",
+      "kind": "enum",
+      "file": "TPPErrorLogger.swift",
+      "line": 22
+    },
+    {
+      "name": "TPPSeverity",
+      "kind": "enum",
+      "file": "TPPErrorLogger.swift",
+      "line": 111
+    },
+    {
+      "name": "copyCurrentTab",
+      "kind": "func",
+      "file": "LogPreviewViewController.swift",
+      "line": 321
+    },
+    {
+      "name": "dismissKeyboard",
+      "kind": "func",
+      "file": "LogPreviewViewController.swift",
+      "line": 315
+    },
+    {
+      "name": "loggableDictionary",
+      "kind": "func",
+      "file": "TPPBook+Logging.swift",
+      "line": 19
+    },
+    {
+      "name": "loggableShortString",
+      "kind": "func",
+      "file": "TPPBook+Logging.swift",
+      "line": 13
+    },
+    {
+      "name": "nextMatch",
+      "kind": "func",
+      "file": "LogPreviewViewController.swift",
+      "line": 307
+    },
+    {
+      "name": "previousMatch",
+      "kind": "func",
+      "file": "LogPreviewViewController.swift",
+      "line": 299
+    },
+    {
+      "name": "segmentChanged",
+      "kind": "func",
+      "file": "LogPreviewViewController.swift",
+      "line": 159
+    },
+    {
+      "name": "shareLogs",
+      "kind": "func",
+      "file": "LogPreviewViewController.swift",
+      "line": 329
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "ErrorLogging",
+      "file": "ErrorLogging.swift",
+      "line": 21
+    }
+  ]
+}

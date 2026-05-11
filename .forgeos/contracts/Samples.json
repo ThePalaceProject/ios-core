@@ -1,0 +1,53 @@
+{
+  "module": "Samples",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 7,
+  "shared_singleton_reads": 0,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "EpubLocationSampleURL",
+      "kind": "class",
+      "file": "EpubSamplePlayer/EpubSampleFactory.swift",
+      "line": 12
+    },
+    {
+      "name": "EpubSampleFactory",
+      "kind": "class",
+      "file": "EpubSamplePlayer/EpubSampleFactory.swift",
+      "line": 22
+    },
+    {
+      "name": "EpubSampleWebURL",
+      "kind": "class",
+      "file": "EpubSamplePlayer/EpubSampleFactory.swift",
+      "line": 20
+    },
+    {
+      "name": "createSample",
+      "kind": "func",
+      "file": "EpubSamplePlayer/EpubSampleFactory.swift",
+      "line": 25
+    },
+    {
+      "name": "setDuration",
+      "kind": "func",
+      "file": "AudiobookSamplePlayer/AudiobookSamplePlayer.swift",
+      "line": 115
+    },
+    {
+      "name": "url",
+      "kind": "var",
+      "file": "EpubSamplePlayer/EpubSampleFactory.swift",
+      "line": 13
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "Sample",
+      "file": "Sample.swift",
+      "line": 28
+    }
+  ]
+}

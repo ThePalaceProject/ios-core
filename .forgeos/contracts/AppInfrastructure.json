@@ -1,0 +1,245 @@
+{
+  "module": "AppInfrastructure",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 21,
+  "shared_singleton_reads": 30,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "APIKeys",
+      "kind": "class",
+      "file": "APIKeys.swift",
+      "line": 3
+    },
+    {
+      "name": "NSNotification",
+      "kind": "extension",
+      "file": "NSNotification+TPP.swift",
+      "line": 41
+    },
+    {
+      "name": "TPPAppStoreReviewPrompt",
+      "kind": "class",
+      "file": "TPPAppReviewPrompt.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPAppTheme",
+      "kind": "class",
+      "file": "TPPAppTheme.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPBookContentMetadataFilesHelper",
+      "kind": "class",
+      "file": "TPPBookContentMetadataFilesHelper.swift",
+      "line": 5
+    },
+    {
+      "name": "TPPConfiguration",
+      "kind": "class",
+      "file": "TPPConfiguration.swift",
+      "line": 3
+    },
+    {
+      "name": "accentColor",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 13
+    },
+    {
+      "name": "appearance",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 73
+    },
+    {
+      "name": "audiobookIconColor",
+      "kind": "func",
+      "file": "TPPConfiguration+SE.swift",
+      "line": 65
+    },
+    {
+      "name": "backgroundColor",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 17
+    },
+    {
+      "name": "backgroundMediaOverlayHighlightColor",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 33
+    },
+    {
+      "name": "backgroundMediaOverlayHighlightDarkColor",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 37
+    },
+    {
+      "name": "backgroundMediaOverlayHighlightSepiaColor",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 41
+    },
+    {
+      "name": "boldSystemFontName",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 57
+    },
+    {
+      "name": "bookProcessingBookIDKey",
+      "kind": "let",
+      "file": "NSNotification+TPP.swift",
+      "line": 63
+    },
+    {
+      "name": "bookProcessingValueKey",
+      "kind": "let",
+      "file": "NSNotification+TPP.swift",
+      "line": 64
+    },
+    {
+      "name": "compatiblePrimaryColor",
+      "kind": "func",
+      "file": "TPPConfiguration+SE.swift",
+      "line": 85
+    },
+    {
+      "name": "compatibleTextColor",
+      "kind": "func",
+      "file": "TPPConfiguration+SE.swift",
+      "line": 93
+    },
+    {
+      "name": "defaultAppearance",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 69
+    },
+    {
+      "name": "defaultBookmarkRowHeight",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 65
+    },
+    {
+      "name": "defaultTOCRowHeight",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 61
+    },
+    {
+      "name": "handleMemoryWarning",
+      "kind": "func",
+      "file": "TPPAppDelegate.swift",
+      "line": 600
+    },
+    {
+      "name": "handlePowerModeChanged",
+      "kind": "func",
+      "file": "TPPAppDelegate.swift",
+      "line": 617
+    },
+    {
+      "name": "handleThermalStateChanged",
+      "kind": "func",
+      "file": "TPPAppDelegate.swift",
+      "line": 613
+    },
+    {
+      "name": "iconColor",
+      "kind": "func",
+      "file": "TPPConfiguration+SE.swift",
+      "line": 77
+    },
+    {
+      "name": "iconLogoBlueColor",
+      "kind": "func",
+      "file": "TPPConfiguration+SE.swift",
+      "line": 61
+    },
+    {
+      "name": "iconLogoGreenColor",
+      "kind": "func",
+      "file": "TPPConfiguration+SE.swift",
+      "line": 69
+    },
+    {
+      "name": "mainColor",
+      "kind": "func",
+      "file": "TPPConfiguration+SE.swift",
+      "line": 47
+    },
+    {
+      "name": "mainFeedURL",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 5
+    },
+    {
+      "name": "palaceRed",
+      "kind": "func",
+      "file": "TPPConfiguration+SE.swift",
+      "line": 51
+    },
+    {
+      "name": "readerBackgroundColor",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 21
+    },
+    {
+      "name": "readerBackgroundDarkColor",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 25
+    },
+    {
+      "name": "readerBackgroundSepiaColor",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 29
+    },
+    {
+      "name": "registryChanged",
+      "kind": "var",
+      "file": "TPPConfiguration+SE.swift",
+      "line": 27
+    },
+    {
+      "name": "semiBoldSystemFontName",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 53
+    },
+    {
+      "name": "systemFontFamilyName",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 45
+    },
+    {
+      "name": "systemFontName",
+      "kind": "func",
+      "file": "TPPConfiguration.swift",
+      "line": 49
+    },
+    {
+      "name": "topViewController",
+      "kind": "func",
+      "file": "TPPAppDelegate+Extensions.swift",
+      "line": 12
+    },
+    {
+      "name": "updateSavedeRegistryKey",
+      "kind": "func",
+      "file": "TPPConfiguration+SE.swift",
+      "line": 33
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": []
+}

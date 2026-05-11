@@ -1,0 +1,29 @@
+{
+  "module": "Catalog",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 2,
+  "shared_singleton_reads": 0,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "NSObject",
+      "kind": "extension",
+      "file": "TPPCatalogs+SE.swift",
+      "line": 11
+    },
+    {
+      "name": "TPPBadgeImage",
+      "kind": "enum",
+      "file": "TPPContentTypeBadge.swift",
+      "line": 5
+    },
+    {
+      "name": "pin",
+      "kind": "func",
+      "file": "TPPContentTypeBadge.swift",
+      "line": 36
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": []
+}

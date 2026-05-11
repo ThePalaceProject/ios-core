@@ -1,0 +1,434 @@
+{
+  "module": "Reader2",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 69,
+  "shared_singleton_reads": 11,
+  "public_types": [
+    {
+      "name": "AdobeRightsParser",
+      "kind": "class",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeRightsParser.swift",
+      "line": 12
+    },
+    {
+      "name": "AnnotationResponse",
+      "kind": "struct",
+      "file": "Bookmarks/TPPAnnotations.swift",
+      "line": 5
+    },
+    {
+      "name": "AudioBookmark",
+      "kind": "class",
+      "file": "Bookmarks/AudioBookmark.swift",
+      "line": 17
+    },
+    {
+      "name": "AudiobookBookmarkBusinessLogic",
+      "kind": "class",
+      "file": "Bookmarks/AudiobookBookmarkBusinessLogic.swift",
+      "line": 13
+    },
+    {
+      "name": "DRMDataResource",
+      "kind": "actor",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeDRMContentProtection.swift",
+      "line": 185
+    },
+    {
+      "name": "State",
+      "kind": "enum",
+      "file": "TTS/TPPPublicationSpeechSynthesizer.swift",
+      "line": 47
+    },
+    {
+      "name": "TPPPublicationSpeechSynthesizer",
+      "kind": "class",
+      "file": "TTS/TPPPublicationSpeechSynthesizer.swift",
+      "line": 37
+    },
+    {
+      "name": "TPPPublicationSpeechSynthesizerDelegate",
+      "kind": "protocol",
+      "file": "TTS/TPPPublicationSpeechSynthesizer.swift",
+      "line": 30
+    },
+    {
+      "name": "TPPR3Owner",
+      "kind": "class",
+      "file": "ReaderStackConfiguration/TPPR3Owner.swift",
+      "line": 22
+    },
+    {
+      "name": "Utterance",
+      "kind": "struct",
+      "file": "TTS/TPPPublicationSpeechSynthesizer.swift",
+      "line": 21
+    }
+  ],
+  "objc_surface": [
+    {
+      "name": "AdobeCertificate",
+      "kind": "class",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeCertificate.swift",
+      "line": 17
+    },
+    {
+      "name": "AdobeDRMService",
+      "kind": "class",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeCertificate.swift",
+      "line": 105
+    },
+    {
+      "name": "AdobeRightsParser",
+      "kind": "class",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeRightsParser.swift",
+      "line": 12
+    },
+    {
+      "name": "AudioBookmark",
+      "kind": "class",
+      "file": "Bookmarks/AudioBookmark.swift",
+      "line": 17
+    },
+    {
+      "name": "AudiobookBookmarkBusinessLogic",
+      "kind": "class",
+      "file": "Bookmarks/AudiobookBookmarkBusinessLogic.swift",
+      "line": 13
+    },
+    {
+      "name": "LCPLibraryService",
+      "kind": "class",
+      "file": "ReaderStackConfiguration/LCP/LCPLibraryService.swift",
+      "line": 20
+    },
+    {
+      "name": "TPPAnnotations",
+      "kind": "class",
+      "file": "Bookmarks/TPPAnnotations.swift",
+      "line": 80
+    },
+    {
+      "name": "TPPAnnotationsWrapper",
+      "kind": "class",
+      "file": "Bookmarks/TPPAnnotations.swift",
+      "line": 56
+    },
+    {
+      "name": "TPPBookmarkDeletionLog",
+      "kind": "class",
+      "file": "Bookmarks/TPPBookmarkDeletionLog.swift",
+      "line": 18
+    },
+    {
+      "name": "TPPBookmarkDictionaryRepresentation",
+      "kind": "class",
+      "file": "Bookmarks/TPPReadiumBookmark.swift",
+      "line": 14
+    },
+    {
+      "name": "TPPLCPLicense",
+      "kind": "class",
+      "file": "ReaderStackConfiguration/LCP/TPPLCPLicense.swift",
+      "line": 31
+    },
+    {
+      "name": "TPPR3Owner",
+      "kind": "class",
+      "file": "ReaderStackConfiguration/TPPR3Owner.swift",
+      "line": 22
+    },
+    {
+      "name": "TPPReaderBookmarkCell",
+      "kind": "class",
+      "file": "UI/TPPReaderBookmarkCell.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPReaderTOCCell",
+      "kind": "class",
+      "file": "UI/TPPReaderTOCCell.swift",
+      "line": 11
+    },
+    {
+      "name": "TPPReadiumBookmark",
+      "kind": "class",
+      "file": "Bookmarks/TPPReadiumBookmark.swift",
+      "line": 32
+    },
+    {
+      "name": "closeEPUB",
+      "kind": "func",
+      "file": "UI/TPPEPUBViewController.swift",
+      "line": 448
+    },
+    {
+      "name": "config",
+      "kind": "func",
+      "file": "UI/TPPReaderBookmarkCell.swift",
+      "line": 14
+    },
+    {
+      "name": "config",
+      "kind": "func",
+      "file": "UI/TPPReaderTOCCell.swift",
+      "line": 22
+    },
+    {
+      "name": "defaultCertificate",
+      "kind": "var",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeCertificate.swift",
+      "line": 60
+    },
+    {
+      "name": "didSelectSegment",
+      "kind": "func",
+      "file": "UI/TPPReaderPositionsVC.swift",
+      "line": 73
+    },
+    {
+      "name": "didTap",
+      "kind": "func",
+      "file": "Typography/ReaderTypographyButton.swift",
+      "line": 92
+    },
+    {
+      "name": "displayUntilString",
+      "kind": "var",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeRightsParser.swift",
+      "line": 24
+    },
+    {
+      "name": "expirationDate",
+      "kind": "var",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeCertificate.swift",
+      "line": 33
+    },
+    {
+      "name": "expiredAdobeDRMAlert",
+      "kind": "func",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeDRMAlerts.swift",
+      "line": 12
+    },
+    {
+      "name": "fulfill",
+      "kind": "func",
+      "file": "ReaderStackConfiguration/LCP/LCPLibraryService.swift",
+      "line": 120
+    },
+    {
+      "name": "goBackward",
+      "kind": "func",
+      "file": "UI/TPPBaseReaderViewController.swift",
+      "line": 515
+    },
+    {
+      "name": "goForward",
+      "kind": "func",
+      "file": "UI/TPPBaseReaderViewController.swift",
+      "line": 522
+    },
+    {
+      "name": "hasExpired",
+      "kind": "var",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeCertificate.swift",
+      "line": 43
+    },
+    {
+      "name": "highlightSelection",
+      "kind": "func",
+      "file": "UI/TPPEPUBViewController.swift",
+      "line": 661
+    },
+    {
+      "name": "hrefKey",
+      "kind": "let",
+      "file": "Bookmarks/TPPReadiumBookmark.swift",
+      "line": 16
+    },
+    {
+      "name": "identifier",
+      "kind": "var",
+      "file": "ReaderStackConfiguration/LCP/TPPLCPLicense.swift",
+      "line": 38
+    },
+    {
+      "name": "isDRMAvailable",
+      "kind": "var",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeCertificate.swift",
+      "line": 52
+    },
+    {
+      "name": "keyCommandGoBackward",
+      "kind": "func",
+      "file": "UI/TPPEPUBViewController.swift",
+      "line": 350
+    },
+    {
+      "name": "keyCommandGoForward",
+      "kind": "func",
+      "file": "UI/TPPEPUBViewController.swift",
+      "line": 356
+    },
+    {
+      "name": "keyCommandToggleUI",
+      "kind": "func",
+      "file": "UI/TPPEPUBViewController.swift",
+      "line": 362
+    },
+    {
+      "name": "licenseExtension",
+      "kind": "let",
+      "file": "ReaderStackConfiguration/LCP/LCPLibraryService.swift",
+      "line": 23
+    },
+    {
+      "name": "locationKey",
+      "kind": "let",
+      "file": "Bookmarks/TPPReadiumBookmark.swift",
+      "line": 17
+    },
+    {
+      "name": "next",
+      "kind": "func",
+      "file": "TTS/TPPTextToSpeech.swift",
+      "line": 99
+    },
+    {
+      "name": "pause",
+      "kind": "func",
+      "file": "TTS/TPPTextToSpeech.swift",
+      "line": 91
+    },
+    {
+      "name": "pauseOrResume",
+      "kind": "func",
+      "file": "TTS/TPPTextToSpeech.swift",
+      "line": 87
+    },
+    {
+      "name": "postQueuedReadPositionInSerialQueue",
+      "kind": "func",
+      "file": "BusinessLogic/TPPLastReadPositionPoster.swift",
+      "line": 91
+    },
+    {
+      "name": "presentEPUBSearch",
+      "kind": "func",
+      "file": "UI/TPPEPUBViewController.swift",
+      "line": 511
+    },
+    {
+      "name": "presentPositionsVC",
+      "kind": "func",
+      "file": "UI/TPPBaseReaderViewController.swift",
+      "line": 384
+    },
+    {
+      "name": "presentUserSettings",
+      "kind": "func",
+      "file": "UI/TPPEPUBViewController.swift",
+      "line": 500
+    },
+    {
+      "name": "previous",
+      "kind": "func",
+      "file": "TTS/TPPTextToSpeech.swift",
+      "line": 95
+    },
+    {
+      "name": "shouldNotifyAboutExpiration",
+      "kind": "var",
+      "file": "ReaderStackConfiguration/AdobeDRM/AdobeCertificate.swift",
+      "line": 89
+    },
+    {
+      "name": "stop",
+      "kind": "func",
+      "file": "TTS/TPPTextToSpeech.swift",
+      "line": 83
+    },
+    {
+      "name": "tableView",
+      "kind": "func",
+      "file": "UI/TPPReaderPositionsVC.swift",
+      "line": 149
+    },
+    {
+      "name": "toggleBookmark",
+      "kind": "func",
+      "file": "UI/TPPBaseReaderViewController.swift",
+      "line": 407
+    },
+    {
+      "name": "userDidRefreshBookmarks",
+      "kind": "func",
+      "file": "UI/TPPReaderPositionsVC.swift",
+      "line": 292
+    },
+    {
+      "name": "voiceOverStatusDidChange",
+      "kind": "func",
+      "file": "UI/TPPBaseReaderViewController.swift",
+      "line": 480
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "AnnotationsManager",
+      "file": "Bookmarks/TPPAnnotations.swift",
+      "line": 44
+    },
+    {
+      "name": "Bookmark",
+      "file": "Bookmarks/TPPReadiumBookmark.swift",
+      "line": 28
+    },
+    {
+      "name": "DRMLibraryService",
+      "file": "ReaderStackConfiguration/DRMLibraryService.swift",
+      "line": 18
+    },
+    {
+      "name": "EPUBSearchDelegate",
+      "file": "UI/EpubSearchView/EPUBSearchViewModel.swift",
+      "line": 13
+    },
+    {
+      "name": "KeyboardNavigable",
+      "file": "UI/KeyboardNavigationHandler.swift",
+      "line": 15
+    },
+    {
+      "name": "ModuleDelegate",
+      "file": "ReaderPresentation/ReaderModule.swift",
+      "line": 19
+    },
+    {
+      "name": "ReaderFormatModule",
+      "file": "ReaderPresentation/ReadingFormats/ReaderFormatModule.swift",
+      "line": 19
+    },
+    {
+      "name": "ReaderModuleAPI",
+      "file": "ReaderPresentation/ReaderModule.swift",
+      "line": 28
+    },
+    {
+      "name": "TPPReaderPositionsDelegate",
+      "file": "UI/TPPReaderPositionsVC.swift",
+      "line": 15
+    },
+    {
+      "name": "TPPReaderSettingsDelegate",
+      "file": "ReaderSettings/TPPReaderSettingsVC.swift",
+      "line": 14
+    },
+    {
+      "name": "TypographyServiceProtocol",
+      "file": "Typography/TypographyServiceProtocol.swift",
+      "line": 13
+    }
+  ]
+}
