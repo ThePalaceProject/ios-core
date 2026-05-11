@@ -8,6 +8,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceCatalog
 
 @objc class TokenResponse: NSObject, Codable {
     @objc let accessToken: String
@@ -80,9 +81,21 @@ import PalaceLogging
                 if httpResponse.statusCode != 200 {
                     let errorMsg = String(data: data, encoding: .utf8) ?? "No error message"
                     Log.error(#file, "Token request failed with status \(httpResponse.statusCode): \(errorMsg)")
-                    let error = NSError(domain: "TokenRequest", code: httpResponse.statusCode,
-                                        userInfo: [NSLocalizedDescriptionKey: "Server returned status \(httpResponse.statusCode)"])
-                    return .failure(error)
+
+                    // Attempt to surface a server-supplied problem document so callers can
+                    // show the real reason to the user (e.g. "Expired card") instead of the
+                    // generic "Invalid Credentials" fallback.
+                    if let problemDoc = TPPProblemDocument.fromProblemResponseData(data) {
+                        return .failure(NSError.makeFromProblemDocument(
+                            problemDoc,
+                            domain: "TokenRequest",
+                            code: httpResponse.statusCode,
+                            userInfo: [NSLocalizedDescriptionKey: "Server returned status \(httpResponse.statusCode)"]
+                        ))
+                    }
+
+                    return .failure(NSError(domain: "TokenRequest", code: httpResponse.statusCode,
+                                            userInfo: [NSLocalizedDescriptionKey: "Server returned status \(httpResponse.statusCode)"]))
                 }
             }
 
