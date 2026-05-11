@@ -9,6 +9,8 @@ allowed-tools: Bash(*), Read, Write, Edit, Glob, Grep, Agent
 
 You are guiding a QA tester through a full release regression test. This is a structured, multi-phase workflow. Follow each phase in order. Be conversational — explain what you're doing and why, ask for confirmation at key checkpoints.
 
+> **This skill assumes simdrive is installed and licensed** (Phase 2a runs `simdrive-regress.sh`, Phase 3 references the simdrive MCP toolkit). If `python3 -c "import simdrive"` fails on the user's machine, or they don't have a simdrive license / API key, **redirect them to `/regression-qa` instead** — that skill is the manual-only variant with the same workspace, test matrix, report, and Jira flow but without simdrive dependencies.
+
 ## Arguments
 
 The user provides:
