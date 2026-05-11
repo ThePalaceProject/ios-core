@@ -118,13 +118,19 @@ if [[ -n "$DIFF_FILES_FROM" ]]; then
         echo "error: --diff-files-from path not found: $DIFF_FILES_FROM" >&2
         exit 1
     fi
-    mapfile -t derived < <(
-        xargs -a "$DIFF_FILES_FROM" python3 "$REPO_ROOT/scripts/chaos-targets.py" \
+    derived=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && derived+=("$line")
+    done < <(
+        cat "$DIFF_FILES_FROM" | tr '\n' '\0' | xargs -0 python3 "$REPO_ROOT/scripts/chaos-targets.py" \
             --fixtures-root "$REPO_ROOT/.simdrive/fixtures"
     )
     SEEDS+=("${derived[@]}")
 elif (( ALL_FLOWS )); then
-    mapfile -t derived < <(python3 "$REPO_ROOT/scripts/chaos-targets.py" \
+    derived=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && derived+=("$line")
+    done < <(python3 "$REPO_ROOT/scripts/chaos-targets.py" \
         --all --fixtures-root "$REPO_ROOT/.simdrive/fixtures")
     SEEDS+=("${derived[@]}")
 fi
