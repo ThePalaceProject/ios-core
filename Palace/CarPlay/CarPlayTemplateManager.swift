@@ -218,6 +218,21 @@ final class CarPlayTemplateManager: NSObject {
             return
         }
 
+        // If this book is already the active session, do NOT call playAudiobook
+        // again — openAudiobook(_:startPlaying:) tears down the existing player
+        // and rebuilds it, which crashes when the player is mid-load (the user's
+        // repro: first tap plays on device but never pushes the Now Playing
+        // template; second tap crashes). Instead, just ensure the Now Playing
+        // template is visible so the user gets the dash UI they expected.
+        if let activeBook = playerBridge.currentBook,
+           activeBook.identifier == book.identifier {
+            Log.info(#file, "CarPlay: Book '\(book.title)' is already the active session — pushing Now Playing without reloading")
+            lastSelectedBookId = book.identifier
+            lastSelectionTime = now
+            switchToNowPlayingIfNeeded()
+            return
+        }
+
         // Prevent selection while another book is loading
         if isLoadingBook {
             Log.info(#file, "CarPlay: Ignoring selection - another book is currently loading")
