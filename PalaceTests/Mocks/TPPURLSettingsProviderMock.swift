@@ -7,9 +7,10 @@
 //
 
 import Foundation
+import PalaceAuth
 @testable import Palace
 
-class TPPURLSettingsProviderMock: NSObject, NYPLUniversalLinksSettings, NYPLFeedURLProvider {
+class TPPURLSettingsProviderMock: NSObject, NYPLUniversalLinksSettings, NYPLFeedURLProvider, UniversalLinksProviding {
     var accountMainFeedURL: URL?
 
     var universalLinksURL: URL {

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceAuth
 @testable import Palace
 
 class MockSAMLWebViewPresenter: SAMLWebViewPresenting {

@@ -9,6 +9,7 @@
 
 import XCTest
 import PalaceCatalog
+import PalaceAuth
 @testable import Palace
 
 // MARK: - Phase 1+2: UI Decoupling + Force-Unwrap Elimination
@@ -17,18 +18,25 @@ final class TPPSAMLFlowTests: XCTestCase {
 
     private var mockContext: MockSAMLAuthContext!
     private var mockPresenter: MockSAMLWebViewPresenter!
+    private var mockURLProvider: TPPURLSettingsProviderMock!
     private var samlHelper: TPPSAMLHelper!
 
     override func setUp() {
         super.setUp()
         mockContext = MockSAMLAuthContext()
         mockPresenter = MockSAMLWebViewPresenter()
-        samlHelper = TPPSAMLHelper(context: mockContext, presenter: mockPresenter)
+        mockURLProvider = TPPURLSettingsProviderMock()
+        samlHelper = TPPSAMLHelper(
+            universalLinksProvider: mockURLProvider,
+            context: mockContext,
+            presenter: mockPresenter
+        )
     }
 
     override func tearDown() {
         samlHelper = nil
         mockPresenter = nil
+        mockURLProvider = nil
         mockContext = nil
         super.tearDown()
     }
@@ -79,7 +87,7 @@ final class TPPSAMLFlowTests: XCTestCase {
 
         XCTAssertNotNil(redirectParam, "URL must include redirect_uri query param")
         XCTAssertEqual(redirectParam?.value,
-                       mockContext.urlSettingsProvider.universalLinksURL.absoluteString)
+                       mockURLProvider.universalLinksURL.absoluteString)
     }
 
     // MARK: - Test 4: Preserves existing query params
@@ -240,18 +248,25 @@ final class TPPSAMLCookieExpirationTests: XCTestCase {
 
     private var mockContext: MockSAMLAuthContext!
     private var mockPresenter: MockSAMLWebViewPresenter!
+    private var mockURLProvider: TPPURLSettingsProviderMock!
     private var samlHelper: TPPSAMLHelper!
 
     override func setUp() {
         super.setUp()
         mockContext = MockSAMLAuthContext()
         mockPresenter = MockSAMLWebViewPresenter()
-        samlHelper = TPPSAMLHelper(context: mockContext, presenter: mockPresenter)
+        mockURLProvider = TPPURLSettingsProviderMock()
+        samlHelper = TPPSAMLHelper(
+            universalLinksProvider: mockURLProvider,
+            context: mockContext,
+            presenter: mockPresenter
+        )
     }
 
     override func tearDown() {
         samlHelper = nil
         mockPresenter = nil
+        mockURLProvider = nil
         mockContext = nil
         super.tearDown()
     }
@@ -572,7 +587,11 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
         // account A's SAML session would leak into account B's requests.
         let mockContext = MockSAMLAuthContext()
         let mockPresenter = MockSAMLWebViewPresenter()
-        let helper = TPPSAMLHelper(context: mockContext, presenter: mockPresenter)
+        let helper = TPPSAMLHelper(
+            universalLinksProvider: TPPURLSettingsProviderMock(),
+            context: mockContext,
+            presenter: mockPresenter
+        )
 
         let testCookies = [
             HTTPCookie(properties: [
@@ -602,7 +621,11 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
     func testSignOut_clearsSAMLState() {
         let mockContext = MockSAMLAuthContext()
         let mockPresenter = MockSAMLWebViewPresenter()
-        let helper = TPPSAMLHelper(context: mockContext, presenter: mockPresenter)
+        let helper = TPPSAMLHelper(
+            universalLinksProvider: TPPURLSettingsProviderMock(),
+            context: mockContext,
+            presenter: mockPresenter
+        )
 
         helper.cookies = [HTTPCookie(properties: [
             .name: "session",

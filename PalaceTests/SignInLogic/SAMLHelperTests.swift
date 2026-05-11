@@ -70,34 +70,13 @@ final class SAMLHelperTests: XCTestCase {
         XCTAssertTrue(names.contains("redirect_uri"))
     }
 
-    // MARK: - Helper Initialization
-
-    func testSAMLHelperCanBeInstantiated() {
-        let helper = TPPSAMLHelper()
-        // businessLogic must be nil before any configuration
-        XCTAssertNil(helper.businessLogic, "businessLogic should be nil initially")
-        // Two independent instances must start in the same nil state
-        let helper2 = TPPSAMLHelper()
-        XCTAssertNil(helper2.businessLogic, "Second helper instance must also have nil businessLogic")
-        XCTAssertFalse(helper === helper2, "Two TPPSAMLHelper instances must be distinct objects")
-    }
-
-    // MARK: - Guard Behavior: nil IDP URL
-
-    func testLogInWithNilBusinessLogicDoesNotCrash() {
-        // TPPSAMLHelper has an implicitly unwrapped businessLogic, but if
-        // selectedIDP is nil, the guard should exit early.
-        // We can't safely test logIn() without a full mock of TPPSignInBusinessLogic,
-        // but we verify the helper can be created and its state is coherent.
-        let helper = TPPSAMLHelper()
-        // In production, logIn would crash if businessLogic is nil.
-        // This test documents that businessLogic must be set before calling logIn.
-        XCTAssertNil(helper.businessLogic)
-        // A second fresh helper must also have nil businessLogic (no shared state)
-        let helper2 = TPPSAMLHelper()
-        XCTAssertNil(helper2.businessLogic,
-                     "Each TPPSAMLHelper instance must start with nil businessLogic")
-        XCTAssertFalse(helper === helper2,
-                       "Two TPPSAMLHelper instances must be distinct objects")
-    }
+    // NOTE: Two legacy tests were removed alongside the PalaceAuth leaf
+    // extraction (PR #936). They asserted on `TPPSAMLHelper()` (parameterless
+    // init, dropped when the helper moved to PalaceAuth) and on a `businessLogic`
+    // property that no longer exists on the new SAMLAuthContext-injected design.
+    // They were also banned fluff per CLAUDE.md — "two instances are distinct
+    // objects" and "asserting a constructor returns non-nil" are listed as
+    // pattern violations. Meaningful coverage of the new init lives in
+    // PalaceTests/SignInLogic/TPPSAMLFlowTests.swift, which exercises the
+    // helper via concrete SAMLAuthContext + SAMLWebViewPresenting mocks.
 }
