@@ -17,11 +17,11 @@ final class AccountDetailsURLTests: XCTestCase {
     private var sut: AccountDetails!
     private let testUUID = "test-account-url-\(UUID().uuidString)"
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         // Clean any existing defaults for our test UUID
         UserDefaults.standard.removeObject(forKey: testUUID)
-        sut = makeAccountDetails(uuid: testUUID)
+        sut = try makeAccountDetails(uuid: testUUID)
     }
 
     override func tearDown() {
@@ -137,33 +137,33 @@ final class AccountDetailsURLTests: XCTestCase {
         XCTAssertTrue(sut.syncPermissionGranted, "Sync permission must default to true for a new account")
     }
 
-    func testEulaIsAccepted_RoundTrips_ThroughUserDefaults() {
+    func testEulaIsAccepted_RoundTrips_ThroughUserDefaults() throws {
         // Arrange: confirm initial state
         XCTAssertFalse(sut.eulaIsAccepted)
 
         // Act: accept EULA, then create a fresh AccountDetails over the same UUID
         sut.eulaIsAccepted = true
-        let sut2 = makeAccountDetails(uuid: testUUID)
+        let sut2 = try makeAccountDetails(uuid: testUUID)
 
         // Assert: the persisted value survives object re-creation
         XCTAssertTrue(sut2.eulaIsAccepted, "EULA acceptance should persist in UserDefaults")
     }
 
-    func testSyncPermissionGranted_DefaultIsTrue() {
+    func testSyncPermissionGranted_DefaultIsTrue() throws {
         XCTAssertTrue(sut.syncPermissionGranted)
         // Verify it is actually stored in UserDefaults (not a compile-time constant)
-        let sut2 = makeAccountDetails(uuid: testUUID)
+        let sut2 = try makeAccountDetails(uuid: testUUID)
         XCTAssertTrue(sut2.syncPermissionGranted, "Default sync permission must persist for same UUID")
         XCTAssertFalse(sut.eulaIsAccepted, "EULA must default to not accepted independent of sync permission")
     }
 
-    func testSyncPermissionGranted_ToggleOffThenOn_PersistsViaUserDefaults() {
+    func testSyncPermissionGranted_ToggleOffThenOn_PersistsViaUserDefaults() throws {
         // Arrange: sync is granted by default — confirm initial state
         XCTAssertTrue(sut.syncPermissionGranted, "Precondition: syncPermissionGranted defaults to true")
 
         // Act: disable sync and create a second AccountDetails over the same UUID
         sut.syncPermissionGranted = false
-        let sut2 = makeAccountDetails(uuid: testUUID)
+        let sut2 = try makeAccountDetails(uuid: testUUID)
 
         // Assert: the revocation survived object recreation via UserDefaults
         XCTAssertFalse(sut2.syncPermissionGranted,
@@ -171,7 +171,7 @@ final class AccountDetailsURLTests: XCTestCase {
 
         // Act: re-enable sync via the second instance
         sut2.syncPermissionGranted = true
-        let sut3 = makeAccountDetails(uuid: testUUID)
+        let sut3 = try makeAccountDetails(uuid: testUUID)
 
         // Assert: re-enabling also persists
         XCTAssertTrue(sut3.syncPermissionGranted,
@@ -185,13 +185,13 @@ final class AccountDetailsURLTests: XCTestCase {
         XCTAssertTrue(sut.syncPermissionGranted, "Sync permission must default to true independently of age limit")
     }
 
-    func testUserAboveAgeLimit_RoundTrips_ThroughUserDefaults() {
+    func testUserAboveAgeLimit_RoundTrips_ThroughUserDefaults() throws {
         // Arrange: confirm initial state
         XCTAssertFalse(sut.userAboveAgeLimit)
 
         // Act: mark user above age limit, then re-create over same UUID
         sut.userAboveAgeLimit = true
-        let sut2 = makeAccountDetails(uuid: testUUID)
+        let sut2 = try makeAccountDetails(uuid: testUUID)
 
         // Assert: persisted value survives object re-creation
         XCTAssertTrue(sut2.userAboveAgeLimit, "Age limit flag should persist in UserDefaults")
@@ -220,8 +220,7 @@ final class AccountDetailsURLTests: XCTestCase {
             ],
             "features": ["enabled": [], "disabled": []]
         ]
-        let data = try! JSONSerialization.data(withJSONObject: json)
-        let doc = try! OPDS2AuthenticationDocument.fromData(data)
+        guard let doc = makeAuthenticationDocument(from: json) else { return }
         let details = AccountDetails(authenticationDocument: doc, uuid: uuid)
 
         // Act
@@ -259,8 +258,7 @@ final class AccountDetailsURLTests: XCTestCase {
             ],
             "features": ["enabled": [], "disabled": []]
         ]
-        let data = try! JSONSerialization.data(withJSONObject: json)
-        let doc = try! OPDS2AuthenticationDocument.fromData(data)
+        guard let doc = makeAuthenticationDocument(from: json) else { return }
         let details = AccountDetails(authenticationDocument: doc, uuid: uuid)
 
         // Act
@@ -275,7 +273,7 @@ final class AccountDetailsURLTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeAccountDetails(uuid: String) -> AccountDetails {
+    private func makeAccountDetails(uuid: String) throws -> AccountDetails {
         // Create minimal auth document JSON and parse it
         let json: [String: Any] = [
             "id": uuid,
@@ -296,8 +294,26 @@ final class AccountDetailsURLTests: XCTestCase {
             "features": ["enabled": [], "disabled": []]
         ]
 
-        let data = try! JSONSerialization.data(withJSONObject: json)
-        let doc = try! OPDS2AuthenticationDocument.fromData(data)
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let doc = try OPDS2AuthenticationDocument.fromData(data)
         return AccountDetails(authenticationDocument: doc, uuid: uuid)
+    }
+
+    /// Builds an OPDS2AuthenticationDocument from a fixture dictionary, failing
+    /// the test cleanly on decode errors instead of aborting the runner via
+    /// `try!`. Crashlytics issue 92a250f5 was fed entirely by `try!`-induced
+    /// fatalError reports flooding from this file in test runs.
+    private func makeAuthenticationDocument(
+        from json: [String: Any],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> OPDS2AuthenticationDocument? {
+        do {
+            let data = try JSONSerialization.data(withJSONObject: json)
+            return try OPDS2AuthenticationDocument.fromData(data)
+        } catch {
+            XCTFail("Failed to build OPDS2AuthenticationDocument fixture: \(error)", file: file, line: line)
+            return nil
+        }
     }
 }
