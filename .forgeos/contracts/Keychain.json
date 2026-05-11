@@ -1,0 +1,17 @@
+{
+  "module": "Keychain",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 1,
+  "shared_singleton_reads": 4,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "TPPKeychainManager",
+      "kind": "class",
+      "file": "TPPKeychainManager.swift",
+      "line": 6
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": []
+}

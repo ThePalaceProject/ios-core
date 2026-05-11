@@ -1,0 +1,380 @@
+{
+  "module": "SignInLogic",
+  "generated_at": "2026-05-07T05:15:11+00:00",
+  "file_count": 22,
+  "shared_singleton_reads": 7,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "NYPLUserAccountInputProvider",
+      "kind": "protocol",
+      "file": "TPPUserAccountFrontEndValidation.swift",
+      "line": 12
+    },
+    {
+      "name": "SignInModalPresenter",
+      "kind": "class",
+      "file": "SignInModalView.swift",
+      "line": 108
+    },
+    {
+      "name": "TPPAuthRequestType",
+      "kind": "enum",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 13
+    },
+    {
+      "name": "TPPBookDownloadsDeleting",
+      "kind": "protocol",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 18
+    },
+    {
+      "name": "TPPBookRegistrySyncing",
+      "kind": "protocol",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 22
+    },
+    {
+      "name": "TPPDRMAuthorizing",
+      "kind": "protocol",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 28
+    },
+    {
+      "name": "TPPReauthenticator",
+      "kind": "class",
+      "file": "TPPReauthenticator.swift",
+      "line": 29
+    },
+    {
+      "name": "TPPSignInBusinessLogicUIDelegate",
+      "kind": "protocol",
+      "file": "TPPSignInBusinessLogicUIDelegate.swift",
+      "line": 13
+    },
+    {
+      "name": "TPPSignInOutBusinessLogicUIDelegate",
+      "kind": "protocol",
+      "file": "TPPSignInBusinessLogicUIDelegate.swift",
+      "line": 67
+    },
+    {
+      "name": "TPPUserAccountFrontEndValidation",
+      "kind": "class",
+      "file": "TPPUserAccountFrontEndValidation.swift",
+      "line": 19
+    },
+    {
+      "name": "TokenRequest",
+      "kind": "class",
+      "file": "TokenRequest.swift",
+      "line": 30
+    },
+    {
+      "name": "TokenResponse",
+      "kind": "class",
+      "file": "TokenRequest.swift",
+      "line": 12
+    },
+    {
+      "name": "TokenResponse",
+      "kind": "extension",
+      "file": "TokenRequest.swift",
+      "line": 24
+    },
+    {
+      "name": "accessToken",
+      "kind": "let",
+      "file": "TokenRequest.swift",
+      "line": 13
+    },
+    {
+      "name": "authenticateIfNeeded",
+      "kind": "func",
+      "file": "TPPReauthenticator.swift",
+      "line": 46
+    },
+    {
+      "name": "canResetPassword",
+      "kind": "var",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 226
+    },
+    {
+      "name": "consumeNextOIDCSessionEphemeralFlag",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic+ForceReset.swift",
+      "line": 58
+    },
+    {
+      "name": "cookies",
+      "kind": "var",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 158
+    },
+    {
+      "name": "dismiss",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogicUIDelegate.swift",
+      "line": 58
+    },
+    {
+      "name": "dismissAfterUnexpectedDRMDelay",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic+DRM.swift",
+      "line": 186
+    },
+    {
+      "name": "ensureAuthenticationDocumentIsLoaded",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 506
+    },
+    {
+      "name": "execute",
+      "kind": "func",
+      "file": "TokenRequest.swift",
+      "line": 108
+    },
+    {
+      "name": "expiresIn",
+      "kind": "let",
+      "file": "TokenRequest.swift",
+      "line": 15
+    },
+    {
+      "name": "handleRedirectURL",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic+OAuth.swift",
+      "line": 75
+    },
+    {
+      "name": "handleRedirectURL",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic+OAuth.swift",
+      "line": 80
+    },
+    {
+      "name": "indicatesAuthenticationNeedsRefresh",
+      "kind": "func",
+      "file": "URLResponse+TPPAuthentication.swift",
+      "line": 25
+    },
+    {
+      "name": "indicatesAuthenticationNeedsRefresh",
+      "kind": "func",
+      "file": "URLResponse+TPPAuthentication.swift",
+      "line": 87
+    },
+    {
+      "name": "isAuthenticationDocumentLoading",
+      "kind": "var",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 499
+    },
+    {
+      "name": "isLoggingInAfterSignUp",
+      "kind": "var",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 124
+    },
+    {
+      "name": "isSamlPossible",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 702
+    },
+    {
+      "name": "isValidatingCredentials",
+      "kind": "var",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 190
+    },
+    {
+      "name": "libraryAccount",
+      "kind": "var",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 202
+    },
+    {
+      "name": "libraryAccountID",
+      "kind": "let",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 197
+    },
+    {
+      "name": "librarySupportsBarcodeDisplay",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 676
+    },
+    {
+      "name": "logIn",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 456
+    },
+    {
+      "name": "logIn",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 461
+    },
+    {
+      "name": "logInIfUserAuthorized",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic+DRM.swift",
+      "line": 206
+    },
+    {
+      "name": "logOutOrWarn",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic+UI.swift",
+      "line": 83
+    },
+    {
+      "name": "performForceReset",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic+ForceReset.swift",
+      "line": 73
+    },
+    {
+      "name": "present",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogicUIDelegate.swift",
+      "line": 61
+    },
+    {
+      "name": "refreshAuthCompletion",
+      "kind": "var",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 131
+    },
+    {
+      "name": "refreshAuthIfNeeded",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 539
+    },
+    {
+      "name": "registrationIsPossible",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 698
+    },
+    {
+      "name": "resetPassword",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 233
+    },
+    {
+      "name": "selectPreferredAuthIfNeeded",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 718
+    },
+    {
+      "name": "selectedAuthentication",
+      "kind": "var",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 244
+    },
+    {
+      "name": "selectedIDP",
+      "kind": "var",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 240
+    },
+    {
+      "name": "shouldShowEULALink",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 740
+    },
+    {
+      "name": "shouldShowSyncButton",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic+BookmarkSyncing.swift",
+      "line": 13
+    },
+    {
+      "name": "startRegularCardCreation",
+      "kind": "func",
+      "file": "TPPSignInBusinessLogic+CardCreation.swift",
+      "line": 14
+    },
+    {
+      "name": "uiDelegate",
+      "kind": "var",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 102
+    },
+    {
+      "name": "urlSettingsProvider",
+      "kind": "let",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 152
+    },
+    {
+      "name": "userAccount",
+      "kind": "var",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 608
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "CookieStoreInjecting",
+      "file": "SignInWebSheetViewModel.swift",
+      "line": 26
+    },
+    {
+      "name": "NYPLUserAccountInputProvider",
+      "file": "TPPUserAccountFrontEndValidation.swift",
+      "line": 12
+    },
+    {
+      "name": "Reauthenticator",
+      "file": "TPPReauthenticator.swift",
+      "line": 12
+    },
+    {
+      "name": "SAMLAuthContext",
+      "file": "TPPSAMLHelper.swift",
+      "line": 9
+    },
+    {
+      "name": "SAMLWebViewPresenting",
+      "file": "TPPSAMLHelper.swift",
+      "line": 20
+    },
+    {
+      "name": "TPPBookDownloadsDeleting",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 18
+    },
+    {
+      "name": "TPPBookRegistrySyncing",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 22
+    },
+    {
+      "name": "TPPDRMAuthorizing",
+      "file": "TPPSignInBusinessLogic.swift",
+      "line": 28
+    },
+    {
+      "name": "TPPSignInBusinessLogicUIDelegate",
+      "file": "TPPSignInBusinessLogicUIDelegate.swift",
+      "line": 13
+    },
+    {
+      "name": "TPPSignInOutBusinessLogicUIDelegate",
+      "file": "TPPSignInBusinessLogicUIDelegate.swift",
+      "line": 67
+    }
+  ]
+}

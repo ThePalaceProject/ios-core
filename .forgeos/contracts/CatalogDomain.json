@@ -1,0 +1,10 @@
+{
+  "module": "CatalogDomain",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 0,
+  "shared_singleton_reads": 0,
+  "public_types": [],
+  "objc_surface": [],
+  "public_functions": [],
+  "internal_protocols": []
+}

@@ -1,0 +1,78 @@
+{
+  "module": "ErrorHandling",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 10,
+  "shared_singleton_reads": 4,
+  "public_types": [
+    {
+      "name": "func",
+      "kind": "class",
+      "file": "TPPProblemDocument+Localized.swift",
+      "line": 6
+    }
+  ],
+  "objc_surface": [
+    {
+      "name": "NSNotification",
+      "kind": "extension",
+      "file": "TPPProblemDocumentCacheManager.swift",
+      "line": 7
+    },
+    {
+      "name": "ProblemReportEmail",
+      "kind": "class",
+      "file": "ProblemReportEmail.swift",
+      "line": 4
+    },
+    {
+      "name": "TPPAlertUtils",
+      "kind": "class",
+      "file": "TPPAlertUtils.swift",
+      "line": 6
+    },
+    {
+      "name": "TPPProblemDocumentCacheManager",
+      "kind": "class",
+      "file": "TPPProblemDocumentCacheManager.swift",
+      "line": 11
+    },
+    {
+      "name": "clearCachedDoc",
+      "kind": "func",
+      "file": "TPPProblemDocumentCacheManager.swift",
+      "line": 54
+    },
+    {
+      "name": "copyReport",
+      "kind": "func",
+      "file": "ErrorDetailViewController.swift",
+      "line": 177
+    },
+    {
+      "name": "dismissSelf",
+      "kind": "func",
+      "file": "ErrorDetailViewController.swift",
+      "line": 173
+    },
+    {
+      "name": "localizedDescriptionWithRecovery",
+      "kind": "var",
+      "file": "NSError+NYPLAdditions.swift",
+      "line": 15
+    },
+    {
+      "name": "safelyPresent",
+      "kind": "func",
+      "file": "TPPPresentationUtils.swift",
+      "line": 24
+    },
+    {
+      "name": "shareReport",
+      "kind": "func",
+      "file": "ErrorDetailViewController.swift",
+      "line": 184
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": []
+}

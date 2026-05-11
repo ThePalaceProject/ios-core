@@ -7,6 +7,10 @@
 #   scripts/verify-pr.sh                     # Run all checks
 #   scripts/verify-pr.sh --quick             # Skip mutation testing (faster)
 #   scripts/verify-pr.sh --report <file>     # Write JSON report to file
+#   scripts/verify-pr.sh --enforce-mutations # Fail if ANY changed file has <50%
+#                                            # kill rate (default: only critical
+#                                            # paths Audiobooks/SignInLogic/
+#                                            # MyBooks/Download* enforce strictly)
 #   scripts/verify-pr.sh --simdrive          # Also replay .simdrive/journeys/*.yaml
 #                                            # via simdrive (opt-in, requires
 #                                            # `pip3 install --pre simdrive` and
@@ -26,6 +30,12 @@ cd "$REPO_ROOT"
 QUICK=false
 REPORT_FILE=""
 SIMDRIVE=false
+ENFORCE_MUTATIONS=false
+
+# Critical paths: every changed file matching one of these prefixes is held to
+# a strict 50% mutation kill rate, regardless of --enforce-mutations.
+# These are the user-money / access-bearing paths memory flagged as air-tight.
+CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks|SignInLogic|MyBooks/Download)'
 # Sim selection. Honors the harness allocator's per-session UDID so parallel
 # agents on the same machine don't collide on one device. Falls back to the
 # pool default when the harness isn't claiming. CLAUDE.md: "NEVER hardcode a
@@ -37,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     --quick) QUICK=true; shift ;;
     --report) REPORT_FILE="$2"; shift 2 ;;
     --simdrive) SIMDRIVE=true; shift ;;
+    --enforce-mutations) ENFORCE_MUTATIONS=true; shift ;;
     *) shift ;;
   esac
 done
@@ -214,18 +225,33 @@ else
 fi
 
 # 5. Mutation testing (skip in --quick mode)
+# Policy:
+#   --quick                       → skipped
+#   default                       → critical paths strict (50%), others warn-only
+#   --enforce-mutations           → ALL changed files strict (50%)
+#   palace_mutate.py uses .forgeos/mutation-cache by default → repeat verify
+#   runs on the same files are near-instant (cache hit).
 echo "--- Mutation Testing ---"
 if [ "$QUICK" = "true" ]; then
   record "mutation" "pass" "Skipped (--quick mode)"
 elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
   TOTAL_KILLED=0
   TOTAL_MUTATIONS=0
-  MUTATION_FAIL=false
+  STRICT_FAIL_FILES=()  # files where strict policy applies AND kill rate <50%
+  WARN_FILES=()         # files where kill rate <50% but not strictly enforced
 
   while IFS= read -r swift_file; do
     [ -z "$swift_file" ] && continue
     # Skip non-production files
     echo "$swift_file" | grep -qE 'Tests/|Mocks/|Config/' && continue
+
+    # Per-file strictness: critical path OR --enforce-mutations
+    IS_STRICT=false
+    if [ "$ENFORCE_MUTATIONS" = "true" ]; then
+      IS_STRICT=true
+    elif echo "$swift_file" | grep -qE "$CRITICAL_MUTATION_PATHS_REGEX"; then
+      IS_STRICT=true
+    fi
 
     # Find corresponding test directory
     MODULE=$(echo "$swift_file" | sed 's|Palace/||' | cut -d/ -f1)
@@ -236,22 +262,41 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
       --file "$swift_file" --tests "$TEST_DIR" \
       --max-mutations 10 2>&1 || true)
 
-    KILLED=$(echo "$MUT_OUTPUT" | grep -o 'killed: [0-9]*' | grep -o '[0-9]*' || echo "0")
-    TOTAL=$(echo "$MUT_OUTPUT" | grep -o 'total: [0-9]*' | grep -o '[0-9]*' || echo "0")
+    # palace_mutate.py emits "killed: N  survived: N  errored: N  kill rate: P%"
+    # in both fresh-run and CACHED branches. Parse from that line.
+    KILLED=$(echo "$MUT_OUTPUT" | grep -oE 'killed: [0-9]+' | head -1 | grep -oE '[0-9]+' || echo "0")
+    SURVIVED=$(echo "$MUT_OUTPUT" | grep -oE 'survived: [0-9]+' | head -1 | grep -oE '[0-9]+' || echo "0")
+    FILE_TOTAL=$((KILLED + SURVIVED))
     TOTAL_KILLED=$((TOTAL_KILLED + KILLED))
-    TOTAL_MUTATIONS=$((TOTAL_MUTATIONS + TOTAL))
+    TOTAL_MUTATIONS=$((TOTAL_MUTATIONS + FILE_TOTAL))
+
+    # Per-file policy evaluation
+    if [ "$FILE_TOTAL" -gt 0 ]; then
+      FILE_RATE=$((KILLED * 100 / FILE_TOTAL))
+      if [ "$FILE_RATE" -lt 50 ]; then
+        if [ "$IS_STRICT" = "true" ]; then
+          STRICT_FAIL_FILES+=("$swift_file (${FILE_RATE}%)")
+        else
+          WARN_FILES+=("$swift_file (${FILE_RATE}%)")
+        fi
+      fi
+    fi
   done <<< "$CHANGED_SWIFT"
 
-  if [ "$TOTAL_MUTATIONS" -gt 0 ]; then
-    KILL_RATE=$((TOTAL_KILLED * 100 / TOTAL_MUTATIONS))
-    if [ "$KILL_RATE" -ge 50 ]; then
-      record "mutation" "pass" "$TOTAL_KILLED/$TOTAL_MUTATIONS killed (${KILL_RATE}%)"
-    else
-      record "mutation" "fail" "$TOTAL_KILLED/$TOTAL_MUTATIONS killed (${KILL_RATE}%) — below 50% threshold"
-      MUTATION_FAIL=true
-    fi
-  else
+  if [ "$TOTAL_MUTATIONS" -eq 0 ]; then
     record "mutation" "pass" "No mutations generated for changed files"
+  elif [ ${#STRICT_FAIL_FILES[@]} -gt 0 ]; then
+    KILL_RATE=$((TOTAL_KILLED * 100 / TOTAL_MUTATIONS))
+    DETAIL="${KILL_RATE}% aggregate; ${#STRICT_FAIL_FILES[@]} strict-path file(s) below 50%: ${STRICT_FAIL_FILES[*]}"
+    record "mutation" "fail" "$DETAIL"
+  else
+    KILL_RATE=$((TOTAL_KILLED * 100 / TOTAL_MUTATIONS))
+    if [ ${#WARN_FILES[@]} -gt 0 ]; then
+      DETAIL="${TOTAL_KILLED}/${TOTAL_MUTATIONS} killed (${KILL_RATE}%); warn-only files <50%: ${WARN_FILES[*]}"
+    else
+      DETAIL="${TOTAL_KILLED}/${TOTAL_MUTATIONS} killed (${KILL_RATE}%)"
+    fi
+    record "mutation" "pass" "$DETAIL"
   fi
 else
   record "mutation" "pass" "No production Swift files changed (skipped)"

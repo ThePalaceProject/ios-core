@@ -1,0 +1,211 @@
+{
+  "module": "Settings",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 36,
+  "shared_singleton_reads": 22,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "EULAViewHosting",
+      "kind": "class",
+      "file": "EULAViewHosting.swift",
+      "line": 11
+    },
+    {
+      "name": "NYPLFeedURLProvider",
+      "kind": "protocol",
+      "file": "TPPSettings.swift",
+      "line": 12
+    },
+    {
+      "name": "NYPLUniversalLinksSettings",
+      "kind": "protocol",
+      "file": "TPPSettings.swift",
+      "line": 4
+    },
+    {
+      "name": "TPPAccountList",
+      "kind": "class",
+      "file": "AccountList/TPPAccountList.swift",
+      "line": 6
+    },
+    {
+      "name": "TPPAuthMethodCellType",
+      "kind": "class",
+      "file": "SettingsCells/TPPLoginCellTypes.swift",
+      "line": 11
+    },
+    {
+      "name": "TPPBarcode",
+      "kind": "class",
+      "file": "BarcodeScanning/TPPBarcode.swift",
+      "line": 9
+    },
+    {
+      "name": "TPPDeveloperSettingsTableViewController",
+      "kind": "class",
+      "file": "DeveloperSettings/TPPDeveloperSettingsTableViewController.swift",
+      "line": 6
+    },
+    {
+      "name": "TPPEnvironment",
+      "kind": "enum",
+      "file": "BundleExtension.swift",
+      "line": 10
+    },
+    {
+      "name": "TPPInfoHeaderCellType",
+      "kind": "class",
+      "file": "SettingsCells/TPPLoginCellTypes.swift",
+      "line": 20
+    },
+    {
+      "name": "TPPLibraryDescriptionCell",
+      "kind": "class",
+      "file": "SettingsCells/TPPLibraryDescriptionCell.swift",
+      "line": 11
+    },
+    {
+      "name": "TPPReloadView",
+      "kind": "class",
+      "file": "DeveloperSettings/TPPReloadView.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPSamlIDPCell",
+      "kind": "class",
+      "file": "SettingsCells/TPPSamlIDPCell.swift",
+      "line": 11
+    },
+    {
+      "name": "TPPSamlIdpCellType",
+      "kind": "class",
+      "file": "SettingsCells/TPPLoginCellTypes.swift",
+      "line": 29
+    },
+    {
+      "name": "TPPSettings",
+      "kind": "class",
+      "file": "TPPSettings.swift",
+      "line": 16
+    },
+    {
+      "name": "TPPSettingsAccountsTableViewController",
+      "kind": "class",
+      "file": "TPPSettingsAccountsList.swift",
+      "line": 6
+    },
+    {
+      "name": "TPPSettingsProviding",
+      "kind": "protocol",
+      "file": "TPPSettingsProviding.swift",
+      "line": 27
+    },
+    {
+      "name": "applicationEnvironment",
+      "kind": "var",
+      "file": "BundleExtension.swift",
+      "line": 18
+    },
+    {
+      "name": "badgeLoggingSwitchDidChange",
+      "kind": "func",
+      "file": "DeveloperSettings/TPPDeveloperSettingsTableViewController.swift",
+      "line": 306
+    },
+    {
+      "name": "catalogDidLoad",
+      "kind": "func",
+      "file": "AccountList/TPPAccountList.swift",
+      "line": 75
+    },
+    {
+      "name": "clear",
+      "kind": "func",
+      "file": "DeveloperSettings/TPPRegistryDebuggingCell.swift",
+      "line": 126
+    },
+    {
+      "name": "didTapReload",
+      "kind": "func",
+      "file": "DeveloperSettings/TPPReloadView.swift",
+      "line": 82
+    },
+    {
+      "name": "dismissLogPreview",
+      "kind": "func",
+      "file": "DeveloperSettings/TPPDeveloperSettingsTableViewController.swift",
+      "line": 878
+    },
+    {
+      "name": "dismissRegistration",
+      "kind": "func",
+      "file": "AccountDetailViewModel.swift",
+      "line": 613
+    },
+    {
+      "name": "incrementalSpeedSliderSwitchDidChange",
+      "kind": "func",
+      "file": "DeveloperSettings/TPPDeveloperSettingsTableViewController.swift",
+      "line": 288
+    },
+    {
+      "name": "makeSwiftUIView",
+      "kind": "func",
+      "file": "NewSettings/TPPSettingsViewController.swift",
+      "line": 13
+    },
+    {
+      "name": "mockBackend_protocolClasses",
+      "kind": "var",
+      "file": "Debug/MockBackend/URLSessionConfiguration+MockBackend.swift",
+      "line": 60
+    },
+    {
+      "name": "pullToRefresh",
+      "kind": "func",
+      "file": "AccountList/TPPAccountList.swift",
+      "line": 83
+    },
+    {
+      "name": "set",
+      "kind": "func",
+      "file": "DeveloperSettings/TPPRegistryDebuggingCell.swift",
+      "line": 133
+    },
+    {
+      "name": "universalLinksURL",
+      "kind": "var",
+      "file": "TPPSettings+SE.swift",
+      "line": 11
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "DataSourceDelegate",
+      "file": "AccountList/TPPAccountListDataSource.swift",
+      "line": 3
+    },
+    {
+      "name": "NYPLFeedURLProvider",
+      "file": "TPPSettings.swift",
+      "line": 12
+    },
+    {
+      "name": "NYPLUniversalLinksSettings",
+      "file": "TPPSettings.swift",
+      "line": 4
+    },
+    {
+      "name": "TPPRegistryDebugger",
+      "file": "DeveloperSettings/TPPRegistryDebuggingCell.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPSettingsProviding",
+      "file": "TPPSettingsProviding.swift",
+      "line": 27
+    }
+  ]
+}

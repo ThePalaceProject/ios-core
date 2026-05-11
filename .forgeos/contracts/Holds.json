@@ -1,0 +1,23 @@
+{
+  "module": "Holds",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 3,
+  "shared_singleton_reads": 2,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "TPPHoldsViewController",
+      "kind": "class",
+      "file": "HoldsView.swift",
+      "line": 242
+    },
+    {
+      "name": "makeSwiftUIView",
+      "kind": "func",
+      "file": "HoldsView.swift",
+      "line": 247
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": []
+}

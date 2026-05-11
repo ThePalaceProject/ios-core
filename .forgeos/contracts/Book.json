@@ -1,0 +1,550 @@
+{
+  "module": "Book",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 33,
+  "shared_singleton_reads": 32,
+  "public_types": [
+    {
+      "name": "ReservationDetails",
+      "kind": "class",
+      "file": "Models/TPPBook.swift",
+      "line": 664
+    },
+    {
+      "name": "TPPBook",
+      "kind": "class",
+      "file": "Models/TPPBook.swift",
+      "line": 49
+    },
+    {
+      "name": "TPPBookCoverRegistryBridge",
+      "kind": "class",
+      "file": "Models/TPPBookCoverRegistry.swift",
+      "line": 488
+    },
+    {
+      "name": "TPPBookLocation",
+      "kind": "class",
+      "file": "Models/TPPBookLocation.swift",
+      "line": 24
+    },
+    {
+      "name": "TPPBookLocationKey",
+      "kind": "enum",
+      "file": "Models/TPPBookLocation.swift",
+      "line": 19
+    },
+    {
+      "name": "TPPBookState",
+      "kind": "enum",
+      "file": "Models/TPPBookState.swift",
+      "line": 14
+    },
+    {
+      "name": "func",
+      "kind": "class",
+      "file": "Models/TPPBook+Presentation.swift",
+      "line": 166
+    }
+  ],
+  "objc_surface": [
+    {
+      "name": "AudiobookSampleToolbarWrapper",
+      "kind": "class",
+      "file": "UI/AudiobookSampleToolbar.swift",
+      "line": 153
+    },
+    {
+      "name": "RegistryState",
+      "kind": "enum",
+      "file": "Models/TPPBookRegistry.swift",
+      "line": 102
+    },
+    {
+      "name": "ReservationDetails",
+      "kind": "class",
+      "file": "Models/TPPBook.swift",
+      "line": 664
+    },
+    {
+      "name": "TPPBook",
+      "kind": "extension",
+      "file": "Models/TPPBook+Extensions.swift",
+      "line": 18
+    },
+    {
+      "name": "TPPBookAuthor",
+      "kind": "class",
+      "file": "Models/TPPBookAuthor.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPBookButtonsState",
+      "kind": "enum",
+      "file": "UI/TPPBookButtonsState.swift",
+      "line": 4
+    },
+    {
+      "name": "TPPBookContentType",
+      "kind": "enum",
+      "file": "Models/TPPContentType.swift",
+      "line": 11
+    },
+    {
+      "name": "TPPBookCoverRegistryBridge",
+      "kind": "class",
+      "file": "Models/TPPBookCoverRegistry.swift",
+      "line": 488
+    },
+    {
+      "name": "TPPBookDetailDownloadFailedView",
+      "kind": "class",
+      "file": "UI/TPPBookDetailDownloadFailedView.swift",
+      "line": 5
+    },
+    {
+      "name": "TPPBookDetailsProblemDocumentViewController",
+      "kind": "class",
+      "file": "UI/TPPBookDetailsProblemDocumentViewController.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPBookLocation",
+      "kind": "class",
+      "file": "Models/TPPBookLocation.swift",
+      "line": 24
+    },
+    {
+      "name": "TPPBookRegistry",
+      "kind": "extension",
+      "file": "Models/TPPBookRegistry+Extensions.swift",
+      "line": 12
+    },
+    {
+      "name": "TPPBookRegistry",
+      "kind": "class",
+      "file": "Models/TPPBookRegistry.swift",
+      "line": 98
+    },
+    {
+      "name": "TPPBookRegistryRecord",
+      "kind": "class",
+      "file": "Models/TPPBookRegistryRecord.swift",
+      "line": 40
+    },
+    {
+      "name": "TPPBookState",
+      "kind": "enum",
+      "file": "Models/TPPBookState.swift",
+      "line": 14
+    },
+    {
+      "name": "TPPProblemReportViewController",
+      "kind": "class",
+      "file": "UI/TPPProblemReportViewController.swift",
+      "line": 9
+    },
+    {
+      "name": "TPPProblemReportViewControllerDelegate",
+      "kind": "protocol",
+      "file": "UI/TPPProblemReportViewController.swift",
+      "line": 5
+    },
+    {
+      "name": "acquisitions",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 50
+    },
+    {
+      "name": "allBookStates",
+      "kind": "func",
+      "file": "Models/TPPBookState.swift",
+      "line": 174
+    },
+    {
+      "name": "alternateURL",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 65
+    },
+    {
+      "name": "analyticsURL",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 64
+    },
+    {
+      "name": "annotationsURL",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 63
+    },
+    {
+      "name": "audience",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 79
+    },
+    {
+      "name": "authorLinkArray",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 476
+    },
+    {
+      "name": "authorNameArray",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 472
+    },
+    {
+      "name": "authors",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 480
+    },
+    {
+      "name": "book",
+      "kind": "var",
+      "file": "UI/TPPProblemReportViewController.swift",
+      "line": 11
+    },
+    {
+      "name": "bookAuthors",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 51
+    },
+    {
+      "name": "bookDuration",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 74
+    },
+    {
+      "name": "bookState",
+      "kind": "func",
+      "file": "Models/TPPBookState.swift",
+      "line": 165
+    },
+    {
+      "name": "bookTokenQueue",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 73
+    },
+    {
+      "name": "bookWithMetadata",
+      "kind": "func",
+      "file": "Models/TPPBook.swift",
+      "line": 339
+    },
+    {
+      "name": "cancel",
+      "kind": "func",
+      "file": "UI/TPPProblemReportViewController.swift",
+      "line": 60
+    },
+    {
+      "name": "categories",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 484
+    },
+    {
+      "name": "categoryStrings",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 52
+    },
+    {
+      "name": "configureFailMessage",
+      "kind": "func",
+      "file": "UI/TPPBookDetailDownloadFailedView.swift",
+      "line": 46
+    },
+    {
+      "name": "contributors",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 72
+    },
+    {
+      "name": "create",
+      "kind": "func",
+      "file": "UI/AudiobookSampleToolbar.swift",
+      "line": 155
+    },
+    {
+      "name": "defaultAcquisition",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 492
+    },
+    {
+      "name": "defaultAcquisitionIfBorrow",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 607
+    },
+    {
+      "name": "defaultAcquisitionIfOpenAccess",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 611
+    },
+    {
+      "name": "defaultBookContentType",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 615
+    },
+    {
+      "name": "delegate",
+      "kind": "var",
+      "file": "UI/TPPProblemReportViewController.swift",
+      "line": 12
+    },
+    {
+      "name": "dictionaryRepresentation",
+      "kind": "func",
+      "file": "Models/TPPBook.swift",
+      "line": 432
+    },
+    {
+      "name": "didChangePreferredContentSize",
+      "kind": "func",
+      "file": "UI/TPPBookDetailDownloadFailedView.swift",
+      "line": 42
+    },
+    {
+      "name": "displayLanguage",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 467
+    },
+    {
+      "name": "distributor",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 53
+    },
+    {
+      "name": "getExpirationDate",
+      "kind": "func",
+      "file": "Models/TPPBook.swift",
+      "line": 518
+    },
+    {
+      "name": "getReservationDetails",
+      "kind": "func",
+      "file": "Models/TPPBook.swift",
+      "line": 536
+    },
+    {
+      "name": "handleBookRegistryChange",
+      "kind": "func",
+      "file": "UI/BookDetail/BookDetailViewModel.swift",
+      "line": 366
+    },
+    {
+      "name": "handleDownloadStateDidChange",
+      "kind": "func",
+      "file": "UI/BookDetail/BookDetailViewModel.swift",
+      "line": 389
+    },
+    {
+      "name": "hasDuration",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 101
+    },
+    {
+      "name": "identifier",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 54
+    },
+    {
+      "name": "imageThumbnailURL",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 56
+    },
+    {
+      "name": "imageURL",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 55
+    },
+    {
+      "name": "isAudiobook",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 97
+    },
+    {
+      "name": "isExpired",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 513
+    },
+    {
+      "name": "language",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 83
+    },
+    {
+      "name": "mergingPreservingMetadata",
+      "kind": "func",
+      "file": "Models/TPPBook.swift",
+      "line": 383
+    },
+    {
+      "name": "narrators",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 488
+    },
+    {
+      "name": "ordinalString",
+      "kind": "func",
+      "file": "Models/TPPBook+Presentation.swift",
+      "line": 166
+    },
+    {
+      "name": "pollAudiobookReadingLocation",
+      "kind": "func",
+      "file": "UI/BookDetail/BookDetailViewModel.swift",
+      "line": 1028
+    },
+    {
+      "name": "previewLink",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 67
+    },
+    {
+      "name": "published",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 57
+    },
+    {
+      "name": "publisher",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 58
+    },
+    {
+      "name": "relatedWorksURL",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 66
+    },
+    {
+      "name": "reportURL",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 70
+    },
+    {
+      "name": "requiresAdobeDRM",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 635
+    },
+    {
+      "name": "revokeURL",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 69
+    },
+    {
+      "name": "sampleAcquisition",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 502
+    },
+    {
+      "name": "seriesURL",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 68
+    },
+    {
+      "name": "stringValue",
+      "kind": "func",
+      "file": "Models/TPPBookContentTypeConverter.swift",
+      "line": 12
+    },
+    {
+      "name": "stringValue",
+      "kind": "func",
+      "file": "Models/TPPBookState.swift",
+      "line": 160
+    },
+    {
+      "name": "submitProblem",
+      "kind": "func",
+      "file": "UI/TPPProblemReportViewController.swift",
+      "line": 54
+    },
+    {
+      "name": "subtitle",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 59
+    },
+    {
+      "name": "summary",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 60
+    },
+    {
+      "name": "timeTrackingURL",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 71
+    },
+    {
+      "name": "title",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 61
+    },
+    {
+      "name": "updated",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 62
+    },
+    {
+      "name": "voiceOverLabel",
+      "kind": "var",
+      "file": "Models/TPPBook+Accessibility.swift",
+      "line": 30
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "HalfSheetProvider",
+      "file": "UI/BookDetail/HalfSheetview.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPBookRegistryProvider",
+      "file": "Models/TPPBookRegistry.swift",
+      "line": 6
+    },
+    {
+      "name": "TPPProblemReportViewControllerDelegate",
+      "file": "UI/TPPProblemReportViewController.swift",
+      "line": 5
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "module": "Audiobooks",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 16,
+  "shared_singleton_reads": 14,
+  "public_types": [
+    {
+      "name": "AudioBookVendorsHelper",
+      "kind": "class",
+      "file": "AudioBookVendorsHelper.swift",
+      "line": 12
+    },
+    {
+      "name": "AudiobookSessionError",
+      "kind": "enum",
+      "file": "AudiobookSessionManager.swift",
+      "line": 46
+    },
+    {
+      "name": "AudiobookSessionManager",
+      "kind": "class",
+      "file": "AudiobookSessionManager.swift",
+      "line": 82
+    },
+    {
+      "name": "AudiobookSessionState",
+      "kind": "enum",
+      "file": "AudiobookSessionManager.swift",
+      "line": 22
+    },
+    {
+      "name": "DataManager",
+      "kind": "protocol",
+      "file": "Tracker/DataManager.swift",
+      "line": 28
+    },
+    {
+      "name": "NowPlayingCoordinator",
+      "kind": "class",
+      "file": "NowPlayingCoordinator.swift",
+      "line": 28
+    },
+    {
+      "name": "PlaybackBootstrapper",
+      "kind": "class",
+      "file": "PlaybackBootstrapper.swift",
+      "line": 51
+    },
+    {
+      "name": "TimeEntry",
+      "kind": "protocol",
+      "file": "Tracker/DataManager.swift",
+      "line": 12
+    }
+  ],
+  "objc_surface": [
+    {
+      "name": "AudioBookVendorsHelper",
+      "kind": "class",
+      "file": "AudioBookVendorsHelper.swift",
+      "line": 12
+    },
+    {
+      "name": "AudiobookTimeTracker",
+      "kind": "class",
+      "file": "Tracker/AudiobookTimeTracker.swift",
+      "line": 15
+    },
+    {
+      "name": "LCPAudiobooks",
+      "kind": "class",
+      "file": "LCP/LCPAudiobooks.swift",
+      "line": 18
+    },
+    {
+      "name": "TPPReturnPromptHelper",
+      "kind": "class",
+      "file": "TPPReturnPromptHelper.swift",
+      "line": 6
+    },
+    {
+      "name": "canOpenBook",
+      "kind": "func",
+      "file": "LCP/LCPAudiobooks.swift",
+      "line": 198
+    },
+    {
+      "name": "contentDictionary",
+      "kind": "func",
+      "file": "LCP/LCPAudiobooks.swift",
+      "line": 77
+    },
+    {
+      "name": "updateVendorKey",
+      "kind": "func",
+      "file": "AudioBookVendorsHelper.swift",
+      "line": 34
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "AudiobookSessionManaging",
+      "file": "AudiobookSessionManaging.swift",
+      "line": 18
+    }
+  ]
+}

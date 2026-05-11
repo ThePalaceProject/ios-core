@@ -1,0 +1,17 @@
+{
+  "module": "CarPlay",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 5,
+  "shared_singleton_reads": 4,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "CarPlaySceneDelegate",
+      "kind": "class",
+      "file": "CarPlaySceneDelegate.swift",
+      "line": 16
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": []
+}

@@ -1,0 +1,17 @@
+{
+  "module": "Notifications",
+  "generated_at": "2026-05-07T05:14:49+00:00",
+  "file_count": 1,
+  "shared_singleton_reads": 3,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "NotificationService",
+      "kind": "class",
+      "file": "NotificationService.swift",
+      "line": 34
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": []
+}
