@@ -2098,7 +2098,6 @@
 		735771AD2537687D00067CEA /* TPPURLSettingsProviderMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPURLSettingsProviderMock.swift; sourceTree = "<group>"; };
 		735771B02537691800067CEA /* TPPDRMAuthorizingMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPDRMAuthorizingMock.swift; sourceTree = "<group>"; };
 		7358A94B25898F4200E66D34 /* firebase-upload-symbols.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "firebase-upload-symbols.sh"; sourceTree = "<group>"; };
-		7358A951258997A900E66D34 /* xcode-test.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "xcode-test.sh"; sourceTree = "<group>"; };
 		7358A9532589A70B00E66D34 /* decode-install-secrets.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "decode-install-secrets.sh"; sourceTree = "<group>"; };
 		735DD0BD252299A90096D1F9 /* UIColor+NYPLAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIColor+NYPLAdditionsTests.swift"; sourceTree = "<group>"; };
 		735F41A2243E381D00046182 /* String+NYPLAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+NYPLAdditionsTests.swift"; sourceTree = "<group>"; };
@@ -3956,7 +3955,6 @@
 				733E3E07257ED49C00BEBA32 /* xcode-archive.sh */,
 				733E3E09257ED49D00BEBA32 /* xcode-export-adhoc.sh */,
 				731272AC259CF6F90032D7B4 /* xcode-export-appstore.sh */,
-				7358A951258997A900E66D34 /* xcode-test.sh */,
 				73EC8904258D8A2A00978955 /* xcode-build-nodrm.sh */,
 				733E3E05257ED49C00BEBA32 /* xcode-settings.sh */,
 				733E3E06257ED49C00BEBA32 /* ios-binaries-upload.sh */,
