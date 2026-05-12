@@ -329,6 +329,22 @@ struct Strings {
                 count
             )
         }
+
+        // MARK: - Empty-state copy (BUG-003)
+        //
+        // Shown in the Catalog search screen when a completed search returns
+        // zero books. The previous behavior was a blank screen, indistinguishable
+        // from a hung request.
+
+        static let noResultsTitle = NSLocalizedString(
+            "No results",
+            comment: "Title of the empty-state shown in the Catalog search screen when a query returns no books"
+        )
+
+        static let noResultsBody = NSLocalizedString(
+            "Try a different search term.",
+            comment: "Body copy of the empty-state shown in the Catalog search screen when a query returns no books"
+        )
     }
 
     // MARK: - Status Announcements (PP-3673)

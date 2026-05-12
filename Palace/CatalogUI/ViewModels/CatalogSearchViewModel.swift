@@ -18,6 +18,13 @@ class CatalogSearchViewModel: ObservableObject {
     /// Does NOT change during pagination or registry updates.
     @Published private(set) var searchId: UUID = UUID()
 
+    /// True once at least one search has finished (success, empty result, or error)
+    /// for the current `searchQuery`. Reset by `clearSearch()` and by transitions
+    /// back to an empty query. Used by the view to distinguish "no search yet"
+    /// (render nothing / the unfiltered catalog) from "search returned zero results"
+    /// (render the no-results empty state) — BUG-003.
+    @Published private(set) var hasCompletedSearch: Bool = false
+
     /// Format entry points extracted from the groups feed (e.g. All, eBooks, Audiobooks).
     /// Empty when the current feed has no entry-point facets.
     @Published private(set) var formatEntries: [SearchFormatEntry] = []
@@ -71,6 +78,24 @@ class CatalogSearchViewModel: ObservableObject {
         entryPointLoadTask?.cancel()
     }
 
+    /// True iff the view should render the "no results" empty state:
+    /// a search has actually completed for a non-empty query, the request is
+    /// not in flight, and the results list is empty. BUG-003.
+    var shouldShowNoResultsState: Bool {
+        hasCompletedSearch
+            && !isLoading
+            && filteredBooks.isEmpty
+            && !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Test-only hook to flip `hasCompletedSearch` without driving a full
+    /// repository round-trip. The view model is `@MainActor`, so this is
+    /// inherently main-thread-only; we keep it `internal` and clearly named so
+    /// production callers never reach for it.
+    func markSearchCompletedForTesting() {
+        hasCompletedSearch = true
+    }
+
     func updateBooks(_ books: [TPPBook]) {
         allBooks = books
         if searchQuery.isEmpty {
@@ -101,6 +126,9 @@ class CatalogSearchViewModel: ObservableObject {
         isLoadingMore = false
         postSearchFacets.removeAll()
         lastSearchedQuery = ""
+        // Reset completion flag so the empty state doesn't flash while the
+        // user re-types — the catalog grid is showing the unfiltered books now.
+        hasCompletedSearch = false
         // Generate new searchId to scroll to top of restored books
         searchId = UUID()
     }
@@ -239,6 +267,9 @@ class CatalogSearchViewModel: ObservableObject {
             nextPageURL = nil
             isLoading = false
             lastSearchedQuery = ""
+            // No active query → the unfiltered grid is what's on screen, not
+            // a "no results for ..." surface. Suppress the empty state.
+            hasCompletedSearch = false
             return
         }
 
@@ -255,6 +286,10 @@ class CatalogSearchViewModel: ObservableObject {
             filteredBooks = []
             nextPageURL = nil
             isLoading = false
+            // We attempted a search for a real query and couldn't even resolve
+            // a target URL — that's still a "completed, zero results" outcome
+            // from the user's vantage. Flip the flag so the empty state shows.
+            hasCompletedSearch = true
             return
         }
 
@@ -264,6 +299,9 @@ class CatalogSearchViewModel: ObservableObject {
         nextPageURL = nil
         isLoadingMore = false
         isLoading = true
+        // While the request is in flight we are NOT in a "no results" state —
+        // suppress the empty surface in favor of the spinner.
+        hasCompletedSearch = false
         // Only scroll to top for genuinely new queries; format switches filter in place.
         if isNewQuery {
             searchId = UUID()
@@ -271,7 +309,18 @@ class CatalogSearchViewModel: ObservableObject {
         lastSearchedQuery = query
 
         searchTask = Task { [weak self] in
-            defer { self?.isLoading = false }
+            defer {
+                // Only the still-active task's outcome should drive UI state. A
+                // cancelled task whose successor has already set isLoading=true /
+                // hasCompletedSearch=false must not stomp those values back.
+                if !Task.isCancelled {
+                    self?.isLoading = false
+                    // Whatever the outcome — success, nil-feed, or thrown error —
+                    // the search has completed and the view should now decide between
+                    // results grid and no-results empty state.
+                    self?.hasCompletedSearch = true
+                }
+            }
 
             do {
                 guard let self, !Task.isCancelled else { return }
