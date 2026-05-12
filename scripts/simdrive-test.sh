@@ -8,7 +8,10 @@
 #   ./scripts/simdrive-test.sh --sim-id <UDID>     # Use a specific source sim
 #
 # Prerequisites:
-#   - pip install --pre simdrive
+#   - simdrive — maintainer-internal MCP tool (not publicly distributed yet).
+#     If you're an outside contributor, this script is informational; the CI
+#     side (chaos-replay-on-pr.yml) runs the corpus on your PR server-side.
+#     Maintainer install: `pip install --pre simdrive` (requires private access).
 #   - Xcode 26 with iOS Simulator booted
 #   - Source sim should have libraries pre-configured (see README)
 #

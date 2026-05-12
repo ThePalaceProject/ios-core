@@ -12,9 +12,13 @@
 #                                            # paths Audiobooks/SignInLogic/
 #                                            # MyBooks/Download* enforce strictly)
 #   scripts/verify-pr.sh --simdrive          # Also replay .simdrive/journeys/*.yaml
-#                                            # via simdrive (opt-in, requires
-#                                            # `pip3 install --pre simdrive` and
-#                                            # a paired ~/.simdrive/recordings/<n>/)
+#                                            # via simdrive. MAINTAINER-INTERNAL:
+#                                            # simdrive is not yet publicly
+#                                            # distributed; `pip3 install --pre
+#                                            # simdrive` requires private access.
+#                                            # CI (chaos-replay-on-pr.yml) replays
+#                                            # the corpus server-side for every PR
+#                                            # regardless of this flag.
 #
 # Designed to be called by:
 #   - Claude Code agents before PR creation
@@ -333,6 +337,30 @@ if [ -n "$CHANGED_UI" ]; then
   fi
 else
   record "accessibility" "pass" "No UI files changed (skipped)"
+fi
+
+# 6b. Ledger PR-drift check — flags contracts whose source files changed
+#     in this PR but whose contract markdown was not updated. Catches
+#     "you edited the code, you should reflect it in the contract."
+#     Strict on critical-path contracts (Audiobooks / SignInLogic /
+#     MyBooks/Download* / DNA-marked), warns elsewhere. Honors
+#     [skip-ledger-check] in commit messages for typo/refactor PRs.
+echo "--- Ledger PR Drift ---"
+if [ ! -x scripts/ledger-pr-check.py ] || [ ! -d docs/ledger ]; then
+  record "ledger_pr_drift" "pass" "Ledger PR-drift check not available (skipped)"
+else
+  LEDGER_PR_OUT=$(scripts/ledger-pr-check.py "$BASE" 2>&1 || true)
+  if echo "$LEDGER_PR_OUT" | grep -q "^✓ ledger pr-drift clean"; then
+    record "ledger_pr_drift" "pass" "No contract drift in this PR"
+  elif echo "$LEDGER_PR_OUT" | grep -q "^\[STRICT\]"; then
+    # Strict drift on a critical-path contract — record as fail.
+    STRICT_COUNT=$(echo "$LEDGER_PR_OUT" | grep -oE '\[STRICT\] [0-9]+' | grep -oE '[0-9]+' || echo "?")
+    record "ledger_pr_drift" "fail" "${STRICT_COUNT} critical-path contract(s) drifted — see scripts/ledger-pr-check.py output"
+  else
+    # Non-critical drift — warn but pass.
+    WARN_COUNT=$(echo "$LEDGER_PR_OUT" | grep -oE '\[WARN\] [0-9]+' | grep -oE '[0-9]+' || echo "?")
+    record "ledger_pr_drift" "pass" "${WARN_COUNT} non-critical contract drift finding(s) (warning)"
+  fi
 fi
 
 # 7. simdrive replay (opt-in via --simdrive). Delegates to scripts/simdrive-regress.sh

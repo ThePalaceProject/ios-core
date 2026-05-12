@@ -64,18 +64,20 @@ If you are an outside contributor, the only scripts you generally need to run by
 | `wire_orphan_tests.py` | Adds orphaned test files into the `PalaceTests` Sources phase. | dev/local (after extracting tests) |
 | `wire_untracked_tests.py` | Wires fully-untracked test files into the Xcode project. | dev/local |
 
-### simdrive (E2E sim driving)
+### simdrive (E2E sim driving) — maintainer-internal
+
+> **Note for outside contributors:** `simdrive` is the iOS sim-driving MCP tool the maintainers use for E2E regression. It is **not yet publicly distributed** — `pip install --pre simdrive` requires maintainer access. The recorded artifacts under `.simdrive/` ARE in the repo and are exercised by CI (`chaos-replay-on-pr.yml`), so a contributor's PR will run through the regression corpus server-side; you just can't author new recordings locally without simdrive. The scripts below are listed for transparency; "dev/local" means *maintainer dev/local*, not anyone's.
 
 | Script | What it does | Called by |
 |--------|--------------|-----------|
-| `simdrive-test.sh` | Builds Palace and runs the simdrive integration tests. | dev/local, chaos workflows |
-| `simdrive-regress.sh` | Replays every `.simdrive/journeys/*.yaml` against a booted simulator. | `chaos-replay-on-pr.yml`, dev/local |
-| `simdrive-coverage.sh` | Captures code coverage from simdrive runs and merges with unit coverage. | dev/local |
-| `simdrive-report.sh` | Generates a Markdown report of simdrive replay results for PR evidence. | dev/local |
+| `simdrive-test.sh` | Builds Palace and runs the simdrive integration tests. | maintainer dev/local, chaos workflows |
+| `simdrive-regress.sh` | Replays every `.simdrive/journeys/*.yaml` against a booted simulator. | `chaos-replay-on-pr.yml`, maintainer dev/local |
+| `simdrive-coverage.sh` | Captures code coverage from simdrive runs and merges with unit coverage. | maintainer dev/local |
+| `simdrive-report.sh` | Generates a Markdown report of simdrive replay results for PR evidence. | maintainer dev/local |
 | `simdrive-structural-check.py` | OPDS-tolerant journey verifier (checks structure, not pixels). | `chaos-replay-on-pr.yml` |
-| `fix-replay-assertions.py` | Trims `expect_elements` in replay YAMLs to stable, screen-appropriate elements. | dev/local (after recording) |
-| `fix-replay-timing.py` | Removes `expect_elements` from steps where timing makes assertions unreliable. | dev/local |
-| `marks-diff.py` | Diffs two simdrive fixture corpora and emits findings rows. | dev/local |
+| `fix-replay-assertions.py` | Trims `expect_elements` in replay YAMLs to stable, screen-appropriate elements. | maintainer dev/local (after recording) |
+| `fix-replay-timing.py` | Removes `expect_elements` from steps where timing makes assertions unreliable. | maintainer dev/local |
+| `marks-diff.py` | Diffs two simdrive fixture corpora and emits findings rows. | maintainer dev/local |
 | `chaos-targets.py` | Maps changed file paths to fixture flow seeds whose mutation targets cover them. | `chaos-replay-on-pr.yml` |
 | `run-chaos-pass.sh` | Runs a chaos QA pass (mutation + simdrive replay). | `chaos-qa-on-demand.yml` |
 
