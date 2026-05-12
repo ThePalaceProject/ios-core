@@ -524,12 +524,17 @@ struct AccountDetailView: View {
         })
     }
 
+    @ViewBuilder
     private var privacyPolicyView: some View {
         // BUG-005 hardening: anchor `.navigationBarTitle` outside the
         // `if let` to prevent SwiftUI from leaking the previous push's
         // title when the URL is unavailable. Same fix as the
         // contentLicenseView / reportIssueWebView destinations.
-        Group {
+        // `@ViewBuilder` is required so the if/else is wrapped in
+        // `_ConditionalContent` before `SwiftUI.Group` sees it — without
+        // it Xcode 26's type-checker can't pick `Group.init(content:)`
+        // and cascades to a CodingKey overload.
+        SwiftUI.Group {
             if let url = viewModel.selectedAccount?.details?.getLicenseURL(.privacyPolicy) {
                 UIViewControllerWrapper(
                     RemoteHTMLViewController(
@@ -546,6 +551,7 @@ struct AccountDetailView: View {
         .navigationBarTitle(Text(DisplayStrings.privacyPolicy))
     }
 
+    @ViewBuilder
     private var contentLicenseView: some View {
         // BUG-005: `.navigationBarTitle` must live *outside* the `if let`.
         // When the destination body is empty SwiftUI silently falls back to
@@ -553,7 +559,9 @@ struct AccountDetailView: View {
         // "Report an Issue" title here. Anchoring the title on the outer
         // view (and providing a non-empty unavailable-state body) prevents
         // both the title leak and the blank-screen symptoms.
-        Group {
+        // See `privacyPolicyView` for the SwiftUI.Group + @ViewBuilder
+        // typecheck-disambiguation rationale.
+        SwiftUI.Group {
             if let url = viewModel.selectedAccount?.details?.getLicenseURL(.contentLicenses) {
                 UIViewControllerWrapper(
                     RemoteHTMLViewController(
@@ -598,6 +606,7 @@ struct AccountDetailView: View {
         }
     }
 
+    @ViewBuilder
     private var reportIssueWebView: some View {
         // BUG-001 + BUG-005: anchor `.navigationBarTitle` outside the
         // optional binding so the title is committed even when the URL is
@@ -606,7 +615,9 @@ struct AccountDetailView: View {
         // `BundledHTMLViewController` (designed for bundled file:// URLs)
         // — `supportURL` is always a remote http URL fetched from the
         // library's auth document.
-        Group {
+        // See `privacyPolicyView` for the SwiftUI.Group + @ViewBuilder
+        // typecheck-disambiguation rationale.
+        SwiftUI.Group {
             if let url = viewModel.selectedAccount?.supportURL {
                 UIViewControllerWrapper(
                     RemoteHTMLViewController(
