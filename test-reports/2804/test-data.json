@@ -1,0 +1,32 @@
+{
+  "success": true,
+  "xcresult_path": "TestResults.xcresult",
+  "api_used": "none",
+  "build": {
+    "status": "failed",
+    "errors": [
+      "Testing cancelled because the build failed.",
+      "Type 'NSError' has no member 'makeFromHTTPResponse'"
+    ],
+    "warnings": [
+      "'ReadiumShared' is missing a dependency on 'ReadiumFuzi' because dependency scan of Swift module 'ReadiumShared' discovered a dependency on 'ReadiumFuzi'",
+      "'ReadiumShared' is missing a dependency on 'ReadiumInternal' because dependency scan of Swift module 'ReadiumShared' discovered a dependency on 'ReadiumInternal'",
+      "'ReadiumShared' is missing a dependency on 'ReadiumZIPFoundation' because dependency scan of Swift module 'ReadiumShared' discovered a dependency on 'ReadiumZIPFoundation'",
+      "'ReadiumShared' is missing a dependency on 'SwiftSoup' because dependency scan of Swift module 'ReadiumShared' discovered a dependency on 'SwiftSoup'",
+      "'sprintf' is deprecated: This function is provided for compatibility reasons only.  Due to security concerns inherent in the design of sprintf(3), it is highly recommended that you use snprintf(3) instead.",
+      "-ld_classic is deprecated and will be removed in a future release"
+    ]
+  },
+  "summary": {
+    "tests": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "duration": 0,
+    "duration_formatted": "<1ms",
+    "pass_rate": "N/A"
+  },
+  "tests": [],
+  "classes": {},
+  "failed_tests": []
+}
