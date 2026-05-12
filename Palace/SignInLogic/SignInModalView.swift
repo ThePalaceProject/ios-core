@@ -50,12 +50,19 @@ struct SignInModalView: View {
                     // `presentingViewController == nil` — i.e. AFTER the UIKit transition has
                     // fully completed. Downstream sheet presentation then runs on a clean
                     // presenter chain.
-                    if authState == .loggedIn {
+                    if Self.shouldAutoDismiss(authState: authState) {
                         dismiss()
                     }
                 }
         }
         .navigationViewStyle(.stack)
+    }
+
+    /// Pure-function predicate for the auto-dismiss-on-loggedIn branch.
+    /// Extracted from the body's `onChange` so the mutation gate can verify
+    /// callers don't silently regress to "dismiss when NOT logged in".
+    static func shouldAutoDismiss(authState: TPPAccountAuthState) -> Bool {
+        return authState == .loggedIn
     }
 
     private var cancelButton: some View {
@@ -76,7 +83,7 @@ struct SignInModalView: View {
 /// not just when SwiftUI's `dismiss()` was called. SwiftUI's dismiss is
 /// non-blocking; without this, fast user re-taps race the in-flight
 /// dismiss and produce "transitioning already" stuck-modal lock-ups.
-private final class SignInModalHostingController<Content: View>: UIHostingController<Content> {
+final class SignInModalHostingController<Content: View>: UIHostingController<Content> {
     private let onDidFullyDismiss: () -> Void
     private var firedOnce = false
 
@@ -96,9 +103,17 @@ private final class SignInModalHostingController<Content: View>: UIHostingContro
         // only want to reset isPresenting when this hosting controller is
         // actually torn down — `presentingViewController == nil` is true
         // after dismissal has fully completed.
-        guard !firedOnce, presentingViewController == nil else { return }
+        guard Self.shouldFireDismissCallback(firedOnce: firedOnce, presentingViewController: presentingViewController) else { return }
         firedOnce = true
         onDidFullyDismiss()
+    }
+
+    /// Pure-function predicate for the once-after-dismissal completion guard.
+    /// Extracted from `viewDidDisappear` so the mutation gate can verify a
+    /// regression to "fire while still presenting" is caught by a unit test
+    /// rather than discovered as a stuck-modal user report.
+    static func shouldFireDismissCallback(firedOnce: Bool, presentingViewController: UIViewController?) -> Bool {
+        return !firedOnce && presentingViewController == nil
     }
 }
 
