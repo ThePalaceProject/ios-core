@@ -71,11 +71,11 @@ if ! ~/harness/bin/harness creds list 2>/dev/null | grep -q "^${SLUG}\$"; then
 fi
 
 # Inject creds as env vars WITHOUT echoing values.
-# `harness creds export` emits `export HARNESS_USERNAME=...` lines; `eval`
+# `harness creds export` emits `export HARNESS_USER=...` lines; `eval`
 # them into the current shell. Nothing reaches stdout.
 eval "$(~/harness/bin/harness creds export "$SLUG" 2>/dev/null)"
-if [ -z "${HARNESS_USERNAME:-}" ] || [ -z "${HARNESS_PASSWORD:-}" ]; then
-  echo "ERROR: $SLUG didn't yield HARNESS_USERNAME + HARNESS_PASSWORD." >&2
+if [ -z "${HARNESS_USER:-}" ] || [ -z "${HARNESS_PASS:-}" ]; then
+  echo "ERROR: $SLUG didn't yield HARNESS_USER + HARNESS_PASS." >&2
   exit 1
 fi
 
@@ -91,9 +91,9 @@ echo ""
 read -p "Press Enter when ready to start recording, or Ctrl-C to abort... " _
 
 # Pre-stage the pasteboard with the password so step-N Cmd-V picks it up.
-# Replace with HARNESS_PASSWORD when ready to paste; you'll need to re-pbcopy
+# Replace with HARNESS_PASS when ready to paste; you'll need to re-pbcopy
 # the barcode for that field too.
-echo -n "$HARNESS_USERNAME" | pbcopy
+echo -n "$HARNESS_USER" | pbcopy
 echo "[record-auth-flow] Username copied to pasteboard. Tap the username/barcode field, then Cmd-V."
 echo ""
 

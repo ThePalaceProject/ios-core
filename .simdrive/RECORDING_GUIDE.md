@@ -43,7 +43,7 @@ The script handles the credential injection + recording start/stop + state-contr
    ```bash
    # In a separate shell — does NOT echo the value:
    eval "$(~/harness/bin/harness creds export palace-ios.lib.a1qa)"
-   echo -n "$HARNESS_PASSWORD" | pbcopy
+   echo -n "$HARNESS_PASS" | pbcopy
    ```
 
 6. **You press Enter** when sign-in completes (Account view shows the username, sign-out option). The script:
