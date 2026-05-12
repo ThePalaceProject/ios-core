@@ -101,14 +101,20 @@ else
   trap - EXIT
 fi
 
-# Install on each sim
+# Install on each sim via the shared fresh-install primitive. --no-launch
+# because side-by-side controls its own launch timing further down via
+# simdrive-regress.sh. The primitive also pre-grants notifications +
+# location, eliminating the first-launch-alert race that previously caused
+# the first replay step to hit "Don't Allow" instead of the intended target.
+PALACE_STATE_DIR="$(cd "$(dirname "$0")/../.." && pwd)/.palace-state"
+
 echo "[side-by-side] installing baseline on $SIM_A …"
-xcrun simctl uninstall "$SIM_A" org.thepalaceproject.palace 2>/dev/null || true
-xcrun simctl install "$SIM_A" "$BASELINE_APP"
+PALACE_STATE_SIM_UDID="$SIM_A" PALACE_STATE_APP_PATH="$BASELINE_APP" \
+  "$PALACE_STATE_DIR/operations/reset-fresh-install.sh" --no-launch
 
 echo "[side-by-side] installing candidate on $SIM_B …"
-xcrun simctl uninstall "$SIM_B" org.thepalaceproject.palace 2>/dev/null || true
-xcrun simctl install "$SIM_B" "$CANDIDATE_APP"
+PALACE_STATE_SIM_UDID="$SIM_B" PALACE_STATE_APP_PATH="$CANDIDATE_APP" \
+  "$PALACE_STATE_DIR/operations/reset-fresh-install.sh" --no-launch
 
 # Run journey corpus on each
 echo "[side-by-side] simdrive-regress against baseline (sim-A) …"
