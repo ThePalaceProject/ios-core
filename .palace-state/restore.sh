@@ -44,9 +44,30 @@ STRICT=true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --sim) SIM_UDID="$2"; shift 2 ;;
-    --app) APP_PATH="$2"; shift 2 ;;
-    --bundle-id) BUNDLE_ID="$2"; shift 2 ;;
+    --sim)
+      if [ -z "${2:-}" ]; then
+        echo "restore: --sim requires an argument" >&2
+        exit 3
+      fi
+      SIM_UDID="$2"
+      shift 2
+      ;;
+    --app)
+      if [ -z "${2:-}" ]; then
+        echo "restore: --app requires an argument" >&2
+        exit 3
+      fi
+      APP_PATH="$2"
+      shift 2
+      ;;
+    --bundle-id)
+      if [ -z "${2:-}" ]; then
+        echo "restore: --bundle-id requires an argument" >&2
+        exit 3
+      fi
+      BUNDLE_ID="$2"
+      shift 2
+      ;;
     --no-launch) LAUNCH=false; shift ;;
     --no-strict) STRICT=false; shift ;;
     -h|--help)
@@ -74,15 +95,18 @@ ARCHIVE="$REPO_ROOT/.palace-state/fixtures/$FIXTURE_NAME.tgz"
 META="$REPO_ROOT/.palace-state/fixtures/$FIXTURE_NAME.meta.json"
 
 if [[ ! -f "$ARCHIVE" ]]; then
+  # Args were syntactically valid; the named fixture just doesn't exist on
+  # this machine. That's an environment problem (run snapshot.sh first or
+  # check the fixtures dir), not an arg-validation problem — exit 1.
   echo "restore: fixture not found: $ARCHIVE" >&2
   echo "Available fixtures:" >&2
   ls "$REPO_ROOT/.palace-state/fixtures/"*.tgz 2>/dev/null | xargs -n1 basename | sed 's/\.tgz$//' | sed 's/^/  /' >&2
-  exit 3
+  exit 1
 fi
 
 if [[ ! -f "$META" ]]; then
   echo "restore: metadata not found: $META" >&2
-  exit 3
+  exit 1
 fi
 
 # Compatibility checks. Use the same UDID-anchored regex as snapshot.sh so
@@ -92,9 +116,39 @@ fi
 DEVICE_INFO=$(xcrun simctl list devices 2>/dev/null | grep "$SIM_UDID" | head -1)
 CURRENT_DEVICE=$(echo "$DEVICE_INFO" | sed -E 's/^[[:space:]]*//; s/ \([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\).*//')
 
-# Extract metadata values via python (jq isn't guaranteed installed)
-FIXTURE_DEVICE=$(python3 -c "import json,sys; print(json.load(open('$META')).get('sim_device',''))" 2>/dev/null)
-FIXTURE_VERSION=$(python3 -c "import json,sys; print(json.load(open('$META')).get('app_version',''))" 2>/dev/null)
+# Extract metadata values via python (jq isn't guaranteed installed).
+# Previously each field was read in its own python -c with 2>/dev/null, which
+# meant a malformed/missing meta.json produced empty strings and silently
+# bypassed the device-mismatch guard below (the `-n "$FIXTURE_DEVICE"` test
+# would short-circuit). Read all three fields atomically and exit 4
+# (fixture-incompat) on any parse failure.
+META_PARSE=$(python3 -c "
+import json, sys
+meta = json.load(open('$META'))
+print('{}|{}|{}|{}'.format(
+    meta.get('fixture_format_version', ''),
+    meta.get('sim_device', ''),
+    meta.get('app_bundle_id', ''),
+    meta.get('app_version', ''),
+))
+" 2>&1)
+if [ $? -ne 0 ]; then
+  echo "restore: failed to parse fixture metadata at $META" >&2
+  echo "$META_PARSE" >&2
+  echo "fixture metadata could not be parsed; aborting" >&2
+  exit 4
+fi
+IFS='|' read -r FIXTURE_FORMAT_VERSION FIXTURE_DEVICE FIXTURE_BUNDLE FIXTURE_VERSION <<<"$META_PARSE"
+
+# Forward-compat guard: this script understands fixture_format_version=1.
+# A v2 fixture (e.g. one that ships keychain alongside the data container)
+# would need new restore logic, so refuse rather than silently doing the
+# wrong thing.
+if [[ "$FIXTURE_FORMAT_VERSION" != "1" ]]; then
+  echo "restore: unsupported fixture_format_version='$FIXTURE_FORMAT_VERSION' (expected '1')" >&2
+  echo "This restore.sh supports v1 fixtures only. Re-snapshot or upgrade tooling." >&2
+  exit 4
+fi
 
 if [[ -n "$FIXTURE_DEVICE" && "$FIXTURE_DEVICE" != "$CURRENT_DEVICE" ]]; then
   if [[ "$STRICT" == "true" ]]; then
@@ -137,9 +191,18 @@ if [[ -z "$DATA_DIR" || ! -d "$DATA_DIR" ]]; then
   exit 2
 fi
 
-# Remove any default-created Documents/Library before unpacking so we don't
-# leave partial state behind from the install template.
-rm -rf "$DATA_DIR/Documents" "$DATA_DIR/Library/Application Support" "$DATA_DIR/Library/Preferences" 2>/dev/null || true
+# Wipe the data container before unpacking so we don't leave partial state
+# behind from the install template. The snapshot captures all of Documents/
+# and Library/ except Caches/, so anything outside that union has to go —
+# the prior narrower cleanup left stray subdirs (e.g. Library/Cookies,
+# Library/WebKit) that the snapshot never overwrites.
+#
+# Preserve Library/Caches/ to avoid re-downloading regenerable data after
+# every restore, matching the asymmetry in snapshot.sh.
+find "$DATA_DIR" -mindepth 1 -maxdepth 1 ! -name 'Library' -exec rm -rf {} + 2>/dev/null || true
+if [[ -d "$DATA_DIR/Library" ]]; then
+  find "$DATA_DIR/Library" -mindepth 1 -maxdepth 1 ! -name 'Caches' -exec rm -rf {} + 2>/dev/null || true
+fi
 
 if ! tar -xzf "$ARCHIVE" -C "$DATA_DIR" 2>&1; then
   echo "restore: tar extract failed" >&2

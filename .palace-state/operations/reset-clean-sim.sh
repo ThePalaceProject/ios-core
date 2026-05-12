@@ -17,7 +17,8 @@
 #   0  sim erased and re-booted
 #   1  environment problem (sim doesn't exist)
 #   2  erase or boot failed
-#   3  refused (no --force in non-tty, or user declined)
+#   3  invalid arguments
+#   5  refused (no --force in non-tty, or user declined the safety prompt)
 
 set -uo pipefail
 
@@ -26,7 +27,14 @@ FORCE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --sim) SIM_UDID="$2"; shift 2 ;;
+    --sim)
+      if [ -z "${2:-}" ]; then
+        echo "reset-clean-sim: --sim requires an argument" >&2
+        exit 3
+      fi
+      SIM_UDID="$2"
+      shift 2
+      ;;
     --force) FORCE=true; shift ;;
     -h|--help)
       sed -n '2,/^set -u/p' "$0" | sed -n 's/^# *//p'
@@ -48,16 +56,18 @@ fi
 
 # Safety: this erases EVERYTHING on the sim. If stdin is a terminal and
 # --force wasn't passed, prompt. In CI (no tty), require --force explicitly.
+# Refusal exits 5 (distinct from 3 invalid-args) so callers can tell apart
+# "you typed the command wrong" from "the safety gate stopped you".
 if [[ "$FORCE" != "true" ]]; then
   if [[ ! -t 0 ]]; then
     echo "reset-clean-sim: --force required when stdin is not a terminal" >&2
-    exit 3
+    exit 5
   fi
   echo "About to ERASE sim $SIM_UDID — this deletes all apps, data, and keychain."
   read -r -p "Type 'erase' to confirm: " confirm
   if [[ "$confirm" != "erase" ]]; then
     echo "reset-clean-sim: declined" >&2
-    exit 3
+    exit 5
   fi
 fi
 

@@ -37,9 +37,30 @@ LAUNCH=true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --sim) SIM_UDID="$2"; shift 2 ;;
-    --app) APP_PATH="$2"; shift 2 ;;
-    --bundle-id) BUNDLE_ID="$2"; shift 2 ;;
+    --sim)
+      if [ -z "${2:-}" ]; then
+        echo "reset-fresh-install: --sim requires an argument" >&2
+        exit 3
+      fi
+      SIM_UDID="$2"
+      shift 2
+      ;;
+    --app)
+      if [ -z "${2:-}" ]; then
+        echo "reset-fresh-install: --app requires an argument" >&2
+        exit 3
+      fi
+      APP_PATH="$2"
+      shift 2
+      ;;
+    --bundle-id)
+      if [ -z "${2:-}" ]; then
+        echo "reset-fresh-install: --bundle-id requires an argument" >&2
+        exit 3
+      fi
+      BUNDLE_ID="$2"
+      shift 2
+      ;;
     --no-launch) LAUNCH=false; shift ;;
     -h|--help)
       sed -n '2,/^set -u/p' "$0" | sed -n 's/^# *//p'

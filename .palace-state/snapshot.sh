@@ -38,8 +38,22 @@ INCLUDE_BOOKS=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --sim) SIM_UDID="$2"; shift 2 ;;
-    --bundle-id) BUNDLE_ID="$2"; shift 2 ;;
+    --sim)
+      if [ -z "${2:-}" ]; then
+        echo "snapshot: --sim requires an argument" >&2
+        exit 3
+      fi
+      SIM_UDID="$2"
+      shift 2
+      ;;
+    --bundle-id)
+      if [ -z "${2:-}" ]; then
+        echo "snapshot: --bundle-id requires an argument" >&2
+        exit 3
+      fi
+      BUNDLE_ID="$2"
+      shift 2
+      ;;
     --include-books) INCLUDE_BOOKS=true; shift ;;
     -h|--help)
       sed -n '2,/^set -u/p' "$0" | sed -n 's/^# *//p'
@@ -128,9 +142,13 @@ else
   EXCLUDES_JSON='["Library/Caches", "Documents/Books", "Documents/audiobooks"]'
 fi
 
-# Compact metadata file — restore.sh validates against this before restoring
+# Compact metadata file — restore.sh validates against this before restoring.
+# fixture_format_version: bump when the on-disk shape changes in a way that
+# breaks back-compat (e.g. v2 might add a keychain blob). restore.sh hard-fails
+# on a mismatch so old fixtures don't silently restore against newer logic.
 cat > "$META" <<EOF
 {
+  "fixture_format_version": 1,
   "fixture_name": "$FIXTURE_NAME",
   "captured_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "app_bundle_id": "$BUNDLE_ID",

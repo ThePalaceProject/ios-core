@@ -51,6 +51,20 @@ export PALACE_STATE_APP_PATH=/path/to/built/Palace.app
 .palace-state/restore.sh signed-in-a1qa
 ```
 
+## Exit codes (operation & fixture scripts)
+
+All four scripts share a common exit-code contract so callers can branch on
+failure mode without parsing stderr.
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Environment problem (sim not booted, app missing, fixture not found) |
+| 2 | Operation failed (install / capture / restore / launch) |
+| 3 | Invalid arguments (missing required flag value, unknown flag) |
+| 4 | Fixture incompatible (device or format-version mismatch — `restore.sh`) |
+| 5 | Refused (no `--force` in non-tty, or user declined safety prompt — `reset-clean-sim.sh`) |
+
 ## What gets captured in a snapshot
 
 | Captured | Excluded |
