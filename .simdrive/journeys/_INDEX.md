@@ -49,6 +49,7 @@ Today's run (5 journeys): all 5 pass. 3 stateless journeys gated on structural c
 | [danny-saml-signin-init](danny-saml-signin-init.yaml) | stateful | 1 | SAML handoff to SwiftUI Safari sheet (PR #907). Smoke: tap launches the Safari sheet loading state; SSIM may drift past handoff (warn-only). |
 | [icarus-oidc-signin](icarus-oidc-signin.yaml) | stateful | 11 | OIDC SFAuthenticationSession + Google→Microsoft federation. IdP rejects creds by design — recording smoke is the handoff structure, not the auth result. |
 | [palace-bookshelf-anonymous](palace-bookshelf-anonymous.yaml) | stateful | 1 | Anonymous library Account view — negative invariants (no Sign in / Sign out buttons, "Account information not required" copy). Cleanest replay in the auth corpus. |
+| [audiobook-skip-forward](audiobook-skip-forward.yaml) | stateful | 3 | Audiobook +30s skip-forward position state. Verifies player UI advances chapter / elapsed / remaining indicators on skip (chapter 4 → 5 via boundary cross). Position-state driven — does NOT depend on audible output (sim audio decoder is silent). |
 
 ## How replays work
 
