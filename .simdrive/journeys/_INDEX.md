@@ -44,6 +44,11 @@ Today's run (5 journeys): all 5 pass. 3 stateless journeys gated on structural c
 | [search-flow-stateful](search-flow-stateful.yaml) | stateful | 3 | UITextField focus on iOS 26 (the regression simdrive was built for); auto-capitalize; auto-submit |
 | [reader2-page-forward](reader2-page-forward.yaml) | stateful | 9 | Readium WKWebView reachability — OCR sees page content and chrome (back, TT). The use case with no XCTest equivalent. |
 | [audiobook-download-indicator-stateful](audiobook-download-indicator-stateful.yaml) | stateful | 3 | PP-4156 regression — download indicator visible (text + percentage) while an LCP audiobook is mid-download. Catches both visibility-rule and color-contrast bugs. |
+| [a1qa-basic-signin](a1qa-basic-signin.yaml) | stateful | 3 | Basic-auth (barcode + PIN) form rendering, type+tap drive, state-contract gates pre-state signed-out. First basic-auth recording in the corpus. |
+| [a1qa-sign-out](a1qa-sign-out.yaml) | stateful | 2 | Sign-out confirmation dialog (PR #900, PP-4229) + credential clearing. Halts cleanly at step 0 if pre-state is signed-out (intentional state-contract behavior). |
+| [danny-saml-signin-init](danny-saml-signin-init.yaml) | stateful | 1 | SAML handoff to SwiftUI Safari sheet (PR #907). Smoke: tap launches the Safari sheet loading state; SSIM may drift past handoff (warn-only). |
+| [icarus-oidc-signin](icarus-oidc-signin.yaml) | stateful | 11 | OIDC SFAuthenticationSession + Google→Microsoft federation. IdP rejects creds by design — recording smoke is the handoff structure, not the auth result. |
+| [palace-bookshelf-anonymous](palace-bookshelf-anonymous.yaml) | stateful | 1 | Anonymous library Account view — negative invariants (no Sign in / Sign out buttons, "Account information not required" copy). Cleanest replay in the auth corpus. |
 
 ## How replays work
 
