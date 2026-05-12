@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trim expect_elements in SpecterQA replay YAMLs to stable, screen-appropriate elements only.
+"""Trim expect_elements in simdrive replay YAMLs to stable, screen-appropriate elements only.
 
 Two-pass approach:
 1. Filter to stable elements only (remove dynamic content like book titles, version numbers)

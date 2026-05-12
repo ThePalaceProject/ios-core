@@ -9,7 +9,7 @@ Every action is verified — if a tap doesn't produce the expected result,
 the script logs the failure and attempts recovery.
 
 Usage:
-    # 1. Start WDA on the device (already running if simdrive (or specterqa-ios legacy) worked)
+    # 1. Start WDA on the device (already running if simdrive worked)
     # 2. Start xctrace in another terminal:
     #    xctrace record --device <ECID> --template Allocations --attach <PID> --time-limit 10m --no-prompt
     # 3. Run this script:

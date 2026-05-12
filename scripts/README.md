@@ -28,8 +28,7 @@ If you are an outside contributor, the only scripts you generally need to run by
 | `setup-repo-drm.sh` | Initial repo setup with Adobe RMSDK / LCP wired in. | `unit-testing.yml`, `ui-testing.yml`, `upload.yml`, `upload-on-merge.yml` |
 | `setup-repo-nodrm.sh` | Initial repo setup for the open-source `Palace-noDRM` target. | `non-drm-build.yml` |
 | `build-3rd-party-dependencies.sh` | Builds non-Carthage third-party deps (Readium etc.). | `unit-testing.yml`, `ui-testing.yml`, `non-drm-build.yml`, `upload*.yml` |
-| `build-carthage.sh` | Carthage bootstrap for binary frameworks. | dev/local |
-| `build-carthage-R2-integration.sh` | Carthage bootstrap variant for R2 integration. | dev/local |
+| `build-carthage.sh` | Carthage bootstrap for binary frameworks (DRM path: also fetches AudioEngine + builds R2LCPClient). | invoked by `build-3rd-party-dependencies.sh` |
 | `bootstrap-drm.sh` | Pulls Adobe RMSDK / LCP into the working tree. | dev/local |
 | `fetch-audioengine.sh` | Fetches AudioEngine and unzips it into the build tree. | dev/local |
 | `xcode-build-nodrm.sh` | Builds the `Palace-noDRM` scheme. | `non-drm-build.yml` |
@@ -41,6 +40,7 @@ If you are an outside contributor, the only scripts you generally need to run by
 | `add_palace_catalog_package.rb` | Wires the local PalaceCatalog SPM package into `Palace.xcodeproj`. | one-shot, dev/local |
 | `add_palace_keychain_package.rb` | Wires PalaceKeychain SPM package into the project. | one-shot, dev/local |
 | `add_palace_logging_package.rb` | Wires PalaceLogging SPM package into the project. | one-shot, dev/local |
+| `pbxproj_add_swift.rb` | Canonical helper for adding Swift source files to both `Palace` + `Palace-noDRM` targets (replaces hand-editing the pbxproj). | dev/local |
 
 ### Test and coverage
 
@@ -161,8 +161,8 @@ If `scripts/git-hooks/` does not exist in your clone, see `CONTRIBUTING.md` for 
 
 `scripts/_archive/` contains historical one-shots kept purely for archaeology. **Do not run them.**
 
-- `_archive/pbxproj/` — file-add / duplicate-fix scripts from past extraction sprints. Their target file counts are baked in (e.g. "76 new Swift files"); they would corrupt the project file if re-run.
-- `_archive/one-offs/` — `xcode-test.sh` (superseded by `xcode-test-optimized.sh`), `objc-cutover*.py` (one-shot Objective-C → Swift migration tools).
+- `_archive/pbxproj/` — file-add / duplicate-fix scripts from past extraction sprints. Their target file counts are baked in (e.g. "76 new Swift files"); they would corrupt the project file if re-run. Also includes `_add_palace_auth_package.rb` (one-shot Phase 6 PalaceAuth wiring helper).
+- `_archive/one-offs/` — `xcode-test.sh` (superseded by `xcode-test-optimized.sh`), `objc-cutover*.py` (one-shot Objective-C → Swift migration tools), `build-carthage-R2-integration.sh` (R2 integration variant — references `r2-shared-swift@2.0.0-beta.1` and the old Simplified-iOS sibling layout, neither of which exist anymore).
 
 If you need the behavior of one of these scripts, copy + adapt into a new file rather than running the archived version directly.
 

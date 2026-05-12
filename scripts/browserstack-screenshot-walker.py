@@ -9,7 +9,7 @@ testing (PP-4020) comparing different app versions.
 Onboarding is handled automatically: the script dismisses the walkthrough,
 adds Addison Public Library, and optionally signs in before walking screens.
 
-Navigation patterns derived from SpecterQA replay YAMLs in .simdrive/replays/.
+Navigation patterns derived from simdrive replay YAMLs in .simdrive/replays/.
 
 Usage:
     python3 browserstack-screenshot-walker.py --ipa ~/Downloads/Palace-1.2.8.ipa --version 1.2.8
@@ -61,7 +61,7 @@ DEFAULT_OUTPUT_DIR = os.path.expanduser("~/Desktop/regression-PP-4020/screenshot
 ELEMENT_WAIT = 15
 SETTLE_PAUSE = 2.5
 
-# Tab bar Y coordinate (from SpecterQA replays — consistent across devices)
+# Tab bar Y coordinate (from simdrive replays — consistent across devices)
 TAB_BAR_Y = 786
 
 
@@ -173,7 +173,7 @@ def tap_by_predicate(driver, predicate, timeout=None):
 
 
 def tap_coordinates(driver, x, y):
-    """Tap at absolute coordinates (from SpecterQA replays)."""
+    """Tap at absolute coordinates (from simdrive replays)."""
     try:
         driver.execute_script("mobile: tap", {"x": x, "y": y})
         settle(driver)
@@ -184,7 +184,7 @@ def tap_coordinates(driver, x, y):
 
 def tap_tab(driver, label):
     """Tap a tab bar item. Tries label first, then coordinates from replays."""
-    # Map labels to X coordinates from SpecterQA replays
+    # Map labels to X coordinates from simdrive replays
     tab_coords = {
         "Catalog": 49.0,
         "My Books": 146.5,
@@ -280,7 +280,7 @@ def ensure_a1qa_is_current(driver):
         print("  Addison Public Library is already active")
         return True
 
-    # Try Switch Library button (top-left on catalog, from SpecterQA replays)
+    # Try Switch Library button (top-left on catalog, from simdrive replays)
     if tap_by_label(driver, "Switch Library", timeout=5):
         settle(driver, 2)
         # Check if A1QA is in the list
@@ -564,7 +564,7 @@ def capture_search_empty(driver, output_dir, version):
     settle(driver, 2)
     # Try multiple ways to open search
     if not tap_by_label(driver, "Search Catalog", timeout=3):
-        # Try magnifying glass icon (coordinate from SpecterQA replays)
+        # Try magnifying glass icon (coordinate from simdrive replays)
         tap_coordinates(driver, 358.0, 69.0)
     settle(driver, 2)
     # Also try tapping a search field directly
