@@ -10,6 +10,14 @@ protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
     var downloadProgress: Double { get }
     var book: TPPBook { get }
 
+    /// `true` while a borrow request is in flight at the network layer
+    /// (set by `BorrowOperation` via `bookRegistry.setProcessing`). The
+    /// half-sheet uses this to show an indeterminate spinner + "Borrowing…"
+    /// label during the borrow phase, before the download itself begins
+    /// emitting progress. Default `false` so legacy providers (e.g.
+    /// `BookCellModel`) don't have to opt in mechanically.
+    var isBorrowProcessing: Bool { get }
+
     /// Error alert to present via SwiftUI `.alert` on the half sheet.
     var downloadErrorAlert: AlertModel? { get set }
 
@@ -33,6 +41,10 @@ extension HalfSheetProvider {
             false
         }
     }
+
+    /// Default for legacy providers (BookCellModel) that don't track a
+    /// distinct borrow phase. They render the previous behavior.
+    var isBorrowProcessing: Bool { false }
 }
 
 struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
@@ -68,11 +80,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
             bookInfoView
             statusInfoView
 
-            // Reserve consistent space for progress bar to prevent layout shifts
-            ProgressView(value: viewModel.downloadProgress, total: 1.0)
-                .progressViewStyle(LinearProgressViewStyle())
-                .frame(height: 6)
-                .opacity(viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful ? 1 : 0)
+            progressIndicator
 
             if viewModel.isFullSize {
                 BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
@@ -235,6 +243,41 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
 
 // MARK: - Subviews
 private extension HalfSheetView {
+
+    /// Renders the borrow/download progress UI cue. Three states:
+    /// 1. Borrow request in flight (registry's processing flag is set, and
+    ///    the download itself hasn't started yet) → indeterminate spinner
+    ///    + "Borrowing…" label. This is the slow-distributor case (e.g.
+    ///    Overdrive) that previously showed an inert 0%-linear bar.
+    /// 2. Download running → existing linear bar at the current %.
+    /// 3. Idle → invisible spacer to preserve layout height.
+    @ViewBuilder
+    var progressIndicator: some View {
+        if viewModel.isBorrowProcessing && viewModel.downloadProgress == 0 {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle())
+                    .controlSize(.small)
+                Text(Strings.BookDetailView.borrowingInProgress)
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                Spacer(minLength: 0)
+            }
+            .frame(height: 6)
+            .accessibilityIdentifier(AccessibilityID.BookDetail.borrowingProgress)
+            .accessibilityLabel(Strings.BookDetailView.borrowingInProgress)
+        } else if viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful {
+            ProgressView(value: viewModel.downloadProgress, total: 1.0)
+                .progressViewStyle(LinearProgressViewStyle())
+                .frame(height: 6)
+        } else {
+            // Reserve consistent space so the layout doesn't jump when the
+            // indicator appears/disappears.
+            Color.clear
+                .frame(height: 6)
+        }
+    }
+
     @ViewBuilder
     var bookInfoView: some View {
         VStack(alignment: .leading) {

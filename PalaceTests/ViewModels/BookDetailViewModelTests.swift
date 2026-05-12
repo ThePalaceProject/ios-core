@@ -1341,4 +1341,121 @@ final class BookDetailViewModelTests: XCTestCase {
             XCTAssertTrue(vm.isFullSize == true || vm.isFullSize == false)
         }
     }
+
+    // MARK: - Borrow-in-progress UI cue
+    // Regression: borrow request was in-flight for 30+s on slow distributors
+    // (Overdrive) with no UI signal — Borrow button hid, only a static Cancel
+    // button appeared, no spinner / no "Borrowing…" text. BorrowOperation
+    // already sets bookRegistry.setProcessing(true,for:) at the start of the
+    // borrow request and clears it on completion; the detail VM just wasn't
+    // surfacing that signal so the half-sheet had no indeterminate progress
+    // indicator. These tests pin the wiring.
+
+    func testIsBorrowProcessing_DefaultsToRegistryProcessingFlagAtInit() {
+        let book = createTestBook()
+        let registry = TPPBookRegistryMock()
+        registry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        registry.setProcessing(true, for: book.identifier)
+
+        let vm = BookDetailViewModel(
+            book: book,
+            registry: registry,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            opdsFeedService: AppContainer.production().opdsFeedService,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
+        )
+
+        XCTAssertTrue(
+            vm.isBorrowProcessing,
+            "VM must seed isBorrowProcessing from registry.processing(forIdentifier:) at init — otherwise a borrow already in flight when the detail view opens shows no spinner."
+        )
+    }
+
+    func testIsBorrowProcessing_FlipsOnProcessingNotification_ForSameBook() {
+        let (vm, _, book) = makeVM()
+        XCTAssertFalse(vm.isBorrowProcessing, "Pre-condition: VM starts idle")
+
+        let exp = expectation(description: "isBorrowProcessing flips true")
+        var cancellables = Set<AnyCancellable>()
+        vm.$isBorrowProcessing.filter { $0 }.first()
+            .sink { _ in exp.fulfill() }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.post(
+            name: .TPPBookProcessingDidChange,
+            object: nil,
+            userInfo: [
+                TPPNotificationKeys.bookProcessingBookIDKey: book.identifier,
+                TPPNotificationKeys.bookProcessingValueKey: true
+            ]
+        )
+
+        wait(for: [exp], timeout: 2.0)
+        XCTAssertTrue(vm.isBorrowProcessing)
+    }
+
+    func testIsBorrowProcessing_FlipsBackToFalseOnCompletionNotification() {
+        let book = createTestBook()
+        let registry = TPPBookRegistryMock()
+        registry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        registry.setProcessing(true, for: book.identifier)
+
+        let vm = BookDetailViewModel(
+            book: book,
+            registry: registry,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            opdsFeedService: AppContainer.production().opdsFeedService,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
+        )
+        XCTAssertTrue(vm.isBorrowProcessing, "Pre-condition: VM seeded true")
+
+        let exp = expectation(description: "flips false")
+        var cancellables = Set<AnyCancellable>()
+        vm.$isBorrowProcessing.dropFirst().filter { !$0 }.first()
+            .sink { _ in exp.fulfill() }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.post(
+            name: .TPPBookProcessingDidChange,
+            object: nil,
+            userInfo: [
+                TPPNotificationKeys.bookProcessingBookIDKey: book.identifier,
+                TPPNotificationKeys.bookProcessingValueKey: false
+            ]
+        )
+
+        wait(for: [exp], timeout: 2.0)
+        XCTAssertFalse(vm.isBorrowProcessing)
+    }
+
+    func testIsBorrowProcessing_IgnoresNotificationsForDifferentBook() {
+        let (vm, _, _) = makeVM()
+        XCTAssertFalse(vm.isBorrowProcessing)
+
+        // Notification for a *different* book ID — must NOT affect this VM.
+        NotificationCenter.default.post(
+            name: .TPPBookProcessingDidChange,
+            object: nil,
+            userInfo: [
+                TPPNotificationKeys.bookProcessingBookIDKey: "some-other-book-id",
+                TPPNotificationKeys.bookProcessingValueKey: true
+            ]
+        )
+
+        // Drain the main run loop so any (incorrect) delivery has a chance to fire.
+        let drain = expectation(description: "drain run loop")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { drain.fulfill() }
+        wait(for: [drain], timeout: 1.0)
+
+        XCTAssertFalse(
+            vm.isBorrowProcessing,
+            "Processing notifications must be filtered by book identifier — otherwise an unrelated book's borrow puts every detail view into a spinning state."
+        )
+    }
 }
