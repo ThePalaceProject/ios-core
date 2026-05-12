@@ -54,6 +54,7 @@ Today's run (5 journeys): all 5 pass. 3 stateless journeys gated on structural c
 | [audiobook-scrubber-drag](audiobook-scrubber-drag.yaml) | stateful | 2 | Audiobook scrubber thumb drag — swipe at y=642 from (87, 642) to (800, 642) seeks playback. Catches gesture-to-position mapping + AVAudioSession seek + chapter-index recompute regressions in one drag. |
 | [book-return-from-mybooks](book-return-from-mybooks.yaml) | stateful | 2 | Money-flow Return half — inline Return tap renders confirm dialog, confirm tap silently revokes the loan AND removes the row. Catches OPDS revoke / DRM unbind / BookRegistry sync regressions via OCR-absence on the returned title. |
 | [read-return-from-mybooks-roundtrip](read-return-from-mybooks-roundtrip.yaml) | stateful | 5 | Read + Return halves of money flow end-to-end: Read → Reader2 chrome → exit → inline Return → confirm → book gone. Mutates state (returns book) so replays need re-borrow setup. See BUG_FINDINGS_2026_05_12.md for why the Borrow half is deferred. |
+| [reader2-back-button](reader2-back-button.yaml) | stateful | 4 | Reader2 navigation boundary — Read tap launches Readium 3.x WKWebView, top-left back chevron round-trips to MyBooks. Pairs with reader2-page-forward (WKWebView reachability) to cover entry + exit. |
 
 ## How replays work
 
