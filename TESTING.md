@@ -6,9 +6,10 @@ Quick-start for running and writing tests. Deeper references live in
 
 ## Running tests
 
-Use `Palace.xcodeproj` (not `PalaceR2.xcworkspace` — the workspace path hits
-Firebase SPM xcframework issues). Pick a simulator by name, not by UDID, so
-this works on any machine.
+Use `Palace.xcodeproj`. The legacy `PalaceR2.xcworkspace` was removed (it hit
+Firebase SPM xcframework resolution issues); `Palace.xcodeproj` is the only
+supported entry point. Pick a simulator by name, not by UDID, so this works
+on any machine.
 
 ```bash
 # Build

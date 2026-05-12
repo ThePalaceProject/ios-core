@@ -28,8 +28,12 @@ fatal()
 export FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT=300
 export FASTLANE_XCODEBUILD_SETTINGS_RETRIES=4
 
-# Always try to use Xcode 16.2 first
-if [ -d "/Applications/Xcode_16.2.app/Contents/Developer" ]; then
+# Prefer Xcode 26 (release-path / macos-26 runners). Fall back to 16.2 for
+# legacy macos-15 unit-test runners, then to an explicitly-requested version,
+# then to system default.
+if [ -d "/Applications/Xcode_26.app/Contents/Developer" ]; then
+  export DEVELOPER_DIR="/Applications/Xcode_26.app/Contents/Developer"
+elif [ -d "/Applications/Xcode_16.2.app/Contents/Developer" ]; then
   export DEVELOPER_DIR="/Applications/Xcode_16.2.app/Contents/Developer"
 elif [ -n "$XCODE_VERSION" ]; then
   # If specific version requested, try to use it
