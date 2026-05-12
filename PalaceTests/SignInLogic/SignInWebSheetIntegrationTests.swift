@@ -95,8 +95,13 @@ final class SignInWebSheetIntegrationTests: XCTestCase {
         // ACT
         webView.loadHTMLString(html, baseURL: URL(string: "https://idp.test.local"))
 
-        // ASSERT — wait up to 5s for the redirect navigation to be intercepted
-        await fulfillment(of: [loginExpectation], timeout: 5.0)
+        // ASSERT — wait up to 15s for the redirect navigation to be intercepted.
+        // 5s isn't enough on shared GH macOS runners: WKWebView cold-starts three
+        // helper processes (WebContent, GPU, Networking) and CI logs have shown
+        // ~1.4s WebContent + ~1.6s GPU launch alone, leaving <2s for HTML parse,
+        // JS exec, and navigation policy IPC — which intermittently misses the
+        // deadline. (Same defensive bump pattern as TypographyServiceTests.)
+        await fulfillment(of: [loginExpectation], timeout: 15.0)
         XCTAssertEqual(capturedURL?.absoluteString, "\(universalLinks.absoluteString)?token=test123")
     }
 
@@ -167,8 +172,8 @@ final class SignInWebSheetIntegrationTests: XCTestCase {
         }
         webView.loadHTMLString("<html><body>OK</body></html>", baseURL: URL(string: "https://idp.test.local"))
 
-        // ASSERT
-        await fulfillment(of: [exp], timeout: 5.0)
+        // ASSERT — 15s for the same WebKit cold-start reason as the test above.
+        await fulfillment(of: [exp], timeout: 15.0)
         XCTAssertFalse(viewModel.isLoading, "Post-load: overlay must be hidden")
         cancellable.cancel()
     }
