@@ -258,4 +258,67 @@ class TPPSignInBusinessLogicTests: XCTestCase {
             NSError(domain: "TPPErrorDomain", code: NSURLErrorNotConnectedToInternet)),
             "Same code under a different domain is not a URLSession connectivity error.")
     }
+
+    // MARK: - BUG-002 — EULA agreement copy leaks post-auth
+    //
+    // The Account screen renders "By signing in, you agree to the End User License
+    // Agreement." directly below the Sign-out button when the patron is already
+    // signed in. The copy is contextually wrong (the user is not signing in, they
+    // are signed in) and must not appear post-auth. The EULA-link footer is gated
+    // by `TPPSignInBusinessLogic.shouldShowEULALink()`; these tests pin its
+    // sign-in-state contract.
+
+    func testShouldShowEULALink_WhenSignedOutAndEULAURLAvailable_ReturnsTrue() {
+        // Pre-auth user on a library that exposes a terms-of-service URL.
+        // (NYPL mock auth doc carries a `terms-of-service` rel which maps to .eula.)
+        businessLogic.userAccount.removeAll() // no credentials, authState = .loggedOut
+
+        XCTAssertFalse(businessLogic.isSignedIn(),
+                       "Precondition: user must be signed out.")
+        XCTAssertNotNil(libraryAccountMock.tppAccount.details?.getLicenseURL(.eula),
+                        "Precondition: mock library must expose an EULA URL.")
+
+        XCTAssertTrue(businessLogic.shouldShowEULALink(),
+                      "EULA link must be visible to a signed-out user on a library that has one — that's the prompt-of-agreement surface.")
+    }
+
+    func testShouldShowEULALink_WhenSignedIn_ReturnsFalse() {
+        // Patron has authenticated. The "By signing in, you agree..." copy is
+        // contextually wrong post-auth and must not appear.
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+        businessLogic.updateUserAccount(forDRMAuthorization: true,
+                                        withBarcode: "signed-in-barcode",
+                                        pin: "signed-in-pin",
+                                        authToken: nil,
+                                        expirationDate: nil,
+                                        patron: nil,
+                                        cookies: nil)
+
+        XCTAssertTrue(businessLogic.isSignedIn(),
+                      "Precondition: user must be signed in.")
+        XCTAssertNotNil(libraryAccountMock.tppAccount.details?.getLicenseURL(.eula),
+                        "Precondition: EULA URL still exists; visibility must hinge on sign-in state.")
+
+        XCTAssertFalse(businessLogic.shouldShowEULALink(),
+                       "BUG-002: EULA agreement copy must be hidden post-auth — the user has already agreed by virtue of being signed in.")
+    }
+
+    func testShouldShowEULALink_WhenCredentialsStale_ReturnsTrue() {
+        // Stale credentials = the user must re-authenticate via the sign-in form,
+        // so the agreement-copy footer is again the correct affordance.
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+        businessLogic.updateUserAccount(forDRMAuthorization: true,
+                                        withBarcode: "stale-barcode",
+                                        pin: "stale-pin",
+                                        authToken: nil,
+                                        expirationDate: nil,
+                                        patron: nil,
+                                        cookies: nil)
+        businessLogic.userAccount.markCredentialsStale()
+
+        XCTAssertFalse(businessLogic.isSignedIn(),
+                       "Precondition: stale credentials behave as signed-out for gating UI.")
+        XCTAssertTrue(businessLogic.shouldShowEULALink(),
+                      "EULA link must reappear when the sign-in form is shown for re-auth.")
+    }
 }

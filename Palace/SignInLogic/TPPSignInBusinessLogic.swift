@@ -771,7 +771,17 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
 
     @objc func shouldShowEULALink() -> Bool {
-        return libraryAccount?.details?.getLicenseURL(.eula) != nil
+        // BUG-002 — Account screen leaked "By signing in, you agree to the End
+        // User License Agreement." copy post-auth, directly under the Sign-out
+        // button. The agreement-acceptance footer is contextually a sign-in
+        // affordance; once the patron is signed in they have already agreed,
+        // and the standalone EULA entry is reachable via Settings → User
+        // Agreement and the Software Licenses sheet. Gate visibility on the
+        // sign-in form being the active surface.
+        guard libraryAccount?.details?.getLicenseURL(.eula) != nil else {
+            return false
+        }
+        return !isSignedIn()
     }
 
     // MARK: - Adobe DRM Activation Skip Logic
