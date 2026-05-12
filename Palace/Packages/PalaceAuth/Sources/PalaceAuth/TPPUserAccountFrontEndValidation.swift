@@ -86,7 +86,7 @@ extension TPPUserAccountFrontEndValidation: UITextFieldDelegate {
         guard string.canBeConverted(to: .ascii) else { return false }
 
         if textField == userInputProvider?.usernameTextField,
-           validationContext?.usernameIsEmailKeyboard == false {
+           !(validationContext?.usernameIsEmailKeyboard ?? false) {
 
             if let text = textField.text {
                 if range.location < 0 || range.location + range.length > text.count {

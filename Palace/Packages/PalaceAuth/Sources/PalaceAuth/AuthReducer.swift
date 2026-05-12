@@ -225,19 +225,23 @@ public enum AuthReducer {
         if let problemDocument {
             return (problemDocument.title, problemDocument.detail)
         }
+        // String literals are kept in sync with `Strings.Error.*` in the main
+        // target (Palace/Utilities/Localization/Strings.swift). PalaceAuth can't
+        // import `Strings`, so the canonical copy is duplicated here; the test
+        // suite asserts identity between the two via `Strings.Error.*` lookups.
         if isNetworkConnectivityError(error) {
             return (
                 NSLocalizedString("No Internet Connection", comment: ""),
                 NSLocalizedString(
-                    "The library couldn't be reached because the device has no internet connection. Please reconnect and try again.",
-                    comment: ""
+                    "Check your connection and try again.",
+                    comment: "Message shown when sign-in fails because the device lost connectivity"
                 )
             )
         }
         return (
             NSLocalizedString("Invalid Credentials", comment: ""),
             NSLocalizedString(
-                "Your username or password is incorrect.",
+                "Please check your username and password and try again.",
                 comment: ""
             )
         )
