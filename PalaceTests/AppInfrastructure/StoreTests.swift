@@ -93,7 +93,7 @@ final class StoreTests: XCTestCase {
 
         store.send(.triggerEffect)
 
-        // 5s budget covers the .receive(on: DispatchQueue.main) hop +
+        // 5s budget covers the unstructured-Task hop back to @MainActor +
         // suite-wide dispatch saturation. Earlier 1s flaked under load.
         await fulfillment(of: [effectLanded], timeout: 5.0)
         XCTAssertEqual(store.state.counter, 42,

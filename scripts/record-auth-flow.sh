@@ -41,6 +41,10 @@
 
 set -eu
 
+# Clear clipboard on any exit so credentials don't leak to Spotlight history,
+# clipboard managers, or an accidental paste into Slack.
+trap 'pbcopy < /dev/null' EXIT
+
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ] || [ $# -lt 2 ]; then
   grep -E "^#" "$0" | sed 's|^# \?||'
   exit 0
@@ -63,7 +67,7 @@ if [ -z "$SIM_UDID" ]; then
 fi
 
 # Validate the creds slug exists before we go further.
-if ! ~/harness/bin/harness creds list 2>/dev/null | grep -q "^${SLUG}\$"; then
+if ! ~/harness/bin/harness creds list 2>/dev/null | grep -Fxq "$SLUG"; then
   echo "ERROR: creds slug '$SLUG' not in harness vault." >&2
   echo "Available slugs:" >&2
   ~/harness/bin/harness creds list 2>/dev/null | sed 's/^/  /' >&2
@@ -99,18 +103,26 @@ echo ""
 
 # Start recording via simdrive CLI. The CLI is interactive when invoked
 # directly — it stops when you press Enter / q.
-python3 -c "
+#
+# NAME + SIM_UDID are passed via environment so a malicious recording name
+# (e.g. one containing `'); __import__('os').system('rm -rf ~')` ) can't
+# break out of the embedded Python source. The heredoc reads them from
+# os.environ inside the interpreter, where they're inert strings.
+NAME="$NAME" SIM_UDID="$SIM_UDID" python3 <<'PYEOF'
+import os
 from simdrive import session as sd, recorder
-sess = sd.start(target='simulator', udid='$SIM_UDID', app_bundle_id='org.thepalaceproject.palace')
+name = os.environ['NAME']
+udid = os.environ['SIM_UDID']
+sess = sd.start(target='simulator', udid=udid, app_bundle_id='org.thepalaceproject.palace')
 print(f'[record-auth-flow] Session: {sess.id}')
 print(f'[record-auth-flow] Starting recording... drive the sign-in flow now.')
 print('[record-auth-flow] When done, press Enter to stop recording.')
-recorder.record_start(sess, name='$NAME')
+recorder.record_start(sess, name=name)
 input()
 recorder.record_stop(sess)
 print('[record-auth-flow] Recording stopped.')
 sess.end()
-"
+PYEOF
 
 REC_DIR=~/.simdrive/recordings/"$NAME"
 if [ ! -d "$REC_DIR" ]; then
