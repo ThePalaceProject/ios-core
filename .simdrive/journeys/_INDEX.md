@@ -55,6 +55,7 @@ Today's run (5 journeys): all 5 pass. 3 stateless journeys gated on structural c
 | [book-return-from-mybooks](book-return-from-mybooks.yaml) | stateful | 2 | Money-flow Return half — inline Return tap renders confirm dialog, confirm tap silently revokes the loan AND removes the row. Catches OPDS revoke / DRM unbind / BookRegistry sync regressions via OCR-absence on the returned title. |
 | [read-return-from-mybooks-roundtrip](read-return-from-mybooks-roundtrip.yaml) | stateful | 5 | Read + Return halves of money flow end-to-end: Read → Reader2 chrome → exit → inline Return → confirm → book gone. Mutates state (returns book) so replays need re-borrow setup. See BUG_FINDINGS_2026_05_12.md for why the Borrow half is deferred. |
 | [reader2-back-button](reader2-back-button.yaml) | stateful | 4 | Reader2 navigation boundary — Read tap launches Readium 3.x WKWebView, top-left back chevron round-trips to MyBooks. Pairs with reader2-page-forward (WKWebView reachability) to cover entry + exit. |
+| [reader2-settings-sheet](reader2-settings-sheet.yaml) | stateful | 9 | Reader2 typography settings (TT) sheet — Aa Aa Aa font-size selectors + ABCabc font samples + brightness controls. Critical accessibility surface; regression in WKWebView CSS injection would surface here. Documents chrome auto-hide timing in step 7. |
 
 ## How replays work
 
