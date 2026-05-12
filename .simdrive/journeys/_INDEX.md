@@ -49,6 +49,9 @@ Today's run (5 journeys): all 5 pass. 3 stateless journeys gated on structural c
 | [danny-saml-signin-init](danny-saml-signin-init.yaml) | stateful | 1 | SAML handoff to SwiftUI Safari sheet (PR #907). Smoke: tap launches the Safari sheet loading state; SSIM may drift past handoff (warn-only). |
 | [icarus-oidc-signin](icarus-oidc-signin.yaml) | stateful | 11 | OIDC SFAuthenticationSession + Google→Microsoft federation. IdP rejects creds by design — recording smoke is the handoff structure, not the auth result. |
 | [palace-bookshelf-anonymous](palace-bookshelf-anonymous.yaml) | stateful | 1 | Anonymous library Account view — negative invariants (no Sign in / Sign out buttons, "Account information not required" copy). Cleanest replay in the auth corpus. |
+| [audiobook-skip-forward](audiobook-skip-forward.yaml) | stateful | 3 | Audiobook +30s skip-forward position state. Verifies player UI advances chapter / elapsed / remaining indicators on skip (chapter 4 → 5 via boundary cross). Position-state driven — does NOT depend on audible output (sim audio decoder is silent). Also exercises chapter-boundary handling (the +30s tap crossed chapter 4 end). |
+| [audiobook-toc-seek](audiobook-toc-seek.yaml) | stateful | 3 | Audiobook TOC chapter-seek. TOC hamburger at (1100, 240) opens Chapters/Bookmarks sheet with all 11 chapter rows + elapsed-times; tapping a chapter row seeks playback. Coarse-grained companion to skip-forward. |
+| [audiobook-scrubber-drag](audiobook-scrubber-drag.yaml) | stateful | 2 | Audiobook scrubber thumb drag — swipe at y=642 from (87, 642) to (800, 642) seeks playback. Catches gesture-to-position mapping + AVAudioSession seek + chapter-index recompute regressions in one drag. |
 
 ## How replays work
 
