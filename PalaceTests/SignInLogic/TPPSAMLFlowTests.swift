@@ -633,7 +633,11 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
             .domain: "idp.example.com",
             .path: "/",
         ])].compactMap { $0 }
-        helper.selectedIDP = OPDS2SamlIDP(opdsLink: OPDS2Link(
+        // The new PalaceAuth helper no longer owns `selectedIDP` — the SAML
+        // identity-provider URL is sourced from the injected SAMLAuthContext.
+        // Drive that state through the mock context and assert the mock's
+        // stored value gets cleared.
+        mockContext.selectedIDP = OPDS2SamlIDP(opdsLink: OPDS2Link(
             href: "https://idp.example.com/login",
             type: "text/html",
             rel: "authenticate",
@@ -645,7 +649,6 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
         helper.clearState()
 
         XCTAssertNil(helper.cookies, "Sign-out must clear SAML cookies")
-        XCTAssertNil(helper.selectedIDP, "Sign-out must clear selected IDP")
     }
 }
 

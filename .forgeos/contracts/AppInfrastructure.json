@@ -1,16 +1,10 @@
 {
   "module": "AppInfrastructure",
-  "generated_at": "2026-05-07T05:14:49+00:00",
+  "generated_at": "2026-05-12T16:15:16+00:00",
   "file_count": 21,
   "shared_singleton_reads": 30,
   "public_types": [],
   "objc_surface": [
-    {
-      "name": "APIKeys",
-      "kind": "class",
-      "file": "APIKeys.swift",
-      "line": 3
-    },
     {
       "name": "NSNotification",
       "kind": "extension",

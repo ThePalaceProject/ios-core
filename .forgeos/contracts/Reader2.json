@@ -1,6 +1,6 @@
 {
   "module": "Reader2",
-  "generated_at": "2026-05-07T05:14:49+00:00",
+  "generated_at": "2026-05-12T16:15:16+00:00",
   "file_count": 69,
   "shared_singleton_reads": 11,
   "public_types": [
@@ -76,7 +76,7 @@
       "name": "AdobeDRMService",
       "kind": "class",
       "file": "ReaderStackConfiguration/AdobeDRM/AdobeCertificate.swift",
-      "line": 105
+      "line": 114
     },
     {
       "name": "AdobeRightsParser",
@@ -178,7 +178,7 @@
       "name": "defaultCertificate",
       "kind": "var",
       "file": "ReaderStackConfiguration/AdobeDRM/AdobeCertificate.swift",
-      "line": 60
+      "line": 69
     },
     {
       "name": "didSelectSegment",
@@ -340,7 +340,7 @@
       "name": "shouldNotifyAboutExpiration",
       "kind": "var",
       "file": "ReaderStackConfiguration/AdobeDRM/AdobeCertificate.swift",
-      "line": 89
+      "line": 98
     },
     {
       "name": "stop",

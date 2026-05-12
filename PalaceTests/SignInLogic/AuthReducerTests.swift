@@ -1,4 +1,5 @@
 import XCTest
+import PalaceAuth
 import PalaceCatalog
 @testable import Palace
 

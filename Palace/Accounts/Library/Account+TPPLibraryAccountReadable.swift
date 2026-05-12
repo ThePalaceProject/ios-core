@@ -18,9 +18,11 @@ import Foundation
 import PalaceAuth
 
 extension Account: TPPLibraryAccountReadable {
-    // `uuid: String` and `hasUpdatedToken: Bool` are already public stored
-    // properties on `Account`; the conformance is purely a marker that the
-    // class fits the seam shape.
+    // `uuid: String` and `hasUpdatedToken: Bool` are already internal stored
+    // properties on `Account`; the conformance compiles because this
+    // extension lives in-module (main `Palace` target) where those
+    // internal properties are visible. PalaceAuth callers go through
+    // this seam protocol — they never reach for the storage directly.
 }
 
 extension AccountDetails: TPPAuthenticationDocumentReadable {

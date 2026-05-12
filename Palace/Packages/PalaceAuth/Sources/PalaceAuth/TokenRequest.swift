@@ -87,7 +87,7 @@ import PalaceCatalog
                 if httpResponse.statusCode != 200 {
                     let errorMsg = String(data: data, encoding: .utf8) ?? "No error message"
                     Log.error(#file, "Token request failed with status \(httpResponse.statusCode): \(errorMsg)")
-                    return .failure(NSError.makeFromHTTPResponse(
+                    return .failure(NSError.makeTokenRequestHTTPError(
                         data: data,
                         statusCode: httpResponse.statusCode,
                         domain: "TokenRequest",
@@ -124,5 +124,33 @@ extension TokenRequest {
                 completion(nil, error)
             }
         }
+    }
+}
+
+// MARK: - Problem-document-aware NSError factory (package-local)
+//
+// Mirrors `NSError.makeFromHTTPResponse(data:statusCode:domain:userInfo:)`
+// from the main target's `Palace/Network/TPPUserFriendlyError.swift`. That
+// extension is not visible to PalaceAuth, so this package-private factory
+// preserves the same RFC-7807 ProblemDocument embedding the legacy
+// `userFacingSignInError` UI layer reads via `problemDocument` /
+// `userFriendlyTitle` / `userFriendlyMessage`. Reaches into `PalaceCatalog`
+// for the parser, which PalaceAuth already depends on. Keeping it private
+// to TokenRequest's file means we only export the behavior, not a new
+// public surface on `NSError`.
+private extension NSError {
+    static func makeTokenRequestHTTPError(data: Data,
+                                          statusCode: Int,
+                                          domain: String,
+                                          userInfo: [String: Any]? = nil) -> NSError {
+        if let problemDoc = TPPProblemDocument.fromProblemResponseData(data) {
+            var info = userInfo ?? [String: Any]()
+            // Same key the main-target extension uses for the embedded
+            // ProblemDocument so `userFriendlyTitle` / `userFriendlyMessage`
+            // resolve consistently in both code paths.
+            info["problemDocument"] = problemDoc
+            return NSError(domain: domain, code: statusCode, userInfo: info)
+        }
+        return NSError(domain: domain, code: statusCode, userInfo: userInfo)
     }
 }

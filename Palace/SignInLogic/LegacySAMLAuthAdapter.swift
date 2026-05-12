@@ -103,8 +103,17 @@ final class LegacySAMLAuthContext: NSObject, SAMLAuthContext {
 /// Not `@MainActor` for the same reason as `LegacySAMLAuthContext`: it must be
 /// constructible from a nonisolated init. Each method hops to main via
 /// `Task { @MainActor }` before touching the SwiftUI presenter.
+///
+/// Holds a reference to the same `urlSettingsProvider` the businessLogic was
+/// constructed with so the universal-links URL is read from the injected
+/// settings object rather than reaching back through `AppContainer.production()`
+/// (which is a singleton seam the rest of the sign-in path no longer touches).
 final class LegacySAMLWebViewPresenter: NSObject, SAMLWebViewPresenting {
-    weak var uiDelegate: TPPSignInBusinessLogicUIDelegate?
+    private let universalLinksProvider: NYPLUniversalLinksSettings
+
+    init(universalLinksProvider: NYPLUniversalLinksSettings) {
+        self.universalLinksProvider = universalLinksProvider
+    }
 
     func presentSAMLWebView(url: URL,
                             cookies: [HTTPCookie],
@@ -114,9 +123,9 @@ final class LegacySAMLWebViewPresenter: NSObject, SAMLWebViewPresenting {
         // uiDelegate to be a VC. This matches the legacy `presentOnTop`
         // path that MyBooksDownloadCenter / BookSignInRedirectHandler use.
         let request = URLRequest(url: url)
+        let universalLinks = universalLinksProvider.universalLinksURL
 
         Task { @MainActor in
-            let universalLinks = AppContainer.production().settings.universalLinksURL
             let model = SignInWebSheetViewModel(
                 cookies: cookies,
                 request: request,

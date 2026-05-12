@@ -84,7 +84,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         self.drmAuthorizer = drmAuthorizer
         // Pre-init the SAML adapters; cross-references are wired post-super.init.
         let samlContext = LegacySAMLAuthContext()
-        let samlPresenter = LegacySAMLWebViewPresenter()
+        let samlPresenter = LegacySAMLWebViewPresenter(universalLinksProvider: urlSettingsProvider)
         self._samlContext = samlContext
         self._samlPresenter = samlPresenter
         self._samlHelper = TPPSAMLHelper(
@@ -93,9 +93,11 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             presenter: samlPresenter
         )
         super.init()
-        // Now that `self` is fully initialized, wire the back-references.
+        // Now that `self` is fully initialized, wire the back-reference. The
+        // presenter does not need a UI-delegate handle — it walks to the
+        // topmost VC via `SignInWebSheetPresenter.presentOnTop` at present
+        // time. Only the context needs the businessLogic backpointer.
         samlContext.businessLogic = self
-        samlPresenter.uiDelegate = self.uiDelegate
     }
 
     /// Signing in and out may imply syncing the book registry.
@@ -168,6 +170,17 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// then remove this property. Currently both businessLogic.cookies and
     /// samlHelper.cookies are set by the legacy bridge during SAML login.
     @objc var cookies: [HTTPCookie]?
+
+    // MARK: - SAML triad (helper + context + presenter)
+    //
+    // This triad replaces the inline `_legacyContext` / `_legacyPresenter`
+    // pair that used to live inside `TPPSAMLHelper` on `develop`. The helper
+    // moved into the `PalaceAuth` SPM package as part of the leaf extraction;
+    // the two adapter halves stay in the main target (they touch
+    // `TPPSignInBusinessLogic`, `OPDS2SamlIDP`, and `SignInWebSheetPresenter`
+    // which all remain main-target types), and `TPPSignInBusinessLogic` owns
+    // strong references to all three so the helper's `weak` back-references
+    // don't deallocate the adapters out from under it.
 
     /// Performs initiation rites for SAML sign-in.
     /// Eagerly created for backward compatibility; use `samlHelperIfNeeded`

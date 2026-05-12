@@ -14,8 +14,9 @@
 //
 
 import XCTest
-@testable import Palace
+import PalaceAuth
 import PalaceCatalog
+@testable import Palace
 
 class AuthErrorProblemDocSeamTests: XCTestCase {
 
