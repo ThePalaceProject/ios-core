@@ -56,6 +56,8 @@ Today's run (5 journeys): all 5 pass. 3 stateless journeys gated on structural c
 | [read-return-from-mybooks-roundtrip](read-return-from-mybooks-roundtrip.yaml) | stateful | 5 | Read + Return halves of money flow end-to-end: Read → Reader2 chrome → exit → inline Return → confirm → book gone. Mutates state (returns book) so replays need re-borrow setup. See BUG_FINDINGS_2026_05_12.md for why the Borrow half is deferred. |
 | [reader2-back-button](reader2-back-button.yaml) | stateful | 4 | Reader2 navigation boundary — Read tap launches Readium 3.x WKWebView, top-left back chevron round-trips to MyBooks. Pairs with reader2-page-forward (WKWebView reachability) to cover entry + exit. |
 | [reader2-settings-sheet](reader2-settings-sheet.yaml) | stateful | 9 | Reader2 typography settings (TT) sheet — Aa Aa Aa font-size selectors + ABCabc font samples + brightness controls. Critical accessibility surface; regression in WKWebView CSS injection would surface here. Documents chrome auto-hide timing in step 7. |
+| [reader2-toc-navigate](reader2-toc-navigate.yaml) | stateful | 6 | Reader2 TOC seek — opens Table of Contents sheet (TOC icon at pixel (811, 240)), tapping a chapter row navigates WKWebView to that chapter's first page. Catches TOC parser + chapter-anchor + WKWebView render regressions in one recording. |
+| [reader2-bookmark-toggle](reader2-bookmark-toggle.yaml) | stateful | 4 | Reader2 bookmark add + remove (icon-state roundtrip). Tap bookmark icon at (1097, 240) toggles outline ↔ filled. Catches BookRegistry write + toggle binding + SF Symbol binding regressions. Pixel-diff on (1070-1130, 215-260) bbox is the load-bearing assertion. |
 
 ## How replays work
 
