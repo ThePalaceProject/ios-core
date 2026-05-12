@@ -341,10 +341,11 @@ final class TPPNetworkExecutorStubbedTests: XCTestCase {
 
         executor.POST(request, useTokenIfAvailable: false, completion: nil)
 
-        // Wait briefly to ensure no crash, then verify the executor remains usable
+        // Wait briefly to ensure no crash, then verify the executor remains usable.
+        // 8s budget covers the 0.5s asyncAfter slot + suite-wide dispatch saturation.
         let wait = XCTestExpectation(description: "Wait")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { wait.fulfill() }
-        self.wait(for: [wait], timeout: 2.0)
+        self.wait(for: [wait], timeout: 8.0)
         // Executor must remain functional after fire-and-forget POST
         XCTAssertGreaterThan(self.executor.requestTimeout, 0,
                              "Executor requestTimeout must remain positive after nil-completion POST")

@@ -1,0 +1,64 @@
+scenario:
+  id: danny-saml-signin-init
+  name: "Danny Test Library on Gorgon — SAML signin handoff"
+  description: >
+    Single-step recording capturing the Palace→Safari handoff for Danny
+    Test Library's SAML auth. Tap Sign in on the Account view, verify
+    the SwiftUI Safari sheet opens with the SAML IdP page beginning to
+    load. Replay value: catches regressions in the SAML config + SwiftUI
+    SAML sheet presentation (PR #907) without requiring an active 2FA
+    session.
+
+    Pairs with the existing pr907-saml-signin-gorgon recording (which
+    drives the full IdP flow including 2FA — that one is anchor-backfilled
+    but fragile due to anti-replay tokens on the Google IdP page).
+    This recording is the more reliable "handoff smoke" alternative.
+  tags: [tier1, ios, auth, saml, danny, gorgon, handoff]
+  tier: stateful
+  blocking: true
+
+  preconditions:
+    - "Danny Test Library on Gorgon added under Settings → Libraries"
+    - "Signed OUT (Account view shows 'To download books, please sign in to Danny Test Library on Gorgon' + Sign in button)"
+    - "Account view is the foreground"
+
+  state_reset:
+    - "No reset needed if pre-state already matches; the recording is read-only on the Palace side"
+
+  recording:
+    path: "~/.simdrive/recordings/danny-saml-signin-init/recording.yaml"
+    steps: 1
+    captured_with: "simdrive 1.0.0a9"
+    captured_on: "2026-05-12"
+
+  steps:
+    - id: tap_sign_in_handoff
+      description: "Tap Sign in — should present SwiftUI Safari sheet with SAML IdP page"
+      tap_target: { stable_id: "15b55c0e0d0d" }
+
+  expected_invariants:
+    - "Tap on Sign in opens the SwiftUI Safari sheet (PR #907 SAML web-view → SwiftUI conversion)"
+    - "Sheet header shows 'Cancel' + 'Sign In' (sheet chrome — distinct from in-app Sign in button)"
+    - "Body begins loading the SAML IdP page (URL routed correctly from Palace's auth doc parse)"
+    - "No SpringBoard alert blocks the sheet presentation (NoNetworkURLProtocol-style regression check)"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn
+
+  rationale: |
+    The SAML handoff is the most Palace-specific surface of the SAML flow.
+    The IdP page itself (Google sign-in form) is Google's territory —
+    anti-replay tokens make pixel comparison unreliable past the handoff.
+    This recording captures just the moment Palace's SAML config produces
+    the right Safari sheet — a regression in the auth doc parse, the
+    SAML URL composition, or the SwiftUI sheet presentation would be
+    caught here without needing 2FA credentials in CI.
+
+    The full pr907-saml-signin-gorgon recording still covers the end-to-end
+    flow when run against a sim with stable Google session state. This
+    init-only variant is the always-replayable smoke version.
+
+  known_issues:
+    - "The recording stops at the Safari sheet's loading state, not the fully-rendered IdP form. Drift threshold may need tuning if the network is slow on the CI runner."
+    - "The pr907 recording is the authoritative 'full SAML signin' reference; this one is its always-replayable subset."

@@ -177,8 +177,17 @@ fi
 echo "--- Unit Tests ---"
 TEST_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination "id=$SIM_ID" test 2>&1 || true)
-TEST_PASS=$(echo "$TEST_OUTPUT" | grep -o 'Executed [0-9]* test' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
-TEST_FAIL=$(echo "$TEST_OUTPUT" | grep -o 'with [0-9]* failure' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+# Count only the top-level "All tests" rollups (one per .xctest bundle).
+# Each XCTestCase suite ALSO emits "Executed N" + each bundle emits its own
+# "Selected tests" wrapper, so the prior `grep -o ... | awk '{s+=$1}'` summed
+# the same tests 4-5× and inflated the headline by ~3.5× (e.g. 5,867 unique
+# tests reported as 17,640). The `-A1` after "Test Suite 'All tests' (passed|failed)"
+# captures the bundle-rollup `Executed N tests` line per bundle.
+ROLLUP_LINES=$(echo "$TEST_OUTPUT" | grep -A1 "Test Suite '\(All tests\|Selected tests\)' \(passed\|failed\)")
+TEST_PASS=$(echo "$ROLLUP_LINES" | grep -o 'Executed [0-9]* tests\?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+# Failed-bundle rollups say "and 3 failures" (no "with" prefix); passed
+# bundles say "with 0 failures". Match on the trailing " failure" word.
+TEST_FAIL=$(echo "$ROLLUP_LINES" | grep -oE '[0-9]+ failures? \(' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
 if [ "$TEST_FAIL" -eq 0 ] && [ "$TEST_PASS" -gt 0 ]; then
   record "unit_tests" "pass" "$TEST_PASS tests, 0 failures"
 else

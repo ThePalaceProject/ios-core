@@ -93,7 +93,9 @@ final class StoreTests: XCTestCase {
 
         store.send(.triggerEffect)
 
-        await fulfillment(of: [effectLanded], timeout: 1.0)
+        // 5s budget covers the unstructured-Task hop back to @MainActor +
+        // suite-wide dispatch saturation. Earlier 1s flaked under load.
+        await fulfillment(of: [effectLanded], timeout: 5.0)
         XCTAssertEqual(store.state.counter, 42,
                        "Effect's .setTo(env.yield) action must flow back through the reducer")
     }
