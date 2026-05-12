@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - LoginKeyboard Tests
@@ -209,6 +210,137 @@ final class AuthenticationTests: XCTestCase {
             coppaUnderUrl: URL(string: "https://example.com/under13"),
             coppaOverUrl: URL(string: "https://example.com/over13")
         )
+    }
+}
+
+// MARK: - AccountDetails / Account needsAuth aggregate tests (BUG-004)
+
+/// Tests for the library-level `needsAuth` aggregate exposed on
+/// `AccountDetails` and the `Account` passthrough. This signal drives the
+/// BUG-004 holds-fetch suppression — when an anonymous library
+/// (Palace Bookshelf) is selected, holds must not be fetched and the error
+/// banner must not appear.
+final class AccountDetailsNeedsAuthAggregateTests: XCTestCase {
+
+    func testAccountDetails_NeedsAuth_BasicOnly_ReturnsTrue() {
+        let details = makeAccountDetails(authTypes: ["http://opds-spec.org/auth/basic"])
+        XCTAssertTrue(details.needsAuth,
+                      "Basic auth library must report needsAuth=true so loans/holds fetches are gated by credentials, not skipped")
+    }
+
+    func testAccountDetails_NeedsAuth_SamlOnly_ReturnsTrue() {
+        let details = makeAccountDetails(authTypes: ["http://librarysimplified.org/authtype/SAML-2.0"])
+        XCTAssertTrue(details.needsAuth,
+                      "SAML library must report needsAuth=true")
+    }
+
+    func testAccountDetails_NeedsAuth_AnonymousOnly_ReturnsFalse() {
+        // The Palace Bookshelf shape: a single anonymous auth method, no patron concept.
+        let details = makeAccountDetails(authTypes: ["http://librarysimplified.org/rel/auth/anonymous"])
+        XCTAssertFalse(details.needsAuth,
+                       "Anonymous-only library (Palace Bookshelf) must report needsAuth=false — this is the BUG-004 guard")
+    }
+
+    func testAccountDetails_NeedsAuth_CoppaOnly_ReturnsFalse() {
+        // COPPA gate is age-restriction, not credential-based — should not trigger holds fetch.
+        let details = makeAccountDetails(authTypes: ["http://librarysimplified.org/terms/authentication/gate/coppa"])
+        XCTAssertFalse(details.needsAuth,
+                       "COPPA-only library must report needsAuth=false (age gate, not credentials)")
+    }
+
+    func testAccountDetails_NeedsAuth_AnonymousMixedWithBasic_ReturnsTrue() {
+        // If ANY auth method requires credentials, the library as a whole needs auth —
+        // anonymous "guest mode" alongside credentialed access still means holds are
+        // a real concept for signed-in patrons.
+        let details = makeAccountDetails(authTypes: [
+            "http://librarysimplified.org/rel/auth/anonymous",
+            "http://opds-spec.org/auth/basic"
+        ])
+        XCTAssertTrue(details.needsAuth,
+                      "Mixed anonymous+basic library must report needsAuth=true — credentialed patrons exist here")
+    }
+
+    func testAccountDetails_NeedsAuth_OAuthOnly_ReturnsTrue() {
+        let details = makeAccountDetails(authTypes: ["http://librarysimplified.org/authtype/OAuth-with-intermediary"])
+        XCTAssertTrue(details.needsAuth, "OAuth library must report needsAuth=true")
+    }
+
+    func testAccountDetails_NeedsAuth_OidcOnly_ReturnsTrue() {
+        let details = makeAccountDetails(authTypes: ["http://palaceproject.io/authtype/OpenIDConnect"])
+        XCTAssertTrue(details.needsAuth, "OIDC library must report needsAuth=true")
+    }
+
+    // MARK: - Account passthrough
+
+    /// `Account.needsAuth` must return `nil` before the auth document is
+    /// loaded (no `details`). Critical-path callers default-deny to avoid
+    /// suppressing real failures during the hydration window.
+    func testAccount_NeedsAuth_BeforeAuthDocLoaded_ReturnsNil() {
+        let account = makeAccountWithoutAuthDoc()
+        XCTAssertNil(account.details, "Precondition: auth document not loaded yet")
+        XCTAssertNil(account.needsAuth,
+                     "Account.needsAuth must be nil while auth doc is still loading — callers default-deny in this window")
+    }
+
+    /// `Account.needsAuth` must reflect `details.needsAuth` once the auth
+    /// document has been parsed. This is the property that the BUG-004
+    /// holds-fetch guard consults.
+    func testAccount_NeedsAuth_AnonymousDetailsLoaded_ReturnsFalse() {
+        let account = makeAccountWithoutAuthDoc()
+        account.authenticationDocument = makeAuthDocument(authTypes: ["http://librarysimplified.org/rel/auth/anonymous"])
+        XCTAssertNotNil(account.details, "Precondition: details now populated")
+        XCTAssertEqual(account.needsAuth, false,
+                       "Account.needsAuth must reflect details.needsAuth=false for anonymous library (BUG-004 contract)")
+    }
+
+    func testAccount_NeedsAuth_BasicDetailsLoaded_ReturnsTrue() {
+        let account = makeAccountWithoutAuthDoc()
+        account.authenticationDocument = makeAuthDocument(authTypes: ["http://opds-spec.org/auth/basic"])
+        XCTAssertEqual(account.needsAuth, true,
+                       "Account.needsAuth must reflect details.needsAuth=true for credentialed library")
+    }
+
+    // MARK: - Helpers
+
+    private func makeAccountDetails(authTypes: [String]) -> AccountDetails {
+        let doc = makeAuthDocument(authTypes: authTypes)
+        let uuid = "needsauth-test-\(UUID().uuidString)"
+        return AccountDetails(authenticationDocument: doc, uuid: uuid)
+    }
+
+    private func makeAuthDocument(authTypes: [String]) -> OPDS2AuthenticationDocument {
+        let auths: [[String: Any]] = authTypes.map { type in
+            [
+                "type": type,
+                "inputs": [
+                    "login": ["keyboard": "Default"],
+                    "password": ["keyboard": "Default"]
+                ],
+                "labels": ["login": "Login", "password": "Password"]
+            ]
+        }
+        let json: [String: Any] = [
+            "id": "urn:uuid:needsauth-test",
+            "title": "NeedsAuth Test Library",
+            "authentication": auths,
+            "features": ["enabled": [], "disabled": []]
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        return try! OPDS2AuthenticationDocument.fromData(data)
+    }
+
+    private func makeAccountWithoutAuthDoc() -> Account {
+        let publication = OPDS2Publication(
+            links: [],
+            metadata: OPDS2Publication.Metadata(
+                updated: Date(),
+                description: nil,
+                id: "urn:uuid:needsauth-account-test",
+                title: "NeedsAuth Account Test"
+            ),
+            images: nil
+        )
+        return Account(publication: publication, imageCache: MockImageCache())
     }
 }
 

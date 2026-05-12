@@ -665,6 +665,74 @@ final class HoldsSyncFailureTests: XCTestCase {
         XCTAssertFalse(viewModel.isLoading, "Not stuck in loading state")
     }
 
+    // MARK: - BUG-004: anonymous library (Palace Bookshelf) on sync failure
+
+    /// BUG-004: switching to an anonymous library (Palace Bookshelf) while a
+    /// previously signed-in account's sync was in flight surfaces a spurious
+    /// "There was a problem loading your holds" banner. The credential-only
+    /// suppression path (`!hasCredentials()`) races against the account-switch
+    /// window in AccountsManager — `lastKnownCurrentUserAccount` falls back to
+    /// the previous (still-credentialed) library while `currentAccountId` is
+    /// briefly nil. The fix adds a *library-state* guard
+    /// (`currentLibraryNeedsAuth`) that reflects the new selection
+    /// synchronously and overrides the stale credential view.
+    ///
+    /// Scenario simulated: user has cached credentials (race window —
+    /// `hasCredentials() == true`) but the library no longer requires auth.
+    /// Without the fix, the banner appears; with the fix, it's suppressed.
+    func testSyncFailure_AnonymousLibrary_SuppressesErrorBanner_EvenWhenHasCredentialsRacesTrue() async {
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            debugSettings: AppContainer.production().debugSettings,
+            // Simulate the AccountsManager race: stale lastKnownCurrentUserAccount
+            // returns the previous (signed-in) library, so hasCredentials() is true.
+            hasCredentials: { true },
+            // New (current) library is anonymous — no patron auth at all.
+            currentLibraryNeedsAuth: { false }
+        )
+        XCTAssertTrue(viewModel.visibleBooks.isEmpty, "Precondition: no cached holds on freshly-switched library")
+
+        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+
+        let exp = XCTestExpectation(description: "notification processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 2.0)
+
+        XCTAssertNil(viewModel.syncError,
+                     "Error banner must be suppressed when the current library is anonymous, even when stale credentials are present (BUG-004)")
+        XCTAssertFalse(viewModel.isLoading, "Not stuck in loading state")
+    }
+
+    /// Guard against regression: when the library *does* require auth and the
+    /// user has credentials, the banner must still appear on a real failure.
+    /// This is the contrast case for the BUG-004 fix — proving the new
+    /// library-state guard doesn't blanket-suppress all errors.
+    func testSyncFailure_LibraryNeedsAuth_AndHasCredentials_ShowsBanner() async {
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            debugSettings: AppContainer.production().debugSettings,
+            hasCredentials: { true },
+            currentLibraryNeedsAuth: { true }
+        )
+
+        let errorExpectation = XCTestExpectation(description: "syncError surfaced")
+        viewModel.$syncError
+            .dropFirst()
+            .first { $0 != nil }
+            .sink { _ in errorExpectation.fulfill() }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        await fulfillment(of: [errorExpectation], timeout: 1.0)
+
+        XCTAssertNotNil(viewModel.syncError,
+                        "Signed-in users on credentialed libraries must still see real sync errors")
+    }
+
     func testSyncFailure_AuthenticatedUser_ShowsErrorBanner() async {
         // Authenticated user — sync failed for a real reason. Banner still appears.
         let viewModel = HoldsViewModel(

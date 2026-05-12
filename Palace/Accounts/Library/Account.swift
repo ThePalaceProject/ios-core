@@ -313,6 +313,18 @@ protocol AccountLogoDelegate: AnyObject {
         // this will tell if any authentication method requires age check
         return auths.contains(where: { $0.needsAgeCheck })
     }
+    /// Whether any of this library's authentication methods require user
+    /// credentials. Returns `false` for anonymous libraries (e.g. Palace
+    /// Bookshelf) — those have no patron concept, so per-patron endpoints
+    /// like loans / holds must not be fetched (BUG-004).
+    ///
+    /// This is a *library-state* signal, distinct from `TPPUserAccount.needsAuth`
+    /// which can race during library switches when `currentAccountId` is
+    /// transiently nil and `lastKnownCurrentUserAccount` returns the previous
+    /// (still-credentialed) library.
+    var needsAuth: Bool {
+        return auths.contains(where: { $0.needsAuth })
+    }
 
     fileprivate var urlAnnotations: URL?
     fileprivate var urlAcknowledgements: URL?
@@ -531,6 +543,16 @@ protocol AccountLogoDelegate: AnyObject {
 
     var loansUrl: URL? {
         return details?.loansUrl
+    }
+
+    /// Whether any of this library's authentication methods require user
+    /// credentials. Returns `false` for anonymous libraries (Palace
+    /// Bookshelf etc.) once the auth document has been parsed; `nil` while
+    /// the auth document is still loading. Callers in critical-path code
+    /// (e.g. holds-fetch suppression, BUG-004) should default-deny when this
+    /// returns nil to avoid swallowing legitimate failures on cold launch.
+    var needsAuth: Bool? {
+        return details?.needsAuth
     }
 
     init(publication: OPDS2Publication, imageCache: ImageCacheType) {
