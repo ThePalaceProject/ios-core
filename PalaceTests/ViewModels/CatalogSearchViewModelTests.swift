@@ -1416,4 +1416,166 @@ final class CatalogSearchViewModelTests: XCTestCase {
 
         XCTAssertTrue(capture.items.isEmpty, "Clearing search should not produce announcements, got: \(capture.items)")
     }
+
+    // MARK: - Empty-Results State Tests (BUG-003)
+    //
+    // Background: prior to this change, a successful search returning zero books
+    // rendered a completely blank screen — no spinner, no message — making it
+    // indistinguishable from a hung request. The view model now exposes a
+    // `hasCompletedSearch` flag plus a derived `shouldShowNoResultsState` so the
+    // view can render a "No results" empty state in that case.
+
+    func testHasCompletedSearch_StartsFalse() {
+        let viewModel = createViewModel()
+
+        XCTAssertFalse(
+            viewModel.hasCompletedSearch,
+            "hasCompletedSearch must be false before any search runs (no result has been observed yet)"
+        )
+    }
+
+    func testHasCompletedSearch_BecomesTrue_AfterSearchReturnsEmpty() async {
+        let exp = expectation(description: "search called")
+        mockRepository.onSearchCalled = { exp.fulfill() }
+
+        let viewModel = createViewModel()
+        // Repository returns nil → zero results path
+        mockRepository.searchResult = nil
+
+        viewModel.updateSearchQuery("zzzzzzzzz")
+        await fulfillment(of: [exp], timeout: 5.0)
+
+        // Allow the deferred isLoading=false / hasCompletedSearch=true assignment to flush.
+        await Task.yield()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertTrue(viewModel.filteredBooks.isEmpty, "Sanity: zero-result search must produce empty filteredBooks")
+        XCTAssertFalse(viewModel.isLoading, "Sanity: search must have finished")
+        XCTAssertTrue(
+            viewModel.hasCompletedSearch,
+            "hasCompletedSearch must flip to true once a zero-result search has finished so the view can show an empty state"
+        )
+    }
+
+    func testHasCompletedSearch_ResetByClearSearch() async {
+        let exp = expectation(description: "search called")
+        mockRepository.onSearchCalled = { exp.fulfill() }
+
+        let viewModel = createViewModel()
+        mockRepository.searchResult = nil
+        viewModel.updateSearchQuery("zzzzzzzzz")
+        await fulfillment(of: [exp], timeout: 5.0)
+        await Task.yield()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertTrue(viewModel.hasCompletedSearch, "Precondition: search must have completed")
+
+        viewModel.clearSearch()
+
+        XCTAssertFalse(
+            viewModel.hasCompletedSearch,
+            "clearSearch must reset hasCompletedSearch — the empty grid is now 'no query yet', not 'no results'"
+        )
+    }
+
+    func testHasCompletedSearch_FlipsTrue_OnSearchError() async {
+        let exp = expectation(description: "search called")
+        mockRepository.onSearchCalled = { exp.fulfill() }
+
+        let viewModel = createViewModel()
+        mockRepository.searchError = TestError.networkError
+
+        viewModel.updateSearchQuery("zzzzzzzzz")
+        await fulfillment(of: [exp], timeout: 5.0)
+        await Task.yield()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        // An errored search has still "completed" from the user's perspective —
+        // they typed a query, the spinner stopped, and the grid is empty. The
+        // empty-state branch is responsible for telling them so.
+        XCTAssertTrue(
+            viewModel.hasCompletedSearch,
+            "hasCompletedSearch must flip true even when search throws, so the UI doesn't sit blank after a failure"
+        )
+        XCTAssertTrue(viewModel.filteredBooks.isEmpty)
+    }
+
+    func testShouldShowNoResultsState_True_WhenSearchCompletedWithZeroResults() async {
+        let exp = expectation(description: "search called")
+        mockRepository.onSearchCalled = { exp.fulfill() }
+
+        let viewModel = createViewModel()
+        mockRepository.searchResult = nil
+
+        viewModel.updateSearchQuery("zzzzzzzzz")
+        await fulfillment(of: [exp], timeout: 5.0)
+        await Task.yield()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertTrue(
+            viewModel.shouldShowNoResultsState,
+            "After a completed, non-empty-query search with zero books, the no-results empty state must be shown"
+        )
+    }
+
+    func testShouldShowNoResultsState_False_WhileLoading() async {
+        // Hold the search task open long enough to observe the loading state.
+        mockRepository.simulatedDelay = 0.3
+        mockRepository.searchResult = nil
+
+        let viewModel = createViewModel()
+
+        let loadingExp = expectation(description: "isLoading observed true")
+        var observed = false
+        viewModel.$isLoading
+            .dropFirst()
+            .sink { isLoading in
+                if isLoading && !observed {
+                    observed = true
+                    loadingExp.fulfill()
+                }
+            }
+            .store(in: &cancellables)
+
+        viewModel.updateSearchQuery("zzzzzzzzz")
+        await fulfillment(of: [loadingExp], timeout: 5.0)
+
+        // While the request is in flight, the no-results state must NOT be shown —
+        // a spinner is the right affordance there.
+        XCTAssertTrue(viewModel.isLoading, "Precondition: in-flight search")
+        XCTAssertFalse(
+            viewModel.shouldShowNoResultsState,
+            "An in-flight search must not render the no-results empty state (loading != confirmed-empty)"
+        )
+    }
+
+    func testShouldShowNoResultsState_False_WhenQueryEmpty() {
+        let viewModel = createViewModel()
+
+        // Force the view model into a "search ran, zero results, then user cleared the box"
+        // posture by directly manipulating state — clearSearch resets hasCompletedSearch,
+        // but we want to assert the guard against an empty query specifically.
+        viewModel.searchQuery = ""
+        viewModel.filteredBooks = []
+
+        XCTAssertFalse(
+            viewModel.shouldShowNoResultsState,
+            "An empty query must never trigger the no-results state — there's no query to be 'no results for'"
+        )
+    }
+
+    func testShouldShowNoResultsState_False_WhenResultsPresent() async {
+        let viewModel = createViewModel()
+
+        // Simulate a completed search that returned books.
+        viewModel.searchQuery = "test"
+        viewModel.filteredBooks = [createTestBook()]
+        viewModel.isLoading = false
+        viewModel.markSearchCompletedForTesting()
+
+        XCTAssertFalse(
+            viewModel.shouldShowNoResultsState,
+            "If results exist the no-results state must not be shown — the books grid takes over"
+        )
+    }
 }
