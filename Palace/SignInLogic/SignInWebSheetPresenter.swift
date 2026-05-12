@@ -17,6 +17,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import PalaceAuth
 
 @MainActor
 final class SignInWebSheetPresenter: NSObject {

@@ -7,11 +7,17 @@
 //
 
 import Foundation
+import PalaceAuth
 @testable import Palace
 
 class MockSAMLAuthContext: SAMLAuthContext {
+    /// Test convenience: tests set the full IDP object via `selectedIDP`;
+    /// the protocol-required `selectedIDPURL` is computed from it.
+    /// This keeps existing test code (`mockContext.selectedIDP = makeTestIDP(...)`)
+    /// working unchanged after the protocol surface narrowed to URL-only.
     var selectedIDP: OPDS2SamlIDP?
-    var urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider
+    var selectedIDPURL: URL? { selectedIDP?.url }
+
     var savedCookies: [HTTPCookie] = []
 
     // MARK: - Call Tracking
@@ -25,10 +31,6 @@ class MockSAMLAuthContext: SAMLAuthContext {
     var handleRedirectError: Error?
     var handleRedirectErrorTitle: String?
     var handleRedirectErrorMessage: String?
-
-    init(urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider = TPPURLSettingsProviderMock()) {
-        self.urlSettingsProvider = urlSettingsProvider
-    }
 
     func handleSAMLRedirect(url: URL, cookies: [HTTPCookie],
                             completion: @escaping (Error?, String?, String?) -> Void) {

@@ -15,6 +15,7 @@
 //
 
 import XCTest
+import PalaceAuth
 import PalaceNetwork
 @testable import Palace
 

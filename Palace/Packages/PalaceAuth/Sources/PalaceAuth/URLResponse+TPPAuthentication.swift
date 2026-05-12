@@ -10,6 +10,23 @@ import Foundation
 import PalaceLogging
 import PalaceCatalog
 
+// MARK: - Internal mimetype/status helpers
+//
+// The matching `@objc isProblemDocument()` and `@objc isSuccess()` extension
+// methods live in the main target's `URLResponse+NYPL.swift`. Re-declaring
+// them here as `@objc` would clash on the ObjC selector at link time, so we
+// keep small private helpers scoped to this file (and re-use them from the
+// public methods below).
+
+private func _isProblemDocumentMime(_ response: URLResponse) -> Bool {
+    return ["application/problem+json",
+            "application/api-problem+json"].contains(response.mimeType)
+}
+
+private func _isHTTPSuccess(_ response: HTTPURLResponse) -> Bool {
+    return (200...299).contains(response.statusCode)
+}
+
 extension URLResponse {
 
     /// Attempts to determine if the response indicates that the user's
@@ -23,7 +40,7 @@ extension URLResponse {
     /// - Parameter problemDoc: The problem document returned by the server.
     /// - Returns: `true` if the problem document indicates a recoverable auth error.
     @objc(indicatesAuthenticationNeedsRefresh:)
-    func indicatesAuthenticationNeedsRefresh(with problemDoc: TPPProblemDocument?) -> Bool {
+    public func indicatesAuthenticationNeedsRefresh(with problemDoc: TPPProblemDocument?) -> Bool {
         // Check for new recoverable auth error category (preferred)
         if problemDoc?.isRecoverableAuthError == true {
             return true
@@ -35,7 +52,7 @@ extension URLResponse {
         }
 
         // Backward compatibility: old credentials-invalid type from older servers
-        if isProblemDocument() && problemDoc?.type == TPPProblemDocument.TypeInvalidCredentials {
+        if _isProblemDocumentMime(self) && problemDoc?.type == TPPProblemDocument.TypeInvalidCredentials {
             return true
         }
 
@@ -48,7 +65,7 @@ extension URLResponse {
     ///
     /// - Parameter otherURL: The URL to compare against.
     /// - Returns: `true` if both URLs share the same base domain.
-    func isSameDomain(as otherURL: URL) -> Bool {
+    public func isSameDomain(as otherURL: URL) -> Bool {
         guard let responseHost = self.url?.host?.lowercased(),
               let otherHost = otherURL.host?.lowercased() else {
             // If we can't determine hosts, assume same domain (safe default)
@@ -70,7 +87,7 @@ extension URLResponse {
     /// Extracts the base domain from a host string.
     /// e.g., "cdn.palaceproject.io" -> "palaceproject.io"
     ///       "gorgon.staging.palaceproject.io" -> "palaceproject.io"
-    static func baseDomain(from host: String) -> String {
+    public static func baseDomain(from host: String) -> String {
         let components = host.split(separator: ".")
 
         // Handle simple domains like "localhost"
@@ -85,7 +102,7 @@ extension URLResponse {
 
 extension HTTPURLResponse {
     @objc(indicatesAuthenticationNeedsRefresh:)
-    override func indicatesAuthenticationNeedsRefresh(with problemDoc: TPPProblemDocument?) -> Bool {
+    public override func indicatesAuthenticationNeedsRefresh(with problemDoc: TPPProblemDocument?) -> Bool {
         // First check problem document categories (highest priority)
         if super.indicatesAuthenticationNeedsRefresh(with: problemDoc) {
             return true
@@ -103,7 +120,7 @@ extension HTTPURLResponse {
         }
 
         // OPDS authentication document response
-        if !isSuccess() && mimeType == "application/vnd.opds.authentication.v1.0+json" {
+        if !_isHTTPSuccess(self) && mimeType == "application/vnd.opds.authentication.v1.0+json" {
             return true
         }
 
@@ -123,7 +140,7 @@ extension HTTPURLResponse {
     ///   - originalRequestURL: The URL of the original request before any redirects.
     /// - Returns: `true` if the response indicates authentication needs refresh
     ///   AND the response came from the same domain as the original request.
-    func indicatesAuthenticationNeedsRefresh(
+    public func indicatesAuthenticationNeedsRefresh(
         with problemDoc: TPPProblemDocument?,
         originalRequestURL: URL?
     ) -> Bool {

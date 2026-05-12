@@ -9,6 +9,7 @@
 import CoreLocation
 import PalaceLogging
 import PalaceCatalog
+import PalaceAuth
 
 @objc enum TPPAuthRequestType: Int {
     case signIn = 1
@@ -32,9 +33,9 @@ import PalaceCatalog
     func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: ((Bool, Error?) -> Void)!)
 }
 
-#if FEATURE_DRM_CONNECTOR
-extension NYPLADEPT: TPPDRMAuthorizing {}
-#endif
+// NYPLADEPT's conformance to TPPDRMAuthorizing now lives at
+// `Palace/Accounts/User/NYPLADEPT+TPPDRMAuthorizing.swift` (added to xcodeproj
+// during the swarm_ea663ab6 recovery wiring stage).
 
 class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibraryAccountProvider {
     var onLocationAuthorizationCompletion: (UINavigationController?, Error?) -> Void = {_, _ in }
@@ -81,9 +82,22 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         self.userAccountProvider = userAccountProvider
         self.networker = networkExecutor
         self.drmAuthorizer = drmAuthorizer
-        self._samlHelper = TPPSAMLHelper()
+        // Pre-init the SAML adapters; cross-references are wired post-super.init.
+        let samlContext = LegacySAMLAuthContext()
+        let samlPresenter = LegacySAMLWebViewPresenter(universalLinksProvider: urlSettingsProvider)
+        self._samlContext = samlContext
+        self._samlPresenter = samlPresenter
+        self._samlHelper = TPPSAMLHelper(
+            universalLinksProvider: UniversalLinksAdapter(provider: urlSettingsProvider),
+            context: samlContext,
+            presenter: samlPresenter
+        )
         super.init()
-        self._samlHelper.businessLogic = self
+        // Now that `self` is fully initialized, wire the back-reference. The
+        // presenter does not need a UI-delegate handle — it walks to the
+        // topmost VC via `SignInWebSheetPresenter.presentOnTop` at present
+        // time. Only the context needs the businessLogic backpointer.
+        samlContext.businessLogic = self
     }
 
     /// Signing in and out may imply syncing the book registry.
@@ -157,10 +171,29 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// samlHelper.cookies are set by the legacy bridge during SAML login.
     @objc var cookies: [HTTPCookie]?
 
+    // MARK: - SAML triad (helper + context + presenter)
+    //
+    // This triad replaces the inline `_legacyContext` / `_legacyPresenter`
+    // pair that used to live inside `TPPSAMLHelper` on `develop`. The helper
+    // moved into the `PalaceAuth` SPM package as part of the leaf extraction;
+    // the two adapter halves stay in the main target (they touch
+    // `TPPSignInBusinessLogic`, `OPDS2SamlIDP`, and `SignInWebSheetPresenter`
+    // which all remain main-target types), and `TPPSignInBusinessLogic` owns
+    // strong references to all three so the helper's `weak` back-references
+    // don't deallocate the adapters out from under it.
+
     /// Performs initiation rites for SAML sign-in.
     /// Eagerly created for backward compatibility; use `samlHelperIfNeeded`
     /// for lazy access when SAML support is not guaranteed.
     private let _samlHelper: TPPSAMLHelper
+
+    /// Strong reference to the SAML context adapter — TPPSAMLHelper holds it
+    /// weakly, so without this retain it would be released immediately after
+    /// init returns.
+    private let _samlContext: LegacySAMLAuthContext
+
+    /// Strong reference to the SAML presenter adapter — see _samlContext.
+    private let _samlPresenter: LegacySAMLWebViewPresenter
 
     /// The SAML helper — always available (eagerly created in init).
     var samlHelper: TPPSAMLHelper { _samlHelper }

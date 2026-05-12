@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import PalaceAuth
 @testable import Palace
 
 // MARK: - Mock Input Provider
@@ -60,7 +61,7 @@ final class UserAccountValidationTests: XCTestCase {
     func testRejectsNonASCIICharacters() {
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
 
@@ -75,7 +76,7 @@ final class UserAccountValidationTests: XCTestCase {
     func testAcceptsASCIICharacters() {
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
 
@@ -90,7 +91,7 @@ final class UserAccountValidationTests: XCTestCase {
     func testAcceptsEmptyReplacementString() {
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
 
@@ -108,7 +109,7 @@ final class UserAccountValidationTests: XCTestCase {
         inputProvider.forceEditability = true
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
 
@@ -120,7 +121,7 @@ final class UserAccountValidationTests: XCTestCase {
         inputProvider.forceEditability = false
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
 
@@ -134,7 +135,7 @@ final class UserAccountValidationTests: XCTestCase {
     func testRejectsUsernameLongerThan25Characters() {
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
         usernameField.text = String(repeating: "a", count: 25)
@@ -150,7 +151,7 @@ final class UserAccountValidationTests: XCTestCase {
     func testAcceptsUsernameAtExactly25Characters() {
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
         usernameField.text = String(repeating: "a", count: 24)
@@ -166,7 +167,7 @@ final class UserAccountValidationTests: XCTestCase {
     func testRejectsUsernameRangeOutsideTextBounds() {
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
         usernameField.text = "abc"
@@ -185,7 +186,7 @@ final class UserAccountValidationTests: XCTestCase {
         let businessLogic = makeBusinessLogicWithBasicAuth()
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: businessLogic,
+            validationContext: businessLogic,
             inputProvider: inputProvider
         )
         // NYPL fixture sets passcode maximum_length = 12 for basic auth
@@ -203,7 +204,7 @@ final class UserAccountValidationTests: XCTestCase {
         let businessLogic = makeBusinessLogicWithBasicAuth()
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: businessLogic,
+            validationContext: businessLogic,
             inputProvider: inputProvider
         )
         pinField.text = String(repeating: "1", count: 11)
@@ -224,7 +225,7 @@ final class UserAccountValidationTests: XCTestCase {
         businessLogic.userAccount.setBarcode("user", PIN: "1234")
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: businessLogic,
+            validationContext: businessLogic,
             inputProvider: inputProvider
         )
 

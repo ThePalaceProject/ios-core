@@ -5,7 +5,7 @@ import PalaceCatalog
 /// `AccountDetails.Authentication` so the reducer stays decoupled from the
 /// account model — the live business logic translates from the rich type
 /// at the call site.
-enum AuthMethodType {
+public enum AuthMethodType: Equatable {
     case basic
     case oauthIntermediary
     case saml
@@ -16,7 +16,7 @@ enum AuthMethodType {
     /// of these without using cached credentials must arm
     /// `ignoreSignedInState` so the UI re-auths instead of silently
     /// proceeding with a stale session.
-    var requiresBrowserRefresh: Bool {
+    public var requiresBrowserRefresh: Bool {
         switch self {
         case .saml, .oauthIntermediary, .oidc: return true
         case .basic, .token: return false
@@ -32,34 +32,58 @@ enum AuthMethodType {
 /// - `patron: [String: Any]?` — opaque side-channel, not Equatable.
 /// - `cookies: [HTTPCookie]?` — SAML side-channel, owned by SAMLHelper.
 /// - `userAccount` — persistence layer, side effects in the environment.
-struct AuthState {
-    var isValidatingCredentials: Bool = false
-    var isAuthenticationDocumentLoading: Bool = false
+public struct AuthState: Equatable {
+    public var isValidatingCredentials: Bool = false
+    public var isAuthenticationDocumentLoading: Bool = false
     /// While `true`, `isSignedIn()` reports false even if credentials exist.
     /// Mirrors the legacy bypass used during browser-refresh flows where the
     /// IdP session expired but the keychain still has a stale token/cookie.
-    var ignoreSignedInState: Bool = false
-    var isLoggingInAfterSignUp: Bool = false
+    public var ignoreSignedInState: Bool = false
+    public var isLoggingInAfterSignUp: Bool = false
 
     /// Captured during `logIn` so `finalizeSignIn` doesn't have to re-read
     /// from the UI delegate, which may have been cleared by an intervening
     /// `accountDidChange` notification.
-    var capturedBarcode: String? = nil
-    var capturedPin: String? = nil
+    public var capturedBarcode: String? = nil
+    public var capturedPin: String? = nil
 
     /// OAuth/OIDC bearer token snapshot. Cleared on sign-out and on a
     /// successful `userAccountUpdated` (the canonical store is
     /// `TPPUserAccount`, not the in-flight reducer state).
-    var authToken: String? = nil
-    var authTokenExpiration: Date? = nil
+    public var authToken: String? = nil
+    public var authTokenExpiration: Date? = nil
 
     /// User-facing error from the most recent failed validation. Surfaced
     /// to the UI delegate's `didEncounterValidationError` callback.
-    var lastErrorTitle: String? = nil
-    var lastErrorMessage: String? = nil
+    public var lastErrorTitle: String? = nil
+    public var lastErrorMessage: String? = nil
+
+    public init(
+        isValidatingCredentials: Bool = false,
+        isAuthenticationDocumentLoading: Bool = false,
+        ignoreSignedInState: Bool = false,
+        isLoggingInAfterSignUp: Bool = false,
+        capturedBarcode: String? = nil,
+        capturedPin: String? = nil,
+        authToken: String? = nil,
+        authTokenExpiration: Date? = nil,
+        lastErrorTitle: String? = nil,
+        lastErrorMessage: String? = nil
+    ) {
+        self.isValidatingCredentials = isValidatingCredentials
+        self.isAuthenticationDocumentLoading = isAuthenticationDocumentLoading
+        self.ignoreSignedInState = ignoreSignedInState
+        self.isLoggingInAfterSignUp = isLoggingInAfterSignUp
+        self.capturedBarcode = capturedBarcode
+        self.capturedPin = capturedPin
+        self.authToken = authToken
+        self.authTokenExpiration = authTokenExpiration
+        self.lastErrorTitle = lastErrorTitle
+        self.lastErrorMessage = lastErrorMessage
+    }
 }
 
-enum AuthAction {
+public enum AuthAction: Equatable {
     case authDocumentLoadStarted
     case authDocumentLoadCompleted
 
@@ -93,7 +117,9 @@ enum AuthAction {
 /// compatible with `Store<AuthState, AuthAction, AuthEnvironment>` for a
 /// future Phase that wires the network/keychain side effects through the
 /// store. Today every transition is synchronous.
-struct AuthEnvironment {}
+public struct AuthEnvironment: Equatable {
+    public init() {}
+}
 
 /// Namespace holder for the auth state-machine reducer. See
 /// `TPPSignInBusinessLogic` for the side-effect surface (network calls,
@@ -101,9 +127,9 @@ struct AuthEnvironment {}
 /// stay in the business logic. The reducer captures only the
 /// state-transition rules so they can be exercised with literal state in
 /// `AuthReducerTests` without spinning up a network executor.
-enum AuthReducer {
+public enum AuthReducer {
 
-    static func reduce(
+    public static func reduce(
         _ state: inout AuthState,
         _ action: AuthAction
     ) -> Effect<AuthAction, AuthEnvironment> {
@@ -186,18 +212,60 @@ enum AuthReducer {
         }
     }
 
-    /// Static classifier mirrors `TPPSignInBusinessLogic.userFacingSignInError`
-    /// so the same precedence rule (problem document > network connectivity
-    /// > generic invalid-credentials) is reachable from the reducer's
-    /// callers without crossing the businessLogic boundary. Pure function;
-    /// see `AuthReducerTests` for the precedence cases.
-    static func classifyValidationError(
+    /// Static classifier — pure function mirroring the precedence rule
+    /// (problem document > network connectivity > generic invalid
+    /// credentials) used by `TPPSignInBusinessLogic.userFacingSignInError`.
+    /// The strings are intentionally localized via `NSLocalizedString` so
+    /// the main bundle's `Localizable.strings` continues to win — the
+    /// keys are the English fallbacks used in `Strings.Error.*`.
+    public static func classifyValidationError(
         _ error: NSError,
         problemDocument: TPPProblemDocument?
     ) -> (title: String?, message: String?) {
-        TPPSignInBusinessLogic.userFacingSignInError(
-            for: error,
-            problemDocument: problemDocument
+        if let problemDocument {
+            return (problemDocument.title, problemDocument.detail)
+        }
+        // String literals are kept in sync with `Strings.Error.*` in the main
+        // target (Palace/Utilities/Localization/Strings.swift). PalaceAuth can't
+        // import `Strings`, so the canonical copy is duplicated here; the test
+        // suite asserts identity between the two via `Strings.Error.*` lookups.
+        if isNetworkConnectivityError(error) {
+            return (
+                NSLocalizedString("No Internet Connection", comment: ""),
+                NSLocalizedString(
+                    "Check your connection and try again.",
+                    comment: "Message shown when sign-in fails because the device lost connectivity"
+                )
+            )
+        }
+        return (
+            NSLocalizedString("Invalid Credentials", comment: ""),
+            NSLocalizedString(
+                "Please check your username and password and try again.",
+                comment: ""
+            )
         )
+    }
+
+    /// True when the error is from URLSession indicating the request never
+    /// reached the server (lost connection, DNS failure, TLS handshake, etc).
+    /// Mirrors `TPPSignInBusinessLogic.isNetworkConnectivityError` so the
+    /// classifier doesn't have to cross the businessLogic boundary.
+    public static func isNetworkConnectivityError(_ error: NSError) -> Bool {
+        guard error.domain == NSURLErrorDomain else { return false }
+        switch error.code {
+        case NSURLErrorNotConnectedToInternet,
+             NSURLErrorTimedOut,
+             NSURLErrorNetworkConnectionLost,
+             NSURLErrorCannotFindHost,
+             NSURLErrorCannotConnectToHost,
+             NSURLErrorDNSLookupFailed,
+             NSURLErrorDataNotAllowed,
+             NSURLErrorInternationalRoamingOff,
+             NSURLErrorSecureConnectionFailed:
+            return true
+        default:
+            return false
+        }
     }
 }

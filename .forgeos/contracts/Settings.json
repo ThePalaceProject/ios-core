@@ -1,7 +1,7 @@
 {
   "module": "Settings",
-  "generated_at": "2026-05-07T05:14:49+00:00",
-  "file_count": 36,
+  "generated_at": "2026-05-12T16:15:16+00:00",
+  "file_count": 37,
   "shared_singleton_reads": 22,
   "public_types": [],
   "objc_surface": [
@@ -141,7 +141,7 @@
       "name": "dismissRegistration",
       "kind": "func",
       "file": "AccountDetailViewModel.swift",
-      "line": 613
+      "line": 614
     },
     {
       "name": "incrementalSpeedSliderSwitchDidChange",
