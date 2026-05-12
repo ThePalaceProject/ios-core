@@ -95,10 +95,11 @@ final class UserAccountPublisherTests: XCTestCase {
         publisher.signOut()
         XCTAssertTrue(publisher.isSigningOut)
 
-        // The reset is dispatched from a detached Task, so a fixed 0.2s
-        // sleep was flaky under heavy main-thread load. Poll for the
-        // expected state instead.
-        awaitCondition { self.publisher.isSigningOut == false }
+        // The reset runs inside `Task { Task.sleep(100ms); isSigningOut = false }`.
+        // Default 5s `awaitCondition` budget flaked under late-suite dispatch
+        // saturation (100ms sleep + main-actor publish took >5s after ~3,700
+        // prior tests). 15s gives enough headroom without masking real bugs.
+        awaitCondition(timeout: 15.0) { self.publisher.isSigningOut == false }
         XCTAssertFalse(publisher.isSigningOut)
     }
 

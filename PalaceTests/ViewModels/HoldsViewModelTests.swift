@@ -83,7 +83,11 @@ final class HoldsViewModelTests: XCTestCase {
 
         NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
 
-        await fulfillment(of: [expectation], timeout: 1.0)
+        // 5s budget covers the production 300ms debounce + dispatch saturation
+        // under full-suite load. The earlier 1s budget flaked under the run-2
+        // dispatch storm; the production code is correct, the test just had
+        // an unrealistically tight expectation.
+        await fulfillment(of: [expectation], timeout: 5.0)
         XCTAssertTrue(viewModel.isLoading)
     }
 
@@ -104,7 +108,8 @@ final class HoldsViewModelTests: XCTestCase {
 
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
 
-        await fulfillment(of: [expectation], timeout: 1.0)
+        // 5s budget covers the production 300ms debounce + dispatch saturation.
+        await fulfillment(of: [expectation], timeout: 5.0)
         XCTAssertFalse(viewModel.isLoading)
     }
 
