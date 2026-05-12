@@ -619,6 +619,7 @@ struct Strings {
         static let returnFailedMessage = NSLocalizedString("The return of %@ could not be completed.", comment: "Alert message when returning a book fails, %@ is the book title")
         static let downloadFailed = NSLocalizedString("Download Failed", comment: "Alert title when a download fails")
         static let downloadFailedMessage = NSLocalizedString("The download for %@ could not be completed.", comment: "Alert message when downloading a book fails, %@ is the book title")
+        static let downloadFailedUnknownReason = NSLocalizedString("Please check your connection and try again.", comment: "Fallback detail shown under the \"Download Failed\" alert when the underlying failure reason has no user-facing description (e.g. a generic URLSession error or DRM fulfillment error with no localizedDescription).")
         static let retry = NSLocalizedString("Retry", comment: "Button to retry a failed operation")
         static let tryAgainLater = NSLocalizedString("Please try again later.", comment: "Message shown when maximum retry attempts have been exceeded")
         static let errorSyncingBookmarks = NSLocalizedString("Error Syncing Bookmarks", comment: "Alert title when bookmark sync fails")

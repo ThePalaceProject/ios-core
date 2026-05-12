@@ -108,8 +108,21 @@ final class DownloadAlertPresenter {
             self.delegate?.schedulePendingStartsIfPossible()
         }
 
-        let errorMessage = message ?? "No error message"
-        let formattedMessage = String.localizedStringWithFormat(NSLocalizedString("The download for %@ could not be completed.", comment: ""), book.title)
+        // Most callers (DownloadTaskLifecycleService, AdobeDRMHandler,
+        // OverdriveDownloadHandler, RightsManagementDispatcher) pass
+        // `nil` when the underlying NSError has no user-actionable
+        // localizedDescription. Previously this coalesced to the
+        // developer placeholder "No error message" which shipped to
+        // users in 3.1.0 (Cinema-beyond-the-human repro). Treat empty
+        // strings the same — both are caller-side "I don't know why".
+        let trimmedMessage = message?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let errorMessage: String
+        if let trimmedMessage, !trimmedMessage.isEmpty {
+            errorMessage = trimmedMessage
+        } else {
+            errorMessage = DisplayStrings.downloadFailedUnknownReason
+        }
+        let formattedMessage = String.localizedStringWithFormat(DisplayStrings.downloadFailedMessage, book.title)
         let finalMessage = "\(formattedMessage)\n\(errorMessage)"
 
         let retryAction = makeRetryAction(for: book)
