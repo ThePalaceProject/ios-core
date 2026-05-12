@@ -44,6 +44,7 @@ final class HoldsViewModel: ObservableObject {
     private let settings: TPPSettings
     private let debugSettings: DebugSettings
     private let hasCredentials: () -> Bool
+    private let currentLibraryNeedsAuth: () -> Bool
     private let presentSignIn: (@escaping () -> Void) -> Void
     private let store: Store<HoldsState, HoldsAction, HoldsEnvironment>
     private var cancellables = Set<AnyCancellable>()
@@ -68,6 +69,7 @@ final class HoldsViewModel: ObservableObject {
         settings: TPPSettings,
         debugSettings: DebugSettings,
         hasCredentials: (() -> Bool)? = nil,
+        currentLibraryNeedsAuth: (() -> Bool)? = nil,
         presentSignIn: ((@escaping () -> Void) -> Void)? = nil
     ) {
         self.bookRegistry = bookRegistry
@@ -76,6 +78,19 @@ final class HoldsViewModel: ObservableObject {
         self.debugSettings = debugSettings
         self.hasCredentials = hasCredentials ?? { [accountsManager] in
             accountsManager.currentUserAccount.hasCredentials()
+        }
+        // BUG-004: anonymous libraries (e.g. Palace Bookshelf) have no patron
+        // concept; per-patron endpoints (loans/holds) must not be fetched. We
+        // read the *library*'s auth surface rather than the user account's
+        // because the user-account path races during library switches —
+        // `lastKnownCurrentUserAccount` falls back to the previous (still-
+        // credentialed) library while `currentAccountId` is briefly nil.
+        // Library-state (Account.needsAuth) reflects the new selection
+        // synchronously and returns nil while the auth document is still
+        // loading — we default-deny in that window so we don't swallow real
+        // failures on cold launch (the BookRegistrySync hydration-race guard).
+        self.currentLibraryNeedsAuth = currentLibraryNeedsAuth ?? { [accountsManager] in
+            return accountsManager.currentAccount?.needsAuth ?? true
         }
         self.presentSignIn = presentSignIn ?? { [accountsManager] completion in
             SignInModalPresenter.presentSignInModalForCurrentAccount(
@@ -188,11 +203,20 @@ final class HoldsViewModel: ObservableObject {
             return text
         }()
         let cached = !visibleBooks.isEmpty
-        let anonymous = !hasCredentials()
+        // `anonymous` collapses two distinct anonymous-state signals:
+        //   1. The current *library* declares no credential-based auth method
+        //      (Palace Bookshelf etc.) — holds aren't a concept here at all.
+        //      This is the BUG-004 fix: library state is durable across the
+        //      switch, so it catches the race window where the user-account
+        //      view of credentials is briefly stale.
+        //   2. The user has no credentials stored for the current library —
+        //      existing PP-3811 behaviour, kept verbatim so the auth-required
+        //      code path doesn't change.
+        let anonymous = !currentLibraryNeedsAuth() || !hasCredentials()
         if cached {
             Log.debug(#file, "Sync failed but holds are cached — suppressing error banner")
         } else if anonymous {
-            Log.debug(#file, "Sync failed for anonymous user — suppressing error banner")
+            Log.debug(#file, "Sync failed for anonymous library/user — suppressing error banner")
         }
         store.send(.syncFailed(errorMessage: detail, cached: cached, anonymous: anonymous))
     }
