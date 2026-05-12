@@ -118,6 +118,52 @@ final class DownloadAlertPresenterTests: XCTestCase {
                        "Retry tap routes through the delegate's startDownload")
     }
 
+    // MARK: - placeholder regression (Cinema-beyond-the-human bug, 3.1.0)
+
+    /// Most callers of `failDownloadWithAlert` pass `nil` as the message
+    /// (see `DownloadTaskLifecycleService.handleTaskCompletionError`,
+    /// `OverdriveDownloadHandler`, `RightsManagementDispatcher`,
+    /// `AdobeDRMHandler`). Previously that nil was coalesced to the
+    /// placeholder string "No error message" and shipped to production.
+    /// The alert must never show that placeholder.
+    func testFailDownloadWithAlert_nilMessage_doesNotShowDeveloperPlaceholder() async throws {
+        presenter.failDownloadWithAlert(for: book, withMessage: nil)
+        await waitForPublishedError()
+
+        let info = try XCTUnwrap(capturedErrors.first)
+        XCTAssertFalse(info.message.contains("No error message"),
+                       "Developer placeholder \"No error message\" must never reach the user-facing alert")
+        XCTAssertFalse(info.message.lowercased().contains("nil"),
+                       "Raw \"nil\" must never reach the user-facing alert")
+    }
+
+    /// When the caller has no specific failure reason (`nil` message),
+    /// the alert must still give the user an actionable hint. The
+    /// connectivity-style fallback is what we ship for unknown failures
+    /// from background URLSession completions, Adobe/Overdrive failures,
+    /// etc. — all of which can be transient.
+    func testFailDownloadWithAlert_nilMessage_includesActionableFallback() async throws {
+        presenter.failDownloadWithAlert(for: book, withMessage: nil)
+        await waitForPublishedError()
+
+        let info = try XCTUnwrap(capturedErrors.first)
+        XCTAssertTrue(info.message.contains(Strings.MyDownloadCenter.downloadFailedUnknownReason),
+                      "When no specific reason is available, the alert must surface the actionable fallback string")
+    }
+
+    /// Empty-string messages (a caller-bug variant of nil) must be
+    /// treated identically — both bypass the `??` coalescing and would
+    /// produce a useless trailing newline + nothing in the old code.
+    func testFailDownloadWithAlert_emptyMessage_alsoFallsBackToActionableText() async throws {
+        presenter.failDownloadWithAlert(for: book, withMessage: "")
+        await waitForPublishedError()
+
+        let info = try XCTUnwrap(capturedErrors.first)
+        XCTAssertFalse(info.message.contains("No error message"))
+        XCTAssertTrue(info.message.contains(Strings.MyDownloadCenter.downloadFailedUnknownReason),
+                      "Empty-string messages must hit the same actionable fallback as nil")
+    }
+
     // MARK: - alertForProblemDocument
 
     func testAlertForProblemDocument_noActiveLoan_removesFromRegistryAndDisablesRetry() async throws {
