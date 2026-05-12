@@ -651,6 +651,11 @@ struct Strings {
         static let otherBooks = NSLocalizedString("Other books by this author", comment: "Section header for related books")
         static let borrowedUntil = NSLocalizedString("Borrowed until", comment: "")
         static let borrowingFor = NSLocalizedString("Borrowing for", comment: "")
+        /// Status text shown alongside the indeterminate spinner during the
+        /// borrow phase (network request to the borrow URL is in flight,
+        /// before the download itself starts). Distinct from `borrowingFor`,
+        /// which renders a loan-duration label on already-borrowed books.
+        static let borrowingInProgress = NSLocalizedString("Borrowing…", comment: "Status label shown while a borrow request is in flight, before the download begins.")
         static let due = NSLocalizedString("Due", comment: "")
         static let holdStatus = NSLocalizedString(
             "You are %1$@ in line. %2$d %3$@ in use.",

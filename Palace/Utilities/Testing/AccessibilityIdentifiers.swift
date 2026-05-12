@@ -116,6 +116,11 @@ public enum AccessibilityID {
 
         // Progress
         public static let downloadProgress = "bookDetail.downloadProgress"
+        /// Indeterminate spinner + "Borrowing…" label shown during the borrow
+        /// phase (network round-trip to the borrow URL is in flight). Distinct
+        /// from `downloadProgress` (linear bar that appears once the download
+        /// itself begins).
+        public static let borrowingProgress = "bookDetail.borrowingProgress"
 
         // Half sheet
         public static let halfSheet = "bookDetail.halfSheet"

@@ -78,6 +78,22 @@ final class BookDetailViewModel: ObservableObject {
     }
     @Published var isProcessing: Bool = false
 
+    /// `true` while BorrowOperation has the registry's processing flag set
+    /// for this book — i.e. a borrow request is in flight. Distinct from
+    /// `downloadProgress` (which is 0 for the entire borrow phase, before
+    /// the download itself starts) and from `processingButtons` (which
+    /// tracks user-initiated UI spinners on individual buttons).
+    ///
+    /// Surfacing this flag fixes the "borrow stuck with Cancel-only UI" bug
+    /// on slow distributors (Overdrive in particular): before this, the
+    /// half-sheet rendered a 0%-linear progress bar and an inert Cancel
+    /// button with no indeterminate spinner, so the user had no signal that
+    /// anything was happening. BorrowOperation's setProcessing(true:false)
+    /// pair is the canonical truth here; we mirror it via the existing
+    /// `.TPPBookProcessingDidChange` notification so unit tests can flip it
+    /// without standing up the full download stack.
+    @Published private(set) var isBorrowProcessing: Bool = false
+
     var isShowingSample = false
     var isProcessingSample = false
 
@@ -167,6 +183,12 @@ final class BookDetailViewModel: ObservableObject {
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
+        // Seed isBorrowProcessing from the registry's processing flag so a
+        // borrow that's already in flight when the detail view opens (e.g.
+        // user kicked it off from a swimlane, then navigated into details
+        // before the network round-trip returned) shows the spinner from
+        // first frame instead of looking idle until the next emission.
+        self.isBorrowProcessing = registry.processing(forIdentifier: book.identifier)
 
         bindRegistryState()
         setupStableButtonState()
@@ -275,6 +297,24 @@ final class BookDetailViewModel: ObservableObject {
             name: .TPPBookRegistryDidChange,
             object: nil
         )
+
+        // BorrowOperation posts .TPPBookProcessingDidChange via the registry
+        // when it starts a borrow request and again when it finishes. Mirror
+        // it onto an @Published flag the half-sheet can observe, filtered to
+        // this VM's book identifier so unrelated borrows don't spin our UI.
+        NotificationCenter.default.publisher(for: .TPPBookProcessingDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] note in
+                guard let self else { return }
+                guard let info = note.userInfo as? [String: Any],
+                      let identifier = info[TPPNotificationKeys.bookProcessingBookIDKey] as? String,
+                      identifier == self.bookIdentifier,
+                      let value = info[TPPNotificationKeys.bookProcessingValueKey] as? Bool else { return }
+                if self.isBorrowProcessing != value {
+                    self.isBorrowProcessing = value
+                }
+            }
+            .store(in: &cancellables)
 
         // Avoid general download center change notifications; we already subscribe to fine-grained progress and registry state publishers
 
