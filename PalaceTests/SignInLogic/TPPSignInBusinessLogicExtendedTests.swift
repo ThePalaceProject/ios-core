@@ -439,6 +439,139 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
                        "Second call without auth definition must also return false")
     }
 
+    // MARK: - Auth-gate predicate guards (mutation kill targets)
+    //
+    // refreshAuthIfNeeded line 543 guard:
+    //   isBasic || isOauth || isSaml || isOidc || (isToken && tokenExpired)
+    // refreshAuthIfNeeded line 557 IdP-flow branch:
+    //   if isSaml || isOauth || isOidc { ... markCredentialsStale ... }
+    // ensureAuthenticationDocumentIsLoaded line 507 short-circuit:
+    //   if libraryAccount?.details != nil { completion(true); return }
+    // registrationIsPossible line 699 sign-up gate:
+    //   !isSignedIn() && libraryAccount?.details?.signUpUrl != nil
+    //
+    // Each test below pins ONE survived mutation operator from the cache at
+    // .forgeos/mutation-cache/TPPSignInBusinessLogic.500bdd39303bc651.json.
+
+    func testEnsureAuthenticationDocumentIsLoaded_whenDetailsAlreadyLoaded_firesCompletionSync() {
+        // Precondition: the mock library account has details preloaded from
+        // the NYPL authentication-document fixture.
+        XCTAssertNotNil(businessLogic.libraryAccount?.details,
+                        "precondition: library details must be preloaded")
+        XCTAssertFalse(businessLogic.isAuthenticationDocumentLoading,
+                       "precondition: no load in flight")
+
+        var completionValue: Bool?
+        businessLogic.ensureAuthenticationDocumentIsLoaded { success in
+            completionValue = success
+        }
+
+        // Synchronous-completion invariant: the `details != nil` early-return
+        // must fire `completion(true)` before this function call returns, and
+        // must NOT enter the network path (which dispatches
+        // .authDocumentLoadStarted and flips isAuthenticationDocumentLoading).
+        XCTAssertEqual(completionValue, true,
+                       "Completion must fire synchronously with true when details are already loaded — mutating `details != nil` to `details == nil` would skip this fast-path and run the async network load.")
+        XCTAssertFalse(businessLogic.isAuthenticationDocumentLoading,
+                       "No authDocumentLoadStarted dispatch should happen on the cached-details fast path")
+    }
+
+    func testRefreshAuthIfNeeded_basicAuthWithoutSavedCredentials_returnsTrue() {
+        // Arrange: basic-auth library + an auth definition installed on
+        // userAccount, but no barcode/PIN saved (the typical "asked to
+        // refresh but user has cleared credentials" path).
+        businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
+        let acct = businessLogic.userAccount as! TPPUserAccountMock
+        acct._authDefinition = libraryAccountMock.barcodeAuthentication
+        XCTAssertFalse(acct.hasBarcodeAndPIN(),
+                       "precondition: no saved barcode/PIN")
+
+        // Act
+        let needsUI = businessLogic.refreshAuthIfNeeded(usingExistingCredentials: true, completion: nil)
+
+        // Assert: guard's `isBasic ||` term must carry the OR-chain to true.
+        // Mutating any of the `||` operators on line 543 to `&&` makes the
+        // chain effectively `isBasic && isOauth && ...`, which is false for
+        // an exclusive auth type — guard fails, completion fires, returns false.
+        XCTAssertTrue(needsUI,
+                      "Basic auth without saved credentials must require UI; if line 543 `||` becomes `&&`, no single auth-type can carry the chain and the guard short-circuits to false.")
+    }
+
+    func testRefreshAuthIfNeeded_samlAuthFreshFlow_marksCredentialsStale() {
+        // Arrange: SAML library, signed-in (token present), about to do a
+        // fresh-flow refresh (usingExistingCredentials = false).
+        businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+        businessLogic.updateUserAccount(forDRMAuthorization: true,
+                                        withBarcode: nil, pin: nil,
+                                        authToken: "saml-token-pre",
+                                        expirationDate: nil,
+                                        patron: ["name": "Test User"],
+                                        cookies: nil)
+        let acct = businessLogic.userAccount as! TPPUserAccountMock
+        XCTAssertTrue(acct.hasCredentials(),
+                      "precondition: signed in with a SAML token")
+        XCTAssertEqual(acct.authState, .loggedIn,
+                       "precondition: SAML session is loggedIn before refresh")
+
+        // Act
+        let needsUI = businessLogic.refreshAuthIfNeeded(usingExistingCredentials: false, completion: nil)
+
+        // Assert: SAML refresh requires UI (line 543 OR-chain must keep the
+        // SAML term live), AND the fresh-flow branch must run (line 557
+        // OR-chain must keep the SAML term live) which marks credentials
+        // stale. Both `||→&&` mutations on these lines remove the SAML term
+        // and skip these side-effects. (Selection-clear at line 563 is not
+        // observable from the public API because the
+        // `selectedAuthentication` getter falls back to
+        // `userAccount.authDefinition` — that mutation is not in scope here.)
+        XCTAssertTrue(needsUI, "SAML refresh must require UI")
+        XCTAssertEqual(acct.authState, .credentialsStale,
+                       "Line 557: SAML fresh-flow must mark credentials stale")
+    }
+
+    func testRefreshAuthIfNeeded_oauthFreshFlow_marksCredentialsStaleButKeepsSelection() {
+        // Arrange: OAuth library, signed-in (token present), about to do a
+        // fresh-flow refresh.
+        businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
+        businessLogic.updateUserAccount(forDRMAuthorization: true,
+                                        withBarcode: nil, pin: nil,
+                                        authToken: "oauth-token-pre",
+                                        expirationDate: nil,
+                                        patron: ["name": "Test User"],
+                                        cookies: nil)
+        let acct = businessLogic.userAccount as! TPPUserAccountMock
+        XCTAssertTrue(acct.hasCredentials(),
+                      "precondition: signed in with an OAuth token")
+
+        // Act
+        let needsUI = businessLogic.refreshAuthIfNeeded(usingExistingCredentials: false, completion: nil)
+
+        // Assert: OAuth refresh exercises a different position in the line 557
+        // OR-chain than SAML — mutating `isSaml && isOauth || isOidc` would
+        // skip OAuth-side credentials staling.
+        XCTAssertTrue(needsUI, "OAuth refresh must require UI")
+        XCTAssertEqual(acct.authState, .credentialsStale,
+                       "Line 557 OAuth term: fresh-flow must mark credentials stale")
+        XCTAssertNotNil(businessLogic.selectedAuthentication,
+                        "selectedAuthentication is cleared only for SAML — OAuth keeps it")
+    }
+
+    func testRegistrationIsPossible_notSignedInAndLibraryHasSignUpUrl_returnsTrue() {
+        // Arrange: not signed in (default state) + the NYPL fixture has a
+        // `register`-rel link, so libraryAccount.details.signUpUrl is non-nil.
+        XCTAssertFalse(businessLogic.isSignedIn(),
+                       "precondition: no credentials, not signed in")
+        XCTAssertNotNil(businessLogic.libraryAccount?.details?.signUpUrl,
+                        "precondition: NYPL fixture provides a signUpUrl via the register-rel link")
+
+        // Act + Assert: line 699 `signUpUrl != nil` must drive registration
+        // to true. Mutating `!=` to `==` flips the gate so libraries that
+        // SUPPORT card creation would be reported as ineligible (and ones
+        // that don't would be falsely reported as eligible).
+        XCTAssertTrue(businessLogic.registrationIsPossible(),
+                      "Registration must be possible when not signed in AND the library advertises a signUpUrl")
+    }
+
     // MARK: - Concurrent Sign-In Prevention Tests
 
     func testLogIn_preventsMultipleSimultaneousCalls() {
