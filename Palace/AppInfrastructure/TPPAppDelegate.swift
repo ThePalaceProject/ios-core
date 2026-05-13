@@ -34,14 +34,13 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     func applicationDidFinishLaunching(_ application: UIApplication) {
         let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
-        // [SAML-REAUTH-FIX] Build identifier marker — confirms this binary is the
-        // Cornell SAML cookie-bandage TestFlight (HelpSpot 17716). Logged on every
-        // app launch so a sysdiagnose unambiguously identifies this build.
+        // Build identifier marker — logged on every app launch so a sysdiagnose
+        // unambiguously identifies which 3.0.2 build is running.
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
         let iosVersion = UIDevice.current.systemVersion
         let deviceModel = UIDevice.current.model
-        Log.error(#file, "[SAML-REAUTH-FIX] BUILD MARKER — release/3.0.2 (Cornell SAML bandage + Reset Account fallback). App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel). HelpSpot 17716 verification build.")
+        Log.info(#file, "[BUILD MARKER] release/3.0.2 — App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel)")
 
         // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts
         // This ensures MPRemoteCommandCenter handlers are registered before any UI loads

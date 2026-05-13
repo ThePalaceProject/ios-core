@@ -362,8 +362,18 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     /// Conditionally appends the destructive `.resetAccount` cell. Reset is
     /// only meaningful when there's actually signed-in state to clear, so
     /// signed-out renderings (e.g., SAML IdP picker) don't get the button.
+    /// PP-4282 / HelpSpot 17716: the destructive reset path is a support
+    /// tool, not a general patron affordance — gated behind the existing
+    /// developer-settings toggle (via UserDefaults under
+    /// `TPPSettings.showDeveloperSettingsKey`) so it ships dark by default
+    /// and is only surfaced when a TestFlight or support user has unlocked
+    /// developer settings (long-press version label in Settings).
     private func appendResetIfSignedIn(_ cells: [CellType]) -> [CellType] {
-        isSignedIn ? cells + [.resetAccount] : cells
+        let developerSettingsOn = UserDefaults.standard.bool(forKey: TPPSettings.showDeveloperSettingsKey)
+        guard isSignedIn, developerSettingsOn else {
+            return cells
+        }
+        return cells + [.resetAccount]
     }
 
     // MARK: - Actions
