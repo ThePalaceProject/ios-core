@@ -122,8 +122,40 @@ struct CatalogCacheMetadata: Codable {
             object: nil
         )
 
+        // Synchronously pre-populate accountSets from the on-disk cache before
+        // returning. Without this, AppContainer.production() returns while
+        // loadCatalogs() is still running on a background queue, so any UI
+        // mounted in that window — including Settings -> Libraries and the
+        // sign-in modal — calls account(uuid) against an empty dict and renders
+        // an empty list. The async refresh below still runs to pick up any
+        // server-side registry changes.
+        preloadAccountsFromDiskCacheSync()
+
         DispatchQueue.global(qos: .background).async { [weak self] in
             self?.loadCatalogs(completion: nil)
+        }
+    }
+
+    /// Hydrate `accountSets[accountSet]` from the on-disk OPDS2 catalog cache
+    /// without dispatching to a background queue. Safe to call from `init()`
+    /// because the cache read is local I/O measured in single-digit ms.
+    private func preloadAccountsFromDiskCacheSync() {
+        let hash = self.accountSet
+        guard hasCachedCatalogData(hash: hash),
+              let cachedData = readCachedAccountsCatalogData(hash: hash) else {
+            return
+        }
+        do {
+            let feed = try OPDS2CatalogsFeed.fromData(cachedData)
+            let accounts = feed.catalogs.map {
+                Account(publication: $0, imageCache: ImageCache.shared)
+            }
+            performWrite { self.accountSets[hash] = accounts }
+            Log.info(#file, "Pre-loaded \(accounts.count) accounts from disk cache (sync, hash=\(hash))")
+        } catch {
+            // Best-effort. If the cached blob is corrupt or schema-shifted,
+            // we silently fall through to the async network refresh.
+            Log.warn(#file, "Sync disk-cache pre-load failed: \(error). Will refresh from network async.")
         }
     }
 
