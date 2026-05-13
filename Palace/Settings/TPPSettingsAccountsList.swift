@@ -71,18 +71,20 @@ import SwiftUI
         }
         view.addSubview(reloadView)
 
-        // cleanup accounts, remove demo account or accounts not supported through accounts.json // will be refactored when implementing librsry registry
-        var accountsToRemove = [String]()
-
-        for account in accounts {
-            if manager.account(account.uuid) == nil {
-                accountsToRemove.append(account.uuid)
-            }
-        }
-
-        for remove in accountsToRemove {
-            accounts = accounts.filter { $0.uuid == remove }
-        }
+        // Drop persisted UUIDs that no longer resolve in the registry — libraries
+        // the user previously added that have since been renamed, removed, or whose
+        // server-assigned UUID changed. Pre-fix this used a two-pass loop whose
+        // inner filter was inverted (`$0.uuid == remove` instead of `!=`), which
+        // clobbered the entire accounts list down to the last to-remove uuid
+        // whenever ANY persisted account failed to resolve. That bug existed since
+        // 2026-02-12 but was masked by the broader launch race fixed in
+        // AccountsManager.preloadAccountsFromDiskCacheSync(): when the registry
+        // hadn't loaded yet, every account failed to resolve and the inverted
+        // filter happened to fall through (empty accountsToRemove → no filter
+        // applied). With the registry now populated synchronously, this loop
+        // started firing and dropping the user's added libraries. Replaced with
+        // a single forward-pass filter that does what the original comment said.
+        accounts = accounts.filter { manager.account($0.uuid) != nil }
 
         self.userAddedSecondaryAccounts = accounts.filter { $0.uuid != manager.currentAccount?.uuid }
 
