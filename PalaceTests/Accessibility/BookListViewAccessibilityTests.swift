@@ -92,6 +92,32 @@ final class BookListViewAccessibilityTests: XCTestCase {
         )
     }
 
+    /// PP-4326 follow-up: the row must be an accessibility CONTAINER so the
+    /// inner BookButtonsView Buttons are individually focusable in VoiceOver
+    /// linear-swipe navigation. The collapse-to-one-element pattern
+    /// (.accessibilityElement(children: .ignore)) made the buttons reachable
+    /// only via the rotor menu, which the original reporter flagged as
+    /// insufficient.
+    func testBookListView_rowIsAccessibilityContainer() throws {
+        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookListView.swift")
+        XCTAssertTrue(
+            source.contains(".accessibilityElement(children: .contain)"),
+            "BookListView must apply .accessibilityElement(children: .contain) on the row so the inner action Buttons are individually focusable in VoiceOver linear navigation (PP-4326 follow-up)."
+        )
+    }
+
+    /// PP-4326 follow-up: the row-info overlay must use .accessibilitySortPriority
+    /// so it's announced FIRST in the per-row VoiceOver order (before the
+    /// action buttons). Users should hear "Title, by Author. Button. Opens
+    /// book details." then "Borrow. Button." then "Read. Button." etc.
+    func testBookListView_rowInfoElementHasSortPriority() throws {
+        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookListView.swift")
+        XCTAssertTrue(
+            source.contains(".accessibilitySortPriority"),
+            "BookListView must apply .accessibilitySortPriority on the row-info overlay so it's announced before the action buttons in VoiceOver linear order (PP-4326 follow-up)."
+        )
+    }
+
     /// BookRowAccessibilityActions must be defined and must iterate over
     /// the model's available button types so rotor actions stay in sync
     /// with the visible in-row buttons (the actions list is driven by

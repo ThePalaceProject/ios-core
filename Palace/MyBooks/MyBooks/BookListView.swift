@@ -35,23 +35,33 @@ struct BookListView: View {
                     .applyBorderStyle()
                     .contentShape(Rectangle())
                     .onTapGesture { onSelect(book) }
-                    // Single VoiceOver element per row using the canonical
-                    // "Title, by Author" label (PP-3968). Inner action
-                    // buttons stay accessible through the rotor (below).
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityLabel(book.voiceOverLabel)
-                    .accessibilityHint(Strings.Accessibility.opensBookDetails)
-                    // Default action — VoiceOver's double-tap calls this
-                    // directly. Decoupled from SwiftUI hit-testing.
-                    .accessibilityAction { onSelect(book) }
-                    // Expose the in-row action buttons (Borrow/Read/Listen/
-                    // Return) as VoiceOver rotor custom actions so screen-
-                    // reader users can perform them without losing focus
-                    // on the row — Apple-canonical pattern (Mail, Reminders,
-                    // Messages).
-                    .accessibilityActions {
-                        BookRowAccessibilityActions(model: cellModel, previewEnabled: previewEnabled)
+                    // PP-4326 (follow-up): the row is an accessibility CONTAINER
+                    // so the inner action Buttons (Borrow/Read/Listen/Return)
+                    // become individually focusable in VoiceOver linear-swipe
+                    // navigation. The invisible Color.clear overlay below adds
+                    // a sibling "row info" element (priority 10 → announced
+                    // FIRST in the row) that carries the canonical voiceOverLabel
+                    // + .isButton trait + default action → opens book details.
+                    // The overlay is allowsHitTesting(false) so visual touches
+                    // pass straight through to the .onTapGesture above.
+                    .accessibilityElement(children: .contain)
+                    .overlay {
+                        Color.clear
+                            .accessibilityElement()
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityLabel(book.voiceOverLabel)
+                            .accessibilityHint(Strings.Accessibility.opensBookDetails)
+                            .accessibilityAction { onSelect(book) }
+                            .accessibilitySortPriority(10)
+                            // Keep the rotor custom actions on the row-info
+                            // element too — redundant with linear-swipe access
+                            // to the inner buttons but matches Apple's
+                            // Mail/Reminders/Messages pattern and gives screen-
+                            // reader users a second path to Borrow/Read/etc.
+                            .accessibilityActions {
+                                BookRowAccessibilityActions(model: cellModel, previewEnabled: previewEnabled)
+                            }
+                            .allowsHitTesting(false)
                     }
                     .onAppear {
                         handleCellAppear(book: book)
