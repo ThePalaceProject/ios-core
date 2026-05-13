@@ -21,19 +21,33 @@ struct BookListView: View {
     var body: some View {
         LazyVGrid(columns: gridLayout, spacing: 0) {
             ForEach(books, id: \.identifier) { book in
+                // PP-4326: Outer Button restored — visual tap on any
+                // non-button area of the cell opens book detail. The
+                // earlier collapse-to-single-element approach stripped
+                // the .isButton activation contract, which made
+                // VoiceOver's synthesized double-tap route through
+                // SwiftUI hit-test to the first inner action button.
+                let cellModel = modelCache.model(for: book)
                 Button(action: { onSelect(book) }, label: {
-                    // Use cached model instead of creating new one each render
-                    BookCell(model: modelCache.model(for: book), previewEnabled: previewEnabled)
+                    BookCell(model: cellModel, previewEnabled: previewEnabled)
                 })
                 .buttonStyle(.plain)
                 .applyBorderStyle()
-                // PP-3968: collapse the cell into a single VoiceOver element
-                // with the canonical "Title, by Author" label and drop the
-                // "button" trait so it sounds like a list item — matches the
-                // Audible/Libby UX. The cell is still tappable.
+                // Single VoiceOver element per row using the canonical
+                // "Title, by Author" label (PP-3968). Keep the .isButton
+                // trait — without it VoiceOver's double-tap synthesizes a
+                // raw touch that routes to the first inner action button.
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(book.voiceOverLabel)
-                .accessibilityRemoveTraits(.isButton)
+                .accessibilityHint(Strings.Accessibility.opensBookDetails)
+                // Expose the in-row action buttons (Borrow/Read/Listen/
+                // Return) as VoiceOver rotor actions so screen-reader
+                // users can perform them without losing focus on the row
+                // — the Apple-canonical pattern used by Mail, Reminders,
+                // and Messages for list rows with auxiliary actions.
+                .accessibilityActions {
+                    BookRowAccessibilityActions(model: cellModel, previewEnabled: previewEnabled)
+                }
                 .onAppear {
                     handleCellAppear(book: book)
                 }
@@ -125,6 +139,32 @@ struct BookListView: View {
 extension View {
     func applyBorderStyle() -> some View {
         modifier(BorderStyleModifier())
+    }
+}
+
+// MARK: - PP-4326: VoiceOver rotor actions for a book row
+
+/// Renders one Button per available BookButtonType (Borrow, Read, Listen,
+/// Return, etc.). Used inside `.accessibilityActions { ... }` so VoiceOver
+/// users can perform any in-row action via the rotor "Actions" menu
+/// without leaving focus on the row. Mirrors the Apple-canonical pattern
+/// used by Mail, Reminders, and Messages for list rows with auxiliary
+/// actions.
+struct BookRowAccessibilityActions: View {
+    @ObservedObject var model: BookCellModel
+    var previewEnabled: Bool = true
+
+    private var availableButtonTypes: [BookButtonType] {
+        guard !previewEnabled else { return model.buttonTypes }
+        return model.buttonTypes.filter { $0 != .sample && $0 != .audiobookSample }
+    }
+
+    var body: some View {
+        ForEach(availableButtonTypes, id: \.self) { type in
+            Button(type.title(for: model.book)) {
+                model.handleAction(for: type)
+            }
+        }
     }
 }
 
