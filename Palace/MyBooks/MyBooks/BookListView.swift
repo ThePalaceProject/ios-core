@@ -21,36 +21,41 @@ struct BookListView: View {
     var body: some View {
         LazyVGrid(columns: gridLayout, spacing: 0) {
             ForEach(books, id: \.identifier) { book in
-                // PP-4326: Outer Button restored — visual tap on any
-                // non-button area of the cell opens book detail. The
-                // earlier collapse-to-single-element approach stripped
-                // the .isButton activation contract, which made
-                // VoiceOver's synthesized double-tap route through
-                // SwiftUI hit-test to the first inner action button.
+                // PP-4326: No outer Button — when the row IS a Button
+                // and the cell content contains inner Buttons, VoiceOver's
+                // double-tap routes through SwiftUI hit-test to the first
+                // inner action button (Borrow/Read/Listen/Return) rather
+                // than firing the outer Button's action. .accessibilityAction
+                // doesn't reliably override the Button's own activation in
+                // that nested-button case. Using a plain .onTapGesture for
+                // visual taps + an explicit .accessibilityAction for
+                // VoiceOver eliminates the precedence conflict entirely.
                 let cellModel = modelCache.model(for: book)
-                Button(action: { onSelect(book) }, label: {
-                    BookCell(model: cellModel, previewEnabled: previewEnabled)
-                })
-                .buttonStyle(.plain)
-                .applyBorderStyle()
-                // Single VoiceOver element per row using the canonical
-                // "Title, by Author" label (PP-3968). Keep the .isButton
-                // trait — without it VoiceOver's double-tap synthesizes a
-                // raw touch that routes to the first inner action button.
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(book.voiceOverLabel)
-                .accessibilityHint(Strings.Accessibility.opensBookDetails)
-                // Expose the in-row action buttons (Borrow/Read/Listen/
-                // Return) as VoiceOver rotor actions so screen-reader
-                // users can perform them without losing focus on the row
-                // — the Apple-canonical pattern used by Mail, Reminders,
-                // and Messages for list rows with auxiliary actions.
-                .accessibilityActions {
-                    BookRowAccessibilityActions(model: cellModel, previewEnabled: previewEnabled)
-                }
-                .onAppear {
-                    handleCellAppear(book: book)
-                }
+                BookCell(model: cellModel, previewEnabled: previewEnabled)
+                    .applyBorderStyle()
+                    .contentShape(Rectangle())
+                    .onTapGesture { onSelect(book) }
+                    // Single VoiceOver element per row using the canonical
+                    // "Title, by Author" label (PP-3968). Inner action
+                    // buttons stay accessible through the rotor (below).
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel(book.voiceOverLabel)
+                    .accessibilityHint(Strings.Accessibility.opensBookDetails)
+                    // Default action — VoiceOver's double-tap calls this
+                    // directly. Decoupled from SwiftUI hit-testing.
+                    .accessibilityAction { onSelect(book) }
+                    // Expose the in-row action buttons (Borrow/Read/Listen/
+                    // Return) as VoiceOver rotor custom actions so screen-
+                    // reader users can perform them without losing focus
+                    // on the row — Apple-canonical pattern (Mail, Reminders,
+                    // Messages).
+                    .accessibilityActions {
+                        BookRowAccessibilityActions(model: cellModel, previewEnabled: previewEnabled)
+                    }
+                    .onAppear {
+                        handleCellAppear(book: book)
+                    }
             }
 
             if isLoadingMore {
