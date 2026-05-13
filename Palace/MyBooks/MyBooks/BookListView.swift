@@ -21,24 +21,27 @@ struct BookListView: View {
     var body: some View {
         LazyVGrid(columns: gridLayout, spacing: 0) {
             ForEach(books, id: \.identifier) { book in
-                // PP-4326: pass onSelect into BookCell. NormalBookCell wraps
-                // the cover + title/author area in a SwiftUI Button that
-                // fires this closure. The in-row action Buttons in
-                // BookButtonsView sit as real siblings in the SwiftUI view
-                // tree — VoiceOver linear-swipe navigation reaches each
-                // (row-info, then Borrow/Read/Listen/Return) naturally, and
-                // double-tap activates whichever has focus. Earlier attempts
-                // wrangled list-level accessibility wrappers; on device,
-                // neither linear-swipe nor rotor actions registered
-                // correctly. The reliable fix is structural — make the
-                // action Buttons real siblings in the SwiftUI tree, not
-                // nested inside an outer accessibility-collapse container.
-                BookCell(
-                    model: modelCache.model(for: book),
-                    previewEnabled: previewEnabled,
-                    onSelect: { onSelect(book) }
-                )
+                // PP-4326: keep the visual tree exactly as on 3.0.1 — wrap
+                // the cell in a Button so taps anywhere on the row open
+                // detail — and replace the row's ACCESSIBILITY tree with
+                // a custom one via .accessibilityRepresentation. The
+                // representation is a VStack of real SwiftUI Buttons —
+                // one for the row-info "Open book details" action, then
+                // one per available BookButtonType (Borrow/Read/Listen/
+                // Return). Each Button is a structural accessibility
+                // element so VoiceOver linear-swipe reaches each in turn
+                // and double-tap activates them. The visible BookCell
+                // tree is untouched; only VoiceOver sees the
+                // representation.
+                let cellModel = modelCache.model(for: book)
+                Button(action: { onSelect(book) }, label: {
+                    BookCell(model: cellModel, previewEnabled: previewEnabled)
+                })
+                .buttonStyle(.plain)
                 .applyBorderStyle()
+                .accessibilityRepresentation {
+                    bookRowAccessibilityRepresentation(book: book, model: cellModel)
+                }
                 .onAppear {
                     handleCellAppear(book: book)
                 }
@@ -112,6 +115,48 @@ struct BookListView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
             .gridCellColumns(gridLayout.count)
+    }
+
+    // MARK: - PP-4326 Accessibility Representation
+
+    /// Custom accessibility tree for a single book row. Returned by
+    /// `.accessibilityRepresentation { ... }` on the row Button — the
+    /// visible BookCell tree is left untouched and VoiceOver sees only
+    /// the elements built here. Each element is a real SwiftUI Button,
+    /// so each is naturally a focusable VoiceOver element with double-tap
+    /// activation; the structural sibling layout means linear-swipe
+    /// navigates from row-info → Borrow → Read → Listen → Return one
+    /// element at a time.
+    @ViewBuilder
+    private func bookRowAccessibilityRepresentation(
+        book: TPPBook,
+        model: BookCellModel
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Row-info Button — "Title, by Author. Button. Opens book
+            // details." Double-tap opens the detail screen.
+            Button(action: { onSelect(book) }) {
+                Text(book.voiceOverLabel)
+            }
+            .accessibilityHint(Strings.Accessibility.opensBookDetails)
+
+            // One Button per available BookButtonType, mirroring what
+            // BookButtonsView renders visually for this cell. Each is
+            // its own focusable VoiceOver element.
+            ForEach(availableButtonTypes(for: model), id: \.self) { type in
+                Button(type.title(for: book)) {
+                    model.callDelegate(for: type)
+                }
+            }
+        }
+    }
+
+    /// Mirrors BookButtonsView's filter — when previewEnabled is false,
+    /// sample/audiobookSample buttons are not surfaced visually, so they
+    /// shouldn't appear in the accessibility tree either.
+    private func availableButtonTypes(for model: BookCellModel) -> [BookButtonType] {
+        guard !previewEnabled else { return model.buttonTypes }
+        return model.buttonTypes.filter { $0 != .sample && $0 != .audiobookSample }
     }
 
     private var gridLayout: [GridItem] {
