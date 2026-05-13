@@ -39,7 +39,11 @@ case $1 in
     ;;
 esac
 
-(cd readium-sdk; sh MakeHeaders.sh Apple) || fatal "Error making Readium headers"
+# Note: Readium is consumed via SPM (`swift-toolkit`, see Palace.xcodeproj
+# Package Dependencies). The legacy `readium-sdk` submodule + its
+# MakeHeaders.sh invocation are no longer load-bearing — `RDServicesStubs`
+# only imports `<Foundation/Foundation.h>` and grep finds zero R1-style
+# imports (`@import RDServices`, `#import <ePub3/...>`) under Palace/.
 
 # rebuild all Carthage dependencies from scratch
 ./scripts/build-carthage.sh $1

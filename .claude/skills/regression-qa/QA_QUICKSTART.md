@@ -6,7 +6,7 @@ This is the manual-only regression flow. No simdrive, no automation tooling, no 
 
 1. **Claude Code** installed (CLI, desktop app, or VS Code extension).
 2. **ios-core repo** cloned, on the candidate branch you're testing.
-3. **Xcode 16.1+** with an iOS simulator runtime installed.
+3. **Xcode 26** with an iOS simulator runtime installed.
 4. **Two builds:** a baseline build (the version you're comparing against) and a candidate build (the version you're testing). Install both somewhere you can switch between — two simulators, two devices, or a sim + a device.
 5. **Test library credentials** — get these from your team's QA credential store. Not in this repo.
 6. **(Optional) Jira API access** — required for automatic ticket creation. The skill will walk you through setup if you don't have it. You can also skip and paste tickets manually.

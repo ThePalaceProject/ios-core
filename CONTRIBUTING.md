@@ -29,8 +29,8 @@ The hooks under `scripts/git-hooks/` are lightweight: they reject obvious
 secret leaks, warn before pushing without a self-check, and gracefully no-op
 when optional internal tooling is not installed.
 
-See [`README.md`](./README.md) for the full system requirements (Xcode 16.1+,
-Carthage, Rosetta on Apple Silicon for DRM builds).
+See [`README.md`](./README.md) for the full system requirements (Xcode 26,
+Carthage; Apple Silicon builds DRM natively, no Rosetta needed).
 
 ## Before opening a PR
 

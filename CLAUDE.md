@@ -31,9 +31,9 @@ xcodebuild -project Palace.xcodeproj -scheme Palace \
   -only-testing:PalaceTests/MyTestClass test
 ```
 
-- Xcode 16.1+, iOS 16.0+ deployment target
+- Xcode 26, iOS 16.0+ deployment target (CI release path: `macos-26` + `xcode-version: '26'`)
 - Two targets: `Palace` (full DRM) and `Palace-noDRM` (open-source)
-- Rosetta required on Apple Silicon for DRM builds
+- DRM builds run natively on Apple Silicon — Rosetta is no longer required
 
 ## Project Structure
 

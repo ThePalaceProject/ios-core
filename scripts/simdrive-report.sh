@@ -1,5 +1,5 @@
 #!/bin/bash
-# SpecterQA E2E Test Report Generator
+# simdrive E2E Test Report Generator
 # Generates a markdown report of test results for PR evidence.
 # Usage: scripts/simdrive-report.sh [results_file]
 #
@@ -48,7 +48,7 @@ generate_journey_table() {
 
 # Generate the report
 cat > "$REPORT_FILE" << REPORT
-# SpecterQA E2E Test Report
+# simdrive E2E Test Report
 
 **Generated:** $(date "+%Y-%m-%d %H:%M:%S %Z")
 **Branch:** \`$BRANCH\`
@@ -99,7 +99,7 @@ xcrun simctl launch <UDID> org.thepalaceproject.palace
 
 # 4. Sign in to A1QA Test Library (credentials in ~/.simdrive/credentials/a1qa-test.env)
 
-# 5. Start SpecterQA session and run journeys via Claude Code
+# 5. Start simdrive session and run journeys via Claude Code
 
 # 6. IMPORTANT: Sign out before terminating to protect DRM activations
 \`\`\`
@@ -109,7 +109,7 @@ xcrun simctl launch <UDID> org.thepalaceproject.palace
 - Audiobook playback requires full download (~7 hours of audio) — verified borrow/return only
 - PDF reading verified via catalog format display — no dedicated PDF content on A1QA
 - Sample content verified via preview links — requires OverDrive content for full playback
-- Dark mode must be set via \`xcrun simctl ui\` BEFORE starting SpecterQA session
+- Dark mode must be set via \`xcrun simctl ui\` BEFORE starting simdrive session
 - Sign-in form text fields require the accessibility fix (\`.accessibilityElement(children: .contain)\`)
 
 ---

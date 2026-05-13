@@ -8,17 +8,20 @@
 #   ./scripts/simdrive-test.sh --sim-id <UDID>     # Use a specific source sim
 #
 # Prerequisites:
-#   - pip install --pre simdrive
-#   - Xcode 16.1+ with iOS Simulator booted
+#   - simdrive — maintainer-internal MCP tool (not publicly distributed yet).
+#     If you're an outside contributor, this script is informational; the CI
+#     side (chaos-replay-on-pr.yml) runs the corpus on your PR server-side.
+#     Maintainer install: `pip install --pre simdrive` (requires private access).
+#   - Xcode 26 with iOS Simulator booted
 #   - Source sim should have libraries pre-configured (see README)
 #
 # The script:
 #   1. Builds Palace-noDRM for the target simulator
 #   2. Locates the .app bundle in DerivedData
-#   3. Prints the app_path for use with SpecterQA MCP tools
+#   3. Prints the app_path for use with simdrive MCP tools
 #
 # For CI/CD, this script prepares the build. The actual test execution
-# happens via Claude Code + SpecterQA MCP tools (AI-driven testing).
+# happens via Claude Code + simdrive MCP tools (AI-driven testing).
 
 set -euo pipefail
 
@@ -99,7 +102,7 @@ echo ">>> Installing on source sim $SIM_ID..."
 xcrun simctl install "$SIM_ID" "$APP_PATH"
 echo ">>> Installed successfully"
 
-# Step 4: Output config for SpecterQA
+# Step 4: Output config for simdrive
 echo ""
 echo "=== Ready for simdrive ==="
 echo ""

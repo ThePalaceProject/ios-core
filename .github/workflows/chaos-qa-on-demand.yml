@@ -12,7 +12,7 @@
 #     guard. Live chaos is for discovery, not regression-prevention.
 #
 # Requires a self-hosted macOS runner with:
-#   - Xcode 16.1+, iOS sim available
+#   - Xcode 26 with iOS 26 SDK, iOS sim available
 #   - simdrive installed (pip install simdrive)
 #   - Claude Code CLI (`claude`) authenticated
 #   - The Palace.app candidate build artifact for the PR (built in a

@@ -28,8 +28,7 @@ If you are an outside contributor, the only scripts you generally need to run by
 | `setup-repo-drm.sh` | Initial repo setup with Adobe RMSDK / LCP wired in. | `unit-testing.yml`, `ui-testing.yml`, `upload.yml`, `upload-on-merge.yml` |
 | `setup-repo-nodrm.sh` | Initial repo setup for the open-source `Palace-noDRM` target. | `non-drm-build.yml` |
 | `build-3rd-party-dependencies.sh` | Builds non-Carthage third-party deps (Readium etc.). | `unit-testing.yml`, `ui-testing.yml`, `non-drm-build.yml`, `upload*.yml` |
-| `build-carthage.sh` | Carthage bootstrap for binary frameworks. | dev/local |
-| `build-carthage-R2-integration.sh` | Carthage bootstrap variant for R2 integration. | dev/local |
+| `build-carthage.sh` | Carthage bootstrap for binary frameworks (DRM path: also fetches AudioEngine + builds R2LCPClient). | invoked by `build-3rd-party-dependencies.sh` |
 | `bootstrap-drm.sh` | Pulls Adobe RMSDK / LCP into the working tree. | dev/local |
 | `fetch-audioengine.sh` | Fetches AudioEngine and unzips it into the build tree. | dev/local |
 | `xcode-build-nodrm.sh` | Builds the `Palace-noDRM` scheme. | `non-drm-build.yml` |
@@ -41,6 +40,7 @@ If you are an outside contributor, the only scripts you generally need to run by
 | `add_palace_catalog_package.rb` | Wires the local PalaceCatalog SPM package into `Palace.xcodeproj`. | one-shot, dev/local |
 | `add_palace_keychain_package.rb` | Wires PalaceKeychain SPM package into the project. | one-shot, dev/local |
 | `add_palace_logging_package.rb` | Wires PalaceLogging SPM package into the project. | one-shot, dev/local |
+| `pbxproj_add_swift.rb` | Canonical helper for adding Swift source files to both `Palace` + `Palace-noDRM` targets (replaces hand-editing the pbxproj). | dev/local |
 
 ### Test and coverage
 
@@ -64,18 +64,20 @@ If you are an outside contributor, the only scripts you generally need to run by
 | `wire_orphan_tests.py` | Adds orphaned test files into the `PalaceTests` Sources phase. | dev/local (after extracting tests) |
 | `wire_untracked_tests.py` | Wires fully-untracked test files into the Xcode project. | dev/local |
 
-### simdrive (E2E sim driving)
+### simdrive (E2E sim driving) — maintainer-internal
+
+> **Note for outside contributors:** `simdrive` is the iOS sim-driving MCP tool the maintainers use for E2E regression. It is **not yet publicly distributed** — `pip install --pre simdrive` requires maintainer access. The recorded artifacts under `.simdrive/` ARE in the repo and are exercised by CI (`chaos-replay-on-pr.yml`), so a contributor's PR will run through the regression corpus server-side; you just can't author new recordings locally without simdrive. The scripts below are listed for transparency; "dev/local" means *maintainer dev/local*, not anyone's.
 
 | Script | What it does | Called by |
 |--------|--------------|-----------|
-| `simdrive-test.sh` | Builds Palace and runs the simdrive integration tests. | dev/local, chaos workflows |
-| `simdrive-regress.sh` | Replays every `.simdrive/journeys/*.yaml` against a booted simulator. | `chaos-replay-on-pr.yml`, dev/local |
-| `simdrive-coverage.sh` | Captures code coverage from simdrive runs and merges with unit coverage. | dev/local |
-| `simdrive-report.sh` | Generates a Markdown report of simdrive replay results for PR evidence. | dev/local |
+| `simdrive-test.sh` | Builds Palace and runs the simdrive integration tests. | maintainer dev/local, chaos workflows |
+| `simdrive-regress.sh` | Replays every `.simdrive/journeys/*.yaml` against a booted simulator. | `chaos-replay-on-pr.yml`, maintainer dev/local |
+| `simdrive-coverage.sh` | Captures code coverage from simdrive runs and merges with unit coverage. | maintainer dev/local |
+| `simdrive-report.sh` | Generates a Markdown report of simdrive replay results for PR evidence. | maintainer dev/local |
 | `simdrive-structural-check.py` | OPDS-tolerant journey verifier (checks structure, not pixels). | `chaos-replay-on-pr.yml` |
-| `fix-replay-assertions.py` | Trims `expect_elements` in replay YAMLs to stable, screen-appropriate elements. | dev/local (after recording) |
-| `fix-replay-timing.py` | Removes `expect_elements` from steps where timing makes assertions unreliable. | dev/local |
-| `marks-diff.py` | Diffs two simdrive fixture corpora and emits findings rows. | dev/local |
+| `fix-replay-assertions.py` | Trims `expect_elements` in replay YAMLs to stable, screen-appropriate elements. | maintainer dev/local (after recording) |
+| `fix-replay-timing.py` | Removes `expect_elements` from steps where timing makes assertions unreliable. | maintainer dev/local |
+| `marks-diff.py` | Diffs two simdrive fixture corpora and emits findings rows. | maintainer dev/local |
 | `chaos-targets.py` | Maps changed file paths to fixture flow seeds whose mutation targets cover them. | `chaos-replay-on-pr.yml` |
 | `run-chaos-pass.sh` | Runs a chaos QA pass (mutation + simdrive replay). | `chaos-qa-on-demand.yml` |
 
@@ -161,8 +163,8 @@ If `scripts/git-hooks/` does not exist in your clone, see `CONTRIBUTING.md` for 
 
 `scripts/_archive/` contains historical one-shots kept purely for archaeology. **Do not run them.**
 
-- `_archive/pbxproj/` — file-add / duplicate-fix scripts from past extraction sprints. Their target file counts are baked in (e.g. "76 new Swift files"); they would corrupt the project file if re-run.
-- `_archive/one-offs/` — `xcode-test.sh` (superseded by `xcode-test-optimized.sh`), `objc-cutover*.py` (one-shot Objective-C → Swift migration tools).
+- `_archive/pbxproj/` — file-add / duplicate-fix scripts from past extraction sprints. Their target file counts are baked in (e.g. "76 new Swift files"); they would corrupt the project file if re-run. Also includes `_add_palace_auth_package.rb` (one-shot Phase 6 PalaceAuth wiring helper).
+- `_archive/one-offs/` — `xcode-test.sh` (superseded by `xcode-test-optimized.sh`), `objc-cutover*.py` (one-shot Objective-C → Swift migration tools), `build-carthage-R2-integration.sh` (R2 integration variant — references `r2-shared-swift@2.0.0-beta.1` and the old Simplified-iOS sibling layout, neither of which exist anymore).
 
 If you need the behavior of one of these scripts, copy + adapt into a new file rather than running the archived version directly.
 

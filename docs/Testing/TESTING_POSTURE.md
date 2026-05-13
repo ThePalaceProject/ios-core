@@ -39,7 +39,7 @@ Last updated: 2026-04-16
 ## Tool Inventory
 
 ### Unit Testing
-- **Framework**: XCTest (Xcode 16.1+, iOS 16.0+ deployment target)
+- **Framework**: XCTest (Xcode 26, iOS 16.0+ deployment target)
 - **Simulator**: iPhone 16 Pro (iOS 18.4, id: DF4A2A27-9888-429D-A749-2E157A049A37)
 - **Mock infrastructure**: 23 shared mocks in `PalaceTests/Mocks/`
 - **HTTP hermetic**: `NoNetworkURLProtocol` blocks real network in all unit tests

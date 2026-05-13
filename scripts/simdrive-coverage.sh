@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # SUMMARY
-#   Captures code coverage from SpecterQA E2E journeys and merges it with
+#   Captures code coverage from simdrive E2E journeys and merges it with
 #   unit test coverage to produce a combined report.
 #
 # PREREQUISITES
@@ -105,7 +105,7 @@ xcrun simctl spawn "$SIM_ID" mkdir -p "$PROFRAW_DIR"
 # ---------------------------------------------------------------
 # Step 4: Run simdrive journeys
 # ---------------------------------------------------------------
-# This is where SpecterQA drives the app. The MCP server handles
+# This is where simdrive drives the app. The MCP server handles
 # app launch, so the LLVM_PROFILE_FILE env must be set before this.
 #
 # In CI, this step would invoke the simdrive MCP tool.
@@ -173,7 +173,7 @@ SIMDRIVE_PROFDATA="$OUTPUT_DIR/simdrive-coverage.profdata"
 xcrun llvm-profdata merge -sparse "$LOCAL_PROFRAW_DIR"/*.profraw \
     -o "$SIMDRIVE_PROFDATA"
 
-echo "SpecterQA profdata: $SIMDRIVE_PROFDATA"
+echo "simdrive profdata: $SIMDRIVE_PROFDATA"
 
 # ---------------------------------------------------------------
 # Step 8: Optionally merge with unit test coverage
@@ -202,7 +202,7 @@ if [ -n "$XCRESULT_PATH" ] && [ -d "$XCRESULT_PATH" ]; then
         FINAL_PROFDATA="$COMBINED_PROFDATA"
         echo "Combined profdata: $COMBINED_PROFDATA"
     else
-        echo "Could not extract profdata from xcresult — using SpecterQA-only coverage"
+        echo "Could not extract profdata from xcresult — using simdrive-only coverage"
     fi
 fi
 
