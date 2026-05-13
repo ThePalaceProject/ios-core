@@ -16,6 +16,20 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     let audiobookLifecycleManager = AudiobookLifecycleManager()
     var isSigningIn = false
 
+    // PP-4329: state for the first-run library picker. Without these,
+    // presentFirstRunFlowIfNeeded leaked a new .TPPCatalogDidLoad observer
+    // on every recursive call (AccountsManager posts that notification
+    // from 8 sites — main catalog load, fallback GET, beta/prod hash
+    // switch, etc.). Each observer re-invoked presentFirstRunFlowIfNeeded,
+    // which presented another TPPAccountList modal, stacking 2-4 selectors
+    // on a fresh install depending on how many posts fired before the
+    // user picked. The token lets us remove the previous observer before
+    // adding a new one (and after we've successfully gone past the
+    // deferred-load state); the flag prevents re-presentation once a
+    // selector is already on screen.
+    private var firstRunFlowObserver: NSObjectProtocol?
+    private var hasPresentedFirstRunFlow = false
+
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ application: UIApplication) {
@@ -24,6 +38,14 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         Log.crashlyticsBridge = FirebaseCrashlyticsBridge()
 
         let startupQueue = DispatchQueue.global(qos: .userInitiated)
+
+        // Build identifier marker — logged on every app launch so a sysdiagnose
+        // unambiguously identifies which 3.0.2 build is running.
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        let iosVersion = UIDevice.current.systemVersion
+        let deviceModel = UIDevice.current.model
+        Log.info(#file, "[BUILD MARKER] release/3.0.2 — App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel)")
 
         // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts
         // This ensures MPRemoteCommandCenter handlers are registered before any UI loads
@@ -431,14 +453,40 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 // MARK: - First Run Flow
 extension TPPAppDelegate {
     private func presentFirstRunFlowIfNeeded() {
+        // PP-4329: idempotency — once we've presented the picker this
+        // launch, any further .TPPCatalogDidLoad posts (the main catalog
+        // load triggers up to 8 of them in worst-case fallback paths)
+        // must NOT re-present. Without this guard, a fresh install on
+        // iOS 26.4.2 stacked 4 TPPAccountList modals.
+        guard !hasPresentedFirstRunFlow else { return }
+
         let accountsManager = AppContainer.production().accountsManager
         // Defer until accounts have loaded to avoid false negatives on currentAccount
         if !accountsManager.accountsHaveLoaded {
-            NotificationCenter.default.addObserver(forName: .TPPCatalogDidLoad, object: nil, queue: .main) { [weak self] _ in
+            // PP-4329: remove the previous deferred observer (if any)
+            // before adding a new one — otherwise observers accumulate
+            // every time this method re-enters itself.
+            if let token = firstRunFlowObserver {
+                NotificationCenter.default.removeObserver(token)
+                firstRunFlowObserver = nil
+            }
+            firstRunFlowObserver = NotificationCenter.default.addObserver(
+                forName: .TPPCatalogDidLoad,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
                 self?.presentFirstRunFlowIfNeeded()
             }
             accountsManager.loadCatalogs(completion: nil)
             return
+        }
+
+        // We're past the deferred-load state; remove the observer so the
+        // remaining 7 possible .TPPCatalogDidLoad posts from the same
+        // load cycle don't re-fire this method.
+        if let token = firstRunFlowObserver {
+            NotificationCenter.default.removeObserver(token)
+            firstRunFlowObserver = nil
         }
 
         // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
@@ -448,7 +496,7 @@ extension TPPAppDelegate {
         guard let top = topViewController() else { return }
 
         var nav: UINavigationController!
-        let accountList = TPPAccountList { account in
+        let accountList = TPPAccountList { [weak self] account in
             let settings = AppContainer.production().settings
             if !settings.settingsAccountIdsList.contains(account.uuid) {
                 settings.settingsAccountIdsList.append(account.uuid)
@@ -464,9 +512,16 @@ extension TPPAppDelegate {
 
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
             nav?.dismiss(animated: true)
+            // Allow a future cold launch with no account to present again,
+            // but on the current launch we're done.
+            self?.hasPresentedFirstRunFlow = true
         }
         accountList.requiresSelectionBeforeDismiss = true
         nav = UINavigationController(rootViewController: accountList)
+        // Mark presented BEFORE the present call so any synchronous
+        // re-entry from a notification fired during the present sees
+        // the guard.
+        hasPresentedFirstRunFlow = true
         top.present(nav, animated: true)
     }
 
