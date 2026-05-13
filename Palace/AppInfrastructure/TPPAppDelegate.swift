@@ -45,7 +45,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
         let iosVersion = UIDevice.current.systemVersion
         let deviceModel = UIDevice.current.model
-        Log.info(#file, "[BUILD MARKER] release/3.0.2 — App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel)")
+        Log.info(#file, "[BUILD MARKER] App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel)")
 
         // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts
         // This ensures MPRemoteCommandCenter handlers are registered before any UI loads
