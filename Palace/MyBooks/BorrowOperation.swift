@@ -109,6 +109,30 @@ final class BorrowOperation {
     /// Backward-compat: when `preBorrowBook` is nil, retains the original
     /// PP-4178 behavior (treat `unavailable`/`reserved` as race losses) for
     /// callers that don't have pre-borrow context.
+    /// Race an async operation against a deadline. Whichever finishes first
+    /// wins; the other is cancelled. On deadline expiry, throws
+    /// `PalaceError.network(.timeout)` so the upstream catch block surfaces
+    /// the standard borrow-error alert with a Retry option (instead of the
+    /// half-sheet hanging on `isBorrowProcessing = true` indefinitely).
+    /// F-014.
+    static func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw PalaceError.network(.timeout)
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else {
+                throw PalaceError.network(.timeout)
+            }
+            return first
+        }
+    }
+
     static func borrowResponseState(
         for postBorrowBook: TPPBook,
         preBorrowBook: TPPBook? = nil
@@ -328,7 +352,21 @@ final class BorrowOperation {
         }
 
         do {
-            let borrowedBook = try await self.fetchBook(acquisitionURL, true, true)
+            // F-014: wrap fetchBook in an explicit 30s timeout. URLSession's
+            // default `timeoutIntervalForRequest` is 60s — but in practice
+            // we've observed CM/distributor connections sitting open for 120s+
+            // when the server hangs the request mid-flight (e.g. staging
+            // backpressure, slow LCP license fetch). Without an explicit
+            // ceiling, isBorrowProcessing stays true and the half-sheet
+            // shows Cancel-only with no recoverable error — the
+            // BUG_FINDINGS_2026_05_12 "borrow stuck with Cancel-only UI"
+            // bug. 30s is comfortably above a healthy borrow (median ~1.5s)
+            // and below the URLSession default, so the user gets a clean
+            // PalaceError.network(.timeout) → showBorrowError → "try again"
+            // alert instead of an indefinite spinner.
+            let borrowedBook = try await Self.withTimeout(seconds: 30) {
+                try await self.fetchBook(acquisitionURL, true, true)
+            }
 
             await clearProcessingState()
 
