@@ -21,51 +21,27 @@ struct BookListView: View {
     var body: some View {
         LazyVGrid(columns: gridLayout, spacing: 0) {
             ForEach(books, id: \.identifier) { book in
-                // PP-4326: No outer Button — when the row IS a Button
-                // and the cell content contains inner Buttons, VoiceOver's
-                // double-tap routes through SwiftUI hit-test to the first
-                // inner action button (Borrow/Read/Listen/Return) rather
-                // than firing the outer Button's action. .accessibilityAction
-                // doesn't reliably override the Button's own activation in
-                // that nested-button case. Using a plain .onTapGesture for
-                // visual taps + an explicit .accessibilityAction for
-                // VoiceOver eliminates the precedence conflict entirely.
-                let cellModel = modelCache.model(for: book)
-                BookCell(model: cellModel, previewEnabled: previewEnabled)
-                    .applyBorderStyle()
-                    .contentShape(Rectangle())
-                    .onTapGesture { onSelect(book) }
-                    // PP-4326 (follow-up): the row is an accessibility CONTAINER
-                    // so the inner action Buttons (Borrow/Read/Listen/Return)
-                    // become individually focusable in VoiceOver linear-swipe
-                    // navigation. The invisible Color.clear overlay below adds
-                    // a sibling "row info" element (priority 10 → announced
-                    // FIRST in the row) that carries the canonical voiceOverLabel
-                    // + .isButton trait + default action → opens book details.
-                    // The overlay is allowsHitTesting(false) so visual touches
-                    // pass straight through to the .onTapGesture above.
-                    .accessibilityElement(children: .contain)
-                    .overlay {
-                        Color.clear
-                            .accessibilityElement()
-                            .accessibilityAddTraits(.isButton)
-                            .accessibilityLabel(book.voiceOverLabel)
-                            .accessibilityHint(Strings.Accessibility.opensBookDetails)
-                            .accessibilityAction { onSelect(book) }
-                            .accessibilitySortPriority(10)
-                            // Keep the rotor custom actions on the row-info
-                            // element too — redundant with linear-swipe access
-                            // to the inner buttons but matches Apple's
-                            // Mail/Reminders/Messages pattern and gives screen-
-                            // reader users a second path to Borrow/Read/etc.
-                            .accessibilityActions {
-                                BookRowAccessibilityActions(model: cellModel, previewEnabled: previewEnabled)
-                            }
-                            .allowsHitTesting(false)
-                    }
-                    .onAppear {
-                        handleCellAppear(book: book)
-                    }
+                // PP-4326: pass onSelect into BookCell. NormalBookCell wraps
+                // the cover + title/author area in a SwiftUI Button that
+                // fires this closure. The in-row action Buttons in
+                // BookButtonsView sit as real siblings in the SwiftUI view
+                // tree — VoiceOver linear-swipe navigation reaches each
+                // (row-info, then Borrow/Read/Listen/Return) naturally, and
+                // double-tap activates whichever has focus. Earlier attempts
+                // wrangled list-level accessibility wrappers; on device,
+                // neither linear-swipe nor rotor actions registered
+                // correctly. The reliable fix is structural — make the
+                // action Buttons real siblings in the SwiftUI tree, not
+                // nested inside an outer accessibility-collapse container.
+                BookCell(
+                    model: modelCache.model(for: book),
+                    previewEnabled: previewEnabled,
+                    onSelect: { onSelect(book) }
+                )
+                .applyBorderStyle()
+                .onAppear {
+                    handleCellAppear(book: book)
+                }
             }
 
             if isLoadingMore {
@@ -154,32 +130,6 @@ struct BookListView: View {
 extension View {
     func applyBorderStyle() -> some View {
         modifier(BorderStyleModifier())
-    }
-}
-
-// MARK: - PP-4326: VoiceOver rotor actions for a book row
-
-/// Renders one Button per available BookButtonType (Borrow, Read, Listen,
-/// Return, etc.). Used inside `.accessibilityActions { ... }` so VoiceOver
-/// users can perform any in-row action via the rotor "Actions" menu
-/// without leaving focus on the row. Mirrors the Apple-canonical pattern
-/// used by Mail, Reminders, and Messages for list rows with auxiliary
-/// actions.
-struct BookRowAccessibilityActions: View {
-    @ObservedObject var model: BookCellModel
-    var previewEnabled: Bool = true
-
-    private var availableButtonTypes: [BookButtonType] {
-        guard !previewEnabled else { return model.buttonTypes }
-        return model.buttonTypes.filter { $0 != .sample && $0 != .audiobookSample }
-    }
-
-    var body: some View {
-        ForEach(availableButtonTypes, id: \.self) { type in
-            Button(type.title(for: model.book)) {
-                model.handleAction(for: type)
-            }
-        }
     }
 }
 

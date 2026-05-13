@@ -4,23 +4,27 @@
 //
 //  PP-4326 (3.0.2 hotfix). Regression tests for the VoiceOver activation
 //  contract on the shared BookListView row used by search, More…, MyBooks,
-//  and Holds. The bug: PP-3968's collapse-to-single-element +
+//  and Holds.
+//
+//  Bug: PP-3968's collapse-to-single-element +
 //  .accessibilityRemoveTraits(.isButton) on the outer Button stripped the
 //  activation contract, so VoiceOver's synthesized double-tap routed
 //  through SwiftUI hit-test to the first inner action button (Borrow/Read)
 //  instead of calling onSelect to open the detail view.
 //
-//  The fix keeps the outer Button (so visual taps still work and the row
-//  is announced as a button), restores the .isButton trait by NOT removing
-//  it, and exposes the in-row action buttons (Borrow/Read/Listen/Return)
-//  as VoiceOver rotor custom actions — the Apple-canonical pattern used by
-//  Mail, Reminders, and Messages for list rows with auxiliary actions.
+//  Fix: structural. NormalBookCell now takes an `onSelect: (() -> Void)?`
+//  closure and wraps the cover + title/author area in a SwiftUI Button
+//  that fires it. BookButtonsView (Borrow/Read/Listen/Return) sits as a
+//  real sibling in the right column. The earlier .accessibilityActions /
+//  overlay / .accessibilityElement-wrangling approaches did not register
+//  their callbacks on device — only true structural siblings in the
+//  SwiftUI view tree reliably surface as individually focusable VoiceOver
+//  elements.
 //
-//  SwiftUI's accessibility tree is not materialized in unit tests without
-//  VoiceOver running, so these tests are source-level sentinels (same
-//  pattern as the existing PP-3980 test in
-//  CatalogLaneRowViewAccessibilityTests) plus mocker-backed behavior
-//  checks of the canonical voiceOverLabel that the fix relies on.
+//  Tests below are source-level sentinels (same pattern as the existing
+//  PP-3980 test in CatalogLaneRowViewAccessibilityTests) plus mocker-
+//  backed behavior checks of the canonical voiceOverLabel that the fix
+//  relies on.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -41,109 +45,103 @@ final class BookListViewAccessibilityTests: XCTestCase {
         let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookListView.swift")
         XCTAssertFalse(
             source.contains(".accessibilityRemoveTraits(.isButton)"),
-            "BookListView must not strip the .isButton trait from the row — that breaks VoiceOver activation and routes the synthesized tap to the first inner action button (PP-4326)."
+            "BookListView must not strip the .isButton trait — that breaks VoiceOver activation and routes the synthesized tap to the first inner action button (PP-4326)."
         )
     }
 
-    /// The row must use the canonical voiceOverLabel from
-    /// TPPBook+Accessibility (PP-3968) — VoiceOver should hear
-    /// "Title, by Author" rather than the raw concatenation of the cell's
-    /// inner Text views.
-    func testBookListView_usesCanonicalVoiceOverLabel() throws {
+    /// PP-4326 fix: BookListView passes an onSelect closure into BookCell
+    /// so NormalBookCell's row-info Button can fire it on activation.
+    func testBookListView_passesOnSelectIntoBookCell() throws {
         let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookListView.swift")
+        XCTAssertTrue(
+            source.contains("onSelect:"),
+            "BookListView must pass an onSelect closure to BookCell so NormalBookCell's row-info Button can open book details on VoiceOver activation (PP-4326)."
+        )
+    }
+
+    // MARK: - Source-level sentinels (BookCell + NormalBookCell)
+
+    /// BookCell must accept and forward an onSelect closure so the
+    /// callsite-supplied "open details" action reaches NormalBookCell.
+    func testBookCell_acceptsAndForwardsOnSelect() throws {
+        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookCell/BookCell.swift")
+        XCTAssertTrue(
+            source.contains("onSelect"),
+            "BookCell must accept an onSelect closure and forward it to NormalBookCell (PP-4326)."
+        )
+    }
+
+    /// NormalBookCell must declare an onSelect param so it can build the
+    /// row-info SwiftUI Button that opens book details on activation.
+    func testNormalBookCell_acceptsOnSelect() throws {
+        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift")
+        XCTAssertTrue(
+            source.contains("onSelect"),
+            "NormalBookCell must accept an onSelect closure that drives the row-info Button's tap action (PP-4326)."
+        )
+    }
+
+    /// The row-info region in NormalBookCell must be a real SwiftUI Button
+    /// (not a Color.clear overlay or .accessibilityElement wrap) so the
+    /// SwiftUI accessibility engine surfaces it as a focusable element in
+    /// linear-swipe order, and the BookButtonsView action buttons are
+    /// genuine accessibility-tree siblings.
+    func testNormalBookCell_rowInfoIsRealSwiftUIButton() throws {
+        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift")
+        XCTAssertTrue(
+            source.contains("Button(action: onSelect"),
+            "NormalBookCell must wrap the cover + title/author region in `Button(action: onSelect, label:)` so the row-info element is a real SwiftUI Button — guarantees VoiceOver focus + double-tap activation, and makes BookButtonsView's buttons real siblings in the accessibility tree (PP-4326)."
+        )
+    }
+
+    /// The row-info Button must carry the canonical voiceOverLabel from
+    /// TPPBook+Accessibility (PP-3968) — VoiceOver should hear
+    /// "Title, by Author" rather than the raw concatenation of inner Text
+    /// labels.
+    func testNormalBookCell_usesCanonicalVoiceOverLabel() throws {
+        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift")
         XCTAssertTrue(
             source.contains("voiceOverLabel"),
-            "BookListView must apply TPPBook.voiceOverLabel as the row's accessibilityLabel so VoiceOver announces the canonical 'Title, by Author' (PP-3968 + PP-4326)."
+            "NormalBookCell's row-info Button must use TPPBook.voiceOverLabel so VoiceOver announces the canonical 'Title, by Author' (PP-3968 + PP-4326)."
         )
     }
 
-    /// The row must announce its activation effect via an
-    /// .accessibilityHint so VoiceOver users hear what double-tap does
-    /// after the title is read.
-    func testBookListView_announcesOpenDetailsHint() throws {
-        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookListView.swift")
+    /// The row-info Button must carry an "opens book details" hint so
+    /// VoiceOver users hear what double-tap will do after the title is
+    /// read.
+    func testNormalBookCell_announcesOpenDetailsHint() throws {
+        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift")
         XCTAssertTrue(
             source.contains("opensBookDetails") || source.contains("Opens book details"),
-            "BookListView must apply an .accessibilityHint that describes the row's default action — 'Opens book details' — so VoiceOver users know what activation does (PP-4326)."
+            "NormalBookCell must apply an .accessibilityHint that describes the row's default action — 'Opens book details' — so VoiceOver users know what activation does (PP-4326)."
         )
     }
 
-    /// The row must expose its in-row action buttons (Borrow/Read/Listen/
-    /// Return, etc.) as VoiceOver rotor actions via .accessibilityActions
-    /// so screen-reader users can perform them without leaving the row in
-    /// linear navigation. This is the Apple-canonical pattern for list
-    /// rows with auxiliary actions.
-    func testBookListView_exposesRotorActionsForInRowButtons() throws {
+    /// PP-4326 cleanup: BookListView no longer wrangles accessibility-
+    /// element / accessibilityActions / overlay patterns at the list
+    /// level. The structural sibling-Button approach in NormalBookCell
+    /// is the entire accessibility story.
+    func testBookListView_noListLevelAccessibilityWrangling() throws {
         let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookListView.swift")
-        XCTAssertTrue(
+        // Earlier attempts: .accessibilityElement(children: .ignore) +
+        // .accessibilityRemoveTraits(.isButton) (PP-3968 broke things), then
+        // .accessibilityElement(children: .contain) + overlay + Color.clear +
+        // .accessibilityActions (didn't register callbacks on device). Today's
+        // approach is purely structural — no list-level wrappers.
+        XCTAssertFalse(
+            source.contains(".accessibilityElement(children: "),
+            "BookListView should not wrangle accessibility elements at the list level — the structural sibling-Button approach in NormalBookCell carries the row's accessibility tree (PP-4326)."
+        )
+        XCTAssertFalse(
             source.contains(".accessibilityActions"),
-            "BookListView must apply .accessibilityActions to expose in-row Borrow/Read/Listen/Return actions as VoiceOver rotor custom actions (PP-4326)."
-        )
-    }
-
-    /// The rotor actions block must drive the actions via the cell's
-    /// model (handleAction(for:)) so each action type fires the correct
-    /// behavior — the same path as a touch on the visible button.
-    func testBookListView_rotorActionsRouteThroughModel() throws {
-        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookListView.swift")
-        XCTAssertTrue(
-            source.contains("BookRowAccessibilityActions"),
-            "BookListView must use BookRowAccessibilityActions inside .accessibilityActions to ensure each rotor action calls model.handleAction(for:) — the same code path as a touch on the visible button (PP-4326)."
-        )
-    }
-
-    /// PP-4326 follow-up: the row must be an accessibility CONTAINER so the
-    /// inner BookButtonsView Buttons are individually focusable in VoiceOver
-    /// linear-swipe navigation. The collapse-to-one-element pattern
-    /// (.accessibilityElement(children: .ignore)) made the buttons reachable
-    /// only via the rotor menu, which the original reporter flagged as
-    /// insufficient.
-    func testBookListView_rowIsAccessibilityContainer() throws {
-        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookListView.swift")
-        XCTAssertTrue(
-            source.contains(".accessibilityElement(children: .contain)"),
-            "BookListView must apply .accessibilityElement(children: .contain) on the row so the inner action Buttons are individually focusable in VoiceOver linear navigation (PP-4326 follow-up)."
-        )
-    }
-
-    /// PP-4326 follow-up: the row-info overlay must use .accessibilitySortPriority
-    /// so it's announced FIRST in the per-row VoiceOver order (before the
-    /// action buttons). Users should hear "Title, by Author. Button. Opens
-    /// book details." then "Borrow. Button." then "Read. Button." etc.
-    func testBookListView_rowInfoElementHasSortPriority() throws {
-        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookListView.swift")
-        XCTAssertTrue(
-            source.contains(".accessibilitySortPriority"),
-            "BookListView must apply .accessibilitySortPriority on the row-info overlay so it's announced before the action buttons in VoiceOver linear order (PP-4326 follow-up)."
-        )
-    }
-
-    /// BookRowAccessibilityActions must be defined and must iterate over
-    /// the model's available button types so rotor actions stay in sync
-    /// with the visible in-row buttons (the actions list is driven by
-    /// download/loan state, not a hardcoded list).
-    func testBookRowAccessibilityActions_iteratesModelButtonTypes() throws {
-        let source = try Self.source(for: "Palace/MyBooks/MyBooks/BookListView.swift")
-        XCTAssertTrue(
-            source.contains("struct BookRowAccessibilityActions"),
-            "BookListView.swift must define BookRowAccessibilityActions so rotor actions are co-located with the row that uses them (PP-4326)."
-        )
-        XCTAssertTrue(
-            source.contains("model.buttonTypes"),
-            "BookRowAccessibilityActions must iterate over model.buttonTypes so VoiceOver rotor actions match the visible button list per book state (PP-4326)."
-        )
-        XCTAssertTrue(
-            source.contains("handleAction(for:"),
-            "BookRowAccessibilityActions must call model.handleAction(for:) so the rotor action follows the same code path as a touch on the visible button (PP-4326)."
+            "BookListView should not use .accessibilityActions — that pattern's callbacks did not register on device. The action Buttons in BookButtonsView are real siblings of the row-info Button and reachable via linear VoiceOver navigation (PP-4326)."
         )
     }
 
     // MARK: - voiceOverLabel canonical-format behavior checks
 
     /// Sanity check that voiceOverLabel still produces the expected
-    /// "Title, by Author" form that the row announces. If this regresses,
-    /// PP-3968's canonical label is broken regardless of the PP-4326
-    /// wiring.
+    /// "Title, by Author" form that the row-info Button announces.
     func testVoiceOverLabel_ebook_titleByAuthor() {
         let book = TPPBookMocker.mockBook(title: "Frankenstein", authors: "Mary Shelley")
         XCTAssertEqual(book.voiceOverLabel, "Frankenstein, by Mary Shelley")

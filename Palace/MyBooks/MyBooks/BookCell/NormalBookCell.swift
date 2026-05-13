@@ -16,6 +16,14 @@ struct NormalBookCell: View {
 
     @ObservedObject var model: BookCellModel
     var previewEnabled: Bool = true
+    /// PP-4326: When non-nil, the cover area + title/author region are
+    /// wrapped in a SwiftUI Button that fires this closure. That makes the
+    /// "row info" tap target a real accessibility-tree sibling of the
+    /// in-row action Buttons (Borrow/Read/Listen/Return) — VoiceOver
+    /// linear-swipe navigation reaches each one in turn, and double-tap
+    /// activates them. The earlier rotor-only / .accessibilityActions
+    /// approach didn't register its callbacks correctly on device.
+    var onSelect: (() -> Void)? = nil
     private let cellHeight: CGFloat = 180
 
     // Download progress tracking
@@ -33,22 +41,33 @@ struct NormalBookCell: View {
     var body: some View {
         ZStack {
             HStack(alignment: .center, spacing: 15) {
-                HStack(spacing: 5) {
-                    unreadImageView
-                    titleCoverImageView
-                }
-                .frame(alignment: .leading)
+                // PP-4326: cover + title/author wrapped in a SwiftUI Button
+                // when onSelect is supplied. The Button is the "row info"
+                // accessibility element — VoiceOver hears
+                // "Title, by Author. Button. Opens book details." and a
+                // double-tap fires onSelect. The action Buttons in
+                // BookButtonsView below sit OUTSIDE this Button so they're
+                // real siblings in the accessibility tree, individually
+                // focusable + activatable.
+                rowInfoTapTarget {
+                    HStack(alignment: .center, spacing: 15) {
+                        HStack(spacing: 5) {
+                            unreadImageView
+                            titleCoverImageView
+                        }
+                        .frame(alignment: .leading)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    infoView
-                    VStack(alignment: .leading, spacing: 4) {
-                        downloadProgressView
-                        buttons
-                        borrowedInfoView
+                        infoView
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.bottom, 5)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    downloadProgressView
+                    buttons
+                    borrowedInfoView
+                }
+                .padding(.bottom, 5)
                 .sheet(isPresented: $showHalfSheet, onDismiss: {
                     model.showHalfSheet = false
                     model.isManagingHold = false  // Reset managing hold state when sheet is dismissed
@@ -125,6 +144,26 @@ struct NormalBookCell: View {
         BookImageView(book: model.book, width: nil, height: cellHeight, treatImageAsDecorativeInLists: true)
             .adaptiveShadowLight(radius: 1.5)
             .frame(width: cellHeight * 2.0 / 3.0)
+    }
+
+    /// PP-4326: wraps the cover + title/author region in a SwiftUI Button
+    /// when `onSelect` is supplied (i.e. when rendered inside BookListView).
+    /// The Button is the "row info" accessibility element — VoiceOver
+    /// announces "Title, by Author. Button. Opens book details." and a
+    /// double-tap fires `onSelect`. Outside of a list (snapshots, previews,
+    /// etc.) `onSelect` is nil and we just render the content plainly.
+    @ViewBuilder
+    private func rowInfoTapTarget<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if let onSelect {
+            Button(action: onSelect, label: content)
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel(model.book.voiceOverLabel)
+                .accessibilityHint(Strings.Accessibility.opensBookDetails)
+        } else {
+            content()
+        }
     }
 
     // MARK: - Download Progress View
