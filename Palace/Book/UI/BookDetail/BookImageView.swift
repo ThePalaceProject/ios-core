@@ -43,6 +43,16 @@ struct BookImageView: View {
             }
         }
         .accessibilityElement(children: treatImageAsDecorativeInLists ? .ignore : .combine)
+        // PP-4326 follow-up: the inner Image carries .accessibilityHidden(true)
+        // when `treatImageAsDecorativeInLists` is true, but the outer
+        // `.accessibilityElement(children: .ignore)` above promotes the ZStack
+        // itself to a single accessibility element — and that promotion
+        // overrides the inner Image's hidden flag. The cover ends up being
+        // announced by VoiceOver on the Book Detail screen even though it's
+        // supposed to be decorative (title/author already announce the same
+        // info). Apply .accessibilityHidden(true) to the ZStack itself so the
+        // promoted element is hidden, not just its (ignored) children.
+        .accessibilityHidden(treatImageAsDecorativeInLists)
         .frame(width: width, height: height)
         .onAppear {
             if hasPreloadedCover {

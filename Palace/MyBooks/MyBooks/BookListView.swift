@@ -22,19 +22,27 @@ struct BookListView: View {
     var body: some View {
         LazyVGrid(columns: gridLayout, spacing: 0) {
             ForEach(books, id: \.identifier) { book in
+                // PP-4326: just wrap the cell in a SwiftUI Button with a
+                // custom voiceOverLabel + hint. Let SwiftUI's natural
+                // accessibility do the rest — the outer Button is the
+                // "tap anywhere on the row" element, and the inner action
+                // Buttons inside BookButtonsView surface as separate
+                // accessibility elements (because they're real SwiftUI
+                // Buttons with their own labels). iOS routes a VoiceOver
+                // tap to the topmost accessibility element at the tap
+                // location: tap on Borrow → Borrow is the topmost there
+                // and gets focus; tap on cover/title → no inner Button at
+                // that location, the outer row Button gets focus. PP-3968
+                // broke this by adding .accessibilityElement(children:
+                // .ignore), which collapsed the cell into one element and
+                // hid the inner buttons. Just don't do that.
                 Button(action: { onSelect(book) }, label: {
-                    // Use cached model instead of creating new one each render
                     BookCell(model: modelCache.model(for: book), previewEnabled: previewEnabled)
                 })
                 .buttonStyle(.plain)
                 .applyBorderStyle()
-                // PP-3968: collapse the cell into a single VoiceOver element
-                // with the canonical "Title, by Author" label and drop the
-                // "button" trait so it sounds like a list item — matches the
-                // Audible/Libby UX. The cell is still tappable.
-                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(book.voiceOverLabel)
-                .accessibilityRemoveTraits(.isButton)
+                .accessibilityHint(Strings.Accessibility.opensBookDetails)
                 .onAppear {
                     handleCellAppear(book: book)
                 }
