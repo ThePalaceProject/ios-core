@@ -74,6 +74,69 @@ final class BorrowReducerTests: XCTestCase {
                       "Half-sheet must stay open during a download — Cancel must remain reachable")
     }
 
+    /// Systemic guard: any registry state that means "borrow is finished and
+    /// the book is on the user's shelf" must clear the acquire-side spinners
+    /// (.get / .download / .retry). The F-011 class of bug is "a new terminal
+    /// state was added but the reducer's case didn't clear acquire flags" —
+    /// the BookButtonMapper.map short-circuits to .downloadInProgress while
+    /// `isProcessingDownload` is true, freezing the half-sheet on Cancel.
+    ///
+    /// Parameterized over every TPPBookState that represents a borrow-completed
+    /// outcome. Adding a new such state without clearing flags here would fail
+    /// this test instead of escaping to the user as a stuck-button regression.
+    func testRegistryStateChanged_clearsAcquireFlags_forAllBorrowCompletedStates() {
+        let borrowCompletedStates: [TPPBookState] = [
+            .downloadNeeded,
+            .downloading,
+            .downloadFailed,
+            .downloadSuccessful,
+            .used,
+        ]
+        for completedState in borrowCompletedStates {
+            var state = makeState(
+                bookState: .unregistered,
+                processing: [.get, .download, .retry, .returning, .reserve],
+                halfSheet: true
+            )
+
+            _ = BorrowReducer.reduce(&state, .registryStateChanged(completedState))
+
+            XCTAssertTrue(
+                state.processingButtons.intersection([.get, .download, .retry]).isEmpty,
+                "Registry transition to \(completedState) must clear acquire-side processing flags. Otherwise BookButtonMapper short-circuits to .downloadInProgress and the half-sheet stays on Cancel (the F-011 regression). Remaining acquire flags: \(state.processingButtons.intersection([.get, .download, .retry]))"
+            )
+            XCTAssertEqual(
+                state.bookState,
+                completedState,
+                "Registry state assignment must always run before the per-case cleanup."
+            )
+        }
+    }
+
+    /// F-011 regression: borrow completes successfully and the registry
+    /// transitions unregistered/holding -> .downloadNeeded. The reducer must
+    /// clear `.get` (and sibling borrow-init buttons) from processingButtons
+    /// so the half-sheet's button mapper switches from the in-progress
+    /// Cancel-only state to the Download + Return state. Before the fix,
+    /// processingButtons retained `.get`, BookButtonMapper short-circuited
+    /// to .downloadInProgress (because isProcessingDownload stayed true),
+    /// and the user had to dismiss + re-open the half-sheet to break the
+    /// stuck Cancel state.
+    func testRegistryStateChanged_toDownloadNeeded_clearsBorrowProcessingFlags() {
+        var state = makeState(
+            bookState: .unregistered,
+            processing: [.download, .get, .retry, .returning, .reserve],
+            halfSheet: true
+        )
+        _ = BorrowReducer.reduce(&state, .registryStateChanged(.downloadNeeded))
+
+        XCTAssertEqual(state.bookState, .downloadNeeded)
+        XCTAssertEqual(state.processingButtons, [.returning, .reserve],
+                       ".downloadNeeded must purge {.download, .get, .retry} so the half-sheet swaps Cancel for Download + Return")
+        XCTAssertTrue(state.showHalfSheet,
+                      "Half-sheet stays open after borrow so the user can tap Download immediately")
+    }
+
     func testRegistryStateChanged_toDownloadFailed_keepsHalfSheetOpenForRetryAlert() {
         var state = makeState(
             bookState: .downloading,
