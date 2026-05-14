@@ -22,41 +22,30 @@ struct BookListView: View {
     var body: some View {
         LazyVGrid(columns: gridLayout, spacing: 0) {
             ForEach(books, id: \.identifier) { book in
-                // PP-4326: No outer Button — when the row IS a Button
-                // and the cell content contains inner Buttons, VoiceOver's
-                // double-tap routes through SwiftUI hit-test to the first
-                // inner action button (Borrow/Read/Listen/Return) rather
-                // than firing the outer Button's action. .accessibilityAction
-                // doesn't reliably override the Button's own activation in
-                // that nested-button case. Using a plain .onTapGesture for
-                // visual taps + an explicit .accessibilityAction for
-                // VoiceOver eliminates the precedence conflict entirely.
-                let cellModel = modelCache.model(for: book)
-                BookCell(model: cellModel, previewEnabled: previewEnabled)
-                    .applyBorderStyle()
-                    .contentShape(Rectangle())
-                    .onTapGesture { onSelect(book) }
-                    // Single VoiceOver element per row using the canonical
-                    // "Title, by Author" label (PP-3968). Inner action
-                    // buttons stay accessible through the rotor (below).
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityLabel(book.voiceOverLabel)
-                    .accessibilityHint(Strings.Accessibility.opensBookDetails)
-                    // Default action — VoiceOver's double-tap calls this
-                    // directly. Decoupled from SwiftUI hit-testing.
-                    .accessibilityAction { onSelect(book) }
-                    // Expose the in-row action buttons (Borrow/Read/Listen/
-                    // Return) as VoiceOver rotor custom actions so screen-
-                    // reader users can perform them without losing focus
-                    // on the row — Apple-canonical pattern (Mail, Reminders,
-                    // Messages).
-                    .accessibilityActions {
-                        BookRowAccessibilityActions(model: cellModel, previewEnabled: previewEnabled)
-                    }
-                    .onAppear {
-                        handleCellAppear(book: book)
-                    }
+                // PP-4326: just wrap the cell in a SwiftUI Button with a
+                // custom voiceOverLabel + hint. Let SwiftUI's natural
+                // accessibility do the rest — the outer Button is the
+                // "tap anywhere on the row" element, and the inner action
+                // Buttons inside BookButtonsView surface as separate
+                // accessibility elements (because they're real SwiftUI
+                // Buttons with their own labels). iOS routes a VoiceOver
+                // tap to the topmost accessibility element at the tap
+                // location: tap on Borrow → Borrow is the topmost there
+                // and gets focus; tap on cover/title → no inner Button at
+                // that location, the outer row Button gets focus. PP-3968
+                // broke this by adding .accessibilityElement(children:
+                // .ignore), which collapsed the cell into one element and
+                // hid the inner buttons. Just don't do that.
+                Button(action: { onSelect(book) }, label: {
+                    BookCell(model: modelCache.model(for: book), previewEnabled: previewEnabled)
+                })
+                .buttonStyle(.plain)
+                .applyBorderStyle()
+                .accessibilityLabel(book.voiceOverLabel)
+                .accessibilityHint(Strings.Accessibility.opensBookDetails)
+                .onAppear {
+                    handleCellAppear(book: book)
+                }
             }
 
             if isLoadingMore {
@@ -145,32 +134,6 @@ struct BookListView: View {
 extension View {
     func applyBorderStyle() -> some View {
         modifier(BorderStyleModifier())
-    }
-}
-
-// MARK: - PP-4326: VoiceOver rotor actions for a book row
-
-/// Renders one Button per available BookButtonType (Borrow, Read, Listen,
-/// Return, etc.). Used inside `.accessibilityActions { ... }` so VoiceOver
-/// users can perform any in-row action via the rotor "Actions" menu
-/// without leaving focus on the row. Mirrors the Apple-canonical pattern
-/// used by Mail, Reminders, and Messages for list rows with auxiliary
-/// actions.
-struct BookRowAccessibilityActions: View {
-    @ObservedObject var model: BookCellModel
-    var previewEnabled: Bool = true
-
-    private var availableButtonTypes: [BookButtonType] {
-        guard !previewEnabled else { return model.buttonTypes }
-        return model.buttonTypes.filter { $0 != .sample && $0 != .audiobookSample }
-    }
-
-    var body: some View {
-        ForEach(availableButtonTypes, id: \.self) { type in
-            Button(type.title(for: model.book)) {
-                model.handleAction(for: type)
-            }
-        }
     }
 }
 
