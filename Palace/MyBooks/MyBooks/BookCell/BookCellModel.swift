@@ -164,6 +164,7 @@ class BookCellModel: ObservableObject {
             book: book,
             registryState: currentRegistryState,
             isManagingHold: false,
+            override: nil,
             bookRegistry: bookRegistry
         )
         self.stableButtonState = initialButtonState
@@ -326,12 +327,21 @@ class BookCellModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    private func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool) -> BookButtonState {
-        return Self.computeButtonState(book: book, registryState: registryState, isManagingHold: isManagingHold, bookRegistry: bookRegistry)
+    private func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool, override: TPPBookState?) -> BookButtonState {
+        return Self.computeButtonState(book: book, registryState: registryState, isManagingHold: isManagingHold, override: override, bookRegistry: bookRegistry)
     }
 
     /// Static version for use during initialization
-    private static func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool, bookRegistry: TPPBookRegistryProvider) -> BookButtonState {
+    private static func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool, override: TPPBookState?, bookRegistry: TPPBookRegistryProvider) -> BookButtonState {
+        // Honor the in-flight UI override (currently used for .returning so the
+        // cell shows "Returning…" between the user confirming the return and the
+        // registry transitioning to .unregistered after the network round-trip
+        // + bookmark deletion + post-return sync). Without this the button keeps
+        // showing the pre-return state (Read/Return) until the registry finally
+        // flips, which the user perceives as "tap did nothing" (F-017).
+        if override == .returning {
+            return .returning
+        }
         let availability = book.defaultAcquisition?.availability
         // Only reflect actual download state from registry; do not treat UI image loading as download-in-progress
         let isProcessingDownload = registryState == .downloading
@@ -344,9 +354,9 @@ class BookCellModel: ObservableObject {
     }
 
     private func setupStableButtonState() {
-        Publishers.CombineLatest3($book, $registryState, $isManagingHold)
-            .map { [weak self] book, state, isManaging in
-                self?.computeButtonState(book: book, registryState: state, isManagingHold: isManaging) ?? .unsupported
+        Publishers.CombineLatest4($book, $registryState, $isManagingHold, $localBookStateOverride)
+            .map { [weak self] book, state, isManaging, override in
+                self?.computeButtonState(book: book, registryState: state, isManagingHold: isManaging, override: override) ?? .unsupported
             }
             .removeDuplicates()
             // Use throttle instead of debounce - throttle emits immediately on first value,
@@ -403,7 +413,7 @@ class BookCellModel: ObservableObject {
     @discardableResult
     func validateStateConsistency() -> Bool {
         let currentRegistryState = bookRegistry.state(for: book.identifier)
-        let expectedButtonState = computeButtonState(book: book, registryState: currentRegistryState, isManagingHold: isManagingHold)
+        let expectedButtonState = computeButtonState(book: book, registryState: currentRegistryState, isManagingHold: isManagingHold, override: localBookStateOverride)
 
         let isConsistent = stableButtonState == expectedButtonState && registryState == currentRegistryState
 
