@@ -398,6 +398,13 @@ final class BorrowOperation {
 
             downloadAnnouncementService.announceBorrowSucceeded(for: borrowedBook)
 
+            // F-014: condition was inverted (`!= .downloadNeeded`), skipping
+            // auto-download on the most common post-borrow state and stranding
+            // the user on a manual Download tap. The borrow→download chain is
+            // a single user-intent step from the half-sheet, so fire startDownload
+            // whenever the borrow lands on .downloadNeeded. .holding (hold placed,
+            // not yet ready) and other terminal-after-borrow states correctly
+            // skip the chain — there's nothing to download yet.
             if attemptDownload && mapping.state == .downloadNeeded {
                 await MainActor.run { [weak self] in
                     self?.delegate?.startDownload(for: borrowedBook, withRequest: nil)
