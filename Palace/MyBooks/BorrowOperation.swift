@@ -711,7 +711,24 @@ final class BorrowOperation {
 
                 session.presentationContextProvider = OIDCBorrowPresentationContext.shared
                 session.prefersEphemeralWebBrowserSession = false
-                session.start()
+
+                // F-016: defer the session start so any prior SignInModalHostingController
+                // (or the previous SFAuthenticationViewController) has time to finish
+                // deallocating. Without this, calling session.start() while a previous
+                // auth modal is still in its dealloc cycle produces the runtime warning
+                // "Attempting to load the view of a view controller while it is
+                // deallocating" and iOS cancels the new session with
+                // ASWebAuthenticationSession error 3 ("presentation cancelled by user").
+                // The cancellation leaves the user with still-stale credentials and the
+                // borrow retry 401s again — driving a re-auth loop until the per-book
+                // circuit breaker (hasBorrowReauthBeenAttempted) fires.
+                //
+                // 150ms is empirically enough for the UIKit dealloc + RunLoop drain on
+                // current iOS releases; we keep it explicit (not Task.yield) so the
+                // timing semantics survive a reader future Swift Concurrency rev.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    session.start()
+                }
             }
         }
     }
