@@ -384,6 +384,15 @@ private enum StorageKey: String {
     func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
         keychainTransaction.perform {
             _credentials.write(.token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate))
+            // A fresh token is a successful auth signal. Flip authState to
+            // .loggedIn now so silent re-auth paths (TokenRefreshInterceptor
+            // OIDC/SAML refresh, OIDC callback handler) don't leave a
+            // previously-set .credentialsStale flag persisted across launches.
+            // Without this, the user is re-prompted to sign in on the next
+            // cold start even though their token is valid — the responder's
+            // self-heal block only fires when a subsequent 2xx response
+            // happens to come back while this library is foregrounded.
+            _authState.write(.loggedIn)
         }
         // Rotate the observable session identifier on successful sign-in.
         // Purely for test observation of session-fixation defense; not used

@@ -141,6 +141,9 @@ class TPPUserAccountMock: TPPUserAccount {
     override func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
         _authToken = token
         _credentials = .token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
+        // Mirror real TPPUserAccount.setAuthToken: a fresh token clears any
+        // persisted .credentialsStale flag.
+        _authState = .loggedIn
     }
 
     // MARK: - Auth State
