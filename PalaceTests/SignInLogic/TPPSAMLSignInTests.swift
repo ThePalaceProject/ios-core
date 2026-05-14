@@ -701,27 +701,31 @@ final class TPPSAMLSignInTests: XCTestCase {
                    "Auth token should be updated to new token")
   }
   
-  /// Tests that setAuthToken alone does NOT change auth state from stale to loggedIn.
-  /// This documents the current behavior and ensures markLoggedIn() is required.
-  func testSetAuthToken_doesNotChangeStaleState() {
+  /// Tests that setAuthToken clears the credentialsStale flag by flipping authState to .loggedIn.
+  /// This is the fix in commit 74654d855 — without it, OIDC/SAML users were re-prompted to
+  /// sign in on every cold launch even though their token was still valid; the responder's
+  /// self-heal block only fired when a subsequent 2xx response happened to come back while
+  /// the library was foregrounded.
+  func testSetAuthToken_clearsStaleState() {
     // Setup: User has stale credentials
     let account = businessLogic.userAccount
     businessLogic.selectedAuthentication = libraryAccountMock.basicAuthentication
-    
+
     account.setAuthToken("original-token", barcode: "user123", pin: "pass456", expirationDate: nil)
     account.markLoggedIn()
     account.markCredentialsStale()
-    
+
     XCTAssertEqual(account.authState, .credentialsStale,
                    "Precondition: Should be stale")
-    
-    // Act: Only call setAuthToken (without markLoggedIn)
+
+    // Act: Call setAuthToken — a fresh token is a successful auth signal.
     account.setAuthToken("new-token", barcode: "user123", pin: "pass456", expirationDate: nil)
-    
-    // Assert: State should still be stale (setAuthToken doesn't change auth state)
-    // This is why executeTokenRefresh MUST call markLoggedIn()
-    XCTAssertEqual(account.authState, .credentialsStale,
-                   "setAuthToken alone should not change auth state from stale")
+
+    // Assert: setAuthToken alone flips authState to .loggedIn so silent re-auth paths
+    // (TokenRefreshInterceptor OIDC/SAML refresh, OIDC callback handler) don't leave a
+    // previously-set .credentialsStale flag persisted across launches.
+    XCTAssertEqual(account.authState, .loggedIn,
+                   "setAuthToken must clear stale state by setting authState to .loggedIn (commit 74654d855)")
   }
   
   /// Tests that the Settings screen would show signed-in after token refresh.
