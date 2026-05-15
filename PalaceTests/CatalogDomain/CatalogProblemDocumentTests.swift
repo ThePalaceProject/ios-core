@@ -13,6 +13,8 @@
 
 import XCTest
 @testable import Palace
+@testable import PalaceCatalog
+import PalaceNetwork
 
 final class CatalogProblemDocumentTests: XCTestCase {
 
@@ -30,7 +32,7 @@ final class CatalogProblemDocumentTests: XCTestCase {
         super.setUp()
         networkClient = NetworkClientMock()
         parser = OPDSParser()
-        api = DefaultCatalogAPI(client: networkClient, parser: parser)
+        api = DefaultCatalogAPI(client: networkClient, parser: parser, featureFlags: MockFeatureFlagProvider())
     }
 
     override func tearDown() {

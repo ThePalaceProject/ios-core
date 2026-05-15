@@ -40,7 +40,7 @@
 //
 
 import XCTest
-import PalaceCatalog
+@testable import PalaceCatalog
 import PalaceNetwork
 @testable import Palace
 

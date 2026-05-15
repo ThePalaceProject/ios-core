@@ -13,6 +13,7 @@
 
 import XCTest
 @testable import Palace
+@testable import PalaceCatalog
 
 final class CatalogLaneAssemblyTests: XCTestCase {
 
