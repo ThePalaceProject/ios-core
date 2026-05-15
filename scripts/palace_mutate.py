@@ -213,7 +213,21 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = 600) -> tuple
     last = "\n".join(output.splitlines()[-15:])
     if not any_tests_ran(output):
         joined = ", ".join(test_class_paths)
-        return (False, f"ERROR: 0 tests executed for {joined} — likely a misconfigured --tests arg (directory instead of XCTestCase class name)")
+        # Surface the LAST 40 lines of xcodebuild output alongside the
+        # synthetic error. Without this, "0 tests executed" looked like a
+        # misconfigured --tests arg even when the real cause was a CI-only
+        # build error (Swift macro failure, signing issue, etc.) that the
+        # local resolver couldn't detect. The synthetic message stays as
+        # the headline; the xcodebuild tail is the diagnostic.
+        xcb_tail = "\n".join(output.splitlines()[-40:])
+        diagnostic = (
+            f"ERROR: 0 tests executed for {joined} — likely a misconfigured "
+            f"--tests arg (directory instead of XCTestCase class name) OR a "
+            f"build failure that produced no test execution.\n"
+            f"---- last 40 lines of xcodebuild output ----\n{xcb_tail}\n"
+            f"---- end xcodebuild output ----"
+        )
+        return (False, diagnostic)
     passed = result.returncode == 0 and "** TEST SUCCEEDED **" in output
     return (passed, last)
 
