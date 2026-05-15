@@ -788,15 +788,22 @@ polluting the process-global default center. See new test
 `test_oauthRedirectObserver_registersAndRemovesItself_viaInjectedCenter`
 in `TPPSignInBusinessLogicOAuthTests`.
 
-### 10.2 `TPPSignInBusinessLogic.getBearerToken` — `TPPNetworkExecutor` is a concrete dependency
+### 10.2 `TPPSignInBusinessLogic.getBearerToken` — `TPPNetworkExecutor` is a concrete dependency — RESOLVED (commit gap/signin-seams)
 
-`getBearerToken(...)` already accepts an injectable `TPPNetworkExecutor`
-argument (default `AppContainer.production().networkExecutor`). The argument
-is the concrete class, not a protocol, so token-flow tests have to construct
-a real `TPPNetworkExecutor` against a stubbed `URLSessionConfiguration`. This
-works (see `TPPSignInBusinessLogicTokenFlowTests`) and stays hermetic via
-`HTTPStubURLProtocol`. A `TokenRefreshing` protocol seam would allow a pure
-in-memory mock. Low priority.
+**Resolution:** Added a `TokenRefreshing` protocol in
+`Palace/Network/TPPRequestExecuting.swift` exposing just
+`executeTokenRefresh(username:password:tokenURL:accountId:completion:)`.
+`TPPNetworkExecutor` conforms via an empty extension (witness signature
+already matches). A new overload
+`getBearerToken(username:password:tokenURL:tokenRefresher:completion:)`
+takes the protocol; the existing concrete-typed overload forwards
+through it, so every existing call site continues to compile unchanged
+and ObjC interop is preserved.
+
+`TPPSignInBusinessLogicTokenFlowTests` no longer constructs a real
+`TPPNetworkExecutor` + `URLSessionConfiguration` + `HTTPStubURLProtocol`
+triad — it uses a pure in-memory `TokenRefresherMock` and asserts the
+argument flow plus reducer hand-off directly.
 
 ### 10.3 `TPPAgeCheck` — private `serialQueue` has no flush hook
 

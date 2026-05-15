@@ -419,8 +419,20 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         }
     }
 
-    func getBearerToken(username: String, password: String, tokenURL: URL, networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor, completion: (() -> Void)? = nil) {
-        networkExecutor.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: libraryAccountID) { [weak self] result in
+    /// Seam-friendly overload (§10.2) that accepts the abstract
+    /// `TokenRefreshing` protocol so unit tests can substitute a pure
+    /// in-memory mock for the production concrete `TPPNetworkExecutor`.
+    /// The original concrete-typed overload below remains for ObjC / source
+    /// compatibility with all existing call sites.
+    func getBearerToken(username: String,
+                        password: String,
+                        tokenURL: URL,
+                        tokenRefresher: TokenRefreshing,
+                        completion: (() -> Void)? = nil) {
+        tokenRefresher.executeTokenRefresh(username: username,
+                                           password: password,
+                                           tokenURL: tokenURL,
+                                           accountId: libraryAccountID) { [weak self] result in
             defer {
                 completion?()
             }
@@ -434,6 +446,14 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                 self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
             }
         }
+    }
+
+    func getBearerToken(username: String, password: String, tokenURL: URL, networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor, completion: (() -> Void)? = nil) {
+        getBearerToken(username: username,
+                       password: password,
+                       tokenURL: tokenURL,
+                       tokenRefresher: networkExecutor,
+                       completion: completion)
     }
 
     /// Uses the problem document's `title` and `message` fields to
