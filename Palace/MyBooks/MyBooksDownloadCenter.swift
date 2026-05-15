@@ -252,7 +252,19 @@ import PalaceCatalog
         // production background session is constructed as before — behavior
         // preserved exactly. When provided, the caller is responsible for
         // pointing the session's delegate at this instance.
-        urlSession: URLSession? = nil
+        urlSession: URLSession? = nil,
+        // Test seam: overrides the per-account content directory lookup.
+        // Production passes nil — `fileUrl(for:account:)` resolves through
+        // `BookFileManager.contentDirectoryURL(_:)` as it always has.
+        // Tests inject a closure returning a temp dir so synthetic test
+        // accounts (which don't have a real per-account App Support
+        // directory) can stage on-disk fixtures and observe the production
+        // file-URL contract — see `ColdStartResumeIntegrationTests`'
+        // "present file → .downloadSuccessful" promotion case.
+        // When `bookFileManager` is also injected, the explicit
+        // BookFileManager wins; this param only configures the default
+        // `BookFileManager` MBDC constructs when none is supplied.
+        directoryProvider: ((String?) -> URL?)? = nil
     ) {
         self.injectedUserAccount = userAccount
         self.bookRegistry = bookRegistry
@@ -265,9 +277,13 @@ import PalaceCatalog
         // we just resolved — passing nil here uses those, avoiding a second
         // re-entrant AppContainer.production() lookup (the same cycle that
         // motivated AppContainer.production()'s explicit-deps comment).
+        // The `directoryProvider` seam (default nil) flows into the
+        // default-constructed BookFileManager so tests can override the
+        // per-account directory without standing up a custom BookFileManager.
         self.bookFileManager = bookFileManager ?? BookFileManager(
             bookRegistry: bookRegistry,
-            accountsManager: accountsManager
+            accountsManager: accountsManager,
+            directoryProvider: directoryProvider
         )
         // DiskBudgetManager pulls from the same registry + accounts manager
         // we just resolved AND shares the BookFileManager instance — so

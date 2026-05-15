@@ -141,6 +141,12 @@ final class ColdStartResumeIntegrationTests: XCTestCase {
     /// `.downloadSuccessful` on load. The previous app exit terminated mid-write
     /// after the file was already complete.
     /// Pins BookRegistrySync.load lines 111-115.
+    ///
+    /// Uses the `directoryProvider` test seam on `MyBooksDownloadCenter` /
+    /// `BookFileManager` so the synthetic test account resolves to a temp
+    /// directory we control. Both the file we stage on disk AND the sync's
+    /// reconciliation pass go through the same `MyBooksDownloadCenter`
+    /// instance — so the path the sync probes is exactly the path we wrote.
     func testColdStart_InflightDownloadWithExistingFile_PromotedToSuccessful() throws {
         let bookId = "inflight-present-\(UUID().uuidString)"
         let payload = registryFileJSON(records: [
@@ -148,31 +154,52 @@ final class ColdStartResumeIntegrationTests: XCTestCase {
         ])
         writeRaw(payload, to: account)
 
+        // Stand up an isolated temp directory + a MyBooksDownloadCenter
+        // wired to it via the new `directoryProvider` seam. Production code
+        // path (when `directoryProvider` is nil) is unchanged.
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MBDC-coldstart-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: tempRoot, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let testDownloadCenter = MyBooksDownloadCenter(
+            accountsManager: accountsManager,
+            directoryProvider: { _ in tempRoot }
+        )
+        // Rebuild sync so it routes through our test download center for
+        // both the on-disk URL lookup AND the reconcile-on-load probe.
+        sync = BookRegistrySync(
+            store: store,
+            accountsManager: accountsManager,
+            downloadCenterProvider: { testDownloadCenter },
+            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+        )
+
         // Drop a sentinel file on disk where the download center would expect it.
         // Production checks `MyBooksDownloadCenter.fileUrl(for:account:)`.
-        let downloadCenter = AppContainer.production().downloadCenter
         let placeholderBook = TPPBookMocker.mockBook(
             identifier: bookId, title: "Inflight Present", distributorType: .EpubZip
         )
-        if let fileURL = downloadCenter.fileUrl(for: placeholderBook, account: account) {
-            try? FileManager.default.createDirectory(
-                at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            try Data("present".utf8).write(to: fileURL)
-            defer { try? FileManager.default.removeItem(at: fileURL) }
-
-            loadAndWait(account: account)
-
-            let state = store.state(for: bookId)
-            // Production heals .downloading→.downloadSuccessful when file is present.
-            XCTAssertEqual(state, .downloadSuccessful,
-                           "Cold-start with file present: .downloading must be promoted to .downloadSuccessful, got \(state)")
-        } else {
-            // If the download center cannot resolve a file URL for this book
-            // (e.g. no account directory yet), the test is moot — record this
-            // as a documented gap rather than a failure.
-            throw XCTSkip("MyBooksDownloadCenter.fileUrl returned nil for the test account — cannot stage a present-file case without modifying production code")
+        guard let fileURL = testDownloadCenter.fileUrl(
+            for: placeholderBook, account: account
+        ) else {
+            XCTFail("directoryProvider seam returned nil — the test seam is broken")
+            return
         }
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("present".utf8).write(to: fileURL)
+
+        loadAndWait(account: account)
+
+        let state = store.state(for: bookId)
+        // Production heals .downloading→.downloadSuccessful when file is present.
+        XCTAssertEqual(state, .downloadSuccessful,
+                       "Cold-start with file present: .downloading must be promoted to .downloadSuccessful, got \(state)")
     }
 
     // MARK: - Corrupted / missing registry on cold start
