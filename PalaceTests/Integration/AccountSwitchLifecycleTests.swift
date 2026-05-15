@@ -306,6 +306,40 @@ final class AccountSwitchLifecycleTests: XCTestCase {
                          "cancelNonEssentialTasks must be safe to call at any time, even with no live tasks")
     }
 
+    /// Stronger: directly seed the transport with synthetic live tasks and
+    /// assert that `cancelNonEssentialTasks` drives `liveTaskCount` to zero.
+    /// Pins both:
+    /// 1) the `liveTaskCount` observation surface itself (kills a mutant
+    ///    that always reports zero), and
+    /// 2) that `cancelNonEssentialTasks` actually de-registers/cancels the
+    ///    seeded tasks (kills a no-op cancel mutant).
+    func testSwitch_LiveTaskCount_DropsToZeroAfterCancel() {
+        let executor = makeStubbedExecutor()
+        // Sanity: a fresh transport must be empty.
+        XCTAssertEqual(executor.liveTaskCount, 0,
+                       "Fresh executor must start with zero live tasks — kills a mutant that hard-codes liveTaskCount > 0")
+
+        // Seed two live tasks via the transport's task store. We add the
+        // tasks but do NOT call .resume() — `.suspended` counts as live in
+        // the URLSessionTask state machine, which matches the property's
+        // documented semantics (running OR suspended).
+        let urls = [
+            URL(string: "https://library-a.example.com/feed/1")!,
+            URL(string: "https://library-a.example.com/feed/2")!
+        ]
+        let tasks = urls.map { executor.transport.urlSession.dataTask(with: $0) }
+        tasks.forEach { executor.transport.activeTasksStore.add($0) }
+
+        XCTAssertEqual(executor.liveTaskCount, 2,
+                       "After adding 2 suspended tasks, liveTaskCount must equal 2 — kills off-by-one and ignore-suspended mutants")
+
+        // The account-switch cancellation pass must drive the count down.
+        executor.cancelNonEssentialTasks()
+
+        XCTAssertEqual(executor.liveTaskCount, 0,
+                       "cancelNonEssentialTasks must drop liveTaskCount to zero — kills the mutant that skips ActiveTasksStore.cancelNonEssential")
+    }
+
     // MARK: - Credential mismatch protection
 
     /// Writing B's credentials must NOT overwrite A's keychain entry. This is

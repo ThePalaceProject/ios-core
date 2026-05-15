@@ -191,6 +191,16 @@ private actor TokenRefreshCoordinator {
     @objc func cancelNonEssentialTasks() {
         transport.cancelNonEssentialTasks()
     }
+
+    /// Number of in-flight tasks the transport currently holds — i.e. tasks
+    /// in `.running` or `.suspended` URLSessionTask state. Read-only
+    /// observation surface for tests that need to verify
+    /// `cancelNonEssentialTasks` actually drops the live count. Production
+    /// callers must not use this for control flow; the transport's task
+    /// registry is the source of truth.
+    var liveTaskCount: Int {
+        transport.activeTasksStore.liveTaskCount
+    }
 }
 
 // `executeTokenRefresh(username:password:tokenURL:accountId:completion:)`
