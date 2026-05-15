@@ -165,6 +165,22 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// Settings used by OAuth sign-in flows.
     @objc let urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider
 
+    /// NotificationCenter used by OAuth observer registration / removal.
+    /// Production defaults to `.default`; tests may inject an isolated
+    /// `NotificationCenter()` so the OAuth `handleRedirectURL` add/remove
+    /// pair is verifiable end-to-end without polluting global notifications.
+    /// Set in `init` (and overrideable via `setNotificationCenterForTests`
+    /// below for callers that already constructed via the legacy initializer).
+    var notificationCenter: NotificationCenter = .default
+
+    /// Test seam (see §10.1 of `docs/Testing/Test_Seams_Refactor_Plan.md`):
+    /// allows a unit test to swap in an isolated NotificationCenter after
+    /// init so the OAuth observer add/remove pair can be exercised against a
+    /// hermetic notification bus rather than the global `.default`.
+    @objc func setNotificationCenterForTests(_ center: NotificationCenter) {
+        self.notificationCenter = center
+    }
+
     /// Cookies used to authenticate. Only required for the SAML flow.
     /// TODO: Phase 5 follow-up — migrate callers to read from samlHelper.cookies,
     /// then remove this property. Currently both businessLogic.cookies and

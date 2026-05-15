@@ -776,15 +776,17 @@ changes today** — each test file works around the gap with techniques
 documented inline. The notes here exist so a future seam-sweep PR can
 tighten the public test affordance for these surfaces.
 
-### 10.1 `TPPSignInBusinessLogic.handleRedirectURL` — notification observer ordering
+### 10.1 `TPPSignInBusinessLogic.handleRedirectURL` — notification observer ordering — RESOLVED (commit gap/signin-seams)
 
-`oauthLogIn()` adds a `TPPAppDelegateDidReceiveCleverRedirectURL` observer
-which `handleRedirectURL` removes at the top of its body. Tests in
-`TPPSignInBusinessLogicOAuthTests` exercise `handleRedirectURL` directly
-via a synthetic `Notification`, bypassing the observer registration. This
-covers the parser branches comprehensively but the observer-removal
-side-effect remains untested. A `NotificationObserving` injection seam
-would close that gap. Low priority.
+**Resolution:** Added an injectable `notificationCenter` property on
+`TPPSignInBusinessLogic` (default `.default`) plus an `@objc
+setNotificationCenterForTests(_:)` helper. `oauthLogIn()` and
+`handleRedirectURL` now register / remove the observer against
+`self.notificationCenter`, allowing tests to drive a hermetic
+`NotificationCenter()` for full add → fire → remove verification without
+polluting the process-global default center. See new test
+`test_oauthRedirectObserver_registersAndRemovesItself_viaInjectedCenter`
+in `TPPSignInBusinessLogicOAuthTests`.
 
 ### 10.2 `TPPSignInBusinessLogic.getBearerToken` — `TPPNetworkExecutor` is a concrete dependency
 

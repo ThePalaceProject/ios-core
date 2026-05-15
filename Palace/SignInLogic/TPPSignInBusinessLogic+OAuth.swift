@@ -49,7 +49,7 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        NotificationCenter.default
+        notificationCenter
             .addObserver(self,
                          selector: #selector(handleRedirectURL(_:)),
                          name: .TPPAppDelegateDidReceiveCleverRedirectURL,
@@ -83,7 +83,7 @@ extension TPPSignInBusinessLogic {
         Log.info(#file, "🔐 [REDIRECT] Auth method: \(selectedAuthentication?.methodDescription ?? "N/A")")
         Log.info(#file, "🔐 [REDIRECT] Is SAML: \(selectedAuthentication?.isSaml == true)")
 
-        NotificationCenter.default
+        notificationCenter
             .removeObserver(self, name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: nil)
 
         guard let url = notification.object as? URL else {

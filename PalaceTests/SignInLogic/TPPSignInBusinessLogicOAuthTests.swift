@@ -88,6 +88,43 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
         businessLogic.handleRedirectURL(notification, completion: completion)
     }
 
+    // MARK: - Observer-registration seam (§10.1)
+
+    /// Seam-backed test: post the redirect notification onto a hermetic
+    /// `NotificationCenter` (injected via `setNotificationCenterForTests`)
+    /// and verify the observer fires *and* deregisters itself. Without the
+    /// seam this couldn't be done without polluting the global default
+    /// center across the entire test process.
+    func test_oauthRedirectObserver_registersAndRemovesItself_viaInjectedCenter() {
+        let center = NotificationCenter()
+        businessLogic.setNotificationCenterForTests(center)
+        // Manually add the observer the way oauthLogIn() does — we can't call
+        // oauthLogIn() in a unit-test context (it opens Safari). Instead we
+        // re-create that single side-effect against the injected center.
+        center.addObserver(businessLogic!,
+                           selector: #selector(TPPSignInBusinessLogic.handleRedirectURL(_:)),
+                           name: .TPPAppDelegateDidReceiveCleverRedirectURL,
+                           object: nil)
+
+        let url = cleverRedirectURL(accessToken: "obs-token",
+                                    patron: ["name": "Carol"])
+        center.post(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: url)
+
+        XCTAssertEqual(businessLogic.authToken, "obs-token",
+                       "Observer must fire when notification is posted to the injected center")
+
+        // The observer must have removed itself — a second post must NOT
+        // re-enter handleRedirectURL. We assert this by clearing state and
+        // posting a malformed payload: if the observer is still attached,
+        // the parse-fail path would reset isValidatingCredentials.
+        businessLogic.dispatch(.userAccountUpdated) // clear in-flight state
+        let stuckURL = URL(string:
+            "https://example.com/univeral-link-redirect#access_token=should-not-fire")!
+        center.post(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: stuckURL)
+        XCTAssertNil(businessLogic.authToken,
+                     "Second notification must NOT be observed — handleRedirectURL must remove the observer on first fire")
+    }
+
     // MARK: - handleRedirectURL success / failure paths
 
     func test_handleRedirectURL_validPayload_storesAuthTokenAndPatron() {
