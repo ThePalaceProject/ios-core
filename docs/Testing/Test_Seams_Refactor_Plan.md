@@ -805,15 +805,20 @@ and ObjC interop is preserved.
 triad — it uses a pure in-memory `TokenRefresherMock` and asserts the
 argument flow plus reducer hand-off directly.
 
-### 10.3 `TPPAgeCheck` — private `serialQueue` has no flush hook
+### 10.3 `TPPAgeCheck` — private `serialQueue` has no flush hook — RESOLVED (commit gap/signin-seams)
 
-`TPPAgeCheck.didCompleteAgeCheck(_:)` and `verifyCurrentAccountAgeRequirement(...)`
-both hop through a private `DispatchQueue`. `TPPAgeCheckCompletionTests` relies
-on the same-queue FIFO guarantee of `serialQueue.async`: both `verify` and
-`didCompleteAgeCheck` enqueue onto the queue, and FIFO ordering means the
-verify-append always runs before the didComplete-iterate. A
-`flushPendingForTests()` hook (or an injected queue) would make this
-ordering explicit rather than implicit. Tests are green; this is style.
+**Resolution:** Added an `@objc flushPendingForTests()` method on
+`TPPAgeCheck`, gated `#if DEBUG`. It calls `serialQueue.sync { }` — by
+the time it returns, every `.async` block enqueued earlier in program
+order has executed. The deep tests no longer rely on the implicit FIFO
+guarantee:
+
+* `runVerifyThenComplete` now drains the queue between the `verify` and
+  `didCompleteAgeCheck` calls.
+* `test_didFail_doesNotSetUserPresentedAgeCheck` drains synchronously
+  instead of using an inverted expectation + wall-clock drain timer.
+* `test_verify_nilCompletion_doesNotCrash` drains synchronously instead
+  of a 100ms `asyncAfter` deadline.
 
 ### 10.4 `TPPSignInBusinessLogic+SignOut.signInGeneration` — associated-object guard
 

@@ -127,11 +127,10 @@ final class TPPAgeCheckCompletionTests: XCTestCase {
     /// `didCompleteAgeCheck` with a chosen birth year. Returns the
     /// captured aboveAgeLimit result.
     ///
-    /// The two calls (verify + didCompleteAgeCheck) both enqueue onto the
-    /// `ageCheck`'s private serial queue FIFO, so the verify block — which
-    /// appends our completion to `handlerList` — is guaranteed to run before
-    /// the didCompleteAgeCheck block that iterates the list. This mirrors
-    /// the pattern used by the legacy `TPPAgeCheckTests` in PalaceTests/.
+    /// §10.3 seam: after enqueueing the verify call, we explicitly drain
+    /// the private serial queue via `flushPendingForTests()` before firing
+    /// `didCompleteAgeCheck`. This makes the ordering explicit instead of
+    /// load-bearing on the FIFO contract of `serialQueue.async`.
     private func runVerifyThenComplete(birthYear: Int) -> Bool {
         let library = makeStubAccountNeedingPrompt()
         let provider = StubLibraryProvider(account: library)
@@ -146,8 +145,10 @@ final class TPPAgeCheckCompletionTests: XCTestCase {
             verifyDone.fulfill()
         }
 
-        // Both enqueue onto the same serial queue — FIFO guarantees the
-        // verify-append runs before this didComplete-iterate.
+        // Drain the serial queue: the verify-append now runs synchronously
+        // before we enqueue didCompleteAgeCheck, eliminating reliance on
+        // FIFO ordering.
+        ageCheck.flushPendingForTests()
         ageCheck.didCompleteAgeCheck(birthYear)
 
         wait(for: [verifyDone], timeout: 5.0)
@@ -208,34 +209,27 @@ final class TPPAgeCheckCompletionTests: XCTestCase {
     func test_didFail_doesNotSetUserPresentedAgeCheck() {
         // If the user cancels/fails the age check, we MUST be able to
         // re-prompt them. So userPresentedAgeCheck must remain false.
-        // We exercise didFailAgeCheck directly — both verify (queuing a
-        // handler) and didFailAgeCheck (clearing it) FIFO through the
-        // private serial queue, so a small drain at the end is enough to
-        // observe the post-condition.
+        // §10.3 seam: we drain the serial queue synchronously after both
+        // enqueues so we can assert the post-condition without a
+        // wall-clock drain timer.
         let library = makeStubAccountNeedingPrompt()
         let provider = StubLibraryProvider(account: library)
         let userProvider = FakeUserAccountProvider()
 
-        // Inverted expectation: the completion must NOT be called when the
-        // user fails the age check — didFailAgeCheck removes the handlers.
-        let completionMustNotFire = expectation(description: "verify completion stays unfired (inverted)")
-        completionMustNotFire.isInverted = true
-
+        var completionFired = false
         ageCheck.verifyCurrentAccountAgeRequirement(
             userAccountProvider: userProvider,
             currentLibraryAccountProvider: provider) { _ in
-            completionMustNotFire.fulfill()
+            completionFired = true
         }
         ageCheck.didFailAgeCheck()
 
-        wait(for: [completionMustNotFire], timeout: 0.5)
+        // Drain — both verify and didFailAgeCheck blocks must have executed
+        // by the time this returns.
+        ageCheck.flushPendingForTests()
 
-        // Drain the serial queue to make sure didFailAgeCheck's block has
-        // had a chance to write the storage flag.
-        let drain = expectation(description: "drain")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { drain.fulfill() }
-        wait(for: [drain], timeout: 1.0)
-
+        XCTAssertFalse(completionFired,
+                       "Verify completion must NOT fire on the fail path — didFailAgeCheck wipes the handler list")
         XCTAssertFalse(storage.userPresentedAgeCheck,
                        "didFailAgeCheck must NOT mark userPresentedAgeCheck — the patron must be re-promptable")
     }
@@ -376,10 +370,9 @@ final class TPPAgeCheckVerifyDecisionTests: XCTestCase {
             currentLibraryAccountProvider: provider,
             completion: nil)
 
-        // Drain the serial queue so any pending work completes.
-        let drain = expectation(description: "drain")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { drain.fulfill() }
-        wait(for: [drain], timeout: 1.0)
+        // §10.3 seam: drain the serial queue synchronously instead of a
+        // 100ms wall-clock pause.
+        ageCheck.flushPendingForTests()
 
         // No crash = pass. Sanity-check: nothing else changed.
         XCTAssertNotNil(ageCheck, "ageCheck must remain alive after a nil-completion call")
