@@ -147,9 +147,39 @@ final class OPDS1ParsingTests: XCTestCase {
         XCTAssertEqual(openAccess?.type, "application/epub+zip")
     }
 
-    func testEntry_published_isParsedFromIssuedElement() throws {
-        // Pin existing parser behavior: TPPOPDSEntry reads <issued>, NOT
-        // <published>. This guards a mutant that swaps "issued" → "published".
+    func testEntry_published_isParsedFromPublishedElement() throws {
+        // Atom (RFC 4287) uses <published> for the canonical publication
+        // date. The parser must populate entry.published from <published>.
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <id>urn:uuid:published-feed</id>
+            <title>Published Feed</title>
+            <updated>2024-07-01T00:00:00Z</updated>
+            <entry>
+                <id>urn:uuid:published-entry</id>
+                <title>Has Published</title>
+                <updated>2024-07-01T00:00:00Z</updated>
+                <published>2019-04-01T00:00:00Z</published>
+                <author><name>A</name></author>
+            </entry>
+        </feed>
+        """
+        let parsed = TPPOPDSFeed(xml: TPPXML.xml(withData: Data(xml.utf8)))
+        let entry = parsed?.entries.first { $0.identifier == "urn:uuid:published-entry" }
+        let published = try XCTUnwrap(entry?.published,
+                                      "Entry with <published> must populate entry.published")
+        let components = Calendar(identifier: .iso8601)
+            .dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: published)
+        XCTAssertEqual(components.year, 2019)
+        XCTAssertEqual(components.month, 4)
+        XCTAssertEqual(components.day, 1)
+    }
+
+    func testEntry_published_fallsBackToIssuedWhenPublishedAbsent() throws {
+        // Legacy/Dublin Core feeds use <issued>. When <published> is absent,
+        // the parser must fall back to <issued> rather than leaving the
+        // timestamp nil.
         let xml = """
         <?xml version="1.0" encoding="utf-8"?>
         <feed xmlns="http://www.w3.org/2005/Atom">
@@ -157,28 +187,63 @@ final class OPDS1ParsingTests: XCTestCase {
             <title>Issued Feed</title>
             <updated>2024-07-01T00:00:00Z</updated>
             <entry>
-                <id>urn:uuid:issued-entry</id>
-                <title>Has Issued</title>
+                <id>urn:uuid:issued-only-entry</id>
+                <title>Has Only Issued</title>
                 <updated>2024-07-01T00:00:00Z</updated>
                 <issued>2020-05-10T00:00:00Z</issued>
                 <author><name>A</name></author>
             </entry>
             <entry>
-                <id>urn:uuid:published-only-entry</id>
-                <title>Has Only Published</title>
+                <id>urn:uuid:no-date-entry</id>
+                <title>No Date</title>
                 <updated>2024-07-01T00:00:00Z</updated>
-                <published>2019-04-01T00:00:00Z</published>
                 <author><name>B</name></author>
             </entry>
         </feed>
         """
         let parsed = TPPOPDSFeed(xml: TPPXML.xml(withData: Data(xml.utf8)))
-        let withIssued = parsed?.entries.first { $0.identifier == "urn:uuid:issued-entry" }
-        let withPublishedOnly = parsed?.entries.first { $0.identifier == "urn:uuid:published-only-entry" }
-        XCTAssertNotNil(withIssued?.published,
-                        "Entry with <issued> must populate entry.published")
-        XCTAssertNil(withPublishedOnly?.published,
-                     "Entry with only <published> (no <issued>) must leave entry.published nil — parser reads <issued>")
+        let withIssuedOnly = parsed?.entries.first { $0.identifier == "urn:uuid:issued-only-entry" }
+        let noDate = parsed?.entries.first { $0.identifier == "urn:uuid:no-date-entry" }
+        let published = try XCTUnwrap(withIssuedOnly?.published,
+                                      "Entry with only <issued> must fall back to populate entry.published")
+        let components = Calendar(identifier: .iso8601)
+            .dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: published)
+        XCTAssertEqual(components.year, 2020)
+        XCTAssertEqual(components.month, 5)
+        XCTAssertEqual(components.day, 10)
+        XCTAssertNil(noDate?.published,
+                     "Entry with neither <published> nor <issued> must leave entry.published nil")
+    }
+
+    func testEntry_published_prefersPublishedOverIssuedWhenBothPresent() throws {
+        // When both elements are present, the Atom-canonical <published>
+        // must win — <issued> is a legacy Dublin Core extension.
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <id>urn:uuid:both-feed</id>
+            <title>Both Feed</title>
+            <updated>2024-07-01T00:00:00Z</updated>
+            <entry>
+                <id>urn:uuid:both-entry</id>
+                <title>Has Both</title>
+                <updated>2024-07-01T00:00:00Z</updated>
+                <published>2019-04-01T00:00:00Z</published>
+                <issued>2020-05-10T00:00:00Z</issued>
+                <author><name>A</name></author>
+            </entry>
+        </feed>
+        """
+        let parsed = TPPOPDSFeed(xml: TPPXML.xml(withData: Data(xml.utf8)))
+        let entry = parsed?.entries.first { $0.identifier == "urn:uuid:both-entry" }
+        let published = try XCTUnwrap(entry?.published,
+                                      "Entry with both elements must populate entry.published")
+        let components = Calendar(identifier: .iso8601)
+            .dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: published)
+        XCTAssertEqual(components.year, 2019,
+                       "Canonical <published> must take precedence over legacy <issued>")
+        XCTAssertEqual(components.month, 4)
+        XCTAssertEqual(components.day, 1)
     }
 
     func testEntry_publisher_extracted() throws {
