@@ -726,6 +726,12 @@ final class KeychainFake: KeychainProviding {
 |----------|------|--------|
 | `CatalogRepositoryProtocol` | `CatalogRepositoryProtocol.swift` | Has mock |
 | `CatalogAPI` | `CatalogAPI.swift` | Has mock |
+
+### Clock / Time Seams
+
+| Seam | File | Notes |
+|------|------|-------|
+| `CatalogRepository.init(api:now:)` | `Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/CatalogRepository.swift` | Injectable `() -> Date` clock used by `isExpired` / `isStaleButUsable` / `isTooOld` and all `CachedFeed` timestamp writes. Production code uses the default `init(api:)` which binds `now = Date.init`. Added to drive stale-while-revalidate boundary tests deterministically (see `PalaceTests/CatalogDomain/CatalogRepositoryStaleWhileRevalidateTests.swift`). |
 | `NetworkClient` | `NetworkClient.swift` | Has mock |
 | `TPPLibraryAccountsProvider` | `AccountsManager.swift` | Has mock |
 | `TPPCurrentLibraryAccountProvider` | `AccountsManager.swift` | Has mock |

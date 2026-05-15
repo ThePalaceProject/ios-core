@@ -21,6 +21,11 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     private let cacheQueue = DispatchQueue(label: "catalog.cache.queue", qos: .userInitiated)
     private static let lastAppLaunchKey = "CatalogRepository.lastAppLaunch"
 
+    /// Test seam: injectable "now" provider so unit tests can drive the
+    /// stale-while-revalidate clock deterministically without sleeping.
+    /// Production callers use the default (`Date.init`).
+    private let now: () -> Date
+
     /// Dedicated cache for format entry points, keyed by groups-feed URL.
     /// Pre-warmed by loadTopLevelCatalog so search can display the format picker immediately
     /// without an extra network round-trip when the user first opens search.
@@ -32,34 +37,45 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     private struct CachedFeed {
         let feed: CatalogFeed
         let timestamp: Date
+    }
 
-        /// Fresh cache - use without question (10 minutes)
-        var isExpired: Bool {
-            Date().timeIntervalSince(timestamp) > 600
-        }
+    /// Fresh cache - use without question (< 10 minutes old)
+    private func isExpired(_ entry: CachedFeed) -> Bool {
+        now().timeIntervalSince(entry.timestamp) > 600
+    }
 
-        /// Stale but usable - show immediately, refresh in background (24 hours)
-        var isStaleButUsable: Bool {
-            let age = Date().timeIntervalSince(timestamp)
-            return age > 600 && age <= 86400 // Between 10 min and 24 hours
-        }
+    /// Stale but usable - show immediately, refresh in background (10 min - 24 hours)
+    private func isStaleButUsable(_ entry: CachedFeed) -> Bool {
+        let age = now().timeIntervalSince(entry.timestamp)
+        return age > 600 && age <= 86400
+    }
 
-        /// Too old - must refresh (> 24 hours)
-        var isTooOld: Bool {
-            Date().timeIntervalSince(timestamp) > 86400
-        }
+    /// Too old - must refresh (> 24 hours)
+    private func isTooOld(_ entry: CachedFeed) -> Bool {
+        now().timeIntervalSince(entry.timestamp) > 86400
     }
 
     public init(api: CatalogAPI) {
         self.api = api
+        self.now = Date.init
+        self.checkStaleCacheStatus()
+    }
+
+    /// Test-only initializer that accepts an injectable clock. Production code
+    /// should use `init(api:)` which defaults `now` to `Date.init`. This overload
+    /// is `public` only to be reachable from `PalaceTests` (which imports
+    /// `PalaceCatalog` without `@testable`).
+    public init(api: CatalogAPI, now: @escaping () -> Date) {
+        self.api = api
+        self.now = now
         self.checkStaleCacheStatus()
     }
 
     /// Check if cache is stale - clear URLCache but keep memory cache for stale-while-revalidate
     private func checkStaleCacheStatus() {
-        let now = Date()
+        let currentDate = now()
         let lastLaunch = UserDefaults.standard.object(forKey: Self.lastAppLaunchKey) as? Date ?? .distantPast
-        let daysSinceLastLaunch = Calendar.current.dateComponents([.day], from: lastLaunch, to: now).day ?? 0
+        let daysSinceLastLaunch = Calendar.current.dateComponents([.day], from: lastLaunch, to: currentDate).day ?? 0
 
         if daysSinceLastLaunch >= 7 {
             Log.info(#file, "App hasn't been used in \(daysSinceLastLaunch) days - clearing HTTP cache")
@@ -71,7 +87,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
             needsBackgroundRefresh = true
         }
 
-        UserDefaults.standard.set(now, forKey: Self.lastAppLaunchKey)
+        UserDefaults.standard.set(currentDate, forKey: Self.lastAppLaunchKey)
     }
 
     public func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed? {
@@ -88,14 +104,14 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         // 2. Stale but usable (10 min - 24 hr) → return immediately, refresh in background
         // 3. Too old (> 24 hr) or no cache → fetch fresh
 
-        if let entry = cachedEntry, !entry.isExpired {
+        if let entry = cachedEntry, !isExpired(entry) {
             Log.debug(#file, "Returning fresh cached catalog feed for \(url.absoluteString)")
             prewarmFormatEntriesCache(from: entry.feed, cacheKey: cacheKey)
             return entry.feed
         }
 
         // Stale-while-revalidate: return stale content immediately, refresh in background
-        if let entry = cachedEntry, entry.isStaleButUsable || needsBackgroundRefresh {
+        if let entry = cachedEntry, isStaleButUsable(entry) || needsBackgroundRefresh {
             Log.info(#file, "Returning stale cached catalog feed, refreshing in background: \(url.absoluteString)")
             prewarmFormatEntriesCache(from: entry.feed, cacheKey: cacheKey)
 
@@ -143,7 +159,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         // Cache the result
         await withCheckedContinuation { continuation in
             cacheQueue.async {
-                self.memoryCache[cacheKey] = CachedFeed(feed: feed, timestamp: Date())
+                self.memoryCache[cacheKey] = CachedFeed(feed: feed, timestamp: self.now())
                 continuation.resume()
             }
         }
@@ -167,7 +183,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
 
             await withCheckedContinuation { continuation in
                 cacheQueue.async {
-                    self.memoryCache[cacheKey] = CachedFeed(feed: feed, timestamp: Date())
+                    self.memoryCache[cacheKey] = CachedFeed(feed: feed, timestamp: self.now())
                     Log.info(#file, "Background refresh completed for: \(url.absoluteString)")
                     continuation.resume()
                 }
@@ -264,7 +280,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         // only read. DispatchQueue.sync on a serial queue is deadlock-safe
         // when called from a different queue (MainActor in our case).
         return cacheQueue.sync {
-            guard let entry = memoryCache[cacheKey], !entry.isTooOld else { return nil }
+            guard let entry = memoryCache[cacheKey], !isTooOld(entry) else { return nil }
             return entry.feed
         }
     }
@@ -297,7 +313,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
                         if let preloadedFeed = try await self.api.fetchFeed(at: url) {
                             await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
                                 self.cacheQueue.async {
-                                    self.memoryCache[cacheKey] = CachedFeed(feed: preloadedFeed, timestamp: Date())
+                                    self.memoryCache[cacheKey] = CachedFeed(feed: preloadedFeed, timestamp: self.now())
                                     c.resume()
                                 }
                             }
