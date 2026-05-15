@@ -145,8 +145,11 @@ fi
 # Pick a booted iPhone sim if available; fall back to a stable name. We
 # deliberately do NOT use a hardcoded UDID — harness convention forbids it
 # (parallel agents would collide).
+# Output format: "    iPhone 16 Pro (DF4A2A27-...-...) (Booted)" — the UDID
+# is the parenthesized 36-char hex-and-dash field. `$NF` returns `(Booted)`,
+# not the UDID; pull it out by regex match against the line.
 SIM_ID="$(xcrun simctl list devices iPhone 2>/dev/null \
-          | awk '/Booted/ {print $NF; exit}' | tr -d '()')"
+          | awk '/Booted/ { if (match($0, /[0-9A-F-]{36}/)) { print substr($0, RSTART, RLENGTH); exit } }')"
 
 declare -a DEST_ARGS
 if [[ -n "$SIM_ID" ]]; then
