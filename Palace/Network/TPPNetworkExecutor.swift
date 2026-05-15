@@ -63,7 +63,12 @@ private actor TokenRefreshCoordinator {
     let transport: NetworkTransport
     private let tokenCoordinator = TokenRefreshCoordinator()
 
-    private let responder: TPPNetworkResponder
+    // `internal` (default) rather than `private` so adversarial tests can
+    // wire a completion onto a synthetic task before invoking
+    // `refreshTokenAndResume(task:)`. The responder is otherwise only ever
+    // touched by the executor itself; production callers must keep going
+    // through the executor's higher-level GET / PUT / POST / DELETE surface.
+    let responder: TPPNetworkResponder
     private var _accountsManager: TPPLibraryAccountsProvider?
     private var accountsManager: TPPLibraryAccountsProvider {
         _accountsManager ?? AppContainer.production().accountsManager
@@ -110,6 +115,32 @@ private actor TokenRefreshCoordinator {
                                           cachingStrategy: cachingStrategy,
                                           requestTimeout: TPPNetworkExecutor.defaultRequestTimeout,
                                           delegateQueue: delegateQueue)
+        self._accountsManager = accountsManager
+        super.init()
+    }
+
+    /// Full-DI initializer used by adversarial tests that need BOTH a custom
+    /// `URLSessionConfiguration` (for `URLProtocol`-based stubbing) and an
+    /// injected `TPPLibraryAccountsProvider` (so the executor's per-account
+    /// credential reads target a test-controlled mock instead of
+    /// `AppContainer.production().accountsManager`). No production caller
+    /// needs both seams at once; this exists for token-refresh / retry-queue
+    /// coverage where the executor's token-refresh code path reads from
+    /// `self.accountsManager` and writes via `setAuthToken` on the resolved
+    /// `TPPUserAccount`. See `TokenRefreshAndRetryQueueTests` for the
+    /// motivating scenarios.
+    init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
+         cachingStrategy: NYPLCachingStrategy,
+         sessionConfiguration: URLSessionConfiguration,
+         accountsManager: TPPLibraryAccountsProvider,
+         delegateQueue: OperationQueue? = nil) {
+        self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
+                                             useFallbackCaching: cachingStrategy == .fallback)
+        self.transport = NetworkTransport(delegate: self.responder,
+                                          sessionConfiguration: sessionConfiguration,
+                                          delegateQueue: delegateQueue,
+                                          cachingStrategy: cachingStrategy,
+                                          requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
         self._accountsManager = accountsManager
         super.init()
     }

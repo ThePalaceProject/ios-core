@@ -738,3 +738,30 @@ final class KeychainFake: KeychainProviding {
 | `PDFDocumentProviding` | `PDFDocumentProviding.swift` | Has mock |
 | `ImageCacheType` | `ImageCacheType.swift` | Has mock |
 | `AnnotationsManager` | `TPPAnnotations.swift` | Has mock |
+
+## 9. Addendum (2026-05): TPPNetworkExecutor full-DI initializer
+
+To support adversarial coverage of the token-refresh + 401 retry-queue
+paths in `TPPNetworkExecutor.refreshTokenAndResume`, a new initializer was
+added that accepts BOTH a custom `URLSessionConfiguration` (for
+`URLProtocol`-based stubbing of the token endpoint and retried requests)
+AND an injected `TPPLibraryAccountsProvider` (so per-account credential
+reads and `setAuthToken` writes target a test-controlled
+`TPPLibraryAccountMock` / `TPPUserAccountMock` instead of the production
+singleton via `AppContainer.production().accountsManager`).
+
+```swift
+init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
+     cachingStrategy: NYPLCachingStrategy,
+     sessionConfiguration: URLSessionConfiguration,
+     accountsManager: TPPLibraryAccountsProvider,
+     delegateQueue: OperationQueue? = nil)
+```
+
+The two pre-existing initializers cover all production callers; combining
+them via a third overload avoids forcing every existing caller through a
+sessionConfig argument they don't care about. The injected
+`accountsManager` flows through `self.accountsManager` for the
+token-refresh failure paths (`markCredentialsStale`, signed-in modal
+dispatch, retried-request construction). See
+`PalaceTests/Network/TokenRefreshAndRetryQueueTests`.
