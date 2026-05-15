@@ -175,6 +175,13 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         seedSignedInBasicUserWithAdobe()
         let acct = businessLogic.userAccount as! TPPUserAccountMock
 
+        // §10.4 seam: precondition — no sign-out has happened yet, so the
+        // generation-snapshot accessor returns its sentinel.
+        XCTAssertEqual(businessLogic.signOutSnapshotForTests, -1,
+                       "precondition: signOutSnapshot is unset before performLogOut")
+        XCTAssertFalse(businessLogic.isSignOutInProgressForTests,
+                       "precondition: no sign-out is in flight")
+
         // Defer the DRM deauthorize completion so we can simulate a race.
         drmAuthorizer.shouldDeferDeauthorize = true
 
@@ -192,10 +199,24 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         wait(for: [waited], timeout: 5.0)
         drmPoll.invalidate()
 
+        // §10.4 seam: directly observe the captured snapshot — performLogOut
+        // recorded the userAccount's current generation. Tests can now pin
+        // the snapshot value across the race window without ObjC associated
+        // object hackery.
+        let capturedGeneration = businessLogic.signOutSnapshotForTests
+        XCTAssertGreaterThanOrEqual(capturedGeneration, 0,
+                                    "signOutSnapshot must be captured once performLogOut is in flight")
+        XCTAssertTrue(businessLogic.isSignOutInProgressForTests,
+                      "isSignOutInProgress must be true while DRM deauthorize is pending")
+
         // Simulate the user re-authenticating during the in-flight sign-out.
         // finalizeSignIn() (production) bumps signInGeneration via
         // cancelPendingSignOut(); we hit the same lever directly.
         businessLogic.cancelPendingSignOut()
+        XCTAssertEqual(businessLogic.userAccount.signInGeneration,
+                       capturedGeneration + 1,
+                       "cancelPendingSignOut must increment signInGeneration past the captured snapshot")
+
         // And write the "new" credentials that must NOT be wiped.
         acct.setAuthToken("freshly-reauthed-token", barcode: "new-barcode", pin: "new-pin", expirationDate: nil)
         XCTAssertEqual(acct.authToken, "freshly-reauthed-token", "precondition: new creds present")
@@ -211,6 +232,10 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
                        "Late sign-out callback must NOT wipe credentials that belong to a NEW sign-in (signInGeneration race-guard)")
         XCTAssertEqual(acct.barcode, "new-barcode",
                        "Late sign-out callback must not touch the new barcode")
+        // §10.4 seam: after the stale callback runs, isSignOutInProgress
+        // must be cleared (the stale-path resets the flag).
+        XCTAssertFalse(businessLogic.isSignOutInProgressForTests,
+                       "Stale callback must reset isSignOutInProgress so the next sign-out can proceed")
     }
 
     func test_signOut_preservesAdobeActivation_whenStaleCallbackArrives() {

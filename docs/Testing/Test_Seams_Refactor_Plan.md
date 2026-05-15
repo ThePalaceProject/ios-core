@@ -820,12 +820,19 @@ guarantee:
 * `test_verify_nilCompletion_doesNotCrash` drains synchronously instead
   of a 100ms `asyncAfter` deadline.
 
-### 10.4 `TPPSignInBusinessLogic+SignOut.signInGeneration` — associated-object guard
+### 10.4 `TPPSignInBusinessLogic+SignOut.signInGeneration` — associated-object guard — RESOLVED (commit gap/signin-seams)
 
-The sign-out race guard stores `signOutSnapshot` and `isSignOutInProgress` via
-`objc_getAssociatedObject` / `objc_setAssociatedObject`. Tests in
-`TPPSignInBusinessLogicSignOutTests` exercise the race via the public
-`cancelPendingSignOut()` lever and observe the **post-condition** (credentials
-preserved, Adobe activation preserved). A `var signOutSnapshotForTests: Int`
-getter (compiled `#if DEBUG`) would let future tests assert the snapshot's
-value across the race window without behaviour changes. Not blocking.
+**Resolution:** Added two `@objc` accessors on
+`TPPSignInBusinessLogic+SignOut`, gated `#if DEBUG`:
+
+* `signOutSnapshotForTests: Int` — exposes the `signInGeneration`
+  captured at the top of the current `performLogOut()` call (returns
+  -1 if no sign-out has run yet).
+* `isSignOutInProgressForTests: Bool` — exposes the re-entrancy guard
+  flag.
+
+`TPPSignInBusinessLogicSignOutTests.test_signOut_preservesNewCredentials_whenUserReauthenticatesDuringSignOut`
+now pins the snapshot value directly across the race window
+(`capturedGeneration` → `cancelPendingSignOut` → `capturedGeneration + 1`)
+and asserts `isSignOutInProgress` clears on the stale-callback path —
+instead of observing only the post-condition.
