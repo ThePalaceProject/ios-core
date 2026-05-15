@@ -129,16 +129,14 @@ jobs:
   refresh-baseline:
     # Weekly baseline refresh — opens a PR (not a direct commit) so a human
     # reviews which entries are joining the "known" set.
+    #
+    # Trigger: only manual workflow_dispatch with refresh_baseline=true for
+    # now. The calendar-aware cron guard (fire only on Mondays) is a small
+    # follow-up; until it lands, the daily detect job runs unconditionally
+    # and the baseline-refresh PR is opened manually by an operator.
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: |
-      (github.event_name == 'workflow_dispatch' && inputs.refresh_baseline == true) ||
-      (github.event_name == 'schedule' && format('{0}', github.run_number) != '' &&
-       github.run_number != github.run_number)  # disabled on cron until calendar logic lands
-    # NOTE: the schedule guard above evaluates false for now (the calendar
-    # logic to fire only on Mondays needs a small follow-up). For now, manual
-    # workflow_dispatch + refresh_baseline=true is the canonical path; the
-    # daily detect job runs unconditionally.
+    if: github.event_name == 'workflow_dispatch' && inputs.refresh_baseline == true
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -312,6 +312,7 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
   TOTAL_MUTATIONS=0
   STRICT_FAIL_FILES=()  # strict policy applies AND kill rate < min
   WARN_FILES=()         # kill rate < min but advisory only
+  MUTATION_HARD_FAILED=false
   mkdir -p "$MUTATION_REPORTS_DIR"
 
   while IFS= read -r swift_file; do
@@ -331,19 +332,49 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
         ;;
     esac
 
-    # Find corresponding test directory
-    MODULE=$(echo "$swift_file" | sed 's|Palace/||' | cut -d/ -f1)
-    TEST_DIR="PalaceTests/$MODULE"
-    [ ! -d "$TEST_DIR" ] && TEST_DIR="PalaceTests/"
+    # Resolve XCTestCase class selectors for this production file.
+    # The old logic passed a directory path (e.g. `PalaceTests/Book`) to
+    # `-only-testing:`, which silently matched zero classes — every mutant
+    # graded as SURVIVED against an empty test set, and the gate "passed"
+    # with no kill rate. resolve-tests-for.py emits proper
+    # `PalaceTests/<ClassName>` selectors, one per line.
+    if ! TEST_SELECTORS=$(python3 scripts/resolve-tests-for.py "$swift_file" 2>/dev/null); then
+      echo "  [SKIP] no test selectors resolved for $swift_file — file has no matching *Tests.swift"
+      continue
+    fi
 
     # Per-file JSON report so post-mutation-pr-comment.py can render the table.
     SLUG=$(echo "$swift_file" | tr '/' '_' | sed 's/\.swift$//')
     REPORT_PATH="$MUTATION_REPORTS_DIR/$SLUG.json"
 
+    # Build --tests arg list (one --tests per class — palace_mutate uses
+    # action="append" on --tests).
+    MUTATE_TEST_ARGS=()
+    while IFS= read -r sel; do
+      [ -z "$sel" ] && continue
+      MUTATE_TEST_ARGS+=("--tests" "$sel")
+    done <<< "$TEST_SELECTORS"
+
     MUT_OUTPUT=$(python3 scripts/palace_mutate.py \
-      --file "$swift_file" --tests "$TEST_DIR" \
+      --file "$swift_file" \
+      "${MUTATE_TEST_ARGS[@]}" \
       --report "$REPORT_PATH" \
-      --max-mutations 10 2>&1 || true)
+      --max-mutations 10 2>&1)
+    MUT_EXIT=$?
+
+    # palace_mutate exit codes:
+    #   0 — all mutations ran, kill rate ≥ 50% (or none generated)
+    #   1 — all mutations ran, kill rate < 50% (advisory floor)
+    #   2 — script error (file not found, baseline failed, etc.) — surface loudly
+    # Previously this was wrapped in `|| true` which swallowed exit 2 silently,
+    # which let the hardcoded-REPO_ROOT bug ship to CI undetected. We now
+    # treat 2 as a hard error so it can never masquerade as a clean pass again.
+    if [ "$MUT_EXIT" -ge 2 ]; then
+      echo "$MUT_OUTPUT" | tail -20
+      record "mutation" "fail" "palace_mutate.py errored on $swift_file (exit $MUT_EXIT) — see log above"
+      MUTATION_HARD_FAILED=true
+      break
+    fi
 
     # palace_mutate.py emits "killed: N  survived: N  errored: N  kill rate: P%"
     # in both fresh-run and CACHED branches. Parse from that line.
@@ -366,8 +397,18 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
     fi
   done <<< "$CHANGED_SWIFT"
 
-  if [ "$TOTAL_MUTATIONS" -eq 0 ]; then
-    record "mutation" "pass" "No mutations generated for changed files"
+  if [ "$MUTATION_HARD_FAILED" = "true" ]; then
+    : # fail already recorded inside the loop; skip the post-aggregation record
+  elif [ "$TOTAL_MUTATIONS" -eq 0 ]; then
+    # Defensive: if zero mutations across ≥3 production files, that's
+    # almost certainly a tool misconfiguration, not a genuine no-op diff.
+    # Most real production files have at least one comparison/boolean op.
+    PROD_COUNT=$(echo "$CHANGED_SWIFT" | grep -cv '^$' || echo "0")
+    if [ "${PROD_COUNT:-0}" -ge 3 ]; then
+      record "mutation" "fail" "Suspicious: $PROD_COUNT production files changed but 0 mutations generated total — palace_mutate.py likely misconfigured (check REPO_ROOT, file paths, and exit codes)"
+    else
+      record "mutation" "pass" "No mutations generated for changed files"
+    fi
   elif [ ${#STRICT_FAIL_FILES[@]} -gt 0 ]; then
     KILL_RATE=$((TOTAL_KILLED * 100 / TOTAL_MUTATIONS))
     DETAIL="${KILL_RATE}% aggregate; ${#STRICT_FAIL_FILES[@]} strict-path file(s) below ${MUTATION_MIN_KILL_RATE}%: ${STRICT_FAIL_FILES[*]}"

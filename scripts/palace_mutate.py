@@ -49,8 +49,18 @@ import sys
 import time
 from typing import Callable, Iterable
 
-REPO_ROOT = "/Users/mauricework/PalaceProject/ios-core"
-SIM_ID = "DF4A2A27-9888-429D-A749-2E157A049A37"
+# Derive REPO_ROOT from this script's location (scripts/palace_mutate.py) so the
+# tool works on any host — local dev, GitHub Actions runners, contributors'
+# clones. The previous absolute path silently broke CI: palace_mutate.py would
+# try to read files at `/Users/mauricework/...`, fail with exit 2, and verify-pr's
+# `|| true` masked the failure so the mutation gate "passed" with zero reports.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# SIM_ID: prefer the harness-allocated UDID (HARNESS_SESSION_SIM_UDID env var)
+# so parallel agents and CI can each pin a different sim. Fall back to the
+# author's local sim for direct dev invocation; the script is still allowed to
+# pick a different UDID via env without code changes.
+SIM_ID = os.environ.get("HARNESS_SESSION_SIM_UDID", "DF4A2A27-9888-429D-A749-2E157A049A37")
 DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".forgeos", "mutation-cache")
 CACHE_VERSION = 1  # bump when cache schema changes
 
