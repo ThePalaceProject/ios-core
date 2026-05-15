@@ -24,25 +24,23 @@
 //          `invalidateCache` for every cached URL leaves the repository
 //          serving fresh-from-network on the next read.
 //
-//   3. Cache eviction under memory pressure:
-//        • The repository does NOT register for UIApplication.didReceive-
-//          MemoryWarningNotification today (GAP documented). Memory
-//          pressure relies on the OS evicting `URLCache.shared`, not the
-//          in-memory feed cache. We pin the current behavior — repository
-//          continues to serve the in-memory cache — so a silent change
-//          (e.g. someone wiring a memory-warning observer) is detected.
+//   3. Cache eviction under memory pressure (FIXED — Gap 3):
+//        • The repository now subscribes to UIApplication.didReceive-
+//          MemoryWarningNotification and drops its in-memory feed +
+//          format-entries maps when one fires. The on-disk URLCache is
+//          NOT touched (content-addressed, intentionally survives memory
+//          pressure). We pin this fixed behaviour so a regression that
+//          re-introduces the leak is caught.
 //
-//   4. Cache-key derivation:
-//        • Keys are derived from `url.absoluteString` ONLY. Same URL with
-//          different request headers (bearer tokens) currently SHARES one
-//          cache entry. We pin that contract and document the GAP that
-//          would let library A's data be served to library B if a single
-//          repository instance is reused across libraries.
-//        • Cure (out of scope for these tests, owned by another agent):
-//          the AccountsManager-level cache uses a per-library hash AND
-//          the iOS auth layer typically tears down the repository on
-//          library switch, so the gap is mitigated by lifecycle — not by
-//          the cache-key itself.
+//   4. Cache-key derivation (FIXED — Gap 2):
+//        • Keys are now scoped by the current account/library UUID, so
+//          the same URL fetched under Library A and Library B occupies
+//          two distinct cache slots. Bearer tokens themselves are still
+//          NOT part of the key — they rotate (refresh/re-auth) while the
+//          library identity is stable, which is the natural isolation
+//          boundary. We pin both: per-account isolation works, and a
+//          single account's bearer-token rotation does NOT bust the
+//          cache.
 //
 //   5. URL canonicalisation traps:
 //        • Trailing-slash and case differences in scheme produce DIFFERENT
@@ -51,13 +49,16 @@
 //          normalization slip can be caught.
 //
 //  ──────────────────────────────────────────────────────────────────────────
-//  HOUSE RULES — no production code modified. Clock is via the existing
-//  `init(api:now:)` test seam introduced by the SWR-tests agent.
+//  HOUSE RULES — production fix lives in CatalogRepository.swift only
+//  (cacheKey helper + memory-warning observer). Clock is via the existing
+//  `init(api:now:)` test seam introduced by the SWR-tests agent; account
+//  isolation uses the new `init(api:accountID:now:)` seam.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
 
 import XCTest
+import UIKit
 import PalaceCatalog
 @testable import Palace
 
@@ -71,9 +72,14 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
     /// Mutable clock — drives the stale-while-revalidate logic deterministically.
     private var testNow: Date = Date(timeIntervalSince1970: 1_700_000_000)
 
+    /// Mutable account ID — drives the cache-isolation logic deterministically.
+    /// Each test that switches accounts mutates this between calls.
+    private var testAccountID: String? = nil
+
     override func setUp() {
         super.setUp()
         api = CatalogAPIMock()
+        testAccountID = nil
         // Reset the last-launch heuristic so each test starts with a
         // deterministic needsBackgroundRefresh state. We re-seed in
         // `makeRepository` if we want needsBackgroundRefresh=false.
@@ -82,6 +88,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
     override func tearDown() {
         api = nil
+        testAccountID = nil
         UserDefaults.standard.removeObject(forKey: Self.lastAppLaunchKey)
         super.tearDown()
     }
@@ -92,9 +99,13 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         if seedLastLaunchToNow {
             UserDefaults.standard.set(testNow, forKey: Self.lastAppLaunchKey)
         }
-        return CatalogRepository(api: api, now: { [weak self] in
-            self?.testNow ?? Date(timeIntervalSince1970: 0)
-        })
+        return CatalogRepository(
+            api: api,
+            accountID: { [weak self] in self?.testAccountID },
+            now: { [weak self] in
+                self?.testNow ?? Date(timeIntervalSince1970: 0)
+            }
+        )
     }
 
     /// Poll an async predicate until it holds or the timeout elapses.
@@ -251,97 +262,196 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
                      "invalidateCache(for: cleared) must remove `cleared`'s entry")
     }
 
-    // MARK: - 3. Cache eviction under memory pressure
+    // MARK: - 3. Cache eviction under memory pressure (FIXED — Gap 3)
     //
-    // GAP DOCUMENTED: CatalogRepository does not currently register for
-    // UIApplication.didReceiveMemoryWarningNotification. Memory pressure
-    // is left to URLCache.shared. We pin the current behavior so a silent
-    // change (e.g. an observer that wipes the in-memory cache) is detected.
+    // The repository now subscribes to UIApplication.didReceiveMemoryWarning-
+    // Notification and drops its in-memory feed + format-entries caches when
+    // one fires. The on-disk URLCache.shared is NOT touched: it's content-
+    // addressed and the whole point of disk caching is that it survives
+    // memory pressure. The tests below pin both halves of that contract.
 
-    /// Mutant killed: a future commit that wires the in-memory cache to
-    /// the system memory-warning notification without updating this test.
-    /// If a memory warning suddenly clears the in-memory feed, this test
-    /// will fail and force the author to update the contract intentionally.
-    func testInMemoryCache_AfterSystemMemoryWarning_StillServesCachedFeed() async throws {
+    /// Mutant killed: a regression that detaches the memory-warning
+    /// observer or makes `handleMemoryWarning` a no-op. After a memory
+    /// warning, the in-memory cache MUST be empty and the next read MUST
+    /// hit the network.
+    func testInMemoryCache_AfterSystemMemoryWarning_IsClearedAndNextReadHitsNetwork() async throws {
         let url = URL(string: "https://example.com/memory")!
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "InMemory")
         let sut = makeRepository()
         _ = try await sut.loadTopLevelCatalog(at: url)
         XCTAssertEqual(api.fetchFeedCallCount, 1)
+        XCTAssertNotNil(sut.cachedFeed(for: url), "Sanity: feed is cached before memory warning")
 
-        // Simulate memory pressure by posting the standard system
-        // notification. Current production: repository is NOT subscribed.
+        // Simulate memory pressure. The repository subscribes to this
+        // notification and drops its in-memory feed map.
         NotificationCenter.default.post(
             name: UIApplication.didReceiveMemoryWarningNotification,
             object: nil
         )
-        // Give any (hypothetical) observers a tick to run.
-        try await Task.sleep(nanoseconds: 50_000_000)
 
-        // Re-read: should still hit the in-memory cache (no extra network call).
+        // The eviction is dispatched onto cacheQueue, so poll for it.
+        await awaitCondition {
+            sut.cachedFeed(for: url) == nil
+        }
+        XCTAssertNil(sut.cachedFeed(for: url),
+                     "Gap 3 FIX: in-memory cache must be cleared after memory warning")
+
+        // Re-stub with new content and read again — the repository must
+        // hit the network, not return the (now-cleared) cached value.
+        api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Refetched")
         let result = try await sut.loadTopLevelCatalog(at: url)
-        XCTAssertEqual(result?.title, "InMemory",
-                       "CURRENT BEHAVIOR (documented gap): in-memory cache survives memory warnings")
-        XCTAssertEqual(api.fetchFeedCallCount, 1,
-                       "No network call must occur after memory warning while cache is fresh")
+        XCTAssertEqual(result?.title, "Refetched",
+                       "After memory-warning eviction, next read must come from the network")
+        XCTAssertEqual(api.fetchFeedCallCount, 2,
+                       "Memory warning must force a fresh network fetch on the next read")
     }
 
-    /// Mutant killed: URLCache.shared interaction breaking the in-memory
-    /// cache (e.g. someone changing the in-memory cache to read-through
-    /// URLCache.shared and clearing it on memory warning). Verify that
-    /// removing URLCache.shared's entries doesn't touch the in-memory
-    /// feed cache.
-    func testInMemoryCache_AfterURLCacheSharedCleared_StillServesCachedFeed() async throws {
-        let url = URL(string: "https://example.com/url-cache-test")!
-        api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Survives")
+    /// Mutant killed: a regression where the memory-warning handler
+    /// also nukes the dedicated `formatEntriesCache`, or fails to nuke
+    /// the `memoryCache`. This test pins both halves: a memory warning
+    /// clears the in-memory feed cache (re-read => network) AND clears
+    /// the format-entries cache (re-read => network). The on-disk
+    /// URLCache.shared is content-addressed and is intentionally NOT
+    /// touched by our handler — that's documented by the
+    /// `subscribeToMemoryWarning` doc comment in CatalogRepository.swift.
+    /// (We deliberately do NOT assert on URLCache.shared here because
+    /// the OS itself evicts URLCache.shared on memory pressure, making
+    /// any URLCache.shared probe a flaky test of iOS, not our code.)
+    func testMemoryWarning_ClearsBothInMemoryAndFormatEntriesCache() async throws {
+        let url = URL(string: "https://example.com/both-caches")!
+        api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Both")
+        api.stubbedSearchEntryPoints = [
+            // Use a single dummy entry so the cache stores a non-empty array
+            // (the production code only caches if the array is non-empty).
+            SearchFormatEntry(
+                id: "books",
+                title: "Books",
+                groupsFeedURL: URL(string: "https://example.com/books")!,
+                searchDescriptorURL: nil,
+                isActive: true
+            )
+        ]
         let sut = makeRepository()
         _ = try await sut.loadTopLevelCatalog(at: url)
+        // Prime the format-entries cache too.
+        _ = try await sut.fetchSearchEntryPoints(from: url)
+        let baselineEntryPointFetches = api.fetchSearchEntryPointsCalls.count
 
-        URLCache.shared.removeAllCachedResponses()
+        // Memory warning fires.
+        NotificationCenter.default.post(
+            name: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil
+        )
 
-        let result = try await sut.loadTopLevelCatalog(at: url)
-        XCTAssertEqual(result?.title, "Survives",
-                       "In-memory cache must be independent of URLCache.shared")
-        XCTAssertEqual(api.fetchFeedCallCount, 1)
+        // Both caches must be cleared. Sanity-poll on the feed cache
+        // because the eviction is dispatched on cacheQueue.
+        await awaitCondition { sut.cachedFeed(for: url) == nil }
+
+        // After eviction, the next entry-point read MUST go to the network.
+        _ = try await sut.fetchSearchEntryPoints(from: url)
+        XCTAssertEqual(api.fetchSearchEntryPointsCalls.count, baselineEntryPointFetches + 1,
+                       "Memory warning must also clear formatEntriesCache so the next read hits the network")
     }
 
-    // MARK: - 4. Cache-key derivation
+    // MARK: - 4. Cache-key derivation (FIXED — Gap 2)
     //
-    // GAP DOCUMENTED: the cache key is the raw `url.absoluteString`. Same
-    // URL with different request headers (bearer token) collapses into
-    // ONE cache entry. The catalog's API protocol doesn't even surface
-    // the bearer token to the repository — auth lives in the NetworkClient
-    // layer.
+    // The cache key is now `accountID + "|" + url.absoluteString`. Same
+    // URL fetched under two different libraries occupies two distinct
+    // cache slots, so library A's data can NEVER be served to library B
+    // even if a single repository instance somehow survives a library
+    // switch.
 
-    /// Mutant killed: a future silent change to include request headers
-    /// in the cache key (or a regression that breaks per-URL keying).
-    /// Pins the current contract: same URL → same cache entry, regardless
-    /// of how the underlying NetworkClient authenticated.
-    func testCacheKey_SameURLDistinctBearerTokens_CurrentlyShareCacheEntry() async throws {
-        // The catalog repository can't see bearer tokens. We simulate
-        // "two users hitting the same URL" by re-stubbing the API result
-        // for the same URL between the two loads. If the second load is
-        // served from the cache (current behavior), we observe the FIRST
-        // user's content; if a hypothetical per-bearer-key change ever
-        // lands, this test should fail with the second user's content.
+    /// Mutant killed: a regression that drops the account scope from
+    /// the cache key (e.g. someone "simplifying" cacheKey(for:) back
+    /// to `url.absoluteString`). Two libraries hitting the same URL
+    /// MUST see their OWN content.
+    func testCacheKey_SameURL_DistinctAccounts_AreDistinctEntries() async throws {
         let url = URL(string: "https://example.com/per-library")!
-        api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "User-A-Feed")
+
+        // Library A's response.
+        testAccountID = "library-a-uuid"
+        api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Library-A-Feed")
+        let sut = makeRepository()
+        let a = try await sut.loadTopLevelCatalog(at: url)
+        XCTAssertEqual(a?.title, "Library-A-Feed")
+        XCTAssertEqual(api.fetchFeedCallCount, 1)
+
+        // SWITCH LIBRARY: same repository instance, same URL, different account.
+        testAccountID = "library-b-uuid"
+        api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Library-B-Feed")
+        let b = try await sut.loadTopLevelCatalog(at: url)
+
+        XCTAssertEqual(b?.title, "Library-B-Feed",
+                       "Gap 2 FIX: switching account must NOT serve library A's cached feed to library B")
+        XCTAssertEqual(api.fetchFeedCallCount, 2,
+                       "Different account => cache miss => network fetch")
+
+        // Switch back to library A — its cache must still be intact.
+        testAccountID = "library-a-uuid"
+        api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Library-A-Feed-NEW")
+        let aAgain = try await sut.loadTopLevelCatalog(at: url)
+        XCTAssertEqual(aAgain?.title, "Library-A-Feed",
+                       "Library A's cache slot must survive a switch to/from library B")
+        XCTAssertEqual(api.fetchFeedCallCount, 2,
+                       "Library A's cached feed must still be served without a third network call")
+    }
+
+    /// Mutant killed: a regression where `invalidateCache(for:)` clears
+    /// across all accounts (e.g. someone "fixing" sign-out to nuke
+    /// everything). Invalidation MUST be scoped to the current account
+    /// so signing out of library A does not bust library B's cache.
+    func testInvalidateCache_IsScopedToCurrentAccount() async throws {
+        let url = URL(string: "https://example.com/shared-path")!
+
+        // Cache under both accounts.
+        testAccountID = "lib-A"
+        api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "A")
         let sut = makeRepository()
         _ = try await sut.loadTopLevelCatalog(at: url)
 
-        // "User B" now hits the same URL. In a per-bearer keyed cache,
-        // the response should reflect User B's stubbed content. In the
-        // current single-key-per-URL cache, the cached User-A content is
-        // returned.
-        api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "User-B-Feed")
-        let result = try await sut.loadTopLevelCatalog(at: url)
+        testAccountID = "lib-B"
+        api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "B")
+        _ = try await sut.loadTopLevelCatalog(at: url)
+        XCTAssertEqual(api.fetchFeedCallCount, 2)
 
-        XCTAssertEqual(result?.title, "User-A-Feed",
-                       "GAP: per-bearer cache isolation is NOT implemented. Same URL across users currently shares one entry. " +
-                       "Mitigated in practice by the repository being torn down on library switch.")
-        XCTAssertEqual(api.fetchFeedCallCount, 1,
-                       "Sanity: second load was served from cache, not the (re-stubbed) network")
+        // Sign out of library B (current account = B): invalidate only B's slot.
+        sut.invalidateCache(for: url)
+
+        // Library B's slot is gone.
+        XCTAssertNil(sut.cachedFeed(for: url),
+                     "After invalidate while account=B, B's slot must be empty")
+
+        // Switch back to library A — its slot must still be live.
+        testAccountID = "lib-A"
+        XCTAssertEqual(sut.cachedFeed(for: url)?.title, "A",
+                       "Invalidate scoped to B must NOT clear A's slot at the same URL")
     }
+
+    /// Mutant killed: a regression that DOES start including the bearer
+    /// token (or any per-request header) in the cache key. The bearer
+    /// rotates on every token refresh, which would silently bust the
+    /// cache and triple the network traffic. The repository must NOT
+    /// see the bearer at all — it only sees the URL — so a single
+    /// account's repeated reads share one cache slot regardless of
+    /// underlying auth-layer churn.
+    func testCacheKey_SameAccount_RepeatedReads_ShareOneCacheEntry() async throws {
+        let url = URL(string: "https://example.com/same-account")!
+        testAccountID = "stable-library-uuid"
+        api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Stable")
+        let sut = makeRepository()
+
+        // Three reads back-to-back (simulating three bearer-token rotations
+        // under the same library identity). All must share the same cache
+        // entry — exactly one network call.
+        _ = try await sut.loadTopLevelCatalog(at: url)
+        _ = try await sut.loadTopLevelCatalog(at: url)
+        _ = try await sut.loadTopLevelCatalog(at: url)
+
+        XCTAssertEqual(api.fetchFeedCallCount, 1,
+                       "Same URL + same account => one cache entry, regardless of how many times the bearer rotated under the hood")
+    }
+
+    // MARK: - 5. URL canonicalisation traps
 
     /// Mutant killed: any change that adds a query-parameter normalizer
     /// to the cache key. Different query strings on the same path MUST

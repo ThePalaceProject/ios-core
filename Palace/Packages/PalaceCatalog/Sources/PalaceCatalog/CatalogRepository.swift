@@ -1,5 +1,8 @@
 import Foundation
 import PalaceLogging
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public protocol CatalogRepositoryProtocol {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?
@@ -25,6 +28,14 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     /// stale-while-revalidate clock deterministically without sleeping.
     /// Production callers use the default (`Date.init`).
     private let now: () -> Date
+
+    /// Library/account isolation: cache entries are scoped by the current
+    /// account UUID so that, if a single repository instance survives a
+    /// library switch, library A's catalog can NOT be served to library B.
+    /// The bearer token itself is deliberately NOT used as the key — it
+    /// rotates (refresh / re-auth) while the library identity is stable.
+    /// `nil` is treated as the "anonymous / pre-account" scope.
+    private let accountIDProvider: () -> String?
 
     /// Dedicated cache for format entry points, keyed by groups-feed URL.
     /// Pre-warmed by loadTopLevelCatalog so search can display the format picker immediately
@@ -58,7 +69,21 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     public init(api: CatalogAPI) {
         self.api = api
         self.now = Date.init
+        self.accountIDProvider = { nil }
         self.checkStaleCacheStatus()
+        self.subscribeToMemoryWarning()
+    }
+
+    /// Production initializer that scopes the cache by the current
+    /// account/library UUID. Pass a closure rather than a snapshot so that
+    /// the repository sees the *current* account each call — the value
+    /// changes when the user switches libraries.
+    public init(api: CatalogAPI, accountID: @escaping () -> String?) {
+        self.api = api
+        self.now = Date.init
+        self.accountIDProvider = accountID
+        self.checkStaleCacheStatus()
+        self.subscribeToMemoryWarning()
     }
 
     /// Test-only initializer that accepts an injectable clock. Production code
@@ -68,7 +93,58 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     public init(api: CatalogAPI, now: @escaping () -> Date) {
         self.api = api
         self.now = now
+        self.accountIDProvider = { nil }
         self.checkStaleCacheStatus()
+        self.subscribeToMemoryWarning()
+    }
+
+    /// Test-only initializer that injects both a clock and an account-ID
+    /// provider. Used by cache-isolation tests to simulate library switches
+    /// deterministically.
+    public init(api: CatalogAPI, accountID: @escaping () -> String?, now: @escaping () -> Date) {
+        self.api = api
+        self.now = now
+        self.accountIDProvider = accountID
+        self.checkStaleCacheStatus()
+        self.subscribeToMemoryWarning()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    /// Build the cache key for `url`. Scoped by the current account UUID
+    /// so library A's catalog can never be served to library B.
+    private func cacheKey(for url: URL) -> String {
+        let account = accountIDProvider() ?? "__anonymous__"
+        return account + "|" + url.absoluteString
+    }
+
+    // MARK: - Memory-warning eviction
+    //
+    // CONTRACT: only the in-memory feed/format-entries maps are dropped.
+    // The on-disk URLCache.shared is content-addressed and survives memory
+    // pressure intentionally — dropping it would force a re-download of
+    // every catalog page after the OS sends a warning, which is exactly
+    // what disk caching is meant to avoid.
+    private func subscribeToMemoryWarning() {
+        #if canImport(UIKit)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMemoryWarning),
+            name: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil
+        )
+        #endif
+    }
+
+    @objc private func handleMemoryWarning() {
+        cacheQueue.async { [weak self] in
+            guard let self else { return }
+            Log.info(#file, "Memory warning received — clearing in-memory catalog cache (disk cache preserved)")
+            self.memoryCache.removeAll()
+            self.formatEntriesCache.removeAll()
+        }
     }
 
     /// Check if cache is stale - clear URLCache but keep memory cache for stale-while-revalidate
@@ -91,7 +167,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     }
 
     public func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed? {
-        let cacheKey = url.absoluteString
+        let cacheKey = cacheKey(for: url)
 
         let cachedEntry = await withCheckedContinuation { [weak self] continuation in
             cacheQueue.async {
@@ -240,7 +316,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     }
 
     public func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
-        let cacheKey = url.absoluteString
+        let cacheKey = cacheKey(for: url)
 
         // Check the dedicated format-entries cache first. Pre-warmed by loadTopLevelCatalog
         // so the search format picker has data without an extra network round-trip.
@@ -268,14 +344,14 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     }
 
     public func invalidateCache(for url: URL) {
-        let cacheKey = url.absoluteString
+        let cacheKey = cacheKey(for: url)
         cacheQueue.async {
             self.memoryCache[cacheKey] = nil
         }
     }
 
     public func cachedFeed(for url: URL) -> CatalogFeed? {
-        let cacheKey = url.absoluteString
+        let cacheKey = cacheKey(for: url)
         // Synchronous access — safe because cacheQueue is serial and we
         // only read. DispatchQueue.sync on a serial queue is deadlock-safe
         // when called from a different queue (MainActor in our case).
@@ -300,7 +376,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
             for url in facetURLs {
                 group.addTask { [weak self] in
                     guard let self else { return }
-                    let cacheKey = url.absoluteString
+                    let cacheKey = self.cacheKey(for: url)
 
                     let isCached = await withCheckedContinuation { continuation in
                         self.cacheQueue.async {
