@@ -83,6 +83,7 @@
 		CD15B16BF3F6CATLANEBD03 /* CatalogLaneAssemblyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD15B16AF3F6CATLANEFR03 /* CatalogLaneAssemblyTests.swift */; };
 		CD15B16BF4F6CATKEYIBD04 /* CatalogCacheKeyAndIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD15B16AF4F6CATKEYIFR04 /* CatalogCacheKeyAndIsolationTests.swift */; };
 		GAP4PBXBF00000000000001 /* CatalogProblemDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GAP4FREF00000000000001 /* CatalogProblemDocumentTests.swift */; };
+		GAP5PBXBF00000000000001 /* CatalogLaneAssemblyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GAP5FREF00000000000001 /* CatalogLaneAssemblyTests.swift */; };
 		1266D86E87E4AA575EB966BD /* BookmarkManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68EFBB61877EFCAB44897E93 /* BookmarkManager.swift */; };
 		134F3EF0E81145878D455EFF /* UserRetryTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43040747774740399559510F /* UserRetryTracker.swift */; };
 		13617606AAAD16393E984070 /* PositionSyncRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = A34219C1762ECAA5701434F7 /* PositionSyncRecord.swift */; };
@@ -2471,6 +2472,7 @@
 		CD15B16AF3F6CATLANEFR03 /* CatalogLaneAssemblyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogLaneAssemblyTests.swift; sourceTree = "<group>"; };
 		CD15B16AF4F6CATKEYIFR04 /* CatalogCacheKeyAndIsolationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogCacheKeyAndIsolationTests.swift; sourceTree = "<group>"; };
 		GAP4FREF00000000000001 /* CatalogProblemDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogProblemDocumentTests.swift; sourceTree = "<group>"; };
+		GAP5FREF00000000000001 /* CatalogLaneAssemblyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogLaneAssemblyTests.swift; sourceTree = "<group>"; };
 		CBBDD4C17EA45C71D8076A34 /* PerformanceMetric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceMetric.swift; sourceTree = "<group>"; };
 		CCB1E4A5E6A1E450001D2751 /* TPPProblemReportViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPProblemReportViewController.swift; sourceTree = "<group>"; };
 		CD321623DBDDEC02C16FE9A9 /* TypographyServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyServiceTests.swift; sourceTree = "<group>"; };
@@ -5657,6 +5659,7 @@
 				CD15B16AF4F6CATKEYIFR04 /* CatalogCacheKeyAndIsolationTests.swift */,
 				B83C63AD7FC1676713DBCC77 /* CatalogDomainTests.swift */,
 				GAP4FREF00000000000001 /* CatalogProblemDocumentTests.swift */,
+				GAP5FREF00000000000001 /* CatalogLaneAssemblyTests.swift */,
 			);
 			path = CatalogDomain;
 			sourceTree = "<group>";
@@ -6436,6 +6439,7 @@
 				CD15B16BF4F6CATKEYIBD04 /* CatalogCacheKeyAndIsolationTests.swift in Sources */,
 				PP3629BF000000000000001 /* CatalogLaneSortingTests.swift in Sources */,
 				GAP4PBXBF00000000000001 /* CatalogProblemDocumentTests.swift in Sources */,
+				GAP5PBXBF00000000000001 /* CatalogLaneAssemblyTests.swift in Sources */,
 				C386EA20C90C8215EF9387D3 /* TokenRefreshTests.swift in Sources */,
 				TOKENREFRESHQ001BLD001 /* TokenRefreshAndRetryQueueTests.swift in Sources */,
 				COOKIEPERSIST001BLD001 /* CookiePersistenceTests.swift in Sources */,
