@@ -181,24 +181,55 @@ final class LCPClientTests: XCTestCase {
                      "decrypt(data:) with empty data must short-circuit to nil — symmetric with decrypt(data:using:)")
     }
 
-    // MARK: - findOneValidPassphrase — NOT tested here; see seam rec. #4
-    //
-    // findOneValidPassphrase (TPPLCPClient.swift:135-137) is a thin
-    // pass-through to R2LCPClient with NO exception wrapper, unlike
-    // createContext which has TPPObjCExceptionCatcher.catchAllExceptions.
-    // Garbage inputs (empty license JSON or mismatched hashes against
-    // non-license strings) raise std::logic_error from Botan, escaping
-    // Swift — the same exception family that motivated the createContext
-    // wrapper in F-002. Tests in this file deliberately do NOT exercise
-    // findOneValidPassphrase with adversarial inputs because doing so
-    // would crash the test process (validating the unhandled bug surface
-    // rather than verifying production-code behavior). The fix is to
-    // extend the ObjC exception wrapper to findOneValidPassphrase too —
-    // see "Seam Recommendations" #4 below.
-    //
-    // A happy-path test (real signed license, real matching hash)
-    // belongs in the integration suite (LCPSessionOrphaningTests),
-    // which has the fixtures to construct a valid LCP envelope.
+    // MARK: - findOneValidPassphrase — F-002 symmetric wrapper
+
+    func test_findOneValidPassphrase_garbageLicenseJSON_returnsNilWithoutCrashing() {
+        // F-002 symmetric gap closure: findOneValidPassphrase used to be a
+        // raw pass-through to R2LCPClient with NO exception wrapper. Garbage
+        // license JSON ("not-json-at-all", empty string, malformed payload)
+        // makes Botan raise std::logic_error ("id value cannot not be null",
+        // "expected null, got not") — a C++ exception that escaped Swift's
+        // do/catch entirely and crashed the app via std::terminate.
+        //
+        // The fix mirrors createContext's TPPObjCExceptionCatcher
+        // .catchAllExceptions wrapper. The contract this test asserts: any
+        // adversarial license JSON returns nil (no valid passphrase found)
+        // instead of crashing the test process. If the wrapper is removed
+        // or short-circuited, this test crashes the test runner — which is
+        // the load-bearing failure signal we want.
+        let client = TPPLCPClient()
+
+        // Three garbage shapes that previously triggered std::logic_error
+        // from Botan when passed through R2LCPClient.findOneValidPassphrase:
+        //   1) Empty license string
+        //   2) Non-JSON literal
+        //   3) Structurally JSON but missing every license field
+        let garbageInputs = [
+            "",
+            "not-json-at-all",
+            "{\"missing\": \"every license field\"}",
+        ]
+        let hashedPassphrases = [
+            "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        ]
+
+        for garbage in garbageInputs {
+            // If the wrapper is present, this returns nil. If the wrapper
+            // is removed, Botan's std::logic_error escapes Swift and crashes
+            // the test process — the assertion below is never reached, and
+            // the test fails by SIGABRT rather than by XCTFail. That crash-
+            // shaped failure mode is exactly what makes this test load-bearing
+            // for the F-002 symmetric fix.
+            let result = client.findOneValidPassphrase(
+                jsonLicense: garbage,
+                hashedPassphrases: hashedPassphrases
+            )
+            XCTAssertNil(
+                result,
+                "findOneValidPassphrase must return nil on garbage license JSON (\(garbage.prefix(40))) — never crash, never return a bogus passphrase"
+            )
+        }
+    }
 }
 
 /// A type that is intentionally NOT a DRMContext, used to trip the
@@ -233,13 +264,13 @@ private final class NotADRMContext: LCPClientContext {}
 //    name will silently break. A semantic enum on top of the name (e.g.
 //    `.botanDecoding`, `.unknown`) would harden this seam.
 //
-// 4) findOneValidPassphrase has the SAME C++ exception surface as
-//    createContext but is NOT wrapped with TPPObjCExceptionCatcher.
-//    R2LCPClient raises std::logic_error ("id value cannot not be null"
-//    on empty license JSON; "expected null, got not" on non-JSON license
-//    strings) — these escape Swift and crash the app on bad license data.
-//    Mirroring the createContext wrapper here would close the F-002 gap
-//    on the passphrase-lookup path. This is the highest-leverage seam
-//    extraction this file recommends.
+// 4) findOneValidPassphrase NOW wraps R2LCPClient.findOneValidPassphrase
+//    in TPPObjCExceptionCatcher.catchAllExceptions, mirroring the
+//    createContext fix and closing the F-002 symmetric gap. The wrapper
+//    returns nil on caught C++ exceptions (the same shape callers already
+//    handle for the no-match case). The test
+//    test_findOneValidPassphrase_garbageLicenseJSON_returnsNilWithoutCrashing
+//    locks the wrapper in — removing it crashes the test runner with
+//    std::logic_error from Botan rather than failing softly.
 
 #endif
