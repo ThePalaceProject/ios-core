@@ -30,7 +30,29 @@
 set -uo pipefail
 
 # ---------------------------------------------------------------------------
-# 0. Bypass
+# 0. Chain to git-lfs pre-push (the stock hook this one replaces).
+# ---------------------------------------------------------------------------
+# `git push` calls .git/hooks/pre-push with the stock LFS handler in the
+# default install. Installing this gate WITHOUT chaining would silently
+# stop LFS object verification. We invoke `git lfs pre-push` first with
+# the same args + stdin git passed us; if LFS rejects (missing objects),
+# the push is correctly blocked before we even spend time on tests.
+#
+# `git lfs pre-push` reads from stdin (ref list). We capture stdin into a
+# temp file so we can replay it both to LFS and to ourselves.
+STDIN_CAPTURE="$(mktemp -t pre-push-stdin.XXXXXX)"
+trap 'rm -f "$STDIN_CAPTURE"' EXIT
+cat > "$STDIN_CAPTURE"
+
+if command -v git-lfs >/dev/null 2>&1; then
+  if ! git lfs pre-push "$@" < "$STDIN_CAPTURE"; then
+    echo "[pre-push-test-gate] git-lfs pre-push failed — push blocked by LFS layer (before test gate)." >&2
+    exit 1
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 1. Bypass for the test-gate layer (LFS already ran above)
 # ---------------------------------------------------------------------------
 if [[ "${SKIP_PRE_PUSH_TESTS:-0}" == "1" ]]; then
   echo "[pre-push-test-gate] SKIP_PRE_PUSH_TESTS=1 — bypassing targeted tests." >&2

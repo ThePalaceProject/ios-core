@@ -24,7 +24,13 @@ set -uo pipefail
 
 REPO_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 HOOKS_DIR="$REPO_DIR/.git/hooks"
+# Two source-of-truth directories:
+#   scripts/hooks/  — gitignored host-specific symlinks (harness-managed)
+#   scripts/       — tracked hook scripts (this repo owns, e.g. pre-push-test-gate.sh)
+# install_link probes both; tracked scripts/ wins so fresh clones can opt-in
+# even before the harness wires `scripts/hooks/` on a new machine.
 SCRIPT_HOOKS_DIR="$REPO_DIR/scripts/hooks"
+SCRIPTS_DIR="$REPO_DIR/scripts"
 
 DRY_RUN=0
 FORCE=0
@@ -60,6 +66,14 @@ fi
 install_link() {
   local target="$HOOKS_DIR/$1"
   local source="$SCRIPT_HOOKS_DIR/$2"
+
+  # Fallback to tracked scripts/ directory if the gitignored
+  # scripts/hooks/ symlink isn't wired yet. Fresh clones / new
+  # contributors should be able to opt in without touching
+  # gitignored state.
+  if [[ ! -e "$source" && -e "$SCRIPTS_DIR/$2" ]]; then
+    source="$SCRIPTS_DIR/$2"
+  fi
 
   if [[ ! -e "$source" ]]; then
     echo "  SKIP $1 — source $source missing" >&2
