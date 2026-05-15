@@ -698,6 +698,9 @@ struct BookDetailView: View {
         let account = appContainer.accountsManager.currentUserAccount
         let needsAuth = account.needsAuth && !account.hasCredentials()
 
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+        // now flags this if BookButtonType gains a new case, so a button
+        // can't be silently funneled into the half-sheet-toggle fallback.
         switch buttonType {
         case .sample, .audiobookSample:
             viewModel.handleAction(for: buttonType)
@@ -756,7 +759,10 @@ struct BookDetailView: View {
                 }
             }
 
-        default:
+        case .read, .listen, .retry, .cancel, .returning, .close:
+            // read/listen open the reader, retry/cancel/returning/close are
+            // half-sheet-local actions — all share the same "toggle half-sheet"
+            // fallback. Listed explicitly to preserve exhaustive matching.
             accessibleWithAnimation(.spring()) {
                 viewModel.showHalfSheet.toggle()
             }
