@@ -41,6 +41,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     private var savedAccountsOverride: TPPLibraryAccountsProvider?
     private var savedDeviceAccountsOverride: TPPUserAccountResolving?
     private var savedFirebaseDeviceOverride: String?
+    private var savedAnnotationsURLOverride: URL?
 
     // MARK: - Setup / teardown
 
@@ -53,6 +54,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         savedAccountsOverride = TPPAnnotations.accountsManagerOverride
         savedDeviceAccountsOverride = AnnotationDevice.accountsManagerOverride
         savedFirebaseDeviceOverride = AnnotationDevice.firebaseDeviceIDOverride
+        savedAnnotationsURLOverride = TPPAnnotations.annotationsURLOverride
 
         // Reset shared user-account state so credential writes here don't
         // leak across tests.
@@ -110,6 +112,12 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         // through TPPAnnotations sees a sync-supporting library.
         TPPAnnotations.accountsManagerOverride = libraryAccount
         AnnotationDevice.accountsManagerOverride = libraryAccount
+
+        // Pin the annotations URL to the mock backend. Production reads
+        // TPPConfiguration.mainFeedURL() which is nil on CI's clean runner
+        // (no signed-in library defaults), so without this override every
+        // POST/GET path early-returns before hitting HTTPStubURLProtocol.
+        TPPAnnotations.annotationsURLOverride = Self.baseURL
     }
 
     override func tearDown() {
@@ -121,6 +129,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         TPPAnnotations.accountsManagerOverride = savedAccountsOverride
         AnnotationDevice.accountsManagerOverride = savedDeviceAccountsOverride
         AnnotationDevice.firebaseDeviceIDOverride = savedFirebaseDeviceOverride
+        TPPAnnotations.annotationsURLOverride = savedAnnotationsURLOverride
 
         HTTPStubURLProtocol.reset()
         backend?.clear()

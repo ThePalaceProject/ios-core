@@ -181,13 +181,23 @@ def any_tests_ran(output: str) -> bool:
     return bool(re.search(r"Executed [1-9]\d* test", output))
 
 
-def run_targeted_tests(test_class_paths: list[str], timeout: int = 600) -> tuple[bool, str]:
+_DEFAULT_TARGETED_TEST_TIMEOUT = int(os.environ.get("PALACE_MUTATE_TEST_TIMEOUT", "1200"))
+
+
+def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARGETED_TEST_TIMEOUT) -> tuple[bool, str]:
     """
     Run xcodebuild test scoped to the given test classes.
     Returns (all_passed, last_lines_of_output).
     Returns (False, "ERROR: ...") if the configuration ran zero tests — that
     is treated as a misconfiguration, not a passing run, so callers don't
     grade mutants as SURVIVED against an empty test set.
+
+    Default timeout is 1200s (20 min). On a cold CI runner the first xcodebuild
+    test invocation builds Palace from scratch (Adobe RMSDK, Carthage frameworks,
+    SPM dependencies) which routinely takes 8-10 min before any test executes.
+    Subsequent invocations within the same job reuse DerivedData and are fast.
+    Override with PALACE_MUTATE_TEST_TIMEOUT env var if a faster environment
+    only needs the smaller budget.
     """
     only_testing_args: list[str] = []
     for path in test_class_paths:
