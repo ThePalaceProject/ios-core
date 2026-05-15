@@ -178,6 +178,26 @@ Mutation results cache to `.forgeos/mutation-cache/` keyed by file SHA + test se
 
 `verify-pr.sh --enforce-mutations` makes the 50% kill-rate threshold strict for ALL changed files. Default mode keeps strict-only on critical paths: `Palace/Audiobooks/`, `Palace/SignInLogic/`, `Palace/MyBooks/Download*`. Other paths warn but don't fail.
 
+Test-class resolution for changed production files goes through `scripts/resolve-tests-for.py` — it maps `Palace/Foo/Bar.swift` → `PalaceTests/<XCTestCaseClass>` selectors by scanning `PalaceTests/**/*Tests*.swift` filenames and extracting class declarations (an optional `TPP` prefix is stripped so `TPPLCPClient.swift` resolves to `LCPClientTests`). If a production file has no resolvable tests it is skipped with a logged warning — that warning is a signal the file is uncovered and should get tests.
+
+## Contract-snapshot tests
+
+Some critical-path classes are easier to pin behaviorally than to mutation-test: state machines that emit ordered sequences of dependency calls (BorrowOperation → fetchBook then startDownload; BookReturnService → setProcessing → setState → removeBook → announce.returnSucceeded). For these we lock the *call order + argument shape* as a JSON snapshot — refactors that change the contract drift the snapshot and fail the test loudly.
+
+**Where:** `PalaceTests/Contract/`. The framework lives in `CallLog.swift` (thread-safe recorder) + `ContractSnapshot.swift` (assert / record / diff). First-run records a baseline at `__Snapshots__/<TestClass>/<name>.json` and fails with "snapshot recorded — re-run to verify"; subsequent runs assert equality. Set `CONTRACT_SNAPSHOT_RECORD=1` to deliberately re-record (review the diff in `git diff` before committing).
+
+**When to write a contract test:**
+- The class under test calls 2+ dependencies in a known order and a swap would silently break callers (e.g. removing `registry.setProcessing(false)` mid-cleanup would leak forever).
+- The behavior is too coarse to mutation-test usefully (string-keyed dispatch, ordered side effects, decision trees over enum cases).
+- A regression in the class is high-cost: `Borrow`, `BookReturn`, `DownloadStart`, `BorrowReducer` already have contracts; `SignIn`/`OIDC` callbacks and `BookRegistry` mutation paths are good candidates.
+
+**When NOT:**
+- Pure transformations (use unit tests with explicit assertions).
+- Single-call methods (snapshot adds noise vs. a direct assertion).
+- Anything that hits a real network/keychain/UserDefaults (mock the dependency, snapshot the calls — but the dependency layer is the contract, not the integration).
+
+**Pattern:** instantiate the class under test with spy dependencies that record into a `CallLog`, drive the scenario, call `ContractSnapshot.assert(log, named: "scenarioName")`. Production-code seams that block deterministic exercise (static singletons inside the SUT) get documented as inline comments rather than worked around — the inability to write the test IS the test feedback.
+
 ## Secrets
 
 Never commit: `APIKeys.swift`, `GoogleService-Info.plist`, `TPPSecrets.swift`, `.env` files.
