@@ -410,23 +410,29 @@ final class CatalogCacheMetadataExactBoundaryTests: XCTestCase {
     /// Mutant killed: flipping `> defaultStaleTTL` (21600) to `>=
     /// defaultStaleTTL` in `isStale(serverMaxAge:)`. At exactly 21600s
     /// the existing default-TTL value must be FRESH (operator is `>`).
+    /// Uses the injected-`now` overload so the boundary is exact, not
+    /// drifted by microseconds between `Date()` calls.
     func testIsStale_AtExactlyDefaultStaleTTL_IsFresh() {
+        let now = Date()
         let metadata = CatalogCacheMetadata(
-            timestamp: Date().addingTimeInterval(-21600), // exactly 6 hours old
+            timestamp: now.addingTimeInterval(-21600), // exactly 6 hours old
             hash: "boundary"
         )
-        XCTAssertFalse(metadata.isStale,
+        XCTAssertFalse(metadata.isStale(serverMaxAge: nil, now: now),
                        "Exactly 21600s-old cache must NOT be stale (operator is `>` not `>=`)")
     }
 
     /// Mutant killed: flipping `> maxAge` (86400) to `>= maxAge` in
     /// `isExpired`. At exactly 86400s the cache must NOT be expired.
+    /// Uses the injected-`now` overload so the boundary is exact, not
+    /// drifted by microseconds between `Date()` calls.
     func testIsExpired_AtExactlyMaxAge_IsNotExpired() {
+        let now = Date()
         let metadata = CatalogCacheMetadata(
-            timestamp: Date().addingTimeInterval(-86400), // exactly 24 hours old
+            timestamp: now.addingTimeInterval(-86400), // exactly 24 hours old
             hash: "boundary"
         )
-        XCTAssertFalse(metadata.isExpired,
+        XCTAssertFalse(metadata.isExpired(now: now),
                        "Exactly 86400s-old cache must NOT be expired (operator is `>` not `>=`)")
     }
 
