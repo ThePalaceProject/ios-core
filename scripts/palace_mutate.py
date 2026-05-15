@@ -104,6 +104,24 @@ _MUTATORS: list[tuple[re.Pattern, list[tuple[str, str]], str]] = [
 ]
 
 
+# Patterns matching lines that are PURE diagnostic side effects — mutating
+# inside them flips a string interpolation but doesn't change runtime
+# behavior. Tests cannot kill these mutants no matter what they assert,
+# so including them in the count silently DEFLATES every file's kill rate
+# in proportion to how diagnostics-heavy the source is. AudiobookLoader.swift
+# is the canonical case: 9 discovered mutants, 7 inside `Log.info`/`Log.debug`
+# calls — apparent 0% kill rate, actual production-behavior coverage on
+# the 2 real branches is meaningfully better.
+#
+# We skip mutations whose entire host line is one of these calls. Any
+# branch INSIDE a guard/if that happens to log gets mutated normally;
+# only the log-call line itself is exempt.
+_LOG_LINE_PATTERN = re.compile(
+    r"^\s*(?:Log\.(?:trace|debug|info|warn|error)|"
+    r"print|NSLog|os_log|Logger\.\w+|os\.Logger\(\)\.\w+)\b"
+)
+
+
 def discover_mutations(source: str) -> list[Mutation]:
     out: list[Mutation] = []
     lines = source.splitlines(keepends=False)
@@ -130,6 +148,12 @@ def discover_mutations(source: str) -> list[Mutation]:
                 # Skip if line looks like a comment or doc
                 stripped = line_text.lstrip()
                 if stripped.startswith("//") or stripped.startswith("///") or stripped.startswith("*"):
+                    continue
+                # Skip mutations whose entire host line is a diagnostic
+                # call (see _LOG_LINE_PATTERN comment). Those mutants flip
+                # string interpolations without changing observable
+                # behavior — they are inherently unkillable.
+                if _LOG_LINE_PATTERN.match(line_text):
                     continue
                 # Build the mutated line by replacing at the column
                 start_in_line = col - 1

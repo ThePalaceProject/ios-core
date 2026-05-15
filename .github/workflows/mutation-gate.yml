@@ -30,9 +30,11 @@ jobs:
     # runners (xcodebuild rebuild + test run), and 8 mutants × 7 min = 56 min
     # left zero headroom for checkout + sim boot + summary. Account.swift
     # exceeded the 60-min cap in PR #948 with no reports written — the gate
-    # appeared to fail but had simply timed out. 90 min gives ~25% headroom
-    # without re-tuning per-file mutant counts.
-    timeout-minutes: 90
+    # appeared to fail but had simply timed out. 360 min = GitHub-hosted-runner
+    # max; first-touch cold builds on critical-path-scoped sets routinely take
+    # 90-110 min, and any partial-result mutation report is a worse signal than
+    # waiting for completion.
+    timeout-minutes: 360
     permissions:
       contents: read
       pull-requests: write

@@ -35,10 +35,13 @@ permissions:
 jobs:
   mutation:
     runs-on: macos-26
-    # palace_mutate runs xcodebuild test per mutant. Cache + --max-mutations 10
-    # keeps cold runs to ~30-45 min; 75 min gives headroom for first-touch PRs
-    # that miss the cache entirely.
-    timeout-minutes: 75
+    # palace_mutate runs xcodebuild test per mutant. Cold first-touch PRs hit
+    # 16+ changed production files × baseline + 8 mutants — 90-120 min walltime.
+    # 360 min = GitHub-hosted-runner max; lets the FULL mutation pass complete
+    # so reviewers see a complete kill-rate verdict per file, not a partial
+    # one cut off by a stingy timeout. Subsequent runs hit cache and finish
+    # in minutes; the long ceiling only matters on first touch.
+    timeout-minutes: 360
     steps:
       - name: Set up Xcode 26
         uses: maxim-lobanov/setup-xcode@v1
