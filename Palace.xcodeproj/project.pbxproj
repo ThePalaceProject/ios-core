@@ -1561,6 +1561,8 @@
 		INTG0001B7A00000000003 /* AccountSwitchIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INTG0001B7A00000000004 /* AccountSwitchIntegrationTests.swift */; };
 		INTG0001B7A00000000005 /* BookStateIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INTG0001B7A00000000006 /* BookStateIntegrationTests.swift */; };
 		INTG0001B7A00000000007 /* CatalogLoadIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INTG0001B7A00000000008 /* CatalogLoadIntegrationTests.swift */; };
+		INTG0001B7A00000000009 /* SignInToReadFlowIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INTG0001B7A0000000000A /* SignInToReadFlowIntegrationTests.swift */; };
+		INTG0001B7A0000000000B /* BorrowAndDownloadIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INTG0001B7A0000000000C /* BorrowAndDownloadIntegrationTests.swift */; };
 		KCHAVAIL00BUILD000000001 /* KeychainAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = KCHAVAIL00FILEREF000001 /* KeychainAvailability.swift */; };
 		LNEX01BF00000000000001 /* LoanExpiryHandlingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */; };
 		MOCKBK01BL001 /* MockScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOCKBK01FR001 /* MockScenario.swift */; };
@@ -2857,6 +2859,8 @@
 		INTG0001B7A00000000004 /* AccountSwitchIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSwitchIntegrationTests.swift; sourceTree = "<group>"; };
 		INTG0001B7A00000000006 /* BookStateIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookStateIntegrationTests.swift; sourceTree = "<group>"; };
 		INTG0001B7A00000000008 /* CatalogLoadIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogLoadIntegrationTests.swift; sourceTree = "<group>"; };
+		INTG0001B7A0000000000A /* SignInToReadFlowIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInToReadFlowIntegrationTests.swift; sourceTree = "<group>"; };
+		INTG0001B7A0000000000C /* BorrowAndDownloadIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorrowAndDownloadIntegrationTests.swift; sourceTree = "<group>"; };
 		KCHAVAIL00FILEREF000001 /* KeychainAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainAvailability.swift; sourceTree = "<group>"; };
 		LNEX01FR00000000000001 /* LoanExpiryHandlingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoanExpiryHandlingTests.swift; sourceTree = "<group>"; };
 		MOCKBK01FR001 /* MockScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockScenario.swift; path = Debug/MockBackend/MockScenario.swift; sourceTree = "<group>"; };
@@ -5651,6 +5655,8 @@
 				MOCKINTG01FREF0000002 /* MockBackendTestHelper.swift */,
 				INTG0001B7A00000000006 /* BookStateIntegrationTests.swift */,
 				INTG0001B7A00000000008 /* CatalogLoadIntegrationTests.swift */,
+				INTG0001B7A0000000000A /* SignInToReadFlowIntegrationTests.swift */,
+				INTG0001B7A0000000000C /* BorrowAndDownloadIntegrationTests.swift */,
 			);
 			path = Integration;
 			sourceTree = "<group>";
@@ -6413,6 +6419,8 @@
 				MOCKINTG01BLD00000002 /* MockBackendTestHelper.swift in Sources */,
 				INTG0001B7A00000000005 /* BookStateIntegrationTests.swift in Sources */,
 				INTG0001B7A00000000007 /* CatalogLoadIntegrationTests.swift in Sources */,
+				INTG0001B7A00000000009 /* SignInToReadFlowIntegrationTests.swift in Sources */,
+				INTG0001B7A0000000000B /* BorrowAndDownloadIntegrationTests.swift in Sources */,
 				7C412CCF4234E353860E7FAD /* KeyboardNavigationHandlerTests.swift in Sources */,
 				D8E3E2F8DB67110026272CFB /* MockVisualNavigator.swift in Sources */,
 				AB11E7A7E642DD31825EB6E6 /* FocusIndicationTests.swift in Sources */,
