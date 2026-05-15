@@ -39,6 +39,34 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+/// Test-local mock that exposes `setCookies` writes to the production
+/// `credentialSnapshot()` read path. The base `TPPUserAccountMock`
+/// stores cookies in a private `_cookies: [HTTPCookie]?` property but
+/// the production snapshot reads from the parent class's
+/// `TPPKeychainVariable`-backed storage, which the mock never writes
+/// into. This subclass re-routes the snapshot to read from the mock's
+/// own storage so cold-start cookie sync is observable through the
+/// real production code path.
+private final class TPPUserAccountCookieMock: TPPUserAccountMock {
+    override func credentialSnapshot() -> TPPUserAccount.CredentialSnapshot {
+        // Build a snapshot that uses the mock's own state. `cookies` is
+        // the critical field — request(for:) installs these into
+        // HTTPCookieStorage.shared for SAML accounts. The other fields
+        // mirror what the production snapshot would carry for an
+        // account whose credentials come from setAuthToken / setCookies.
+        return TPPUserAccount.CredentialSnapshot(
+            hasCredentials: hasCredentials(),
+            hasAuthToken: false,
+            authState: authState,
+            barcode: nil,
+            pin: nil,
+            authToken: authToken,
+            authDefinition: authDefinition,
+            cookies: self.cookies
+        )
+    }
+}
+
 final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Fixtures
@@ -56,7 +84,7 @@ final class CookiePersistenceTests: XCTestCase {
         TPPUserAccountMock.resetShared()
         clearSharedCookieStorage()
 
-        userAccount = TPPUserAccountMock()
+        userAccount = TPPUserAccountCookieMock()
         // Build a SAML auth definition so the executor's cookie-install
         // branch is reachable. Production reaches the `if authDef.isSaml`
         // branch in `request(for:)` only for SAML accounts.

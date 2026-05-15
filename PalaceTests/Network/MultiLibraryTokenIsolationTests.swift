@@ -96,24 +96,25 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         TPPUserAccountMock.resetShared()
         libraryProvider = TwoLibraryAccountsProviderMock(startingAtA: true)
 
-        // Library A: token "bearerA", barcode "userA".
+        // Library A: token "bearerA", barcode "userA". Use the high-level
+        // setAuthToken so BOTH the mock's `_authToken` (read by the
+        // `authToken` accessor) and `_credentials` (read by snapshot /
+        // request-builder) end up in sync — directly assigning
+        // `_credentials` only updates one storage and leaves the
+        // `authToken` accessor returning nil.
         libraryProvider.accountA._authDefinition = Self.makeTokenAuth(tokenURL: tokenURL_A)
-        libraryProvider.accountA._credentials = .token(
-            authToken: "bearerA",
-            barcode: "userA",
-            pin: "pinA",
-            expirationDate: Date().addingTimeInterval(3600)
-        )
+        libraryProvider.accountA.setAuthToken("bearerA",
+                                              barcode: "userA",
+                                              pin: "pinA",
+                                              expirationDate: Date().addingTimeInterval(3600))
         libraryProvider.accountA.markLoggedIn()
 
         // Library B: token "bearerB", barcode "userB".
         libraryProvider.accountB._authDefinition = Self.makeTokenAuth(tokenURL: tokenURL_B)
-        libraryProvider.accountB._credentials = .token(
-            authToken: "bearerB",
-            barcode: "userB",
-            pin: "pinB",
-            expirationDate: Date().addingTimeInterval(3600)
-        )
+        libraryProvider.accountB.setAuthToken("bearerB",
+                                              barcode: "userB",
+                                              pin: "pinB",
+                                              expirationDate: Date().addingTimeInterval(3600))
         libraryProvider.accountB.markLoggedIn()
 
         let config = URLSessionConfiguration.ephemeral
