@@ -124,7 +124,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
     /// Mutant killed: flipping `> 600` to `>= 600` in `isExpired` — that
     /// flip would treat 600s-old as expired and re-fetch.
-    func testLoadTopLevelCatalog_AtExactlyTenMinuteBoundary_StillCounsAsFresh() async throws {
+    func testLoadTopLevelCatalog_AtExactlyTenMinuteBoundary_StillCountsAsFresh() async throws {
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "AtBoundary")
         let sut = makeRepository()
 
