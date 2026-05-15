@@ -505,6 +505,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             self.uiDelegate?.businessLogicWillSignIn(self)
         }
 
+        // F-011 class-of-bug guard
         switch wrapped.authType {
         case .oauthIntermediary:
             oauthLogIn()
@@ -524,7 +525,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             }
 
             getBearerToken(username: username, password: password, tokenURL: tokenURL)
-        default:
+        case .basic, .coppa, .anonymous, .none:
             validateCredentials()
         }
     }
