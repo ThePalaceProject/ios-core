@@ -1,0 +1,195 @@
+name: Crashlytics Sentinel
+
+# Daily cron that compares the current top-10 FATAL Crashlytics issues against
+# .forgeos/crashlytics-baseline.json. Any signature that newly entered the
+# top 10 opens a GitHub Issue so the team sees fresh crash signatures on day 1
+# instead of weeks later (the F-004 / F-005 lag we hit in 3.0.0).
+#
+# A separate weekly job opens a PR that refreshes the baseline so today's new
+# entries don't fire detection again next week. We do NOT refresh on every
+# detection — that would mask sustained regressions by absorbing them into the
+# "known" set.
+
+on:
+  schedule:
+    # 14:00 UTC = 10:00 ET / 07:00 PT, ahead of US working hours so a fresh
+    # entry is sitting in the issue queue when the team is awake.
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+    inputs:
+      refresh_baseline:
+        description: "Refresh baseline (do not open issue, just roll forward)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write       # weekly baseline-refresh PR needs to push a branch
+  pull-requests: write  # ...and open the PR
+  issues: write         # detection job opens an issue
+
+concurrency:
+  group: crashlytics-sentinel
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    # Detection runs cheaply on ubuntu — no Xcode needed; this script only
+    # hits the Firebase REST API.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name != 'workflow_dispatch' || inputs.refresh_baseline != true
+    outputs:
+      new_entries: ${{ steps.run.outputs.new_entries }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Firebase REST deps
+        run: pip install pyjwt cryptography
+
+      - name: Write Firebase service account
+        # Service account JSON is stored as a GH secret; never in the repo.
+        # If the secret is missing the script falls through to "warn + exit 0"
+        # so a misconfigured workflow doesn't pager-page.
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [[ -n "$FIREBASE_SA" ]]; then
+            mkdir -p ~/.palace
+            printf '%s' "$FIREBASE_SA" > ~/.palace/firebase-service-account.json
+            echo "Service account written."
+          else
+            echo "::warning::FIREBASE_SERVICE_ACCOUNT secret not set; sentinel will exit 0."
+          fi
+
+      - name: Run sentinel
+        id: run
+        run: |
+          set +e
+          OUT=$(python3 scripts/crashlytics-sentinel.py 2>sentinel.stderr)
+          RC=$?
+          echo "$OUT"
+          if [[ $RC -eq 1 && -n "$OUT" ]]; then
+            # New entries detected — capture the YAML for the issue body.
+            {
+              echo "new_entries<<__SENTINEL_EOF__"
+              echo "$OUT"
+              echo "__SENTINEL_EOF__"
+            } >> "$GITHUB_OUTPUT"
+          fi
+          # Surface stderr in the log for diagnostics, but don't fail the
+          # job — by contract, Firebase outages must not page on-call.
+          if [[ -s sentinel.stderr ]]; then
+            echo "--- sentinel stderr ---"
+            cat sentinel.stderr
+          fi
+          exit 0
+
+      - name: Open GitHub Issue for new top-10 entries
+        if: steps.run.outputs.new_entries != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_ENTRIES: ${{ steps.run.outputs.new_entries }}
+        run: |
+          set -euo pipefail
+          DATE=$(date -u +%Y-%m-%d)
+          TITLE="Crashlytics: new top-10 entry detected ${DATE}"
+          BODY_FILE=$(mktemp)
+          cat > "$BODY_FILE" <<EOF
+          The Crashlytics sentinel detected one or more signatures that have
+          newly entered the top 10 since the last baseline refresh
+          (\`.forgeos/crashlytics-baseline.json\`).
+
+          Investigate each entry below: confirm whether it is a real regression
+          (NEW signature) or a previously-known issue whose volume crossed
+          the top-10 threshold (in which case, update the baseline manually
+          or wait for the weekly refresh PR).
+
+          \`\`\`yaml
+          ${NEW_ENTRIES}
+          \`\`\`
+
+          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
+          gh issue create \
+            --title "$TITLE" \
+            --body-file "$BODY_FILE" \
+            --label "crashlytics,sentinel" \
+            || gh issue create \
+                 --title "$TITLE" \
+                 --body-file "$BODY_FILE"
+          # The fallback runs without --label because brand-new repos won't
+          # have the labels created yet — first run will just open the issue.
+
+  refresh-baseline:
+    # Weekly baseline refresh — opens a PR (not a direct commit) so a human
+    # reviews which entries are joining the "known" set.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.refresh_baseline == true) ||
+      (github.event_name == 'schedule' && format('{0}', github.run_number) != '' &&
+       github.run_number != github.run_number)  # disabled on cron until calendar logic lands
+    # NOTE: the schedule guard above evaluates false for now (the calendar
+    # logic to fire only on Mondays needs a small follow-up). For now, manual
+    # workflow_dispatch + refresh_baseline=true is the canonical path; the
+    # daily detect job runs unconditionally.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Firebase REST deps
+        run: pip install pyjwt cryptography
+
+      - name: Write Firebase service account
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [[ -n "$FIREBASE_SA" ]]; then
+            mkdir -p ~/.palace
+            printf '%s' "$FIREBASE_SA" > ~/.palace/firebase-service-account.json
+          else
+            echo "::error::FIREBASE_SERVICE_ACCOUNT secret missing — cannot refresh baseline."
+            exit 1
+          fi
+
+      - name: Refresh baseline
+        run: |
+          python3 scripts/crashlytics-sentinel.py --refresh-baseline
+
+      - name: Create PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          DATE=$(date -u +%Y-%m-%d)
+          BRANCH="chore/crashlytics-baseline-${DATE}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add .forgeos/crashlytics-baseline.json
+          if git diff --cached --quiet; then
+            echo "No baseline changes; nothing to PR."
+            exit 0
+          fi
+          git commit -m "chore(crashlytics): refresh sentinel baseline ${DATE}"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "chore(crashlytics): refresh sentinel baseline ${DATE}" \
+            --body "Weekly baseline refresh from \`scripts/crashlytics-sentinel.py --refresh-baseline\`. Review the diff to confirm no high-severity signature is being silently absorbed into 'known.'" \
+            --base develop \
+            --label "crashlytics,sentinel,automated" \
+            || gh pr create \
+                 --title "chore(crashlytics): refresh sentinel baseline ${DATE}" \
+                 --body "Weekly baseline refresh." \
+                 --base develop

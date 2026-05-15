@@ -1,0 +1,110 @@
+{
+  "as_of": "2026-05-14",
+  "app_id": "1:716454087792:ios:11eb8d287ec88c2784f8b5",
+  "note": "Seed baseline. Entries marked placeholder=true should be replaced by the next live Firebase fetch — they exist so the sentinel doesn't flap on its first real run before the workflow has a chance to refresh.",
+  "issues": [
+    {
+      "issue_id": "27f5746256446e635a62d2ba5e31da32",
+      "title": "Audiobook failed to open",
+      "subtitle": "BookService.swift:110 — 401 on SAML library audiobook fulfillment",
+      "events_count": 107,
+      "impacted_users": 40,
+      "first_seen_version": "3.0.0",
+      "uri": "https://console.firebase.google.com/project/the-palace-project/crashlytics/app/ios:org.thepalaceproject.palace/issues/27f5746256446e635a62d2ba5e31da32",
+      "alias": "F-001"
+    },
+    {
+      "issue_id": "a28b442be3866caafc936525666d7f92",
+      "title": "Problem Document available (912)",
+      "subtitle": "Generic borrow/fulfill failure surfacing as alert",
+      "events_count": 29,
+      "impacted_users": 24,
+      "first_seen_version": "3.0.0",
+      "uri": "https://console.firebase.google.com/project/the-palace-project/crashlytics/app/ios:org.thepalaceproject.palace/issues/a28b442be3866caafc936525666d7f92",
+      "alias": "F-002"
+    },
+    {
+      "issue_id": "nsinternal-scroll-fatal",
+      "title": "NSInternalInconsistencyException scroll crash (FATAL)",
+      "subtitle": "Scroll-related collection-view invalidation",
+      "events_count": 114,
+      "impacted_users": 65,
+      "first_seen_version": "2.2.x",
+      "uri": "https://console.firebase.google.com/project/the-palace-project/crashlytics/app/ios:org.thepalaceproject.palace/issues/nsinternal-scroll-fatal",
+      "alias": "F-003",
+      "placeholder": true
+    },
+    {
+      "issue_id": "tpp-bookcover-fetchcoverimage-3-0-0",
+      "title": "TPPBookCoverRegistry.fetchCoverImage fatal",
+      "subtitle": "NEW IN 3.0.0 — disk-cache main-thread fetch returning nil",
+      "events_count": 1,
+      "impacted_users": 1,
+      "first_seen_version": "3.0.0",
+      "uri": "https://console.firebase.google.com/project/the-palace-project/crashlytics/app/ios:org.thepalaceproject.palace/issues/tpp-bookcover-fetchcoverimage-3-0-0",
+      "alias": "F-004",
+      "placeholder": true
+    },
+    {
+      "issue_id": "audiobookloader-finalizebuild-3-0-0",
+      "title": "AudiobookLoader.finalizeBuild fatal",
+      "subtitle": "NEW IN 3.0.0 — manifest build path",
+      "events_count": 1,
+      "impacted_users": 1,
+      "first_seen_version": "3.0.0",
+      "uri": "https://console.firebase.google.com/project/the-palace-project/crashlytics/app/ios:org.thepalaceproject.palace/issues/audiobookloader-finalizebuild-3-0-0",
+      "alias": "F-005",
+      "placeholder": true
+    },
+    {
+      "issue_id": "placeholder-top-6",
+      "title": "Placeholder — replace on next Firebase MCP refresh",
+      "subtitle": "",
+      "events_count": 0,
+      "impacted_users": 0,
+      "first_seen_version": "",
+      "uri": "",
+      "placeholder": true
+    },
+    {
+      "issue_id": "placeholder-top-7",
+      "title": "Placeholder — replace on next Firebase MCP refresh",
+      "subtitle": "",
+      "events_count": 0,
+      "impacted_users": 0,
+      "first_seen_version": "",
+      "uri": "",
+      "placeholder": true
+    },
+    {
+      "issue_id": "placeholder-top-8",
+      "title": "Placeholder — replace on next Firebase MCP refresh",
+      "subtitle": "",
+      "events_count": 0,
+      "impacted_users": 0,
+      "first_seen_version": "",
+      "uri": "",
+      "placeholder": true
+    },
+    {
+      "issue_id": "placeholder-top-9",
+      "title": "Placeholder — replace on next Firebase MCP refresh",
+      "subtitle": "",
+      "events_count": 0,
+      "impacted_users": 0,
+      "first_seen_version": "",
+      "uri": "",
+      "placeholder": true
+    },
+    {
+      "issue_id": "placeholder-top-10",
+      "title": "Placeholder — replace on next Firebase MCP refresh",
+      "subtitle": "",
+      "events_count": 0,
+      "impacted_users": 0,
+      "first_seen_version": "",
+      "uri": "",
+      "placeholder": true
+    }
+  ]
+}
