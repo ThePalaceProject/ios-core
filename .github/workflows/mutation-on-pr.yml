@@ -67,6 +67,30 @@ jobs:
             mutation-cache-develop-
             mutation-cache-
 
+      # The next three steps mirror unit-testing.yml's setup. Without
+      # them, build-3rd-party-dependencies.sh fails because:
+      #   - mobile-certificates is a private repo holding GoogleService-Info.plist
+      #     + APIKeys.swift, copied into the workspace by setup-repo-drm.sh
+      #   - Adobe RMSDK is a separate private repo for DRM connectors
+      #   - setup-repo-drm.sh stitches both into Palace's expected layout
+      # before Carthage binary frameworks are pulled.
+      - name: Checkout Certificates
+        uses: actions/checkout@v3
+        with:
+          repository: ThePalaceProject/mobile-certificates
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          path: ./mobile-certificates
+
+      - name: Checkout Adobe RMSDK
+        uses: ./.github/actions/checkout-adobe
+        with:
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
+      - name: Setup repo with DRM
+        run: ./scripts/setup-repo-drm.sh
+        env:
+          BUILD_CONTEXT: ci
+
       - name: Build non-Carthage 3rd party dependencies
         # Palace's `Carthage/Build/` is populated by this script (it pulls
         # binary frameworks like Findaway's AudioEngine.xcframework). Without
@@ -142,9 +166,17 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
+          # Default to 1 when the mutation step was skipped (e.g. an
+          # earlier setup step failed and verify-pr.sh never ran). Without
+          # the default `exit "$VERIFY_EXIT"` becomes `exit ""` which bash
+          # reports as "numeric argument required" (exit 255) — masks the
+          # real failure as a yaml/sh bug. A missing verify_exit means
+          # "we didn't get to gate on kill rate", which is itself a failure
+          # the job status should reflect.
           VERIFY_EXIT="${{ steps.mutation.outputs.verify_exit }}"
+          VERIFY_EXIT="${VERIFY_EXIT:-1}"
           if [[ "$VERIFY_EXIT" != "0" ]]; then
-            echo "::error::verify-pr.sh --mutation-only exited $VERIFY_EXIT — critical-path mutation kill rate below threshold."
+            echo "::error::verify-pr.sh --mutation-only exited $VERIFY_EXIT — critical-path mutation kill rate below threshold (or earlier setup step failed; check the workflow log)."
             exit "$VERIFY_EXIT"
           fi
           echo "All critical-path files meet the kill-rate floor."
