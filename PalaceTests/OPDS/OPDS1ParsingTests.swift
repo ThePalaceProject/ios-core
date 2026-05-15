@@ -14,6 +14,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceCatalog
 
 // MARK: - Fixture loader
 
