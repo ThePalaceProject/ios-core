@@ -3219,6 +3219,7 @@
 				48DF25F6BFF39ECDAF39E3E3 /* CatalogViewModelTests.swift */,
 				B57489E1C2CE2DD11EFC1C03 /* CatalogModelsTests.swift */,
 				5948988DD314B94674443C4F /* CatalogFilterServiceTests.swift */,
+				9BFF70FF762C60CE8CD8D811 /* CatalogSearchViewModelTests.swift */,
 			);
 			path = CatalogUI;
 			sourceTree = "<group>";
@@ -3460,12 +3461,9 @@
 		48C00A8C2B07228C81A846CB /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
-				4C73660492C45AC4EDF27B6E /* BookDetailViewModelTests.swift */,
 				BDDA22B0012345CAFEBABE02 /* BookDetailMetadataHydrationTests.swift */,
-				8ADE8A45C4B4AAE67143A272 /* HoldsViewModelTests.swift */,
 				HOLDSREDTESTSFILEREF001Z /* HoldsReducerTests.swift */,
 				BORROWREDTESTSFILEREF001Z /* BorrowReducerTests.swift */,
-				9BFF70FF762C60CE8CD8D811 /* CatalogSearchViewModelTests.swift */,
 				F5CBFE0B23AFFE343E256AE1 /* AccountDetailViewModelTests.swift */,
 				44E59F675A3E4419BE1E24BB /* FacetViewModelTests.swift */,
 				E739F55510A748E5A09E3398 /* CatalogLaneMoreViewModelTests.swift */,
@@ -3473,6 +3471,14 @@
 				A1C9CA13B5B94707BFFCB13F /* ViewModelComputedPropertyTests.swift */,
 			);
 			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		HOLDSVM00TESTGROUP0001Z /* Holds */ = {
+			isa = PBXGroup;
+			children = (
+				8ADE8A45C4B4AAE67143A272 /* HoldsViewModelTests.swift */,
+			);
+			path = Holds;
 			sourceTree = "<group>";
 		};
 		48E1DB2642CBFFC345BB345E /* Chaos */ = {
@@ -4737,6 +4743,7 @@
 				F2BB1B5D4CD70134736309E2 /* DRM */,
 				AF7180D5A9E0A6119249B567 /* Contract */,
 				43FEBF64C7C8A58FD2534CB0 /* Sync */,
+				HOLDSVM00TESTGROUP0001Z /* Holds */,
 			);
 			path = PalaceTests;
 			sourceTree = "<group>";
@@ -4774,6 +4781,7 @@
 				BKTST00012F27000000FR03 /* TPPBookAuthorTests.swift */,
 				BKTST00012F27000000FR04 /* TPPBookSerializationTests.swift */,
 				BKTST00012F27000000FR05 /* TPPBookExtensionsTests.swift */,
+				4C73660492C45AC4EDF27B6E /* BookDetailViewModelTests.swift */,
 			);
 			path = Book;
 			sourceTree = "<group>";
