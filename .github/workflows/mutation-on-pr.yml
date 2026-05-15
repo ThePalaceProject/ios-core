@@ -67,6 +67,18 @@ jobs:
             mutation-cache-develop-
             mutation-cache-
 
+      - name: Build non-Carthage 3rd party dependencies
+        # Palace's `Carthage/Build/` is populated by this script (it pulls
+        # binary frameworks like Findaway's AudioEngine.xcframework). Without
+        # this step the xcodebuild test phase fails at link time with
+        # "no XCFramework at Carthage/Build/AudioEngine.xcframework" and
+        # palace_mutate.py reports "0 tests executed" — masking a real
+        # build failure as a misconfigured --tests arg. Same step
+        # unit-testing.yml runs; mutation-on-pr was missing it.
+        run: ./scripts/build-3rd-party-dependencies.sh
+        env:
+          BUILD_CONTEXT: ci
+
       - name: Boot iPhone simulator
         id: sim
         run: |
