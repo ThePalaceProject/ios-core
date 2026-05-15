@@ -765,3 +765,53 @@ sessionConfig argument they don't care about. The injected
 token-refresh failure paths (`markCredentialsStale`, signed-in modal
 dispatch, retried-request construction). See
 `PalaceTests/Network/TokenRefreshAndRetryQueueTests`.
+
+## 10. Addendum (2026-05): TPPSignInBusinessLogic deep-test seam gaps
+
+While adding mutation-killing tests for `TPPSignInBusinessLogic` (see
+`PalaceTests/SignInLogic/TPPSignInBusinessLogicOAuthTests.swift`,
+`TPPSignInBusinessLogicSignOutTests.swift`, `TPPAgeCheckDeepTests.swift`),
+the following seam gaps were identified. **None require production-code
+changes today** — each test file works around the gap with techniques
+documented inline. The notes here exist so a future seam-sweep PR can
+tighten the public test affordance for these surfaces.
+
+### 10.1 `TPPSignInBusinessLogic.handleRedirectURL` — notification observer ordering
+
+`oauthLogIn()` adds a `TPPAppDelegateDidReceiveCleverRedirectURL` observer
+which `handleRedirectURL` removes at the top of its body. Tests in
+`TPPSignInBusinessLogicOAuthTests` exercise `handleRedirectURL` directly
+via a synthetic `Notification`, bypassing the observer registration. This
+covers the parser branches comprehensively but the observer-removal
+side-effect remains untested. A `NotificationObserving` injection seam
+would close that gap. Low priority.
+
+### 10.2 `TPPSignInBusinessLogic.getBearerToken` — `TPPNetworkExecutor` is a concrete dependency
+
+`getBearerToken(...)` already accepts an injectable `TPPNetworkExecutor`
+argument (default `AppContainer.production().networkExecutor`). The argument
+is the concrete class, not a protocol, so token-flow tests have to construct
+a real `TPPNetworkExecutor` against a stubbed `URLSessionConfiguration`. This
+works (see `TPPSignInBusinessLogicTokenFlowTests`) and stays hermetic via
+`HTTPStubURLProtocol`. A `TokenRefreshing` protocol seam would allow a pure
+in-memory mock. Low priority.
+
+### 10.3 `TPPAgeCheck` — private `serialQueue` has no flush hook
+
+`TPPAgeCheck.didCompleteAgeCheck(_:)` and `verifyCurrentAccountAgeRequirement(...)`
+both hop through a private `DispatchQueue`. `TPPAgeCheckCompletionTests` relies
+on the same-queue FIFO guarantee of `serialQueue.async`: both `verify` and
+`didCompleteAgeCheck` enqueue onto the queue, and FIFO ordering means the
+verify-append always runs before the didComplete-iterate. A
+`flushPendingForTests()` hook (or an injected queue) would make this
+ordering explicit rather than implicit. Tests are green; this is style.
+
+### 10.4 `TPPSignInBusinessLogic+SignOut.signInGeneration` — associated-object guard
+
+The sign-out race guard stores `signOutSnapshot` and `isSignOutInProgress` via
+`objc_getAssociatedObject` / `objc_setAssociatedObject`. Tests in
+`TPPSignInBusinessLogicSignOutTests` exercise the race via the public
+`cancelPendingSignOut()` lever and observe the **post-condition** (credentials
+preserved, Adobe activation preserved). A `var signOutSnapshotForTests: Int`
+getter (compiled `#if DEBUG`) would let future tests assert the snapshot's
+value across the race window without behaviour changes. Not blocking.
