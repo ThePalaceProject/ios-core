@@ -174,9 +174,24 @@ Module contracts under `.forgeos/contracts/<module>.json` are emitted by `script
 
 ## Mutation testing
 
-Mutation results cache to `.forgeos/mutation-cache/` keyed by file SHA + test selection. `verify-pr.sh` reads the cache automatically — repeat runs on unchanged files are near-instant (<1s vs minutes).
+**Local-only as of 2026-05-15** — mutation runs are part of the **regression workflow** (`/regression` skill) and the pre-release self-check, not CI. macOS GitHub-hosted runners bill at $0.08/min; on a cold first-touch PR with 16+ changed production files, mutation walltime is 90–120 min ≈ $7–10 per push. We pay that once locally, before tag-cut, instead of every push to every PR. The mutation-on-pr.yml + mutation-gate.yml workflows were removed for this reason (commit history preserved if you need to revive them).
 
-`verify-pr.sh --enforce-mutations` makes the 50% kill-rate threshold strict for ALL changed files. Default mode keeps strict-only on critical paths: `Palace/Audiobooks/`, `Palace/SignInLogic/`, `Palace/MyBooks/Download*`. Other paths warn but don't fail.
+```bash
+# Default — full battery sans mutation, fast (~5 min):
+scripts/verify-pr.sh --quick
+
+# Pre-release: add mutation gate (cache reuses across runs):
+scripts/verify-pr.sh --quick --enforce-mutations
+
+# Mutation-only for a single file (used by /regression skill):
+python3 scripts/palace_mutate.py \
+  --file Palace/Path/ChangedFile.swift \
+  --tests PalaceTests/ChangedFileTests
+```
+
+Mutation results cache to `.forgeos/mutation-cache/` keyed by file SHA + test selection. Repeat runs on unchanged files are near-instant (<1s vs minutes). `verify-pr.sh --enforce-mutations` makes the 50% kill-rate threshold strict for ALL changed files. Default mode keeps strict-only on critical paths: `Palace/Audiobooks/`, `Palace/SignInLogic/`, `Palace/MyBooks/Download*`.
+
+The mutation engine itself (`scripts/palace_mutate.py`) skips mutation points inside `Log.{trace,debug,info,warn,error}` / `print` / `NSLog` / `os_log` / `Logger` call lines — those flip a string interpolation but don't change observable behavior, so they were silently deflating every file's kill rate. AudiobookLoader.swift went from 9 discovered mutants (7 log-noise, 2 real, 0% kill rate) to 6 real mutants (6/6 = 100% kill rate) after the skip rule landed.
 
 Test-class resolution for changed production files goes through `scripts/resolve-tests-for.py` — it maps `Palace/Foo/Bar.swift` → `PalaceTests/<XCTestCaseClass>` selectors by scanning `PalaceTests/**/*Tests*.swift` filenames and extracting class declarations (an optional `TPP` prefix is stripped so `TPPLCPClient.swift` resolves to `LCPClientTests`). If a production file has no resolvable tests it is skipped with a logged warning — that warning is a signal the file is uncovered and should get tests.
 
