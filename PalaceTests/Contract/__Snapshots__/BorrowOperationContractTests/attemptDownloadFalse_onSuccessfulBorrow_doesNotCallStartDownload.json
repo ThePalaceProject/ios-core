@@ -1,0 +1,10 @@
+[
+  {
+    "args" : {
+      "resetCache" : "true",
+      "url" : "F014-NoDL",
+      "useToken" : "true"
+    },
+    "method" : "fetchBook"
+  }
+]

@@ -1,0 +1,28 @@
+[
+  {
+    "args" : {
+      "bookId" : "RET-ERR"
+    },
+    "method" : "announce.returnStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-ERR",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-ERR",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-ERR"
+    },
+    "method" : "announce.returnFailed"
+  }
+]

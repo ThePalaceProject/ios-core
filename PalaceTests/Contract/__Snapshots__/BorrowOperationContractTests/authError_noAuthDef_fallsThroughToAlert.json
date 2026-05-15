@@ -1,0 +1,18 @@
+[
+  {
+    "args" : {
+      "resetCache" : "true",
+      "url" : "AUTH-ERR",
+      "useToken" : "true"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+      "bookId" : "AUTH-ERR",
+      "hasRetryAction" : "true",
+      "title" : "Borrow Failed"
+    },
+    "method" : "presentBorrowErrorAlert"
+  }
+]
