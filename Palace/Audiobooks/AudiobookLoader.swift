@@ -456,6 +456,19 @@ final class AudiobookLoader {
         }
     }
 
+    // TEST-SEAM PROPOSAL (do not act on this without separate review):
+    // `finalizeBuild` is the entry point for the F-004 EXC_BREAKPOINT
+    // crash (Crashlytics, 3.0.0: AudiobookLoader.finalizeBuild — 2 users,
+    // distributor=Overdrive, decryptor=nil, bearerToken present). Direct
+    // unit testing requires either (a) bumping access to `internal` so
+    // `@testable import Palace` reaches it, or (b) extracting an
+    // `AudiobookFactoryProviding` protocol that wraps the static
+    // `PalaceAudiobookToolkit.AudiobookFactory.audiobook(...)` call so
+    // tests can substitute a stub. Option (b) is preferred — Manifest
+    // decoding stays pure-Foundation, but the factory step is what
+    // crashed and it's currently un-mockable. See
+    // PalaceTests/Audiobooks/AudiobookLoaderFinalizeBuildTests.swift
+    // for the F-004 path exercises (toolkit-level for now).
     private func finalizeBuild(
         book: TPPBook,
         jsonData: Data,
