@@ -1,0 +1,122 @@
+[
+  {
+    "args" : {
+      "input.newRegistryState" : "unregistered",
+      "input.priorBookState" : "unregistered",
+      "output.bookState" : "unregistered",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,get,reserve,retry",
+      "output.showHalfSheet" : "false"
+    },
+    "method" : "registryStateChanged"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "download-needed",
+      "input.priorBookState" : "unregistered",
+      "output.bookState" : "download-needed",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "reserve,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "downloading",
+      "input.priorBookState" : "unregistered",
+      "output.bookState" : "downloading",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "reserve,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "download-failed",
+      "input.priorBookState" : "unregistered",
+      "output.bookState" : "download-failed",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "reserve,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "download-successful",
+      "input.priorBookState" : "unregistered",
+      "output.bookState" : "download-successful",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "reserve,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "used",
+      "input.priorBookState" : "unregistered",
+      "output.bookState" : "used",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "reserve,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "holding",
+      "input.priorBookState" : "unregistered",
+      "output.bookState" : "holding",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,retry,returning",
+      "output.showHalfSheet" : "false"
+    },
+    "method" : "registryStateChanged"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "returning",
+      "input.priorBookState" : "unregistered",
+      "output.bookState" : "returning",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "unsupported",
+      "input.priorBookState" : "unregistered",
+      "output.bookState" : "unsupported",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "saml-started",
+      "input.priorBookState" : "unregistered",
+      "output.bookState" : "saml-started",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged"
+  }
+]

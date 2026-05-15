@@ -8,7 +8,7 @@
 #
 # Opt-in flags:
 #   --with-pre-push-tests   symlink .git/hooks/pre-push to
-#                           scripts/hooks/pre-push-test-gate.sh (Part B).
+#                           scripts/pre-push-test-gate.sh (Part B).
 #                           OFF BY DEFAULT — the test gate is still
 #                           opt-in until we've burned it in.
 #
