@@ -381,14 +381,21 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         XCTAssertEqual(resultB?.title, "Original-concurrent",
                        "Concurrent stale read B must return cached value")
 
-        // Wait for the background refresh to land in the cache. We poll
-        // the cache (not call count) because the call count bumps when
-        // the network call returns, but the cache-write happens slightly
-        // after — polling the cache itself is the right barrier.
-        // Timeout bumped to 5s: under full-suite contention on the sim,
-        // two concurrent stale reads + a Task.detached refresh + cache
-        // write can race past the 2s default in ~1/6400 runs.
-        await awaitCondition(timeout: 5.0) {
+        // First await the network signal (deterministic on the mock side):
+        // both detached refreshes hit fetchFeed → callCount goes 1 → 2 or 3.
+        // This decouples the "did the refresh fire" assertion (load-bearing
+        // for the mutation kill) from the cache-write timing.
+        await awaitCondition(timeout: 30.0) {
+            self.api.fetchFeedCallCount >= 2
+        }
+
+        // Then wait for the cache write to land. Bumped to 30s for the
+        // same reason — under pre-push targeted-test contention the
+        // Task.detached(.utility) refresh can be deeply deprioritized.
+        // The happy path completes in <0.3s; the 30s is only spent when
+        // truly broken (in which case the test fails with a clear message
+        // rather than hanging the suite).
+        await awaitCondition(timeout: 30.0) {
             sut.cachedFeed(for: self.testURL)?.title == "Refreshed-concurrent"
         }
 
