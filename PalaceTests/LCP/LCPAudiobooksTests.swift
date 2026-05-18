@@ -7,6 +7,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceCatalog
 
 final class LCPAudiobooksTests: XCTestCase {
 
@@ -150,6 +151,128 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertTrue(true, "LCP not enabled - test skipped")
         #endif
     }
+
+    // MARK: - hasLCPAcquisition predicate (PP-XXXX Marketplace LCP recovery)
+    //
+    // The Marketplace regression is: book has BOTH a bearer-token open-access
+    // entry AND an LCP entry in `acquisitions`. PalaceCatalog's OPDS parsing
+    // on 3.1.0 orders bearer-token first, so `defaultAcquisition` picks the
+    // bearer-token entry and `canOpenBook` returns false. But the book IS
+    // openable via LCP — the downloaded file is the LCP-encrypted .epub
+    // container. `hasLCPAcquisition` is the predicate AudiobookLoader uses
+    // as the recovery hint after JSON parse fails on a binary file.
+
+    /// Single LCP acquisition → predicate true (matches `canOpenBook` happy path).
+    func testHasLCPAcquisition_withSingleLCPAcquisition_returnsTrue() {
+        #if LCP
+        let book = makeBookWithAcquisitions([acquisition(type: ContentTypeReadiumLCP)])
+        XCTAssertTrue(LCPAudiobooks.hasLCPAcquisition(book),
+                      "Single LCP acquisition must satisfy hasLCPAcquisition")
+        #else
+        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        #endif
+    }
+
+    /// Single non-LCP acquisition → predicate false. Guards against this becoming
+    /// a "treat everything as LCP" override.
+    func testHasLCPAcquisition_withSingleBearerTokenAcquisition_returnsFalse() {
+        #if LCP
+        let book = makeBookWithAcquisitions([acquisition(type: ContentTypeBearerToken)])
+        XCTAssertFalse(LCPAudiobooks.hasLCPAcquisition(book),
+                       "Bearer-token-only book must NOT satisfy hasLCPAcquisition")
+        #endif
+    }
+
+    /// Marketplace regression case: bearer-token first, LCP second. `canOpenBook`
+    /// returns false (defaultAcquisition is bearer-token). `hasLCPAcquisition`
+    /// returns true (any-acquisition match) — which is what
+    /// AudiobookLoader uses to recover after JSON parse fails on the LCP
+    /// binary. If this regresses, Marketplace audiobooks fail with the generic
+    /// "Failed to open" alert again.
+    func testHasLCPAcquisition_withBearerTokenFirstAndLCPSecond_returnsTrue() {
+        #if LCP
+        let book = makeBookWithAcquisitions([
+            acquisition(type: ContentTypeBearerToken),
+            acquisition(type: ContentTypeReadiumLCP)
+        ])
+
+        // Sanity: the regression scenario actually reproduces — canOpenBook
+        // does NOT pick up the LCP entry behind the bearer-token default.
+        XCTAssertFalse(LCPAudiobooks.canOpenBook(book),
+                       "Sanity: canOpenBook must miss the LCP-as-non-default scenario this test guards")
+
+        // Predicate must find the LCP entry regardless of ordering.
+        XCTAssertTrue(LCPAudiobooks.hasLCPAcquisition(book),
+                      "hasLCPAcquisition must scan ALL acquisitions — not just defaultAcquisition")
+        #endif
+    }
+
+    /// LCP first ordering — both predicates agree.
+    func testHasLCPAcquisition_withLCPFirstOrdering_returnsTrue() {
+        #if LCP
+        let book = makeBookWithAcquisitions([
+            acquisition(type: ContentTypeReadiumLCP),
+            acquisition(type: ContentTypeBearerToken)
+        ])
+
+        XCTAssertTrue(LCPAudiobooks.hasLCPAcquisition(book),
+                      "LCP-first ordering must satisfy hasLCPAcquisition")
+        #endif
+    }
+
+    /// Empty acquisitions — predicate must return false (no LCP entry exists).
+    /// Prevents a regression where the predicate accidentally returns true for
+    /// any audiobook content type via a fallback.
+    func testHasLCPAcquisition_withEmptyAcquisitions_returnsFalse() {
+        #if LCP
+        let book = makeBookWithAcquisitions([])
+        XCTAssertFalse(LCPAudiobooks.hasLCPAcquisition(book),
+                       "Empty acquisitions must NOT satisfy hasLCPAcquisition")
+        #endif
+    }
+
+    #if LCP
+    private func acquisition(type: String) -> TPPOPDSAcquisition {
+        TPPOPDSAcquisition(
+            relation: .generic,
+            type: type,
+            hrefURL: URL(string: "http://example.test/\(UUID().uuidString)")!,
+            indirectAcquisitions: [TPPOPDSIndirectAcquisition](),
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+    }
+
+    private func makeBookWithAcquisitions(_ acquisitions: [TPPOPDSAcquisition]) -> TPPBook {
+        let identifier = UUID().uuidString
+        return TPPBook(
+            acquisitions: acquisitions,
+            authors: [],
+            categoryStrings: [],
+            distributor: "Palace Marketplace",
+            identifier: identifier,
+            imageURL: nil,
+            imageThumbnailURL: nil,
+            published: Date(),
+            publisher: nil,
+            subtitle: nil,
+            summary: nil,
+            title: "Test Book",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
+    }
+    #endif
 
     // MARK: - Streaming Provider Tests
 

@@ -9,6 +9,7 @@
 #if LCP
 
 import Foundation
+import PalaceCatalog
 import PalaceLogging
 @preconcurrency import ReadiumShared
 @preconcurrency import ReadiumStreamer
@@ -198,6 +199,31 @@ import PalaceLogging
     @objc static func canOpenBook(_ book: TPPBook) -> Bool {
         guard let defaultAcquisition = book.defaultAcquisition else { return false }
         return book.defaultBookContentType == .audiobook && defaultAcquisition.type == expectedAcquisitionType
+    }
+
+    /// Whether the book has *any* LCP-licensed acquisition entry, looking at
+    /// the entire acquisition chain (top-level `type` AND all nested
+    /// `indirectAcquisitions[*].type`). The LCP license MIME is almost always
+    /// inside the indirect chain on Palace Marketplace audiobooks — the
+    /// top-level `type` is typically `application/atom+xml;...` (OPDS Catalog)
+    /// — so a flat `acquisitions.contains { $0.type == LCP }` check misses
+    /// every Marketplace book. This recursive walk is the predicate
+    /// `AudiobookLoader` uses to decide whether to retry through the LCP
+    /// path after a JSON-parse failure on the local file.
+    @objc static func hasLCPAcquisition(_ book: TPPBook) -> Bool {
+        for acquisition in book.acquisitions {
+            if acquisition.type == expectedAcquisitionType { return true }
+            if indirectChainContainsLCP(acquisition.indirectAcquisitions) { return true }
+        }
+        return false
+    }
+
+    private static func indirectChainContainsLCP(_ indirect: [TPPOPDSIndirectAcquisition]) -> Bool {
+        for entry in indirect {
+            if entry.type == expectedAcquisitionType { return true }
+            if indirectChainContainsLCP(entry.indirectAcquisitions) { return true }
+        }
+        return false
     }
 
     /// Creates an NSError for Objective-C code

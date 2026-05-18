@@ -16,6 +16,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 
@@ -89,6 +90,12 @@ final class AudiobookLoader {
     /// Mark this loader as cancelled. Any pending completion will resolve with .cancelled.
     func cancel() {
         isCancelled = true
+    }
+
+    /// Recursive flatten of a `TPPOPDSIndirectAcquisition` chain into a flat
+    /// list of MIME types, for diagnostic logging only.
+    fileprivate static func flattenIndirectTypes(_ indirect: [TPPOPDSIndirectAcquisition]) -> [String] {
+        indirect.flatMap { entry in [entry.type] + flattenIndirectTypes(entry.indirectAcquisitions) }
     }
 
     // MARK: - Token refresh
@@ -178,6 +185,52 @@ final class AudiobookLoader {
 
             guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
                 Log.error(#file, "  ❌ Failed to parse local file as JSON")
+
+                // Diagnostic dump so we can root-cause the 3.0.2+ Marketplace
+                // audiobook regression. The on-disk file fails JSON parse but
+                // a binary container at this path is unexpected — either the
+                // borrow path saved LCP-fulfilled bytes under the wrong path
+                // extension, or the OPDS feed for this distributor changed.
+                let prefix = data.prefix(16).map { String(format: "%02x", $0) }.joined(separator: " ")
+                Log.error(#file, "    diag: bytes=\(data.count), first16=\(prefix), ext=\(url.pathExtension)")
+                let topLevelTypes = book.acquisitions.map { $0.type }.joined(separator: " | ")
+                Log.error(#file, "    diag: acquisitions[*].type=[\(topLevelTypes)]")
+                for (i, acq) in book.acquisitions.enumerated() {
+                    let indirectFlat = Self.flattenIndirectTypes(acq.indirectAcquisitions).joined(separator: " | ")
+                    Log.error(#file, "    diag: acquisitions[\(i)].indirect=[\(indirectFlat)]")
+                }
+                Log.error(#file, "    diag: defaultAcquisition.type=\(book.defaultAcquisition?.type ?? "nil"), defaultBookContentType=\(book.defaultBookContentType.rawValue)")
+                #if LCP
+                Log.error(#file, "    diag: LCPAudiobooks.canOpenBook=\(LCPAudiobooks.canOpenBook(book)), hasLCPAcquisition=\(LCPAudiobooks.hasLCPAcquisition(book))")
+                #endif
+
+                #if LCP
+                // Marketplace audiobook recovery (PP-XXXX): the OPDS feed can
+                // expose both a bearer-token open-access entry AND an LCP
+                // entry. PalaceCatalog's OPDS parsing on 3.1.0 can put the
+                // bearer-token entry first in `acquisitions`, so
+                // `defaultAcquisition` resolves to it and
+                // `LCPAudiobooks.canOpenBook` (which inspects only the
+                // default) returns false — yet `MyBooksDownloadCenter`
+                // chose the LCP fulfillment, leaving a binary .epub
+                // container at the local path that fails JSON parse. If
+                // the book has any LCP acquisition, retry through the LCP
+                // path before surrendering.
+                if LCPAudiobooks.hasLCPAcquisition(book) {
+                    Log.info(#file, "  🔁 Local file failed JSON parse but book has an LCP acquisition — retrying via LCP path")
+                    self.prepareLCPSource(for: book) { [weak self] sourceResult in
+                        guard let self else { completion(.failure(.cancelled)); return }
+                        switch sourceResult {
+                        case .success(let sourceURL):
+                            self.loadLCPContent(book: book, lcpSourceURL: sourceURL, completion: completion)
+                        case .failure(let err):
+                            completion(.failure(err))
+                        }
+                    }
+                    return
+                }
+                #endif
+
                 completion(.failure(.manifestParseFailed))
                 return
             }
