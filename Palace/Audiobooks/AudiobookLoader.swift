@@ -98,6 +98,42 @@ final class AudiobookLoader {
         indirect.flatMap { entry in [entry.type] + flattenIndirectTypes(entry.indirectAcquisitions) }
     }
 
+    /// Returns a URL whose `pathExtension` is `lcpa`, regardless of the input
+    /// extension. If the input already has `.lcpa` extension, returns it
+    /// unchanged. Otherwise creates a sibling symlink with `.lcpa` extension
+    /// pointing at the original file and returns the symlink URL. Failures
+    /// (symlink-already-exists, permission errors, unsupported filesystem)
+    /// fall back to returning the original URL — the caller's LCP-load
+    /// attempt will surface the resulting error via its own path.
+    ///
+    /// Why a symlink and not a rename: existing call sites (registry sync,
+    /// download book-state, etc.) look up the file at the original path via
+    /// `MyBooksDownloadCenter.fileUrl(for:)`. Renaming would break those
+    /// lookups for legacy `.epub`-named LCP content. A sibling symlink
+    /// leaves the canonical file in place and gives ReadiumStreamer the
+    /// `.lcpa`-extension URL it needs for its extension-based parser
+    /// dispatch.
+    fileprivate static func ensureLCPExtensionLink(for url: URL) -> URL {
+        if url.pathExtension.lowercased() == "lcpa" {
+            return url
+        }
+        let lcpaURL = url.deletingPathExtension().appendingPathExtension("lcpa")
+        let fm = FileManager.default
+
+        if fm.fileExists(atPath: lcpaURL.path) {
+            return lcpaURL
+        }
+
+        do {
+            try fm.createSymbolicLink(at: lcpaURL, withDestinationURL: url)
+            Log.info(#file, "  🔗 Created .lcpa symlink → \(url.lastPathComponent)")
+            return lcpaURL
+        } catch {
+            Log.warn(#file, "  ⚠️ Could not create .lcpa symlink (\(error.localizedDescription)) — falling back to original URL")
+            return url
+        }
+    }
+
     // MARK: - Token refresh
 
     private func refreshTokenIfNeeded(for book: TPPBook, completion: @escaping (Result<Void, AudiobookLoadError>) -> Void) {
@@ -205,28 +241,34 @@ final class AudiobookLoader {
                 #endif
 
                 #if LCP
-                // Marketplace audiobook recovery (PP-XXXX): the OPDS feed can
-                // expose both a bearer-token open-access entry AND an LCP
-                // entry. PalaceCatalog's OPDS parsing on 3.1.0 can put the
-                // bearer-token entry first in `acquisitions`, so
-                // `defaultAcquisition` resolves to it and
-                // `LCPAudiobooks.canOpenBook` (which inspects only the
-                // default) returns false — yet `MyBooksDownloadCenter`
-                // chose the LCP fulfillment, leaving a binary .epub
-                // container at the local path that fails JSON parse. If
-                // the book has any LCP acquisition, retry through the LCP
-                // path before surrendering.
+                // Marketplace audiobook recovery: the OPDS acquisition chain
+                // for Marketplace books is `opds-publication+json →
+                // [LCP license → audiobook+lcp]`, with the LCP MIME nested
+                // inside the indirect chain. `LCPAudiobooks.canOpenBook`
+                // only inspects `defaultAcquisition.type` so it returns
+                // false, which makes `MyBooksDownloadCenter.pathExtension`
+                // save the file with `.epub` extension. The downloaded
+                // bytes ARE the LCP audiobook .lcpa ZIP container, but
+                // ReadiumStreamer's parser dispatch is extension-based —
+                // `.epub` routes to the EPUB parser which then fails on
+                // missing META-INF/container.xml (LCP audiobook ZIPs have
+                // manifest.json at the root, not container.xml).
+                //
+                // Recovery: create a `.lcpa` symlink alongside the `.epub`
+                // file pointing at the same data, and pass the symlink URL
+                // to LCPAudiobooks so the extension-based dispatch picks
+                // the audiobook parser. The underlying `.epub` file is
+                // left alone so any other reader code that already knows
+                // the path keeps working.
+                //
+                // Going forward, `BookFileManager.pathExtension` uses
+                // `hasLCPAcquisition` so new downloads save with `.lcpa`
+                // directly. This recovery only fires for legacy downloads
+                // saved under the old logic.
                 if LCPAudiobooks.hasLCPAcquisition(book) {
                     Log.info(#file, "  🔁 Local file failed JSON parse but book has an LCP acquisition — retrying via LCP path")
-                    self.prepareLCPSource(for: book) { [weak self] sourceResult in
-                        guard let self else { completion(.failure(.cancelled)); return }
-                        switch sourceResult {
-                        case .success(let sourceURL):
-                            self.loadLCPContent(book: book, lcpSourceURL: sourceURL, completion: completion)
-                        case .failure(let err):
-                            completion(.failure(err))
-                        }
-                    }
+                    let lcpSourceURL = Self.ensureLCPExtensionLink(for: url)
+                    self.loadLCPContent(book: book, lcpSourceURL: lcpSourceURL, completion: completion)
                     return
                 }
                 #endif
