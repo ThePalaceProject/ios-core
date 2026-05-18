@@ -231,6 +231,160 @@ final class LCPAudiobooksTests: XCTestCase {
         #endif
     }
 
+    // MARK: - Real-world OPDS shape regression tests (LCP discovery matrix)
+    //
+    // These tests pin the *actual* on-the-wire acquisition shapes the CM
+    // serves, NOT abstract API contracts. Each was discovered as a real
+    // production code path during PP-4407 root-cause investigation. The
+    // codebase has historically tested LCP detection only against shapes
+    // where the LCP MIME is at the TOP level — every recent regression has
+    // been caused by an LCP MIME nested deeper in the indirect chain.
+    //
+    // Going forward, every new LCP-touching test SHOULD assert against
+    // each of these shapes. The convention is documented in CLAUDE.md
+    // under "LCP audiobook test matrix".
+
+    /// **Marketplace audiobook shape (current production CM, verified
+    /// 2026-05-18 via curl against demo.thepalaceproject.org/GA0000).**
+    ///
+    /// The OPDS 2.0 JSON `/groups/` feed wraps the LCP license MIME inside
+    /// an `application/opds-publication+json` envelope, with the LCP audio
+    /// content nested TWO levels deep in the indirect chain:
+    ///
+    /// ```
+    /// type: application/opds-publication+json
+    ///   indirect: application/vnd.readium.lcp.license.v1.0+json
+    ///     indirect: application/audiobook+lcp
+    /// ```
+    ///
+    /// This is the shape that caused PP-4407 — `canOpenBook` only inspects
+    /// `defaultAcquisition.type` (the top-level OPDS Publication MIME) so
+    /// it returned false; `MyBooksDownloadCenter.pathExtension` then saved
+    /// the LCP-encrypted ZIP container as `.epub`; on open, ReadiumStreamer
+    /// routed it to the EPUB parser which failed on missing
+    /// `META-INF/container.xml`. `hasLCPAcquisition` walks the indirect
+    /// chain recursively and catches this shape.
+    func testHasLCPAcquisition_marketplaceShape_OPDSPublicationWrappingLCPNestedTwoDeep_returnsTrue() {
+        #if LCP
+        let audiobookLcp = TPPOPDSIndirectAcquisition(
+            type: "application/audiobook+lcp",
+            indirectAcquisitions: []
+        )
+        let lcpLicense = TPPOPDSIndirectAcquisition(
+            type: "application/vnd.readium.lcp.license.v1.0+json",
+            indirectAcquisitions: [audiobookLcp]
+        )
+        let acquisition = TPPOPDSAcquisition(
+            relation: .generic,
+            type: "application/opds-publication+json",
+            hrefURL: URL(string: "https://example.test/works/borrow")!,
+            indirectAcquisitions: [lcpLicense],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let book = makeBookWithAcquisitions([acquisition])
+
+        // Sanity: this is precisely the regression scenario — canOpenBook
+        // MUST return false (top-level is OPDS Publication, not LCP MIME)
+        // so the recursive predicate is the only thing that catches it.
+        XCTAssertFalse(LCPAudiobooks.canOpenBook(book),
+                       "Marketplace shape: canOpenBook must NOT match nested LCP — that's the bug")
+
+        XCTAssertTrue(LCPAudiobooks.hasLCPAcquisition(book),
+                      "Marketplace shape: hasLCPAcquisition MUST walk the indirect chain and find LCP nested 2-deep. This is the PP-4407 regression repro.")
+        #endif
+    }
+
+    /// **Legacy `/loans/` XML shape (3.0.1 path).** The OPDS 1.x XML loans
+    /// feed has the LCP license MIME at the TOP-level `type` with the
+    /// audiobook MIME ONE level deep in indirect:
+    ///
+    /// ```
+    /// type: application/vnd.readium.lcp.license.v1.0+json
+    ///   indirect: application/audiobook+lcp
+    /// ```
+    ///
+    /// Both `canOpenBook` (top-level match) AND `hasLCPAcquisition`
+    /// (top-level match short-circuits before recursion) must return true.
+    func testHasLCPAcquisition_legacyLoansXMLShape_LCPAtTopWithAudiobookOneDeep_returnsTrue() {
+        #if LCP
+        let audiobookLcp = TPPOPDSIndirectAcquisition(
+            type: "application/audiobook+lcp",
+            indirectAcquisitions: []
+        )
+        let acquisition = TPPOPDSAcquisition(
+            relation: .generic,
+            type: "application/vnd.readium.lcp.license.v1.0+json",
+            hrefURL: URL(string: "https://example.test/works/48791/fulfill/24")!,
+            indirectAcquisitions: [audiobookLcp],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let book = makeBookWithAcquisitions([acquisition])
+
+        XCTAssertTrue(LCPAudiobooks.canOpenBook(book),
+                      "Legacy loans XML shape: canOpenBook must match top-level LCP MIME")
+        XCTAssertTrue(LCPAudiobooks.hasLCPAcquisition(book),
+                      "Legacy loans XML shape: hasLCPAcquisition must also return true (short-circuits on top-level match)")
+        #endif
+    }
+
+    /// Hypothetical deeper-nesting case: LCP MIME three levels deep in the
+    /// indirect chain. Not observed in current CM feeds but the recursive
+    /// predicate must handle arbitrary depth so future OPDS shape shifts
+    /// don't reopen the regression class.
+    func testHasLCPAcquisition_hypotheticalDeepNesting_LCPThreeLevelsDeep_returnsTrue() {
+        #if LCP
+        let audiobookLcp = TPPOPDSIndirectAcquisition(
+            type: "application/audiobook+lcp",
+            indirectAcquisitions: []
+        )
+        let lcpLicense = TPPOPDSIndirectAcquisition(
+            type: "application/vnd.readium.lcp.license.v1.0+json",
+            indirectAcquisitions: [audiobookLcp]
+        )
+        let opdsPub = TPPOPDSIndirectAcquisition(
+            type: "application/opds-publication+json",
+            indirectAcquisitions: [lcpLicense]
+        )
+        let acquisition = TPPOPDSAcquisition(
+            relation: .generic,
+            type: "application/atom+xml;type=entry;profile=opds-catalog",
+            hrefURL: URL(string: "https://example.test/works/entry")!,
+            indirectAcquisitions: [opdsPub],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let book = makeBookWithAcquisitions([acquisition])
+
+        XCTAssertTrue(LCPAudiobooks.hasLCPAcquisition(book),
+                      "Recursive predicate must handle arbitrary indirect-chain depth")
+        #endif
+    }
+
+    /// **Open-access audiobook shape (non-LCP control case).** The OPDS
+    /// chain wraps an `application/audiobook+json` payload inside an OPDS
+    /// Publication envelope — looks similar to the Marketplace shape, but
+    /// the inner content is NOT LCP-licensed. Tests that
+    /// `hasLCPAcquisition` doesn't false-positive on the wrapping shape
+    /// alone.
+    func testHasLCPAcquisition_openAccessAudiobookShape_OPDSPublicationWrappingNonLCP_returnsFalse() {
+        #if LCP
+        let openAccess = TPPOPDSIndirectAcquisition(
+            type: "application/audiobook+json",
+            indirectAcquisitions: []
+        )
+        let acquisition = TPPOPDSAcquisition(
+            relation: .generic,
+            type: "application/opds-publication+json",
+            hrefURL: URL(string: "https://example.test/works/openaccess/borrow")!,
+            indirectAcquisitions: [openAccess],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let book = makeBookWithAcquisitions([acquisition])
+
+        XCTAssertFalse(LCPAudiobooks.hasLCPAcquisition(book),
+                       "Open-access audiobook wrapped in OPDS Publication must NOT match — control case for recursive predicate")
+        #endif
+    }
+
     #if LCP
     private func acquisition(type: String) -> TPPOPDSAcquisition {
         TPPOPDSAcquisition(

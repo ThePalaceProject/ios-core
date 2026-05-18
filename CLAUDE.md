@@ -154,6 +154,26 @@ A test that doesn't kill any mutants should be rewritten to test the actual beha
 
 **Critical path tests must be air-tight.** For sign-in, borrow, download, DRM fulfillment, and payment flows: every branch must have a test, every error path must be exercised, and every test must kill at least one mutant. These paths handle user money and access — fluff is not acceptable here.
 
+### LCP audiobook test matrix — MANDATORY for any audiobook-touching test
+
+LCP audiobooks have multiple on-the-wire OPDS shapes, and **every recent audiobook regression has come from a shape that the test suite didn't cover** (PP-4407 / 3.0.3 hotfix: Marketplace acquisition chain wrapping LCP two levels deep in indirect; legacy tests only covered top-level LCP). Going forward, any test touching audiobook detection, file routing, manifest parsing, or DRM dispatch MUST assert against the full matrix of real CM-served shapes.
+
+The canonical shapes (re-verify any time the CM changes):
+
+| Shape name | top-level `type` | indirect chain | Where it appears |
+|---|---|---|---|
+| **Marketplace LCP** | `application/opds-publication+json` | `LCP license → audiobook+lcp` | `/groups/` OPDS 2.0 JSON (current default in 3.0.2+) |
+| **Legacy LCP loans** | `application/vnd.readium.lcp.license.v1.0+json` | `audiobook+lcp` | `/loans/` OPDS 1.x XML |
+| **OPDS-wrapped open-access** | `application/opds-publication+json` | `audiobook+json` | OPDS 2.0 non-DRM audiobooks |
+| **Bearer-token open-access** | `application/vnd.librarysimplified.bearer-token+json` | `audiobook+json` | Some Marketplace open-access flows |
+| **Findaway** | `application/vnd.librarysimplified.findaway.license+json` | (none) | Findaway distributor |
+
+Tests for `LCPAudiobooks`, `AudiobookLoader`, `MyBooksDownloadCenter.pathExtension(for:)`, and the audiobook-borrow path must assert correct behavior against **every** shape in this matrix. The existing canonical example is `PalaceTests/LCP/LCPAudiobooksTests.swift` — the `testHasLCPAcquisition_*Shape_*` tests are the template; copy that pattern.
+
+When a new shape is discovered in the wild (e.g., from a Crashlytics fingerprint or HelpSpot report): **(1)** add the shape to this table, **(2)** add a regression test for the predicate / loader / pathExtension that the shape triggered, and **(3)** verify the existing fix's predicate handles the shape recursively (top-level + indirect chain). If the predicate only handles top-level, fix it before merging.
+
+The PoC matrix tests live in `PalaceTests/LCP/LCPAudiobooksTests.swift` under the section "Real-world OPDS shape regression tests (LCP discovery matrix)".
+
 ## pbxproj
 
 Two build phases (two targets) — new source files need entries in both Sources sections.
