@@ -114,6 +114,7 @@
 		17BE24ED25FB09F000AE707F /* TPPCurrentLibraryAccountProviderMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17BE24EC25FB09F000AE707F /* TPPCurrentLibraryAccountProviderMock.swift */; };
 		17BE24EF25FB114900AE707F /* simplye_authentication_document.json in Resources */ = {isa = PBXBuildFile; fileRef = 17BE24EE25FB114900AE707F /* simplye_authentication_document.json */; };
 		17BEE42799E8F727729A00F3 /* URLExtensionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BB31382B3826FB20CD3BE34 /* URLExtensionTests.swift */; };
+		17C3ACAD1094A809BBDB37D9 /* ReaderNavBarVoiceOverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4C052E9C74B6BB3C2028263 /* ReaderNavBarVoiceOverTests.swift */; };
 		17E6BC38538C040F995A97B7 /* OPDS2BookBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E358F2BF99213E34F1B052ED /* OPDS2BookBridgeTests.swift */; };
 		17E81F08261522B3001003C2 /* TPPRoundedButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E81F07261522B3001003C2 /* TPPRoundedButton.swift */; };
 		17E81F0B261522B3001003C2 /* TPPRoundedButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17E81F07261522B3001003C2 /* TPPRoundedButton.swift */; };
@@ -254,6 +255,7 @@
 		292DACBF794B4FA5B1A9DAEB /* UIApplication+MainScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D50821D42294719B5E6F62C /* UIApplication+MainScene.swift */; };
 		293A485DD0BBF544E2368240 /* TPPOPDSLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E299DDCBCCD4BF58886145 /* TPPOPDSLink.swift */; };
 		29464A0CE4E2E995CCFF6DEB /* NotificationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3592F6473F87F4D7C96FB483 /* NotificationServiceTests.swift */; };
+		29D8F99A3730BCAD7334FB9D /* BookListViewAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD3E4B69D4B62EDE3F7B9288 /* BookListViewAccessibilityTests.swift */; };
 		2A71783008E7BB879EFB5029 /* NSURL+NYPLURLAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F901D7BCF798BFF0E528D6D /* NSURL+NYPLURLAdditions.swift */; };
 		2B0AE2358296F09D54E0603F /* TPPOPDSType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF9C6D37F357167F7698E42 /* TPPOPDSType.swift */; };
 		2B7EC298A55FA3351E113B6B /* PerformanceReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23D80DA377151AE41BEF67F7 /* PerformanceReport.swift */; };
@@ -2220,6 +2222,7 @@
 		AC1B8AF7EB40C9DE22ED5ED0 /* TypographyServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyServiceProtocol.swift; sourceTree = "<group>"; };
 		ACE8017D2ECF7E0FEBFAAB1A /* OPDSFeedCache.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OPDSFeedCache.swift; path = OPDS2/Cache/OPDSFeedCache.swift; sourceTree = "<group>"; };
 		AD3401E6313A459D9496ECF2 /* TPPAlertUtilsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAlertUtilsTests.swift; sourceTree = "<group>"; };
+		AD3E4B69D4B62EDE3F7B9288 /* BookListViewAccessibilityTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookListViewAccessibilityTests.swift; sourceTree = "<group>"; };
 		AD8E3191A2EB8DC922B993FD /* AppHealthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppHealthViewModel.swift; sourceTree = "<group>"; };
 		ADDA3478B2DF503D6CBD4575 /* TPPBookDetailDownloadFailedView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPBookDetailDownloadFailedView.swift; sourceTree = "<group>"; };
 		AE77E83151ED3A20FFBE1194 /* TPPOPDSRelation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPOPDSRelation.h; sourceTree = "<group>"; };
@@ -2284,6 +2287,7 @@
 		C3D4E5F60718394051627384 /* MockSAMLAuthContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MockSAMLAuthContext.swift; sourceTree = "<group>"; };
 		C41E92244AABB4F1FE944CF8 /* ReaderTypographyButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderTypographyButton.swift; sourceTree = "<group>"; };
 		C4BD28685CFAA8815B0DE215 /* ExtensionCoverageTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ExtensionCoverageTests.swift; sourceTree = "<group>"; };
+		C4C052E9C74B6BB3C2028263 /* ReaderNavBarVoiceOverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReaderNavBarVoiceOverTests.swift; sourceTree = "<group>"; };
 		C5D6E7F8091A2B3C4D5E6F70 /* TPPSAMLLogoutTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPSAMLLogoutTests.swift; sourceTree = "<group>"; };
 		C5FEA90508D9A3EEE2D86046 /* TPPKeychainManagerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPKeychainManagerTests.swift; sourceTree = "<group>"; };
 		C604731596250F23B780D317 /* OfflineQueueService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineQueueService.swift; sourceTree = "<group>"; };
@@ -4115,6 +4119,7 @@
 				CD71C8FF18A443133C015DA8 /* KeyboardVoiceOverTests.swift */,
 				B9AGENT03FR000000000001 /* KeyboardNavigationFKATests.swift */,
 				EA12FB34567890ABCDEF0001 /* EPUBToolbarToggleTests.swift */,
+				C4C052E9C74B6BB3C2028263 /* ReaderNavBarVoiceOverTests.swift */,
 			);
 			path = Reader;
 			sourceTree = "<group>";
@@ -5285,6 +5290,7 @@
 				FE2159403F0FCBE90CFC6858 /* BookImageViewAccessibilityTests.swift */,
 				44B9D77A2797816A93F9D35B /* PDFAccessibilityToolbarTests.swift */,
 				5A8468ADD34076BF5935E56B /* TPPBookAccessibilityLabelTests.swift */,
+				AD3E4B69D4B62EDE3F7B9288 /* BookListViewAccessibilityTests.swift */,
 			);
 			path = Accessibility;
 			sourceTree = "<group>";
@@ -6145,6 +6151,8 @@
 				1A2B3C4D5E6F70819213A435 /* TPPCredentialSnapshotCoherenceTests.swift in Sources */,
 				D4E5F6071839405162738495 /* MockSAMLAuthContext.swift in Sources */,
 				F607183940516273849506A7 /* MockSAMLWebViewPresenter.swift in Sources */,
+				29D8F99A3730BCAD7334FB9D /* BookListViewAccessibilityTests.swift in Sources */,
+				17C3ACAD1094A809BBDB37D9 /* ReaderNavBarVoiceOverTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -7389,7 +7397,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 471;
+				CURRENT_PROJECT_VERSION = 475;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -7410,7 +7418,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -7446,7 +7454,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 471;
+				CURRENT_PROJECT_VERSION = 475;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -7467,7 +7475,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PRODUCT_MODULE_NAME = Palace;
 				PRODUCT_NAME = "Palace-noDRM";
@@ -7632,7 +7640,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 471;
+				CURRENT_PROJECT_VERSION = 475;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -7658,7 +7666,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				RUN_CLANG_STATIC_ANALYZER = YES;
@@ -7692,7 +7700,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 471;
+				CURRENT_PROJECT_VERSION = 475;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -7719,7 +7727,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "App Store";

@@ -287,6 +287,21 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         super.viewDidAppear(animated)
         accessibilityToolbar.accessibilityElementsHidden = false
 
+        // PP-4326 follow-up (product requirement): when a book is opened
+        // with VoiceOver already running, the reader navbar (back / TOC /
+        // bookmark / settings) must auto-present. `updateNavigationBar()`
+        // checks `UIAccessibility.isVoiceOverRunning` and sets the navbar
+        // visible when true, but the equivalent call at viewDidLoad time
+        // (via setupView → updateViewsForVoiceOver) is too early — the
+        // navigation controller's bar state isn't honored until the VC is
+        // fully integrated into the navigation stack. Re-applying in
+        // viewDidAppear catches that window and keeps the navbar visible
+        // for any VoiceOver-on entry to a book. (When VoiceOver is off the
+        // navbar stays hidden as before — visible only on user tap.)
+        if UIAccessibility.isVoiceOverRunning {
+            updateNavigationBar(animated: false)
+        }
+
         // Readium may create WKWebViews asynchronously, so reconfigure after appearing
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             self?.configureScrollViewInsets()

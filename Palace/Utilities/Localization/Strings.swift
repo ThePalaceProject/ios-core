@@ -14,6 +14,12 @@ struct Strings {
         static let navigationTitle = "navigationTitle"
         static let librarySwitchButton = "librarySwitchButton"
         static let viewBookmarksAndTocButton = "viewBookmarksAndTocButton"
+        // PP-4326: VoiceOver hint announced after the book row's canonical
+        // "Title, by Author" label so users hear what activating the row does.
+        static let opensBookDetails = NSLocalizedString(
+            "Opens book details",
+            comment: "VoiceOver hint for the tap target on a book row in search results, More…, My Books, and Holds — announced after 'Title, by Author' to explain that activating the row opens the Book Details screen."
+        )
     }
 
     struct AgeCheck {
