@@ -1169,3 +1169,98 @@ final class AccountDetailSignOutConfirmationTests: XCTestCase {
                        "Cancel action title must be the localized Cancel string")
     }
 }
+
+// MARK: - Reset Account Visibility (PP-4282 / HelpSpot 17716)
+//
+// Verifies the public-rebuild seam (`rebuildTableData()`) wired up by
+// `AccountDetailView.task { ... }` actually flips the `.resetAccount` cell
+// in/out of `tableData` when the local override changes. If this regresses,
+// the view re-fetches Firebase but the cell list stays frozen at init-time
+// values and the patron-side Reset Account flag is unresponsive — exactly
+// the bug the PP-4282 work was supposed to fix.
+
+@MainActor
+final class AccountDetailViewModelResetAccountVisibilityTests: XCTestCase {
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        try KeychainAvailability.skipIfUnavailable()
+        UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
+        super.tearDown()
+    }
+
+    /// With no Remote Config and no local override, the destructive cell must
+    /// be absent. Establishes the default-OFF baseline before exercising the
+    /// override toggle in the next test.
+    func testRebuildTableData_signedIn_withoutOverride_omitsResetAccountCell() async {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        account.setBarcode("test_user", PIN: "1234")
+        account.setAuthState(.loggedIn)
+        defer { account.removeAll() }
+
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
+        RemoteFeatureFlags.shared.setResetAccountLocalOverride(.useFirebase)
+        vm.refreshSignInState()
+        vm.rebuildTableData()
+
+        let flattened = vm.tableData.flatMap { $0 }
+        XCTAssertFalse(flattened.contains(.resetAccount),
+                       "Reset Account cell must be absent when no override is set and Remote Config defaults OFF")
+    }
+
+    /// The dev-settings .forceOn override + rebuildTableData() must surface
+    /// the cell without an app relaunch. This is the contract
+    /// `AccountDetailView.task` relies on after the force-fetch resolves.
+    func testRebuildTableData_signedIn_withForceOnOverride_includesResetAccountCell() async {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        account.setBarcode("test_user", PIN: "1234")
+        account.setAuthState(.loggedIn)
+        defer { account.removeAll() }
+
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
+        vm.refreshSignInState()
+
+        // Baseline: with .useFirebase, cell is absent.
+        RemoteFeatureFlags.shared.setResetAccountLocalOverride(.useFirebase)
+        vm.rebuildTableData()
+        XCTAssertFalse(vm.tableData.flatMap { $0 }.contains(.resetAccount),
+                       "Sanity: cell must be absent before override flips on")
+
+        // Flip the local override on and rebuild — cell must appear.
+        RemoteFeatureFlags.shared.setResetAccountLocalOverride(.forceOn)
+        vm.rebuildTableData()
+        XCTAssertTrue(vm.tableData.flatMap { $0 }.contains(.resetAccount),
+                      "rebuildTableData() must surface the Reset Account cell once the override is forced on")
+    }
+
+    /// Signed-out state guards the destructive cell regardless of override —
+    /// nothing to reset when there are no credentials.
+    func testRebuildTableData_signedOut_withForceOnOverride_stillOmitsResetAccountCell() async {
+        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
+            XCTSkip("No current account available for testing")
+            return
+        }
+        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        account.removeAll()
+
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
+        RemoteFeatureFlags.shared.setResetAccountLocalOverride(.forceOn)
+        vm.refreshSignInState()
+        vm.rebuildTableData()
+
+        XCTAssertFalse(vm.tableData.flatMap { $0 }.contains(.resetAccount),
+                       "Reset Account cell must be hidden when signed out even with .forceOn override")
+    }
+}

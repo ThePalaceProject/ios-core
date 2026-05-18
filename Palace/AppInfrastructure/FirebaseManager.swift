@@ -147,6 +147,48 @@ final class FirebaseManager {
         }
     }
 
+    /// Force a Remote Config fetch + activate, bypassing `minimumFetchInterval`
+    /// for this single call. Bound to user-initiated screen appearances that
+    /// must reflect the latest server-side flag value rather than the cached
+    /// one (e.g. PP-4282 Reset Account visibility on `AccountDetailView`).
+    /// Uses the same `isFetching` lock as `fetchAndActivateRemoteConfig` so a
+    /// regular interval-respecting fetch already in flight is not duplicated.
+    @discardableResult
+    func forceFetchAndActivateRemoteConfig() async -> Bool {
+        let alreadyFetching = isFetching.withLock { fetching -> Bool in
+            if fetching { return true }
+            fetching = true
+            return false
+        }
+
+        guard !alreadyFetching else {
+            Log.info(#file, "Remote config force-fetch skipped — fetch already in progress")
+            return false
+        }
+
+        defer {
+            isFetching.withLock { $0 = false }
+        }
+
+        do {
+            let status = try await remoteConfig.fetch(withExpirationDuration: 0)
+            switch status {
+            case .success:
+                let activated = try await remoteConfig.activate()
+                Log.info(#file, "🔄 Remote config force-fetched (activated=\(activated))")
+                return true
+            case .failure, .noFetchYet, .throttled:
+                Log.error(#file, "❌ Force-fetch remote config status: \(status.rawValue)")
+                return false
+            @unknown default:
+                return false
+            }
+        } catch {
+            Log.error(#file, "Force-fetch remote config failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     /// Gets a boolean value from remote config.
     func getBoolValue(forKey key: RemoteConfigKey) -> Bool {
         remoteConfig.configValue(forKey: key.rawValue).boolValue

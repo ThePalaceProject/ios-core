@@ -277,6 +277,13 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Table Data Setup
 
+    /// Re-evaluates `tableData` from the latest viewModel state. Public so the
+    /// view can trigger a rebuild after a runtime-mutable input changes
+    /// (PP-4282: Reset Account Remote Config flag flips post-Firebase-fetch).
+    func rebuildTableData() {
+        setupTableData()
+    }
+
     private func setupTableData() {
         let section0 = accountInfoSection()
         var sections: [[CellType]] = [section0]

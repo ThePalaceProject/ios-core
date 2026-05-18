@@ -155,6 +155,70 @@ final class RemoteFeatureFlagsTests: XCTestCase {
                       "resetAccountEnabled must opt into the per-device Firebase RC override pattern")
     }
 
+    // MARK: - Reset Account Tri-State Override
+
+    /// `.useFirebase` must REMOVE the UserDefaults key, not just store
+    /// `false`. The read path distinguishes "no override" (defer to Firebase)
+    /// from "override = false" (force off), so failing to remove would
+    /// silently pin every Firebase-flipped Force-OFF user even after they
+    /// switch back to "Use Firebase".
+    func testSetResetAccountLocalOverride_useFirebase_removesUserDefaultsKey() {
+        UserDefaults.standard.set(true, forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
+        defer { UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) }
+
+        RemoteFeatureFlags.shared.setResetAccountLocalOverride(.useFirebase)
+
+        XCTAssertNil(UserDefaults.standard.object(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey),
+                     ".useFirebase must remove the UserDefaults key so the read path falls through to Remote Config")
+    }
+
+    /// `.forceOn` writes a Bool `true` so isResetAccountEnabled returns true
+    /// on the next read, regardless of Remote Config.
+    func testSetResetAccountLocalOverride_forceOn_persistsTrue() {
+        UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
+        defer { UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) }
+
+        RemoteFeatureFlags.shared.setResetAccountLocalOverride(.forceOn)
+
+        XCTAssertEqual(UserDefaults.standard.object(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) as? Bool,
+                       true)
+        XCTAssertTrue(RemoteFeatureFlags.shared.isResetAccountEnabled,
+                      ".forceOn must enable the flag on the next isResetAccountEnabled read")
+    }
+
+    /// `.forceOff` writes a Bool `false` — wins over a Firebase-true value.
+    func testSetResetAccountLocalOverride_forceOff_persistsFalse() {
+        UserDefaults.standard.set(true, forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
+        defer { UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) }
+
+        RemoteFeatureFlags.shared.setResetAccountLocalOverride(.forceOff)
+
+        XCTAssertEqual(UserDefaults.standard.object(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) as? Bool,
+                       false)
+        XCTAssertFalse(RemoteFeatureFlags.shared.isResetAccountEnabled,
+                       ".forceOff must disable the flag on the next isResetAccountEnabled read")
+    }
+
+    /// The getter must collapse the three possible UserDefaults states
+    /// (missing / Bool true / Bool false) into the matching tri-state case.
+    /// Confirms the dev-settings UISegmentedControl will reflect persisted
+    /// state correctly when the screen re-appears.
+    func testResetAccountLocalOverride_getter_mapsThreeStates() {
+        UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
+        defer { UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) }
+
+        XCTAssertEqual(RemoteFeatureFlags.shared.resetAccountLocalOverride, .useFirebase,
+                       "Missing UserDefaults key must read as .useFirebase")
+
+        UserDefaults.standard.set(true, forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
+        XCTAssertEqual(RemoteFeatureFlags.shared.resetAccountLocalOverride, .forceOn,
+                       "UserDefaults true must read as .forceOn")
+
+        UserDefaults.standard.set(false, forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
+        XCTAssertEqual(RemoteFeatureFlags.shared.resetAccountLocalOverride, .forceOff,
+                       "UserDefaults false must read as .forceOff")
+    }
+
     // MARK: - Fetch
 
     func testFetchIfNeeded_doesNotCrash() async {

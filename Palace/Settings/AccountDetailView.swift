@@ -58,6 +58,16 @@ struct AccountDetailView: View {
                     viewModel.signIn()
                 }
             }
+            .task {
+                // PP-4282: bypass `minimumFetchIntervalRelease` (1 hour) so a
+                // freshly-flipped `reset_account_enabled` Firebase flag lands
+                // within seconds of opening this screen. Rebuild tableData on
+                // success so the `.resetAccount` cell appears without a relaunch.
+                let didFetch = await RemoteFeatureFlags.shared.forceFetchAndActivate()
+                if didFetch {
+                    viewModel.rebuildTableData()
+                }
+            }
     }
 
     @ViewBuilder

@@ -15,6 +15,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case developerTools
         case pushNotificationTesting
         case featurePreviews
+        case featureFlagOverrides
         case badgeTesting
         case errorSimulation
         #if DEBUG
@@ -33,6 +34,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let incrementalSpeedSliderCellIdentifier = "incrementalSpeedSliderCell"
     private let badgeLoggingCellIdentifier = "badgeLoggingCell"
     private let testHoldsCellIdentifier = "testHoldsCell"
+    private let resetAccountOverrideCellIdentifier = "resetAccountOverrideCell"
 
     private var pushNotificationsStatus = false
     private let settings: TPPSettings
@@ -83,6 +85,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: incrementalSpeedSliderCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: badgeLoggingCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: testHoldsCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: resetAccountOverrideCellIdentifier)
     }
 
     // MARK: - UITableViewDataSource
@@ -94,6 +97,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case .developerTools: return 2
         case .pushNotificationTesting: return 3
         case .featurePreviews: return 1
+        case .featureFlagOverrides: return 1
         case .badgeTesting:
             #if DEBUG
             return 2
@@ -143,6 +147,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         case .featurePreviews:
             return cellForIncrementalSpeedSlider()
+        case .featureFlagOverrides:
+            return cellForResetAccountOverride()
         case .badgeTesting:
             #if DEBUG
             switch indexPath.row {
@@ -191,6 +197,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             return "Push Notification Testing"
         case .featurePreviews:
             return "Feature Previews"
+        case .featureFlagOverrides:
+            return "Feature Flag Overrides"
         case .badgeTesting:
             #if DEBUG
             return "Badge Testing"
@@ -281,6 +289,45 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         cell.selectionStyle = .default
         cell.textLabel?.text = "Email Audiobook Logs"
         cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+
+    // MARK: - Reset Account Override (PP-4282 / HelpSpot 17716)
+    //
+    // Tri-state local override surfaced in both TestFlight and DEBUG builds.
+    // Lets QA / support verify the Reset Account cell on a device without a
+    // Firebase round-trip (`minimumFetchIntervalRelease` = 1 hour means the
+    // production Remote Config flag is otherwise unresponsive). `.useFirebase`
+    // removes the override so the device falls back to Remote Config on the
+    // next read.
+
+    @objc func resetAccountOverrideSegmentDidChange(sender: UISegmentedControl) {
+        let override: RemoteFeatureFlags.ResetAccountOverride
+        switch sender.selectedSegmentIndex {
+        case 1: override = .forceOn
+        case 2: override = .forceOff
+        default: override = .useFirebase
+        }
+        RemoteFeatureFlags.shared.setResetAccountLocalOverride(override)
+    }
+
+    private func cellForResetAccountOverride() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: resetAccountOverrideCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(resetAccountOverrideCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "Reset Account"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+
+        let segmented = UISegmentedControl(items: ["Firebase", "On", "Off"])
+        switch RemoteFeatureFlags.shared.resetAccountLocalOverride {
+        case .useFirebase: segmented.selectedSegmentIndex = 0
+        case .forceOn: segmented.selectedSegmentIndex = 1
+        case .forceOff: segmented.selectedSegmentIndex = 2
+        }
+        segmented.addTarget(self, action: #selector(resetAccountOverrideSegmentDidChange(sender:)), for: .valueChanged)
+        cell.accessoryView = segmented
         return cell
     }
 

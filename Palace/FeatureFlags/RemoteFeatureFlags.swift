@@ -108,6 +108,21 @@ final class RemoteFeatureFlags {
         return success
     }
 
+    /// Force a Remote Config fetch + activate, bypassing the SDK's
+    /// `minimumFetchInterval` for this single call. Bound to user-initiated
+    /// screen appearances (e.g., AccountDetailView) where the patron expects
+    /// the latest server-side flag value, not whatever was cached an hour ago.
+    @discardableResult
+    func forceFetchAndActivate() async -> Bool {
+        let success = await FirebaseManager.shared.forceFetchAndActivateRemoteConfig()
+
+        lock.lock()
+        lastFetchTime = Date()
+        lock.unlock()
+
+        return success
+    }
+
     /// Fetch if needed (respects fetch interval).
     func fetchIfNeeded() async {
         guard shouldFetch() else { return }
@@ -189,6 +204,47 @@ final class RemoteFeatureFlags {
     /// Settable from `TPPDeveloperSettingsTableViewController`. Falls through
     /// to the Remote Config flag when nil.
     static let resetAccountLocalOverrideKey = "RemoteFeatureFlags.resetAccountLocalOverride"
+
+    /// Tri-state for the Reset Account local override surfaced in Developer
+    /// Settings. `.useFirebase` removes the override and defers to Remote
+    /// Config; the explicit `.forceOn` / `.forceOff` cases pin the flag for
+    /// QA verification on a TestFlight build (where Firebase fetch is gated
+    /// by `minimumFetchIntervalRelease`).
+    enum ResetAccountOverride {
+        case useFirebase
+        case forceOn
+        case forceOff
+
+        var storedValue: Bool? {
+            switch self {
+            case .useFirebase: return nil
+            case .forceOn: return true
+            case .forceOff: return false
+            }
+        }
+    }
+
+    /// Current tri-state value of the local override. Reading collapses any
+    /// non-Bool / missing UserDefaults entry to `.useFirebase`.
+    var resetAccountLocalOverride: ResetAccountOverride {
+        guard let override = UserDefaults.standard.object(forKey: Self.resetAccountLocalOverrideKey) as? Bool else {
+            return .useFirebase
+        }
+        return override ? .forceOn : .forceOff
+    }
+
+    /// Persist a new tri-state value for the override. `.useFirebase` removes
+    /// the key entirely so `isResetAccountEnabled` falls through to Remote
+    /// Config on the next read (the difference between "explicitly off" and
+    /// "no override" matters for the read path below).
+    func setResetAccountLocalOverride(_ override: ResetAccountOverride) {
+        switch override.storedValue {
+        case .some(let value):
+            UserDefaults.standard.set(value, forKey: Self.resetAccountLocalOverrideKey)
+        case .none:
+            UserDefaults.standard.removeObject(forKey: Self.resetAccountLocalOverrideKey)
+        }
+    }
 
     /// PP-4282 / HelpSpot 17716: gate for the destructive "Reset This Library
     /// Account" button in `AccountDetailView`. Defaults OFF in production.
