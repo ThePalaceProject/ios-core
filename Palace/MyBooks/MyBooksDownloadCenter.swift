@@ -2799,10 +2799,25 @@ extension MyBooksDownloadCenter {
         return directoryURL
     }
 
+    /// File extension for the book's on-disk artefact. LCP audiobooks land
+    /// as `.lcpa`, LCP PDFs as `.zip`, everything else as `.epub`.
+    ///
+    /// LCP audiobook detection uses `hasLCPAcquisition` (recursive scan of
+    /// the full acquisition chain including indirect entries) rather than
+    /// `canOpenBook` (which inspects only `defaultAcquisition.type`).
+    /// Marketplace audiobook OPDS feeds have the structure
+    /// `opds-publication+json → [LCP license → audiobook+lcp]` with the
+    /// LCP MIME *nested* in the indirect chain — `canOpenBook` misses
+    /// this and the file gets saved as `.epub`. ReadiumStreamer's
+    /// extension-based dispatch then routes the LCP audiobook container
+    /// to the EPUB parser and fails on missing META-INF/container.xml.
+    /// Using the recursive predicate makes new downloads save with the
+    /// correct extension; the `AudiobookLoader` recovery handles legacy
+    /// `.epub`-named LCP content saved under the old logic.
     func pathExtension(for book: TPPBook?) -> String {
         #if LCP
         if let book = book {
-            if LCPAudiobooks.canOpenBook(book) {
+            if LCPAudiobooks.hasLCPAcquisition(book) {
                 return "lcpa"
             }
 
