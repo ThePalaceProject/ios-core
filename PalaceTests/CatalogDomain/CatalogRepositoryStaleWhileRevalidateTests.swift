@@ -385,7 +385,10 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         // the cache (not call count) because the call count bumps when
         // the network call returns, but the cache-write happens slightly
         // after — polling the cache itself is the right barrier.
-        await awaitCondition {
+        // Timeout bumped to 5s: under full-suite contention on the sim,
+        // two concurrent stale reads + a Task.detached refresh + cache
+        // write can race past the 2s default in ~1/6400 runs.
+        await awaitCondition(timeout: 5.0) {
             sut.cachedFeed(for: self.testURL)?.title == "Refreshed-concurrent"
         }
 
