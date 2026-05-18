@@ -1,0 +1,113 @@
+//
+//  AccountStateStore.swift
+//  Palace
+//
+//  External state-machine storage for Account.LoadState, keyed by UUID.
+//
+//  Why external (vs. stored on Account itself):
+//
+//  `AccountsManager.account(_:)` does NOT return stable instances. The
+//  F-016 fix `preloadAccountsFromDiskCacheSync` constructs Account objects
+//  from the disk cache and writes them into `accountSets[hash]`. When
+//  `loadCatalogs()` later completes, it REPLACES the array with newly-
+//  constructed Account instances from the network response. If state
+//  storage lived on the Account instance, the state transition would
+//  land on the new instance, but consumers holding the old instance
+//  would never see it — every awaitReady() call against a stale
+//  reference would hang forever.
+//
+//  Keying storage by UUID in this external store decouples the state
+//  machine from Account instance identity. AccountsManager (or tests)
+//  drive transitions via `setState(_:for:)`; consumers fetch the gate
+//  via `awaitReady(for:)`. The state machine survives Account instance
+//  swaps because the UUID stays stable across them.
+//
+//  Copyright © 2026 The Palace Project. All rights reserved.
+//
+
+import Foundation
+import Combine
+
+/// External storage for Account load-state state machines, keyed by
+/// account UUID. See docs/architecture/account-state-machine.md.
+public final class AccountStateStore {
+
+    /// Process-wide singleton. The state machine is single-instance per
+    /// account UUID; storing it process-wide matches how AccountsManager
+    /// itself is consumed.
+    public static let shared = AccountStateStore()
+
+    /// `internal` initializer so tests can construct an isolated store.
+    /// Production callers should use `.shared`.
+    internal init() {}
+
+    private let lock = NSLock()
+    private var subjects: [String: CurrentValueSubject<Account.LoadState, Never>] = [:]
+
+    /// Current state for a given account UUID. Returns `.notLoaded` if
+    /// no state machine has been driven for this UUID yet.
+    public func state(for uuid: String) -> Account.LoadState {
+        return subject(for: uuid).value
+    }
+
+    /// AsyncStream of state transitions for a given UUID. Emits the
+    /// current state immediately on subscribe, then each transition.
+    /// Multiple subscribers safe (CurrentValueSubject broadcasts).
+    /// Cancellation cleans up the Combine subscription automatically.
+    public func stateStream(for uuid: String) -> AsyncStream<Account.LoadState> {
+        let subject = self.subject(for: uuid)
+        return AsyncStream { continuation in
+            let cancellable = subject.sink { state in
+                continuation.yield(state)
+            }
+            continuation.onTermination = { _ in
+                cancellable.cancel()
+            }
+        }
+    }
+
+    /// Drive a state transition. Production caller: `AccountsManager`
+    /// during `preloadAccountsFromDiskCacheSync` and `loadCatalogs`.
+    /// Test caller: directly via `Account._setState(_:)`.
+    ///
+    /// Internal access — only AccountsManager + tests should drive
+    /// transitions. Application code consumes the state machine via
+    /// `Account.awaitReady()` / `Account.loadState` instead.
+    func setState(_ state: Account.LoadState, for uuid: String) {
+        subject(for: uuid).send(state)
+    }
+
+    /// Reset state for a UUID to `.notLoaded`. Called by AccountsManager
+    /// on library reselect or sign-out. Test helper for isolation.
+    func reset(for uuid: String) {
+        setState(.notLoaded, for: uuid)
+    }
+
+    /// Test-only: clear ALL state-machine storage. Production code must
+    /// never call this; tests use it to isolate cases when running with
+    /// `.shared` (preferred: construct a fresh `AccountStateStore()`
+    /// instead so production state is never touched).
+    #if DEBUG
+    internal func _resetAllForTesting() {
+        lock.lock()
+        defer { lock.unlock() }
+        for (uuid, subject) in subjects {
+            subject.send(.notLoaded)
+            _ = uuid
+        }
+    }
+    #endif
+
+    // MARK: - Internals
+
+    private func subject(for uuid: String) -> CurrentValueSubject<Account.LoadState, Never> {
+        lock.lock()
+        defer { lock.unlock() }
+        if let existing = subjects[uuid] {
+            return existing
+        }
+        let new = CurrentValueSubject<Account.LoadState, Never>(.notLoaded)
+        subjects[uuid] = new
+        return new
+    }
+}

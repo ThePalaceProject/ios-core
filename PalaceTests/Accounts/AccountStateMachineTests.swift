@@ -24,6 +24,17 @@ final class AccountStateMachineTests: XCTestCase {
         return AppContainer.production().accountsManager.accounts().first
     }
 
+    override func tearDown() {
+        // State machine storage lives in AccountStateStore.shared, NOT on
+        // the Account instance. Reset between tests so transitions in one
+        // case don't leak into the next (otherwise the second test's
+        // "initial state" reads carry whatever the prior test left).
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
+        super.tearDown()
+    }
+
     // MARK: - Initial state
 
     /// Default state is `.notLoaded`. Until AccountsManager drives a
@@ -63,15 +74,14 @@ final class AccountStateMachineTests: XCTestCase {
         guard let account = makeAccount() else {
             XCTSkip("No accounts available"); return
         }
-        let underlying = NSError(domain: "test", code: 1, userInfo: nil)
-        account._setState(.detailsFailed(.authDocumentFetchFailed(underlying: underlying)))
+        account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "HTTP 503")))
 
         do {
             _ = try await account.awaitReady()
             XCTFail("awaitReady() must throw when state is .detailsFailed")
         } catch let error as AccountLoadError {
-            if case .authDocumentFetchFailed(let inner) = error {
-                XCTAssertEqual((inner as NSError).code, 1, "Underlying error should be preserved")
+            if case .authDocumentFetchFailed(let desc) = error {
+                XCTAssertEqual(desc, "HTTP 503", "Underlying error description should be preserved")
             } else {
                 XCTFail("Expected .authDocumentFetchFailed, got \(error)")
             }
