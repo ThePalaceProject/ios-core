@@ -90,6 +90,50 @@ final class AudiobookLoader {
         isCancelled = true
     }
 
+    /// Recursive flatten of a `TPPOPDSIndirectAcquisition` chain into a flat
+    /// list of MIME types, for diagnostic logging only.
+    fileprivate static func flattenIndirectTypes(_ indirect: [TPPOPDSIndirectAcquisition]) -> [String] {
+        indirect.flatMap { entry in [entry.type] + flattenIndirectTypes(entry.indirectAcquisitions) }
+    }
+
+    #if LCP
+    /// Returns a URL whose `pathExtension` is `lcpa`, regardless of the input
+    /// extension. If the input already has `.lcpa` extension, returns it
+    /// unchanged. Otherwise creates a sibling symlink with `.lcpa` extension
+    /// pointing at the original file and returns the symlink URL. Failures
+    /// (symlink-already-exists, permission errors, unsupported filesystem)
+    /// fall back to returning the original URL — the caller's LCP-load
+    /// attempt will surface the resulting error via its own path.
+    ///
+    /// Why a symlink and not a rename: existing call sites (registry sync,
+    /// download book-state, etc.) look up the file at the original path via
+    /// `MyBooksDownloadCenter.fileUrl(for:)`. Renaming would break those
+    /// lookups for legacy `.epub`-named LCP content. A sibling symlink
+    /// leaves the canonical file in place and gives ReadiumStreamer the
+    /// `.lcpa`-extension URL it needs for its extension-based parser
+    /// dispatch.
+    fileprivate static func ensureLCPExtensionLink(for url: URL) -> URL {
+        if url.pathExtension.lowercased() == "lcpa" {
+            return url
+        }
+        let lcpaURL = url.deletingPathExtension().appendingPathExtension("lcpa")
+        let fm = FileManager.default
+
+        if fm.fileExists(atPath: lcpaURL.path) {
+            return lcpaURL
+        }
+
+        do {
+            try fm.createSymbolicLink(at: lcpaURL, withDestinationURL: url)
+            Log.info(#file, "  🔗 Created .lcpa symlink → \(url.lastPathComponent)")
+            return lcpaURL
+        } catch {
+            Log.warn(#file, "  ⚠️ Could not create .lcpa symlink (\(error.localizedDescription)) — falling back to original URL")
+            return url
+        }
+    }
+    #endif
+
     // MARK: - Token refresh
 
     private func refreshTokenIfNeeded(for book: TPPBook, completion: @escaping (Result<Void, AudiobookLoadError>) -> Void) {
@@ -176,6 +220,57 @@ final class AudiobookLoader {
 
             guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
                 Log.error(#file, "  ❌ Failed to parse local file as JSON")
+
+                // Diagnostic dump so support has enough context from a single
+                // failing log: 3.0.2's audiobook-open regression is rooted in
+                // Marketplace audiobooks getting saved with `.epub` extension
+                // because the OPDS feed wraps the LCP MIME inside the indirect
+                // chain and `canOpenBook` misses it.
+                let prefix = data.prefix(16).map { String(format: "%02x", $0) }.joined(separator: " ")
+                Log.error(#file, "    diag: bytes=\(data.count), first16=\(prefix), ext=\(url.pathExtension)")
+                let topLevelTypes = book.acquisitions.map { $0.type }.joined(separator: " | ")
+                Log.error(#file, "    diag: acquisitions[*].type=[\(topLevelTypes)]")
+                for (i, acq) in book.acquisitions.enumerated() {
+                    let indirectFlat = Self.flattenIndirectTypes(acq.indirectAcquisitions).joined(separator: " | ")
+                    Log.error(#file, "    diag: acquisitions[\(i)].indirect=[\(indirectFlat)]")
+                }
+                Log.error(#file, "    diag: defaultAcquisition.type=\(book.defaultAcquisition?.type ?? "nil"), defaultBookContentType=\(book.defaultBookContentType.rawValue)")
+                #if LCP
+                Log.error(#file, "    diag: LCPAudiobooks.canOpenBook=\(LCPAudiobooks.canOpenBook(book)), hasLCPAcquisition=\(LCPAudiobooks.hasLCPAcquisition(book))")
+                #endif
+
+                #if LCP
+                // Marketplace audiobook recovery: the OPDS acquisition chain
+                // for Marketplace books is `opds-publication+json →
+                // [LCP license → audiobook+lcp]`, with the LCP MIME nested
+                // inside the indirect chain. `LCPAudiobooks.canOpenBook`
+                // only inspects `defaultAcquisition.type` so it returns
+                // false, which makes `MyBooksDownloadCenter.pathExtension`
+                // save the file with `.epub` extension. The downloaded
+                // bytes ARE the LCP audiobook .lcpa ZIP container, but
+                // ReadiumStreamer's parser dispatch is extension-based —
+                // `.epub` routes to the EPUB parser which then fails on
+                // missing META-INF/container.xml.
+                //
+                // Recovery: create a `.lcpa` symlink alongside the `.epub`
+                // file pointing at the same data, pass the symlink URL to
+                // LCPAudiobooks so the extension-based dispatch picks the
+                // audiobook parser. The underlying `.epub` file is left
+                // alone so any other reader code that already knows the
+                // path keeps working.
+                //
+                // Going forward, `MyBooksDownloadCenter.pathExtension(for:)`
+                // uses `hasLCPAcquisition` so new downloads save with
+                // `.lcpa` directly. This recovery only fires for legacy
+                // downloads saved under the old logic.
+                if LCPAudiobooks.hasLCPAcquisition(book) {
+                    Log.info(#file, "  🔁 Local file failed JSON parse but book has an LCP acquisition — retrying via LCP path")
+                    let lcpSourceURL = Self.ensureLCPExtensionLink(for: url)
+                    self.loadLCPContent(book: book, lcpSourceURL: lcpSourceURL, completion: completion)
+                    return
+                }
+                #endif
+
                 completion(.failure(.manifestParseFailed))
                 return
             }
@@ -371,7 +466,30 @@ final class AudiobookLoader {
                     if isHTML {
                         Log.error(#file, "    ⚠️ Server returned HTML instead of JSON - likely a redirect to login or error page")
                     }
+                    let contentType = (httpResponse.allHeaderFields["Content-Type"] as? String) ?? "unknown"
+                    Log.error(#file, "    diag: content-type=\(contentType)")
                 }
+                // Diagnostic dump: the manifest fetch path (Marketplace audiobook
+                // route via `opds-publication+json` borrow URL) is one of the
+                // failure modes that's hard to root-cause from logs alone.
+                // Capture the response shape so we can decide between array-vs-dict
+                // JSON, OPDS Publication doc that contains an LCP indirect chain
+                // we should follow, or some other server-side surprise.
+                let prefix = data.prefix(64).map { String(format: "%02x", $0) }.joined(separator: " ")
+                Log.error(#file, "    diag: bytes=\(data.count), first64=\(prefix)")
+                if let preview = String(data: data.prefix(256), encoding: .utf8) {
+                    Log.error(#file, "    diag: utf8-preview=\(preview)")
+                }
+                let topLevelTypes = book.acquisitions.map { $0.type }.joined(separator: " | ")
+                Log.error(#file, "    diag: acquisitions[*].type=[\(topLevelTypes)]")
+                for (i, acq) in book.acquisitions.enumerated() {
+                    let indirectFlat = Self.flattenIndirectTypes(acq.indirectAcquisitions).joined(separator: " | ")
+                    Log.error(#file, "    diag: acquisitions[\(i)].indirect=[\(indirectFlat)]")
+                }
+                Log.error(#file, "    diag: defaultAcquisition.type=\(book.defaultAcquisition?.type ?? "nil")")
+                #if LCP
+                Log.error(#file, "    diag: hasLCPAcquisition=\(LCPAudiobooks.hasLCPAcquisition(book))")
+                #endif
                 completion(nil)
                 return
             }
