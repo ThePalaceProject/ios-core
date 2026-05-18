@@ -468,7 +468,30 @@ final class AudiobookLoader {
                     if isHTML {
                         Log.error(#file, "    ⚠️ Server returned HTML instead of JSON - likely a redirect to login or error page")
                     }
+                    let contentType = (httpResponse.allHeaderFields["Content-Type"] as? String) ?? "unknown"
+                    Log.error(#file, "    diag: content-type=\(contentType)")
                 }
+                // Diagnostic dump: the manifest fetch path (Marketplace audiobook
+                // route via `opds-publication+json` borrow URL) is one of the
+                // failure modes we don't yet root-cause from logs alone. Capture
+                // the response shape so we can decide between (a) array-vs-dict
+                // JSON, (b) OPDS Publication doc that contains an LCP indirect
+                // chain we should follow, or (c) some other server-side surprise.
+                let prefix = data.prefix(64).map { String(format: "%02x", $0) }.joined(separator: " ")
+                Log.error(#file, "    diag: bytes=\(data.count), first64=\(prefix)")
+                if let preview = String(data: data.prefix(256), encoding: .utf8) {
+                    Log.error(#file, "    diag: utf8-preview=\(preview)")
+                }
+                let topLevelTypes = book.acquisitions.map { $0.type }.joined(separator: " | ")
+                Log.error(#file, "    diag: acquisitions[*].type=[\(topLevelTypes)]")
+                for (i, acq) in book.acquisitions.enumerated() {
+                    let indirectFlat = Self.flattenIndirectTypes(acq.indirectAcquisitions).joined(separator: " | ")
+                    Log.error(#file, "    diag: acquisitions[\(i)].indirect=[\(indirectFlat)]")
+                }
+                Log.error(#file, "    diag: defaultAcquisition.type=\(book.defaultAcquisition?.type ?? "nil")")
+                #if LCP
+                Log.error(#file, "    diag: hasLCPAcquisition=\(LCPAudiobooks.hasLCPAcquisition(book))")
+                #endif
                 completion(nil)
                 return
             }
