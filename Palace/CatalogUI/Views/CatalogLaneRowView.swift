@@ -43,6 +43,9 @@ struct CatalogLaneRowView: View {
                         .padding(.vertical)
                     })
                     .buttonStyle(.plain)
+                    // PP-4289: lift the cover when a pointer (iPad pencil/mouse,
+                    // or iPad-on-Mac mouse) hovers it. No-op on touch-only iPhones.
+                    .hoverEffect(.lift)
                     .accessibilityLabel(Self.accessibilityLabel(for: book))
                 }
             }
