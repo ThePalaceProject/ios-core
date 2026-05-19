@@ -32,6 +32,16 @@ class TPPSignInBusinessLogicTests: XCTestCase {
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: uiDelegate,
             drmAuthorizer: drmAuthorizer)
+
+        // Bucket A migration (swarm_81b5099e): drive the state machine to
+        // `.detailsLoaded` so the sub-sites that now read `loadedAccountDetails`
+        // (selectedAuthentication, makeRequest, registrationIsPossible,
+        // isSamlPossible, selectPreferredAuthIfNeeded, shouldShowEULALink)
+        // can see the fixture's details. State-machine-aware tests for the
+        // migration live in TPPSignInBusinessLogicStateMachineTests.swift.
+        if let details = libraryAccountMock.tppAccount.details {
+            libraryAccountMock.tppAccount._setState(.detailsLoaded(details))
+        }
     }
 
     override func tearDownWithError() throws {
@@ -42,6 +52,9 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         libraryAccountMock = nil
         drmAuthorizer = nil
         uiDelegate = nil
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
     }
 
     func testUpdateUserAccountWithNoSelectedAuthentication() throws {
