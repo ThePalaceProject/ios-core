@@ -93,11 +93,15 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             presenter: samlPresenter
         )
         super.init()
-        // Now that `self` is fully initialized, wire the back-reference. The
-        // presenter does not need a UI-delegate handle — it walks to the
-        // topmost VC via `SignInWebSheetPresenter.presentOnTop` at present
-        // time. Only the context needs the businessLogic backpointer.
+        // Now that `self` is fully initialized, wire the back-references.
+        // - context: needs businessLogic to surface IDP / cookies / errors.
+        // - presenter (HelpSpot 17870): needs businessLogic so its
+        //   problem-document handler can route problem-doc events to
+        //   `uiDelegate.businessLogic(_:didEncounterValidationError:...)`.
+        //   Both are `weak` so no retain cycle vs the adapters that
+        //   `_samlHelper` holds weakly.
         samlContext.businessLogic = self
+        samlPresenter.businessLogic = self
     }
 
     /// Signing in and out may imply syncing the book registry.

@@ -93,7 +93,18 @@ extension TPPSignInBusinessLogic {
                                     metadata: [
                                         "authMethod": selectedAuthentication?.methodDescription ?? "N/A",
                                         "context": uiDelegate?.context ?? "N/A"])
-            completion?(nil, nil, nil)
+            // HelpSpot 17870 — TPPSAMLHelper's `if let error, let errorTitle,
+            // let errorMessage` guard requires all three; passing `nil` here
+            // swallowed the alert path. Mirror the OIDC pattern at
+            // TPPSignInBusinessLogic+OIDC.swift:283-288.
+            let error = NSError(
+                domain: "OAuth.SignIn",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Sign-in redirection error: missing URL"]
+            )
+            completion?(error,
+                        Strings.Error.loginErrorTitle,
+                        Strings.Error.loginErrorDescription)
             return
         }
 
@@ -113,7 +124,13 @@ extension TPPSignInBusinessLogic {
                                     metadata: [
                                         "loginURL": urlStr,
                                         "context": uiDelegate?.context ?? "N/A"])
-            completion?(nil,
+            // HelpSpot 17870 — synthesise an Error so TPPSAMLHelper's guard fires.
+            let error = NSError(
+                domain: "OAuth.SignIn",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: Strings.Error.loginErrorDescription]
+            )
+            completion?(error,
                         Strings.Error.loginErrorTitle,
                         Strings.Error.loginErrorDescription)
             return
@@ -129,7 +146,15 @@ extension TPPSignInBusinessLogic {
                                     metadata: [
                                         "loginURL": urlStr,
                                         "context": uiDelegate?.context ?? "N/A"])
-            completion?(nil, nil, nil)
+            // HelpSpot 17870 — synthesise an Error so TPPSAMLHelper's guard fires.
+            let error = NSError(
+                domain: "OAuth.SignIn",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: Strings.Error.loginErrorDescription]
+            )
+            completion?(error,
+                        Strings.Error.loginErrorTitle,
+                        Strings.Error.loginErrorDescription)
             return
         }
 
@@ -156,9 +181,18 @@ extension TPPSignInBusinessLogic {
             Log.error(#file, "🔐 [REDIRECT] ❌ ERROR: Server returned error in payload")
             Log.error(#file, "🔐 [REDIRECT]   Error: \(parsedError)")
 
-            completion?(nil,
-                        Strings.Error.loginErrorTitle,
-                        parsedError["title"] as? String)
+            // HelpSpot 17870 — preserve the parsed title in the title slot
+            // (previously the title was passed in the message slot — a
+            // field-swap bug) and the parsed detail in the message slot.
+            // Synthesise an Error so TPPSAMLHelper's guard fires.
+            let title = (parsedError["title"] as? String) ?? Strings.Error.loginErrorTitle
+            let detail = (parsedError["detail"] as? String) ?? Strings.Error.loginErrorDescription
+            let syntheticError = NSError(
+                domain: "OAuth.SignIn",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: detail]
+            )
+            completion?(syntheticError, title, detail)
             return
         }
 
@@ -177,7 +211,18 @@ extension TPPSignInBusinessLogic {
                                         "payloadDictionary": kvpairs,
                                         "redirectURL": url,
                                         "context": uiDelegate?.context ?? "N/A"])
-            completion?(nil, nil, nil)
+            // HelpSpot 17870 — this is the literal silent-failure shape from
+            // the ticket: SAML responded but the patron payload was malformed,
+            // and the patron saw nothing because `error` was nil and the
+            // consumer guard short-circuited. Synthesise an Error.
+            let error = NSError(
+                domain: "OAuth.SignIn",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to parse authentication info"]
+            )
+            completion?(error,
+                        Strings.Error.loginErrorTitle,
+                        Strings.Error.loginErrorDescription)
             return
         }
 
