@@ -99,7 +99,13 @@ final class TPPBookRegistryLargeCorpusTests: XCTestCase {
         )
     }
 
-    private func loadAndWait(timeout: TimeInterval = 60.0) {
+    /// Default timeout is 120s rather than 60s: a 5000-book JSON load is
+    /// inherently slow, and on CI runners under memory pressure (the log
+    /// shows 49 MB available + image-cache trimming) the load can take
+    /// 66s+ which trips a 60s budget. 120s tolerates CI variance while
+    /// still failing fast on a genuinely wedged load. Performance-budget
+    /// tests pass their own (tighter) timeouts.
+    private func loadAndWait(timeout: TimeInterval = 120.0) {
         let exp = expectation(description: "load completes")
         sync.load(account: account, setState: { newState in
             if newState == .loaded { exp.fulfill() }

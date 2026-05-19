@@ -48,8 +48,15 @@ final class AccountSwitchLifecycleTests: XCTestCase {
     private var store: BookRegistryStore!
     private var sync: BookRegistrySync!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // CI hosts run without keychain entitlement — SecItemAdd /
+        // SecItemCopyMatching return errSecMissingEntitlement (-34018), so
+        // setAuthToken writes succeed but reads come back nil. Skip the
+        // whole class on those hosts; the contract being tested
+        // (per-library credential isolation) is only meaningful when the
+        // keychain actually round-trips.
+        try KeychainAvailability.skipIfUnavailable()
         HTTPStubURLProtocol.reset()
         accountsManager = AccountsManager()
         store = BookRegistryStore()

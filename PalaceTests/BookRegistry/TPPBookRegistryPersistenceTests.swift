@@ -90,13 +90,19 @@ final class TPPBookRegistryPersistenceTests: XCTestCase {
     /// in-memory mutation onto the store's concurrent queue and the publisher
     /// emission onto the main thread; we wait on a `loaded` setState callback
     /// and then drain the main RunLoop.
+    ///
+    /// Timeout: 30s rather than the dev-machine-tight 5s. On CI under memory
+    /// pressure (49 MB available log line on the GitHub-hosted runner)
+    /// AccountsManager preload of 1138 disk-cached accounts during init can
+    /// alone consume >5s of the test's budget before `sync.load` even starts.
+    /// 30s tolerates that warm-up while still failing fast on a wedged load.
     private func loadAndWait(account: String) {
         let exp = expectation(description: "load(\(account)) completes")
         sync.load(account: account, setState: { newState in
             if newState == .loaded { exp.fulfill() }
         }, completion: nil)
         // Drain RunLoop so the publisher-on-main dispatch lands before assertions.
-        wait(for: [exp], timeout: 5.0)
+        wait(for: [exp], timeout: 30.0)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 
