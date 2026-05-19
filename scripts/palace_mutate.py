@@ -353,6 +353,37 @@ def main() -> int:
     survived = 0
     errored = 0
 
+    def _build_report(partial: bool) -> dict:
+        total = killed + survived
+        rate = (killed / total * 100) if total else 0.0
+        return {
+            "file": args.file,
+            "tests": args.tests,
+            "seed": args.seed,
+            "summary": {
+                "killed": killed,
+                "survived": survived,
+                "errored": errored,
+                "kill_rate_pct": round(rate, 1),
+                "partial": partial,
+                "completed_mutations": total + errored,
+                "planned_mutations": len(mutations),
+            },
+            "results": results,
+        }
+
+    def _write_report_atomic(report: dict) -> None:
+        # Write to <path>.tmp then rename. POSIX rename is atomic on the same
+        # filesystem, so a reader (CI parse step, dev IDE) never sees a
+        # half-written file even if the process is killed mid-write. Defends
+        # against the "CI workflow comment says no data" symptom that fired
+        # when an external timeout cut palace_mutate mid-run before the
+        # tail-end single write.
+        tmp_path = args.report + ".tmp"
+        with open(tmp_path, "w") as f:
+            json.dump(report, f, indent=2)
+        os.replace(tmp_path, args.report)
+
     for i, m in enumerate(mutations, 1):
         prefix = f"[{i}/{len(mutations)}]"
         if not args.quiet:
@@ -364,6 +395,7 @@ def main() -> int:
             print(f"  SKIP — {e}")
             results.append({"mutation": dataclasses.asdict(m), "status": "skipped", "reason": str(e)})
             errored += 1
+            _write_report_atomic(_build_report(partial=True))
             continue
 
         try:
@@ -389,6 +421,13 @@ def main() -> int:
             "elapsed_sec": round(elapsed, 1),
         })
 
+        # Flush AFTER every mutation. If the process is killed by a CI
+        # timeout (the original symptom) or Ctrl-C, the report on disk
+        # already reflects everything completed so far — including a
+        # partial=True flag the consumer can use to distinguish "ran to
+        # completion" from "ran but got cut off."
+        _write_report_atomic(_build_report(partial=True))
+
     total_run = killed + survived
     kill_rate = (killed / total_run * 100) if total_run else 0.0
 
@@ -401,20 +440,9 @@ def main() -> int:
     print(f"  kill rate: {kill_rate:.1f}%")
     print("=" * 60)
 
-    report = {
-        "file": args.file,
-        "tests": args.tests,
-        "seed": args.seed,
-        "summary": {
-            "killed": killed,
-            "survived": survived,
-            "errored": errored,
-            "kill_rate_pct": round(kill_rate, 1),
-        },
-        "results": results,
-    }
-    with open(args.report, "w") as f:
-        json.dump(report, f, indent=2)
+    # Final report flips partial=False since we made it through the loop.
+    report = _build_report(partial=False)
+    _write_report_atomic(report)
     print(f"report: {args.report}")
 
     if not args.no_cache:

@@ -119,3 +119,6 @@ scripts/sim-test/
 *.pbxproj.bak
 ios-core-cm-monitor
 scripts/__pycache__/
+
+# palace-mutate report artifact (regenerated on every run)
+palace-mutate-report.json
