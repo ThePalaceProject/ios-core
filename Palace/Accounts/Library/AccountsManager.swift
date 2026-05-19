@@ -290,6 +290,47 @@ struct CatalogCacheMetadata: Codable {
         }
     }
 
+    #if DEBUG
+    /// Test-only: seed an Account into `accountSets[currentHash]` and set
+    /// `currentAccountId` to its UUID, so `AppContainer.production()
+    /// .accountsManager.currentAccount` returns it. Used by Bucket A
+    /// integration tests that need to exercise production-stack code
+    /// paths reading `currentAccount` (e.g.
+    /// `AudiobookSessionManager.shared.openAudiobook`,
+    /// `CarPlayAuthHelper.isAuthenticated`,
+    /// `TPPBookRegistry.syncAsync`, `BookRegistrySync.sync`) without
+    /// requiring a real OPDS2 catalog fixture load. Closes the 4 XCTSkip
+    /// blocks the swarm Phase 1 implementers flagged.
+    ///
+    /// Returns a teardown closure that removes the seeded account and
+    /// restores the prior `currentAccountIdentifierKey`. Callers should
+    /// defer-call it to keep the production singleton uncontaminated.
+    ///
+    /// NOT exposed in production builds.
+    @discardableResult
+    func _seedAccountForTesting(_ account: Account) -> () -> Void {
+        let seedKey = self.accountSet
+        performWrite {
+            var seeded = self.accountSets[seedKey] ?? []
+            seeded.removeAll { $0.uuid == account.uuid }
+            seeded.append(account)
+            self.accountSets[seedKey] = seeded
+        }
+        let previousId = UserDefaults.standard.string(forKey: currentAccountIdentifierKey)
+        UserDefaults.standard.set(account.uuid, forKey: currentAccountIdentifierKey)
+        return {
+            self.performWrite {
+                self.accountSets[seedKey]?.removeAll { $0.uuid == account.uuid }
+            }
+            if let prev = previousId {
+                UserDefaults.standard.set(prev, forKey: currentAccountIdentifierKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey)
+            }
+        }
+    }
+    #endif
+
     var accountsHaveLoaded: Bool {
         return performRead {
             !(self.accountSets[self.accountSet]?.isEmpty ?? true)
