@@ -46,7 +46,16 @@ public final class AccountStateStore {
 
     /// Current state for a given account UUID. Returns `.notLoaded` if
     /// no state machine has been driven for this UUID yet.
-    public func state(for uuid: String) -> Account.LoadState {
+    ///
+    /// NOTE (Accounts-Wiring triage 2026-05-18): downgraded from `public`
+    /// to `internal` because the return type `Account.LoadState` is
+    /// internal-by-inheritance (the enclosing `final class Account` is
+    /// internal). Swift refuses `public func -> InternalType`. Restoring
+    /// `public` requires also elevating `Account` to `public`, which is
+    /// out of scope for the wiring module per the swarm contract. Flagged
+    /// for the integrator: revert if elevating `Account` to public is
+    /// preferred for the ADR's external-consumer story.
+    func state(for uuid: String) -> Account.LoadState {
         return subject(for: uuid).value
     }
 
@@ -54,7 +63,10 @@ public final class AccountStateStore {
     /// current state immediately on subscribe, then each transition.
     /// Multiple subscribers safe (CurrentValueSubject broadcasts).
     /// Cancellation cleans up the Combine subscription automatically.
-    public func stateStream(for uuid: String) -> AsyncStream<Account.LoadState> {
+    ///
+    /// NOTE: see `state(for:)` above for the public→internal downgrade
+    /// rationale. Same constraint applies here.
+    func stateStream(for uuid: String) -> AsyncStream<Account.LoadState> {
         let subject = self.subject(for: uuid)
         return AsyncStream { continuation in
             let cancellable = subject.sink { state in

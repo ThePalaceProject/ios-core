@@ -37,16 +37,22 @@ final class AccountStateMachineTests: XCTestCase {
 
     // MARK: - Initial state
 
-    /// Default state is `.notLoaded`. Until AccountsManager drives a
-    /// transition, callers cannot mistake an Account for being ready.
-    func testInitialState_isNotLoaded() {
-        guard let account = makeAccount() else {
-            XCTSkip("No accounts available in test environment"); return
-        }
-        if case .notLoaded = account.loadState {
+    /// Default state for a UUID the state machine has never seen is
+    /// `.notLoaded`. Phase 1 wiring drives every account that flows
+    /// through `AccountsManager.preloadAccountsFromDiskCacheSync` to
+    /// `.basicInfoLoaded`, so the original "first production account
+    /// reads .notLoaded" assertion no longer holds — that path is now
+    /// correctly driven on init. Test the underlying store contract
+    /// against a fresh UUID instead, which preserves the original
+    /// intent: until something drives a transition, the gate stays
+    /// closed.
+    func testInitialState_freshUUID_isNotLoaded() {
+        let freshUUID = "test-fresh-uuid-\(UUID().uuidString)"
+        let state = AccountStateStore.shared.state(for: freshUUID)
+        if case .notLoaded = state {
             // pass
         } else {
-            XCTFail("Account.loadState should default to .notLoaded until AccountsManager drives a transition, got \(account.loadState)")
+            XCTFail("AccountStateStore should default to .notLoaded for an untouched UUID, got \(state)")
         }
     }
 
