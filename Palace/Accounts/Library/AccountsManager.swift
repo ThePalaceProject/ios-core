@@ -103,6 +103,16 @@ struct CatalogCacheMetadata: Codable {
     private var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
     private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
 
+    /// Per-UUID single-flight guard for `authentication_document` fetches.
+    /// Without this, two concurrent consumers calling `awaitReady()` on the
+    /// same Account would each cause `current.loadAuthenticationDocument` to
+    /// fire a duplicate HTTP request. The state machine's broadcast
+    /// (`CurrentValueSubject`) handles multi-consumer observation; this set
+    /// just prevents the duplicate network request. See ADR
+    /// docs/architecture/account-state-machine.md Open Q #1.
+    private var inflightAuthDocFetches = Set<String>()
+    private let inflightAuthDocLock = NSLock()
+
     /// Initializer is `internal` rather than `private` so `AppContainer` can
     /// construct the single live instance directly. Outside of `AppContainer`
     /// (and tests that need an isolated instance), do not call this directly
@@ -139,7 +149,10 @@ struct CatalogCacheMetadata: Codable {
     /// Hydrate `accountSets[accountSet]` from the on-disk OPDS2 catalog cache
     /// without dispatching to a background queue. Safe to call from `init()`
     /// because the cache read is local I/O measured in single-digit ms.
-    private func preloadAccountsFromDiskCacheSync() {
+    ///
+    /// Exposed `internal` so contract-snapshot tests can drive the preload
+    /// path directly after seeding the on-disk cache.
+    internal func preloadAccountsFromDiskCacheSync() {
         let hash = self.accountSet
         guard hasCachedCatalogData(hash: hash),
               let cachedData = readCachedAccountsCatalogData(hash: hash) else {
@@ -151,6 +164,14 @@ struct CatalogCacheMetadata: Codable {
                 Account(publication: $0, imageCache: ImageCache.shared)
             }
             performWrite { self.accountSets[hash] = accounts }
+            // Account state-machine wiring (3.2.0): Phase 1 — drive every
+            // preloaded account into `.basicInfoLoaded`. Display-only
+            // consumers (Settings/Libraries) can render the row immediately;
+            // critical-path readers `awaitReady()` continue blocking until
+            // the auth-doc transition completes below.
+            for account in accounts {
+                account._setState(.basicInfoLoaded)
+            }
             Log.info(#file, "Pre-loaded \(accounts.count) accounts from disk cache (sync, hash=\(hash))")
         } catch {
             // Best-effort. If the cached blob is corrupt or schema-shifted,
@@ -197,6 +218,22 @@ struct CatalogCacheMetadata: Codable {
 
             self.currentAccount?.hasUpdatedToken = false
             currentAccountId = newValue?.uuid
+
+            // Account state-machine wiring (3.2.0): Phase 1 — when the user
+            // switches libraries, terminate any lingering `awaitReady()`
+            // callers on the *prior* account with a definitive answer.
+            // `.accountNotFound` is the chosen terminal because `.notLoaded`
+            // would leave awaiters hanging until reselect; surfacing the
+            // error lets callers fail fast and (optionally) retry.
+            // Re-entering the same UUID later overwrites this through the
+            // `.basicInfoLoaded` path on the next preload/loadCatalogs.
+            if let prev = previousAccountId, prev != newAccountId {
+                AccountStateStore.shared.setState(
+                    .detailsFailed(.accountNotFound(uuid: prev)),
+                    for: prev
+                )
+            }
+
             TPPErrorLogger.setUserID(self.currentUserAccount.barcode)
             // isAccountSwitching is reset asynchronously by cleanupActiveContentBeforeAccountSwitch
             // after navigation cleanup completes — NOT here, to avoid premature reset (F-032).
@@ -633,7 +670,7 @@ struct CatalogCacheMetadata: Codable {
         guard readCachedAccountsCatalogData(hash: hash) != nil else { return false }
         guard let metadata = readCacheMetadata(hash: hash) else {
             // Data exists but no metadata - treat as usable but stale
-            return true
+            return false
         }
         return !metadata.isExpired
     }
@@ -692,9 +729,64 @@ struct CatalogCacheMetadata: Codable {
         return try? JSONDecoder().decode(CrawlState.self, from: data)
     }
 
+    // MARK: – Auth Document fetch with state-machine wiring
+
+    /// Wraps `Account.loadAuthenticationDocument` with:
+    /// 1. Per-UUID single-flight guard — the second concurrent caller for
+    ///    the same UUID does NOT fire a duplicate HTTP request; the state
+    ///    stream's broadcast (`CurrentValueSubject`) ensures both callers
+    ///    observe the same eventual transition.
+    /// 2. State-machine transitions — `.detailsLoading` before the fetch;
+    ///    `.detailsLoaded(details)` on success; `.detailsFailed(...)` on
+    ///    failure. New code that reads `account.details` must go through
+    ///    `Account.awaitReady()`, which observes these transitions.
+    ///
+    /// Exposed `internal` so contract-snapshot tests can drive the wiring
+    /// path directly without going through the full `loadCatalogs` cycle.
+    internal func fetchAuthDocumentWithStateMachine(
+        for account: Account,
+        completion: @escaping (Bool) -> Void
+    ) {
+        inflightAuthDocLock.lock()
+        let alreadyInflight = inflightAuthDocFetches.contains(account.uuid)
+        if !alreadyInflight {
+            inflightAuthDocFetches.insert(account.uuid)
+        }
+        inflightAuthDocLock.unlock()
+
+        if alreadyInflight {
+            // A fetch for this UUID is already in flight. Don't fire a
+            // duplicate HTTP request — the state stream's broadcast covers
+            // multi-consumer observation. Caller's completion gets `true`
+            // so the calling DispatchGroup (if any) balances.
+            completion(true)
+            return
+        }
+
+        account._setState(.detailsLoading)
+        account.loadAuthenticationDocument(using: self.currentUserAccount) { [weak self] success in
+            guard let self = self else {
+                completion(success)
+                return
+            }
+            self.inflightAuthDocLock.lock()
+            self.inflightAuthDocFetches.remove(account.uuid)
+            self.inflightAuthDocLock.unlock()
+
+            if success, let details = account.details {
+                account._setState(.detailsLoaded(details))
+            } else {
+                account._setState(.detailsFailed(
+                    .authDocumentFetchFailed(underlyingDescription: "loadAuthenticationDocument returned false")
+                ))
+            }
+            completion(success)
+        }
+    }
+
     // MARK: – Parsing & notifying
 
-    private func loadAccountSetsAndAuthDoc(
+    internal func loadAccountSetsAndAuthDoc(
         fromCatalogData data: Data,
         key hash: String,
         completion: @escaping (Bool) -> Void
@@ -725,6 +817,27 @@ struct CatalogCacheMetadata: Codable {
                 self.accountSets[hash] = newAccounts
             }
 
+            // Account state-machine wiring (3.2.0): Phase 1 — drive every
+            // freshly-constructed account into its post-load terminal state.
+            // The `authentication_document` carry-over path above means an
+            // account that previously held `.detailsLoaded` continues to
+            // observe loaded details (under the new instance). Accounts
+            // without a carry-over auth doc fall back to `.basicInfoLoaded`
+            // until the current-account fetch below drives them through
+            // `.detailsLoading` → `.detailsLoaded` / `.detailsFailed`.
+            for newAccount in newAccounts {
+                if newAccount.authenticationDocument != nil,
+                   let details = newAccount.details {
+                    // Belt-and-suspenders `guard let`: `authenticationDocument`
+                    // didSet populates `details` synchronously, but a
+                    // mock-data publication could in principle land here
+                    // with an authDoc that fails to construct details.
+                    newAccount._setState(.detailsLoaded(details))
+                } else {
+                    newAccount._setState(.basicInfoLoaded)
+                }
+            }
+
             let group = DispatchGroup()
 
             let accountExistenceChanged = hadAccount != (self.currentAccount != nil)
@@ -733,7 +846,7 @@ struct CatalogCacheMetadata: Codable {
             if accountExistenceChanged || currentAccountMissingDetails, let current = self.currentAccount {
                 group.enter()
                 current.loadLogo()
-                current.loadAuthenticationDocument(using: self.currentUserAccount) { _ in
+                fetchAuthDocumentWithStateMachine(for: current) { _ in
                     if current.details?.needsAgeCheck ?? false {
                         group.enter()
                         self.ageCheck.verifyCurrentAccountAgeRequirement(
