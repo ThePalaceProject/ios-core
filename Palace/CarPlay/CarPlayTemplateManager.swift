@@ -255,74 +255,83 @@ final class CarPlayTemplateManager: NSObject {
             return
         }
 
-        // Check authentication status first
-        let authenticated = isUserAuthenticated()
-        guard authenticated else {
-            Log.warn(#file, "CarPlay: User not authenticated")
-            showErrorAlert(
-                title: Strings.CarPlay.Error.authRequired,
-                message: Strings.CarPlay.Error.authMessage
-            )
-            return
-        }
+        // PHASE 1 (swarm_81b5099e Bucket A): the authentication check now
+        // awaits Account.awaitReady() (under the hood in CarPlayAuthHelper)
+        // so we no longer race the cold-launch authentication_document
+        // fetch. Wrap downstream guards in the same Task so the alert
+        // sequencing stays linear with the await.
+        Task { [weak self] in
+            guard let self else { return }
+            let authenticated = await self.isUserAuthenticated()
+            guard authenticated else {
+                Log.warn(#file, "CarPlay: User not authenticated")
+                self.showErrorAlert(
+                    title: Strings.CarPlay.Error.authRequired,
+                    message: Strings.CarPlay.Error.authMessage
+                )
+                return
+            }
 
-        // Check if book is downloaded for offline play
-        let downloaded = isDownloaded(book)
-        guard downloaded else {
-            showErrorAlert(
-                title: Strings.CarPlay.Error.notDownloaded,
-                message: Strings.CarPlay.Error.downloadRequired
-            )
-            return
-        }
+            // Check if book is downloaded for offline play
+            let downloaded = self.isDownloaded(book)
+            guard downloaded else {
+                self.showErrorAlert(
+                    title: Strings.CarPlay.Error.notDownloaded,
+                    message: Strings.CarPlay.Error.downloadRequired
+                )
+                return
+            }
 
-        // Check network connectivity for streaming content that requires it
-        let isOffline = !AppContainer.production().reachability.isConnectedToNetwork()
-        let needsNetwork = !isFullyDownloaded(book)
+            // Check network connectivity for streaming content that requires it
+            let isOffline = !AppContainer.production().reachability.isConnectedToNetwork()
+            let needsNetwork = !self.isFullyDownloaded(book)
 
-        if isOffline && needsNetwork {
-            Log.warn(#file, "CarPlay: Offline and book not fully downloaded")
-            showErrorAlert(
-                title: Strings.CarPlay.Error.offline,
-                message: Strings.CarPlay.Error.offlineMessage
-            )
-            return
-        }
+            if isOffline && needsNetwork {
+                Log.warn(#file, "CarPlay: Offline and book not fully downloaded")
+                self.showErrorAlert(
+                    title: Strings.CarPlay.Error.offline,
+                    message: Strings.CarPlay.Error.offlineMessage
+                )
+                return
+            }
 
-        // NOTE: Don't call stopCurrentPlayback() here - it races with playAudiobook()
-        // and causes the phone UI to be dismissed after it's pushed.
-        // AudiobookSessionManager.openAudiobook() handles stopping existing playback internally.
+            // NOTE: Don't call stopCurrentPlayback() here - it races with playAudiobook()
+            // and causes the phone UI to be dismissed after it's pushed.
+            // AudiobookSessionManager.openAudiobook() handles stopping existing playback internally.
 
-        // Pop to root to clear any stacked CarPlay templates (only if not already at root)
-        if let controller = interfaceController, controller.templates.count > 1 {
-            controller.popToRootTemplate(animated: false, completion: nil)
-        }
+            // Pop to root to clear any stacked CarPlay templates (only if not already at root)
+            if let controller = self.interfaceController, controller.templates.count > 1 {
+                controller.popToRootTemplate(animated: false, completion: nil)
+            }
 
-        // Mark as loading to prevent duplicate selections
-        isLoadingBook = true
+            // Mark as loading to prevent duplicate selections
+            self.isLoadingBook = true
 
-        // Start playback through the bridge with enhanced error handling
-        // Note: switchToNowPlaying will be called automatically via playbackStatePublisher
-        // when playback actually begins (after BookService finishes position sync)
-        // openAudiobook() will stop any existing playback before starting the new book
-        playerBridge.playAudiobook(book) { [weak self] result in
-            self?.isLoadingBook = false
+            // Start playback through the bridge with enhanced error handling
+            // Note: switchToNowPlaying will be called automatically via playbackStatePublisher
+            // when playback actually begins (after BookService finishes position sync)
+            // openAudiobook() will stop any existing playback before starting the new book
+            self.playerBridge.playAudiobook(book) { [weak self] result in
+                self?.isLoadingBook = false
 
-            switch result {
-            case .success:
-                Log.info(#file, "CarPlay: Playback started successfully for '\(book.title)'")
-            case .failure(let error):
-                Log.error(#file, "CarPlay: Failed to start playback for '\(book.title)': \(error)")
-                self?.handlePlaybackError(error)
+                switch result {
+                case .success:
+                    Log.info(#file, "CarPlay: Playback started successfully for '\(book.title)'")
+                case .failure(let error):
+                    Log.error(#file, "CarPlay: Failed to start playback for '\(book.title)': \(error)")
+                    self?.handlePlaybackError(error)
+                }
             }
         }
     }
 
-    /// Checks if the user is authenticated with the current library
+    /// Checks if the user is authenticated with the current library.
+    /// PHASE 1: awaits the Account.LoadState readiness gate so the
+    /// answer reflects loaded credentials, not pre-load defaults.
     /// Note: If tokens need refresh, the app's auth layer handles this automatically.
     /// CarPlay cannot show sign-in UI - users must sign in via the phone app.
-    private func isUserAuthenticated() -> Bool {
-        CarPlayAuthHelper.isAuthenticated()
+    private func isUserAuthenticated() async -> Bool {
+        await CarPlayAuthHelper.isAuthenticated()
     }
 
     /// Handles specific playback errors with appropriate UI
