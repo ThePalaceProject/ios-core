@@ -638,6 +638,7 @@
 		7D14A1DFDD362D25525D21FE /* TPPProcessInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = E48AE22D7C0BC6134885E9F0 /* TPPProcessInfo.swift */; };
 		7D39F891C8E9A0B7DC2A2306 /* MockFeatureFlagProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3432D61958317AD796B90005 /* MockFeatureFlagProvider.swift */; };
 		7D4F1388FDE4E63A7EB91AE3 /* DRMAdversarialTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48A94705E284922B50327BF8 /* DRMAdversarialTests.swift */; };
+		7E1F3E84BEF373E154E0ABBB /* OPDSFeedServiceStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08345237E25BCCFF8F97B302 /* OPDSFeedServiceStateMachineTests.swift */; };
 		7EDBF257762A48948D990532 /* TPPLastReadPositionPosterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38BB1056721E445D90C72FFF /* TPPLastReadPositionPosterTests.swift */; };
 		7F80D2F9E103BEC1042C3DE1 /* TokenRefreshInterceptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 085A2D3663F363348BE14190 /* TokenRefreshInterceptor.swift */; };
 		7F925770F4564C38B3784E64 /* AudiobookReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF99D1F39D634C56A70BFE75 /* AudiobookReliabilityTests.swift */; };
@@ -971,6 +972,7 @@
 		DE67C809E2D5FEC127EF7845 /* TPPBookRegistryDependencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2EF561051B25A261AE67BC /* TPPBookRegistryDependencyTests.swift */; };
 		DE8F7A1FFA894C20AC3C1101 /* TPPSettingsMock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02B8F946D19048E4AE73B6C7 /* TPPSettingsMock.swift */; };
 		DEB55C527CC64B0BAACAD072 /* OPDSFeedMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42A18057E6441D9B4142F50 /* OPDSFeedMigrationTests.swift */; };
+		DF0D9DF245858E2F5D6EF3B6 /* UnifiedOPDSServiceStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B56924B6344307FB92447799 /* UnifiedOPDSServiceStateMachineTests.swift */; };
 		DFE01AE10C997E2318A4FD42 /* AccessibilityPreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A256A501E6AB55F352D674FE /* AccessibilityPreferencesTests.swift */; };
 		DFF555639FA1B81BE6A9DFCE /* DownloadStateManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEE0C3EAFC52054E7144B795 /* DownloadStateManagerTests.swift */; };
 		DR41NMQUEUE2026042760BB01 /* XCTestCase+drainMainQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = DR41NMQUEUE2026042760BBFE /* XCTestCase+drainMainQueue.swift */; };
@@ -1734,6 +1736,7 @@
 		0824D44D24B8DFE400C85A7E /* NSString+JSONParse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSString+JSONParse.swift"; sourceTree = "<group>"; };
 		0826CD2824AA21B2000F4030 /* TPPSamlIDPCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSamlIDPCell.swift; sourceTree = "<group>"; };
 		0826CD2E24AA2801000F4030 /* TPPLibraryDescriptionCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPLibraryDescriptionCell.swift; sourceTree = "<group>"; };
+		08345237E25BCCFF8F97B302 /* OPDSFeedServiceStateMachineTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OPDSFeedServiceStateMachineTests.swift; sourceTree = "<group>"; };
 		0857A0F62478337D00C7984E /* TPPCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPCredentials.swift; sourceTree = "<group>"; };
 		085A2D3663F363348BE14190 /* TokenRefreshInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenRefreshInterceptor.swift; sourceTree = "<group>"; };
 		085D31D81BE29ED4007F7672 /* TPPProblemReportViewController.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = TPPProblemReportViewController.xib; sourceTree = "<group>"; };
@@ -2338,6 +2341,7 @@
 		B51C1E14229456E2003B49A5 /* gpl_authentication_document.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = gpl_authentication_document.json; sourceTree = "<group>"; };
 		B51C1E15229456E2003B49A5 /* nypl_authentication_document.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = nypl_authentication_document.json; sourceTree = "<group>"; };
 		B51C1E16229456E2003B49A5 /* dpl_authentication_document.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = dpl_authentication_document.json; sourceTree = "<group>"; };
+		B56924B6344307FB92447799 /* UnifiedOPDSServiceStateMachineTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UnifiedOPDSServiceStateMachineTests.swift; sourceTree = "<group>"; };
 		B57489E1C2CE2DD11EFC1C03 /* CatalogModelsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CatalogModelsTests.swift; sourceTree = "<group>"; };
 		B5BA6F84CC20612B8D4969FE /* PositionSyncBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PositionSyncBanner.swift; sourceTree = "<group>"; };
 		B5D6A3DE24CC45D98F02DC98 /* StringExtensionsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StringExtensionsTests.swift; sourceTree = "<group>"; };
@@ -3116,6 +3120,8 @@
 				C9E38281988A9921BB4B8297 /* OPDS2IntegrationTests.swift */,
 				65F03A0005DBD80853C64D12 /* OPDS2PublicationExtendedTests.swift */,
 				23421B886CD7122945915B93 /* TPPOPDSGroupTests.swift */,
+				08345237E25BCCFF8F97B302 /* OPDSFeedServiceStateMachineTests.swift */,
+				B56924B6344307FB92447799 /* UnifiedOPDSServiceStateMachineTests.swift */,
 			);
 			path = OPDS2;
 			sourceTree = "<group>";
@@ -6425,6 +6431,8 @@
 				549EF47CE55EB2FA94C67966 /* ReaderNavBarVoiceOverTests.swift in Sources */,
 				2062F7CE28531C0ACDCF5859 /* AccountStateMachineTests.swift in Sources */,
 				B889ECCF0F07418C40A3AEFE /* AccountsManagerStateMachineWiringTests.swift in Sources */,
+				7E1F3E84BEF373E154E0ABBB /* OPDSFeedServiceStateMachineTests.swift in Sources */,
+				DF0D9DF245858E2F5D6EF3B6 /* UnifiedOPDSServiceStateMachineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
