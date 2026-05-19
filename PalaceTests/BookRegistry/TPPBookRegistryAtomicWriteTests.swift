@@ -90,12 +90,16 @@ final class TPPBookRegistryAtomicWriteTests: XCTestCase {
         )
     }
 
+    /// 30s rather than 5s — same defensive bump as the sibling
+    /// TPPBookRegistryPersistenceTests.loadAndWait. AccountsManager preload
+    /// of 1138 cached accounts during init can alone consume >5s on
+    /// memory-pressured CI before sync.load even starts.
     private func loadAndWait() {
         let exp = expectation(description: "load completes")
         sync.load(account: account, setState: { newState in
             if newState == .loaded { exp.fulfill() }
         }, completion: nil)
-        wait(for: [exp], timeout: 5.0)
+        wait(for: [exp], timeout: 30.0)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 
