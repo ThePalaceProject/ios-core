@@ -37,9 +37,28 @@ extension TPPBookRegistry {
     /// Asynchronously syncs the registry with the server
     /// - Returns: Tuple of (errorDocument, hasNewBooks)
     /// - Throws: PalaceError if sync fails
+    ///
+    /// PHASE 1 (swarm_81b5099e Bucket A): blocks on `Account.awaitReady()`
+    /// before reading `loansUrl`. Pre-Phase-1 this read `currentAccount?
+    /// .loansUrl` directly and threw `.accountNotFound` whenever the auth
+    /// document hadn't finished loading — same systemic race as the
+    /// audiobook open path. The async function already had network-fetch
+    /// timeouts via `OPDSFeedService.fetchFeed`; per the ADR's single-
+    /// timeout policy we do NOT wrap awaitReady() in withTimeout here.
     func syncAsync(accountsManager: AccountsManager = AppContainer.production().accountsManager) async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
-        // Use OPDSFeedService for modern async approach
-        guard let loansURL = accountsManager.currentAccount?.loansUrl else {
+        guard let currentAccount = accountsManager.currentAccount else {
+            throw PalaceError.authentication(.accountNotFound)
+        }
+
+        let details: AccountDetails
+        do {
+            details = try await currentAccount.awaitReady()
+        } catch {
+            Log.warn(#file, "syncAsync: awaitReady failed for \(currentAccount.uuid): \(error)")
+            throw PalaceError.authentication(.accountNotFound)
+        }
+
+        guard let loansURL = details.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
 
