@@ -129,6 +129,38 @@ final class TPPUserAccountAuthStateTests: XCTestCase {
                        "markLoggedIn from credentialsStale must land on loggedIn (re-auth)")
     }
 
+    func testSetAuthToken_transitionsFromCredentialsStaleToLoggedIn() {
+        // Silent re-auth path (OIDC/OAuth): TokenRefreshInterceptor and the
+        // OIDC callback both call setAuthToken(...) with a freshly-issued
+        // token. A fresh token IS a successful auth — authState must flip
+        // to .loggedIn immediately. Otherwise the persisted .credentialsStale
+        // survives across launches and the user is prompted to re-sign-in on
+        // the next cold-start even though their token is good.
+        //
+        // Before the fix: setAuthToken wrote _credentials but left _authState
+        // at .credentialsStale; the responder's self-heal block at
+        // TPPNetworkResponder.swift:308 had to fire a subsequent 2xx for the
+        // user to be considered logged-in again. If the app was closed before
+        // that next request, the stale flag persisted.
+
+        // Given: user is signed in then transitioned to credentialsStale
+        userAccount._credentials = .barcodeAndPin(barcode: "test", pin: "1234")
+        userAccount.setAuthState(.loggedIn)
+        userAccount.markCredentialsStale()
+        XCTAssertEqual(userAccount.authState, .credentialsStale,
+                       "precondition: credentials are stale before silent re-auth")
+
+        // When: a silent re-auth lands a new token
+        userAccount.setAuthToken("freshOIDCToken",
+                                 barcode: nil,
+                                 pin: nil,
+                                 expirationDate: nil)
+
+        // Then: authState must be loggedIn (NOT credentialsStale)
+        XCTAssertEqual(userAccount.authState, .loggedIn,
+                       "setAuthToken with a fresh token must transition credentialsStale → loggedIn — otherwise persisted stale flag re-prompts on cold launch")
+    }
+
     func testRemoveAll_resetsStateToLoggedOut() {
         // Given: User has credentials and is logged in
         userAccount._credentials = .barcodeAndPin(barcode: "test", pin: "1234")

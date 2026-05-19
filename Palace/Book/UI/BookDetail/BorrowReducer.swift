@@ -134,6 +134,16 @@ enum BorrowReducer {
                 // failure so the retry/cancel options remain reachable.
                 state.processingButtons.subtract([.download, .get, .retry])
 
+            case .downloadNeeded:
+                // Borrow completed (registry transitioned unregistered/holding
+                // -> downloadNeeded). Clear the .get/.download/.retry processing
+                // flags so the half-sheet swaps from the in-progress Cancel-only
+                // button to Download + Return. Without this, `isProcessingDownload`
+                // stays true and BookButtonMapper short-circuits to .downloadInProgress
+                // (Cancel-only) — the user has to dismiss and re-present the
+                // half-sheet to break the stuck state.
+                state.processingButtons.subtract([.download, .get, .retry])
+
             case .downloadSuccessful, .used:
                 // Half-sheet stays open so the user can tap Read/Listen
                 // without a second navigation.
@@ -146,7 +156,22 @@ enum BorrowReducer {
                 state.processingButtons.remove(.get)
                 state.showHalfSheet = false
 
-            default:
+            // Exhaustive (no `default:`) so the Swift compiler emits an error
+            // when a new TPPBookState case is added. This is the load-bearing
+            // protection that would have caught F-011: `.downloadNeeded` was
+            // silently swallowed by the previous `default:`, leaving `.get` in
+            // processingButtons and stranding the half-sheet on Cancel-only
+            // after a successful borrow.
+            //
+            // These transitions don't need state-specific cleanup beyond the
+            // bookState assignment above:
+            //   - .returning is driven by the .returnStartConfirmed action
+            //     (or the localBookStateOverride). A registry-driven .returning
+            //     emission would only fire if the registry initiated the return
+            //     (rare); behavior matches the original default.
+            //   - .unsupported / .SAMLStarted are transient states the half-sheet
+            //     doesn't render special UI for.
+            case .returning, .unsupported, .SAMLStarted:
                 break
             }
             return .none

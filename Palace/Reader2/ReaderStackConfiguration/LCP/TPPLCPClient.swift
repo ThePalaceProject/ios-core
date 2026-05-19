@@ -9,6 +9,13 @@ import PalaceLogging
 enum LCPContextError: Error {
     case creationReturnedNil
     case nativeException(name: String, reason: String)
+    /// The pemCrl input did not look like a PEM-encoded X509 CRL.
+    /// Defense-in-depth — Botan's BER parser used to crash with an
+    /// uncaught C++ exception (Crashlytics 0ca62d8244, 11 users on
+    /// 3.0.0) when the server returned HTML / JSON / partial bytes.
+    /// The ObjC++ exception wrapper now catches that, but it's faster
+    /// to reject up front and easier to diagnose from the log.
+    case invalidPemCrl(prefix: String)
 }
 
 let lcpService = LCPLibraryService()
@@ -37,6 +44,21 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
         hashedPassphrase: String,
         pemCrl: String
     ) throws -> LCPClientContext {
+        // F-002 defense-in-depth: pre-validate the PEM CRL header before
+        // handing it to the C++ Botan parser. A valid X509 CRL in PEM form
+        // starts with the literal "-----BEGIN X509 CRL-----" marker. When the
+        // server returns HTML/JSON/partial bytes, Botan throws an uncaught
+        // Decoding_Error that the wrapper below catches — but rejecting up
+        // front gives a much cleaner failure mode (clear log, no native frame
+        // in the crash report, no wasted C++ entry/exit) and lets us see in
+        // logs how often this happens in the wild.
+        let trimmed = pemCrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && !trimmed.hasPrefix("-----BEGIN X509 CRL-----") {
+            let prefix = String(trimmed.prefix(40))
+            Log.error(#file, "LCP createContext: pemCrl does not look like a PEM-encoded CRL (prefix: \(prefix)) — rejecting before Botan parse")
+            throw LCPContextError.invalidPemCrl(prefix: prefix)
+        }
+
         var rawResult: LCPClientContext?
         var caughtError: Error?
         var caughtNativeException: NSException?

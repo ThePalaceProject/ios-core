@@ -322,6 +322,13 @@ private extension HalfSheetView {
     @ViewBuilder
     var statusInfoView: some View {
         VStack(alignment: .leading) {
+            // Exhaustive (no `default:`) so the Swift compiler emits an error
+            // when a new TPPBookState case is added without explicit handling.
+            // This is the load-bearing protection that would have caught
+            // F-011's class of bug: the previous `default:` silently swallowed
+            // any missed case. Keep `.unregistered/.holding/.unsupported/
+            // .SAMLStarted/.downloadFailed` collapsed into the borrowed-or-
+            // holding fallback to match the original behavior.
             switch viewModel.bookState {
             case .downloadSuccessful, .used:
                 borrowedInfoView
@@ -329,7 +336,7 @@ private extension HalfSheetView {
                 borrowingInfoView
             case .returning:
                 returningInfoView
-            default:
+            case .unregistered, .holding, .unsupported, .SAMLStarted, .downloadFailed:
                 if viewModel.isManagingHold {
                     holdingInfoView
                 } else {

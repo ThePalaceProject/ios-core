@@ -141,6 +141,9 @@ class TPPUserAccountMock: TPPUserAccount {
     override func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
         _authToken = token
         _credentials = .token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
+        // Mirror real TPPUserAccount.setAuthToken: a fresh token clears any
+        // persisted .credentialsStale flag.
+        _authState = .loggedIn
     }
 
     // MARK: - Auth State
@@ -222,8 +225,27 @@ class TPPUserAccountMock: TPPUserAccount {
         block(self)
     }
 
+    /// Resets the shared singleton to a fresh, fully-cleared instance.
+    ///
+    /// Call this in every test's `setUpWithError`. The fresh instance has all
+    /// underscore-backed storage at its initial nil/empty values, AND we
+    /// defensively call `removeAll()` to handle the case where a prior test
+    /// left state on the old `shared` reference that an in-flight async
+    /// observer is still mutating (which would race with a new instance
+    /// being assigned to `shared`). The redundant clear is intentional —
+    /// belt-and-suspenders against the F-008 pollution class.
+    ///
+    /// F-008 (TPPSignInBusinessLogicExtendedTests.testRegistrationIs
+    /// Possible_notSignedInAndLibraryHasSignUpUrl_returnsTrue) hit this
+    /// vector: precondition `XCTAssertFalse(isSignedIn())` passed but the
+    /// production check `isSignedIn()` inside `registrationIsPossible()`
+    /// then returned true — credentials had appeared on the shared mock
+    /// between the two calls. Tests that need guaranteed-clean credentials
+    /// also call `businessLogic.userAccount.removeAll()` at the top of the
+    /// test body as defense-in-depth.
     static func resetShared() {
         shared = TPPUserAccountMock(libraryUUID: testLibraryUUID)
+        shared.removeAll()
     }
 
     // MARK: - Clean everything up

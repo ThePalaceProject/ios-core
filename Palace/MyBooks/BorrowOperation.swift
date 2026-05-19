@@ -109,6 +109,30 @@ final class BorrowOperation {
     /// Backward-compat: when `preBorrowBook` is nil, retains the original
     /// PP-4178 behavior (treat `unavailable`/`reserved` as race losses) for
     /// callers that don't have pre-borrow context.
+    /// Race an async operation against a deadline. Whichever finishes first
+    /// wins; the other is cancelled. On deadline expiry, throws
+    /// `PalaceError.network(.timeout)` so the upstream catch block surfaces
+    /// the standard borrow-error alert with a Retry option (instead of the
+    /// half-sheet hanging on `isBorrowProcessing = true` indefinitely).
+    /// F-014.
+    static func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw PalaceError.network(.timeout)
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else {
+                throw PalaceError.network(.timeout)
+            }
+            return first
+        }
+    }
+
     static func borrowResponseState(
         for postBorrowBook: TPPBook,
         preBorrowBook: TPPBook? = nil
@@ -328,7 +352,21 @@ final class BorrowOperation {
         }
 
         do {
-            let borrowedBook = try await self.fetchBook(acquisitionURL, true, true)
+            // F-014: wrap fetchBook in an explicit 30s timeout. URLSession's
+            // default `timeoutIntervalForRequest` is 60s — but in practice
+            // we've observed CM/distributor connections sitting open for 120s+
+            // when the server hangs the request mid-flight (e.g. staging
+            // backpressure, slow LCP license fetch). Without an explicit
+            // ceiling, isBorrowProcessing stays true and the half-sheet
+            // shows Cancel-only with no recoverable error — the
+            // BUG_FINDINGS_2026_05_12 "borrow stuck with Cancel-only UI"
+            // bug. 30s is comfortably above a healthy borrow (median ~1.5s)
+            // and below the URLSession default, so the user gets a clean
+            // PalaceError.network(.timeout) → showBorrowError → "try again"
+            // alert instead of an indefinite spinner.
+            let borrowedBook = try await Self.withTimeout(seconds: 30) {
+                try await self.fetchBook(acquisitionURL, true, true)
+            }
 
             await clearProcessingState()
 
@@ -360,6 +398,13 @@ final class BorrowOperation {
 
             downloadAnnouncementService.announceBorrowSucceeded(for: borrowedBook)
 
+            // F-014: condition was inverted (`!= .downloadNeeded`), skipping
+            // auto-download on the most common post-borrow state and stranding
+            // the user on a manual Download tap. The borrow→download chain is
+            // a single user-intent step from the half-sheet, so fire startDownload
+            // whenever the borrow lands on .downloadNeeded. .holding (hold placed,
+            // not yet ready) and other terminal-after-borrow states correctly
+            // skip the chain — there's nothing to download yet.
             if attemptDownload && mapping.state == .downloadNeeded {
                 await MainActor.run { [weak self] in
                     self?.delegate?.startDownload(for: borrowedBook, withRequest: nil)
@@ -666,7 +711,24 @@ final class BorrowOperation {
 
                 session.presentationContextProvider = OIDCBorrowPresentationContext.shared
                 session.prefersEphemeralWebBrowserSession = false
-                session.start()
+
+                // F-016: defer the session start so any prior SignInModalHostingController
+                // (or the previous SFAuthenticationViewController) has time to finish
+                // deallocating. Without this, calling session.start() while a previous
+                // auth modal is still in its dealloc cycle produces the runtime warning
+                // "Attempting to load the view of a view controller while it is
+                // deallocating" and iOS cancels the new session with
+                // ASWebAuthenticationSession error 3 ("presentation cancelled by user").
+                // The cancellation leaves the user with still-stale credentials and the
+                // borrow retry 401s again — driving a re-auth loop until the per-book
+                // circuit breaker (hasBorrowReauthBeenAttempted) fires.
+                //
+                // 150ms is empirically enough for the UIKit dealloc + RunLoop drain on
+                // current iOS releases; we keep it explicit (not Task.yield) so the
+                // timing semantics survive a reader future Swift Concurrency rev.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    session.start()
+                }
             }
         }
     }

@@ -557,6 +557,15 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     }
 
     func testRegistrationIsPossible_notSignedInAndLibraryHasSignUpUrl_returnsTrue() {
+        // Defensive isolation: in the full suite this test flaked because
+        // `TPPUserAccountMock.shared` could retain `_credentials` set by a prior
+        // sibling test in the SignInLogic group. The `setUp()` resetShared()
+        // creates a new instance, but some prior test path leaves credentials
+        // on the new shared via setAuthToken / setBarcode / etc. Explicitly
+        // clearing here guarantees a no-credentials baseline regardless of
+        // which sibling ran before. (Passes in isolation; this fixes the suite.)
+        businessLogic.userAccount.removeAll()
+
         // Arrange: not signed in (default state) + the NYPL fixture has a
         // `register`-rel link, so libraryAccount.details.signUpUrl is non-nil.
         XCTAssertFalse(businessLogic.isSignedIn(),

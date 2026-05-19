@@ -75,31 +75,49 @@ Tip: --help / -h on any subcommand prints these options and exits cleanly.
 EOF
 }
 
-# Derive an XCTestCase class name to test a given source file. Looks for a
-# matching <basename>Tests.swift under PalaceTests/, falls back to scanning for
-# any XCTestCase subclass declared in that file. Returns empty string on no
-# match — caller must handle the fallback.
+# Derive XCTestCase class names that exercise a given source file. Returns a
+# newline-separated list (one class name per line) so the caller can pass each
+# as a separate -only-testing arg.
+#
+# F-009 fix: the previous single-class derivation (Foo.swift -> FooTests) missed
+# sibling test classes like FooExtendedTests, FooIntegrationTests, FooEdgeTests.
+# Real-world example: TPPSignInBusinessLogic.swift's primary test class
+# TPPSignInBusinessLogicTests doesn't cover `registrationIsPossible()` —
+# TPPSignInBusinessLogicExtendedTests does. Auto-deriving only the former
+# made the mutation kill rate appear 0% when it's actually 100% with both
+# classes selected.
 derive_test_class_for() {
   local source_file="$1"   # e.g. "Palace/Accounts/Library/AccountsManager.swift"
   local base
   base=$(basename "$source_file" .swift)
-  # Try Foo.swift -> FooTests.swift first.
-  local candidate
-  candidate=$(find "$REPO_DIR/PalaceTests" -name "${base}Tests.swift" -not -path '*/Mocks/*' 2>/dev/null | head -1)
-  if [[ -z "$candidate" ]]; then
-    # Fallback: any test file mentioning the source class name.
-    candidate=$(grep -rl "@testable import Palace" "$REPO_DIR/PalaceTests" 2>/dev/null \
+
+  # Try Foo.swift -> Foo*Tests.swift (matches FooTests, FooExtendedTests, etc.)
+  # but NOT FooBarTests where FooBar is a different type — anchor the prefix.
+  local candidates
+  candidates=$(find "$REPO_DIR/PalaceTests" -name "${base}Tests.swift" -o -name "${base}*Tests.swift" 2>/dev/null \
+    | grep -v '/Mocks/' \
+    | sort -u)
+
+  if [[ -z "$candidates" ]]; then
+    # Fallback: any test file mentioning the source class name in body.
+    candidates=$(grep -rl "@testable import Palace" "$REPO_DIR/PalaceTests" 2>/dev/null \
       | xargs grep -l "\\b${base}\\b" 2>/dev/null \
-      | head -1)
+      | sort -u)
   fi
-  if [[ -z "$candidate" ]]; then
+
+  if [[ -z "$candidates" ]]; then
     return 0  # no match — caller handles it
   fi
-  # Pull the first XCTestCase subclass from the file. Matches both 'class X:'
-  # and 'final class X:'.
-  awk '/^[[:space:]]*(final[[:space:]]+)?class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*XCTestCase/ {
-    for (i=1; i<=NF; i++) if ($i == "class") { print $(i+1); exit }
-  }' "$candidate" | tr -d ':'
+
+  # For each candidate file, emit the first XCTestCase subclass it declares.
+  # Matches both 'class X:' and 'final class X:'. Skips Mock files because
+  # those don't run tests.
+  while IFS= read -r candidate; do
+    [[ -z "$candidate" ]] && continue
+    awk '/^[[:space:]]*(final[[:space:]]+)?class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*XCTestCase/ {
+      for (i=1; i<=NF; i++) if ($i == "class") { print $(i+1); exit }
+    }' "$candidate" | tr -d ':'
+  done <<< "$candidates" | sort -u
 }
 
 # ============================================================
@@ -401,12 +419,18 @@ cmd_auto() {
           continue
         fi
 
-        # Derive the right XCTestCase class name. Override > derivation > fallback.
-        local cls="$mutation_test_class"
-        if [[ -z "$cls" ]]; then
-          cls=$(derive_test_class_for "$file")
+        # Derive the right XCTestCase class names. Override > derivation > fallback.
+        # F-009: derive_test_class_for now returns a NEWLINE-separated list so we
+        # pick up sibling test classes (FooTests + FooExtendedTests + ...). Passing
+        # all of them as separate --tests args means the mutation runner exercises
+        # every test that touches the source file, not just the primary one.
+        local cls_list=""
+        if [[ -n "$mutation_test_class" ]]; then
+          cls_list="$mutation_test_class"
+        else
+          cls_list=$(derive_test_class_for "$file")
         fi
-        if [[ -z "$cls" ]]; then
+        if [[ -z "$cls_list" ]]; then
           echo "  [$count/$total] $file  (SKIP — no matching test class found)"
           echo "SKIP $file (no test class — pass --mutation-test-class to force)" \
             >> "$output_dir/automated/mutation/results.txt"
@@ -414,7 +438,16 @@ cmd_auto() {
           continue
         fi
 
-        echo "  [$count/$total] $file  (tests: PalaceTests/$cls)"
+        # Build a --tests arg for each derived class.
+        local tests_args=()
+        local cls_display=""
+        while IFS= read -r cls; do
+          [[ -z "$cls" ]] && continue
+          tests_args+=(--tests "PalaceTests/$cls")
+          cls_display+="${cls_display:+,}$cls"
+        done <<< "$cls_list"
+
+        echo "  [$count/$total] $file  (tests: PalaceTests/{$cls_display})"
 
         local slug
         slug=$(echo "$file" | tr '/' '_' | sed 's/\.swift$//')
@@ -422,7 +455,7 @@ cmd_auto() {
           cd "$REPO_DIR" && \
           python3 "$SCRIPT_DIR/palace_mutate.py" \
             --file "$file" \
-            --tests "PalaceTests/$cls" \
+            "${tests_args[@]}" \
             --report "$reports_dir/$slug.json" \
             "${extra_args[@]}"
         ) >> "$output_dir/automated/mutation/results.txt" 2>&1 || true
