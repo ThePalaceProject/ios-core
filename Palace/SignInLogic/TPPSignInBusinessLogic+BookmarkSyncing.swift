@@ -11,8 +11,14 @@ import PalaceLogging
 
 extension TPPSignInBusinessLogic {
     @objc func shouldShowSyncButton() -> Bool {
-        guard let libraryDetails = libraryAccount?.details else {
-            Log.debug(#file, "🔖 shouldShowSyncButton: NO - libraryAccount?.details is nil")
+        // Phase 2 Bucket B (swarm_81b5099e follow-up): state-machine-aware
+        // read. Returns false while details are still loading instead of
+        // racing a partially-populated `details?`. Bookmark sync is a
+        // best-effort silent-failure path per the ADR — denying the sync
+        // button until details are confirmed is the right default (the
+        // button reappears on the next render after .detailsLoaded fires).
+        guard let libraryDetails = loadedAccountDetails else {
+            Log.debug(#file, "🔖 shouldShowSyncButton: NO - loadedAccountDetails is nil (state-machine not yet .detailsLoaded)")
             return false
         }
 
