@@ -790,7 +790,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     @objc func selectPreferredAuthIfNeeded() {
         // Bucket A migration (line 753): state-machine-aware read of `auths`.
         // Sync `@objc`, called from sync UI flows (e.g. `setupViews`).
-        if selectedAuthentication != nil,
+        if selectedAuthentication == nil,
            let auths = loadedAccountDetails?.auths, auths.count > 1 {
             if let saml = auths.first(where: { $0.isSaml }) {
                 selectedAuthentication = saml
