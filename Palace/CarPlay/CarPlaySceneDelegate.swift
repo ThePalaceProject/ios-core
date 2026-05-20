@@ -127,7 +127,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
         let comingSoonTemplate = CPListTemplate(title: "Palace", sections: [section])
 
-        interfaceController.setRootTemplate(comingSoonTemplate, animated: true, completion: nil)
+        interfaceController.setRootTemplate(comingSoonTemplate, animated: true) { _, error in
+            if let error = error {
+                Log.warn(#file, "CarPlay: setRootTemplate(comingSoon) failed: \(error)")
+            }
+        }
     }
 
     private func createCarPlayLogo() -> UIImage? {
