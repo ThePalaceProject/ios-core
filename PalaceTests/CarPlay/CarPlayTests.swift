@@ -611,3 +611,185 @@ class CarPlayPlaybackErrorTests: XCTestCase {
                       "Playback state should be one of the known values")
     }
 }
+
+// MARK: - CarPlay Crash Regression Tests (TF feedback 9A269135, 3.1.0 build 476)
+
+/// Regression tests for the TestFlight crash on iPhone 17 Pro running iOS 26.4.2.
+///
+/// Crash signature: `+[NSException raise:format:]` from
+/// `-[CPInterfaceController _handleCompletion:withSuccess:error:]` at
+/// CPInterfaceController.m:481. iOS 26 raises an Objective-C exception
+/// (SIGABRT) when a CarPlay state-mutating call (presentTemplate, popTemplate,
+/// dismissTemplate, etc.) is called with `completion: nil` AND the operation
+/// fails — instead of silently swallowing the failure as older iOS versions did.
+///
+/// Repro from CD (TF feedback id AHPAyZMgStPEwfXseEZaZUk):
+///   1. Tap audiobook in CarPlay list
+///   2. AudiobookSessionManager.openAudiobook fails (e.g. missing manifest)
+///   3. Failure surfaces via TWO channels:
+///      - sessionManager.errorPublisher → bridge.errorPublisher → CarPlayTemplateManager
+///        subscription → handlePlaybackError → showErrorAlert → presentTemplate(alert#1)
+///      - The await result of openAudiobook → bridge completion(.failure) → caller
+///        completion → handlePlaybackError → showErrorAlert → presentTemplate(alert#2)
+///   4. The second presentTemplate, while alert#1 is still in flight, is rejected
+///      by the framework. With completion: nil, CarPlay raises NSException → SIGABRT.
+///
+/// Fix:
+///   - Every state-mutating CarPlay call now passes a non-nil completion handler
+///     (catches the failure in the closure instead of letting CarPlay raise).
+///   - showErrorAlert / showOpenAppAlert guard against double-presentation via
+///     `isPresentingAlert` + `interfaceController.presentedTemplate == nil`.
+@MainActor
+class CarPlayCrashRegressionTests: XCTestCase {
+
+    /// Pins the dual-channel error surfacing in AudiobookSessionManager that
+    /// motivated the dedup at the alert-present layer. A `validateRequirements`
+    /// failure publishes via `errorPublisher` AND returns `.failure` to the
+    /// awaiting `openAudiobook` caller. If both reach CarPlayTemplateManager
+    /// they both call into `showErrorAlert`. Without dedup at the present
+    /// layer, the second `presentTemplate` raises (TF crash 9A269135). If a
+    /// future refactor collapses to a single channel, update this test.
+    func testSessionManager_validationFailure_firesErrorTwice_viaPublisherAndResult() async {
+        PalaceAudiobookToolkit.AudiobookSessionManager.shared.clearAllState()
+        let sessionManager = Palace.AudiobookSessionManager.shared
+
+        var publisherEventCount = 0
+        let cancellable = sessionManager.errorPublisher
+            .sink { _ in publisherEventCount += 1 }
+
+        // Use a synthetic book guaranteed to fail validateRequirements (audio file missing).
+        // We want a book that PASSES TPPBook construction but FAILS the validation that
+        // openAudiobook performs (e.g. it isn't actually downloaded).
+        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+
+        let result = await sessionManager.openAudiobook(book, startPlaying: false)
+
+        // The async result reports failure.
+        switch result {
+        case .success:
+            XCTFail("openAudiobook for an undownloaded book should fail validation")
+        case .failure(let error):
+            XCTAssertNotNil(error.localizedDescription)
+        }
+
+        // Allow any Combine .receive(on:) hops to flush. The publisher fires
+        // synchronously inside openAudiobook before the result returns, so the
+        // sink (no scheduler hop in this test) sees it immediately.
+        XCTAssertGreaterThanOrEqual(
+            publisherEventCount, 1,
+            "errorPublisher must fire at least once on a validation failure — "
+            + "this is the SECOND channel that races presentTemplate(alert) and "
+            + "caused TF crash 9A269135 when CarPlayTemplateManager called "
+            + "presentTemplate twice with completion: nil."
+        )
+
+        cancellable.cancel()
+        PalaceAudiobookToolkit.AudiobookSessionManager.shared.clearAllState()
+    }
+
+    /// Pins the bridge's contract: a single failed `playAudiobook` call
+    /// surfaces the error via BOTH its completion handler AND
+    /// `errorPublisher`. The fix lives at the CarPlayTemplateManager
+    /// alert-present layer (dedup + non-nil completion), not in the bridge —
+    /// this test documents that contract so a future refactor that "fixes"
+    /// the bridge's dual-fire doesn't silently break the dedup assumption.
+    func testBridge_playAudiobookFailure_surfacesViaBothCompletionAndPublisher() async {
+        PalaceAudiobookToolkit.AudiobookSessionManager.shared.clearAllState()
+        let bridge = CarPlayAudiobookBridge()
+
+        var publisherEventCount = 0
+        let cancellable = bridge.errorPublisher
+            .sink { _ in publisherEventCount += 1 }
+
+        var completionFiredWithFailure = false
+        let completionExpectation = expectation(description: "playAudiobook completion fires")
+
+        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+
+        bridge.playAudiobook(book) { result in
+            if case .failure = result {
+                completionFiredWithFailure = true
+            }
+            completionExpectation.fulfill()
+        }
+
+        await fulfillment(of: [completionExpectation], timeout: 10.0)
+
+        XCTAssertTrue(
+            completionFiredWithFailure,
+            "Bridge completion must surface .failure for an undownloaded book (channel 1)"
+        )
+
+        // Drain the main runloop so any Combine .receive(on: .main) hops complete.
+        let drain = expectation(description: "main runloop drain")
+        DispatchQueue.main.async { drain.fulfill() }
+        await fulfillment(of: [drain], timeout: 2.0)
+
+        XCTAssertGreaterThanOrEqual(
+            publisherEventCount, 1,
+            "Bridge errorPublisher must also fire (channel 2). If this fails, the "
+            + "dual-channel contract changed and the CarPlayTemplateManager "
+            + "alert-dedup guard is now load-bearing for a different reason — "
+            + "review showErrorAlert and update this test's rationale."
+        )
+
+        cancellable.cancel()
+        PalaceAudiobookToolkit.AudiobookSessionManager.shared.clearAllState()
+    }
+
+    /// Verifies that every CarPlay state-mutating call in our codebase passes
+    /// a non-nil completion. Static guarantee — the source must not contain
+    /// `completion: nil` for any of the CarPlay APIs that, with iOS 26's
+    /// tightened behavior, raise NSException when an in-flight operation
+    /// fails. Catching this at test time rather than crash time.
+    func testCarPlayTemplateManager_neverPassesNilCompletion() throws {
+        let sourceFiles: [String] = [
+            "Palace/CarPlay/CarPlayTemplateManager.swift",
+            "Palace/CarPlay/CarPlaySceneDelegate.swift"
+        ]
+
+        // Resolve repo root by walking up from this test file
+        let testFilePath = URL(fileURLWithPath: #filePath)
+        var repoRoot = testFilePath.deletingLastPathComponent() // /CarPlay
+        repoRoot.deleteLastPathComponent() // /PalaceTests
+        repoRoot.deleteLastPathComponent() // repo root
+
+        let callsThatTakeCompletion = [
+            "presentTemplate(",
+            "pushTemplate(",
+            "popTemplate(",
+            "popToRootTemplate(",
+            "dismissTemplate(",
+            "setRootTemplate("
+        ]
+
+        for relPath in sourceFiles {
+            let fileURL = repoRoot.appendingPathComponent(relPath)
+            let source: String
+            do {
+                source = try String(contentsOf: fileURL, encoding: .utf8)
+            } catch {
+                XCTFail("Could not read \(relPath): \(error)")
+                continue
+            }
+
+            // For each completion-taking call, no instance may end with `completion: nil)`
+            // on the same logical line. Scan line-by-line for the pattern.
+            let lines = source.components(separatedBy: .newlines)
+            for (idx, line) in lines.enumerated() {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                // Skip comment lines and the constant documenting the bug
+                if trimmed.hasPrefix("//") { continue }
+                guard callsThatTakeCompletion.contains(where: { line.contains($0) }) else { continue }
+                if line.contains("completion: nil") {
+                    XCTFail(
+                        "\(relPath):\(idx + 1) — CarPlay state-mutating call passes `completion: nil`. "
+                        + "iOS 26 raises NSException (SIGABRT at CPInterfaceController.m:481) when the "
+                        + "operation fails. Pass a non-nil completion that logs the error instead. "
+                        + "Line: \(trimmed)"
+                    )
+                }
+            }
+        }
+    }
+}
