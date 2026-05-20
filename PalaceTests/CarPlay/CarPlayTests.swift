@@ -652,6 +652,11 @@ class CarPlayCrashRegressionTests: XCTestCase {
     func testSessionManager_validationFailure_firesErrorTwice_viaPublisherAndResult() async {
         PalaceAudiobookToolkit.AudiobookSessionManager.shared.clearAllState()
         let sessionManager = Palace.AudiobookSessionManager.shared
+        // Defensive: stop any prior playback so a stale `.loading(book.id)` from
+        // an earlier test cannot short-circuit openAudiobook at line 298
+        // (`alreadyLoading`) and silently skip the errorPublisher fire.
+        // QA-review feedback (rev_c6cdb7c6, warning #2; F-008 incident class).
+        await sessionManager.stopPlayback(dismissPhoneUI: false)
 
         var publisherEventCount = 0
         let cancellable = sessionManager.errorPublisher
@@ -664,10 +669,17 @@ class CarPlayCrashRegressionTests: XCTestCase {
 
         let result = await sessionManager.openAudiobook(book, startPlaying: false)
 
-        // The async result reports failure.
+        // The async result reports failure. If a future mock change makes the book
+        // validate successfully, bail out before checking publisher counts so the
+        // failure mode is clear (and we don't get a confusing second assertion).
         switch result {
         case .success:
-            XCTFail("openAudiobook for an undownloaded book should fail validation")
+            XCTFail("openAudiobook for an undownloaded book should fail validation — "
+                  + "if this fires, TPPBookMocker.mockBook now returns a book that "
+                  + "passes validateRequirements; update the test to use a different "
+                  + "fail-validation precondition.")
+            cancellable.cancel()
+            return
         case .failure(let error):
             XCTAssertNotNil(error.localizedDescription)
         }
@@ -695,6 +707,8 @@ class CarPlayCrashRegressionTests: XCTestCase {
     /// the bridge's dual-fire doesn't silently break the dedup assumption.
     func testBridge_playAudiobookFailure_surfacesViaBothCompletionAndPublisher() async {
         PalaceAudiobookToolkit.AudiobookSessionManager.shared.clearAllState()
+        // Defensive singleton reset — see test #1 rationale.
+        await Palace.AudiobookSessionManager.shared.stopPlayback(dismissPhoneUI: false)
         let bridge = CarPlayAudiobookBridge()
 
         var publisherEventCount = 0
@@ -743,16 +757,22 @@ class CarPlayCrashRegressionTests: XCTestCase {
     /// tightened behavior, raise NSException when an in-flight operation
     /// fails. Catching this at test time rather than crash time.
     func testCarPlayTemplateManager_neverPassesNilCompletion() throws {
-        let sourceFiles: [String] = [
-            "Palace/CarPlay/CarPlayTemplateManager.swift",
-            "Palace/CarPlay/CarPlaySceneDelegate.swift"
-        ]
-
         // Resolve repo root by walking up from this test file
         let testFilePath = URL(fileURLWithPath: #filePath)
         var repoRoot = testFilePath.deletingLastPathComponent() // /CarPlay
         repoRoot.deleteLastPathComponent() // /PalaceTests
         repoRoot.deleteLastPathComponent() // repo root
+
+        // Glob ALL Palace/CarPlay/*.swift — don't hardcode the two known files,
+        // so a future CarPlay source (CarPlayTemplateBuilder, etc.) is caught
+        // automatically. Architect-review feedback (rev_0adcca24, warning #3).
+        let carPlayDir = repoRoot.appendingPathComponent("Palace/CarPlay")
+        let fileURLs = try FileManager.default.contentsOfDirectory(
+            at: carPlayDir,
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "swift" }
+
+        XCTAssertFalse(fileURLs.isEmpty, "No Palace/CarPlay/*.swift files found — repo layout changed?")
 
         let callsThatTakeCompletion = [
             "presentTemplate(",
@@ -763,30 +783,25 @@ class CarPlayCrashRegressionTests: XCTestCase {
             "setRootTemplate("
         ]
 
-        for relPath in sourceFiles {
-            let fileURL = repoRoot.appendingPathComponent(relPath)
-            let source: String
-            do {
-                source = try String(contentsOf: fileURL, encoding: .utf8)
-            } catch {
-                XCTFail("Could not read \(relPath): \(error)")
-                continue
-            }
+        for fileURL in fileURLs {
+            let relPath = "Palace/CarPlay/\(fileURL.lastPathComponent)"
+            let source = try String(contentsOf: fileURL, encoding: .utf8)
 
-            // For each completion-taking call, no instance may end with `completion: nil)`
-            // on the same logical line. Scan line-by-line for the pattern.
+            // Scan line-by-line for `completion: nil` on the same line as a
+            // state-mutating call. Skip lines whose code portion (before any
+            // `//` trailing comment) does NOT contain the call — this handles
+            // trailing comments correctly. Block-comment false-negatives are
+            // possible but rare in this code style.
             let lines = source.components(separatedBy: .newlines)
             for (idx, line) in lines.enumerated() {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                // Skip comment lines and the constant documenting the bug
-                if trimmed.hasPrefix("//") { continue }
-                guard callsThatTakeCompletion.contains(where: { line.contains($0) }) else { continue }
-                if line.contains("completion: nil") {
+                let codeOnly = line.components(separatedBy: "//").first ?? line
+                guard callsThatTakeCompletion.contains(where: { codeOnly.contains($0) }) else { continue }
+                if codeOnly.contains("completion: nil") {
                     XCTFail(
                         "\(relPath):\(idx + 1) — CarPlay state-mutating call passes `completion: nil`. "
                         + "iOS 26 raises NSException (SIGABRT at CPInterfaceController.m:481) when the "
                         + "operation fails. Pass a non-nil completion that logs the error instead. "
-                        + "Line: \(trimmed)"
+                        + "Line: \(line.trimmingCharacters(in: .whitespaces))"
                     )
                 }
             }
