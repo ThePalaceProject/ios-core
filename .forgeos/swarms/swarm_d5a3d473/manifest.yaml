@@ -1,0 +1,137 @@
+swarm_id: swarm_d5a3d473
+task: "Phase 1 of 3.2.0 singleton-reduction sweep — Track A image-loading consolidation + Track B logging test-seam injection"
+base_branch: develop
+feature_branch: swarm/swarm_d5a3d473-scaffold
+status: triaged
+created_at: 2026-05-19T00:00:00Z
+sequencing:
+  prerequisite: none
+  parallel:
+    - ImageLoading-Consolidation
+    - Logging-TestSeams
+modules:
+  - name: ImageLoading-Consolidation
+    files_scope:
+      - Palace/Utilities/ImageCache/ImageCacheType.swift
+      - Palace/Utilities/ImageCache/ImageLoading.swift           # NEW
+      - Palace/Utilities/ImageCache/ImageLoaderImpl.swift        # NEW
+      - Palace/Book/Models/TPPBookCoverRegistry.swift
+      - Palace/Book/Models/TPPBookRegistry.swift
+      - Palace/Book/Models/TPPBook+Presentation.swift
+      - Palace/Book/Models/TPPBook.swift
+      - Palace/AppInfrastructure/AppContainer.swift
+      - Palace/AppInfrastructure/TPPAppDelegate.swift
+      - Palace/CarPlay/CarPlayImageProvider.swift
+      - Palace/Settings/Debug/DebugSettings.swift
+      - Palace/OPDS2/Models/OPDS2PublicationExtended.swift
+      - Palace/MyBooks/MyBooks/BookListView.swift
+      - PalaceTests/Mocks/MockImageLoader.swift                   # NEW
+      - PalaceTests/ImageLoading/ImageLoaderTests.swift           # NEW
+      - PalaceTests/AppInfrastructure/AppContainerImageLoaderInjectionTests.swift  # NEW
+    contract_path: .forgeos/swarms/swarm_d5a3d473/contracts/ImageLoading-Consolidation.md
+    implementer_prompt: >
+      Track A of swarm_d5a3d473. Phase 0 of the new /swarm skill — you're in an
+      implementer worktree off the orchestrator's swarm/swarm_d5a3d473-scaffold
+      branch. Introduce a single ImageLoading protocol that captures the union of
+      methods needed by TPPBookCoverRegistry.shared, TPPBookCoverRegistryBridge.shared,
+      and ImageCache.shared call sites. Implement as ImageLoader (one final actor)
+      and wire through AppContainer. Replace 28 in-scope call sites; preserve
+      production behavior and Obj-C interop (the bridge's weak-book-reference
+      pattern). Existing ImageCacheType protocol + MockImageCache stay; add new
+      MockImageLoader for the umbrella protocol. AccountsManager, AudiobookSessionManager,
+      and TPPDeveloperSettingsTableViewController are OFF-LIMITS (frozen by
+      swarm_81b5099e / PR #956 / PR #963). Mutation gate: warn-only (image cache
+      not on critical-path strict list). Tests: 11 new (9 unit + 2 integration).
+      LOC: ~220 prod + ~180 test.
+    mutation_gate: warn_only
+    loc_estimate:
+      production: 220
+      tests: 180
+
+  - name: Logging-TestSeams
+    files_scope:
+      - Palace/Logging/AudiobookFileLogger.swift
+      - Palace/Packages/PalaceLogging/Sources/PalaceLogging/PersistentLogger.swift
+      - Palace/Utilities/DeviceSpecificErrorMonitor.swift
+      - PalaceTests/Logging/AudiobookFileLoggerTests.swift
+      - PalaceTests/Logging/PersistentLoggerTests.swift
+      - PalaceTests/Logging/DeviceSpecificErrorMonitorTests.swift
+    contract_path: .forgeos/swarms/swarm_d5a3d473/contracts/Logging-TestSeams.md
+    implementer_prompt: >
+      Track B of swarm_d5a3d473. Phase 0 of the new /swarm skill — you're in an
+      implementer worktree off the orchestrator's swarm/swarm_d5a3d473-scaffold
+      branch. Production singletons (AudiobookFileLogger.shared, PersistentLogger.shared,
+      DeviceSpecificErrorMonitor.shared) STAY for backward compat — production
+      call sites are unchanged. Add a protocol seam (AudiobookFileLogging,
+      PersistentLogging, DeviceSpecificErrorMonitoring) + init-injection ctor
+      to each; refactor the 3 test classes to construct + inject the SUT directly.
+      PersistentLogger lives in the PalaceLogging SPM package — new init + protocol
+      must be `public`. Delete tautology tests (XCTAssertNotNil(.shared),
+      shared-identity ===) per CLAUDE.md banned-pattern list; replace 1:1 with
+      mutation-killing edge-case tests (concurrent writes, rotation, clear-removes-rotated).
+      LogTests.swift is OUT OF SCOPE (tests the Log.swift → PersistentLogger.shared
+      integration path; leave it). TPPDeveloperSettingsTableViewController has 3
+      DeviceSpecificErrorMonitor.shared refs but is OFF-LIMITS (PR #956 collision).
+      Mutation gate: ≥50% kill rate on all 3 changed prod files.
+      LOC: ~110 prod + ~280 test.
+    mutation_gate: strict
+    mutation_kill_rate_min: 0.50
+    loc_estimate:
+      production: 110
+      tests: 280
+
+off_limits_external:
+  - source: swarm_81b5099e (frozen, parallel)
+    paths:
+      - Palace/Accounts/Library/
+      - Palace/SignInLogic/TPPSignInBusinessLogic.swift  # lines 281, 309, 732, 736, 753, 781
+      - Palace/SignInLogic/TPPSignInBusinessLogic+BookmarkSyncing.swift
+      - Palace/SignInLogic/TPPSignInBusinessLogic+CardCreation.swift  # line 17
+      - Palace/Accounts/User/TPPUserAccount.swift  # lines 99, 102
+      - Palace/Accounts/AgeCheck/TPPAgeCheck.swift
+      - Palace/Notifications/NotificationService.swift
+  - source: PR #956 (test capability uplift, in flight)
+    paths:
+      - Palace/Audiobooks/AudiobookSessionManager.swift
+      - Palace/Settings/DeveloperSettings/TPPDeveloperSettingsTableViewController.swift
+      - PalaceTests/Audiobooks/AudiobookSessionManagerShutdownTests.swift
+      - "see: gh pr view 956 --repo ThePalaceProject/ios-core --json files --jq '.files[].path'"
+    notes: >
+      Recheck full file list before any edit in PalaceTests/Audiobooks/,
+      PalaceTests/Contract/, PalaceTests/Integration/, PalaceTests/DRM/,
+      PalaceTests/CatalogDomain/, PalaceTests/CatalogUI/, Palace/Packages/PalaceCatalog/,
+      Palace/Packages/PalaceNetwork/, Palace/Network/, Palace/Reader2/Bookmarks/,
+      Palace/MyBooks/MyBooks/BookCell/, Palace/MyBooks/MyBooksDownloadCenter.swift,
+      Palace/MyBooks/BookFileManager.swift, Palace/AppInfrastructure/AppTabHostView.swift,
+      Palace/AppInfrastructure/ReaderService.swift, Palace/Audiobooks/AudioBookVendors+Extensions.swift,
+      Palace/Audiobooks/AudiobookLoader.swift, Palace/Book/UI/BookDetail/.
+  - source: PR #963 (Bucket A migration, in flight)
+    paths:
+      - "see: gh pr view 963 --repo ThePalaceProject/ios-core --json files --jq '.files[].path'"
+    enumerated:
+      - Palace/Accounts/AgeCheck/TPPAgeCheck.swift
+      - Palace/Audiobooks/AudiobookSessionManager.swift
+      - Palace/Book/Models/BookRegistrySync.swift
+      - Palace/Book/Models/TPPBookRegistryAsync.swift
+      - Palace/CarPlay/CarPlayAudiobookBridge.swift
+      - Palace/CarPlay/CarPlayTemplateManager.swift
+      - Palace/Notifications/NotificationService.swift
+      - Palace/OPDS2/OPDSFeedService.swift
+      - Palace/OPDS2/Service/UnifiedOPDSService.swift
+      - Palace/Reader2/BusinessLogic/TPPReaderBookmarksBusinessLogic.swift
+      - Palace/Reader2/ReaderStackConfiguration/LCP/LCPPassphraseAuthenticationService.swift
+      - Palace/SignInLogic/TPPSignInBusinessLogic+CardCreation.swift
+      - Palace/SignInLogic/TPPSignInBusinessLogic.swift
+
+contracts_directory: .forgeos/swarms/swarm_d5a3d473/contracts/
+deferred_to_followup_swarm:
+  rationale: >
+    7 production .shared references on Track A files cannot land here without
+    colliding with PR #956 (TPPDeveloperSettingsTableViewController.swift line 635,
+    Audiobooks/AudiobookSessionManager.swift lines 203, 215), PR #963 / swarm_81b5099e
+    frozen set (Palace/Accounts/Library/AccountsManager.swift lines 164, 216, 798, 811).
+    Land in follow-up swarm after #956 and #963 merge.
+  files:
+    - Palace/Settings/DeveloperSettings/TPPDeveloperSettingsTableViewController.swift  # 1 ImageCache + 3 DeviceSpecificErrorMonitor refs
+    - Palace/Audiobooks/AudiobookSessionManager.swift                                   # 2 TPPBookCoverRegistry refs
+    - Palace/Accounts/Library/AccountsManager.swift                                     # 4 ImageCache refs
