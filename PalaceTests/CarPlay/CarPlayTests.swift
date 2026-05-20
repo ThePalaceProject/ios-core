@@ -642,6 +642,18 @@ class CarPlayPlaybackErrorTests: XCTestCase {
 @MainActor
 class CarPlayCrashRegressionTests: XCTestCase {
 
+    /// Restore Palace.AudiobookSessionManager.shared to .idle after each test so
+    /// test-order-dependent classes (e.g. PlaybackBootstrapperTests, which asserts
+    /// the singleton is .idle on entry) aren't poisoned by our intentional
+    /// validation failures that leave it in .error(bookId:, message:). The inline
+    /// stopPlayback calls at test-body start handle pre-state; this handles post-
+    /// state. `clearAllState` on the toolkit twin keeps that singleton clean too.
+    override func tearDown() async throws {
+        await Palace.AudiobookSessionManager.shared.stopPlayback(dismissPhoneUI: false)
+        PalaceAudiobookToolkit.AudiobookSessionManager.shared.clearAllState()
+        try await super.tearDown()
+    }
+
     /// Pins the dual-channel error surfacing in AudiobookSessionManager that
     /// motivated the dedup at the alert-present layer. A `validateRequirements`
     /// failure publishes via `errorPublisher` AND returns `.failure` to the
