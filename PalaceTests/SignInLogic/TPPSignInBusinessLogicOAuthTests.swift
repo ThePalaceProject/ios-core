@@ -233,8 +233,11 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
 
     func test_handleRedirectURL_serverError_surfacesProblemDocumentTitle() {
         // Server emits an `error=` payload (URL-encoded JSON). Parser must
-        // forward the title to the completion and NOT call validateCredentials.
-        let errJSON = #"{"title":"Account Locked","detail":"x"}"#
+        // forward the problem-document title to the title slot and the detail
+        // to the message slot of the completion handler, per the HelpSpot
+        // 17870 field-swap fix (PR #965). Earlier implementations passed
+        // title-in-message which is what this test originally pinned.
+        let errJSON = #"{"title":"Account Locked","detail":"Your account has been temporarily locked"}"#
         let encoded = errJSON.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed)!
         let url = URL(string:
             "https://example.com/univeral-link-redirect#error=\(encoded)")!
@@ -246,10 +249,10 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
             capturedMessage = message
         }
 
-        XCTAssertEqual(capturedMessage, "Account Locked",
-                       "Server error.title must be surfaced through the redirect completion (as the user-facing message)")
-        XCTAssertNotNil(capturedTitle,
-                        "Default loginErrorTitle must accompany the server-supplied detail")
+        XCTAssertEqual(capturedTitle, "Account Locked",
+                       "Server error.title must be surfaced in the title slot of the redirect completion")
+        XCTAssertEqual(capturedMessage, "Your account has been temporarily locked",
+                       "Server error.detail must be surfaced in the message slot of the redirect completion")
         XCTAssertFalse(businessLogic.isValidatingCredentials,
                        "An error payload must NOT trigger credential validation")
         XCTAssertNil(businessLogic.authToken,
