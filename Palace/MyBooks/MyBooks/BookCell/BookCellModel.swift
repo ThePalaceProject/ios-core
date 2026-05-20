@@ -31,12 +31,17 @@ enum BookCellState {
 
 extension BookCellState {
     init(_ bookButtonState: BookButtonState) {
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+        // flags this site if BookButtonState gains a case, so a download-
+        // adjacent state can't silently classify as `.normal`.
         switch bookButtonState {
         case .downloadInProgress:
             self = .downloading(bookButtonState)
         case .downloadFailed:
             self = .downloadFailed(bookButtonState)
-        default:
+        case .canBorrow, .canHold, .holding, .holdingFrontOfQueue,
+             .downloadNeeded, .downloadSuccessful, .used, .returning,
+             .managingHold, .unsupported:
             self = .normal(bookButtonState)
         }
     }
@@ -267,12 +272,16 @@ class BookCellModel: ObservableObject {
 
                 self.registryState = newState
 
-                // Clear loading state based on state transitions
+                // Clear loading state based on state transitions.
+                // Exhaustive (no `default:`) — F-011 class-of-bug guard.
+                // Compiler flags this site if TPPBookState gains a case, so
+                // a new completed/terminal state can't silently leave the
+                // cell stuck with isLoading=true.
                 switch newState {
                 case .downloading, .downloadFailed, .downloadSuccessful, .holding, .unregistered:
                     // These states indicate the action completed - clear loading
                     self.isLoading = false
-                default:
+                case .downloadNeeded, .returning, .used, .unsupported, .SAMLStarted:
                     break
                 }
             }
@@ -463,23 +472,29 @@ extension BookCellModel {
         // bug). Other actions (Read, Listen, Cancel, Return, Remove) are
         // either local or have their own confirmation paths and don't need
         // a connection to begin.
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+        // flags this site if BookButtonType gains a case, so a new
+        // network-bound action can't silently skip the offline pre-flight.
         switch action {
         case .download, .retry, .get, .reserve:
             if !reachability.isConnectedToNetwork() {
                 presentOfflineAlert()
                 return
             }
-        default:
+        case .read, .listen, .cancel, .close, .sample, .audiobookSample,
+             .remove, .cancelHold, .manageHold, .return, .returning:
             break
         }
 
         // Set loading state for actions that need it.
         // .return and .cancelHold are excluded here because they show a
         // confirmation alert first; loading starts only after the patron confirms.
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard.
         switch action {
         case .download, .retry, .get, .reserve, .remove, .returning, .cancel:
             isLoading = true
-        default:
+        case .read, .listen, .close, .sample, .audiobookSample,
+             .cancelHold, .manageHold, .return:
             break
         }
 

@@ -32,29 +32,21 @@ private final class MockFeedPreloader: CatalogFeedPreloading, @unchecked Sendabl
 
 final class CatalogPreloaderTests: XCTestCase {
 
-    // Bound every test to 30s so a future flake surfaces as a fast test
-    // failure rather than burning the CI step's 60-minute budget.
+    // Bound every test to 30s using XCTest's built-in mechanism. The
+    // previous home-grown `runWithTimeout(_:)` helper used a TaskGroup
+    // race between body + Task.sleep, but Swift concurrency cooperative
+    // scheduling meant the body task — if hung in a non-cancellation-
+    // aware spot — kept the surrounding `withTaskGroup` from returning
+    // even after XCTFail was recorded. The test process kept the runtime
+    // open until the workflow-level 60-min budget fired (run 26111323627).
+    //
+    // `executionTimeAllowance` is enforced by xctest itself via the
+    // testing-process watchdog — it terminates the test process when
+    // exceeded, so a hang is bounded HARD, not just XCTFail-recorded.
     // Mock paths complete in <0.2s locally; 30s is generous.
-    private func runWithTimeout(
-        _ seconds: TimeInterval = 30,
-        file: StaticString = #file,
-        line: UInt = #line,
-        _ body: @escaping @Sendable () async -> Void
-    ) async {
-        await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                await body()
-                return true
-            }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                return false
-            }
-            if let finishedBody = await group.next(), !finishedBody {
-                XCTFail("Test body did not complete within \(seconds)s — likely a hang in CatalogPreloader.preloadCatalogs", file: file, line: line)
-            }
-            group.cancelAll()
-        }
+    override func setUp() {
+        super.setUp()
+        executionTimeAllowance = 30
     }
 
     private func makeAccount(uuid: String, catalogUrl: String?) -> Account {
@@ -76,13 +68,11 @@ final class CatalogPreloaderTests: XCTestCase {
 
         let current = makeAccount(uuid: "current", catalogUrl: "https://example.com/current/catalog")
 
-        await runWithTimeout {
-            await preloader.preloadCatalogs(
-                currentAccount: current,
-                recentAccountUUIDs: [],
-                accountProvider: { _ in nil }
-            )
-        }
+        await preloader.preloadCatalogs(
+            currentAccount: current,
+            recentAccountUUIDs: [],
+            accountProvider: { _ in nil }
+        )
 
         XCTAssertEqual(feedPreloader.preloadedURLs.count, 1)
         XCTAssertEqual(feedPreloader.preloadedURLs.first, URL(string: "https://example.com/current/catalog"))
@@ -106,13 +96,11 @@ final class CatalogPreloaderTests: XCTestCase {
             "d": makeAccount(uuid: "d", catalogUrl: urlD.absoluteString),
         ]
 
-        await runWithTimeout {
-            await preloader.preloadCatalogs(
-                currentAccount: current,
-                recentAccountUUIDs: ["a", "b", "c", "d"],
-                accountProvider: { accounts[$0] }
-            )
-        }
+        await preloader.preloadCatalogs(
+            currentAccount: current,
+            recentAccountUUIDs: ["a", "b", "c", "d"],
+            accountProvider: { accounts[$0] }
+        )
 
         // maxPreload=3 caps the recents list at 3, plus the current account = 4 total.
         // The fourth recent (urlD) must be dropped. Assertions are exact so mutations
@@ -129,13 +117,11 @@ final class CatalogPreloaderTests: XCTestCase {
         let current = makeAccount(uuid: "current", catalogUrl: "https://example.com/current/catalog")
         let noCatalog = makeAccount(uuid: "no-catalog", catalogUrl: nil)
 
-        await runWithTimeout {
-            await preloader.preloadCatalogs(
-                currentAccount: current,
-                recentAccountUUIDs: ["no-catalog"],
-                accountProvider: { _ in noCatalog }
-            )
-        }
+        await preloader.preloadCatalogs(
+            currentAccount: current,
+            recentAccountUUIDs: ["no-catalog"],
+            accountProvider: { _ in noCatalog }
+        )
 
         // Only current account preloaded
         XCTAssertEqual(feedPreloader.preloadedURLs.count, 1)
@@ -147,13 +133,11 @@ final class CatalogPreloaderTests: XCTestCase {
 
         let current = makeAccount(uuid: "current", catalogUrl: "https://example.com/current/catalog")
 
-        await runWithTimeout {
-            await preloader.preloadCatalogs(
-                currentAccount: current,
-                recentAccountUUIDs: ["current"], // same as current
-                accountProvider: { _ in current }
-            )
-        }
+        await preloader.preloadCatalogs(
+            currentAccount: current,
+            recentAccountUUIDs: ["current"], // same as current
+            accountProvider: { _ in current }
+        )
 
         // Should only preload once, not twice
         XCTAssertEqual(feedPreloader.preloadedURLs.count, 1)
@@ -180,13 +164,11 @@ final class CatalogPreloaderTests: XCTestCase {
         // removed (re-throwing), `preloadCatalogs` would become throws — which
         // would be a compile error rather than a runtime one — and the healthy
         // sibling wouldn't be reached.
-        await runWithTimeout {
-            await preloader.preloadCatalogs(
-                currentAccount: current,
-                recentAccountUUIDs: ["flaky", "healthy"],
-                accountProvider: { accounts[$0] }
-            )
-        }
+        await preloader.preloadCatalogs(
+            currentAccount: current,
+            recentAccountUUIDs: ["flaky", "healthy"],
+            accountProvider: { accounts[$0] }
+        )
 
         XCTAssertEqual(Set(feedPreloader.preloadedURLs), [currentURL, flakyURL, healthyURL])
     }
@@ -197,13 +179,11 @@ final class CatalogPreloaderTests: XCTestCase {
 
         let account = makeAccount(uuid: "a", catalogUrl: "https://example.com/a/catalog")
 
-        await runWithTimeout {
-            await preloader.preloadCatalogs(
-                currentAccount: nil,
-                recentAccountUUIDs: ["a"],
-                accountProvider: { _ in account }
-            )
-        }
+        await preloader.preloadCatalogs(
+            currentAccount: nil,
+            recentAccountUUIDs: ["a"],
+            accountProvider: { _ in account }
+        )
 
         XCTAssertEqual(feedPreloader.preloadedURLs.count, 1)
     }

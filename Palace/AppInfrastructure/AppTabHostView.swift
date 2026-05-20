@@ -17,7 +17,16 @@ struct AppTabHostView: View {
         let client = URLSessionNetworkClient()
         let parser = OPDSParser()
         let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: RemoteFeatureFlags.shared)
-        let repository = CatalogRepository(api: api)
+        // Cache isolation: scope by the *current* account UUID so a single
+        // repository instance can never serve library A's catalog to
+        // library B if it somehow survives a library switch. The closure
+        // is re-read on every cache-key derivation, so account changes
+        // take effect immediately. See `CatalogRepository.cacheKey(for:)`.
+        let accountsManager = appContainer.accountsManager
+        let repository = CatalogRepository(
+            api: api,
+            accountID: { [weak accountsManager] in accountsManager?.currentAccount?.uuid }
+        )
         _catalogViewModel = StateObject(wrappedValue: CatalogViewModel(
             repository: repository,
             topLevelURLProvider: { appContainer.settings.accountMainFeedURL },

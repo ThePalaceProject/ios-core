@@ -1,0 +1,54 @@
+[
+  {
+    "args" : {
+      "bookId" : "RET-OK"
+    },
+    "method" : "announce.returnStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-OK",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-OK",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "account" : "nil",
+      "bookId" : "RET-OK"
+    },
+    "method" : "localContent.deleteLocalContent"
+  },
+  {
+    "args" : {
+      "force" : "true"
+    },
+    "method" : "delegate.purgeAllAudiobookCaches"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-OK",
+      "state" : "unregistered"
+    },
+    "method" : "registry.setState"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-OK"
+    },
+    "method" : "registry.removeBook"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-OK"
+    },
+    "method" : "announce.returnSucceeded"
+  }
+]

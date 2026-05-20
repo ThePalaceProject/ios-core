@@ -629,6 +629,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         self.tableView.deselectRow(at: indexPath, animated: true)
 
+        // F-011 class-of-bug guard
         switch Section(rawValue: indexPath.section) {
         case .dataManagement:
             accountsManager.clearCache()
@@ -681,7 +682,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         #endif
 
-        default:
+        case .librarySettings, .libraryRegistryDebugging, .featurePreviews, nil:
             break
         }
     }

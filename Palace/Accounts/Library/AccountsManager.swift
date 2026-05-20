@@ -31,7 +31,11 @@ struct CatalogCacheMetadata: Codable {
 
     /// Returns true if cache is stale given the server's max-age hint.
     func isStale(serverMaxAge: TimeInterval?) -> Bool {
-        Date().timeIntervalSince(timestamp) > Self.staleTTL(serverMaxAge: serverMaxAge)
+        isStale(serverMaxAge: serverMaxAge, now: Date())
+    }
+
+    func isStale(serverMaxAge: TimeInterval?, now: Date) -> Bool {
+        now.timeIntervalSince(timestamp) > Self.staleTTL(serverMaxAge: serverMaxAge)
     }
 
     /// Returns true if cache is stale using the default TTL (no server hint).
@@ -41,7 +45,11 @@ struct CatalogCacheMetadata: Codable {
 
     /// Returns true if cache is expired (older than 24 hours)
     var isExpired: Bool {
-        Date().timeIntervalSince(timestamp) > Self.maxAge
+        isExpired(now: Date())
+    }
+
+    func isExpired(now: Date) -> Bool {
+        now.timeIntervalSince(timestamp) > Self.maxAge
     }
 }
 

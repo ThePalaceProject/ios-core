@@ -148,6 +148,11 @@ final class ReaderService {
             .filter { identifier, _ in identifier == book.identifier }
             .sink { [weak self] _, state in
                 guard let self else { return }
+                // Exhaustive (no `default:`) — F-011 class-of-bug guard. The
+                // Swift compiler now flags this site if TPPBookState gains a
+                // new case, so a re-download terminal state can't be silently
+                // ignored. Non-terminal states (in-flight progress) are no-ops
+                // here; only .downloadSuccessful/.downloadFailed end the wait.
                 switch state {
                 case .downloadSuccessful:
                     self.cancelRedownload(for: book.identifier)
@@ -156,7 +161,8 @@ final class ReaderService {
                 case .downloadFailed:
                     Log.error(#file, "Re-download failed for '\(book.title)' — showing Content Protection Error")
                     showFallback()
-                default:
+                case .unregistered, .downloadNeeded, .downloading, .returning,
+                     .holding, .used, .unsupported, .SAMLStarted:
                     break
                 }
             }

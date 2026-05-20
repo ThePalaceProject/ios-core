@@ -104,14 +104,15 @@ final class AudiobookLoader {
         Log.info(#file, "🔄 Auth token expired for audiobook - refreshing before opening")
         logAccountDiagnostics(userAccount: userAccount, book: book)
 
-        guard let username = userAccount.username, !username.isEmpty,
-              let pin = userAccount.PIN, !pin.isEmpty,
-              userAccount.authDefinition?.tokenURL != nil else {
+        guard Self.hasRefreshableCredentials(
+            username: userAccount.username,
+            pin: userAccount.PIN,
+            tokenURL: userAccount.authDefinition?.tokenURL
+        ) else {
             Log.error(#file, "Cannot refresh token: missing or empty credentials")
             completion(.failure(.missingCredentialsForTokenRefresh))
             return
         }
-        _ = username // guard-bound but unused beyond the predicate check
 
         AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil, accountId: accountsManager.currentAccount?.uuid) { result in
             switch result {
@@ -369,8 +370,7 @@ final class AudiobookLoader {
                 Log.error(#file, "  ❌ Failed to parse manifest data as JSON dictionary")
                 if let httpResponse = response as? HTTPURLResponse {
                     Log.error(#file, "    HTTP status: \(httpResponse.statusCode)")
-                    let isHTML = (httpResponse.allHeaderFields["Content-Type"] as? String)?.contains("html") == true
-                    if isHTML {
+                    if Self.looksLikeHTMLResponse(httpResponse) {
                         Log.error(#file, "    ⚠️ Server returned HTML instead of JSON - likely a redirect to login or error page")
                     }
                 }
@@ -456,6 +456,19 @@ final class AudiobookLoader {
         }
     }
 
+    // TEST-SEAM PROPOSAL (do not act on this without separate review):
+    // `finalizeBuild` is the entry point for the F-004 EXC_BREAKPOINT
+    // crash (Crashlytics, 3.0.0: AudiobookLoader.finalizeBuild — 2 users,
+    // distributor=Overdrive, decryptor=nil, bearerToken present). Direct
+    // unit testing requires either (a) bumping access to `internal` so
+    // `@testable import Palace` reaches it, or (b) extracting an
+    // `AudiobookFactoryProviding` protocol that wraps the static
+    // `PalaceAudiobookToolkit.AudiobookFactory.audiobook(...)` call so
+    // tests can substitute a stub. Option (b) is preferred — Manifest
+    // decoding stays pure-Foundation, but the factory step is what
+    // crashed and it's currently un-mockable. See
+    // PalaceTests/Audiobooks/AudiobookLoaderFinalizeBuildTests.swift
+    // for the F-004 path exercises (toolkit-level for now).
     private func finalizeBuild(
         book: TPPBook,
         jsonData: Data,
@@ -556,5 +569,39 @@ final class AudiobookLoader {
         @unknown default:
             Log.error(#file, "    Unknown decoding error")
         }
+    }
+
+    // MARK: - Testable predicates
+    //
+    // Two deterministic decisions extracted from inline branches so unit
+    // tests can drive them without touching AppContainer.production() or
+    // hitting the network. Each predicate corresponds to a `cmp`-style
+    // mutation point that previously survived every test: there was no
+    // seam to drive the branch in isolation. The helpers are `internal`
+    // (default) so `@testable import Palace` reaches them; production
+    // callers stay inside this file.
+
+    /// True iff all three credential components a token refresh needs are
+    /// present: a non-empty username, a non-empty PIN, and a non-nil
+    /// tokenURL. Pure function over its primitive inputs — no AppContainer,
+    /// no keychain. The branch on `tokenURL != nil` is the kill point for
+    /// the corresponding mutation; tests provide a non-nil URL to assert
+    /// the original returns `true` (mutant flips to `==`, returns `false`,
+    /// test fails the mutant).
+    nonisolated static func hasRefreshableCredentials(username: String?, pin: String?, tokenURL: URL?) -> Bool {
+        guard let username, !username.isEmpty else { return false }
+        guard let pin, !pin.isEmpty else { return false }
+        guard tokenURL != nil else { return false }
+        _ = username; _ = pin
+        return true
+    }
+
+    /// True iff `response` advertises an HTML body via its `Content-Type`
+    /// header. Used to distinguish "manifest endpoint returned a login
+    /// redirect page" from "manifest endpoint returned malformed JSON" —
+    /// the two failures have the same downstream completion (nil) but
+    /// log differently for diagnosis.
+    nonisolated static func looksLikeHTMLResponse(_ response: HTTPURLResponse) -> Bool {
+        return (response.allHeaderFields["Content-Type"] as? String)?.contains("html") == true
     }
 }

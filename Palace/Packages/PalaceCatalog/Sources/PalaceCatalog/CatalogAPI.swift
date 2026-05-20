@@ -44,7 +44,10 @@ public final class DefaultCatalogAPI: CatalogAPI {
         let res = try await client.send(req)
         Log.info(#file, "[OPDS2-DIAG] Fetched \(url.lastPathComponent): \(res.data.count) bytes, " +
             "first byte=\(String(data: res.data.prefix(1), encoding: .utf8) ?? "?")")
-        return try parser.parseFeed(from: res.data)
+        // Pass Content-Type so RFC 7807 problem documents surface as structured
+        // ParserError.problemDocument instead of generic ParserError.invalidJSON.
+        let contentType = res.response.value(forHTTPHeaderField: "Content-Type")
+        return try parser.parseFeed(from: res.data, contentType: contentType)
     }
 
     public func search(query: String, baseURL: URL) async throws -> CatalogFeed? {

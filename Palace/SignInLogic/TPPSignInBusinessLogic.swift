@@ -169,6 +169,22 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// Settings used by OAuth sign-in flows.
     @objc let urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider
 
+    /// NotificationCenter used by OAuth observer registration / removal.
+    /// Production defaults to `.default`; tests may inject an isolated
+    /// `NotificationCenter()` so the OAuth `handleRedirectURL` add/remove
+    /// pair is verifiable end-to-end without polluting global notifications.
+    /// Set in `init` (and overrideable via `setNotificationCenterForTests`
+    /// below for callers that already constructed via the legacy initializer).
+    var notificationCenter: NotificationCenter = .default
+
+    /// Test seam (see §10.1 of `docs/Testing/Test_Seams_Refactor_Plan.md`):
+    /// allows a unit test to swap in an isolated NotificationCenter after
+    /// init so the OAuth observer add/remove pair can be exercised against a
+    /// hermetic notification bus rather than the global `.default`.
+    @objc func setNotificationCenterForTests(_ center: NotificationCenter) {
+        self.notificationCenter = center
+    }
+
     /// Cookies used to authenticate. Only required for the SAML flow.
     /// TODO: Phase 5 follow-up — migrate callers to read from samlHelper.cookies,
     /// then remove this property. Currently both businessLogic.cookies and
@@ -442,8 +458,20 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         }
     }
 
-    func getBearerToken(username: String, password: String, tokenURL: URL, networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor, completion: (() -> Void)? = nil) {
-        networkExecutor.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: libraryAccountID) { [weak self] result in
+    /// Seam-friendly overload (§10.2) that accepts the abstract
+    /// `TokenRefreshing` protocol so unit tests can substitute a pure
+    /// in-memory mock for the production concrete `TPPNetworkExecutor`.
+    /// The original concrete-typed overload below remains for ObjC / source
+    /// compatibility with all existing call sites.
+    func getBearerToken(username: String,
+                        password: String,
+                        tokenURL: URL,
+                        tokenRefresher: TokenRefreshing,
+                        completion: (() -> Void)? = nil) {
+        tokenRefresher.executeTokenRefresh(username: username,
+                                           password: password,
+                                           tokenURL: tokenURL,
+                                           accountId: libraryAccountID) { [weak self] result in
             defer {
                 completion?()
             }
@@ -457,6 +485,14 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                 self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
             }
         }
+    }
+
+    func getBearerToken(username: String, password: String, tokenURL: URL, networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor, completion: (() -> Void)? = nil) {
+        getBearerToken(username: username,
+                       password: password,
+                       tokenURL: tokenURL,
+                       tokenRefresher: networkExecutor,
+                       completion: completion)
     }
 
     /// Uses the problem document's `title` and `message` fields to
@@ -544,6 +580,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             self.uiDelegate?.businessLogicWillSignIn(self)
         }
 
+        // F-011 class-of-bug guard
         switch wrapped.authType {
         case .oauthIntermediary:
             oauthLogIn()
@@ -563,7 +600,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             }
 
             getBearerToken(username: username, password: password, tokenURL: tokenURL)
-        default:
+        case .basic, .coppa, .anonymous, .none:
             validateCredentials()
         }
     }

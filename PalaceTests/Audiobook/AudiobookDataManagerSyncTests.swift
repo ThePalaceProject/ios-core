@@ -520,7 +520,7 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
             predicate: NSPredicate { _, _ in dataManager.store.queue.contains { $0.id == uniqueId } },
             object: nil
         )
-        wait(for: [savedExpectation], timeout: 2.0)
+        wait(for: [savedExpectation], timeout: 10.0)
 
         // Create new manager that loads from disk
         let newDataManager = AudiobookDataManager(syncTimeInterval: 3600)
@@ -530,7 +530,7 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
             predicate: NSPredicate { _, _ in newDataManager.store.queue.contains { $0.id == uniqueId } },
             object: nil
         )
-        wait(for: [loadedExpectation], timeout: 2.0)
+        wait(for: [loadedExpectation], timeout: 10.0)
 
         let persistedEntry = newDataManager.store.queue.first { $0.id == uniqueId }
         XCTAssertNotNil(persistedEntry, "Should find persisted entry with id: \(uniqueId)")

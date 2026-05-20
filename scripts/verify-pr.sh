@@ -4,21 +4,44 @@
 # Exit 0 if all checks pass, 1 if any fail.
 #
 # Usage:
-#   scripts/verify-pr.sh                     # Run all checks
-#   scripts/verify-pr.sh --quick             # Skip mutation testing (faster)
-#   scripts/verify-pr.sh --report <file>     # Write JSON report to file
-#   scripts/verify-pr.sh --enforce-mutations # Fail if ANY changed file has <50%
-#                                            # kill rate (default: only critical
-#                                            # paths Audiobooks/SignInLogic/
-#                                            # MyBooks/Download* enforce strictly)
-#   scripts/verify-pr.sh --simdrive          # Also replay .simdrive/journeys/*.yaml
-#                                            # via simdrive. MAINTAINER-INTERNAL:
-#                                            # simdrive is not yet publicly
-#                                            # distributed; `pip3 install --pre
-#                                            # simdrive` requires private access.
-#                                            # CI (chaos-replay-on-pr.yml) replays
-#                                            # the corpus server-side for every PR
-#                                            # regardless of this flag.
+#   scripts/verify-pr.sh                       # Run all checks
+#   scripts/verify-pr.sh --quick               # Skip mutation testing (faster)
+#   scripts/verify-pr.sh --report <file>       # Write JSON report to file
+#   scripts/verify-pr.sh --mutation-only       # Run ONLY the mutation step (skips
+#                                              # build/test/lint/coverage/a11y).
+#                                              # Used by the mutation-on-pr.yml
+#                                              # CI workflow which already runs
+#                                              # the rest via unit-testing.yml.
+#   scripts/verify-pr.sh --enforce-mutations   # Strictness ON for every changed
+#                                              # file (default: critical paths
+#                                              # strict, non-critical advisory).
+#                                              # Critical paths: Audiobooks/
+#                                              # SignInLogic/MyBooks/Download*.
+#   scripts/verify-pr.sh --no-enforce-mutations
+#                                              # Opt out: critical paths drop
+#                                              # to advisory-only too. Use for
+#                                              # known-large refactors that need
+#                                              # follow-up test work but should
+#                                              # not block CI in the meantime.
+#   scripts/verify-pr.sh --mutation-min-kill-rate N
+#                                              # Override the per-file kill-rate
+#                                              # floor (default: 50%).
+#   scripts/verify-pr.sh --simdrive            # Also replay .simdrive/journeys/*.yaml
+#                                              # via simdrive. MAINTAINER-INTERNAL:
+#                                              # simdrive is not yet publicly
+#                                              # distributed; `pip3 install --pre
+#                                              # simdrive` requires private access.
+#                                              # CI (chaos-replay-on-pr.yml) replays
+#                                              # the corpus server-side for every PR
+#                                              # regardless of this flag.
+#
+# Mutation policy (per CLAUDE.md "Mutation testing"):
+#   Critical paths (Palace/Audiobooks/, Palace/SignInLogic/,
+#   Palace/MyBooks/Download*) are STRICT BY DEFAULT — a kill rate below the
+#   --mutation-min-kill-rate floor fails the gate. Non-critical changed files
+#   are advisory: low kill rates are surfaced as warnings but do not fail.
+#   --enforce-mutations promotes every changed file to strict.
+#   --no-enforce-mutations demotes critical paths to advisory.
 #
 # Designed to be called by:
 #   - Claude Code agents before PR creation
@@ -34,10 +57,18 @@ cd "$REPO_ROOT"
 QUICK=false
 REPORT_FILE=""
 SIMDRIVE=false
-ENFORCE_MUTATIONS=false
+# Mutation policy tri-state:
+#   default        — critical paths strict, others advisory
+#   enforce_all    — every changed file strict (--enforce-mutations)
+#   advisory_all   — every changed file advisory (--no-enforce-mutations)
+MUTATION_POLICY="default"
+MUTATION_ONLY=false
+# Per-file kill-rate floor. CLAUDE.md says 50%; tunable via flag for the rare
+# case where a sweep needs a higher bar (e.g. critical-path hardening sprint).
+MUTATION_MIN_KILL_RATE=50
 
 # Critical paths: every changed file matching one of these prefixes is held to
-# a strict 50% mutation kill rate, regardless of --enforce-mutations.
+# the strict kill-rate floor unless explicitly opted out via --no-enforce-mutations.
 # These are the user-money / access-bearing paths memory flagged as air-tight.
 CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks|SignInLogic|MyBooks/Download)'
 # Sim selection. Honors the harness allocator's per-session UDID so parallel
@@ -51,7 +82,10 @@ while [[ $# -gt 0 ]]; do
     --quick) QUICK=true; shift ;;
     --report) REPORT_FILE="$2"; shift 2 ;;
     --simdrive) SIMDRIVE=true; shift ;;
-    --enforce-mutations) ENFORCE_MUTATIONS=true; shift ;;
+    --enforce-mutations) MUTATION_POLICY="enforce_all"; shift ;;
+    --no-enforce-mutations) MUTATION_POLICY="advisory_all"; shift ;;
+    --mutation-only) MUTATION_ONLY=true; QUICK=false; shift ;;
+    --mutation-min-kill-rate) MUTATION_MIN_KILL_RATE="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -161,7 +195,13 @@ JSONEOF
 fi
 
 # 1. Build check
+# Skipped in --mutation-only mode: palace_mutate.py rebuilds per-mutant so the
+# pre-flight build adds nothing; the CI workflow that uses --mutation-only
+# runs the build separately via unit-testing.yml.
 echo "--- Build ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "build" "pass" "Skipped (--mutation-only)"
+else
 BUILD_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination "id=$SIM_ID" build 2>&1)
 if echo "$BUILD_OUTPUT" | grep -q "BUILD SUCCEEDED\|BUILD FAILED"; then
@@ -176,9 +216,15 @@ if echo "$BUILD_OUTPUT" | grep -q "BUILD SUCCEEDED\|BUILD FAILED"; then
 else
   record "build" "fail" "Build did not complete"
 fi
+fi
 
 # 2. Unit tests
 echo "--- Unit Tests ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "unit_tests" "pass" "Skipped (--mutation-only)"
+  TEST_PASS=0
+  TEST_FAIL=0
+else
 TEST_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination "id=$SIM_ID" test 2>&1 || true)
 # Count only the top-level "All tests" rollups (one per .xctest bundle).
@@ -197,10 +243,13 @@ if [ "$TEST_FAIL" -eq 0 ] && [ "$TEST_PASS" -gt 0 ]; then
 else
   record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures"
 fi
+fi
 
 # 3. Test quality lint
 echo "--- Test Quality Lint ---"
-if [ -f scripts/lint-test-quality.py ]; then
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "test_quality" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/lint-test-quality.py ]; then
   LINT_OUTPUT=$(python3 scripts/lint-test-quality.py 2>&1 || true)
   # Check for violations in changed test files only
   NEW_VIOLATIONS=0
@@ -220,7 +269,9 @@ fi
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"
-if [ -f scripts/enforce_coverage_floors.py ] && [ -f scripts/coverage-floors.json ]; then
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "coverage_floors" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/enforce_coverage_floors.py ] && [ -f scripts/coverage-floors.json ]; then
   # Extract coverage from test results
   XCRESULT=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -newer /tmp/.verify-pr-start 2>/dev/null | head -1)
   if [ -n "$XCRESULT" ]; then
@@ -237,43 +288,93 @@ else
   record "coverage_floors" "pass" "Coverage enforcement not configured (skipped)"
 fi
 
-# 5. Mutation testing (skip in --quick mode)
+# 5. Mutation testing
 # Policy:
-#   --quick                       → skipped
-#   default                       → critical paths strict (50%), others warn-only
-#   --enforce-mutations           → ALL changed files strict (50%)
-#   palace_mutate.py uses .forgeos/mutation-cache by default → repeat verify
+#   --quick (no --mutation-only)  → skipped entirely
+#   --mutation-only               → runs even if --quick was also passed
+#   default policy                → critical paths strict (50%), others advisory
+#   --enforce-mutations           → ALL changed files strict
+#   --no-enforce-mutations        → ALL changed files advisory (incl. critical)
+#   --mutation-min-kill-rate N    → override the 50% floor
+#
+#   palace_mutate.py uses .forgeos/mutation-cache by default — repeat verify
 #   runs on the same files are near-instant (cache hit).
+#
+# Per-file per-run JSON reports land at .forgeos/mutation-reports/<slug>.json
+# so the CI workflow can post a comment with the table; the script writes them
+# alongside the aggregated decision so locally you also have the raw data.
 echo "--- Mutation Testing ---"
-if [ "$QUICK" = "true" ]; then
+MUTATION_REPORTS_DIR=".forgeos/mutation-reports"
+if [ "$QUICK" = "true" ] && [ "$MUTATION_ONLY" != "true" ]; then
   record "mutation" "pass" "Skipped (--quick mode)"
 elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
   TOTAL_KILLED=0
   TOTAL_MUTATIONS=0
-  STRICT_FAIL_FILES=()  # files where strict policy applies AND kill rate <50%
-  WARN_FILES=()         # files where kill rate <50% but not strictly enforced
+  STRICT_FAIL_FILES=()  # strict policy applies AND kill rate < min
+  WARN_FILES=()         # kill rate < min but advisory only
+  MUTATION_HARD_FAILED=false
+  mkdir -p "$MUTATION_REPORTS_DIR"
 
   while IFS= read -r swift_file; do
     [ -z "$swift_file" ] && continue
     # Skip non-production files
     echo "$swift_file" | grep -qE 'Tests/|Mocks/|Config/' && continue
 
-    # Per-file strictness: critical path OR --enforce-mutations
+    # Per-file strictness — resolved from MUTATION_POLICY + critical-path match.
     IS_STRICT=false
-    if [ "$ENFORCE_MUTATIONS" = "true" ]; then
-      IS_STRICT=true
-    elif echo "$swift_file" | grep -qE "$CRITICAL_MUTATION_PATHS_REGEX"; then
-      IS_STRICT=true
+    case "$MUTATION_POLICY" in
+      enforce_all)  IS_STRICT=true ;;
+      advisory_all) IS_STRICT=false ;;
+      default)
+        if echo "$swift_file" | grep -qE "$CRITICAL_MUTATION_PATHS_REGEX"; then
+          IS_STRICT=true
+        fi
+        ;;
+    esac
+
+    # Resolve XCTestCase class selectors for this production file.
+    # The old logic passed a directory path (e.g. `PalaceTests/Book`) to
+    # `-only-testing:`, which silently matched zero classes — every mutant
+    # graded as SURVIVED against an empty test set, and the gate "passed"
+    # with no kill rate. resolve-tests-for.py emits proper
+    # `PalaceTests/<ClassName>` selectors, one per line.
+    if ! TEST_SELECTORS=$(python3 scripts/resolve-tests-for.py "$swift_file" 2>/dev/null); then
+      echo "  [SKIP] no test selectors resolved for $swift_file — file has no matching *Tests.swift"
+      continue
     fi
 
-    # Find corresponding test directory
-    MODULE=$(echo "$swift_file" | sed 's|Palace/||' | cut -d/ -f1)
-    TEST_DIR="PalaceTests/$MODULE"
-    [ ! -d "$TEST_DIR" ] && TEST_DIR="PalaceTests/"
+    # Per-file JSON report so post-mutation-pr-comment.py can render the table.
+    SLUG=$(echo "$swift_file" | tr '/' '_' | sed 's/\.swift$//')
+    REPORT_PATH="$MUTATION_REPORTS_DIR/$SLUG.json"
+
+    # Build --tests arg list (one --tests per class — palace_mutate uses
+    # action="append" on --tests).
+    MUTATE_TEST_ARGS=()
+    while IFS= read -r sel; do
+      [ -z "$sel" ] && continue
+      MUTATE_TEST_ARGS+=("--tests" "$sel")
+    done <<< "$TEST_SELECTORS"
 
     MUT_OUTPUT=$(python3 scripts/palace_mutate.py \
-      --file "$swift_file" --tests "$TEST_DIR" \
-      --max-mutations 10 2>&1 || true)
+      --file "$swift_file" \
+      "${MUTATE_TEST_ARGS[@]}" \
+      --report "$REPORT_PATH" \
+      --max-mutations 10 2>&1)
+    MUT_EXIT=$?
+
+    # palace_mutate exit codes:
+    #   0 — all mutations ran, kill rate ≥ 50% (or none generated)
+    #   1 — all mutations ran, kill rate < 50% (advisory floor)
+    #   2 — script error (file not found, baseline failed, etc.) — surface loudly
+    # Previously this was wrapped in `|| true` which swallowed exit 2 silently,
+    # which let the hardcoded-REPO_ROOT bug ship to CI undetected. We now
+    # treat 2 as a hard error so it can never masquerade as a clean pass again.
+    if [ "$MUT_EXIT" -ge 2 ]; then
+      echo "$MUT_OUTPUT" | tail -20
+      record "mutation" "fail" "palace_mutate.py errored on $swift_file (exit $MUT_EXIT) — see log above"
+      MUTATION_HARD_FAILED=true
+      break
+    fi
 
     # palace_mutate.py emits "killed: N  survived: N  errored: N  kill rate: P%"
     # in both fresh-run and CACHED branches. Parse from that line.
@@ -283,10 +384,10 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
     TOTAL_KILLED=$((TOTAL_KILLED + KILLED))
     TOTAL_MUTATIONS=$((TOTAL_MUTATIONS + FILE_TOTAL))
 
-    # Per-file policy evaluation
+    # Per-file policy evaluation against the (possibly overridden) floor.
     if [ "$FILE_TOTAL" -gt 0 ]; then
       FILE_RATE=$((KILLED * 100 / FILE_TOTAL))
-      if [ "$FILE_RATE" -lt 50 ]; then
+      if [ "$FILE_RATE" -lt "$MUTATION_MIN_KILL_RATE" ]; then
         if [ "$IS_STRICT" = "true" ]; then
           STRICT_FAIL_FILES+=("$swift_file (${FILE_RATE}%)")
         else
@@ -296,16 +397,26 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
     fi
   done <<< "$CHANGED_SWIFT"
 
-  if [ "$TOTAL_MUTATIONS" -eq 0 ]; then
-    record "mutation" "pass" "No mutations generated for changed files"
+  if [ "$MUTATION_HARD_FAILED" = "true" ]; then
+    : # fail already recorded inside the loop; skip the post-aggregation record
+  elif [ "$TOTAL_MUTATIONS" -eq 0 ]; then
+    # Defensive: if zero mutations across ≥3 production files, that's
+    # almost certainly a tool misconfiguration, not a genuine no-op diff.
+    # Most real production files have at least one comparison/boolean op.
+    PROD_COUNT=$(echo "$CHANGED_SWIFT" | grep -cv '^$' || echo "0")
+    if [ "${PROD_COUNT:-0}" -ge 3 ]; then
+      record "mutation" "fail" "Suspicious: $PROD_COUNT production files changed but 0 mutations generated total — palace_mutate.py likely misconfigured (check REPO_ROOT, file paths, and exit codes)"
+    else
+      record "mutation" "pass" "No mutations generated for changed files"
+    fi
   elif [ ${#STRICT_FAIL_FILES[@]} -gt 0 ]; then
     KILL_RATE=$((TOTAL_KILLED * 100 / TOTAL_MUTATIONS))
-    DETAIL="${KILL_RATE}% aggregate; ${#STRICT_FAIL_FILES[@]} strict-path file(s) below 50%: ${STRICT_FAIL_FILES[*]}"
+    DETAIL="${KILL_RATE}% aggregate; ${#STRICT_FAIL_FILES[@]} strict-path file(s) below ${MUTATION_MIN_KILL_RATE}%: ${STRICT_FAIL_FILES[*]}"
     record "mutation" "fail" "$DETAIL"
   else
     KILL_RATE=$((TOTAL_KILLED * 100 / TOTAL_MUTATIONS))
     if [ ${#WARN_FILES[@]} -gt 0 ]; then
-      DETAIL="${TOTAL_KILLED}/${TOTAL_MUTATIONS} killed (${KILL_RATE}%); warn-only files <50%: ${WARN_FILES[*]}"
+      DETAIL="${TOTAL_KILLED}/${TOTAL_MUTATIONS} killed (${KILL_RATE}%); advisory files <${MUTATION_MIN_KILL_RATE}%: ${WARN_FILES[*]}"
     else
       DETAIL="${TOTAL_KILLED}/${TOTAL_MUTATIONS} killed (${KILL_RATE}%)"
     fi
@@ -317,7 +428,9 @@ fi
 
 # 6. Accessibility audit (if UI files changed)
 echo "--- Accessibility ---"
-if [ -n "$CHANGED_UI" ]; then
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "accessibility" "pass" "Skipped (--mutation-only)"
+elif [ -n "$CHANGED_UI" ]; then
   # Check for missing accessibility identifiers in changed UI files
   A11Y_ISSUES=0
   while IFS= read -r ui_file; do
@@ -346,7 +459,9 @@ fi
 #     MyBooks/Download* / DNA-marked), warns elsewhere. Honors
 #     [skip-ledger-check] in commit messages for typo/refactor PRs.
 echo "--- Ledger PR Drift ---"
-if [ ! -x scripts/ledger-pr-check.py ] || [ ! -d docs/ledger ]; then
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "ledger_pr_drift" "pass" "Skipped (--mutation-only)"
+elif [ ! -x scripts/ledger-pr-check.py ] || [ ! -d docs/ledger ]; then
   record "ledger_pr_drift" "pass" "Ledger PR-drift check not available (skipped)"
 else
   LEDGER_PR_OUT=$(scripts/ledger-pr-check.py "$BASE" 2>&1 || true)
@@ -366,7 +481,9 @@ fi
 # 7. simdrive replay (opt-in via --simdrive). Delegates to scripts/simdrive-regress.sh
 #    which enforces the two-tier gate (stateless = blocking on drift, stateful = smoke).
 echo "--- simdrive Replay ---"
-if [ "$SIMDRIVE" != "true" ]; then
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "simdrive" "pass" "Skipped (--mutation-only)"
+elif [ "$SIMDRIVE" != "true" ]; then
   record "simdrive" "pass" "Skipped (pass --simdrive to enable)"
 elif [ ! -x scripts/simdrive-regress.sh ]; then
   record "simdrive" "fail" "scripts/simdrive-regress.sh missing or not executable"
@@ -394,7 +511,9 @@ fi
 # meant to catch), which would falsely route to "skipped".
 echo "--- Coverage by FR ---"
 HARNESS_BIN="$HOME/harness/bin/harness"
-if [ ! -x "$HARNESS_BIN" ]; then
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "coverage_by_fr" "pass" "Skipped (--mutation-only)"
+elif [ ! -x "$HARNESS_BIN" ]; then
   record "coverage_by_fr" "pass" "harness not installed (skipped)"
 elif ! "$HARNESS_BIN" srd --help 2>&1 | grep -q '\bcoverage\b'; then
   record "coverage_by_fr" "pass" "harness srd coverage subcommand not available (skipped)"

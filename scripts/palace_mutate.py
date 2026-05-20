@@ -49,8 +49,18 @@ import sys
 import time
 from typing import Callable, Iterable
 
-REPO_ROOT = "/Users/mauricework/PalaceProject/ios-core"
-SIM_ID = "DF4A2A27-9888-429D-A749-2E157A049A37"
+# Derive REPO_ROOT from this script's location (scripts/palace_mutate.py) so the
+# tool works on any host — local dev, GitHub Actions runners, contributors'
+# clones. The previous absolute path silently broke CI: palace_mutate.py would
+# try to read files at `/Users/mauricework/...`, fail with exit 2, and verify-pr's
+# `|| true` masked the failure so the mutation gate "passed" with zero reports.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# SIM_ID: prefer the harness-allocated UDID (HARNESS_SESSION_SIM_UDID env var)
+# so parallel agents and CI can each pin a different sim. Fall back to the
+# author's local sim for direct dev invocation; the script is still allowed to
+# pick a different UDID via env without code changes.
+SIM_ID = os.environ.get("HARNESS_SESSION_SIM_UDID", "DF4A2A27-9888-429D-A749-2E157A049A37")
 DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".forgeos", "mutation-cache")
 CACHE_VERSION = 1  # bump when cache schema changes
 
@@ -92,6 +102,24 @@ _MUTATORS: list[tuple[re.Pattern, list[tuple[str, str]], str]] = [
     (re.compile(r"\+= 1\b"),  [("+= 1", "-= 1")], "assign"),
     (re.compile(r"-= 1\b"),   [("-= 1", "+= 1")], "assign"),
 ]
+
+
+# Patterns matching lines that are PURE diagnostic side effects — mutating
+# inside them flips a string interpolation but doesn't change runtime
+# behavior. Tests cannot kill these mutants no matter what they assert,
+# so including them in the count silently DEFLATES every file's kill rate
+# in proportion to how diagnostics-heavy the source is. AudiobookLoader.swift
+# is the canonical case: 9 discovered mutants, 7 inside `Log.info`/`Log.debug`
+# calls — apparent 0% kill rate, actual production-behavior coverage on
+# the 2 real branches is meaningfully better.
+#
+# We skip mutations whose entire host line is one of these calls. Any
+# branch INSIDE a guard/if that happens to log gets mutated normally;
+# only the log-call line itself is exempt.
+_LOG_LINE_PATTERN = re.compile(
+    r"^\s*(?:Log\.(?:trace|debug|info|warn|error)|"
+    r"print|NSLog|os_log|Logger\.\w+|os\.Logger\(\)\.\w+)\b"
+)
 
 
 def changed_lines(file_relpath: str, base_ref: str) -> set[int] | None:
@@ -161,6 +189,12 @@ def discover_mutations(source: str) -> list[Mutation]:
                 stripped = line_text.lstrip()
                 if stripped.startswith("//") or stripped.startswith("///") or stripped.startswith("*"):
                     continue
+                # Skip mutations whose entire host line is a diagnostic
+                # call (see _LOG_LINE_PATTERN comment). Those mutants flip
+                # string interpolations without changing observable
+                # behavior — they are inherently unkillable.
+                if _LOG_LINE_PATTERN.match(line_text):
+                    continue
                 # Build the mutated line by replacing at the column
                 start_in_line = col - 1
                 end_in_line = start_in_line + len(orig)
@@ -211,13 +245,23 @@ def any_tests_ran(output: str) -> bool:
     return bool(re.search(r"Executed [1-9]\d* test", output))
 
 
-def run_targeted_tests(test_class_paths: list[str], timeout: int = 600) -> tuple[bool, str]:
+_DEFAULT_TARGETED_TEST_TIMEOUT = int(os.environ.get("PALACE_MUTATE_TEST_TIMEOUT", "1200"))
+
+
+def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARGETED_TEST_TIMEOUT) -> tuple[bool, str]:
     """
     Run xcodebuild test scoped to the given test classes.
     Returns (all_passed, last_lines_of_output).
     Returns (False, "ERROR: ...") if the configuration ran zero tests — that
     is treated as a misconfiguration, not a passing run, so callers don't
     grade mutants as SURVIVED against an empty test set.
+
+    Default timeout is 1200s (20 min). On a cold CI runner the first xcodebuild
+    test invocation builds Palace from scratch (Adobe RMSDK, Carthage frameworks,
+    SPM dependencies) which routinely takes 8-10 min before any test executes.
+    Subsequent invocations within the same job reuse DerivedData and are fast.
+    Override with PALACE_MUTATE_TEST_TIMEOUT env var if a faster environment
+    only needs the smaller budget.
     """
     only_testing_args: list[str] = []
     for path in test_class_paths:
@@ -243,7 +287,21 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = 600) -> tuple
     last = "\n".join(output.splitlines()[-15:])
     if not any_tests_ran(output):
         joined = ", ".join(test_class_paths)
-        return (False, f"ERROR: 0 tests executed for {joined} — likely a misconfigured --tests arg (directory instead of XCTestCase class name)")
+        # Surface the LAST 40 lines of xcodebuild output alongside the
+        # synthetic error. Without this, "0 tests executed" looked like a
+        # misconfigured --tests arg even when the real cause was a CI-only
+        # build error (Swift macro failure, signing issue, etc.) that the
+        # local resolver couldn't detect. The synthetic message stays as
+        # the headline; the xcodebuild tail is the diagnostic.
+        xcb_tail = "\n".join(output.splitlines()[-40:])
+        diagnostic = (
+            f"ERROR: 0 tests executed for {joined} — likely a misconfigured "
+            f"--tests arg (directory instead of XCTestCase class name) OR a "
+            f"build failure that produced no test execution.\n"
+            f"---- last 40 lines of xcodebuild output ----\n{xcb_tail}\n"
+            f"---- end xcodebuild output ----"
+        )
+        return (False, diagnostic)
     passed = result.returncode == 0 and "** TEST SUCCEEDED **" in output
     return (passed, last)
 

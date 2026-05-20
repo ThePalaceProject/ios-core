@@ -39,17 +39,27 @@ final class CatalogAPIMock: CatalogAPI {
 
     // MARK: - Call Tracking
 
-    /// URLs that fetchFeed was called with
-    private(set) var fetchFeedCalls: [URL] = []
+    /// Serialization for concurrent reads (CatalogRepository fires
+    /// background refreshes on Task.detached, so two stale-read tests
+    /// can call fetchFeed in parallel; Swift Array.append is not
+    /// thread-safe and crashes under concurrent mutation).
+    private let callsLock = NSLock()
 
-    /// Search queries that search(query:baseURL:) was called with
-    private(set) var searchCalls: [(query: String, baseURL: URL)] = []
+    /// URLs that fetchFeed was called with. Guarded by `callsLock`.
+    private var _fetchFeedCalls: [URL] = []
+    var fetchFeedCalls: [URL] { callsLock.withLock { _fetchFeedCalls } }
 
-    /// Calls to search(query:searchDescriptorURL:)
-    private(set) var searchWithDescriptorCalls: [(query: String, descriptorURL: URL)] = []
+    /// Search queries that search(query:baseURL:) was called with. Guarded by `callsLock`.
+    private var _searchCalls: [(query: String, baseURL: URL)] = []
+    var searchCalls: [(query: String, baseURL: URL)] { callsLock.withLock { _searchCalls } }
 
-    /// Calls to fetchSearchEntryPoints
-    private(set) var fetchSearchEntryPointsCalls: [URL] = []
+    /// Calls to search(query:searchDescriptorURL:). Guarded by `callsLock`.
+    private var _searchWithDescriptorCalls: [(query: String, descriptorURL: URL)] = []
+    var searchWithDescriptorCalls: [(query: String, descriptorURL: URL)] { callsLock.withLock { _searchWithDescriptorCalls } }
+
+    /// Calls to fetchSearchEntryPoints. Guarded by `callsLock`.
+    private var _fetchSearchEntryPointsCalls: [URL] = []
+    var fetchSearchEntryPointsCalls: [URL] { callsLock.withLock { _fetchSearchEntryPointsCalls } }
 
     /// Delay to simulate network latency (in seconds)
     var simulatedDelay: TimeInterval = 0
@@ -60,10 +70,13 @@ final class CatalogAPIMock: CatalogAPI {
     // MARK: - CatalogAPI Implementation
 
     func fetchFeed(at url: URL) async throws -> CatalogFeed? {
-        fetchFeedCalls.append(url)
+        let count = callsLock.withLock { () -> Int in
+            _fetchFeedCalls.append(url)
+            return _fetchFeedCalls.count
+        }
 
         // Check if we should fail after N calls
-        if let failAfter = failAfterCallCount, fetchFeedCalls.count > failAfter {
+        if let failAfter = failAfterCallCount, count > failAfter {
             throw NSError(domain: "CatalogAPIMock", code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "Simulated failure after \(failAfter) calls"])
         }
@@ -83,7 +96,7 @@ final class CatalogAPIMock: CatalogAPI {
     }
 
     func search(query: String, baseURL: URL) async throws -> CatalogFeed? {
-        searchCalls.append((query: query, baseURL: baseURL))
+        callsLock.withLock { _searchCalls.append((query: query, baseURL: baseURL)) }
 
         // Simulate network delay
         if simulatedDelay > 0 {
@@ -99,7 +112,7 @@ final class CatalogAPIMock: CatalogAPI {
     }
 
     func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
-        searchWithDescriptorCalls.append((query: query, descriptorURL: searchDescriptorURL))
+        callsLock.withLock { _searchWithDescriptorCalls.append((query: query, descriptorURL: searchDescriptorURL)) }
 
         if simulatedDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(simulatedDelay * 1_000_000_000))
@@ -113,7 +126,7 @@ final class CatalogAPIMock: CatalogAPI {
     }
 
     func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
-        fetchSearchEntryPointsCalls.append(url)
+        callsLock.withLock { _fetchSearchEntryPointsCalls.append(url) }
 
         if simulatedDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(simulatedDelay * 1_000_000_000))
@@ -137,32 +150,34 @@ final class CatalogAPIMock: CatalogAPI {
         fetchFeedError = nil
         searchError = nil
         defaultFeed = nil
-        fetchFeedCalls = []
-        searchCalls = []
-        searchWithDescriptorCalls = []
-        fetchSearchEntryPointsCalls = []
+        callsLock.withLock {
+            _fetchFeedCalls = []
+            _searchCalls = []
+            _searchWithDescriptorCalls = []
+            _fetchSearchEntryPointsCalls = []
+        }
         simulatedDelay = 0
         failAfterCallCount = nil
     }
 
     /// Check if fetchFeed was called with a specific URL
     func wasFetchFeedCalled(with url: URL) -> Bool {
-        fetchFeedCalls.contains(url)
+        callsLock.withLock { _fetchFeedCalls.contains(url) }
     }
 
     /// Get the number of times fetchFeed was called
     var fetchFeedCallCount: Int {
-        fetchFeedCalls.count
+        callsLock.withLock { _fetchFeedCalls.count }
     }
 
     /// Check if search was called with a specific query
     func wasSearchCalled(with query: String) -> Bool {
-        searchCalls.contains { $0.query == query }
+        callsLock.withLock { _searchCalls.contains { $0.query == query } }
     }
 
     /// Get the number of times search was called
     var searchCallCount: Int {
-        searchCalls.count
+        callsLock.withLock { _searchCalls.count }
     }
 }
 

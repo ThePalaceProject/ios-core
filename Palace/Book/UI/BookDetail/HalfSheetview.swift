@@ -34,10 +34,15 @@ extension HalfSheetProvider {
     }
 
     var isManagingHold: Bool {
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+        // flags this site if BookButtonState gains a new case so a hold-like
+        // state can't silently be classified as "not managing a hold".
         switch buttonState {
         case .managingHold, .holding, .holdingFrontOfQueue:
             true
-        default:
+        case .canBorrow, .canHold, .downloadNeeded, .downloadSuccessful,
+             .used, .downloadInProgress, .returning, .downloadFailed,
+             .unsupported:
             false
         }
     }
@@ -84,6 +89,8 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
 
             if viewModel.isFullSize {
                 BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
+                    // Exhaustive (no `default:`) — F-011 class-of-bug guard.
+                    // Compiler now flags this if BookButtonType gains a case.
                     switch type {
                     case .close:
                         viewModel.bookState = originalState
@@ -100,10 +107,10 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                         } else {
                             viewModel.bookState = .returning
                         }
-                    case .remove:
-                        didChangeState = true
-                        viewModel.handleAction(for: type)
-                    default:
+                    case .remove,
+                         .get, .reserve, .download, .retry, .cancel,
+                         .sample, .audiobookSample, .cancelHold,
+                         .manageHold, .returning:
                         didChangeState = true
                         viewModel.handleAction(for: type)
                     }
@@ -111,6 +118,8 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                 .horizontallyCentered()
             } else {
                 BookButtonsView(provider: viewModel, previewEnabled: false, onButtonTapped: { type in
+                    // Exhaustive (no `default:`) — F-011 class-of-bug guard.
+                    // Compiler now flags this if BookButtonType gains a case.
                     switch type {
                     case .close:
                         viewModel.bookState = originalState
@@ -127,10 +136,10 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                         } else {
                             viewModel.bookState = .returning
                         }
-                    case .remove:
-                        didChangeState = true
-                        viewModel.handleAction(for: type)
-                    default:
+                    case .remove,
+                         .get, .reserve, .download, .retry, .cancel,
+                         .sample, .audiobookSample, .cancelHold,
+                         .manageHold, .returning:
                         didChangeState = true
                         viewModel.handleAction(for: type)
                     }

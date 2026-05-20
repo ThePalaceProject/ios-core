@@ -9,7 +9,7 @@
 //
 
 import XCTest
-import PalaceCatalog
+@testable import PalaceCatalog
 @testable import Palace
 
 // MARK: - CatalogRepository Tests

@@ -1,0 +1,18 @@
+[
+  {
+    "args" : {
+      "resetCache" : "true",
+      "url" : "SQ007-BOOK",
+      "useToken" : "true"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+      "bookId" : "SQ007-BOOK",
+      "hasRetryAction" : "true",
+      "title" : "Borrow Failed"
+    },
+    "method" : "presentBorrowErrorAlert"
+  }
+]

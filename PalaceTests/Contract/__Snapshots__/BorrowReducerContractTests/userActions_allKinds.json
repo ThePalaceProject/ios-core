@@ -1,0 +1,57 @@
+[
+  {
+    "args" : {
+      "output.bookState" : "downloading",
+      "output.downloadProgress" : "0.0",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "downloadStartConfirmed"
+  },
+  {
+    "args" : {
+      "output.bookState" : "unregistered",
+      "output.downloadProgress" : "0.0",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "returnStartConfirmed"
+  },
+  {
+    "args" : {
+      "output.bookState" : "unregistered",
+      "output.downloadProgress" : "0.0",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "cancelTapped"
+  },
+  {
+    "args" : {
+      "output.bookState" : "holding",
+      "output.downloadProgress" : "0.0",
+      "output.isManagingHold" : "true",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "manageHoldTapped"
+  },
+  {
+    "args" : {
+      "output.bookState" : "unregistered",
+      "output.downloadProgress" : "0.0",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "signInCancelled"
+  }
+]

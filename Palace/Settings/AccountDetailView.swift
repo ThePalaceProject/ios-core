@@ -274,6 +274,7 @@ struct AccountDetailView: View {
 
     @ViewBuilder
     private func cellView(for cellType: CellType) -> some View {
+        // F-011 class-of-bug guard
         switch cellType {
         case .barcodeImage:
             barcodeImageCell
@@ -307,7 +308,7 @@ struct AccountDetailView: View {
             samlIDPCell(idp: idp)
         case .infoHeader(let text):
             infoHeaderCell(text: text)
-        default:
+        case .about:
             EmptyView()
         }
     }
@@ -741,12 +742,13 @@ struct AccountDetailView: View {
     // MARK: - Helper Methods
 
     private func keyboardType(for loginKeyboard: LoginKeyboard?) -> UIKeyboardType {
+        // F-011 class-of-bug guard
         switch loginKeyboard {
         case .email:
             .emailAddress
         case .numeric:
             .numberPad
-        default:
+        case .standard, .some(.none), nil:
             .asciiCapable
         }
     }
