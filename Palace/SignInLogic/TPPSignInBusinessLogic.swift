@@ -273,7 +273,11 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// `awaitReady()` form happens at user-initiated entry points
     /// (`startRegularCardCreation`, `TPPAgeCheck`, `NotificationService`
     /// hold navigation) where wrapping in a `Task` does not cascade.
-    private var loadedAccountDetails: AccountDetails? {
+    // Internal (not private) so extensions in other files can consume it.
+    // Phase 2 (Bucket B) reuses it from `+BookmarkSyncing` to gate the
+    // sync-button visibility on the same readiness contract used by the
+    // sync sites — there's no reason for a parallel implementation.
+    var loadedAccountDetails: AccountDetails? {
         guard let account = libraryAccount else { return nil }
         if case .detailsLoaded(let details) = account.loadState {
             return details

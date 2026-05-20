@@ -10,12 +10,12 @@ import Foundation
 import UIKit
 import PalaceAudiobookToolkit
 import Combine
-
-#if FEATURE_OVERDRIVE
-import OverdriveProcessor
 import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
+
+#if FEATURE_OVERDRIVE
+import OverdriveProcessor
 #endif
 
 // DownloadCoordinator is defined in MyBooksDownloadQueue.swift

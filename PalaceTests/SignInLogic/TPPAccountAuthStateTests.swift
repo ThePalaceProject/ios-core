@@ -422,6 +422,11 @@ final class UserAccountPublisherAuthStateTests: XCTestCase {
 
 final class TPPSAMLReauthFlowTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        TPPUserAccountMock.resetShared()
+    }
+
     /// Simulates the complete SAML session expiry and re-auth flow
     /// to verify that Adobe activation is skipped during re-authentication.
     func testSAMLReauthFlow_skipsAdobeActivation() {

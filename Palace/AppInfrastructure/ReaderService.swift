@@ -1,9 +1,9 @@
 import UIKit
 import Combine
 import ReadiumShared
+import PalaceLogging
 #if LCP
 import ReadiumLCP
-import PalaceLogging
 #endif
 
 final class ReaderService {
