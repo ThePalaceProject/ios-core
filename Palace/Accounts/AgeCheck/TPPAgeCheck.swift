@@ -47,42 +47,101 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
     func verifyCurrentAccountAgeRequirement(userAccountProvider: TPPUserAccountProvider,
                                             currentLibraryAccountProvider: TPPCurrentLibraryAccountProvider,
                                             completion: ((Bool) -> Void)?) {
-        serialQueue.async { [weak self] in
-
-            guard let accountDetails = currentLibraryAccountProvider.currentAccount?.details else {
-                completion?(false)
-                return
-            }
-
-            if userAccountProvider.needsAuth == true || accountDetails.userAboveAgeLimit {
-                completion?(true)
-                return
-            }
-
-            if !accountDetails.userAboveAgeLimit && (self?.ageCheckChoiceStorage.userPresentedAgeCheck ?? false) {
-                completion?(false)
-                return
-            }
-
-            // Queue the callback
-            if let completion = completion {
-                self?.handlerList.append(completion)
-            }
-
-            // We're already presenting the age verification, return
-            if self?.isPresenting ?? false {
-                return
-            }
-
-            let accountDetailsCompletion: ((Bool) -> Void) = { aboveAgeLimit in
-                accountDetails.userAboveAgeLimit = aboveAgeLimit
-            }
-            self?.handlerList.append(accountDetailsCompletion)
-
-            // Perform age check presentation
-            self?.isPresenting = true
-            self?.presentAgeVerificationView()
+        // Bucket A migration: the age check is a synchronous gate fired
+        // before catalog rendering. The legacy implementation read
+        // `currentLibraryAccountProvider.currentAccount?.details` and
+        // either completed false (nil) or queued work on `serialQueue`.
+        // Migrated path keeps the same ordering invariant by:
+        //
+        //   1. Fast-path: if state is `.detailsLoaded`, queue
+        //      `continueAgeRequirementCheck` on `serialQueue` directly —
+        //      same shape as the legacy `serialQueue.async { ... }`.
+        //   2. Failure-path: if state is `.detailsFailed`, complete false
+        //      on `serialQueue` — matches the legacy nil-details branch.
+        //   3. Loading-path: only when state is `.notLoaded`,
+        //      `.basicInfoLoaded`, or `.detailsLoading` do we spin up a
+        //      `Task` to await `awaitReady()`. This is the new behavior
+        //      the migration enables — the legacy code raced silently.
+        //
+        // Splitting fast-path from await-path preserves the queue
+        // ordering tests (TPPAgeCheckTests.testAge*) rely on: when state
+        // is already loaded, work goes onto `serialQueue` immediately so
+        // `didCompleteAgeCheck`'s serial-queue async sees the queued
+        // handlers, not an empty `handlerList`.
+        guard let currentAccount = currentLibraryAccountProvider.currentAccount else {
+            serialQueue.async { completion?(false) }
+            return
         }
+
+        switch currentAccount.loadState {
+        case .detailsLoaded(let accountDetails):
+            serialQueue.async { [weak self] in
+                self?.continueAgeRequirementCheck(
+                    accountDetails: accountDetails,
+                    userAccountProvider: userAccountProvider,
+                    completion: completion
+                )
+            }
+        case .detailsFailed:
+            serialQueue.async { completion?(false) }
+        case .notLoaded, .basicInfoLoaded, .detailsLoading:
+            Task { [weak self] in
+                let accountDetails: AccountDetails
+                do {
+                    accountDetails = try await currentAccount.awaitReady()
+                } catch {
+                    self?.serialQueue.async { completion?(false) }
+                    return
+                }
+                self?.serialQueue.async {
+                    self?.continueAgeRequirementCheck(
+                        accountDetails: accountDetails,
+                        userAccountProvider: userAccountProvider,
+                        completion: completion
+                    )
+                }
+            }
+        }
+    }
+
+    /// Sync continuation of `verifyCurrentAccountAgeRequirement` running
+    /// on the existing serial queue once `awaitReady()` has resolved.
+    /// Splitting the body keeps the queue-isolated state mutations
+    /// (`handlerList`, `isPresenting`) on the serial queue exactly as
+    /// before — only the `details` read moved through the await boundary.
+    private func continueAgeRequirementCheck(
+        accountDetails: AccountDetails,
+        userAccountProvider: TPPUserAccountProvider,
+        completion: ((Bool) -> Void)?
+    ) {
+        if userAccountProvider.needsAuth == true || accountDetails.userAboveAgeLimit {
+            completion?(true)
+            return
+        }
+
+        if !accountDetails.userAboveAgeLimit && ageCheckChoiceStorage.userPresentedAgeCheck {
+            completion?(false)
+            return
+        }
+
+        // Queue the callback
+        if let completion = completion {
+            handlerList.append(completion)
+        }
+
+        // We're already presenting the age verification, return
+        if isPresenting {
+            return
+        }
+
+        let accountDetailsCompletion: ((Bool) -> Void) = { aboveAgeLimit in
+            accountDetails.userAboveAgeLimit = aboveAgeLimit
+        }
+        handlerList.append(accountDetailsCompletion)
+
+        // Perform age check presentation
+        isPresenting = true
+        presentAgeVerificationView()
     }
 
     fileprivate func presentAgeVerificationView() {

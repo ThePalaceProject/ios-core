@@ -13,8 +13,38 @@ import SafariServices
 extension TPPSignInBusinessLogic: CLLocationManagerDelegate {
     @objc
     func startRegularCardCreation(completion: @escaping (UINavigationController?, Error?) -> Void) {
-        // Ensure we have a sign-up URL to work with.
-        guard let signUpURL = libraryAccount?.details?.signUpUrl else {
+        // Bucket A migration: card creation is user-initiated (Sign Up button
+        // tap), so the await window is acceptable. Per contract: wrap in
+        // `Task` because the enclosing `@objc` signature is sync. The await
+        // blocks until details are loaded or the auth doc fetch fails; on
+        // failure we surface the same `nilSignUpURL` error the legacy
+        // `details?.signUpUrl == nil` path produced.
+        guard let account = libraryAccount else {
+            let error = NSError(
+                domain: TPPErrorLogger.clientDomain,
+                code: TPPErrorCode.nilSignUpURL.rawValue,
+                userInfo: [NSLocalizedDescriptionKey: Strings.Error.cardCreationError]
+            )
+            completion(nil, error)
+            return
+        }
+        Task {
+            let details = try? await account.awaitReady()
+            await MainActor.run {
+                self.continueRegularCardCreation(with: details, completion: completion)
+            }
+        }
+    }
+
+    /// Sync continuation of `startRegularCardCreation` invoked from a Task
+    /// once `awaitReady()` resolves (or fails). Splitting the sync body
+    /// out keeps the existing location-manager flow intact and isolated
+    /// from the await boundary.
+    private func continueRegularCardCreation(
+        with details: AccountDetails?,
+        completion: @escaping (UINavigationController?, Error?) -> Void
+    ) {
+        guard let signUpURL = details?.signUpUrl else {
             let error = NSError(
                 domain: TPPErrorLogger.clientDomain,
                 code: TPPErrorCode.nilSignUpURL.rawValue,
