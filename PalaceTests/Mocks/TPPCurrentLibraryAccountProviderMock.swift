@@ -28,5 +28,12 @@ class TPPCurrentLibraryAccountProviderMock: NSObject, TPPCurrentLibraryAccountPr
         super.init()
 
         currentAccount?.authenticationDocument = try! OPDS2AuthenticationDocument.fromData(try Data(contentsOf: simplyeAuthDocURL))
+
+        // Swarm swarm_81b5099e Phase 1 Bucket A migration: drive the
+        // state machine to `.detailsLoaded` so consumers reading
+        // `awaitReady()` or `loadState` see the fixture's details.
+        if let account = currentAccount, let details = account.details {
+            account._setState(.detailsLoaded(details))
+        }
     }
 }

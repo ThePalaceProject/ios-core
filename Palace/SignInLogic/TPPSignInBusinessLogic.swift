@@ -240,6 +240,31 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         return libraryAccount
     }
 
+    /// State-machine-aware synchronous read of `AccountDetails`. Returns
+    /// `nil` when details have not yet transitioned to `.detailsLoaded`
+    /// (i.e. `.notLoaded`, `.basicInfoLoaded`, `.detailsLoading`, or
+    /// `.detailsFailed`). This preserves the legacy `account.details?`
+    /// nil-tolerance for sync UI/`@objc` callers that cannot adopt the
+    /// async `awaitReady()` gate without cascading `async` upward through
+    /// SwiftUI/UIKit render paths.
+    ///
+    /// Bucket A migration policy (per ADR `docs/architecture/account-state-machine.md`):
+    /// the 6 sub-sites in this file are sync property getters / `@objc`
+    /// methods read from SwiftUI render bodies and synchronous UI flows.
+    /// Reading `loadState` directly is the state-machine-aware version of
+    /// what the legacy `details?` reads did — both return non-nil only
+    /// when details are loaded. Migration to the truly-async
+    /// `awaitReady()` form happens at user-initiated entry points
+    /// (`startRegularCardCreation`, `TPPAgeCheck`, `NotificationService`
+    /// hold navigation) where wrapping in a `Task` does not cascade.
+    private var loadedAccountDetails: AccountDetails? {
+        guard let account = libraryAccount else { return nil }
+        if case .detailsLoaded(let details) = account.loadState {
+            return details
+        }
+        return nil
+    }
+
     /// Returns a valid password reset URL or `nil`
     ///
     /// Verifies that:
@@ -278,7 +303,10 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         get {
             guard _selectedAuthentication == nil else { return _selectedAuthentication }
             guard userAccount.authDefinition == nil else { return userAccount.authDefinition }
-            guard let auths = libraryAccount?.details?.auths else { return nil }
+            // Bucket A migration (line 281): state-machine-aware read. Returns
+            // `nil` until details are `.detailsLoaded` — same null-tolerance as
+            // legacy `libraryAccount?.details?.auths`.
+            guard let auths = loadedAccountDetails?.auths else { return nil }
             guard auths.count > 1 else { return auths.first }
 
             return nil
@@ -305,13 +333,16 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
         let authTypeStr = (authType == .signOut ? "signing out" : "signing in")
 
+        // Bucket A migration (line 309): state-machine-aware read of
+        // `userProfileUrl`. Sync getter, no async cascade.
+        let loadedDetails = loadedAccountDetails
         guard
-            let urlStr = libraryAccount?.details?.userProfileUrl,
+            let urlStr = loadedDetails?.userProfileUrl,
             let url = URL(string: urlStr) else {
             TPPErrorLogger.logError(
                 withCode: .noURL,
                 summary: "Error: unable to create URL for \(authTypeStr)",
-                metadata: ["library.userProfileUrl": libraryAccount?.details?.userProfileUrl ?? "N/A"])
+                metadata: ["library.userProfileUrl": loadedDetails?.userProfileUrl ?? "N/A"])
             return nil
         }
 
@@ -729,11 +760,19 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
     /// - Returns: Whether it is possible to sign up for a new account or not.
     @objc func registrationIsPossible() -> Bool {
-        return !isSignedIn() && libraryAccount?.details?.signUpUrl != nil
+        // Bucket A migration (line 732): state-machine-aware read of
+        // `signUpUrl`. Sync `@objc`, called from SwiftUI rendering.
+        return !isSignedIn() && loadedAccountDetails?.signUpUrl != nil
     }
 
     @objc func isSamlPossible() -> Bool {
-        libraryAccount?.details?.auths.contains { $0.isSaml } ?? false
+        // Bucket A migration (line 736): state-machine-aware read.
+        // Per ADR: SAML reauth inherits the existing 15s reauth-coordinator
+        // timeout — do not wrap in additional `withTimeout`. Sync `@objc`
+        // signature is preserved; reading `loadState` does not block.
+        // On `.detailsFailed` this returns `false`, matching the legacy
+        // nil-semantic — the migration does NOT crash on `.detailsFailed`.
+        loadedAccountDetails?.auths.contains { $0.isSaml } ?? false
     }
 
     /// Auto-select a WebView-based authentication (SAML, then OIDC) when
@@ -749,8 +788,10 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// Idempotent: only sets `selectedAuthentication` / `selectedIDP` when
     /// they are currently nil.
     @objc func selectPreferredAuthIfNeeded() {
+        // Bucket A migration (line 753): state-machine-aware read of `auths`.
+        // Sync `@objc`, called from sync UI flows (e.g. `setupViews`).
         if selectedAuthentication == nil,
-           let auths = libraryAccount?.details?.auths, auths.count > 1 {
+           let auths = loadedAccountDetails?.auths, auths.count > 1 {
             if let saml = auths.first(where: { $0.isSaml }) {
                 selectedAuthentication = saml
             } else if let oidc = auths.first(where: { $0.isOidc }) {
@@ -778,7 +819,9 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         // and the standalone EULA entry is reachable via Settings → User
         // Agreement and the Software Licenses sheet. Gate visibility on the
         // sign-in form being the active surface.
-        guard libraryAccount?.details?.getLicenseURL(.eula) != nil else {
+        // Bucket A migration (line 781): state-machine-aware read of EULA
+        // URL. Sync `@objc`, called from SwiftUI rendering.
+        guard loadedAccountDetails?.getLicenseURL(.eula) != nil else {
             return false
         }
         return !isSignedIn()
