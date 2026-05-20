@@ -15,6 +15,14 @@ import MediaPlayer
 @MainActor
 final class PlaybackBootstrapperTests: XCTestCase {
 
+    override func setUp() async throws {
+        try await super.setUp()
+        // AudiobookSessionManager.shared is a singleton; prior tests in the
+        // suite can leave it in .loading / .error states. The state-assertion
+        // tests below assume .idle, so reset before each test.
+        await AudiobookSessionManager.shared.stopPlayback(dismissPhoneUI: false)
+    }
+
     // MARK: - Remote Command Configuration Tests
 
     func testPlaybackBootstrapper_ConfiguresRemoteCommandCenter() {

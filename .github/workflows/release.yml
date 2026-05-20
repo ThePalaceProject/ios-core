@@ -2,10 +2,14 @@ name: Palace Manual Release
 on: workflow_dispatch
 jobs:
   create-release:
-    runs-on: macOS-latest
+    runs-on: macos-26
+    outputs:
+      version: ${{ steps.export-version.outputs.version }}
     steps:
-      - name: Use the latest Xcode
-        run: sudo xcode-select -switch /Applications/Xcode.app
+      - name: Set up Xcode 26
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26'
 
       - name: Verify Xcode Version
         run: xcodebuild -version
@@ -27,12 +31,14 @@ jobs:
           BUILD_CONTEXT: ci
           GITHUB_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
       - name: Verify path and version
+        id: export-version
         run: |
           echo "Release notes path: " $RELEASE_NOTES_PATH
           cat $RELEASE_NOTES_PATH
           echo "Changelog path:     " $CHANGELOG_PATH
           cat $CHANGELOG_PATH
           echo "Version:            " $VERSION_NUM
+          echo "version=$VERSION_NUM" >> "$GITHUB_OUTPUT"
         env:
           RELEASE_NOTES_PATH: ${{ env.RELEASE_NOTES_PATH }}
           CHANGELOG_PATH: ${{ env.CHANGELOG_PATH }}
@@ -50,3 +56,10 @@ jobs:
               --title "$VERSION_NUM" \
               --notes-file "$RELEASE_NOTES_PATH"
           fi
+
+  jira-sync:
+    needs: create-release
+    uses: ./.github/workflows/jira-release-sync.yml
+    with:
+      tag: ${{ needs.create-release.outputs.version }}
+    secrets: inherit

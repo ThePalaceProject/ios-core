@@ -14,6 +14,14 @@ import XCTest
 @MainActor
 final class AudiobookSessionStateTransitionTests: XCTestCase {
 
+    override func setUp() async throws {
+        try await super.setUp()
+        // AudiobookSessionManager.shared is a singleton — reset before each
+        // test so .state assertions see .idle and not pollution from a prior
+        // test (same pattern as PlaybackBootstrapperTests).
+        await AudiobookSessionManager.shared.stopPlayback(dismissPhoneUI: false)
+    }
+
     // MARK: - State Enum Tests
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
