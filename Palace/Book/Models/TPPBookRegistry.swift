@@ -112,10 +112,12 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     // MARK: - External dependencies
 
     private let accountsManager: AccountsManager
-    /// Image-loading umbrella. Default resolves to `ImageLoader.production`
-    /// (the same AppContainer-owned instance every other consumer reads),
-    /// keeping the no-arg legacy convenience init working while still routing
-    /// through the new ImageLoading seam everywhere else.
+    /// Image-loading umbrella. Required — must be threaded through from the
+    /// `AppContainer` graph (or a test mock). NEVER take a default that
+    /// resolves via `AppContainer.production()` here — TPPBookRegistry is
+    /// constructed inside `_cached`'s own dispatch_once, so a default arg
+    /// would re-enter the once and SIGTRAP (the cycle that motivated Phase
+    /// 6.6's singleton kill).
     private let imageLoader: ImageLoading
 
     private var accountDidChangeCancellable: AnyCancellable?
@@ -203,7 +205,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     /// AccountsManager so we never re-enter `AppContainer.production()`'s
     /// dispatch_once during app launch (the failure mode that motivated
     /// killing the `static let shared` singleton in Phase 6.6).
-    init(accountsManager: AccountsManager, imageLoader: ImageLoading = ImageLoader.production) {
+    init(accountsManager: AccountsManager, imageLoader: ImageLoading) {
         self.accountsManager = accountsManager
         self.imageLoader = imageLoader
         let store = BookRegistryStore()
@@ -233,7 +235,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     /// run a block against a *different* registry file than the current one.
     /// Inherits `accountsManager` from the calling facade — no default arg, no
     /// AppContainer lookup, so the cycle that motivated 6.6 can't sneak back.
-    fileprivate init(account: String, accountsManager: AccountsManager, imageLoader: ImageLoading = ImageLoader.production) {
+    fileprivate init(account: String, accountsManager: AccountsManager, imageLoader: ImageLoading) {
         self.accountsManager = accountsManager
         self.imageLoader = imageLoader
         let store = BookRegistryStore()
@@ -255,7 +257,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void) {
-        block(TPPBookRegistry(account: account, accountsManager: accountsManager))
+        block(TPPBookRegistry(account: account, accountsManager: accountsManager, imageLoader: imageLoader))
     }
 
     // MARK: - Load / sync / save / reset (delegate to BookRegistrySync)

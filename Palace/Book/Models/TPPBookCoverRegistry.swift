@@ -492,5 +492,6 @@ actor TPPBookCoverRegistry {
 // which is constructed once in `AppContainer.production()` and injected
 // through `AppContainer.imageLoader`. Call sites that used to read
 // `TPPBookCoverRegistryBridge.shared` now read `imageLoader` either via
-// `AppContainer` (BookListView, TPPBookRegistry) or via the deprecated
-// `ImageLoader.production` accessor on TPPBook+Presentation.
+// explicit `AppContainer` injection (BookListView, TPPBookRegistry,
+// CarPlayImageProvider) or via the `AppContainer.production().imageLoader`
+// computed accessor on TPPBook+Presentation.

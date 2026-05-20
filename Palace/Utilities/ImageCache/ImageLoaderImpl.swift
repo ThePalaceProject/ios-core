@@ -33,16 +33,6 @@ public class ImageLoader: ImageLoading {
         self.registry = TPPBookCoverRegistry(imageCache: imageCache)
     }
 
-    /// Deprecated default-arg accessor for legacy Obj-C-reachable call sites
-    /// (TPPBook(dictionary:), etc.) where threading an `AppContainer` through
-    /// is impractical. NEW call sites should read `AppContainer.imageLoader`.
-    /// Reads `AppContainer.production().imageLoader` so we don't reintroduce
-    /// the duplicate-graph problem `.shared` had.
-    @available(*, deprecated, message: "Inject ImageLoading through AppContainer")
-    public static var production: ImageLoading {
-        AppContainer.production().imageLoader
-    }
-
     // MARK: - Book-level fetch
 
     public func coverImage(for book: TPPBook) async -> UIImage? {

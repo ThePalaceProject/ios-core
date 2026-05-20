@@ -28,7 +28,7 @@ final class CarPlayImageProvider {
 
     // MARK: - Initialization
 
-    init(imageLoader: ImageLoading = ImageLoader.production) {
+    init(imageLoader: ImageLoading) {
         self.imageLoader = imageLoader
     }
 

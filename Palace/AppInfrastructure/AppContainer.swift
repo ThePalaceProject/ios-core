@@ -105,7 +105,16 @@ struct AppContainer {
         // both into AppContainer.init — and into every collaborator built
         // here — explicitly so no default arg ever fires.
         let accountsManager = AccountsManager()
-        let bookRegistry = TPPBookRegistry(accountsManager: accountsManager)
+        // Single image-loading umbrella composed of the existing disk+memory
+        // ImageCache and the TPPBookCoverRegistry actor — replaces three
+        // overlapping singletons at consumer sites (Track A of the 3.2.0
+        // singleton sweep). Constructed BEFORE TPPBookRegistry because the
+        // registry now takes ImageLoading as a required init param; the prior
+        // ordering relied on a default arg `imageLoader = ImageLoader.production`
+        // that re-entered _cached's own dispatch_once and SIGTRAPped on launch.
+        let imageCache = ImageCache.shared
+        let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
+        let bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: imageLoader)
         // Build one accessibility announcer and one DownloadAnnouncementService
         // that wraps it. Sharing this announcer between the service and any
         // other consumers (MyBooksDownloadCenter still calls
@@ -126,12 +135,6 @@ struct AppContainer {
             downloadAnnouncementService: downloadAnnouncementService,
             reachability: reachability
         )
-        // Single image-loading umbrella composed of the existing disk+memory
-        // ImageCache and the TPPBookCoverRegistry actor — replaces three
-        // overlapping singletons at consumer sites (Track A of the 3.2.0
-        // singleton sweep).
-        let imageCache = ImageCache.shared
-        let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
         return AppContainer(
             bookRegistry: bookRegistry,
             networkExecutor: executor,

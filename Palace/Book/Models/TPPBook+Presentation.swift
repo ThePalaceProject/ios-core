@@ -18,14 +18,17 @@ import PalaceLogging
 extension TPPBook {
     /// Routes cover/thumbnail loads through the `ImageLoading` umbrella so this
     /// file no longer reaches for `TPPBookCoverRegistry.shared` /
-    /// `TPPBookCoverRegistryBridge.shared` directly. Default resolution still
-    /// goes through `AppContainer.production().imageLoader`, which is the same
-    /// graph every other consumer (BookListView, TPPAppDelegate, CarPlay) reads.
+    /// `TPPBookCoverRegistryBridge.shared` directly. Reads
+    /// `AppContainer.production().imageLoader`, which is the same graph every
+    /// other consumer (BookListView, TPPAppDelegate, CarPlay) reads.
     ///
-    /// Marked deprecated-friendly at the call site by `ImageLoader.production`
-    /// itself — over time these reads disappear as TPPBook becomes container-aware.
+    /// Safe to read here even though `AppContainer.production()` builds its
+    /// graph on a dispatch_once: TPPBook instances are constructed *after* the
+    /// AppContainer is fully built, so this access is post-bootstrap and
+    /// never re-enters the once. (Direct reads from inside `_cached`'s init
+    /// would SIGTRAP — see the cycle warning in TPPBookRegistry.swift.)
     var imageLoader: ImageLoading {
-        ImageLoader.production
+        AppContainer.production().imageLoader
     }
 
     func fetchCoverImage() {
