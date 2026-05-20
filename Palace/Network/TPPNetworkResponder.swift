@@ -106,7 +106,24 @@ class TPPNetworkResponder: NSObject {
 
     func updateCompletionId(_ oldId: TaskID, newId: TaskID) {
         taskInfoQueue.sync {
-            self.taskInfo[newId] = self.taskInfo[oldId]
+            // MOVE semantics, not copy. Token-refresh retry flow:
+            //  1. addCompletion(handler, taskID: oldId)        ← original task
+            //  2. token refresh succeeds, drain queue          ← retry kicks in
+            //  3. updateCompletionId(oldId, newId)             ← retry-task mapping
+            //  4. oldTask.cancel()                              ← URLSession fires
+            //                                                    completion at oldId
+            //                                                    if we leave it
+            //  5. newTask.resume() → completes                  ← responder fires
+            //                                                    completion at newId
+            // If step 3 only COPIED, both step 4 and step 5 deliver via the
+            // same completion handler → XCTestExpectation API violation in
+            // TokenRefreshAndRetryQueueTests.testRefresh_Success_ReleasesSingleFlightSlot
+            // (caught at PR #956's CI). Production callers see the completion
+            // fire twice — second call is a cancelled-error overwriting the
+            // genuine retry result. Move the mapping to fix.
+            if let info = self.taskInfo.removeValue(forKey: oldId) {
+                self.taskInfo[newId] = info
+            }
         }
     }
 }

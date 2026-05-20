@@ -1,0 +1,95 @@
+{
+  "metadata": {
+    "title": "OPDS2 Test Catalog",
+    "identifier": "urn:uuid:opds2-catalog-id",
+    "itemsPerPage": 25,
+    "modified": "2026-04-01T10:00:00Z"
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "https://example.org/opds2/catalog",
+      "type": "application/opds+json"
+    },
+    {
+      "rel": "next",
+      "href": "https://example.org/opds2/catalog?page=2",
+      "type": "application/opds+json"
+    },
+    {
+      "rel": "search",
+      "href": "https://example.org/opds2/search{?query}",
+      "type": "application/opds+json",
+      "templated": true
+    }
+  ],
+  "publications": [
+    {
+      "metadata": {
+        "identifier": "urn:uuid:pub-001",
+        "title": "Sunrise Over Pines",
+        "author": [
+          { "name": "Lila Greenfield" }
+        ],
+        "description": "A quiet novel."
+      },
+      "images": [
+        {
+          "href": "https://example.org/opds2/img/001-cover.jpg",
+          "type": "image/jpeg",
+          "width": 600,
+          "height": 900
+        },
+        {
+          "href": "https://example.org/opds2/img/001-thumb.jpg",
+          "type": "image/jpeg",
+          "width": 150,
+          "height": 225,
+          "rel": "http://opds-spec.org/image/thumbnail"
+        }
+      ],
+      "links": [
+        {
+          "rel": "http://opds-spec.org/acquisition/borrow",
+          "href": "https://example.org/opds2/works/001/borrow",
+          "type": "application/atom+xml;type=entry;profile=opds-catalog",
+          "properties": {
+            "availability": { "state": "available" },
+            "copies": { "total": 5, "available": 3 },
+            "indirectAcquisition": [
+              {
+                "type": "application/vnd.adobe.adept+xml",
+                "child": [
+                  { "type": "application/epub+zip" }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "identifier": "urn:uuid:pub-002",
+        "title": "Whispers of the Forest",
+        "author": [
+          { "name": "Mateo Reyes" },
+          { "name": "Naomi Sato" }
+        ]
+      },
+      "images": [
+        {
+          "href": "https://example.org/opds2/img/002-cover.jpg",
+          "type": "image/jpeg"
+        }
+      ],
+      "links": [
+        {
+          "rel": "http://opds-spec.org/acquisition/open-access",
+          "href": "https://example.org/opds2/works/002/openaccess.epub",
+          "type": "application/epub+zip"
+        }
+      ]
+    }
+  ]
+}

@@ -105,6 +105,15 @@ protocol AnnotationsManager {
     nonisolated(unsafe) static var executorOverride: TPPNetworkExecutor?
     nonisolated(unsafe) static var accountsManagerOverride: TPPLibraryAccountsProvider?
 
+    /// Test-only override for the annotations URL. When set, `annotationsURL`
+    /// returns this value instead of deriving from `TPPConfiguration.mainFeedURL()`.
+    /// CI runners boot with no signed-in library, so `mainFeedURL()` is nil and
+    /// every annotation POST/GET path early-returns before hitting the
+    /// HTTPStubURLProtocol handler. Tests that exercise the annotation network
+    /// surface (e.g. CrossDeviceSyncE2ETests) inject their MockSyncBackend's
+    /// base URL here. Never set from production code.
+    nonisolated(unsafe) static var annotationsURLOverride: URL?
+
     /// Returns the executor TPPAnnotations should use for the current call.
     /// In production this is always `.shared`. In tests, setting
     /// `executorOverride` lets the test inject a stubbed executor.
@@ -625,6 +634,9 @@ protocol AnnotationsManager {
     }
 
     static var annotationsURL: URL? {
+        if let override = annotationsURLOverride {
+            return override
+        }
         return TPPConfiguration.mainFeedURL()?.appendingPathComponent("annotations/")
     }
 

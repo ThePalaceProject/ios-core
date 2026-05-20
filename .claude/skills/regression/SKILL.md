@@ -54,12 +54,17 @@ delta or crashes>0 is auto-failed. Each failing journey becomes a finding.
 **Step 2b — full automated tool sweep**:
 
 ```bash
+# IMPORTANT: --mutation-run is now MANDATORY for a release regression.
+# CI no longer runs mutation (removed 2026-05-15 — too expensive on every
+# PR push); the local regression run is the only place mutation results
+# get produced for a candidate. Skipping it leaves test-quality regressions
+# unmonitored.
 scripts/regression-report.sh auto \
   --output-dir ~/Desktop/regression-<TICKET> \
   --baseline-ref <BASELINE_REF> \
   --candidate-branch <CANDIDATE_BRANCH> \
   --run-sync-tests \
-  [--mutation-run]
+  --mutation-run
 ```
 
 Notes on flags:

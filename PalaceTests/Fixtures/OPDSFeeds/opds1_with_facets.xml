@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opds="http://opds-spec.org/2010/catalog"
+      xmlns:simplified="http://librarysimplified.org/terms/">
+
+  <id>https://example.org/testlib/faceted</id>
+  <title>Faceted Feed</title>
+  <updated>2024-07-01T08:00:00Z</updated>
+
+  <link href="https://example.org/testlib/faceted" rel="self" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+
+  <!-- Entrypoint facet group: All / eBooks / Audiobooks -->
+  <link href="https://example.org/testlib/faceted?entrypoint=All"
+        rel="http://opds-spec.org/facet"
+        title="All"
+        opds:facetGroup="Entrypoint"
+        opds:activeFacet="true"/>
+  <link href="https://example.org/testlib/faceted?entrypoint=eBooks"
+        rel="http://opds-spec.org/facet"
+        title="eBooks"
+        opds:facetGroup="Entrypoint"/>
+  <link href="https://example.org/testlib/faceted?entrypoint=Audiobooks"
+        rel="http://opds-spec.org/facet"
+        title="Audiobooks"
+        opds:facetGroup="Entrypoint"/>
+
+  <!-- Sort facet group: Title / Author -->
+  <link href="https://example.org/testlib/faceted?order=title"
+        rel="http://opds-spec.org/facet"
+        title="Title"
+        opds:facetGroup="Sort by"/>
+  <link href="https://example.org/testlib/faceted?order=author"
+        rel="http://opds-spec.org/facet"
+        title="Author"
+        opds:facetGroup="Sort by"/>
+
+  <entry>
+    <id>urn:uuid:facet-entry-001</id>
+    <title>Faceted Book</title>
+    <updated>2024-06-30T08:00:00Z</updated>
+    <author>
+      <name>Some Author</name>
+    </author>
+    <link href="https://example.org/testlib/works/F001/openaccess.epub" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip"/>
+  </entry>
+
+</feed>

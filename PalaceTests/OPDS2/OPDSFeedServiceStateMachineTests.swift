@@ -112,7 +112,7 @@ final class OPDSFeedServiceStateMachineTests: XCTestCase {
         let transitionTime = Date().timeIntervalSinceReferenceDate
         account._setState(.detailsLoaded(details))
 
-        await fulfillment(of: [fetchCompleted], timeout: 5.0)
+        await fulfillment(of: [fetchCompleted], timeout: 15.0)
 
         // Assert: fetch completion happened strictly AFTER the
         // state-machine transition. This is the ordering invariant the

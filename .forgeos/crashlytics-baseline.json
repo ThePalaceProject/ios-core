@@ -1,0 +1,115 @@
+{
+  "as_of": "2026-05-15",
+  "app_id": "1:716454087792:ios:11eb8d287ec88c2784f8b5",
+  "note": "Fresh top-10 FATAL pull from Firebase Crashlytics MCP, 2026-05-08 through 2026-05-15 (7-day window). Replaces the seed baseline. The first 'last_seen_version' column captures whether an issue is active in 3.0.0 (current release) or only historically present — issues whose last_seen_version predates 3.0.0 are kept in the baseline so the sentinel does not flap if a single late event reactivates them; the alias column maps to in-flight Palace findings where one applies.",
+  "issues": [
+    {
+      "issue_id": "9a91840677248852d9459fb6be14d799",
+      "title": "<empty stack> — std::__1::system_error recursive_mutex lock failed: Invalid argument",
+      "subtitle": "FATAL — repetitive crash, ~6 events per impacted user",
+      "events_count": 79,
+      "impacted_users": 28,
+      "first_seen_version": "1.2.4",
+      "last_seen_version": "3.0.0",
+      "signals": ["SIGNAL_REPETITIVE"],
+      "uri": "https://console.firebase.google.com/v1/appid/project/the-palace-project/crashlytics/app/1:716454087792:ios:11eb8d287ec88c2784f8b5/issues/9a91840677248852d9459fb6be14d799",
+      "alias": "F-006"
+    },
+    {
+      "issue_id": "0ca62d8244e96706c4649b97e20851ff",
+      "title": "<empty stack> — Botan::Decoding_Error X509 CRL BER tag mismatch",
+      "subtitle": "FATAL — LCP createContext via malformed PEM CRL; F-002 PEM pre-validation guards entry-side in 3.1.0",
+      "events_count": 36,
+      "impacted_users": 5,
+      "first_seen_version": "1.2.4",
+      "last_seen_version": "3.0.0",
+      "signals": ["SIGNAL_REPETITIVE"],
+      "uri": "https://console.firebase.google.com/v1/appid/project/the-palace-project/crashlytics/app/1:716454087792:ios:11eb8d287ec88c2784f8b5/issues/0ca62d8244e96706c4649b97e20851ff",
+      "alias": "F-002"
+    },
+    {
+      "issue_id": "688cc01cece072cfb65db47c7b04716e",
+      "title": "[AudioEngine] +[FAEChapterStatus(DatabaseHelper) _cacheForChapterDescription:]",
+      "subtitle": "FATAL EXC_BREAKPOINT — Findaway audiobook chapter cache",
+      "events_count": 8,
+      "impacted_users": 7,
+      "first_seen_version": "2.2.2",
+      "last_seen_version": "3.0.0",
+      "uri": "https://console.firebase.google.com/v1/appid/project/the-palace-project/crashlytics/app/1:716454087792:ios:11eb8d287ec88c2784f8b5/issues/688cc01cece072cfb65db47c7b04716e",
+      "alias": "F-008"
+    },
+    {
+      "issue_id": "bbe2b5797475fa49b43c07e5ec849657",
+      "title": "[Palace] HTMLTextView.swift - HTMLTextView.makeAttributedString(from:)",
+      "subtitle": "FATAL EXC_BAD_ACCESS — pre-3.0.0 last seen, kept to prevent re-detection flapping",
+      "events_count": 8,
+      "impacted_users": 4,
+      "first_seen_version": "1.2.4",
+      "last_seen_version": "2.1.0",
+      "uri": "https://console.firebase.google.com/v1/appid/project/the-palace-project/crashlytics/app/1:716454087792:ios:11eb8d287ec88c2784f8b5/issues/bbe2b5797475fa49b43c07e5ec849657"
+    },
+    {
+      "issue_id": "077218fcbd2eedb617ed59b7d17de97d",
+      "title": "[Palace] TPPBookCoverRegistry.swift - TPPBook.fetchCoverImage(forDisplayHeight:)",
+      "subtitle": "FATAL EXC_BREAKPOINT — main-thread disk-cache fetch (3.0.0-only); priority #1 Crashlytics; 3.1.0 F-016 launch-race fix verified on Moes Max",
+      "events_count": 7,
+      "impacted_users": 7,
+      "first_seen_version": "3.0.0",
+      "last_seen_version": "3.0.0",
+      "uri": "https://console.firebase.google.com/v1/appid/project/the-palace-project/crashlytics/app/1:716454087792:ios:11eb8d287ec88c2784f8b5/issues/077218fcbd2eedb617ed59b7d17de97d",
+      "alias": "F-004"
+    },
+    {
+      "issue_id": "43f376266615118d1d8c3016a7acc593",
+      "title": "<empty stack> — std::__1::system_error mutex lock failed: Invalid argument",
+      "subtitle": "FATAL — repetitive, last seen 1.2.3 (predates 3.0.0); kept to prevent flap",
+      "events_count": 7,
+      "impacted_users": 3,
+      "first_seen_version": "1.0.35",
+      "last_seen_version": "1.2.3",
+      "signals": ["SIGNAL_REPETITIVE"],
+      "uri": "https://console.firebase.google.com/v1/appid/project/the-palace-project/crashlytics/app/1:716454087792:ios:11eb8d287ec88c2784f8b5/issues/43f376266615118d1d8c3016a7acc593"
+    },
+    {
+      "issue_id": "7bf923ee02907a1074fb9681b6ff544d",
+      "title": "[Palace] AudiobookLoader.swift - specialized AudiobookLoader.finalizeBuild(book:jsonData:decryptor:completion:)",
+      "subtitle": "FATAL EXC_BREAKPOINT — manifest build path (3.0.0-only); FU-3 partial-decode mitigation pending",
+      "events_count": 7,
+      "impacted_users": 1,
+      "first_seen_version": "3.0.0",
+      "last_seen_version": "3.0.0",
+      "uri": "https://console.firebase.google.com/v1/appid/project/the-palace-project/crashlytics/app/1:716454087792:ios:11eb8d287ec88c2784f8b5/issues/7bf923ee02907a1074fb9681b6ff544d",
+      "alias": "F-005"
+    },
+    {
+      "issue_id": "315a32dd69d8ef8e51334e12a97aee04",
+      "title": "[Palace] HTMLTextView.swift - static HTMLTextView.makeAttributedString(from:)",
+      "subtitle": "FATAL NSInternalInconsistencyException — 2.2.x only, kept to prevent flap",
+      "events_count": 6,
+      "impacted_users": 6,
+      "first_seen_version": "2.2.0",
+      "last_seen_version": "2.2.4",
+      "uri": "https://console.firebase.google.com/v1/appid/project/the-palace-project/crashlytics/app/1:716454087792:ios:11eb8d287ec88c2784f8b5/issues/315a32dd69d8ef8e51334e12a97aee04"
+    },
+    {
+      "issue_id": "a0d2904a1a2b510023f59e21c88ac8ae",
+      "title": "[libswiftCore.dylib] _swift_release_dealloc",
+      "subtitle": "FATAL EXC_BAD_ACCESS — generic Swift refcount fault; long-tail across versions",
+      "events_count": 4,
+      "impacted_users": 4,
+      "first_seen_version": "1.2.4",
+      "last_seen_version": "3.0.0",
+      "uri": "https://console.firebase.google.com/v1/appid/project/the-palace-project/crashlytics/app/1:716454087792:ios:11eb8d287ec88c2784f8b5/issues/a0d2904a1a2b510023f59e21c88ac8ae"
+    },
+    {
+      "issue_id": "fe741015e1cc320abea6275cd5f79a02",
+      "title": "[Foundation] _userInfoForFileAndLine — Failed to determine navigation direction for scroll",
+      "subtitle": "FATAL NSInternalInconsistencyException — pre-3.0.0 last seen, kept to prevent flap",
+      "events_count": 4,
+      "impacted_users": 3,
+      "first_seen_version": "1.1.4",
+      "last_seen_version": "2.2.4",
+      "uri": "https://console.firebase.google.com/v1/appid/project/the-palace-project/crashlytics/app/1:716454087792:ios:11eb8d287ec88c2784f8b5/issues/fe741015e1cc320abea6275cd5f79a02"
+    }
+  ]
+}

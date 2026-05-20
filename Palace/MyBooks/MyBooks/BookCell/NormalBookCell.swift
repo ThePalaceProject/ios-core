@@ -212,10 +212,15 @@ struct NormalBookCell: View {
 
     @ViewBuilder private var buttons: some View {
         BookButtonsView(provider: model, previewEnabled: previewEnabled, size: buttonSize) { type in
+            // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+            // flags this site if BookButtonType gains a case, so a button
+            // can't silently route to the callDelegate fallback.
             switch type {
             case .close:
                 accessibleWithAnimation(.spring()) { self.showHalfSheet = false }
-            default:
+            case .get, .reserve, .download, .read, .listen, .retry, .cancel,
+                 .sample, .audiobookSample, .remove, .cancelHold,
+                 .manageHold, .return, .returning:
                 model.callDelegate(for: type)
                 accessibleWithAnimation(.spring()) { self.showHalfSheet = model.showHalfSheet }
             }

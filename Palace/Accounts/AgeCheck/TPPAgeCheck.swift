@@ -176,4 +176,25 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
             self?.handlerList.removeAll()
         }
     }
+
+    // MARK: - Test seam (§10.3)
+    //
+    // The private `serialQueue` schedules `verifyCurrentAccountAgeRequirement`,
+    // `didCompleteAgeCheck`, and `didFailAgeCheck` all FIFO. Tests historically
+    // relied on the implicit FIFO guarantee to assert post-conditions after
+    // enqueueing two operations back-to-back, which works in practice but is
+    // load-bearing on an implementation detail.
+    //
+    // `flushPendingForTests()` synchronously drains any work currently sitting
+    // on `serialQueue`. Because the queue is serial, awaiting a `.sync` block
+    // is sufficient: by the time it returns, every block enqueued via `.async`
+    // earlier in program order has already executed.
+    //
+    // This is wrapped in `#if DEBUG` so the seam never ships in release
+    // binaries. Production callers should never need a flush.
+    #if DEBUG
+    @objc func flushPendingForTests() {
+        serialQueue.sync { }
+    }
+    #endif
 }

@@ -30,19 +30,28 @@ enum BookButtonType: String {
     }
 
     var displaysIndicator: Bool {
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+        // flags this if BookButtonType gains a case, so an indicator
+        // decision can't be silently defaulted to `false`.
         switch self {
         case .read, .remove, .get, .download, .listen:
             true
-        default:
+        case .reserve, .retry, .cancel, .close, .sample, .audiobookSample,
+             .cancelHold, .manageHold, .return, .returning:
             false
         }
     }
 
     var isDisabled: Bool {
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+        // flags this if BookButtonType gains a case, so a new local-only
+        // action can't silently inherit the network-gated disabled state.
         switch self {
         case .read, .listen, .remove:
             false
-        default:
+        case .get, .reserve, .download, .retry, .cancel, .close,
+             .sample, .audiobookSample, .cancelHold, .manageHold,
+             .return, .returning:
             !AppContainer.production().reachability.isConnectedToNetwork()
         }
     }
@@ -73,10 +82,14 @@ extension BookButtonType {
 
     @MainActor
     func title(for book: TPPBook) -> String {
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+        // flags this if BookButtonType gains a case so a future preview-
+        // style button can't silently fall through to the static title.
         switch self {
         case .sample, .audiobookSample:
             return AppContainer.production().samplePreviewManager.isShowingPreview(for: book) ? DisplayStrings.close : DisplayStrings.preview
-        default:
+        case .get, .reserve, .download, .read, .listen, .retry, .cancel,
+             .close, .remove, .cancelHold, .manageHold, .return, .returning:
             return title
         }
     }

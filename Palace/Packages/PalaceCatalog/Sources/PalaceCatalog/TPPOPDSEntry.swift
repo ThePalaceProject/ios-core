@@ -64,7 +64,11 @@ import PalaceLogging
 
     parseLinks(from: entryXML)
 
-    if let dateString = entryXML.firstChild(withName: "issued")?.value {
+    // Atom (RFC 4287) uses <published> for the canonical publication date.
+    // Legacy/Dublin Core feeds use <issued>. Prefer <published>, fall back
+    // to <issued>, else leave nil.
+    if let dateString = entryXML.firstChild(withName: "published")?.value
+        ?? entryXML.firstChild(withName: "issued")?.value {
       published = NSDate.date(withISO8601DateString: dateString) as Date?
     }
 

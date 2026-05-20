@@ -63,7 +63,12 @@ private actor TokenRefreshCoordinator {
     let transport: NetworkTransport
     private let tokenCoordinator = TokenRefreshCoordinator()
 
-    private let responder: TPPNetworkResponder
+    // `internal` (default) rather than `private` so adversarial tests can
+    // wire a completion onto a synthetic task before invoking
+    // `refreshTokenAndResume(task:)`. The responder is otherwise only ever
+    // touched by the executor itself; production callers must keep going
+    // through the executor's higher-level GET / PUT / POST / DELETE surface.
+    let responder: TPPNetworkResponder
     private var _accountsManager: TPPLibraryAccountsProvider?
     private var accountsManager: TPPLibraryAccountsProvider {
         _accountsManager ?? AppContainer.production().accountsManager
@@ -114,6 +119,32 @@ private actor TokenRefreshCoordinator {
         super.init()
     }
 
+    /// Full-DI initializer used by adversarial tests that need BOTH a custom
+    /// `URLSessionConfiguration` (for `URLProtocol`-based stubbing) and an
+    /// injected `TPPLibraryAccountsProvider` (so the executor's per-account
+    /// credential reads target a test-controlled mock instead of
+    /// `AppContainer.production().accountsManager`). No production caller
+    /// needs both seams at once; this exists for token-refresh / retry-queue
+    /// coverage where the executor's token-refresh code path reads from
+    /// `self.accountsManager` and writes via `setAuthToken` on the resolved
+    /// `TPPUserAccount`. See `TokenRefreshAndRetryQueueTests` for the
+    /// motivating scenarios.
+    init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
+         cachingStrategy: NYPLCachingStrategy,
+         sessionConfiguration: URLSessionConfiguration,
+         accountsManager: TPPLibraryAccountsProvider,
+         delegateQueue: OperationQueue? = nil) {
+        self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
+                                             useFallbackCaching: cachingStrategy == .fallback)
+        self.transport = NetworkTransport(delegate: self.responder,
+                                          sessionConfiguration: sessionConfiguration,
+                                          delegateQueue: delegateQueue,
+                                          cachingStrategy: cachingStrategy,
+                                          requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
+        self._accountsManager = accountsManager
+        super.init()
+    }
+
     #if DEBUG
     /// Recreate the underlying URLSession so it picks up any newly-registered
     /// URLProtocol classes (e.g. MockBackendURLProtocol). Delegates to the
@@ -160,7 +191,23 @@ private actor TokenRefreshCoordinator {
     @objc func cancelNonEssentialTasks() {
         transport.cancelNonEssentialTasks()
     }
+
+    /// Number of in-flight tasks the transport currently holds — i.e. tasks
+    /// in `.running` or `.suspended` URLSessionTask state. Read-only
+    /// observation surface for tests that need to verify
+    /// `cancelNonEssentialTasks` actually drops the live count. Production
+    /// callers must not use this for control flow; the transport's task
+    /// registry is the source of truth.
+    var liveTaskCount: Int {
+        transport.activeTasksStore.liveTaskCount
+    }
 }
+
+// `executeTokenRefresh(username:password:tokenURL:accountId:completion:)`
+// is defined further down on `TPPNetworkExecutor` (no `accountId` default
+// parameter is needed for protocol witness selection at the test seam
+// callers — see §10.2 of `docs/Testing/Test_Seams_Refactor_Plan.md`).
+extension TPPNetworkExecutor: TokenRefreshing { }
 
 extension TPPNetworkExecutor: TPPRequestExecuting {
     @discardableResult

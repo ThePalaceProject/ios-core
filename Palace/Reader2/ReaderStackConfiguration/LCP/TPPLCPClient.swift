@@ -133,7 +133,30 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
     }
 
     func findOneValidPassphrase(jsonLicense: String, hashedPassphrases: [String]) -> String? {
-        return R2LCPClient.findOneValidPassphrase(jsonLicense: jsonLicense, hashedPassphrases: hashedPassphrases)
+        // F-002 symmetric gap: R2LCPClient.findOneValidPassphrase → Botan can
+        // throw C++ exceptions (notably std::logic_error "id value cannot not
+        // be null" on empty license JSON, "expected null, got not" on non-JSON
+        // license strings) that escape Swift's do/catch entirely and reach
+        // std::terminate. Mirror the createContext wrapper so a bad license
+        // surfaces as a nil return ("no valid passphrase found") instead of a
+        // crash. Returning nil is the same shape callers already handle for
+        // the no-match case, so no upstream contract changes.
+        var result: String?
+        let caughtNativeException = TPPObjCExceptionCatcher.catchAllExceptions {
+            result = R2LCPClient.findOneValidPassphrase(
+                jsonLicense: jsonLicense,
+                hashedPassphrases: hashedPassphrases
+            )
+        }
+
+        if let exception = caughtNativeException {
+            let name = exception.name.rawValue
+            let reason = exception.reason ?? "Unknown native exception"
+            Log.error(#file, "LCP findOneValidPassphrase threw native exception: \(name) — \(reason)")
+            return nil
+        }
+
+        return result
     }
 }
 

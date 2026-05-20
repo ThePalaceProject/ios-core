@@ -1,0 +1,34 @@
+[
+  {
+    "args" : {
+      "bookId" : "RET-AUTH"
+    },
+    "method" : "announce.returnStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-AUTH",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-AUTH",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "usingExistingCredentials" : "false"
+    },
+    "method" : "reauth.authenticateIfNeeded"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-AUTH"
+    },
+    "method" : "announce.returnFailed"
+  }
+]

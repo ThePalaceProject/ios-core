@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opds="http://opds-spec.org/2010/catalog"
+      xmlns:dcterms="http://purl.org/dc/terms/"
+      xmlns:bibframe="http://bibframe.org/vocab/"
+      xmlns:schema="http://schema.org/"
+      xmlns:simplified="http://librarysimplified.org/terms/"
+      xmlns:opf="http://www.idpf.org/2007/opf">
+
+  <id>https://example.org/testlib/catalog</id>
+  <title>Testlib Acquisition Feed</title>
+  <updated>2024-06-15T10:00:00Z</updated>
+
+  <link href="https://example.org/testlib/catalog" rel="self" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <link href="https://example.org/testlib/catalog?page=2" rel="next" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <link href="https://example.org/testlib/search{?query}" rel="search" type="application/opensearchdescription+xml"/>
+
+  <entry>
+    <id>urn:uuid:opds1-entry-001</id>
+    <title>Bright Star</title>
+    <updated>2024-06-14T09:00:00Z</updated>
+    <author>
+      <name>Adelaide North</name>
+    </author>
+    <author>
+      <name>Bernard South</name>
+    </author>
+    <summary type="html">Short tale of bright stars.</summary>
+    <published>2020-05-10T00:00:00Z</published>
+    <publisher>Open Press</publisher>
+    <category term="fiction" scheme="http://schema.org/genre" label="Fiction"/>
+    <link href="https://example.org/testlib/works/001/cover.jpg" rel="http://opds-spec.org/image" type="image/jpeg"/>
+    <link href="https://example.org/testlib/works/001/thumb.jpg" rel="http://opds-spec.org/image/thumbnail" type="image/jpeg"/>
+    <link href="https://example.org/testlib/works/001/openaccess.epub" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip"/>
+    <link href="https://example.org/testlib/works/001/borrow" rel="http://opds-spec.org/acquisition/borrow" type="application/atom+xml;type=entry;profile=opds-catalog"/>
+    <link href="https://example.org/testlib/works/001" rel="alternate" type="application/atom+xml"/>
+  </entry>
+
+  <entry>
+    <id>urn:uuid:opds1-entry-002</id>
+    <title>The Quiet River</title>
+    <updated>2024-06-13T11:00:00Z</updated>
+    <author>
+      <name>Carla West</name>
+    </author>
+    <link href="https://example.org/testlib/works/002/cover.jpg" rel="http://opds-spec.org/image" type="image/jpeg"/>
+    <link href="https://example.org/testlib/works/002/borrow" rel="http://opds-spec.org/acquisition/borrow" type="application/atom+xml;type=entry;profile=opds-catalog"/>
+  </entry>
+
+  <entry>
+    <id>urn:uuid:opds1-entry-003</id>
+    <title>Algorithms of the Heart</title>
+    <updated>2024-06-12T15:30:00Z</updated>
+    <author>
+      <name>Jin Nakamura</name>
+    </author>
+    <link href="https://example.org/testlib/works/003/sample.epub" rel="http://opds-spec.org/acquisition/sample" type="application/epub+zip"/>
+    <link href="https://example.org/testlib/works/003/openaccess.epub" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip"/>
+  </entry>
+
+</feed>
