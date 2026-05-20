@@ -199,6 +199,34 @@ import Foundation
         return book.defaultBookContentType == .audiobook && defaultAcquisition.type == expectedAcquisitionType
     }
 
+    /// Whether the book has *any* LCP-licensed acquisition entry, looking at
+    /// the entire acquisition chain (top-level `type` AND all nested
+    /// `indirectAcquisitions[*].type`). Marketplace audiobook OPDS 2 feeds
+    /// wrap the LCP license MIME inside an `application/opds-publication+json`
+    /// envelope — the LCP MIME sits one or two levels deep in the indirect
+    /// chain. `canOpenBook` only inspects `defaultAcquisition.type`, so it
+    /// returns false for these books even though the downloaded content is
+    /// the LCP-encrypted audiobook ZIP. This recursive predicate is what
+    /// `AudiobookLoader` uses to decide whether to retry through the LCP
+    /// path after a JSON-parse failure on the local file, and what
+    /// `MyBooksDownloadCenter.pathExtension` uses so new downloads save
+    /// under the correct `.lcpa` extension.
+    @objc static func hasLCPAcquisition(_ book: TPPBook) -> Bool {
+        for acquisition in book.acquisitions {
+            if acquisition.type == expectedAcquisitionType { return true }
+            if indirectChainContainsLCP(acquisition.indirectAcquisitions) { return true }
+        }
+        return false
+    }
+
+    private static func indirectChainContainsLCP(_ indirect: [TPPOPDSIndirectAcquisition]) -> Bool {
+        for entry in indirect {
+            if entry.type == expectedAcquisitionType { return true }
+            if indirectChainContainsLCP(entry.indirectAcquisitions) { return true }
+        }
+        return false
+    }
+
     /// Creates an NSError for Objective-C code
     /// - Parameter error: Error object
     /// - Returns: NSError object
