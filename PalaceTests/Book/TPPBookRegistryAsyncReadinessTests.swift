@@ -101,9 +101,9 @@ final class TPPBookRegistryAsyncReadinessTests: XCTestCase {
     /// `.accountNotFound` keeps meaning "can't sync; try again later").
     func testIntegration_underDetailsFailed_throwsAccountNotFound() async throws {
         let accountsMgr = AppContainer.production().accountsManager
-        guard let account = accountsMgr.currentAccount else {
-            throw XCTSkip("Production accountsManager has no currentAccount in this test env")
-        }
+        let (account, cleanup) = seedAccountIfNeeded(on: accountsMgr,
+                                                    fixtureId: "test-registry-async-\(UUID().uuidString)")
+        defer { cleanup() }
 
         account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "test HTTP 503")))
 

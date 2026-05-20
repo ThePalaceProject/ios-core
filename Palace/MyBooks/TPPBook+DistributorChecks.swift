@@ -7,9 +7,9 @@
 //
 
 import Foundation
+import PalaceCatalog
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor
-import PalaceCatalog
 #endif
 
 extension TPPBook {

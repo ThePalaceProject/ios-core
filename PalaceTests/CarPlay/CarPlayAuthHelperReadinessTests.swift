@@ -103,9 +103,9 @@ final class CarPlayAuthHelperReadinessTests: XCTestCase {
 
     func testIntegration_underDetailsFailed_returnsFalse() async throws {
         let accountsMgr = AppContainer.production().accountsManager
-        guard let currentAccount = accountsMgr.currentAccount else {
-            throw XCTSkip("Production accountsManager has no currentAccount in this test env")
-        }
+        let (currentAccount, cleanup) = seedAccountIfNeeded(on: accountsMgr,
+                                                            fixtureId: "test-carplay-auth-\(UUID().uuidString)")
+        defer { cleanup() }
 
         currentAccount._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "test HTTP 503")))
 
