@@ -84,6 +84,9 @@ final class ImageLoaderTests: XCTestCase {
         let book = makeBook(imageURL: URL(string: "https://example.com/img.jpg")!)
         let cached = makeImage(color: .green)
         cache.set(cached, for: "\(book.identifier)_cover", expiresIn: nil)
+        // Drop the setup's set() from setKeys so the post-act assertion
+        // measures only what the LOADER wrote, not what the test pre-populated.
+        cache.resetHistory()
 
         // Act
         let result = await loader.coverImage(for: book)
@@ -105,11 +108,14 @@ final class ImageLoaderTests: XCTestCase {
         let key = "\(book.identifier)_\(Int(neededPixels))px"
         let preloaded = makeImage(color: .blue)
         cache.set(preloaded, for: key, expiresIn: nil)
+        // Drop the setup's set() from setKeys — see sibling test above.
+        cache.resetHistory()
 
         let result = await loader.coverImage(for: book, displayPoints: 100)
 
         XCTAssertEqual(result?.pngData(), preloaded.pngData())
-        XCTAssertFalse(cache.setKeys.contains(key))
+        XCTAssertFalse(cache.setKeys.contains(key),
+                       "cache.set should not be called when the displayPoints key is already populated")
     }
 
     // MARK: - Placeholder fallthrough
