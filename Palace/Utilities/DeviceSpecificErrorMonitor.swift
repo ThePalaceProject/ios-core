@@ -12,18 +12,52 @@ import FirebaseAnalytics
 import FirebaseCrashlytics
 import PalaceLogging
 
+/// Protocol seam for tests. Production call sites continue to use
+/// `DeviceSpecificErrorMonitor.shared`.
+protocol DeviceSpecificErrorMonitoring {
+    func initialize() async
+    func getDeviceID() -> String
+    func isEnhancedLoggingEnabled() -> Bool
+    func logError(_ error: Error, context: String, metadata: [String: Any])
+    func logDownloadFailure(book: TPPBook, reason: String, error: Error?, metadata: [String: Any])
+    func logNetworkFailure(url: URL?, error: Error, context: String, metadata: [String: Any])
+    func getDeviceInfo() -> [String: String]
+}
+
 /// Lightweight error monitor that can be remotely enabled for specific devices.
 /// Zero overhead when disabled, comprehensive logging when enabled.
 ///
 /// NOTE: This class delegates all Firebase RemoteConfig access to FirebaseManager
 /// to prevent race conditions that cause the "recursive_mutex lock failed" crash.
-final class DeviceSpecificErrorMonitor {
+final class DeviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring {
     static let shared = DeviceSpecificErrorMonitor()
 
     private var isInitialized = false
     private let lock = NSLock()
 
-    private init() {}
+    /// Lazy provider for the Firebase facade. We MUST NOT touch
+    /// `FirebaseManager.shared` at construction time — that would force
+    /// Firebase to initialize before `FirebaseApp.configure()` runs in
+    /// `application(_:didFinishLaunchingWithOptions:)`, crashing with
+    /// `FIRAppNotConfigured`. The closure defers `.shared` access until
+    /// the first method call. Tests can inject a fully-built provider
+    /// (e.g. `{ stubFirebaseManager }`) to bypass `.shared` entirely.
+    private let firebaseManagerProvider: () -> FirebaseManager
+
+    private var firebaseManager: FirebaseManager {
+        firebaseManagerProvider()
+    }
+
+    /// Designated initializer. The provider defaults to lazy
+    /// `.shared` resolution so existing call sites (and the singleton
+    /// accessor) work unchanged AND singleton-eager-init paths
+    /// (AppContainer.production() → MyBooksDownloadCenter) do not force
+    /// Firebase initialization before AppDelegate has had a chance to
+    /// call `FirebaseApp.configure()`. Tests construct fresh instances
+    /// to escape cross-test state pollution (`isInitialized` flag).
+    internal init(firebaseManagerProvider: @escaping () -> FirebaseManager = { FirebaseManager.shared }) {
+        self.firebaseManagerProvider = firebaseManagerProvider
+    }
 
     // MARK: - Initialization
 
@@ -40,20 +74,20 @@ final class DeviceSpecificErrorMonitor {
         guard !alreadyInitialized else { return }
 
         // Delegate to FirebaseManager for thread-safe remote config access
-        await FirebaseManager.shared.fetchAndActivateRemoteConfig()
+        await firebaseManager.fetchAndActivateRemoteConfig()
         Log.info(#file, "✅ Device-specific error monitor initialized")
     }
 
     // MARK: - Device ID
 
     func getDeviceID() -> String {
-        FirebaseManager.shared.deviceID
+        firebaseManager.deviceID
     }
 
     // MARK: - Check if Enabled
 
     func isEnhancedLoggingEnabled() -> Bool {
-        FirebaseManager.shared.isEnhancedLoggingEnabled()
+        firebaseManager.isEnhancedLoggingEnabled()
     }
 
     // MARK: - Enhanced Error Logging
@@ -73,7 +107,7 @@ final class DeviceSpecificErrorMonitor {
         Log.info(#file, "📊 ENHANCED logging active - capturing full stack trace")
 
         // Delegate to FirebaseManager for thread-safe Firebase access
-        FirebaseManager.shared.logEnhancedErrorEvent(
+        firebaseManager.logEnhancedErrorEvent(
             error: error,
             context: context,
             metadata: metadata
@@ -156,6 +190,6 @@ final class DeviceSpecificErrorMonitor {
     // MARK: - Device Info for Support
 
     func getDeviceInfo() -> [String: String] {
-        FirebaseManager.shared.getDeviceInfo()
+        firebaseManager.getDeviceInfo()
     }
 }

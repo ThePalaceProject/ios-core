@@ -8,19 +8,37 @@
 import Foundation
 import os.log
 
+/// Public protocol seam for `PersistentLogger`. Production call sites
+/// continue to use `PersistentLogger.shared`; tests construct a hermetic
+/// instance via `public init(logsRootURL:)`.
+public protocol PersistentLogging {
+    func log(level: OSLogType, tag: String, message: String) async
+    func retrieveAllLogs() async -> String
+    func clearLogs() async
+}
+
 /// Actor-based persistent file logger for error diagnostics
 /// Complements Crashlytics by providing local log history
-public actor PersistentLogger {
+public actor PersistentLogger: PersistentLogging {
     public static let shared = PersistentLogger()
 
     private let maxLogFileSize: Int64 = 5_000_000 // 5MB
     private let maxLogFiles = 5
     private let logFileName = "palace_error.log"
 
+    /// Optional override of the directory where log files are persisted.
+    /// When nil, falls back to the default `<Documents>/Logs` path.
+    private let logsRootURLOverride: URL?
+
     private var currentLogFile: URL?
     private var logFileHandle: FileHandle?
 
-    private init() {
+    /// Designated initializer. Pass `logsRootURL` to redirect writes to a
+    /// caller-controlled directory. The previous parameterless ctor was
+    /// `private`; the public seam is required for hermetic unit tests.
+    /// Production singleton accessor (`PersistentLogger.shared`) is unchanged.
+    public init(logsRootURL: URL? = nil) {
+        self.logsRootURLOverride = logsRootURL
         Task {
             await setupLogFile()
         }
@@ -180,6 +198,9 @@ public actor PersistentLogger {
     // MARK: - Helpers
 
     private func getLogsDirectory() -> URL {
+        if let override = logsRootURLOverride {
+            return override
+        }
         guard let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
             return FileManager.default.temporaryDirectory.appendingPathComponent("Logs")
         }

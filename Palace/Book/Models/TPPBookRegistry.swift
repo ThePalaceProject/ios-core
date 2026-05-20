@@ -112,7 +112,11 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     // MARK: - External dependencies
 
     private let accountsManager: AccountsManager
-    private var coverRegistry = TPPBookCoverRegistry.shared
+    /// Image-loading umbrella. Default resolves to `ImageLoader.production`
+    /// (the same AppContainer-owned instance every other consumer reads),
+    /// keeping the no-arg legacy convenience init working while still routing
+    /// through the new ImageLoading seam everywhere else.
+    private let imageLoader: ImageLoading
 
     private var accountDidChangeCancellable: AnyCancellable?
 
@@ -199,8 +203,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     /// AccountsManager so we never re-enter `AppContainer.production()`'s
     /// dispatch_once during app launch (the failure mode that motivated
     /// killing the `static let shared` singleton in Phase 6.6).
-    init(accountsManager: AccountsManager) {
+    init(accountsManager: AccountsManager, imageLoader: ImageLoading = ImageLoader.production) {
         self.accountsManager = accountsManager
+        self.imageLoader = imageLoader
         let store = BookRegistryStore()
         let sync = BookRegistrySync(
             store: store,
@@ -228,8 +233,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     /// run a block against a *different* registry file than the current one.
     /// Inherits `accountsManager` from the calling facade — no default arg, no
     /// AppContainer lookup, so the cycle that motivated 6.6 can't sneak back.
-    fileprivate init(account: String, accountsManager: AccountsManager) {
+    fileprivate init(account: String, accountsManager: AccountsManager, imageLoader: ImageLoading = ImageLoader.production) {
         self.accountsManager = accountsManager
+        self.imageLoader = imageLoader
         let store = BookRegistryStore()
         let sync = BookRegistrySync(
             store: store,
@@ -384,7 +390,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         readiumBookmarks: [TPPReadiumBookmark]? = nil,
         genericBookmarks: [TPPBookLocation]? = nil
     ) {
-        TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
+        imageLoader.thumbnailImage(for: book) { _ in }
         Log.info(#file, "📚 ADDING BOOK to registry: \(book.identifier), state: \(state.stringValue())")
         Log.info(#file, "📚 Initial bookmarks - readium: \(readiumBookmarks?.count ?? 0), generic: \(genericBookmarks?.count ?? 0)")
 
@@ -420,7 +426,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 self.store.bookStateSubject.send((bookIdentifier, .unregistered))
                 self.postStateNotification(bookIdentifier: bookIdentifier, state: .unregistered)
                 if let book = removedBook {
-                    TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
+                    self.imageLoader.thumbnailImage(for: book) { _ in }
                 }
             }
         }
@@ -441,7 +447,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     func updateAndRemoveBook(_ book: TPPBook) {
-        TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { _ in }
+        imageLoader.thumbnailImage(for: book) { _ in }
         let account = accountsManager.currentAccount?.uuid
         store.updateAndRemoveBook(book) { [weak self, syncEngine] _ in
             guard let self else { return }
@@ -513,7 +519,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         handler: @escaping (_ image: UIImage?) -> Void
     ) {
         guard let book else { handler(nil); return }
-        TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book, completion: handler)
+        imageLoader.thumbnailImage(for: book, completion: handler)
     }
 
     func thumbnailImages(
@@ -524,7 +530,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         var result = [String: UIImage]()
         for book in books {
             group.enter()
-            TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(book) { image in
+            imageLoader.thumbnailImage(for: book) { image in
                 if let img = image { result[book.identifier] = img }
                 group.leave()
             }
@@ -536,7 +542,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         for book: TPPBook,
         handler: @escaping (_ image: UIImage?) -> Void
     ) {
-        TPPBookCoverRegistryBridge.shared.coverImageForBook(book, completion: handler)
+        imageLoader.coverImage(for: book, completion: handler)
     }
 }
 

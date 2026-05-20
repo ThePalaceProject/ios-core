@@ -14,6 +14,7 @@ struct AppContainer {
     let downloadAnnouncementService: DownloadAnnouncementService
     let debugSettings: DebugSettings
     let imageCache: ImageCacheType
+    let imageLoader: ImageLoading
     let userAccountPublisher: UserAccountPublisher
     let opdsFeedService: OPDSFeedService
     let readerService: ReaderService
@@ -62,6 +63,7 @@ struct AppContainer {
         downloadAnnouncementService: DownloadAnnouncementService,
         debugSettings: DebugSettings,
         imageCache: ImageCacheType,
+        imageLoader: ImageLoading,
         userAccountPublisher: UserAccountPublisher,
         opdsFeedService: OPDSFeedService,
         readerService: ReaderService,
@@ -79,6 +81,7 @@ struct AppContainer {
         self.downloadAnnouncementService = downloadAnnouncementService
         self.debugSettings = debugSettings
         self.imageCache = imageCache
+        self.imageLoader = imageLoader
         self.userAccountPublisher = userAccountPublisher
         self.opdsFeedService = opdsFeedService
         self.readerService = readerService
@@ -123,6 +126,12 @@ struct AppContainer {
             downloadAnnouncementService: downloadAnnouncementService,
             reachability: reachability
         )
+        // Single image-loading umbrella composed of the existing disk+memory
+        // ImageCache and the TPPBookCoverRegistry actor — replaces three
+        // overlapping singletons at consumer sites (Track A of the 3.2.0
+        // singleton sweep).
+        let imageCache = ImageCache.shared
+        let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
         return AppContainer(
             bookRegistry: bookRegistry,
             networkExecutor: executor,
@@ -133,7 +142,8 @@ struct AppContainer {
             downloadCenter: downloadCenter,
             downloadAnnouncementService: downloadAnnouncementService,
             debugSettings: DebugSettings(),
-            imageCache: ImageCache.shared,
+            imageCache: imageCache,
+            imageLoader: imageLoader,
             userAccountPublisher: .shared,
             opdsFeedService: OPDSFeedService(),
             readerService: ReaderService(),

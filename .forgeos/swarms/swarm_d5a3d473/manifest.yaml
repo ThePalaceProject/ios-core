@@ -2,7 +2,7 @@ swarm_id: swarm_d5a3d473
 task: "Phase 1 of 3.2.0 singleton-reduction sweep — Track A image-loading consolidation + Track B logging test-seam injection"
 base_branch: develop
 feature_branch: swarm/swarm_d5a3d473-scaffold
-status: triaged
+status: bundled
 created_at: 2026-05-19T00:00:00Z
 sequencing:
   prerequisite: none

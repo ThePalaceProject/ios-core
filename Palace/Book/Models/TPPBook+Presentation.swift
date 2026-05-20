@@ -16,7 +16,17 @@ import PalaceLogging
 // MARK: - Cover Image Fetching & Cache
 
 extension TPPBook {
-    private static let coverRegistry = TPPBookCoverRegistry.shared
+    /// Routes cover/thumbnail loads through the `ImageLoading` umbrella so this
+    /// file no longer reaches for `TPPBookCoverRegistry.shared` /
+    /// `TPPBookCoverRegistryBridge.shared` directly. Default resolution still
+    /// goes through `AppContainer.production().imageLoader`, which is the same
+    /// graph every other consumer (BookListView, TPPAppDelegate, CarPlay) reads.
+    ///
+    /// Marked deprecated-friendly at the call site by `ImageLoader.production`
+    /// itself — over time these reads disappear as TPPBook becomes container-aware.
+    var imageLoader: ImageLoading {
+        ImageLoader.production
+    }
 
     func fetchCoverImage() {
         fetchCoverImage(forDisplayHeight: nil)
@@ -65,7 +75,7 @@ extension TPPBook {
                 }
 
                 // Cache miss — fetch from network
-                let img = await TPPBookCoverRegistry.shared.coverImage(for: self, displayPoints: displayHeight)
+                let img = await self.imageLoader.coverImage(for: self, displayPoints: displayHeight)
                 let final = img ?? self.thumbnailImage
                 await MainActor.run {
                     self.coverImage = final
@@ -81,7 +91,7 @@ extension TPPBook {
             let startFetch = { [weak self] in
                 guard let self else { return }
 
-                TPPBookCoverRegistryBridge.shared.coverImageForBook(self) { [weak self] image in
+                self.imageLoader.coverImage(for: self) { [weak self] image in
                     guard let self = self else { return }
                     let final = image ?? self.thumbnailImage
 
@@ -120,7 +130,7 @@ extension TPPBook {
             guard let self, !self.isThumbnailLoading else { return }
             self.isThumbnailLoading = true
 
-            TPPBookCoverRegistryBridge.shared.thumbnailImageForBook(self) { [weak self] image in
+            self.imageLoader.thumbnailImage(for: self) { [weak self] image in
                 guard let self = self else { return }
 
                 DispatchQueue.main.async {

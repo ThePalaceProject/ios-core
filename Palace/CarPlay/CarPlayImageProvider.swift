@@ -24,12 +24,12 @@ final class CarPlayImageProvider {
 
     // MARK: - Properties
 
-    private let imageCache: ImageCacheType
+    private let imageLoader: ImageLoading
 
     // MARK: - Initialization
 
-    init(imageCache: ImageCacheType = ImageCache.shared) {
-        self.imageCache = imageCache
+    init(imageLoader: ImageLoading = ImageLoader.production) {
+        self.imageLoader = imageLoader
     }
 
     // MARK: - Public Methods
@@ -42,7 +42,7 @@ final class CarPlayImageProvider {
         let cacheKey = carPlayCacheKey(for: book)
 
         // Check cache first
-        if let cached = imageCache.get(for: cacheKey) {
+        if let cached = imageLoader.get(for: cacheKey) {
             completion(cached)
             return
         }
@@ -50,7 +50,7 @@ final class CarPlayImageProvider {
         // Check if book already has a loaded image
         if let existingImage = book.coverImage ?? book.thumbnailImage {
             let processed = processForCarPlay(existingImage)
-            imageCache.set(processed, for: cacheKey)
+            imageLoader.set(processed, for: cacheKey)
             completion(processed)
             return
         }
@@ -61,7 +61,7 @@ final class CarPlayImageProvider {
             let finalImage = image ?? generatePlaceholder(for: book)
             let processed = processForCarPlay(finalImage)
 
-            imageCache.set(processed, for: cacheKey)
+            imageLoader.set(processed, for: cacheKey)
 
             await MainActor.run {
                 completion(processed)
