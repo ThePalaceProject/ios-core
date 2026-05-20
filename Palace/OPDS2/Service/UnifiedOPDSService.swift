@@ -332,9 +332,42 @@ extension UnifiedOPDSService {
         return try await fetchFeed(from: catalogURL, preferOPDS2: true, useToken: false)
     }
 
-    /// Fetches user's loans feed
-    public func fetchLoans() async throws -> UnifiedOPDSFeed {
-        guard let loansURL = AppContainer.production().accountsManager.currentAccount?.loansUrl else {
+    /// Fetches user's loans feed.
+    ///
+    /// Bucket A migration (swarm_81b5099e Network-OPDS): awaits the
+    /// Account.LoadState readiness gate before reading `loansUrl`,
+    /// closing the F-016 → audiobook race class. See
+    /// `OPDSFeedService.fetchLoans` for the full rationale.
+    ///
+    /// `accountsManager` parameter widened from the previous direct
+    /// `AppContainer.production().accountsManager` antipattern so this
+    /// method is unit-testable with a fixture provider. The default
+    /// keeps the production wiring unchanged. The remaining
+    /// `AppContainer.production()` reads in this file
+    /// (`addAuthHeaders`, `fetchCatalogRoot`) are out of scope for this
+    /// swarm and tracked as documented technical debt — they should
+    /// either be migrated to constructor-injected dependencies or to a
+    /// pure-protocol parameter when this service moves under
+    /// constructor DI in a follow-up.
+    ///
+    /// Single-timeout policy: no `withTimeout` is layered around
+    /// `awaitReady()`. The caller's pipeline owns the timeout.
+    public func fetchLoans(
+        accountsManager: TPPCurrentLibraryAccountProvider = AppContainer.production().accountsManager
+    ) async throws -> UnifiedOPDSFeed {
+        guard let currentAccount = accountsManager.currentAccount else {
+            throw PalaceError.authentication(.accountNotFound)
+        }
+
+        let details: AccountDetails
+        do {
+            details = try await currentAccount.awaitReady()
+        } catch {
+            Log.warn(#file, "fetchLoans: awaitReady failed for account \(currentAccount.uuid): \(error)")
+            throw error
+        }
+
+        guard let loansURL = details.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
 
