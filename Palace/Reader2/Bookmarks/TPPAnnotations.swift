@@ -579,6 +579,21 @@ protocol AnnotationsManager {
     }
     // MARK: -
 
+    /// State-machine-aware accessor used by Phase 2 (Bucket B) sync
+    /// gates. Returns `nil` until the account is in `.detailsLoaded` —
+    /// the same nil-tolerance the legacy `account.details?` reads
+    /// provided, but no longer races a partially-populated auth doc.
+    /// Bookmark sync is a best-effort silent-failure path per the ADR,
+    /// so a false during the loading window is correct (the next render
+    /// after `.detailsLoaded` fires re-enables the sync paths).
+    fileprivate static func loadedDetails(of account: Account?) -> AccountDetails? {
+        guard let account = account,
+              case .detailsLoaded(let details) = account.loadState else {
+            return nil
+        }
+        return details
+    }
+
     /// Annotation-syncing is possible only if the given `account` is signed-in
     /// and if the currently selected library supports it.
     ///
@@ -589,20 +604,21 @@ protocol AnnotationsManager {
     static func syncIsPossible(_ account: TPPUserAccount, accountsManager: TPPLibraryAccountsProvider? = nil) -> Bool {
         let manager = accountsManager ?? Self.currentAccountsManager
         let library = manager.currentAccount
-        return account.hasCredentials() && library?.details?.supportsSimplyESync == true
+        return account.hasCredentials() && loadedDetails(of: library)?.supportsSimplyESync == true
     }
 
     static func syncIsPossibleAndPermitted(accountsManager: TPPLibraryAccountsProvider? = nil) -> Bool {
         let manager = accountsManager ?? Self.currentAccountsManager
         let account = manager.currentUserAccount
         let acct = manager.currentAccount
+        let details = loadedDetails(of: acct)
         let hasCreds = account.hasCredentials()
-        let supportsSync = acct?.details?.supportsSimplyESync == true
-        let permissionGranted = acct?.details?.syncPermissionGranted == true
+        let supportsSync = details?.supportsSimplyESync == true
+        let permissionGranted = details?.syncPermissionGranted == true
         let result = hasCreds && supportsSync && permissionGranted
 
         if !result {
-            Log.debug(#file, "syncIsPossibleAndPermitted=\(result): hasCredentials=\(hasCreds), supportsSimplyESync=\(supportsSync), syncPermissionGranted=\(permissionGranted), accountDetails=\(acct?.details != nil ? "present" : "nil")")
+            Log.debug(#file, "syncIsPossibleAndPermitted=\(result): hasCredentials=\(hasCreds), supportsSimplyESync=\(supportsSync), syncPermissionGranted=\(permissionGranted), loadedDetails=\(details != nil ? "present" : "nil (state-machine not yet .detailsLoaded)")")
         }
 
         return result

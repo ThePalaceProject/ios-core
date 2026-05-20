@@ -124,11 +124,18 @@ final class BookRegistrySyncReadinessTests: XCTestCase {
     /// the `loansUrl` guard BEFORE this setState call.
     func testIntegration_underDetailsLoading_setStateSyncingFiresUnconditionally() throws {
         let accountsMgr = AppContainer.production().accountsManager
-        guard let account = accountsMgr.currentAccount else {
-            throw XCTSkip("Production accountsManager has no currentAccount in this test env — gate covered by direct-gate tests above")
-        }
+        let (account, cleanup) = seedAccountIfNeeded(on: accountsMgr,
+                                                    fixtureId: "test-sync-readiness-\(UUID().uuidString)")
+        defer { cleanup() }
+
         let userAccount = TPPUserAccount.sharedAccount(libraryUUID: account.uuid)
         guard userAccount.hasCredentials() else {
+            // The DI seam puts an Account into accountSets but doesn't
+            // mint keychain credentials — sync bails at the hasCredentials
+            // guard BEFORE reaching the gate this test is asserting. Leave
+            // this XCTSkip in place; running this assertion requires either
+            // a real signed-in account or a keychain-mockable seam (out of
+            // scope for the Phase 2 DI work).
             throw XCTSkip("Account has no credentials — sync bails at the hasCredentials guard before reaching the gate")
         }
 

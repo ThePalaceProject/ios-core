@@ -145,14 +145,9 @@ final class AudiobookOpenStateRaceTests: XCTestCase {
     /// indicate the gate ran but its error wasn't honored.
     func testIntegration_openAudiobook_underDetailsFailed_returnsNotAuthenticated() async throws {
         let accountsMgr = AppContainer.production().accountsManager
-        guard let account = accountsMgr.currentAccount else {
-            // No production currentAccount means isUserAuthenticated
-            // returns false at the early `guard let account` — the
-            // public surface is still `.notAuthenticated`, but the test
-            // isn't exercising the GATE specifically. Direct gate
-            // coverage above is the meaningful assertion here.
-            throw XCTSkip("Production accountsManager has no currentAccount — gate-level assertion above is the meaningful coverage")
-        }
+        let (account, cleanup) = seedAccountIfNeeded(on: accountsMgr,
+                                                    fixtureId: "test-audiobook-race-\(UUID().uuidString)")
+        defer { cleanup() }
 
         account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "test HTTP 503")))
 

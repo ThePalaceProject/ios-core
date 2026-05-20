@@ -94,12 +94,25 @@ private enum StorageKey: String {
     var authDefinition: AccountDetails.Authentication? {
         get {
             guard let read = _authDefinition.read() else {
+                // Phase 2 (swarm_81b5099e follow-up): state-machine-aware
+                // fallback. Returns `nil` until the resolved account is
+                // `.detailsLoaded` — same nil-tolerance as the legacy
+                // `account.details?` read, but no longer races a partially-
+                // loaded auth doc. The fallback only fires when no auth
+                // definition was previously written (e.g. cold-launch
+                // before sign-in), so blocking on the gate is moot anyway.
                 let accountsManager = AppContainer.production().accountsManager
+                let candidate: Account?
                 if let libraryUUID = self.libraryUUID {
-                    return accountsManager.account(libraryUUID)?.details?.auths.first
+                    candidate = accountsManager.account(libraryUUID)
+                } else {
+                    candidate = accountsManager.currentAccount
                 }
-
-                return accountsManager.currentAccount?.details?.auths.first
+                guard let account = candidate,
+                      case .detailsLoaded(let details) = account.loadState else {
+                    return nil
+                }
+                return details.auths.first
             }
             return read
         }
