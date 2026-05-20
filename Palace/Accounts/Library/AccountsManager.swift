@@ -804,26 +804,6 @@ struct CatalogCacheMetadata: Codable {
     ///    failure. New code that reads `account.details` must go through
     ///    `Account.awaitReady()`, which observes these transitions.
     ///
-    /// Fires `fetchAuthDocumentWithStateMachine` for the current account
-    /// if its LoadState is non-terminal. Used by the `loadCatalogs`
-    /// warm-path to close the driver gap on cold-launch when the
-    /// in-memory accountSets cache is already hot. No-op when there is
-    /// no current account, or when its state has already settled at a
-    /// terminal value (callers' `awaitReady()` will resolve via the
-    /// existing terminal). Single-flight guard inside the fetch dedupes
-    /// against concurrent callers from refresh-in-background or library
-    /// switch.
-    internal func driveCurrentAccountAuthDocIfNeeded() {
-        guard let account = currentAccount else { return }
-        switch AccountStateStore.shared.state(for: account.uuid) {
-        case .detailsLoaded, .detailsFailed:
-            return // terminal — `awaitReady()` awaiters will resolve
-        case .notLoaded, .basicInfoLoaded, .detailsLoading:
-            break
-        }
-        fetchAuthDocumentWithStateMachine(for: account) { _ in }
-    }
-
     /// Exposed `internal` so contract-snapshot tests can drive the wiring
     /// path directly without going through the full `loadCatalogs` cycle.
     internal func fetchAuthDocumentWithStateMachine(
@@ -865,6 +845,29 @@ struct CatalogCacheMetadata: Codable {
             }
             completion(success)
         }
+    }
+
+    /// Fires `fetchAuthDocumentWithStateMachine` for the current account
+    /// when its `LoadState` is non-terminal. Used by the `loadCatalogs`
+    /// warm-path to close the driver gap on cold-launch with a hot
+    /// in-memory accountSets cache — without this, `awaitReady()` callers
+    /// (audiobook open, token refresh, bookmark sync, CarPlay auth) hang
+    /// indefinitely waiting for `.detailsLoaded`/`.detailsFailed` because
+    /// nothing drives the transition. No-op when there is no current
+    /// account, or when state has already settled at a terminal value
+    /// (existing `awaitReady()` awaiters resolve via that terminal).
+    /// Single-flight guard inside `fetchAuthDocumentWithStateMachine`
+    /// dedupes against concurrent callers from `refreshInBackground` or
+    /// the library-switch path.
+    internal func driveCurrentAccountAuthDocIfNeeded() {
+        guard let account = currentAccount else { return }
+        switch AccountStateStore.shared.state(for: account.uuid) {
+        case .detailsLoaded, .detailsFailed:
+            return // terminal — `awaitReady()` awaiters will resolve
+        case .notLoaded, .basicInfoLoaded, .detailsLoading:
+            break
+        }
+        fetchAuthDocumentWithStateMachine(for: account) { _ in }
     }
 
     // MARK: – Parsing & notifying
