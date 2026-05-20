@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import PalaceCatalog
 @testable import Palace
 
 /// Unit tests for the new `ImageLoader` umbrella that replaces the
