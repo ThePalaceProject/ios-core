@@ -304,7 +304,7 @@ public final class AudiobookSessionManager: ObservableObject {
             await stopPlayback(dismissPhoneUI: !isSameBook)
         }
 
-        if let error = validateRequirements(for: book) {
+        if let error = await validateRequirements(for: book) {
             Log.error(#file, "Validation failed: \(error)")
             state = .error(bookId: book.identifier, message: error.localizedDescription)
             errorPublisher.send(error)
@@ -795,8 +795,8 @@ public final class AudiobookSessionManager: ObservableObject {
     private static let openAccessPlayerErrorDomain = "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer"
     private static let openAccessPlayerErrorAuthenticationRequiredCode = 5 // OpenAccessPlayerError.authenticationRequired
 
-    private func validateRequirements(for book: TPPBook) -> AudiobookSessionError? {
-        if !isUserAuthenticated() {
+    private func validateRequirements(for book: TPPBook) async -> AudiobookSessionError? {
+        if !(await isUserAuthenticated()) {
             return .notAuthenticated
         }
 
@@ -881,13 +881,39 @@ public final class AudiobookSessionManager: ObservableObject {
         return nil
     }
 
-    private func isUserAuthenticated() -> Bool {
+    /// PHASE 1 (swarm_81b5099e Bucket A) — F-016 → audiobook regression fix.
+    ///
+    /// Previously read `account.details` directly. During the cold-launch
+    /// window between `preloadAccountsFromDiskCacheSync` (synchronous, basic
+    /// Account from disk) and `loadCatalogs` (async, populates the per-
+    /// library `authentication_document` → `Account.details`), this returned
+    /// `true` for any account whose `details` was still nil — silently
+    /// pretending "no auth required" when in reality we just hadn't loaded
+    /// the auth document yet. The audiobook open path then proceeded with
+    /// the wrong feed-source assumption (the systemic race documented in
+    /// docs/architecture/account-state-machine.md).
+    ///
+    /// Now blocks on `account.awaitReady()` until `Account.LoadState` is
+    /// terminal (`.detailsLoaded` or `.detailsFailed`). On failure we treat
+    /// the account as unauthenticated (caller maps to `.notAuthenticated`
+    /// which surfaces the existing audiobook-open error UI). The existing
+    /// 20s session-manager timeout is the sole timeout on this path — per
+    /// the ADR's single-timeout policy we do NOT wrap awaitReady() in
+    /// withTimeout here.
+    private func isUserAuthenticated() async -> Bool {
         guard let account = accountsManager.currentAccount else {
             return false
         }
 
-        guard let details = account.details,
-              let defaultAuth = details.defaultAuth else {
+        let details: AccountDetails
+        do {
+            details = try await account.awaitReady()
+        } catch {
+            Log.warn(#file, "isUserAuthenticated: awaitReady failed — surfacing as notAuthenticated: \(error)")
+            return false
+        }
+
+        guard let defaultAuth = details.defaultAuth else {
             return true // No auth required
         }
 

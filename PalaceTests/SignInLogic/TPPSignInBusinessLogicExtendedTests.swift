@@ -46,6 +46,17 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
             uiDelegate: uiDelegate,
             drmAuthorizer: drmAuthorizer
         )
+
+        // Bucket A migration (swarm_81b5099e): TPPSignInBusinessLogic now
+        // reads `account.loadState` instead of raw `details?` for the six
+        // sub-sites listed in
+        // `.forgeos/swarms/swarm_81b5099e/contracts/SignIn-AgeCheck-Notifications.md`.
+        // Drive the state machine to `.detailsLoaded` so the legacy
+        // tests' "I assume the fixture's `details` are readable" invariant
+        // still holds.
+        if let details = libraryAccountMock.tppAccount.details {
+            libraryAccountMock.tppAccount._setState(.detailsLoaded(details))
+        }
     }
 
     override func tearDownWithError() throws {
@@ -58,6 +69,9 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
         networkExecutor = nil
         bookRegistry = nil
         downloadCenter = nil
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
         try super.tearDownWithError()
     }
 

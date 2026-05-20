@@ -31,6 +31,16 @@ class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider {
         super.init()
 
         tppAccount.authenticationDocument = try! OPDS2AuthenticationDocument.fromData(try Data(contentsOf: nyplAuthDocURL))
+
+        // Swarm swarm_81b5099e Phase 1 Bucket A migration: drive the
+        // state machine to `.detailsLoaded` whenever the auth doc is
+        // populated, so legacy tests that read `details` via
+        // state-machine-aware sites (e.g. `loadedAccountDetails` in
+        // `TPPSignInBusinessLogic`) continue to see a populated value
+        // without having to manually drive the store.
+        if let details = tppAccount.details {
+            tppAccount._setState(.detailsLoaded(details))
+        }
     }
 
     var barcodeAuthentication: AccountDetails.Authentication {

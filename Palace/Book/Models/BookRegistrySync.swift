@@ -279,9 +279,7 @@ class BookRegistrySync {
     // libraries while the feed fetch is in flight, we persist the result to
     // the account that was syncing — not the one that happens to be current
     // when the save commits (PP-4129 regression).
-    guard let currentAccount = accountsManager.currentAccount,
-          let loansUrl = currentAccount.loansUrl
-    else { return }
+    guard let currentAccount = accountsManager.currentAccount else { return }
     let accountUUID = currentAccount.uuid
 
     // Skip the loans fetch when no credentials are stored for the current
@@ -309,10 +307,46 @@ class BookRegistrySync {
     if currentState == .syncing { return }
 
     setState(.syncing)
-    syncUrl = loansUrl
 
     Task { [weak self] in
       guard let self else { return }
+
+      // PHASE 1 (swarm_81b5099e Bucket A — PP-4407): the loansUrl read used
+      // to happen on the sync `sync()` call frame above. Hoisted into the
+      // Task block so we can await `Account.LoadState` readiness via
+      // `awaitReady()`. Pre-Phase-1 this silently returned on first cold-
+      // launch (details still loading → loansUrl nil → guard bailed →
+      // registry stuck `.loaded` empty until the next sync trigger). Now
+      // we block on terminal state. On `AccountLoadError` we revert state
+      // to `.loaded` (BookRegistrySync's own retry policy from
+      // `waitForLoadThenRunSync` / account-change notifications drives the
+      // next attempt — per the ADR's "no additional timeout" UX policy).
+      let details: AccountDetails
+      do {
+        details = try await currentAccount.awaitReady()
+      } catch {
+        Log.warn(#file, "BookRegistrySync abort: awaitReady failed for \(accountUUID): \(error)")
+        await MainActor.run {
+          setState(.loaded)
+          self.syncUrl = nil
+          completion?(nil, false)
+        }
+        return
+      }
+
+      guard let loansUrl = details.loansUrl else {
+        Log.debug(#file, "BookRegistrySync abort: account \(accountUUID) has no loansUrl after awaitReady — anonymous library")
+        await MainActor.run {
+          setState(.loaded)
+          self.syncUrl = nil
+          completion?(nil, false)
+        }
+        return
+      }
+
+      await MainActor.run { [weak self] in
+        self?.syncUrl = loansUrl
+      }
 
       let feed: TPPOPDSFeed
       do {

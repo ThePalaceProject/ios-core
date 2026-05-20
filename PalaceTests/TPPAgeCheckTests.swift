@@ -37,6 +37,16 @@ class TPPAgeCheckTests: XCTestCase {
         defaultUserAboveAgeLimit = simplyeLibraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit ?? false
         simplyeLibraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit = false
 
+        // Bucket A migration (swarm_81b5099e): `verifyCurrentAccountAgeRequirement`
+        // now awaits `Account.awaitReady()` instead of reading raw
+        // `details?`. Drive the state machine to `.detailsLoaded` so the
+        // awaiter resolves immediately and the existing age-logic
+        // assertions still apply.
+        if let account = simplyeLibraryAccountProviderMock.currentAccount,
+           let details = account.details {
+            account._setState(.detailsLoaded(details))
+        }
+
         expectation = self.expectation(description: "AgeChecking")
 
         ageCheck = TPPAgeCheck(ageCheckChoiceStorage: ageCheckChoiceStorageMock)
@@ -44,6 +54,9 @@ class TPPAgeCheckTests: XCTestCase {
 
     override func tearDownWithError() throws {
         simplyeLibraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit = defaultUserAboveAgeLimit
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
     }
 
     func testAge0() throws {
