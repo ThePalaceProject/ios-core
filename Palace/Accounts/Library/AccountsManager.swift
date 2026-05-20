@@ -462,6 +462,20 @@ struct CatalogCacheMetadata: Codable {
 
         // 1. If already loaded in memory, return immediately
         if performRead({ self.accountSets[hash]?.isEmpty == false }) {
+            // State-machine wiring (3.2.0): the cold path drives the
+            // current account's LoadState past `.basicInfoLoaded` via
+            // `loadAccountSetsAndAuthDoc → fetchAuthDocumentWithStateMachine`.
+            // The warm path historically returned here without firing the
+            // auth-doc transition, leaving every `awaitReady()` caller
+            // (audiobook open, token refresh, bookmark sync, CarPlay auth)
+            // blocked forever on cold-launch for already-signed-in users
+            // whose accounts were populated by `preloadAccountsFromDiskCacheSync`.
+            // Restore the invariant: any account in `accountSets[hash]`
+            // must reach a terminal LoadState. The single-flight guard
+            // inside `fetchAuthDocumentWithStateMachine` dedupes against
+            // any concurrent invocation from refreshInBackground or a
+            // library switch.
+            driveCurrentAccountAuthDocIfNeeded()
             completion?(true)
             // Still refresh in background if stale
             if isCacheStale(hash: hash) {
@@ -790,6 +804,26 @@ struct CatalogCacheMetadata: Codable {
     ///    failure. New code that reads `account.details` must go through
     ///    `Account.awaitReady()`, which observes these transitions.
     ///
+    /// Fires `fetchAuthDocumentWithStateMachine` for the current account
+    /// if its LoadState is non-terminal. Used by the `loadCatalogs`
+    /// warm-path to close the driver gap on cold-launch when the
+    /// in-memory accountSets cache is already hot. No-op when there is
+    /// no current account, or when its state has already settled at a
+    /// terminal value (callers' `awaitReady()` will resolve via the
+    /// existing terminal). Single-flight guard inside the fetch dedupes
+    /// against concurrent callers from refresh-in-background or library
+    /// switch.
+    internal func driveCurrentAccountAuthDocIfNeeded() {
+        guard let account = currentAccount else { return }
+        switch AccountStateStore.shared.state(for: account.uuid) {
+        case .detailsLoaded, .detailsFailed:
+            return // terminal — `awaitReady()` awaiters will resolve
+        case .notLoaded, .basicInfoLoaded, .detailsLoading:
+            break
+        }
+        fetchAuthDocumentWithStateMachine(for: account) { _ in }
+    }
+
     /// Exposed `internal` so contract-snapshot tests can drive the wiring
     /// path directly without going through the full `loadCatalogs` cycle.
     internal func fetchAuthDocumentWithStateMachine(
