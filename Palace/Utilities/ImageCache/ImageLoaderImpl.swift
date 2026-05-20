@@ -35,12 +35,30 @@ public class ImageLoader: ImageLoading {
 
     // MARK: - Book-level fetch
 
+    /// Returns the cached cover image if already populated, otherwise delegates
+    /// to the registry's full fetch+decode pipeline. The cache short-circuit
+    /// avoids re-fetching+re-decoding when a consumer (BookListView, etc.)
+    /// already populated the umbrella cache under the standard cover key.
     public func coverImage(for book: TPPBook) async -> UIImage? {
-        await registry.coverImage(for: book)
+        let coverKey = "\(book.identifier)_cover"
+        if let cached = cache.get(for: coverKey) {
+            return cached
+        }
+        return await registry.coverImage(for: book)
     }
 
+    /// Returns the cached cover image at the display size if already populated,
+    /// otherwise delegates to the registry. Matches the registry's keying
+    /// (`<identifier>_<px>px`) so a cache pre-warmed by an earlier read at the
+    /// same display height is honored without re-fetch.
     public func coverImage(for book: TPPBook, displayPoints: CGFloat) async -> UIImage? {
-        await registry.coverImage(for: book, displayPoints: displayPoints)
+        let scale = await MainActor.run { UIScreen.main.scale }
+        let neededPixels = min(displayPoints * scale * 1.5, 1200)
+        let key = "\(book.identifier)_\(Int(neededPixels))px"
+        if let cached = cache.get(for: key) {
+            return cached
+        }
+        return await registry.coverImage(for: book, displayPoints: displayPoints)
     }
 
     public func thumbnailImage(for book: TPPBook) async -> UIImage? {
