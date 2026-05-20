@@ -339,21 +339,32 @@ struct AccountDetailView: View {
     }
 
     private var barcodeInputCell: some View {
-        TextField(
-            viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername,
-            text: $viewModel.usernameText
-        )
-        .textContentType(.username)
-        .autocapitalization(.none)
-        .autocorrectionDisabled()
-        .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
-        .disabled(viewModel.isSignedIn)
-        .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
-        .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
-        .accessibilityLabel(viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername)
-        .focused($focusedField, equals: .barcode)
-        .onSubmit { focusedField = .pin }
-        .submitLabel(.next)
+        // HelpSpot 17923 — replaced the default SwiftUI `.placeholderText`
+        // ghost (patrons consistently report it as "the field looks
+        // disabled, I can't tap it") with an explicit caption Text above
+        // the field. The caption is .accessibilityHidden(true) because
+        // VoiceOver already announces the label below via the
+        // TextField's .accessibilityLabel — duplicating it would announce
+        // the field name twice.
+        let label = viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername
+        return VStack(alignment: .leading, spacing: Layout.verticalPaddingSmall) {
+            Text(String(format: DisplayStrings.tapToEnter, label))
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .accessibilityHidden(true)
+            TextField(label, text: $viewModel.usernameText)
+                .textContentType(.username)
+                .autocapitalization(.none)
+                .autocorrectionDisabled()
+                .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
+                .disabled(viewModel.isSignedIn)
+                .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+                .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
+                .accessibilityLabel(viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername)
+                .focused($focusedField, equals: .barcode)
+                .onSubmit { focusedField = .pin }
+                .submitLabel(.next)
+        }
         .padding(.vertical, Layout.verticalPaddingInput)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
     }
@@ -363,36 +374,49 @@ struct AccountDetailView: View {
     }
 
     private var pinInputCell: some View {
-        HStack {
-            if viewModel.isPINHidden {
-                SecureField(pinLabel, text: $viewModel.pinText)
-                    .textContentType(.password)
-                    .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
-                    .disabled(viewModel.isSignedIn)
-                    .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
-                    .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
-                    .accessibilityLabel(pinLabel)
-                    .focused($focusedField, equals: .pin)
-                    .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
-                    .submitLabel(.go)
-            } else {
-                TextField(pinLabel, text: $viewModel.pinText)
-                    .textContentType(.password)
-                    .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
-                    .disabled(viewModel.isSignedIn)
-                    .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
-                    .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
-                    .accessibilityLabel(pinLabel)
-                    .focused($focusedField, equals: .pin)
-                    .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
-                    .submitLabel(.go)
-            }
+        // HelpSpot 17923 — caption Text above the field for the same
+        // reason as `barcodeInputCell`. The HStack with show/hide button
+        // stays inline (the toggle is paired with the field visually);
+        // only the caption row sits above. .accessibilityHidden(true)
+        // is deliberate — the SecureField/TextField below already carries
+        // .accessibilityLabel(pinLabel), so VoiceOver would otherwise
+        // announce "PIN" twice.
+        VStack(alignment: .leading, spacing: Layout.verticalPaddingSmall) {
+            Text(String(format: DisplayStrings.tapToEnter, pinLabel))
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .accessibilityHidden(true)
+            HStack {
+                if viewModel.isPINHidden {
+                    SecureField(pinLabel, text: $viewModel.pinText)
+                        .textContentType(.password)
+                        .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
+                        .disabled(viewModel.isSignedIn)
+                        .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+                        .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
+                        .accessibilityLabel(pinLabel)
+                        .focused($focusedField, equals: .pin)
+                        .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
+                        .submitLabel(.go)
+                } else {
+                    TextField(pinLabel, text: $viewModel.pinText)
+                        .textContentType(.password)
+                        .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
+                        .disabled(viewModel.isSignedIn)
+                        .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+                        .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
+                        .accessibilityLabel(pinLabel)
+                        .focused($focusedField, equals: .pin)
+                        .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
+                        .submitLabel(.go)
+                }
 
-            if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
-                Button(action: { viewModel.togglePINVisibility() }, label: {
-                    Text(viewModel.isPINHidden ? DisplayStrings.show : DisplayStrings.hide)
-                        .foregroundColor(Color(TPPConfiguration.mainColor()))
-                })
+                if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
+                    Button(action: { viewModel.togglePINVisibility() }, label: {
+                        Text(viewModel.isPINHidden ? DisplayStrings.show : DisplayStrings.hide)
+                            .foregroundColor(Color(TPPConfiguration.mainColor()))
+                    })
+                }
             }
         }
         .padding(.vertical, Layout.verticalPaddingInput)

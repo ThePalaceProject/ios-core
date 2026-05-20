@@ -94,6 +94,46 @@ _MUTATORS: list[tuple[re.Pattern, list[tuple[str, str]], str]] = [
 ]
 
 
+def changed_lines(file_relpath: str, base_ref: str) -> set[int] | None:
+    """Return the set of line numbers in `file_relpath` (relative to REPO_ROOT)
+    that are added or modified vs `base_ref`. Returns None if git fails so the
+    caller falls back to whole-file mutation.
+
+    Uses `git diff --unified=0 <base>..HEAD -- <path>` and parses the @@ hunk
+    headers. Lines reported are 1-indexed against the WORKING-TREE version of
+    the file (the version palace_mutate is about to mutate).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--unified=0", f"{base_ref}..HEAD", "--", file_relpath],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+        )
+    except OSError as e:
+        print(f"--diff-only: git diff failed ({e}); falling back to whole-file scan", file=sys.stderr)
+        return None
+    if result.returncode != 0:
+        print(f"--diff-only: git diff exit {result.returncode}; falling back to whole-file scan", file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+        return None
+
+    lines: set[int] = set()
+    # Hunk headers look like: @@ -old_start,old_count +new_start,new_count @@
+    # We want new_start..new_start+new_count-1. If count is omitted, it's 1.
+    hunk_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+    for ln in result.stdout.splitlines():
+        m = hunk_re.match(ln)
+        if not m:
+            continue
+        new_start = int(m.group(1))
+        new_count = int(m.group(2)) if m.group(2) is not None else 1
+        if new_count == 0:
+            # Pure deletion; no working-tree lines to mutate. Skip.
+            continue
+        for i in range(new_start, new_start + new_count):
+            lines.add(i)
+    return lines
+
+
 def discover_mutations(source: str) -> list[Mutation]:
     out: list[Mutation] = []
     lines = source.splitlines(keepends=False)
@@ -212,11 +252,15 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = 600) -> tuple
 # Cache
 # ---------------------------------------------------------------------------
 
-def cache_key(file_content: str, tests: list[str], seed: int, max_mutations: int) -> str:
+def cache_key(file_content: str, tests: list[str], seed: int, max_mutations: int,
+              diff_only: bool = False, diff_base: str = "") -> str:
     """Stable hash of the inputs that determine mutation results.
 
     Cache invalidates when the file changes, the test selection changes, or
     the run parameters change. Cache survives unrelated edits to other files.
+
+    --diff-only + --diff-base are part of the key so a whole-file scan and a
+    diff-scoped scan don't share cache (their mutation lists differ).
     """
     h = hashlib.sha256()
     h.update(f"v{CACHE_VERSION}\n".encode())
@@ -226,6 +270,8 @@ def cache_key(file_content: str, tests: list[str], seed: int, max_mutations: int
         h.update(t.encode())
         h.update(b"\n")
     h.update(f"--seed={seed}\n--max={max_mutations}\n".encode())
+    if diff_only:
+        h.update(f"--diff-only={diff_base}\n".encode())
     return h.hexdigest()[:16]
 
 
@@ -282,6 +328,13 @@ def main() -> int:
                    help=f"mutation result cache dir (default: {DEFAULT_CACHE_DIR})")
     p.add_argument("--no-cache", action="store_true",
                    help="ignore cached results and re-run mutations")
+    p.add_argument("--diff-only", action="store_true",
+                   help="restrict mutations to lines changed vs --diff-base (default: "
+                        "origin/develop). Pre-existing untouched code is left unscanned, "
+                        "so kill rate reflects the test coverage of *this PR's* changes — "
+                        "not the whole file's historical coverage.")
+    p.add_argument("--diff-base", default="origin/develop",
+                   help="git ref to diff against when --diff-only is set (default: origin/develop)")
     args = p.parse_args()
 
     file_path = os.path.join(REPO_ROOT, args.file)
@@ -298,9 +351,27 @@ def main() -> int:
         print("This file has no testable mutations (no comparison/boolean/return-flip operators).")
         return 1
 
+    if args.diff_only:
+        # Restrict to mutations on lines this PR changes. Falls back to whole-file
+        # if git diff fails (e.g. base ref unknown). Empty diff -> exit 0 with a
+        # message: no diff-scoped mutations is a legitimate state (e.g. PR only
+        # changed test files; the production file is untouched on this branch).
+        scope = changed_lines(args.file, args.diff_base)
+        if scope is None:
+            print(f"--diff-only: falling back to whole-file scan ({len(mutations)} mutations)")
+        else:
+            before = len(mutations)
+            mutations = [m for m in mutations if m.line in scope]
+            print(f"--diff-only vs {args.diff_base}: {len(scope)} changed line(s) in {args.file}; "
+                  f"{len(mutations)}/{before} mutation point(s) on changed lines")
+            if not mutations:
+                print("No mutation points fall on changed lines — nothing to mutate.")
+                return 0
+
     # Cache check: if we've already mutation-tested this exact file content
     # against this exact test selection, we can skip the (slow) re-run.
-    key = cache_key(original, args.tests, args.seed, args.max_mutations)
+    key = cache_key(original, args.tests, args.seed, args.max_mutations,
+                    diff_only=args.diff_only, diff_base=args.diff_base)
     if not args.no_cache and not args.dry_run:
         cached = cache_load(args.cache_dir, args.file, key)
         if cached:

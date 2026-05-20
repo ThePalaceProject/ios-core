@@ -18,6 +18,7 @@
 import Foundation
 import UIKit
 import PalaceAuth
+import PalaceCatalog
 
 /// Wraps the businessLogic-injected `urlSettingsProvider` in PalaceAuth's
 /// `UniversalLinksProviding` protocol. The injected type is
@@ -111,8 +112,57 @@ final class LegacySAMLAuthContext: NSObject, SAMLAuthContext {
 final class LegacySAMLWebViewPresenter: NSObject, SAMLWebViewPresenting {
     private let universalLinksProvider: NYPLUniversalLinksSettings
 
+    /// HelpSpot 17870 — weak back-reference so the presenter can synthesise
+    /// a `problemFoundHandler` that bridges `TPPProblemDocument` events from
+    /// `SignInWebSheetViewModel.recordProblem(document:)` to
+    /// `businessLogic.uiDelegate.businessLogic(_:didEncounterValidationError:
+    /// userFriendlyErrorTitle:andMessage:)`. Without this wire-up, a
+    /// problem-document served by the CM mid-flow silently dropped on the
+    /// floor and the patron saw a hung sheet.
+    ///
+    /// Option B from the contract: keep the presenter stateless w.r.t. the
+    /// businessLogic at init time, set the back-reference post-init from
+    /// `TPPSignInBusinessLogic.init` the same way `LegacySAMLAuthContext`
+    /// gets its `businessLogic` set. `weak` so we don't extend the
+    /// businessLogic's lifetime past `TPPSignInBusinessLogic.deinit`.
+    weak var businessLogic: TPPSignInBusinessLogic?
+
     init(universalLinksProvider: NYPLUniversalLinksSettings) {
         self.universalLinksProvider = universalLinksProvider
+    }
+
+    /// Factory for the problem-doc → UI-delegate bridge closure used inside
+    /// `presentSAMLWebView`. Exposed at internal access so tests can drive
+    /// the synthesised behaviour without standing up a real SwiftUI sheet —
+    /// `SignInWebSheetPresenter.presentOnTop` walks the topmost VC, which is
+    /// not testable in isolation.
+    ///
+    /// Pure function shape: given the captured `[weak self]`, returns a
+    /// closure that resolves the businessLogic, builds title/message
+    /// fallback strings, synthesises an `NSError` with a dedicated SAML
+    /// domain so the downstream logger can identify the source, and
+    /// dispatches onto the main queue (the delegate drives UIKit alerts).
+    func makeProblemFoundHandler() -> (TPPProblemDocument?) -> Void {
+        return { [weak self] problemDocument in
+            guard let businessLogic = self?.businessLogic else { return }
+            let title = problemDocument?.title ?? Strings.Error.loginErrorTitle
+            let message = problemDocument?.detail
+                ?? problemDocument?.title
+                ?? Strings.Error.loginErrorDescription
+            let error = NSError(
+                domain: "SAML.SignIn.ProblemDocument",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: message]
+            )
+            DispatchQueue.main.async {
+                businessLogic.uiDelegate?.businessLogic(
+                    businessLogic,
+                    didEncounterValidationError: error,
+                    userFriendlyErrorTitle: title,
+                    andMessage: message
+                )
+            }
+        }
     }
 
     func presentSAMLWebView(url: URL,
@@ -124,6 +174,10 @@ final class LegacySAMLWebViewPresenter: NSObject, SAMLWebViewPresenting {
         // path that MyBooksDownloadCenter / BookSignInRedirectHandler use.
         let request = URLRequest(url: url)
         let universalLinks = universalLinksProvider.universalLinksURL
+        // HelpSpot 17870 — build the handler ON THE NONISOLATED HOP so the
+        // `[weak self]` capture happens before the Task hops to main. The
+        // handler itself dispatches to main internally.
+        let problemHandler = makeProblemFoundHandler()
 
         Task { @MainActor in
             let model = SignInWebSheetViewModel(
@@ -132,7 +186,8 @@ final class LegacySAMLWebViewPresenter: NSObject, SAMLWebViewPresenting {
                 universalLinksURL: universalLinks,
                 autoPresentIfNeeded: false,
                 loginCompletionHandler: loginCompletion,
-                loginCancelHandler: loginCancel
+                loginCancelHandler: loginCancel,
+                problemFoundHandler: problemHandler
             )
             SignInWebSheetPresenter.presentOnTop(model: model)
         }

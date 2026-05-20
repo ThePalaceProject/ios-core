@@ -364,23 +364,83 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             }
         }
 
-        // Navigate to Holds tab for hold-related notifications
+        // Navigate to Holds tab for hold-related notifications.
+        //
+        // Bucket A migration: notification taps are user-initiated, so the
+        // `awaitReady()` window is acceptable. The decision logic is
+        // factored into the static `decideHoldNavigation(...)` seam below
+        // so the swarm Phase 1 state-machine tests can pin every branch
+        // (`.detailsLoaded` + supports / does-not-support, `.detailsFailed`,
+        // nil-account) without a `UNNotificationResponse` round-trip.
         if isHoldNotification {
             Task { @MainActor in
-                guard let currentAccount = self.accountsManager.currentAccount,
-                      currentAccount.details?.supportsReservations == true else {
+                let outcome = await Self.decideHoldNavigation(
+                    currentAccount: self.accountsManager.currentAccount
+                )
+                switch outcome {
+                case .navigate:
+                    AppContainer.production().tabRouterHub.navigate(to: .holds)
+                    Log.info(#file, "[Notification] Navigated to Holds tab")
+                case .skipUnsupportedReservations:
                     Log.warn(#file, "[Notification] Cannot navigate to Holds - account doesn't support reservations")
-                    completionHandler()
-                    return
+                case .skipNoCurrentAccount:
+                    Log.warn(#file, "[Notification] Cannot navigate to Holds - no current account")
+                case .skipDetailsFailed:
+                    Log.warn(#file, "[Notification] Cannot navigate to Holds - awaitReady failed")
                 }
-
-                AppContainer.production().tabRouterHub.navigate(to: .holds)
-                Log.info(#file, "[Notification] Navigated to Holds tab")
                 completionHandler()
             }
         } else {
             completionHandler()
         }
+    }
+
+    // MARK: - Testable seam (Bucket A migration)
+    //
+    // The `userNotificationCenter(...didReceive...)` callback above is
+    // hard to unit-test directly — it requires a real
+    // `UNNotificationResponse` (no public constructor) and reaches into
+    // `AppContainer.production().tabRouterHub` for navigation. The
+    // pure-behavior logic for "should I navigate to Holds for this
+    // account state?" is extracted here so the swarm Phase 1 state-machine
+    // tests can pin every branch without an `UNUserNotificationCenter`
+    // round-trip.
+
+    /// Navigation decision for a hold-related notification tap.
+    enum HoldNavigationOutcome: Equatable {
+        /// Navigate to the Holds tab.
+        case navigate
+        /// Skip navigation — the current account does not support
+        /// reservations (still loaded, just not enabled).
+        case skipUnsupportedReservations
+        /// Skip navigation — no current account.
+        case skipNoCurrentAccount
+        /// Skip navigation — awaitReady() failed (e.g. `.detailsFailed`).
+        case skipDetailsFailed
+    }
+
+    /// Decide whether to navigate to Holds for a hold-related
+    /// notification tap, awaiting the account's state machine instead of
+    /// reading raw `details?`. This is the Bucket A migration's
+    /// testable seam — `userNotificationCenter(...)` delegates the
+    /// account-state check here, then performs side-effecting navigation
+    /// on the `.navigate` outcome.
+    ///
+    /// - Parameter currentAccount: the account to check; pass
+    ///   `accountsManager.currentAccount` from production.
+    /// - Returns: navigation outcome; caller performs the actual
+    ///   `tabRouterHub.navigate(to: .holds)` side effect on `.navigate`.
+    static func decideHoldNavigation(currentAccount: Account?) async -> HoldNavigationOutcome {
+        guard let currentAccount = currentAccount else {
+            return .skipNoCurrentAccount
+        }
+        let details: AccountDetails
+        do {
+            details = try await currentAccount.awaitReady()
+        } catch {
+            return .skipDetailsFailed
+        }
+        return details.supportsReservations ? .navigate : .skipUnsupportedReservations
     }
 
     // MARK: - Sync Throttling

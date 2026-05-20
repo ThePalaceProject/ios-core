@@ -329,7 +329,20 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     /// UIKeyCommand with `wantsPriorityOverSystemBehavior` intercepts arrow keys
     /// BEFORE the focus engine consumes them. This is the only reliable path on
     /// iPadOS where the focus system eats arrow/space events.
-    private static let readerKeyCommands: [UIKeyCommand] = {
+    ///
+    /// Exposed at internal access (default) so PP-4289 regression tests can
+    /// assert that the iPad-on-Mac escape-hatch bindings (Cmd+W, Cmd+,) are
+    /// present without instantiating an EPUBNavigatorViewController.
+    static let readerKeyCommands: [UIKeyCommand] = {
+        // Cmd+W: PP-4289 — single-scene iPad-on-Mac apps treat default Cmd+W as
+        // close-window, which terminates Palace entirely from inside Reader2.
+        // Bind it explicitly to closeEPUB so it dismisses the reader instead.
+        let closeReader = UIKeyCommand(input: "w", modifierFlags: .command, action: #selector(keyCommandCloseReader))
+        closeReader.discoverabilityTitle = Strings.Generic.goBack
+        // Cmd+,: PP-4289 — discoverable shortcut for reader preferences.
+        let openSettings = UIKeyCommand(input: ",", modifierFlags: .command, action: #selector(keyCommandShowSettings))
+        openSettings.discoverabilityTitle = Strings.TPPEPUBViewController.readerSettings
+
         let commands = [
             UIKeyCommand(input: UIKeyCommand.inputLeftArrow, modifierFlags: [], action: #selector(keyCommandGoBackward)),
             UIKeyCommand(input: UIKeyCommand.inputRightArrow, modifierFlags: [], action: #selector(keyCommandGoForward)),
@@ -337,7 +350,9 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             UIKeyCommand(input: " ", modifierFlags: .shift, action: #selector(keyCommandGoBackward)),
             UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(keyCommandToggleUI)),
             UIKeyCommand(input: UIKeyCommand.inputPageUp, modifierFlags: [], action: #selector(keyCommandGoBackward)),
-            UIKeyCommand(input: UIKeyCommand.inputPageDown, modifierFlags: [], action: #selector(keyCommandGoForward))
+            UIKeyCommand(input: UIKeyCommand.inputPageDown, modifierFlags: [], action: #selector(keyCommandGoForward)),
+            closeReader,
+            openSettings
         ]
         commands.forEach { $0.wantsPriorityOverSystemBehavior = true }
         return commands
@@ -363,6 +378,15 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         Task { @MainActor in
             await keyboardNavigationHandler.handleCommand(.toggleUI, via: self)
         }
+    }
+
+    @objc private func keyCommandCloseReader() {
+        closeEPUB()
+    }
+
+    @objc private func keyCommandShowSettings() {
+        guard presentedViewController == nil else { return }
+        presentUserSettings()
     }
 
     // MARK: - GCKeyboard Monitoring

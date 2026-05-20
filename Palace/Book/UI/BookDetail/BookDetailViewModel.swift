@@ -1,12 +1,12 @@
 import Combine
 import SwiftUI
 import PalaceAudiobookToolkit
+import PalaceLogging
+import PalaceCatalog
 
 #if LCP
 import ReadiumShared
 import ReadiumStreamer
-import PalaceLogging
-import PalaceCatalog
 #endif
 
 struct BookLane {

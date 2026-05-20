@@ -29,7 +29,26 @@ class LCPPassphraseAuthenticationService: LCPAuthenticating {
     private func retrievePassphraseFromLoan(for license: LCPAuthenticatedLicense, reason: LCPAuthenticationReason, allowUserInteraction: Bool, sender: Any?) async -> String? {
         let licenseId = license.document.id
         let registry = bookRegistry
-        guard let loansUrl = accountsManager.currentAccount?.loansUrl else {
+
+        // PHASE 1 (swarm_81b5099e Bucket A): LCP passphrase retrieval is on
+        // the critical path for LCP-protected book open. Block on
+        // `Account.awaitReady()` before reading `loansUrl`; pre-Phase-1 this
+        // read `currentAccount?.loansUrl` directly and returned nil during
+        // the cold-launch window — which then surfaced as "LCP open failed"
+        // to the user even though the only problem was the auth document
+        // hadn't loaded yet. Function was already `async`; per the ADR's
+        // single-timeout policy the existing LCP fulfillment timeout covers
+        // this — no withTimeout wrapper added here.
+        guard let currentAccount = accountsManager.currentAccount else {
+            return nil
+        }
+        let details: AccountDetails
+        do {
+            details = try await currentAccount.awaitReady()
+        } catch {
+            return nil
+        }
+        guard let loansUrl = details.loansUrl else {
             return nil
         }
 

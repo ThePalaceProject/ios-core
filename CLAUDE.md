@@ -137,6 +137,15 @@ python3 scripts/palace_mutate.py \
 python3 scripts/palace_mutate.py \
   --file Palace/Path/ChangedFile.swift \
   --tests PalaceTests/ChangedFileTests
+
+# Diff-scoped: only mutate lines this PR changes vs origin/develop.
+# Useful when a file has pre-existing low-coverage areas you don't want
+# to be punished for — kill rate reflects YOUR PR's coverage, not the
+# whole file's history. Cache-keyed independently from whole-file runs.
+python3 scripts/palace_mutate.py \
+  --file Palace/Path/ChangedFile.swift \
+  --tests PalaceTests/ChangedFileTests \
+  --diff-only [--diff-base origin/develop]
 ```
 
 The `--tests` arg is an XCTest **class** name (not a directory) — `-only-testing` matches `<TestBundle>/<XCTestCase subclass>`. A run that says "0 tests executed" is a misconfiguration, not a clean pass.

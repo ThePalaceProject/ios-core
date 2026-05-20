@@ -43,13 +43,33 @@ enum CarPlayPlaybackError: Error {
 /// Shared authentication helper for CarPlay components.
 enum CarPlayAuthHelper {
     /// Checks if the user is authenticated with the current library.
-    static func isAuthenticated(accountsManager: AccountsManager = AppContainer.production().accountsManager) -> Bool {
+    ///
+    /// PHASE 1 (swarm_81b5099e Bucket A) — converted to async to consume
+    /// `Account.awaitReady()`. Previously read `account.details` directly
+    /// and returned `true` (treating unloaded details as "no auth required")
+    /// during the cold-launch window between disk-preload and
+    /// authentication-document fetch. That silently let CarPlay start
+    /// playback for libraries that DID require auth — until the playback
+    /// itself 401'd from a bad bearer header. Now blocks on awaitReady;
+    /// on awaitReady failure surfaces as unauthenticated so CarPlay shows
+    /// its existing "auth required" alert (CarPlay cannot show a sign-in
+    /// UI — phone-side sign-in is the only resolution). The 20s session-
+    /// manager timeout downstream covers the await window; per the ADR's
+    /// single-timeout policy, no additional withTimeout wrapping here.
+    static func isAuthenticated(accountsManager: AccountsManager = AppContainer.production().accountsManager) async -> Bool {
         guard let account = accountsManager.currentAccount else {
             return false
         }
 
-        guard let details = account.details,
-              let defaultAuth = details.defaultAuth else {
+        let details: AccountDetails
+        do {
+            details = try await account.awaitReady()
+        } catch {
+            Log.warn(#file, "CarPlayAuthHelper.isAuthenticated: awaitReady failed — surfacing as unauthenticated: \(error)")
+            return false
+        }
+
+        guard let defaultAuth = details.defaultAuth else {
             return true
         }
 
@@ -183,9 +203,10 @@ final class CarPlayAudiobookBridge: ObservableObject {
         }
     }
 
-    /// Checks if user is authenticated
-    func isAuthenticated() -> Bool {
-        CarPlayAuthHelper.isAuthenticated()
+    /// Checks if user is authenticated.
+    /// PHASE 1: async to consume the Bucket A readiness gate via the helper.
+    func isAuthenticated() async -> Bool {
+        await CarPlayAuthHelper.isAuthenticated()
     }
 
     // MARK: - Private Methods

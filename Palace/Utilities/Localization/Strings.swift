@@ -421,6 +421,10 @@ struct Strings {
         static let verifying = NSLocalizedString("Verifying", comment: "")
         static let barcodeOrUsername = NSLocalizedString("Barcode or Username", comment: "")
         static let pin = NSLocalizedString("PIN", comment: "")
+        static let tapToEnter = NSLocalizedString(
+            "Tap here to enter your %@",
+            comment: "Affordance label above sign-in input fields. %@ is the field name (e.g. 'Barcode or Username', 'PIN'). Replaces the default SwiftUI placeholder, which patrons report perceiving as 'disabled' (HelpSpot 17923)."
+        )
         static let forgotPassword = NSLocalizedString("Forgot your password?", comment: "")
         static let signUpForCard = NSLocalizedString("Sign up for a library card", comment: "")
         static let eulaAgreement = NSLocalizedString("By signing in, you agree to the End User License Agreement.", comment: "")
