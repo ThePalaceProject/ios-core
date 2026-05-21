@@ -7,7 +7,11 @@ task: |
 base_branch: chore/test-suite-flake-hardening
 scaffold_branch: swarm/swarm_9d3d2fab-scaffold
 created_at: "2026-05-21"
-status: triaged
+status: bundled
+phase_1_changeset_id: cs_6afc8b96
+phase_1_commit: c52b77eac
+phase_0_changeset_id: cs_2e842c4e
+phase_0_commit: 9c0eaf7d5
 
 modules:
   - name: Module A — Audiobook
