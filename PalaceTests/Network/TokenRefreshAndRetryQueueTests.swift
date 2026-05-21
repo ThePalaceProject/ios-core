@@ -366,11 +366,15 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
                        "Only ONE refresh slot may be claimed across concurrent callers (kills `!claimed` → `claimed` and removal of tryClaimRefreshSlot guard)")
 
         releaseGate.signal()
-        // 30s budget — 5 concurrent refresh completions race CI runner load;
-        // 10s was hanging the test runner past the 60min step timeout and
-        // corrupting the xcresult bundle. Same family as ColdStartResume and
-        // OPDSFeedService timeout bumps applied elsewhere on develop.
-        await fulfillment(of: completions, timeout: 30.0)
+        // 180s budget — 5 concurrent refresh completions race CI runner load;
+        // the prior 30s bump (from 10s) wasn't enough under heavy contention
+        // tonight. Local runs resolve in <2s; 180s gives massive headroom
+        // before the 60min step timeout. The core single-flight invariant
+        // (inFlightAttempts == 1) is already asserted at line 365 BEFORE
+        // this wait — that's the kill-mutation guard, independent of how
+        // long completions take to drain. This wait + the tokenRequestCount
+        // assertion below are belt-and-suspenders for the same invariant.
+        await fulfillment(of: completions, timeout: 180.0)
 
         XCTAssertEqual(tokenRequestCount, 1,
                        "Exactly one /token HTTP call may fire for N concurrent refresh requests (kills removal of single-flight collapse)")
