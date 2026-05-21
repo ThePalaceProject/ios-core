@@ -17,23 +17,13 @@ import MediaPlayer
 @MainActor
 class CarPlayTests: XCTestCase {
 
-    override func setUp() {
-        super.setUp()
-        // Clear shared state to prevent test pollution
-        AudiobookSessionManager.shared.clearAllState()
-    }
-
-    override func tearDown() {
-        // Clear shared state after each test
-        AudiobookSessionManager.shared.clearAllState()
-        super.tearDown()
-    }
-
     // MARK: - AudiobookSessionManager Tests
 
     func testAudiobookSessionManager_Initialization() {
         // Arrange & Act
-        let sessionManager = Palace.AudiobookSessionManager.shared
+        // Module B: replaced Palace.AudiobookSessionManager.shared with locally-constructed
+        // instance via AppContainer. Module D will idiomize.
+        let sessionManager = Palace.AudiobookSessionManager(appContainer: AppContainer.production())
 
         // Assert - session manager starts with no active book
         XCTAssertNil(sessionManager.currentBook, "Session manager should not have a book initially")

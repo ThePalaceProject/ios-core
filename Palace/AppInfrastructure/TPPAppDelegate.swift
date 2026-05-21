@@ -52,7 +52,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // Without this, CarPlay remote controls won't work when the app is launched
         // directly from CarPlay without the phone UI ever being shown
         Log.info(#file, "📱 App launch - initializing playback bootstrapper")
-        PlaybackBootstrapper.shared.ensureInitialized()
+        AppContainer.production().playbackBootstrapper.ensureInitialized()
 
         // Configure Firebase once at startup. The SDK MUST be initialized
         // (other code paths assume FirebaseApp.app() is non-nil and call

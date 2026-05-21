@@ -152,7 +152,7 @@ final class AudiobookOpenStateRaceTests: XCTestCase {
         account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "test HTTP 503")))
 
         let book = TPPBookMocker.mockBook(title: "Failed-State Audiobook", authors: "Test")
-        let result = await AudiobookSessionManager.shared.openAudiobook(book, startPlaying: false)
+        let result = await AppContainer.production().audiobookSession.openAudiobook(book, startPlaying: false)
 
         switch result {
         case .failure(.notAuthenticated):

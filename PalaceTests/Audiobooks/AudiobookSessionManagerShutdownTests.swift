@@ -42,6 +42,15 @@ import XCTest
 @MainActor
 final class AudiobookSessionManagerShutdownTests: XCTestCase {
 
+    /// Locally-constructed session manager — Module B replaced the singleton.
+    /// Module D will idiomize on its pass.
+    private var manager: AudiobookSessionManager!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        manager = AudiobookSessionManager(appContainer: AppContainer.production())
+    }
+
     // MARK: - F-001: state coherence across rapid background/foreground
 
     /// Drives the session manager through 10 rapid stopPlayback calls in
@@ -51,8 +60,6 @@ final class AudiobookSessionManagerShutdownTests: XCTestCase {
     /// race here, the F-001 watchdog kill rate would be compounded by
     /// state corruption rebuilding the player on next foreground.
     func test_rapidStopPlayback_leavesSessionInIdleState() async {
-        let manager = AudiobookSessionManager.shared
-
         for cycle in 0..<10 {
             await manager.stopPlayback(dismissPhoneUI: false)
             XCTAssertEqual(manager.state, .idle,
@@ -74,7 +81,6 @@ final class AudiobookSessionManagerShutdownTests: XCTestCase {
     /// could call applicationDidEnterBackground while a previous
     /// teardown is still draining; that path must be safe.
     func test_doubleStopPlayback_isIdempotent() async {
-        let manager = AudiobookSessionManager.shared
         await manager.stopPlayback(dismissPhoneUI: false)
         let stateAfterFirst = manager.state
         let bookIdAfterFirst = manager.currentBook?.identifier
@@ -96,8 +102,6 @@ final class AudiobookSessionManagerShutdownTests: XCTestCase {
     /// "Playing" while the app is being killed — a known regression
     /// vector for the watchdog crashes.
     func test_stopPlayback_emitsIdleStateToPublisher() async {
-        let manager = AudiobookSessionManager.shared
-
         // Bring the publisher subscription up BEFORE the stop so we don't
         // miss the emit. (PassthroughSubject doesn't replay.)
         var receivedStates: [AudiobookSessionState] = []
@@ -123,8 +127,6 @@ final class AudiobookSessionManagerShutdownTests: XCTestCase {
     /// playback started — stopPlayback in that state must be a fast
     /// no-op, not a crash.
     func test_stopPlayback_neverBound_isFastNoOp() async {
-        let manager = AudiobookSessionManager.shared
-
         // Force an unbound state explicitly: stop, then immediately
         // stop again. The first stop ensures clean state; the second is
         // the test surface — stopping from a clean state must succeed

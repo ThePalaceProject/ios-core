@@ -14,12 +14,13 @@ import XCTest
 @MainActor
 final class AudiobookSessionStateTransitionTests: XCTestCase {
 
+    /// Locally-constructed session manager — Module B replaced the singleton,
+    /// so each test gets a fresh instance with no pollution to reset.
+    private var manager: AudiobookSessionManager!
+
     override func setUp() async throws {
         try await super.setUp()
-        // AudiobookSessionManager.shared is a singleton — reset before each
-        // test so .state assertions see .idle and not pollution from a prior
-        // test (same pattern as PlaybackBootstrapperTests).
-        await AudiobookSessionManager.shared.stopPlayback(dismissPhoneUI: false)
+        manager = AudiobookSessionManager(appContainer: AppContainer.production())
     }
 
     // MARK: - State Enum Tests
@@ -111,11 +112,7 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     @MainActor
-    func testSessionManager_initialState_isIdle() async {
-        let manager = AudiobookSessionManager.shared
-        // Reset to idle in case a previous test modified the singleton
-        await manager.stopPlayback(dismissPhoneUI: false)
-
+    func testSessionManager_initialState_isIdle() {
         XCTAssertEqual(manager.state, .idle)
         XCTAssertNil(manager.currentBook)
         XCTAssertFalse(manager.isPlaying)
@@ -127,7 +124,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_play_withoutManager_doesNotCrash() {
-        let manager = AudiobookSessionManager.shared
         // Should be a no-op when no manager is bound
         manager.play()
         XCTAssertFalse(manager.isPlaying)
@@ -137,7 +133,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_pause_withoutManager_doesNotCrash() {
-        let manager = AudiobookSessionManager.shared
         // Should be a no-op when no manager is bound
         manager.pause()
         XCTAssertFalse(manager.isPlaying)
@@ -147,7 +142,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_togglePlayPause_withoutManager_doesNotCrash() {
-        let manager = AudiobookSessionManager.shared
         manager.togglePlayPause()
         XCTAssertFalse(manager.isPlaying)
         // State must remain idle after toggle without a manager
@@ -156,7 +150,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_skipToChapter_withoutManager_doesNotCrash() {
-        let manager = AudiobookSessionManager.shared
         // Should be a no-op with no manager
         manager.skipToChapter(at: 0)
         manager.skipToChapter(at: -1)
@@ -167,7 +160,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_cyclePlaybackRate_withoutManager_returnsNormalTime() {
-        let manager = AudiobookSessionManager.shared
         let rate = manager.cyclePlaybackRate()
         XCTAssertEqual(rate, .normalTime, "Without a manager, should return normalTime")
         // Calling again must return the same value (deterministic for no-op case)
@@ -178,7 +170,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_stopPlayback_resetsState() async {
-        let manager = AudiobookSessionManager.shared
         await manager.stopPlayback()
 
         XCTAssertEqual(manager.state, .idle)
@@ -194,7 +185,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_updateCoverImage_setsImage() {
-        let manager = AudiobookSessionManager.shared
         let testImage = UIImage()
         manager.updateCoverImage(testImage)
         XCTAssertNotNil(manager.coverImage)
@@ -205,7 +195,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_updateCoverImage_nil_clearsImage() {
-        let manager = AudiobookSessionManager.shared
         manager.updateCoverImage(UIImage())
         manager.updateCoverImage(nil)
         XCTAssertNil(manager.coverImage)
@@ -218,7 +207,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_stopPlayback_publishesIdleState() async {
-        let manager = AudiobookSessionManager.shared
         var receivedStates: [AudiobookSessionState] = []
         let cancellable = manager.playbackStatePublisher
             .sink { state in
