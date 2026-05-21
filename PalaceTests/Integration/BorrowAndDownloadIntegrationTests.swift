@@ -73,7 +73,7 @@ final class BorrowAndDownloadIntegrationTests: XCTestCase {
                                              delegateQueue: OperationQueue.main)
 
         accountsManager = AccountsManager()
-        bookRegistry = TPPBookRegistry(accountsManager: accountsManager)
+        bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: AppContainer.production().imageLoader)
         operationRegistry = TPPBookRegistryMock()
         userAccount = TPPUserAccountMock()
         stateManager = DownloadStateManager()

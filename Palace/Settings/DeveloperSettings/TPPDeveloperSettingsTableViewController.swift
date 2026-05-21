@@ -14,7 +14,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case dataManagement
         case developerTools
         case pushNotificationTesting
-        case featurePreviews
         case badgeTesting
         case errorSimulation
         #if DEBUG
@@ -30,7 +29,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let emailLogsCellIdentifier = "emailLogsCell"
     private let sendErrorLogsCellIdentifier = "sendErrorLogsCell"
     private let errorSimulationCellIdentifier = "errorSimulationCell"
-    private let incrementalSpeedSliderCellIdentifier = "incrementalSpeedSliderCell"
     private let badgeLoggingCellIdentifier = "badgeLoggingCell"
     private let testHoldsCellIdentifier = "testHoldsCell"
 
@@ -80,7 +78,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: emailLogsCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: sendErrorLogsCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: errorSimulationCellIdentifier)
-        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: incrementalSpeedSliderCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: badgeLoggingCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: testHoldsCellIdentifier)
     }
@@ -93,7 +90,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case .librarySettings: return 2
         case .developerTools: return 2
         case .pushNotificationTesting: return 3
-        case .featurePreviews: return 1
         case .badgeTesting:
             #if DEBUG
             return 2
@@ -141,8 +137,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             case 1: return cellForTestHoldNotification()
             default: return cellForTestLoanExpiryNotification()
             }
-        case .featurePreviews:
-            return cellForIncrementalSpeedSlider()
         case .badgeTesting:
             #if DEBUG
             switch indexPath.row {
@@ -189,8 +183,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             return "Developer Tools"
         case .pushNotificationTesting:
             return "Push Notification Testing"
-        case .featurePreviews:
-            return "Feature Previews"
         case .badgeTesting:
             #if DEBUG
             return "Badge Testing"
@@ -285,24 +277,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     #if DEBUG
-    @objc func incrementalSpeedSliderSwitchDidChange(sender: UISwitch) {
-        self.debugSettings.isIncrementalSpeedSliderEnabled = sender.isOn
-    }
-
-    private func cellForIncrementalSpeedSlider() -> UITableViewCell {
-        guard let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier) else {
-            fatalError("Failed to dequeue cell with identifier \(incrementalSpeedSliderCellIdentifier)")
-        }
-        cell.selectionStyle = .none
-        cell.textLabel?.text = "Incremental Speed Slider"
-        cell.textLabel?.adjustsFontSizeToFitWidth = true
-        cell.accessoryView = createSwitch(
-            isOn: self.debugSettings.isIncrementalSpeedSliderEnabled,
-            action: #selector(incrementalSpeedSliderSwitchDidChange)
-        )
-        return cell
-    }
-
     @objc func badgeLoggingSwitchDidChange(sender: UISwitch) {
         self.debugSettings.isBadgeLoggingEnabled = sender.isOn
     }
@@ -333,21 +307,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
     #else
-    private func cellForIncrementalSpeedSlider() -> UITableViewCell {
-        guard let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier) else {
-            fatalError("Failed to dequeue cell with identifier \(incrementalSpeedSliderCellIdentifier)")
-        }
-        cell.selectionStyle = .none
-        cell.textLabel?.text = "Incremental Speed Slider"
-        cell.textLabel?.adjustsFontSizeToFitWidth = true
-        // In non-DEBUG builds, the switch reads the same DebugSettings property
-        let switchControl = UISwitch()
-        switchControl.isOn = self.debugSettings.isIncrementalSpeedSliderEnabled
-        switchControl.isEnabled = false
-        cell.accessoryView = switchControl
-        return cell
-    }
-
     private func cellForBadgeLogging() -> UITableViewCell {
         return UITableViewCell()
     }

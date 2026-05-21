@@ -14,6 +14,7 @@ struct AppContainer {
     let downloadAnnouncementService: DownloadAnnouncementService
     let debugSettings: DebugSettings
     let imageCache: ImageCacheType
+    let imageLoader: ImageLoading
     let userAccountPublisher: UserAccountPublisher
     let opdsFeedService: OPDSFeedService
     let readerService: ReaderService
@@ -62,6 +63,7 @@ struct AppContainer {
         downloadAnnouncementService: DownloadAnnouncementService,
         debugSettings: DebugSettings,
         imageCache: ImageCacheType,
+        imageLoader: ImageLoading,
         userAccountPublisher: UserAccountPublisher,
         opdsFeedService: OPDSFeedService,
         readerService: ReaderService,
@@ -79,6 +81,7 @@ struct AppContainer {
         self.downloadAnnouncementService = downloadAnnouncementService
         self.debugSettings = debugSettings
         self.imageCache = imageCache
+        self.imageLoader = imageLoader
         self.userAccountPublisher = userAccountPublisher
         self.opdsFeedService = opdsFeedService
         self.readerService = readerService
@@ -102,7 +105,16 @@ struct AppContainer {
         // both into AppContainer.init — and into every collaborator built
         // here — explicitly so no default arg ever fires.
         let accountsManager = AccountsManager()
-        let bookRegistry = TPPBookRegistry(accountsManager: accountsManager)
+        // Single image-loading umbrella composed of the existing disk+memory
+        // ImageCache and the TPPBookCoverRegistry actor — replaces three
+        // overlapping singletons at consumer sites (Track A of the 3.2.0
+        // singleton sweep). Constructed BEFORE TPPBookRegistry because the
+        // registry now takes ImageLoading as a required init param; the prior
+        // ordering relied on a default arg `imageLoader = ImageLoader.production`
+        // that re-entered _cached's own dispatch_once and SIGTRAPped on launch.
+        let imageCache = ImageCache.shared
+        let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
+        let bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: imageLoader)
         // Build one accessibility announcer and one DownloadAnnouncementService
         // that wraps it. Sharing this announcer between the service and any
         // other consumers (MyBooksDownloadCenter still calls
@@ -133,7 +145,8 @@ struct AppContainer {
             downloadCenter: downloadCenter,
             downloadAnnouncementService: downloadAnnouncementService,
             debugSettings: DebugSettings(),
-            imageCache: ImageCache.shared,
+            imageCache: imageCache,
+            imageLoader: imageLoader,
             userAccountPublisher: .shared,
             opdsFeedService: OPDSFeedService(),
             readerService: ReaderService(),

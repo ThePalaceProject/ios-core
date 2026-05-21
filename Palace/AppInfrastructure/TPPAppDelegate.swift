@@ -706,7 +706,7 @@ final class MemoryPressureMonitor {
 
         // Clear caches first
         URLCache.shared.removeAllCachedResponses()
-        ImageCache.shared.clear()
+        AppContainer.production().imageLoader.clearAll()
         GeneralCache<String, Data>.clearAllCaches()
 
         // Evict least-recently-used book files

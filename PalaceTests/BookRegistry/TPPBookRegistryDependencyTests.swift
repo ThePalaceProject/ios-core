@@ -43,7 +43,7 @@ final class TPPBookRegistryDependencyTests: XCTestCase {
     /// silently coming back.
     func testInit_takesAccountsManagerExplicitly() {
         let accountsManager = AccountsManager()
-        let registry = TPPBookRegistry(accountsManager: accountsManager)
+        let registry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: AppContainer.production().imageLoader)
 
         // The registry exists and has access to its dependency. We assert via
         // a side-effect that requires accountsManager: addBook captures
@@ -61,7 +61,7 @@ final class TPPBookRegistryDependencyTests: XCTestCase {
     /// that broke the cycle.
     func testWithAccount_inheritsParentAccountsManager() {
         let accountsManager = AccountsManager()
-        let registry = TPPBookRegistry(accountsManager: accountsManager)
+        let registry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: AppContainer.production().imageLoader)
 
         // The block executes synchronously and receives a different instance
         // than the parent. If `with(account:)` accidentally reached for
