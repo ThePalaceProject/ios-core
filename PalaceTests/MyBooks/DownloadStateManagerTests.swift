@@ -174,6 +174,83 @@ final class DownloadStateManagerTests: XCTestCase {
         XCTAssertEqual(retrieved?.identifier, book.identifier)
     }
 
+    // MARK: - Item #12 — taskIdentifierToBook recycle safety
+
+    /// Item #12 audit: simulates the URLSession.taskIdentifier recycle
+    /// scenario the "907 No taskInfo for task" non-fatal hinted at.
+    /// The canonical safe pattern is remove(oldTaskId) → set(newTaskId,
+    /// book). Pin that explicit sequence: after the swap, the OLD
+    /// entry is gone and ONLY the new mapping wins.
+    func testTaskIdentifierToBook_recycleSameId_doesNotLeakOldBook() async {
+        let bookA = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let bookB = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let taskId = 42
+
+        // Step 1: register taskId → bookA (initial download started)
+        await stateManager.taskIdentifierToBook.set(taskId, value: bookA)
+        let firstLookup = await stateManager.taskIdentifierToBook.get(taskId)
+        XCTAssertEqual(firstLookup?.identifier, bookA.identifier,
+                       "Initial registration must resolve taskId → bookA")
+
+        // Step 2: explicit remove (the canonical safe pattern call
+        // sites use — e.g. BackgroundDownloadHandler.followAcquisitionLink
+        // line 240, DownloadCancellationHandler line 126).
+        let removed = await stateManager.taskIdentifierToBook.remove(taskId)
+        XCTAssertEqual(removed?.identifier, bookA.identifier,
+                       "remove() must return the old value so call sites can audit")
+
+        // Step 3: register the same taskId → bookB (recycled).
+        await stateManager.taskIdentifierToBook.set(taskId, value: bookB)
+        let secondLookup = await stateManager.taskIdentifierToBook.get(taskId)
+        XCTAssertEqual(secondLookup?.identifier, bookB.identifier,
+                       "After remove-then-set, recycled taskId must resolve to bookB")
+        XCTAssertNotEqual(secondLookup?.identifier, bookA.identifier,
+                          "OLD bookA mapping MUST be gone after remove() — no stale entry")
+    }
+
+    /// Anti-pattern (intentional contract): set-before-remove on the
+    /// same taskId overwrites. Pins that the map has standard
+    /// dictionary semantics so call sites can rely on a single
+    /// register-step when there's no chained-task swap.
+    func testTaskIdentifierToBook_setBeforeRemove_intentionalOverwrite() async {
+        let bookA = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let bookB = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let taskId = 17
+
+        await stateManager.taskIdentifierToBook.set(taskId, value: bookA)
+        // No remove call — directly overwrite.
+        await stateManager.taskIdentifierToBook.set(taskId, value: bookB)
+
+        let result = await stateManager.taskIdentifierToBook.get(taskId)
+        XCTAssertEqual(result?.identifier, bookB.identifier,
+                       "set() must overwrite the prior value at the same key")
+
+        let count = await stateManager.taskIdentifierToBook.count()
+        XCTAssertEqual(count, 1,
+                       "Overwrite must NOT create a duplicate entry; count stays 1")
+    }
+
+    /// `cleanupDownload(taskIdentifier:)` removes the OLD taskIdentifier
+    /// entry. Pin that the post-cleanup state cannot return the old
+    /// book from any taskIdentifier — the cleanup is the contract.
+    func testCleanupDownload_removesOldTaskIdEntry() async {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let oldTaskId = 100
+
+        await stateManager.taskIdentifierToBook.set(oldTaskId, value: book)
+        await stateManager.bookIdentifierToDownloadInfo.set(book.identifier,
+            value: MyBooksDownloadInfo(
+                downloadProgress: 0.5,
+                downloadTask: URLSession.shared.downloadTask(with: URL(string: "https://example.com")!),
+                rightsManagement: .none))
+
+        await stateManager.cleanupDownload(for: book.identifier, taskIdentifier: oldTaskId)
+
+        let oldEntry = await stateManager.taskIdentifierToBook.get(oldTaskId)
+        XCTAssertNil(oldEntry,
+                     "cleanupDownload must remove the OLD taskIdentifier so a recycled ID can't resolve to a stale book")
+    }
+
     // MARK: - Concurrent Access Safety
 
     func testConcurrentAccess_doesNotCrash() async {

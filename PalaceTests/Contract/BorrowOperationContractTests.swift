@@ -201,17 +201,19 @@ final class BorrowOperationContractTests: XCTestCase {
 
     // MARK: - SQ-007 idempotency contract
 
-    /// SQ-007: if the book is already in the registry with a loan-class
-    /// state (`.downloadNeeded` / `.downloadSuccessful` / etc.) AND
-    /// `hasCredentials` is true, an `invalidCredentials` error from a
-    /// stale auto-re-borrow MUST be suppressed — the operation falls
-    /// through to the alert path WITHOUT triggering re-auth.
+    /// SQ-007 (item #8 fix): if the book is already in the registry
+    /// with a loan-class state (`.downloadNeeded` / `.downloadSuccessful` /
+    /// etc.) AND `hasCredentials` is true, an `invalidCredentials`
+    /// error from a stale auto-re-borrow MUST be suppressed — the
+    /// operation MUST NOT trigger re-auth AND MUST NOT surface a
+    /// borrow-error alert (post-fix). The pre-fix snapshot included
+    /// `presentBorrowErrorAlert`; the post-fix snapshot DOES NOT.
     ///
     /// We mark the registry state to `.downloadNeeded` pre-call, then
     /// fail the fetch with invalidCredentials. The contract pinned:
     ///   - fetchBook called once (the borrow attempt)
     ///   - NO presentSignInModal / NO attemptOIDCReauth
-    ///   - presentBorrowErrorAlert called (showBorrowError after fall-through)
+    ///   - NO presentBorrowErrorAlert (item #8 fix — was the bug)
     func test_borrowAsync_alreadyBorrowed_isIdempotent_perSQ007() async {
         let book = Self.makeBook(identifier: "SQ007-BOOK", availability: .unlimited)
         // Seed registry to "already has loan" state.
@@ -233,8 +235,48 @@ final class BorrowOperationContractTests: XCTestCase {
         } catch {
             // expected
         }
-        await waitForLog(containing: "presentBorrowErrorAlert")
+        // Wait one settle cycle so any stray alert dispatch would land.
+        await yieldSettle()
         ContractSnapshot.assert(log, named: "alreadyBorrowed_isIdempotent_perSQ007")
+    }
+
+    // MARK: - Item #7 contract — 401 no-problem-doc routes to re-auth
+
+    /// Item #7 fix: a `PalaceError.network(.unauthorized)` thrown by
+    /// `fetchBook` with no problem document AND no credentials
+    /// (forcing the `needsAuth` arm via a synthetic basic-auth
+    /// authDefinition) MUST present the sign-in modal — not fall
+    /// through to a generic alert. The snapshot pins the post-fix
+    /// call shape: fetchBook → presentSignInModal, no
+    /// presentBorrowErrorAlert.
+    func test_borrowAsync_401NoProblemDoc_routesToSignInModal() async {
+        let book = Self.makeBook(identifier: "ITEM7-BOOK", availability: .unlimited)
+        userAccount._credentials = nil
+        // Authentication-doc JSON for basic auth — minimal but sufficient
+        // for `needsAuth == true`.
+        let authJSON = """
+        {
+          "type": "http://opds-spec.org/auth/basic",
+          "description": "Basic auth"
+        }
+        """
+        let docAuth = try! JSONDecoder().decode(
+            OPDS2AuthenticationDocument.Authentication.self,
+            from: Data(authJSON.utf8)
+        )
+        userAccount._authDefinition = AccountDetails.Authentication(auth: docAuth)
+
+        fetchBookResult = .failure(PalaceError.network(.unauthorized))
+
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("401 borrow must rethrow")
+        } catch {
+            // expected
+        }
+
+        await waitForLog(containing: "presentSignInModal")
+        ContractSnapshot.assert(log, named: "401NoProblemDoc_routesToSignInModal")
     }
 
     // MARK: - Helpers
