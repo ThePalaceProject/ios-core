@@ -7,49 +7,61 @@ base_sha: 52e99443f
 forgeos_project: proj_87884c17
 companion_adr: docs/architecture/audiobook-systemic-overhaul.md
 predecessor_swarms: [swarm_5c8ddbd5, swarm_f4fbef9c]
+triage_transcript: .forgeos/swarms/swarm_03acb10a/transcripts/triage.md
 
 modules:
   - name: A-AppContainerWiring
     files_scope:
-      - "Palace/AppInfrastructure/AppContainer.swift (modified — add audiobookSession per-account factory + playbackBootstrapper factory)"
-      - "PalaceTests/AppInfrastructure/AppContainerAudiobookFactoryTests.swift (new)"
+      - "Palace/AppInfrastructure/AppContainer.swift (modified — add audiobookSession and playbackBootstrapper static-cached factories; NOT per-account caching, single shared instance per AppContainer pattern; ≤60 LOC)"
+      - "PalaceTests/AppInfrastructure/AppContainerAudiobookFactoryTests.swift (new — 3 tests: caching + bootstrapper-resolves-via-container)"
     contract_path: .forgeos/swarms/swarm_03acb10a/contracts/A-AppContainerWiring.md
     blocks: [B-SingletonElimination, D-TestCleanup]
     depends_on: []
 
   - name: B-SingletonElimination
     files_scope:
-      - "Palace/Audiobooks/AudiobookSessionManager.swift (modified — remove `static let shared`; constructor accepts dependencies)"
-      - "Palace/Audiobooks/PlaybackBootstrapper.swift (modified — remove `static let shared`)"
-      - "Palace/AppInfrastructure/TPPAppDelegate.swift (one-line edit at line 55 — use AppContainer.production().playbackBootstrapper)"
-      - "Palace/CarPlay/CarPlaySceneDelegate.swift (one-line edit at line 43 — use AppContainer.production().playbackBootstrapper)"
-      - "Palace/Book/UI/BookDetail/BookService.swift (one-line edit at line 75 — use AppContainer.production().audiobookSession)"
-      - "PalaceTests/Audiobook/AudiobookSessionManagerTests.swift (architect verifies; replace shared-state setUp with injection)"
-      - "PalaceTests/Audiobook/PlaybackBootstrapperTests.swift (architect verifies)"
+      - "Palace/Audiobooks/AudiobookSessionManager.swift (modified — delete `static let shared` at line 87; delete parameterless `private convenience init()` at lines 197-206; the existing `convenience init(appContainer:)` at line 212 is the only construction path)"
+      - "Palace/Audiobooks/PlaybackBootstrapper.swift (modified — delete `static let shared` at line 56; delete parameterless `private convenience init()` at lines 90-95; drop default closure value on `audiobookSessionProvider` at line 103)"
+      - "Palace/AppInfrastructure/TPPAppDelegate.swift:55 (`PlaybackBootstrapper.shared.ensureInitialized()` → `AppContainer.production().playbackBootstrapper.ensureInitialized()`)"
+      - "Palace/CarPlay/CarPlaySceneDelegate.swift:43 (`PlaybackBootstrapper.shared.ensureInitializedForCarPlay()` → `AppContainer.production().playbackBootstrapper.ensureInitializedForCarPlay()`)"
+      - "Palace/Book/UI/BookDetail/BookService.swift:75 (`AudiobookSessionManager.shared.openAudiobook(...)` → `AppContainer.production().audiobookSession.openAudiobook(...)`)"
+      - "Palace/Accounts/Library/AccountsManager.swift:307 (doc comment only — `.shared` → `AppContainer.production().audiobookSession`)"
+      - "PalaceTests/Audiobooks/AudiobookSessionStateTests.swift (replace 10 `.shared` reads at lines 115, 130, 140, 150, 159, 170, 181, 197, 208, 221 with local instance)"
+      - "PalaceTests/Audiobooks/PlaybackBootstrapperTests.swift (replace 3 `.shared` reads at lines 30, 50, 65)"
+      - "PalaceTests/Audiobooks/AudiobookSessionManagerShutdownTests.swift (replace ~5 `.shared` reads, starting at line 54)"
+      - "PalaceTests/CarPlay/CarPlayTests.swift (replace `.shared` reads at line 36 + others — Module D cleans setUp body)"
     contract_path: .forgeos/swarms/swarm_03acb10a/contracts/B-SingletonElimination.md
     depends_on: [A-AppContainerWiring]
 
   - name: C-AsyncAfterSweep
     files_scope:
-      - "Palace/Audiobooks/NowPlayingCoordinator.swift (line 280 — DispatchQueue.main.asyncAfter → Task.sleep(for:) inside a Task on @MainActor)"
-      - "Palace/Audiobooks/Tracker/AudiobookDataManager.swift (UIApplication.beginBackgroundTask + syncQueue → Task.detached(priority:) + @MainActor; architect to verify the exact carve-out)"
-      - "PalaceTests/Audiobook/NowPlayingCoordinatorTests.swift (if exists — architect verifies)"
-      - "PalaceTests/Audiobook/AudiobookDataManagerSyncTests.swift (if exists — adapt syncQueue.sync drain pattern to async pattern)"
+      - "Palace/Audiobooks/NowPlayingCoordinator.swift (single file; field type change `DispatchWorkItem?` → `Task<Void, Never>?` at line 53; schedule rewrite at lines 270-281 to use `Task { try await Task.sleep(for: .seconds(delay)) }`)"
     contract_path: .forgeos/swarms/swarm_03acb10a/contracts/C-AsyncAfterSweep.md
     depends_on: []  # independent of A and B; can dispatch in parallel
+    dropped_scope:
+      - "Palace/Audiobooks/Tracker/AudiobookDataManager.swift — architect D5: syncQueue.async(flags: .barrier) is a deliberate prior fix replacing DispatchQueue.main.asyncAfter; migrating it back to Task.detached would reverse a flakiness-elimination fix. The `UIApplication.beginBackgroundTask` migration is independent and not high-value enough to risk in this swarm."
+      - "Palace/Audiobooks/AudiobookLoader.swift — Swarm 1 (PR #979) already restructured to adapter dispatch; zero residual callback-pyramid surface."
+      - "PalaceTests/Audiobook/AudiobookDataManagerSyncTests.swift — unchanged; the 4 `dataManager.syncQueue.sync {}` drain points stay."
 
   - name: D-TestCleanup
     files_scope:
-      - "PalaceTests/Audiobook/* (architect inventories `setUp resets shared mock` instances)"
-      - "PalaceTests/SignInLogic/* (architect inventories — SAML test flake-timeout bumps)"
-      - "(architect determines exact file list during triage)"
+      - "PalaceTests/Audiobook/AudiobookReliabilityTests.swift (DELETE `AudiobookSessionManagerTests` class at lines 17-105 — ~90 LOC of dead-API tests referencing removed methods: clearAllState, registerActiveDownload, activeDownloads(forBookID:), updateDownloadProgress, downloadInfo(forSessionIdentifier:), registerBackgroundCompletionHandler, callCompletionHandler. Other classes in the file STAY.)"
+      - "PalaceTests/CarPlay/CarPlayTests.swift (remove `clearAllState()` calls in setUp/tearDown at lines 23, 28; delete empty overrides)"
+      - "PalaceTests/Audiobooks/AudiobookSessionStateTests.swift (remove redundant `stopPlayback` reset in setUp body)"
+      - "PalaceTests/Audiobooks/PlaybackBootstrapperTests.swift (same — remove redundant reset)"
+      - "PalaceTests/Audiobooks/AudiobookSessionManagerShutdownTests.swift (verify Module B's migration; remove orphan reset boilerplate)"
     contract_path: .forgeos/swarms/swarm_03acb10a/contracts/D-TestCleanup.md
+    expected_loc_delta: "−110 to −130 (net negative)"
     depends_on: [A-AppContainerWiring, B-SingletonElimination, C-AsyncAfterSweep]
 
 dont_touch:
   - Palace/Audiobooks/Vendors/  # Swarm 1 PR #979
-  - Palace/Audiobooks/AudiobookLoader.swift  # Swarm 1 territory; architect may authorize residual edits but default is hands-off
+  - Palace/Audiobooks/AudiobookLoader.swift  # Swarm 1 — architect triage confirms zero residual pyramid; ZERO edits this swarm
+  - Palace/Audiobooks/Tracker/AudiobookDataManager.swift  # architect D5 — syncQueue is a deliberate prior fix, do not migrate
   - Palace/Audiobooks/LCP/LCPAudiobooks.swift  # Swarm 1
+  - PalaceTests/Mocks/TPPUserAccountMock.swift  # MockIsolationLintTests enforces resetShared() — do not weaken
+  - PalaceTests/MetaTests/MockIsolationLintTests.swift  # the resetShared() enforcer
+  - "TPPUserAccountMock.resetShared() instances across PalaceTests (~30 sites)"  # meta-test enforced
   - Palace/Reader2/Bookmarks/AudiobookBookmarkBusinessLogic.swift  # Swarm 2 PR #980
   - Palace/Reader2/Bookmarks/AudiobookPositionAdapter.swift  # Swarm 2
   - Palace/Reader2/BusinessLogic/TPPLastReadPositionPoster.swift  # Swarm 2
