@@ -804,10 +804,30 @@ import PalaceCatalog
             let activeInfos = await self.stateManager.bookIdentifierToDownloadInfo.values()
             guard !activePairs.isEmpty else { return }
 
-            // Cancel pending tasks first so iOS stops trying to drive them.
+            // Filter to books that are *genuinely* in flight. `taskIdentifierToBook`
+            // can retain stale entries from previously-completed downloads (the
+            // success path doesn't always clear it), and without this guard
+            // airplane-mode flips already-downloaded books to .downloadFailed —
+            // the regression of PP-4114 reported on iPad. Only states that
+            // represent an in-progress URLSession task warrant the failure
+            // transition; everything else (e.g. .downloadSuccessful, .used)
+            // must be left alone.
+            let registry = self.bookRegistry
+            let booksToFail: [TPPBook] = await MainActor.run {
+                activePairs.compactMap { (_, book) -> TPPBook? in
+                    let state = registry.state(for: book.identifier)
+                    return (state == .downloading || state == .SAMLStarted) ? book : nil
+                }
+            }
+
+            // Cancel pending URLSession tasks first so iOS stops trying to
+            // drive them. Safe to cancel all active infos here — cancel is a
+            // no-op for tasks the system has already finished.
             for info in activeInfos {
                 info.downloadTask.cancel()
             }
+
+            guard !booksToFail.isEmpty else { return }
 
             // Surface the alert + state transition for each book.
             let message = NSLocalizedString(
@@ -816,7 +836,7 @@ import PalaceCatalog
             )
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                for (_, book) in activePairs {
+                for book in booksToFail {
                     self.failDownloadWithAlert(for: book, withMessage: message)
                 }
             }
@@ -1223,8 +1243,12 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
 
         broadcastUpdate()
 
-        // CRITICAL: Remove from bookIdentifierToDownloadInfo so retry works
+        // CRITICAL: Remove from bookIdentifierToDownloadInfo so retry works.
+        // Also remove the taskIdentifierToBook entry so the airplane-mode
+        // handler doesn't later misread the completed task as in-flight and
+        // flip the (now-downloaded) book to .downloadFailed.
         await bookIdentifierToDownloadInfo.remove(book.identifier)
+        await taskIdentifierToBook.remove(task.taskIdentifier)
         await downloadCoordinator.removeCachedDownloadInfo(for: book.identifier)
         await downloadCoordinator.registerCompletion(identifier: book.identifier)
         let remainingCount = await downloadCoordinator.activeCount

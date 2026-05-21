@@ -99,8 +99,17 @@ final class DownloadAlertPresenter {
                 category: .download
             )
             guard let self else { return }
-            // CRITICAL: Remove from bookIdentifierToDownloadInfo so retry works
+            // CRITICAL: Remove from bookIdentifierToDownloadInfo so retry
+            // works. Also sweep any matching taskIdentifierToBook entries so
+            // a later airplane-mode toggle can't misread a no-longer-active
+            // task as in-flight and flip the book to .downloadFailed again
+            // (the regression of PP-4114 — same root cause as the
+            // success-path leak).
             await self.stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
+            let stalePairs = await self.stateManager.taskIdentifierToBook.allPairs()
+            for (taskId, mappedBook) in stalePairs where mappedBook.identifier == book.identifier {
+                await self.stateManager.taskIdentifierToBook.remove(taskId)
+            }
             await self.stateManager.downloadCoordinator.removeCachedDownloadInfo(for: book.identifier)
             await self.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
             let remainingCount = await self.stateManager.downloadCoordinator.activeCount
