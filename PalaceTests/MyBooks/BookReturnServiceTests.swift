@@ -111,13 +111,15 @@ final class BookReturnServiceTests: XCTestCase {
     /// Wait for the service's async Tasks (OPDS fetch + cleanup hops) to
     /// drain. The service uses Task { } extensively — assertions need to
     /// run after those finish.
-    private func waitForCompletion(timeout: TimeInterval = 1.0, _ predicate: @escaping () -> Bool) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if predicate() { return }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
-        }
+    /// Wraps the shared `awaitConditionAsync` helper. `file`/`line`
+    /// forwarded so timeout XCTFail blames the call site.
+    private func waitForCompletion(
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line,
+        _ predicate: @escaping () -> Bool
+    ) async {
+        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
     }
 
     // MARK: - Branch 1: book not in registry
