@@ -202,6 +202,88 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                        "Audiobook books mark .downloadSuccessful immediately so streaming works")
     }
 
+    // MARK: - LCP audiobook phase-2 download failure must not downgrade
+
+    /// Regression of PP-4114-adjacent iPad bug.
+    ///
+    /// LCP audiobooks have a two-phase download: the .lcpl license file
+    /// completes first and the book is immediately marked `.downloadSuccessful`
+    /// (playable via streaming). The LCP toolkit then runs a SECONDARY
+    /// background download for the .lcpa content file from googleapis.com
+    /// so offline playback also works.
+    ///
+    /// If that secondary download fails — for example, the user toggles
+    /// airplane mode mid-fetch — `lcpCompletion` was previously firing
+    /// `failDownloadWithAlert`, which flipped the audiobook from
+    /// `.downloadSuccessful` back to `.downloadFailed`. The user reported
+    /// this on iPad: previously-downloaded audiobooks lost the Read/Listen
+    /// affordance and showed "The download could not be completed." the
+    /// moment they went offline.
+    ///
+    /// Fix: when the book is an audiobook AND already at
+    /// `.downloadSuccessful` (license is in place, streaming is viable),
+    /// the secondary-fetch error is logged but does NOT publish a failure
+    /// alert or mutate the registry state. Offline playback isn't
+    /// available until they retry, but the book stays readable.
+    func testFulfill_audiobook_secondaryDownloadError_doesNotFlipStreamingReadyBook() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let sourceURL = try writeSourceFile(ext: "lcpa")
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
+
+        // Mirror production: the audiobook path's synchronous
+        // markDownloadSuccessful runs immediately. We assert the spy saw
+        // it (sanity), then stage the registry state production would be
+        // in when the phase-2 error fires.
+        XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier],
+                       "precondition: audiobook is marked .downloadSuccessful at license-fulfilled time")
+        registry.addBook(audiobook, state: .downloadSuccessful)
+
+        // Fire the secondary-fetch failure (airplane mode in production).
+        let completion = try XCTUnwrap(lcpService.lastCompletion)
+        let networkLost = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorNetworkConnectionLost,
+            userInfo: [NSLocalizedDescriptionKey: "The network connection was lost."]
+        )
+        completion(nil, networkLost)
+
+        // Give the async error handler time to run; without the guard it
+        // calls failDownloadWithAlert synchronously off the completion.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        await Task.yield()
+
+        XCTAssertEqual(registry.state(for: audiobook.identifier), .downloadSuccessful,
+                       "LCP audiobook with streaming-ready license must NOT flip to .downloadFailed when the phase-2 content download fails")
+        XCTAssertTrue(capturedErrors.isEmpty,
+                      "No user-facing 'Fulfilment Error' alert should publish for an audiobook that's still streaming-playable")
+    }
+
+    /// Sibling check: a non-audiobook (e.g. LCP EPUB) does NOT get the
+    /// pass — its content file is essential, and a phase-2 failure means
+    /// the book can't be opened. The existing alert path must remain.
+    func testFulfill_epub_secondaryDownloadError_stillSurfacesAlert() async throws {
+        let book = TPPBookMocker.mockBook(distributorType: .ReadiumLCP)
+        let sourceURL = try writeSourceFile()
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: book, downloadTask: downloadTask)
+        // Even if an EPUB were somehow at .downloadSuccessful (it isn't
+        // until the secondary completes), the alert must still fire — the
+        // user can't read it without the content file.
+        registry.addBook(book, state: .downloadSuccessful)
+
+        let completion = try XCTUnwrap(lcpService.lastCompletion)
+        completion(nil, NSError(domain: NSURLErrorDomain,
+                                code: NSURLErrorNetworkConnectionLost,
+                                userInfo: [NSLocalizedDescriptionKey: "lost"]))
+        await waitForPublishedError()
+
+        XCTAssertFalse(capturedErrors.isEmpty,
+                       "EPUB/PDF LCP books still need the alert — no content file = no read")
+    }
+
     // MARK: - Fulfillment task tracking
 
     func testFulfill_storesReturnedDownloadTaskInStateManager() async throws {
