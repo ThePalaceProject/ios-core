@@ -52,17 +52,16 @@ FLUFF_PATTERNS = [
 # Files exempt from TIMEOUT-001. Each entry needs a written reason so a
 # future reader understands WHY this file is allowlisted instead of
 # silently filtering it out.
+#
+# Keep this list small. Prefer fixing the rule's heuristic (below) to
+# catch a loud-via-X pattern over hardcoding an allowlist entry.
+# CatalogDomain helpers used to live here — removed once the
+# `is_loud_via_xctfail` heuristic was confirmed to catch them.
 SILENT_TIMEOUT_ALLOWLIST = {
     "PalaceTests/XCTestCase+drainMainQueue.swift":
         "Canonical implementation — `awaitConditionAsync` is the helper this rule recommends.",
     "PalaceTests/Logging/LogTests.swift":
         "pollForLog returns the polled value; caller asserts on its contents — informative downstream failure.",
-    "PalaceTests/Accounts/AccountsManagerStateMachineWiringTests.swift":
-        "Inline polling is wrapped in DispatchQueue.async + XCTestExpectation; outer wait(for:) fires loudly on timeout.",
-    "PalaceTests/CatalogDomain/CatalogCacheKeyAndIsolationTests.swift":
-        "Helper already calls XCTFail on timeout (file/line forwarded).",
-    "PalaceTests/CatalogDomain/CatalogRepositoryStaleWhileRevalidateTests.swift":
-        "Helper already calls XCTFail on timeout (file/line forwarded).",
 }
 
 def lint_silent_timeout(content: str, filepath: str) -> List["Violation"]:
@@ -85,10 +84,19 @@ def lint_silent_timeout(content: str, filepath: str) -> List["Violation"]:
         return []
 
     findings: List[Violation] = []
-    for m in re.finditer(r'while Date\(\) < deadline', content):
-        # Look at the surrounding 600 chars (typical helper body span)
-        # for indicators of "this helper is actually loud."
-        window_start = max(0, m.start() - 50)
+    # Use a multi-line regex anchored to line start (with optional
+    # leading whitespace) to skip the same pattern appearing inside
+    # `///` doc comments that describe the anti-pattern. Skipping doc-
+    # comments via a separate strip pass risks shifting line numbers in
+    # the reported violation — anchoring is simpler.
+    for m in re.finditer(r'^\s*while Date\(\) < deadline', content, re.MULTILINE):
+        # Look at the surrounding window for indicators of "this helper
+        # is actually loud." The pre-window (~300 chars before the
+        # match) catches the function signature + any `expectation`
+        # declarations that precede the while loop; the post-window
+        # (~600 chars after) catches XCTFail/return-condition at the
+        # end of the helper body.
+        window_start = max(0, m.start() - 300)
         window_end = min(len(content), m.end() + 600)
         window = content[window_start:window_end]
 
