@@ -165,12 +165,12 @@ final class DownloadStartCoordinatorContractTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func waitForLog(containing method: String, timeout: TimeInterval = 1.5) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if log.snapshot().contains(where: { $0.method == method }) { return }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
+    /// Wraps the shared `awaitConditionAsync` helper. The prior local
+    /// copy silently swallowed timeouts — see
+    /// PalaceTests/XCTestCase+drainMainQueue.swift for rationale.
+    private func waitForLog(containing method: String, timeout: TimeInterval = 10.0) async {
+        await awaitConditionAsync(timeout: timeout) { [log] in
+            log?.snapshot().contains(where: { $0.method == method }) ?? false
         }
     }
 

@@ -86,13 +86,11 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
         return try XCTUnwrap(TPPProblemDocument.fromProblemResponseData(data))
     }
 
-    private func waitForAsync(timeout: TimeInterval = 1.0, _ predicate: @escaping () -> Bool) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if predicate() { return }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
-        }
+    /// Thin wrapper around the shared `awaitConditionAsync` helper.
+    /// See PalaceTests/XCTestCase+drainMainQueue.swift for rationale —
+    /// the prior local copy silently swallowed timeouts under CI load.
+    private func waitForAsync(timeout: TimeInterval = 10.0, _ predicate: @escaping () -> Bool) async {
+        await awaitConditionAsync(timeout: timeout, predicate)
     }
 
     // MARK: - handleLoginCancellation
