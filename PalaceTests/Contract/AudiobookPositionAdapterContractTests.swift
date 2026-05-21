@@ -35,6 +35,7 @@
 import XCTest
 import Combine
 import UIKit
+import PalaceCatalog
 @testable import Palace
 @testable import PalaceAudiobookToolkit
 import PalaceReadingPosition
@@ -368,7 +369,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
         // Build a "fresh local" bookmark with a timestamp 1 hour in the
         // future — well outside the 1.0s grace window that the SUT's
         // `String.isDate(_:moreRecentThan:with:1.0)` check uses.
-        let freshTimestamp = Date().addingTimeInterval(3600).iso8601
+        let freshTimestamp = ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600))
         let fresh = AudioBookmark(
             type: .locatorAudioBookTime,
             version: 1,

@@ -1,0 +1,21 @@
+[
+  {
+    "args" : {
+      "drmDeviceID" : "device-SAME"
+    },
+    "method" : "synchronizer.sync.begin"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-reader2-1",
+      "returnsNil" : "false"
+    },
+    "method" : "writer.load"
+  },
+  {
+    "args" : {
+      "postState.localUnchanged" : "true"
+    },
+    "method" : "synchronizer.sync.end"
+  }
+]

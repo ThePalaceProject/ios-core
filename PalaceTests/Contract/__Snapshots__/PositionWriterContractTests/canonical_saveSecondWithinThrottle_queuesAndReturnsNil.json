@@ -1,0 +1,18 @@
+[
+  {
+    "args" : {
+      "bookID" : "contract-book-1",
+      "format" : "epubLocator",
+      "payloadByteCount" : "8",
+      "returns" : "server-A"
+    },
+    "method" : "network.post"
+  },
+  {
+    "args" : {
+      "call" : "second",
+      "result" : "nil"
+    },
+    "method" : "writer.save.return"
+  }
+]

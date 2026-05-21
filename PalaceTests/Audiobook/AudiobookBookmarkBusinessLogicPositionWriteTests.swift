@@ -11,6 +11,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 @testable import PalaceAudiobookToolkit
 import PalaceReadingPosition
@@ -34,6 +35,12 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
     private var _saveResult: SaveOutcome = .success("spy-server-id")
     private var _loadResult: PositionSnapshot? = nil
     private var _cancelledBookIDs: [String] = []
+    private var _onSave: (() -> Void)?
+
+    func setOnSave(_ hook: @escaping () -> Void) {
+        lock.lock(); defer { lock.unlock() }
+        _onSave = hook
+    }
 
     var savedSnapshots: [PositionSnapshot] {
         lock.lock(); defer { lock.unlock() }
@@ -60,7 +67,10 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
         lock.lock()
         _savedSnapshots.append(snapshot)
         let result = _saveResult
+        let hook = _onSave
         lock.unlock()
+
+        hook?()  // race-window injection: tests can mutate registry between SUT's local-save and post-save guard
 
         switch result {
         case .success(let id):
@@ -294,7 +304,19 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
             XCTFail("Failed to build later-track TPPBookLocation")
             return
         }
-        mockRegistry.setLocation(laterLocation, forIdentifier: bookIdentifier)
+        // NOTE on test scaffolding: the SUT's `saveListeningPosition` always
+        // runs `registry.setLocation(localBookmark)` synchronously BEFORE the
+        // async writer hop (the swarm_f3b9b087 P0 #4 "user safety net"
+        // invariant). To exercise the isAtBeginning guard scenario, we need
+        // the registry to read back the later-track bookmark when the
+        // POST-SAVE guard runs — not the beginning bookmark the SUT just
+        // wrote. We use the spy's onSave hook to restore the later-track
+        // location mid-flight, simulating a parallel write (e.g. the user
+        // skipping ahead while the upload is in-flight).
+        spyWriter.setOnSave { [weak self] in
+            guard let self else { return }
+            self.mockRegistry.setLocation(laterLocation, forIdentifier: self.bookIdentifier)
+        }
 
         // Configure writer to "succeed" so we exercise the guard branch
         // that runs AFTER the writer returns.
@@ -341,7 +363,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         // that by more than the 1.0-second grace window. We add a full
         // hour to today's date — well outside any grace window.
         let freshLocalDate = Date().addingTimeInterval(3600)  // +1 hour
-        let freshLocalTimestamp = freshLocalDate.iso8601
+        let freshLocalTimestamp = ISO8601DateFormatter().string(from: freshLocalDate)
         // Arrange: pre-seed a "freshly-updated" local position that the
         // post-save guard will compare against.
         let freshLocal = AudioBookmark(
