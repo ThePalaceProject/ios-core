@@ -167,8 +167,13 @@ modules:
 
 forgeos:
   project_id: proj_87884c17
-  changeset_id: null  # populated by integrator after Phase 2 — `forgeos propose_changeset`
+  initiative_id: init_a04c4a2c
+  changeset_id: cs_34dc66ba
+  risk_score: 30
+  preset: startup
   gates_required:
-    - architect_review  # this triage
-    - qa_test_review    # after integration
-    - release_check     # final
+    - review            # architect (Phase 5 forge-review)
+    - release           # release/test_result (Phase 6)
+  pending_prs_included:
+    - { number: 978, branch: fix/PP-4421-signin-placeholder-contrast, files: [Palace/Settings/AccountDetailView.swift] }
+    - { number: 975, branch: fix/account-state-machine-warm-path-driver, files: [Palace/Accounts/Library/AccountsManager.swift] }
