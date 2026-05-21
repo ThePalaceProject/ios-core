@@ -9,6 +9,7 @@
 import Foundation
 import Combine
 import PalaceLogging
+import PalaceReadingPosition
 
 /// PDF Document metadata
 ///
@@ -17,6 +18,8 @@ import PalaceLogging
     private let rendererString = "TPPPDFReader"
     let book: TPPBook
     private let bookRegistry: TPPBookRegistryProvider
+    private let positionWriter: PositionWriter
+    private let deviceID: String
     var bookIdentifier: String { book.identifier }
 
     /// Page numbers for boomarks.
@@ -60,9 +63,13 @@ import PalaceLogging
     ///
     /// This function gets data from `TPPBookRegistry`,
     /// `bookIdentifier` must be present in the registry, otherwise the app crashes..
-    init(with book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
+    init(with book: TPPBook,
+         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
+         positionWriter: PositionWriter? = nil) {
         self.book = book
         self.bookRegistry = bookRegistry
+        self.positionWriter = positionWriter ?? EPUBPositionWriterFactory.make(for: book)
+        self.deviceID = AnnotationDevice.currentID()
         currentPage = bookRegistry.location(forIdentifier: book.identifier)?.pageNumber ?? 0
         bookRegistry.setState(.used, for: book.identifier)
         super.init()
@@ -92,7 +99,16 @@ import PalaceLogging
         }
         bookRegistry.setLocation(location, forIdentifier: self.bookIdentifier)
         if canSync {
-            TPPAnnotations.postReadingPosition(forBook: bookIdentifier, selectorValue: bookmarkSelector, motivation: .readingProgress)
+            let snapshot = PositionSnapshot(
+                bookID: bookIdentifier,
+                format: .pdfPage,
+                payload: Data(bookmarkSelector.utf8),
+                timestamp: Date(),
+                device: deviceID
+            )
+            Task { [positionWriter] in
+                _ = try? await positionWriter.save(snapshot)
+            }
         }
     }
 
