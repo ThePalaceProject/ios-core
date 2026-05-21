@@ -82,7 +82,15 @@ import PalaceLogging
                         return
                     }
 
-                    let isAtBeginning = (sentTrackIndex == 0 && sentPlaybackTime < 30.0)
+                    // Decision delegated to BeginningPositionPolicy. Was previously
+                    // `sentTrackIndex == 0 && sentPlaybackTime < 30.0` — the 30s grace
+                    // discarded real 0:25-of-chapter-1 pauses. Strict zero is correct:
+                    // the upstream timestamp-newer race check (lines 76–82) already
+                    // handles "newer-wins" semantics. See AudiobookPositionPolicy.swift.
+                    let isAtBeginning = BeginningPositionPolicy.isAtBeginning(
+                        trackIndex: sentTrackIndex,
+                        playbackTime: sentPlaybackTime
+                    )
                     if isAtBeginning {
                         if let currentChapter = currentBookmark.chapter,
                            let currentTrackIndex = Int(currentChapter.split(separator: "-").last ?? ""),
