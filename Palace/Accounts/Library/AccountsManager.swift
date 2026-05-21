@@ -242,6 +242,17 @@ struct CatalogCacheMetadata: Codable {
                 )
             }
 
+            // Account state-machine wiring (3.2.0): drive the NEW
+            // currentAccount past `.basicInfoLoaded` after the switch.
+            // Sibling of the `loadCatalogs` warm-path driver (PR #975) —
+            // same disease class, different trigger. Without this, every
+            // `awaitReady()` caller (audiobook open, token refresh,
+            // bookmark sync, CarPlay auth) hangs forever the first time
+            // the user opens content on the newly-selected library.
+            // Single-flight guard inside `fetchAuthDocumentWithStateMachine`
+            // dedupes against any concurrent fetch from refresh-in-background.
+            driveCurrentAccountAuthDocIfNeeded()
+
             TPPErrorLogger.setUserID(self.currentUserAccount.barcode)
             // isAccountSwitching is reset asynchronously by cleanupActiveContentBeforeAccountSwitch
             // after navigation cleanup completes — NOT here, to avoid premature reset (F-032).
