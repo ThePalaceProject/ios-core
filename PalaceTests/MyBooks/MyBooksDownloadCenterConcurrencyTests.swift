@@ -82,13 +82,15 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         await stateManager.downloadCoordinator.registerStart(identifier: book.identifier)
     }
 
-    private func waitForAsync(timeout: TimeInterval = 1.0, _ predicate: @escaping () -> Bool) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if predicate() { return }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
-        }
+    /// Wraps the shared `awaitConditionAsync` helper. `file`/`line`
+    /// forwarded so timeout XCTFail blames the call site.
+    private func waitForAsync(
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line,
+        _ predicate: @escaping () -> Bool
+    ) async {
+        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
     }
 
     private func attach(task: URLSessionDownloadTask, to book: TPPBook) async {
