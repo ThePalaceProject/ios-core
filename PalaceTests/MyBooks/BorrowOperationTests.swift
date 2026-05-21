@@ -187,6 +187,270 @@ final class BorrowOperationTests: XCTestCase {
         XCTAssertEqual(alertCalls.last?.book.identifier, book.identifier)
     }
 
+    // MARK: - Item #7 — 401 without problem document routes to re-auth
+
+    /// Item #7 fix: when a 401 surfaces as `PalaceError.network(.unauthorized)`
+    /// (e.g. an OPDS path that stripped the problem doc + we have no
+    /// originalError NSError code to lean on), `handleBorrowAuthErrorIfNeeded`
+    /// MUST treat it as auth error and present the sign-in modal — not fall
+    /// through to a generic alert. Closes the 35k+ "Network request failed
+    /// (912)" non-fatal regression.
+    func testBorrow_401NetworkUnauthorizedNoProblemDoc_presentsSignInModal() async {
+        // Account has no credentials BUT needsAuth — exercises the
+        // sign-in-modal arm (vs the OIDC/SAML browser-reauth arm which
+        // requires a constructed authDefinition test helpers can't build).
+        userAccount._credentials = nil
+        userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
+
+        // Throw the PalaceError directly so we route through the first
+        // catch block (the "no originalError NSError" path).
+        fetchBookResult = .failure(PalaceError.network(.unauthorized))
+
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("401 borrow must rethrow")
+        } catch {
+            // expected
+        }
+
+        // Let the @MainActor.run hop for presentSignInModal settle.
+        for _ in 0..<5 {
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            await Task.yield()
+        }
+
+        XCTAssertEqual(signInModalCompletions.count, 1,
+                       "401-no-problem-doc must present the sign-in modal (item #7)")
+        XCTAssertEqual(alertCalls.count, 0,
+                       "Item #7 fix: re-auth path must NOT also surface a borrow-error alert")
+    }
+
+    /// Boundary: a 403 (forbidden) is also covered by the auth-error
+    /// predicate broadening so the same 401-no-problem-doc plumbing
+    /// can absorb a 403 mid-session.
+    func testBorrow_403NetworkForbiddenNoProblemDoc_presentsSignInModal() async {
+        userAccount._credentials = nil
+        userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
+
+        fetchBookResult = .failure(PalaceError.network(.forbidden))
+
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("403 borrow must rethrow")
+        } catch {
+            // expected
+        }
+
+        for _ in 0..<5 {
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            await Task.yield()
+        }
+
+        XCTAssertEqual(signInModalCompletions.count, 1,
+                       "403-no-problem-doc must present the sign-in modal (item #7)")
+    }
+
+    /// Negative case: a `PalaceError.network(.unknown)` is NOT an auth
+    /// error and MUST fall through to the generic borrow-error alert
+    /// (preserves the existing contract for non-auth network failures).
+    /// Locks the boundary so the item #7 predicate broadening doesn't
+    /// silently absorb every network error.
+    func testBorrow_NetworkUnknownError_fallsThroughToAlert() async {
+        fetchBookResult = .failure(PalaceError.network(.unknown))
+
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("Generic network error must rethrow")
+        } catch {
+            // expected
+        }
+
+        for _ in 0..<5 {
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            await Task.yield()
+        }
+
+        XCTAssertEqual(signInModalCompletions.count, 0,
+                       "Non-auth network errors must NOT trigger the sign-in modal")
+        XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
+                                    "Non-auth network errors must surface the borrow-error alert")
+    }
+
+    // MARK: - Item #8 — SQ-007 spinner cleanup via BorrowAuthErrorDecision
+
+    /// Item #8: SQ-007 fires when the book is already in the registry
+    /// with a loan-class state AND credentials are present. The
+    /// pre-fix behavior was to suppress re-auth but still call
+    /// `showBorrowError` (a misleading credentials toast). Post-fix:
+    /// `BorrowAuthErrorDecision.suppressAndClearSpinner` keeps the
+    /// alert suppressed AND idempotently re-clears the cell spinner.
+    func testBorrow_SQ007AlreadyHasLoanWithCredentials_doesNotShowAlert() async {
+        // Seed registry to "already has loan" state.
+        bookRegistry.addBook(book, location: nil, state: .downloadNeeded,
+                             fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        userAccount.setAuthState(.loggedIn)
+
+        // Use a problem-doc-typed invalidCredentials to drive isAuthError
+        // through the problemDoc branch (the canonical SQ-007 trigger).
+        let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
+        fetchBookResult = .failure(NSError(
+            domain: "test", code: 401,
+            userInfo: ["problemDocument": problemDoc as Any]
+        ))
+
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("SQ-007 path must still rethrow the error")
+        } catch {
+            // expected
+        }
+
+        for _ in 0..<5 {
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            await Task.yield()
+        }
+
+        XCTAssertEqual(alertCalls.count, 0,
+                       "SQ-007 suppression must NOT surface a borrow-error alert (item #8)")
+        XCTAssertEqual(signInModalCompletions.count, 0,
+                       "SQ-007 suppression must NOT trigger re-auth either")
+        XCTAssertFalse(bookRegistry.processing(forIdentifier: book.identifier),
+                       "SQ-007 suppression must idempotently clear setProcessing on the cell")
+    }
+
+    /// Boundary: same loan-present state but credentials are ABSENT —
+    /// SQ-007 doesn't apply, the path should proceed as a real auth
+    /// error and present the sign-in modal. Pins the predicate symmetry.
+    func testBorrow_AlreadyHasLoanWithoutCredentials_proceedsAsAuthError() async {
+        bookRegistry.addBook(book, location: nil, state: .downloadNeeded,
+                             fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        userAccount._credentials = nil
+        userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
+
+        let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
+        fetchBookResult = .failure(NSError(
+            domain: "test", code: 401,
+            userInfo: ["problemDocument": problemDoc as Any]
+        ))
+
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("Auth error must rethrow")
+        } catch {
+            // expected
+        }
+
+        for _ in 0..<5 {
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            await Task.yield()
+        }
+
+        XCTAssertEqual(signInModalCompletions.count, 1,
+                       "No-credentials + loan-state must STILL trigger sign-in modal (not SQ-007)")
+    }
+
+    /// Boundary: state `.unregistered` is NOT a loan-class state, so
+    /// SQ-007 must NOT fire. With basic auth + credentials present,
+    /// the predicate routes to "no automatic recovery" → generic alert.
+    /// Pins that .unregistered short-circuits SQ-007.
+    func testBorrow_StateUnregistered_isNotTreatedAsAlreadyHavingLoan() async {
+        // Don't seed registry — state stays .unregistered.
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        userAccount.setAuthState(.loggedIn)
+        userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
+
+        let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
+        fetchBookResult = .failure(NSError(
+            domain: "test", code: 401,
+            userInfo: ["problemDocument": problemDoc as Any]
+        ))
+
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("Auth error must rethrow")
+        } catch {
+            // expected
+        }
+
+        for _ in 0..<5 {
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            await Task.yield()
+        }
+
+        // basic auth + creds + .unregistered → not SQ-007 → not
+        // browser-reauth → no automatic recovery → generic alert.
+        XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
+                                    ".unregistered must NOT trigger SQ-007 suppression; alert proceeds")
+    }
+
+    /// Boundary: `.holding` IS a loan-class state — SQ-007 applies.
+    /// Pins the switch-case exhaustiveness in the predicate.
+    func testBorrow_StateHolding_isTreatedAsAlreadyHavingLoan() async {
+        bookRegistry.addBook(book, location: nil, state: .holding,
+                             fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        userAccount.setAuthState(.loggedIn)
+
+        let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
+        fetchBookResult = .failure(NSError(
+            domain: "test", code: 401,
+            userInfo: ["problemDocument": problemDoc as Any]
+        ))
+
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("Auth error must rethrow")
+        } catch {
+            // expected
+        }
+
+        for _ in 0..<5 {
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            await Task.yield()
+        }
+
+        XCTAssertEqual(alertCalls.count, 0,
+                       ".holding + credentials → SQ-007 fires → no alert")
+        XCTAssertFalse(bookRegistry.processing(forIdentifier: book.identifier),
+                       "SQ-007 path clears the spinner")
+    }
+
+    // MARK: - Helpers (items #7 / #8)
+
+    /// Synthesizes a minimal problem document with the given type.
+    private static func makeProblemDoc(type: String) -> TPPProblemDocument {
+        let dict: [String: Any] = ["type": type]
+        let data = try! JSONSerialization.data(withJSONObject: dict)
+        return TPPProblemDocument.fromProblemResponseData(data)!
+    }
+
+    /// Test fixture for the `needsAuth` predicate. The
+    /// `handleBorrowAuthErrorIfNeeded` predicate gates on
+    /// `authDef?.needsAuth ?? false` for the "no creds + needs auth →
+    /// sign-in-modal" arm. `.basic` qualifies; `.saml` / `.oidc` would
+    /// route through the browser-reauth arm which other tests cover.
+    private enum SyntheticAuthDef {
+        static var basicNeedsAuth: AccountDetails.Authentication {
+            // OPDS2 authentication-document JSON for basic auth. The
+            // memberwise init on the OPDS2 type is internal to
+            // PalaceCatalog; round-tripping through JSON is the
+            // supported construction path.
+            let json = """
+            {
+              "type": "http://opds-spec.org/auth/basic",
+              "description": "Basic auth",
+              "labels": {"login": "Barcode", "password": "PIN"}
+            }
+            """
+            let docAuth = try! JSONDecoder().decode(
+                OPDS2AuthenticationDocument.Authentication.self,
+                from: Data(json.utf8)
+            )
+            return AccountDetails.Authentication(auth: docAuth)
+        }
+    }
+
     // MARK: - Helpers
 
     private func makeBookWithReservedAvailability() -> TPPBook {
