@@ -241,7 +241,7 @@ final class TPPBookRegistryPersistenceTests: XCTestCase {
     /// inside setState — the registry must publish state transitions to
     /// downstream subscribers.
     func testBookStatePublisher_FiresOnDownloadingToDownloadedTransition() {
-        let registry = TPPBookRegistry(accountsManager: AccountsManager())
+        let registry = TPPBookRegistry(accountsManager: AccountsManager(), imageLoader: AppContainer.production().imageLoader)
         let book = TPPBookMocker.mockBook(identifier: "publisher-transition-\(UUID().uuidString)",
                                           title: "Transition Test",
                                           distributorType: .EpubZip)
@@ -267,7 +267,7 @@ final class TPPBookRegistryPersistenceTests: XCTestCase {
     /// updateBook with the same book must NOT spuriously emit a state event
     /// when its state doesn't change.
     func testBookStatePublisher_DoesNotFireOnNoOpUpdateBook() {
-        let registry = TPPBookRegistry(accountsManager: AccountsManager())
+        let registry = TPPBookRegistry(accountsManager: AccountsManager(), imageLoader: AppContainer.production().imageLoader)
         let book = TPPBookMocker.mockBook(identifier: "no-op-update-\(UUID().uuidString)",
                                           title: "No-op Update",
                                           distributorType: .EpubZip)
