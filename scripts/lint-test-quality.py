@@ -44,6 +44,90 @@ FLUFF_PATTERNS = [
      "FLUFF-004: Enum raw value assertion. Tests the enum definition, not behavior."),
 ]
 
+# File-level patterns — scanned across the whole file, not just inside
+# `func test*` bodies. Helper functions (private) live outside test
+# methods but harbor structural test-infrastructure bugs that show up as
+# misleading assertion failures inside the tests that call them.
+
+# Files exempt from TIMEOUT-001. Each entry needs a written reason so a
+# future reader understands WHY this file is allowlisted instead of
+# silently filtering it out.
+#
+# Keep this list small. Prefer fixing the rule's heuristic (below) to
+# catch a loud-via-X pattern over hardcoding an allowlist entry.
+# CatalogDomain helpers used to live here — removed once the
+# `is_loud_via_xctfail` heuristic was confirmed to catch them.
+SILENT_TIMEOUT_ALLOWLIST = {
+    "PalaceTests/XCTestCase+drainMainQueue.swift":
+        "Canonical implementation — `awaitConditionAsync` is the helper this rule recommends.",
+    "PalaceTests/Logging/LogTests.swift":
+        "pollForLog returns the polled value; caller asserts on its contents — informative downstream failure.",
+}
+
+def lint_silent_timeout(content: str, filepath: str) -> List["Violation"]:
+    """
+    TIMEOUT-001: silent `while Date() < deadline` polling loops in tests.
+
+    The disease: a polling helper that silently `return`s on timeout
+    causes the next assertion to read stale values and surface as a
+    misleading downstream-assertion failure ("0 != 1") instead of a
+    clear "the poll timed out" message. See PR #983 for the rationale +
+    PalaceTests/XCTestCase+drainMainQueue.swift `awaitConditionAsync`
+    for the recommended replacement.
+
+    Heuristic: flag any `while Date() < deadline` whose enclosing
+    function neither (a) ends with an explicit `XCTFail`, nor
+    (b) returns Bool back to a loud caller, nor (c) is in the
+    allowlist above with a documented reason.
+    """
+    if filepath in SILENT_TIMEOUT_ALLOWLIST:
+        return []
+
+    findings: List[Violation] = []
+    # Use a multi-line regex anchored to line start (with optional
+    # leading whitespace) to skip the same pattern appearing inside
+    # `///` doc comments that describe the anti-pattern. Skipping doc-
+    # comments via a separate strip pass risks shifting line numbers in
+    # the reported violation — anchoring is simpler.
+    for m in re.finditer(r'^\s*while Date\(\) < deadline', content, re.MULTILINE):
+        # Look at the surrounding window for indicators of "this helper
+        # is actually loud." The pre-window (~300 chars before the
+        # match) catches the function signature + any `expectation`
+        # declarations that precede the while loop; the post-window
+        # (~600 chars after) catches XCTFail/return-condition at the
+        # end of the helper body.
+        window_start = max(0, m.start() - 300)
+        window_end = min(len(content), m.end() + 600)
+        window = content[window_start:window_end]
+
+        is_loud_via_xctfail = 'XCTFail(' in window
+        # Bool-returning helpers end with `return condition()` or
+        # `return predicate()` — caller checks the bool to surface the
+        # timeout (XCTAssertTrue(waitForCondition...)) so the loop
+        # itself doesn't need XCTFail.
+        is_loud_via_bool_return = bool(re.search(r'return\s+(?:condition|predicate)\(\)', window))
+        # An outer XCTestExpectation + wait(for:) makes the surrounding
+        # test loud even if the inline loop is silent — the expectation
+        # never fulfills and the outer wait fires.
+        is_loud_via_expectation = ('XCTestExpectation' in window or 'expectation(description:' in window) and 'wait(for:' in window
+
+        if is_loud_via_xctfail or is_loud_via_bool_return or is_loud_via_expectation:
+            continue
+
+        line_no = content[:m.start()].count('\n') + 1
+        findings.append(Violation(
+            file=filepath,
+            line=line_no,
+            method='<file scope>',
+            rule="TIMEOUT-001",
+            detail="TIMEOUT-001: silent `while Date() < deadline` polling loop. "
+                   "Use `awaitConditionAsync` from PalaceTests/XCTestCase+drainMainQueue.swift — "
+                   "fails the test loudly on timeout with accurate file/line attribution. "
+                   "If this loop IS intentionally silent, add the file to "
+                   "SILENT_TIMEOUT_ALLOWLIST in scripts/lint-test-quality.py with a written reason.",
+        ))
+    return findings
+
 def find_test_methods(content: str) -> List[dict]:
     """Extract test methods with their bodies and line numbers."""
     methods = []
@@ -85,6 +169,10 @@ def lint_file(filepath: str) -> List[Violation]:
 
     with open(filepath) as f:
         content = f.read()
+
+    # File-level checks (scan the whole file body, not just inside test
+    # methods — covers private helpers + inline patterns).
+    violations.extend(lint_silent_timeout(content, filepath))
 
     methods = find_test_methods(content)
 
@@ -177,17 +265,23 @@ def main():
     fluff = sum(1 for v in all_violations if v.rule.startswith('FLUFF'))
     shallow = sum(1 for v in all_violations if v.rule.startswith('SHALLOW'))
     missing = sum(1 for v in all_violations if v.rule.startswith('MISSING'))
+    timeout = sum(1 for v in all_violations if v.rule.startswith('TIMEOUT'))
     print(f"  Fluff (should replace):    {fluff}")
     print(f"  Shallow (should deepen):   {shallow}")
     print(f"  Missing asserts (broken):  {missing}")
+    print(f"  Silent timeouts (CI-flake fuel): {timeout}")
 
     if fix_mode:
         print("\n--fix mode: review violations above and replace manually.")
         print("Each fluff test should be replaced 1:1 with a test that exercises")
         print("real logic in the same class (edge case, error path, state transition).")
 
-    # Exit with error if there are MISSING assertion tests (those are actually broken)
-    if missing > 0:
+    # Exit with error on MISSING (broken tests that can never fail) and
+    # TIMEOUT (silent-timeout polling that produces misleading downstream
+    # assertion failures on CI — see PR #983). Both are structural test
+    # quality bugs that have produced production CI crises this session;
+    # gating prevents reintroduction.
+    if missing > 0 or timeout > 0:
         sys.exit(1)
 
     sys.exit(0)

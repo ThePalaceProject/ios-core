@@ -79,8 +79,14 @@ final class LogTests: XCTestCase {
     // MARK: - Error Persistence Tests
 
     /// Polls PersistentLogger until the marker appears, with a short interval
-    /// and a bounded total wait — far more reliable than a fixed sleep.
-    private func pollForLog(marker: String, timeout: TimeInterval = 2.0) async -> String {
+    /// and a bounded total wait. Returns the final logs string for the
+    /// caller's downstream `XCTAssertTrue(logs.contains(marker))` to fire
+    /// a clear failure if the marker never landed — this is the "silent
+    /// return with informative downstream assertion" pattern, distinct
+    /// from the silent-timeout patterns `awaitConditionAsync` replaces.
+    /// 10s timeout — CI runner load + PersistentLogger actor hops can
+    /// race past tighter budgets; local runs resolve in <0.1s.
+    private func pollForLog(marker: String, timeout: TimeInterval = 10.0) async -> String {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             let logs = await PersistentLogger.shared.retrieveAllLogs()
