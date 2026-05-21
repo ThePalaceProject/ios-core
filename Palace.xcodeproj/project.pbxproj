@@ -3396,6 +3396,7 @@
 				EB9B49899F1C10F43D4FAAD8 /* NowPlayingCoordinator.swift */,
 				A9E7460F23BAEC7FED016069 /* PlaybackBootstrapper.swift */,
 				F9F719C4DEA011976097371B /* AudiobookSessionManaging.swift */,
+				E8546AFA58326C427D8BC2C5 /* LatestAudiobookLocation.swift */,
 				CD8B92D1772840882A596D73 /* Vendors */,
 			);
 			path = Audiobooks;
