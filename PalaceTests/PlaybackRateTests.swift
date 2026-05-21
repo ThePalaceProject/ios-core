@@ -24,6 +24,7 @@ class PlaybackRateTests: XCTestCase {
     XCTAssertEqual(PlaybackRate.convert(rate: .p080), 0.80, accuracy: 0.001)
     XCTAssertEqual(PlaybackRate.convert(rate: .p095), 0.95, accuracy: 0.001)
     XCTAssertEqual(PlaybackRate.convert(rate: .p110), 1.10, accuracy: 0.001)
+    XCTAssertEqual(PlaybackRate.convert(rate: .p120), 1.20, accuracy: 0.001)
     XCTAssertEqual(PlaybackRate.convert(rate: .p145), 1.45, accuracy: 0.001)
     XCTAssertEqual(PlaybackRate.convert(rate: .p175), 1.75, accuracy: 0.001)
     XCTAssertEqual(PlaybackRate.convert(rate: .p195), 1.95, accuracy: 0.001)
@@ -31,24 +32,47 @@ class PlaybackRateTests: XCTestCase {
 
   // MARK: - presets
 
-  /// presets is the user-facing 5-rate ladder. Lock the exact set here so
-  /// a mutant that adds/removes a preset (e.g. accidentally exposing an
-  /// intermediate `.p080`) fails on the equality. Pinning the set, not
-  /// just the count, kills mutants that swap one named rate for another.
-  func testPresets_isExactly_ThreeQuarters_Normal_OneAndAQuarter_OneAndAHalf_Double() {
+  /// PP-4358 locks the user-facing preset ladder to exactly five rates
+  /// [0.75×, 1.0×, 1.2×, 1.5×, 2.0×]. Pinning the *order* and the
+  /// *exact* enum cases together kills mutants that:
+  ///   - shuffle the order
+  ///   - drop/add a preset
+  ///   - swap 1.2× for 1.25× (the design-review change vs PP-4233 prototype)
+  ///   - substitute an intermediate `.p###` step for a named rate (or vice versa)
+  func testPresets_isExactly_0p75_1p0_1p2_1p5_2p0_inAscendingOrder() {
     let expected: [PlaybackRate] = [
-      .threeQuartersTime, .normalTime, .oneAndAQuarterTime, .oneAndAHalfTime, .doubleTime,
+      .threeQuartersTime, .normalTime, .p120, .oneAndAHalfTime, .doubleTime,
     ]
     XCTAssertEqual(PlaybackRate.presets, expected,
-                   "presets must be exactly the 5 named-rate ladder, in ascending order")
+                   "PP-4358 acceptance: presets must be exactly [0.75×, 1.0×, 1.2×, 1.5×, 2.0×] in ascending order")
+  }
+
+  /// Independent assertion of the multipliers — separate from enum-case identity —
+  /// so a mutant that re-numbers a case's raw value still trips this test.
+  func testPresets_MultipliersAreExactly_0p75_1p0_1p2_1p5_2p0() {
+    let expected: [Float] = [0.75, 1.0, 1.2, 1.5, 2.0]
+    let actual = PlaybackRate.presets.map { PlaybackRate.convert(rate: $0) }
+    XCTAssertEqual(actual.count, expected.count, "PP-4358 presets must be exactly 5 multipliers")
+    for (index, (actualMultiplier, expectedMultiplier)) in zip(actual, expected).enumerated() {
+      XCTAssertEqual(actualMultiplier, expectedMultiplier, accuracy: 0.001,
+                     "PP-4358 preset[\(index)] multiplier must be \(expectedMultiplier)×, got \(actualMultiplier)×")
+    }
   }
 
   func testPresets_ContainsAllNamedRates() {
     XCTAssertTrue(PlaybackRate.presets.contains(.threeQuartersTime))
     XCTAssertTrue(PlaybackRate.presets.contains(.normalTime))
-    XCTAssertTrue(PlaybackRate.presets.contains(.oneAndAQuarterTime))
+    XCTAssertTrue(PlaybackRate.presets.contains(.p120))
     XCTAssertTrue(PlaybackRate.presets.contains(.oneAndAHalfTime))
     XCTAssertTrue(PlaybackRate.presets.contains(.doubleTime))
+  }
+
+  /// The earlier prototype shipped 1.25× as the third preset; design review
+  /// changed it to 1.2×. Lock this so a regression that re-introduces 1.25×
+  /// to the preset row fails immediately.
+  func testPresets_DoesNotContain1p25x() {
+    XCTAssertFalse(PlaybackRate.presets.contains(.oneAndAQuarterTime),
+                   "1.25× must not appear in the preset row — design approved 1.2× (.p120)")
   }
 
   func testPresets_DoesNotContainIntermediateCases() {
