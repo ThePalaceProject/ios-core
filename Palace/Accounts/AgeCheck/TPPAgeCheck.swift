@@ -68,6 +68,37 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
         // is already loaded, work goes onto `serialQueue` immediately so
         // `didCompleteAgeCheck`'s serial-queue async sees the queued
         // handlers, not an empty `handlerList`.
+        //
+        // ## Loading-path race-window analysis (audit from PR #983 timeout bump)
+        //
+        // The `.notLoaded`/`.basicInfoLoaded`/`.detailsLoading` branch
+        // suspends at `await currentAccount.awaitReady()` BEFORE
+        // enqueueing onto `serialQueue`. If `didCompleteAgeCheck` runs
+        // while the Task is suspended, its `serialQueue.async` block
+        // fires with an empty `handlerList` and the verify completion
+        // never lands.
+        //
+        // Production: this race window is NOT reachable. `didCompleteAgeCheck`
+        // is only called from the AgeCheck picker UI, which is only
+        // presented BY the `continueAgeRequirementCheck` body (`presentAgeVerificationView`,
+        // line ~144) AFTER the verify branch has appended its handler to
+        // `handlerList`. By the time the user can tap a year, the handler
+        // is queued — no race.
+        //
+        // Tests: the race IS reachable because tests call `didCompleteAgeCheck`
+        // directly (without going through the UI), and the test fixture
+        // *should* reach `.detailsLoaded` via the mock's init seeding
+        // but can land at `.notLoaded` if the fixture's auth-doc parse
+        // fails or AccountStateStore singleton state leaks across tests.
+        // `TPPAgeCheckDeepTests` bumps the verify-wait to 30s (PR #983)
+        // to tolerate the Task's awaitReady completing within the
+        // bounded test envelope. Acceptable since it's test-only.
+        //
+        // If a production caller of `didCompleteAgeCheck` ever appears
+        // outside the picker UI, this race becomes reachable in prod and
+        // would need a real fix — likely by queuing the Task's
+        // `continueAgeRequirementCheck` on `serialQueue` BEFORE awaiting,
+        // and gating the await inside the queued block.
         guard let currentAccount = currentLibraryAccountProvider.currentAccount else {
             serialQueue.async { completion?(false) }
             return
