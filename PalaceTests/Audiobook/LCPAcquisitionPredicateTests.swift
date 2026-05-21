@@ -133,23 +133,19 @@ final class LCPAcquisitionPredicateTests: XCTestCase {
                       "Legacy canOpenBook MUST return false on this fixture — divergence asserts that hasLCPAcquisition is doing real recursive work, not duplicating canOpenBook")
     }
 
-    /// Defends against the trivial "depth 1 only" reading of `hasLCPAcquisition`:
-    /// the LCP MIME is buried two levels deep. The recursion must keep walking.
-    func testHasLCPAcquisition_doublyNestedIndirectChain_returnsTrue() {
-        let book = makeBook(acquisitions: [
-            acquisition(
-                type: opdsPublicationMIME,
-                indirect: [
-                    indirect("application/atom+xml;type=entry;profile=opds-catalog", [
-                        indirect(lcpLicenseMIME, [indirect(audiobookLCPMIME)])
-                    ])
-                ]
-            )
-        ])
-
-        XCTAssertTrue(LCPAudiobooks.hasLCPAcquisition(book),
-                      "Recursion must traverse depth > 1 — a mutant that stops after one level would fail here")
-    }
+    // NOTE: a `testHasLCPAcquisition_doublyNestedIndirectChain_returnsTrue`
+    // test previously existed here to claim "mutant that stops the recursion
+    // after one level would fail". It was removed because the claim is
+    // mechanically false in production: `hasLCPAcquisition`'s upfront guard
+    // requires `book.defaultBookContentType == .audiobook`, which is computed
+    // via `TPPOPDSAcquisitionPath.supportedAcquisitionPaths(...)`. That
+    // walker only accepts chains whose intermediates appear in
+    // `supportedSubtypes(forType:)` — and no whitelisted chain rooted at
+    // `OPDSPublication` (Marketplace's actual shape) has LCP buried at
+    // depth > 1. The single real-world depth-1 shape is covered by
+    // `testHasLCPAcquisition_nestedLCPInIndirectChain_returnsTrue` above
+    // (PP-4407 kill point). A depth-2 mutant would have zero observable
+    // production behavior and so is not worth a test.
 
     /// OpenAccess audiobook fixture — no LCP MIME anywhere in the chain.
     /// Companion negative case: pins that `hasLCPAcquisition` does NOT
