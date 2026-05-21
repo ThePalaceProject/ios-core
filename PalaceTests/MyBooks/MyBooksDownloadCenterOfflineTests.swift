@@ -235,4 +235,110 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         // No expectations — this test passes if nothing crashes or asserts.
         _ = center
     }
+
+    // MARK: - Stale-entry regression (airplane-mode flips downloaded books)
+
+    /// Regression of PP-4114's airplane-mode handler.
+    ///
+    /// Reproduces the user-visible iPad bug: previously-downloaded books
+    /// show "The download could not be completed." and the Read button
+    /// disappears the moment airplane mode is toggled.
+    ///
+    /// Root cause: `taskIdentifierToBook` is never cleaned up on download
+    /// success, so completed books leave stale `(taskId, book)` entries.
+    /// `failActiveDownloadsForNetworkLoss()` iterates that map and calls
+    /// `failDownloadWithAlert` on every entry — regardless of whether the
+    /// book is actually downloading. A `.downloadSuccessful` book with a
+    /// stale entry gets flipped to `.downloadFailed`.
+    ///
+    /// Defensive fix: the handler must consult the registry's current state
+    /// for each book and skip those not in {.downloading, .SAMLStarted}.
+    func testReachabilityDrop_WithStaleTaskEntryForDownloadedBook_DoesNotFlipToFailed() async {
+        let book = makeBook(id: "previously-downloaded")
+        mockRegistry.addBook(book, state: .downloadSuccessful)
+
+        // Stage the leak: a stale taskId entry for a book that has already
+        // finished downloading. `bookIdentifierToDownloadInfo` is correctly
+        // empty (post-success cleanup), but `taskIdentifierToBook` retains
+        // the entry — exactly what production looks like today after any
+        // successful download.
+        await stateManager.taskIdentifierToBook.set(7, value: book)
+
+        let center = MyBooksDownloadCenter(
+            bookRegistry: mockRegistry,
+            stateManager: stateManager,
+            reachability: mockReachability
+        )
+        await drainMainQueueAsync()
+        XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadSuccessful,
+                       "precondition: book is downloaded and readable offline")
+
+        mockReachability.simulate(connected: false)
+        // Give the handler time to run; the bug flips state inside ~10ms.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadSuccessful,
+                       "Airplane mode must NOT flip a previously-downloaded book to .downloadFailed just because a stale taskIdentifierToBook entry exists")
+        _ = center
+    }
+
+    /// Coexistence: a stale-entry book AND a genuinely-downloading book.
+    /// The handler must fail the latter (PP-4114's intent) but leave the
+    /// former alone (this hotfix's intent).
+    func testReachabilityDrop_StaleAndActive_FailsOnlyTheActiveDownload() async {
+        let downloadedBook = makeBook(id: "previously-downloaded-mix")
+        let activeBook = makeBook(id: "actively-downloading-mix")
+        mockRegistry.addBook(downloadedBook, state: .downloadSuccessful)
+        mockRegistry.addBook(activeBook, state: .downloading)
+
+        // Stale entry for the completed book.
+        await stateManager.taskIdentifierToBook.set(11, value: downloadedBook)
+        // Genuine in-flight download for the active one.
+        _ = await registerActiveDownload(book: activeBook, taskIdentifier: 12)
+
+        let center = MyBooksDownloadCenter(
+            bookRegistry: mockRegistry,
+            stateManager: stateManager,
+            reachability: mockReachability
+        )
+        await drainMainQueueAsync()
+
+        mockReachability.simulate(connected: false)
+        await waitForState(.downloadFailed, on: activeBook.identifier)
+
+        XCTAssertEqual(mockRegistry.state(for: activeBook.identifier), .downloadFailed,
+                       "PP-4114 intent preserved: genuinely in-flight downloads still fail on network loss")
+        XCTAssertEqual(mockRegistry.state(for: downloadedBook.identifier), .downloadSuccessful,
+                       "Hotfix: previously-downloaded books with stale taskId entries are NOT touched by the airplane-mode handler")
+        _ = center
+    }
+
+    /// Cleanup-on-success contract: once we wire up `cleanupDownload`, a book
+    /// that transitions through the success path must not leave a stale
+    /// `taskIdentifierToBook` entry. This is the root-cause fix; even
+    /// without the defensive filter above, this prevents the bug from
+    /// occurring in the first place because there are no stale entries
+    /// for the airplane-mode handler to misinterpret.
+    ///
+    /// We exercise it via `DownloadStateManager.cleanupDownload` directly
+    /// (which is the seam production code uses for terminal-state cleanup).
+    func testCleanupDownload_RemovesTaskIdentifierToBookEntry() async {
+        let book = makeBook(id: "cleanup-contract")
+        await stateManager.taskIdentifierToBook.set(99, value: book)
+        await stateManager.bookIdentifierToDownloadInfo.set(book.identifier, value: MyBooksDownloadInfo(
+            downloadProgress: 1.0,
+            downloadTask: MockURLSessionDownloadTask(taskIdentifier: 99),
+            rightsManagement: .none
+        ))
+
+        await stateManager.cleanupDownload(for: book.identifier, taskIdentifier: 99)
+
+        let taskEntry = await stateManager.taskIdentifierToBook.get(99)
+        let infoEntry = await stateManager.bookIdentifierToDownloadInfo.get(book.identifier)
+        XCTAssertNil(taskEntry,
+                     "cleanupDownload(for:taskIdentifier:) must remove the taskIdentifierToBook entry — root-cause fix for the airplane-mode regression")
+        XCTAssertNil(infoEntry,
+                     "cleanupDownload must also remove the bookIdentifierToDownloadInfo entry")
+    }
 }

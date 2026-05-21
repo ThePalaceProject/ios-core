@@ -120,6 +120,23 @@ final class LCPFulfillmentHandler {
                     "licenseURL": licenseUrl.absoluteString,
                     "localURL": localUrl?.absoluteString ?? "N/A"
                 ])
+
+                // PP-4114-adjacent: LCP audiobooks are marked
+                // `.downloadSuccessful` the moment the .lcpl license lands
+                // (streaming-ready). A phase-2 .lcpa content download
+                // failure — typically airplane mode mid-fetch from
+                // googleapis.com — must NOT downgrade an already-readable
+                // audiobook back to `.downloadFailed`. The user reported
+                // this on iPad: previously-downloaded audiobooks losing
+                // the Read/Listen affordance the second they went offline.
+                // Streaming still works off the license; offline playback
+                // just isn't ready until they retry.
+                let currentState = self.bookRegistry.state(for: book.identifier)
+                if book.defaultBookContentType == .audiobook && currentState == .downloadSuccessful {
+                    Log.warn(#file, "LCP audiobook content download failed but streaming license intact — leaving '\(book.title)' (\(book.identifier)) as .downloadSuccessful")
+                    return
+                }
+
                 let errorMessage = "Fulfilment Error: \(error.localizedDescription)"
                 self.alertPresenter.failDownloadWithAlert(for: book, withMessage: errorMessage)
                 return
