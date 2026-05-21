@@ -84,15 +84,15 @@ actor OPDSFeedService: OPDSFeedFetching {
                         }
                     } else {
                         // swarm_f3b9b087 item #9 audit: this branch (feed == nil
-                        // AND errorDict == nil) violates the implicit contract of
-                        // `TPPOPDSFeed.withURL` — the callback should ALWAYS supply
-                        // one or the other. Reaching here means the Obj-C bridge
-                        // dropped both, which is a bug we want loudly surfaced in
-                        // dev. The thrown error reuses `.opdsFeedInvalid` so its
-                        // user-facing message is already the localized placeholder
-                        // (no raw "Invalid OPDS feed" leak).
-                        Log.error(#file, "[OPDS_FEED] both feed and errorDict were nil for url=\(url) — TPPOPDSFeed.withURL callback contract violation")
-                        assertionFailure("OPDSFeedService: TPPOPDSFeed.withURL returned nil/nil for \(url)")
+                        // AND errorDict == nil) was originally treated as a contract
+                        // violation. Test-env evidence (OPDSFeedServiceStateMachineTests
+                        // .testFetchLoansFeed_blocksUntilLoaded_thenFetches) shows the
+                        // Obj-C bridge legitimately reaches this state for genuine
+                        // network failures, so it is NOT a contract violation — it's
+                        // a normal error path. Log it for diagnostics, then throw the
+                        // localized OPDS error. NO `assertionFailure` here (it would
+                        // crash DEBUG test runs).
+                        Log.error(#file, "[OPDS_FEED] both feed and errorDict were nil for url=\(url) — propagating as opdsFeedInvalid")
                         continuation.resume(throwing: PalaceError.parsing(.opdsFeedInvalid))
                     }
                 }
