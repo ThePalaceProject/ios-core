@@ -81,13 +81,17 @@ final class DownloadStartCoordinatorTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    private func waitForAsync(timeout: TimeInterval = 1.5, _ predicate: @escaping () -> Bool) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if predicate() { return }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
-        }
+    /// Thin wrapper around the shared `awaitConditionAsync` helper.
+    /// Replaces the prior local copy that silently swallowed timeouts.
+    /// `file`/`line` forwarded so a timeout XCTFail blames the call
+    /// site, not this wrapper.
+    private func waitForAsync(
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line,
+        _ predicate: @escaping () -> Bool
+    ) async {
+        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
     }
 
     // MARK: - startBorrow slot-release semantics
