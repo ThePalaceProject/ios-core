@@ -87,7 +87,7 @@ final class SignInToReadFlowIntegrationTests: XCTestCase {
         drmAuthorizer = TPPDRMAuthorizingMock()
         bookDownloadsCenterMock = TPPMyBooksDownloadsCenterMock()
         accountsManager = AccountsManager()
-        bookRegistry = TPPBookRegistry(accountsManager: accountsManager)
+        bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: AppContainer.production().imageLoader)
         cancellables = []
 
         businessLogic = TPPSignInBusinessLogic(

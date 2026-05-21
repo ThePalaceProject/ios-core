@@ -51,7 +51,7 @@ final class CarPlayTemplateManager: NSObject {
 
     init(interfaceController: CPInterfaceController, accountsManager: AccountsManager = AppContainer.production().accountsManager, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         self.interfaceController = interfaceController
-        self.imageProvider = CarPlayImageProvider()
+        self.imageProvider = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
         self.playerBridge = CarPlayAudiobookBridge()
         self.accountsManager = accountsManager
         self.bookRegistry = bookRegistry

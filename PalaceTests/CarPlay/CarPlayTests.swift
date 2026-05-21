@@ -57,7 +57,7 @@ class CarPlayTests: XCTestCase {
 
     func testCarPlayImageProvider_GeneratesPlaceholder() {
         // Arrange
-        let imageProvider = CarPlayImageProvider()
+        let imageProvider = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
         let book = TPPBookMocker.snapshotAudiobook()
 
         // Act
@@ -240,13 +240,13 @@ class CarPlayIntegrationTests: XCTestCase {
         XCTAssertNil(bridge.currentBook, "Bridge should have no book initially")
         XCTAssertNil(bridge.currentChapter, "Bridge should have no chapter initially")
         // Image provider must also initialize independently and be a distinct instance from bridge
-        let imageProvider = CarPlayImageProvider()
+        let imageProvider = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
         XCTAssertTrue(imageProvider !== bridge as AnyObject, "Image provider and bridge must be distinct objects")
     }
 
     func testCarPlay_ImageProvider_CachesBehavior() {
         // Arrange
-        let imageProvider = CarPlayImageProvider()
+        let imageProvider = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
         let book = TPPBookMocker.snapshotAudiobook()
 
         // Act - Request same book twice
@@ -444,8 +444,8 @@ class CarPlayNowPlayingTemplateTests: XCTestCase {
     /// Image loading should not depend on Now Playing state.
     func testCarPlayImageProvider_InitializesIndependently() {
         // Arrange & Act
-        let imageProvider = CarPlayImageProvider()
-        let imageProvider2 = CarPlayImageProvider()
+        let imageProvider = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
+        let imageProvider2 = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
 
         // Assert - Each instance is independent (not a shared singleton)
         XCTAssertNotNil(imageProvider, "Image provider should initialize without CarPlay connection")

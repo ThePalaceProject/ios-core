@@ -77,7 +77,10 @@ final class ColdStartResumeIntegrationTests: XCTestCase {
         sync.load(account: account, setState: { state in
             if state == .loaded { exp.fulfill() }
         }, completion: nil)
-        wait(for: [exp], timeout: 5.0)
+        // 30s budget — load() races CI runner load and the 5s budget was
+        // timing out in ~25% of runs. Same pattern as TPPBookRegistryAtomicWriteTests
+        // (5s → 30s in develop) and OPDSFeedServiceStateMachineTests (5s → 15s).
+        wait(for: [exp], timeout: 30.0)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 

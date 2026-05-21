@@ -452,14 +452,17 @@ public final class AudiobookSessionManager: ObservableObject {
         Log.debug(#file, "Skipping to chapter: '\(chapter.title)'")
     }
 
-    /// Cycles through playback rates
+    /// Cycles through playback rates. Driven by CarPlay / remote-control
+    /// "change playback rate" commands — the now-playing screen UI uses the
+    /// speed bottom sheet instead of cycling.
     public func cyclePlaybackRate() -> PlaybackRate {
         guard let player = manager?.audiobook.player else {
             return .normalTime
         }
 
-        let rates: [PlaybackRate] = [.threeQuartersTime, .normalTime, .oneAndAQuarterTime, .oneAndAHalfTime, .doubleTime]
-        let currentIndex = rates.firstIndex(of: player.playbackRate) ?? 1
+        let rates = PlaybackRate.presets
+        let currentIndex = rates.firstIndex(of: player.playbackRate)
+            ?? (rates.firstIndex(of: .normalTime) ?? 0)
         let nextIndex = (currentIndex + 1) % rates.count
         let newRate = rates[nextIndex]
 

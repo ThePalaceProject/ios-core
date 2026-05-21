@@ -100,9 +100,14 @@ struct BookListView: View {
 
         let upcomingBooks = Array(snapshot[startIndex..<endIndex])
 
+        // Route through the injected ImageLoading umbrella so prefetch shares
+        // the AppContainer-owned cache + circuit breaker rather than reaching
+        // for TPPBookCoverRegistry.shared. Capture the value to avoid touching
+        // the SwiftUI Environment from the detached task.
+        let imageLoader = appContainer.imageLoader
         Task.detached(priority: .utility) {
             for book in upcomingBooks {
-                await TPPBookCoverRegistry.shared.thumbnailImage(for: book)
+                _ = await imageLoader.thumbnailImage(for: book)
             }
         }
 
