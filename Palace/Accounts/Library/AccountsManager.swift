@@ -304,7 +304,7 @@ struct CatalogCacheMetadata: Codable {
     /// .accountsManager.currentAccount` returns it. Used by Bucket A
     /// integration tests that need to exercise production-stack code
     /// paths reading `currentAccount` (e.g.
-    /// `AudiobookSessionManager.shared.openAudiobook`,
+    /// `AppContainer.production().audiobookSession.openAudiobook`,
     /// `CarPlayAuthHelper.isAuthenticated`,
     /// `TPPBookRegistry.syncAsync`, `BookRegistrySync.sync`) without
     /// requiring a real OPDS2 catalog fixture load. Closes the 4 XCTSkip

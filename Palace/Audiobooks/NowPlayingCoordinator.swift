@@ -50,7 +50,7 @@ public final class NowPlayingCoordinator {
     private var currentArtwork: MPMediaItemArtwork?
     private var lastUpdateTime: Date = .distantPast
     private var lastIsPlaying: Bool = false
-    private var pendingUpdate: DispatchWorkItem?
+    private var pendingUpdate: Task<Void, Never>?
     private var foregroundObserver: NSObjectProtocol?
 
     /// Injectable seam for `UIApplication.shared.applicationState`. Tests
@@ -268,16 +268,28 @@ public final class NowPlayingCoordinator {
             // Apply immediately
             performUpdate(info, isPlaying: isPlaying)
         } else {
-            // Schedule debounced update
-            let workItem = DispatchWorkItem { [weak self] in
-                Task { @MainActor in
-                    self?.performUpdate(info, isPlaying: isPlaying)
-                }
-            }
-            pendingUpdate = workItem
-
+            // Schedule debounced update.
+            //
+            // Cancel semantics — preserves prior `DispatchWorkItem.cancel()`
+            // behavior across two race windows:
+            //   1) Cancelled DURING the sleep — `Task.sleep` throws
+            //      `CancellationError`; we swallow and `return`. Matches a
+            //      cancelled work item simply not firing.
+            //   2) Cancelled AFTER the sleep returns but BEFORE `performUpdate`
+            //      — caught by the explicit `Task.isCancelled` guard. (Cancellation
+            //      between `try await Task.sleep` returning and the next instruction
+            //      executing is the narrow window the guard exists for.)
             let delay = Configuration.updateDebounceInterval - timeSinceLastUpdate
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+            let task = Task { @MainActor [weak self] in
+                do {
+                    try await Task.sleep(for: .seconds(delay))
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                self?.performUpdate(info, isPlaying: isPlaying)
+            }
+            pendingUpdate = task
         }
     }
 

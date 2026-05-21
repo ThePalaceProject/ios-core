@@ -72,7 +72,7 @@ enum BookService {
                     openingBooks.remove(book.identifier)
                     onFinish?()
                 }
-                _ = await AudiobookSessionManager.shared.openAudiobook(book, startPlaying: true)
+                _ = await AppContainer.production().audiobookSession.openAudiobook(book, startPlaying: true)
             }
         default:
             openingBooks.remove(book.identifier)

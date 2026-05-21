@@ -15,19 +15,20 @@ import MediaPlayer
 @MainActor
 final class PlaybackBootstrapperTests: XCTestCase {
 
+    /// Locally-constructed session manager — Module B replaced the singleton,
+    /// so each test gets a fresh instance with no pollution to reset.
+    private var sessionManager: AudiobookSessionManager!
+
     override func setUp() async throws {
         try await super.setUp()
-        // AudiobookSessionManager.shared is a singleton; prior tests in the
-        // suite can leave it in .loading / .error states. The state-assertion
-        // tests below assume .idle, so reset before each test.
-        await AudiobookSessionManager.shared.stopPlayback(dismissPhoneUI: false)
+        sessionManager = AudiobookSessionManager(appContainer: AppContainer.production())
     }
 
     // MARK: - Remote Command Configuration Tests
 
     func testPlaybackBootstrapper_ConfiguresRemoteCommandCenter() {
         // Arrange
-        let bootstrapper = PlaybackBootstrapper.shared
+        let bootstrapper = AppContainer.production().playbackBootstrapper
         bootstrapper.ensureInitialized()
 
         // Act
@@ -47,7 +48,7 @@ final class PlaybackBootstrapperTests: XCTestCase {
 
     func testPlaybackBootstrapper_SkipIntervals_AreConfigured() {
         // Arrange
-        let bootstrapper = PlaybackBootstrapper.shared
+        let bootstrapper = AppContainer.production().playbackBootstrapper
         bootstrapper.ensureInitialized()
 
         // Act
@@ -61,8 +62,7 @@ final class PlaybackBootstrapperTests: XCTestCase {
     // MARK: - Command Handler State Tests
 
     func testAudiobookSessionManager_InitialState_IsIdle() {
-        // Arrange & Act
-        let sessionManager = AudiobookSessionManager.shared
+        // Arrange & Act - use locally-constructed instance from setUp
 
         // Assert - Use pattern matching for enum with associated values
         if case .idle = sessionManager.state {

@@ -82,10 +82,6 @@ public enum AudiobookSessionError: Error, Equatable {
 @MainActor
 public final class AudiobookSessionManager: ObservableObject {
 
-    // MARK: - Singleton
-
-    public static let shared = AudiobookSessionManager()
-
     // MARK: - Published State
 
     @Published public private(set) var state: AudiobookSessionState = .idle
@@ -188,21 +184,6 @@ public final class AudiobookSessionManager: ObservableObject {
         // This manager now owns the full audiobook lifecycle (load → bind → play)
         // directly via AudiobookLoader; no pub/sub handoff is needed.
         subscribeToPhoneSideErrorAlerts()
-    }
-
-    /// Backwards-compatible convenience for the singleton. Resolves every
-    /// dependency from `.shared` accessors at the moment the singleton is
-    /// first touched. Production code should prefer
-    /// `init(appContainer:)` so the dep graph is explicit.
-    private convenience init() {
-        self.init(
-            bookRegistry: AppContainer.production().bookRegistry,
-            accountsManager: AppContainer.production().accountsManager,
-            settings: AppContainer.production().settings,
-            reachabilityProvider: { AppContainer.production().reachability },
-            bookCoverRegistryProvider: { TPPBookCoverRegistry.shared },
-            navigationCoordinatorHubProvider: { AppContainer.production().navigationCoordinatorHub }
-        )
     }
 
     /// AppContainer-friendly initializer. Used by future call sites that

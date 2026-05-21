@@ -101,7 +101,7 @@ final class CarPlayAudiobookBridge: ObservableObject {
 
     // MARK: - Properties
 
-    private let sessionManager: AudiobookSessionManager
+    private let sessionManager: AudiobookSessionManaging
     private var cancellables = Set<AnyCancellable>()
 
     /// Publisher for CarPlay UI to observe playback state changes
@@ -133,8 +133,10 @@ final class CarPlayAudiobookBridge: ObservableObject {
 
     // MARK: - Initialization
 
-    init(sessionManager: AudiobookSessionManager = .shared) {
-        self.sessionManager = sessionManager
+    init(sessionManager: AudiobookSessionManaging? = nil) {
+        // Resolve through AppContainer's cached factory so production and tests
+        // share the same session-manager identity; pass a mock to override.
+        self.sessionManager = sessionManager ?? AppContainer.production().audiobookSession
         setupSubscriptions()
         Log.info(#file, "CarPlayAudiobookBridge initialized")
     }

@@ -49,8 +49,39 @@ struct AppContainer {
         return manager
     }
 
+    /// Process-wide audiobook session manager. Reads
+    /// `accountsManager.currentAccount` internally on every operation, so
+    /// account switches are observed without per-account caching. The cache
+    /// cell stores the concrete `AudiobookSessionManager`; callers see only
+    /// the `AudiobookSessionManaging` protocol surface.
+    @MainActor
+    var audiobookSession: AudiobookSessionManaging {
+        if let cached = AppContainer._audiobookSession { return cached }
+        let session = AudiobookSessionManager(appContainer: self)
+        AppContainer._audiobookSession = session
+        return session
+    }
+
+    /// Process-wide playback bootstrapper. Owns the warm-start CarPlay
+    /// session-initialization invariant previously held by
+    /// `PlaybackBootstrapper.shared`. The provider closure resolves the
+    /// session lazily through `self.audiobookSession` so cache misses route
+    /// through AppContainer rather than spinning up a parallel manager.
+    @MainActor
+    var playbackBootstrapper: PlaybackBootstrapper {
+        if let cached = AppContainer._playbackBootstrapper { return cached }
+        let bootstrapper = PlaybackBootstrapper(
+            appContainer: self,
+            audiobookSessionProvider: { [self] in self.audiobookSession }
+        )
+        AppContainer._playbackBootstrapper = bootstrapper
+        return bootstrapper
+    }
+
     @MainActor private static var _bookCellModelCache: BookCellModelCache?
     @MainActor private static var _samplePreviewManager: SamplePreviewManager?
+    @MainActor private static var _audiobookSession: AudiobookSessionManager?
+    @MainActor private static var _playbackBootstrapper: PlaybackBootstrapper?
 
     init(
         bookRegistry: TPPBookRegistryProvider,
