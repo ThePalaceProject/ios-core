@@ -1,7 +1,10 @@
 swarm_id: swarm_03acb10a
 task: Singleton Elimination + Async Sweep (Phase 3 of audiobook systemic overhaul)
 created_at: 2026-05-21
-status: triaged
+status: complete
+pr: https://github.com/ThePalaceProject/ios-core/pull/982
+forgeos_initiative: init_eb359cf0
+forgeos_changeset: cs_3c089d95
 base_ref: swarm/swarm_f4fbef9c-scaffold
 base_sha: 52e99443f
 forgeos_project: proj_87884c17
