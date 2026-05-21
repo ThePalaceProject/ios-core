@@ -10,7 +10,7 @@ import SwiftUI
 import Combine
 import Foundation
 
-class ImageLoader {
+class LegacyURLImageLoader {
     private let urlSession: URLSession
 
     init(urlSession: URLSession = .shared) {
@@ -38,7 +38,7 @@ class ImageLoader {
 class AsyncImage: ObservableObject {
     @Published var image: UIImage
     private var cancellable: AnyCancellable?
-    private let imageLoader = ImageLoader()
+    private let imageLoader = LegacyURLImageLoader()
 
     init(image: UIImage) {
         self.image = image
