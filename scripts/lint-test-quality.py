@@ -44,6 +44,79 @@ FLUFF_PATTERNS = [
      "FLUFF-004: Enum raw value assertion. Tests the enum definition, not behavior."),
 ]
 
+# Methods/calls that act as assertions (raise XCTFail on failure). The linter
+# treats any of these the same as a direct XCTAssert call when counting whether
+# a test has *any* failable expectations. Keeping this in one place avoids
+# false MISSING-001 on tests that fail via helpers (ContractSnapshot, the
+# drainMainQueue family) instead of bare XCTAssert calls.
+ASSERTION_EQUIVALENT_PATTERN = re.compile(
+    r'XCTAssert'                       # All XCTAssert* variants
+    r'|XCTFail\b'                      # Direct fail
+    r'|wait\(for:'                     # Expectation wait (fails on timeout)
+    r'|fulfillment\(of:'               # async-aware expectation wait
+    r'|ContractSnapshot\.assert'       # CallLog + JSON snapshot (Contract/)
+    r'|drainMainQueue\b'               # XCTestCase+drainMainQueue helper
+    r'|awaitCondition\b'               # Sync-predicate poll helper
+    r'|awaitConditionAsync\b'          # Async-predicate poll helper
+    # Custom assertion helpers — any `assert<Word>(` (capitalized first
+    # letter after the prefix) or `.assert<Word>(` method call. Catches
+    # `assertValidationSuccess(...)`, `f.assertText(...)`,
+    # `f.assertContainsText(...)`, etc. without also matching Swift's
+    # bare `assert(condition, _:)` (lowercase next char). Misses tests
+    # that route through helpers with no `assert` prefix — those should
+    # rename their helper to `assertX` or add the helper here.
+    r'|(?<![\w])assert[A-Z]\w*\('
+    r'|\.assert[A-Z]\w*\('
+)
+
+# Flake patterns. Hard-blocking in verify-pr.sh. Each entry is
+# (regex, rule_text, dotall_flag). Allow-listing is per-line via a
+# `// FLAKE-NNN-OK: <reason>` comment on the matched line — keeps rare
+# legitimate cases (integration tests, large-corpus loads) explicit instead
+# of relying on a global SKIP list.
+FLAKE_PATTERNS = [
+    # Raw sleep in test bodies. Thread.sleep / usleep / nanosleep / bare sleep().
+    # Fixed-delay waits — first thing that breaks under CI contention.
+    (r'\b(Thread\.sleep|usleep|nanosleep)\b|(?<![\w.])sleep\(\s*\d',
+     "FLAKE-001: Raw sleep in test. Use XCTestExpectation, drainMainQueue, or awaitCondition.",
+     False),
+
+    # asyncAfter used as sleep-disguised-as-expectation. Matches an
+    # `asyncAfter` whose closure body is *only* `<expectation>.fulfill()`.
+    # That's the banned pattern from CLAUDE.md — fixed delay that fails
+    # under load. CLAUDE.md: "never use sleep/delay waits, always use
+    # XCTestExpectation". XCTestCase+drainMainQueue.swift is the migration.
+    # `.*?` (non-greedy) is needed because the deadline arg contains nested
+    # parens — `.now() + 0.5` — and `[^)]+` chokes on the inner `.now()`.
+    (r'asyncAfter\(deadline:.*?\)\s*\{\s*\w+\.fulfill\(\s*\)\s*\}',
+     "FLAKE-002: asyncAfter used as sleep-disguised-as-expectation. Use drainMainQueue or awaitCondition.",
+     True),
+
+    # Timeouts >= 15s. Almost always symptomatic of FLAKE-002 or hidden
+    # real-I/O. The 15s floor is empirical: large-corpus tests, integration
+    # tests, and a few coldstart paths legitimately need >=15s — allow-list
+    # those with `// FLAKE-003-OK: <reason>` on the same line.
+    (r'timeout:\s*(\d{2,}\.?\d*)',
+     "FLAKE-003: Timeout >= 15s. Symptomatic of FLAKE-002 or real-I/O leak. "
+     "Allow with `// FLAKE-003-OK: <reason>` if integration-test scoped.",
+     False),
+]
+
+# Per-rule allow-list comment regex. A line carrying its rule's comment
+# suppresses the violation on that line only (or, for MISSING-001, anywhere
+# in the test body). Keep the allow-list comment self-documenting:
+#
+#     // FLAKE-001-OK: NetworkRetryTests exercises real retry-backoff timing;
+#     //               the 50ms Thread.sleep is intentional, not a flake.
+#     // MISSING-001-OK: crash-guard — passes if `setProblemDocument(nil:)`
+#     //                 doesn't deref-nil. No state to assert on.
+ALLOWLIST_COMMENT_RE = {
+    'FLAKE-001': re.compile(r'//\s*FLAKE-001-OK'),
+    'FLAKE-002': re.compile(r'//\s*FLAKE-002-OK'),
+    'FLAKE-003': re.compile(r'//\s*FLAKE-003-OK'),
+    'MISSING-001': re.compile(r'//\s*MISSING-001-OK'),
+}
+
 # File-level patterns — scanned across the whole file, not just inside
 # `func test*` bodies. Helper functions (private) live outside test
 # methods but harbor structural test-infrastructure bugs that show up as
@@ -145,10 +218,12 @@ def find_test_methods(content: str) -> List[dict]:
         body = content[start:i-1]
 
         lines = [l.strip() for l in body.split('\n') if l.strip() and not l.strip().startswith('//')]
-        # wait(for:) on an XCTestExpectation IS an assertion — it raises
-        # XCTFail on timeout. Treating it the same as XCTAssert* fixes a
-        # false-positive MISSING-001 on legitimate expectation-based tests.
-        asserts = len(re.findall(r'XCTAssert|XCTFail|wait\(for:', body))
+        # Count assertion-equivalents — XCTAssert*, XCTFail, wait/fulfillment,
+        # ContractSnapshot.assert, drainMainQueue, awaitCondition*. Routed
+        # through ASSERTION_EQUIVALENT_PATTERN (top of file) so the helper set
+        # lives in one place; missing any of these used to flag legitimate
+        # helper-based tests as MISSING-001.
+        asserts = len(ASSERTION_EQUIVALENT_PATTERN.findall(body))
         has_mock = bool(re.search(r'Mock|mock|stub|Stub', body))
         has_async = bool(re.search(r'await |expectation|fulfillment', body))
 
@@ -163,6 +238,43 @@ def find_test_methods(content: str) -> List[dict]:
         })
     return methods
 
+def lint_flake_patterns(content: str, filepath: str) -> List[Violation]:
+    """
+    Scan whole file for FLAKE-* patterns. File-scope (not method-scope) so
+    private setup helpers, fixture builders, and async closures captured by
+    `Task { ... }` blocks are caught alongside test bodies. The matched-line
+    text is checked for the per-rule allow-list comment.
+    """
+    findings: List[Violation] = []
+    file_lines = content.split('\n')
+    for pattern, rule_text, dotall in FLAKE_PATTERNS:
+        flags = re.MULTILINE | (re.DOTALL if dotall else 0)
+        for m in re.finditer(pattern, content, flags):
+            rule_id = rule_text.split(':')[0]
+            line_no = content[:m.start()].count('\n') + 1
+            # Skip if the matched line carries the allow-list comment.
+            matched_line = file_lines[line_no - 1] if 1 <= line_no <= len(file_lines) else ''
+            if ALLOWLIST_COMMENT_RE[rule_id].search(matched_line):
+                continue
+            # FLAKE-003 floor: rule fires only at >= 15s. The regex grabs
+            # 2+ digit timeouts (10..); filter the 10..14 second cases out
+            # here. Below 10s legitimately means tight expectation, no flake.
+            if rule_id == 'FLAKE-003':
+                try:
+                    val = float(m.group(1))
+                    if val < 15.0:
+                        continue
+                except (IndexError, ValueError):
+                    continue
+            findings.append(Violation(
+                file=filepath,
+                line=line_no,
+                method='<file scope>',
+                rule=rule_id,
+                detail=rule_text,
+            ))
+    return findings
+
 def lint_file(filepath: str) -> List[Violation]:
     """Lint a single test file for quality violations."""
     violations = []
@@ -173,6 +285,7 @@ def lint_file(filepath: str) -> List[Violation]:
     # File-level checks (scan the whole file body, not just inside test
     # methods — covers private helpers + inline patterns).
     violations.extend(lint_silent_timeout(content, filepath))
+    violations.extend(lint_flake_patterns(content, filepath))
 
     methods = find_test_methods(content)
 
@@ -201,20 +314,30 @@ def lint_file(filepath: str) -> List[Violation]:
                     detail="SHALLOW-001: Test has 1 assertion, <4 lines, no mocks/async. Likely too shallow to catch regressions.",
                 ))
 
-        # Check: no assertions at all
+        # Check: no assertions at all. Authors can opt-out with a
+        # `// MISSING-001-OK: <reason>` comment in the test body for
+        # legitimate crash-guard tests (where the assertion IS "did not
+        # crash"). Forces the reason to be documented inline rather than
+        # silently allowed.
         if method['assert_count'] == 0 and 'XCTSkip' not in body:
-            violations.append(Violation(
-                file=filepath,
-                line=method['line'],
-                method=method['name'],
-                rule="MISSING-001",
-                detail="MISSING-001: Test has no assertions. It can never fail.",
-            ))
+            if not ALLOWLIST_COMMENT_RE['MISSING-001'].search(body):
+                violations.append(Violation(
+                    file=filepath,
+                    line=method['line'],
+                    method=method['name'],
+                    rule="MISSING-001",
+                    detail="MISSING-001: Test has no assertions. It can never fail.",
+                ))
 
     return violations
 
 def main():
     fix_mode = '--fix' in sys.argv
+    # `--per-file` emits one line per violation: <relpath>:<line>:<rule>
+    # That gives verify-pr.sh a machine-parseable per-file view so it can
+    # distinguish blocking rules (FLAKE/FLUFF/MISSING/TIMEOUT) from
+    # advisory (SHALLOW) when deciding whether to fail this PR.
+    per_file_mode = '--per-file' in sys.argv
     single_file = None
     if '--file' in sys.argv:
         idx = sys.argv.index('--file')
@@ -235,6 +358,19 @@ def main():
     for filepath in sorted(files):
         violations = lint_file(filepath)
         all_violations.extend(violations)
+
+    if per_file_mode:
+        # One line per violation. Format: `<relpath>:<line>:<rule>`
+        # Designed for `grep` in CI — verify-pr.sh greps for blocking
+        # rule prefixes within the changed-file list.
+        for v in all_violations:
+            print(f"{os.path.relpath(v.file)}:{v.line}:{v.rule}")
+        # Exit code mirrors the human-mode exit code so callers can use
+        # both modes interchangeably for the pass/fail signal.
+        missing = sum(1 for v in all_violations if v.rule.startswith('MISSING'))
+        timeout = sum(1 for v in all_violations if v.rule.startswith('TIMEOUT'))
+        flake = sum(1 for v in all_violations if v.rule.startswith('FLAKE'))
+        sys.exit(1 if (missing or timeout or flake) else 0)
 
     # Group by rule
     by_rule = {}
@@ -261,27 +397,29 @@ def main():
     print(f"\n{'=' * 70}")
     print(f"Total: {len(all_violations)} violations across {len(set(v.file for v in all_violations))} files")
 
-    # Summary by severity
+    # Summary by family
     fluff = sum(1 for v in all_violations if v.rule.startswith('FLUFF'))
     shallow = sum(1 for v in all_violations if v.rule.startswith('SHALLOW'))
     missing = sum(1 for v in all_violations if v.rule.startswith('MISSING'))
     timeout = sum(1 for v in all_violations if v.rule.startswith('TIMEOUT'))
-    print(f"  Fluff (should replace):    {fluff}")
-    print(f"  Shallow (should deepen):   {shallow}")
-    print(f"  Missing asserts (broken):  {missing}")
-    print(f"  Silent timeouts (CI-flake fuel): {timeout}")
+    flake = sum(1 for v in all_violations if v.rule.startswith('FLAKE'))
+    print(f"  Flake   (blocking — CI-fragile):   {flake}")
+    print(f"  Fluff   (should replace):          {fluff}")
+    print(f"  Shallow (should deepen):           {shallow}")
+    print(f"  Missing (broken — no assertion):   {missing}")
+    print(f"  Silent timeouts (CI-flake fuel):   {timeout}")
 
     if fix_mode:
         print("\n--fix mode: review violations above and replace manually.")
         print("Each fluff test should be replaced 1:1 with a test that exercises")
         print("real logic in the same class (edge case, error path, state transition).")
 
-    # Exit with error on MISSING (broken tests that can never fail) and
-    # TIMEOUT (silent-timeout polling that produces misleading downstream
-    # assertion failures on CI — see PR #983). Both are structural test
-    # quality bugs that have produced production CI crises this session;
-    # gating prevents reintroduction.
-    if missing > 0 or timeout > 0:
+    # Exit with error on MISSING (broken tests that can never fail), TIMEOUT
+    # (silent-timeout polling — PR #983), and FLAKE (raw sleep / asyncAfter
+    # as expectation / pathological >=15s timeouts — the actual flake driver
+    # behind the CI-flake pandemic this sweep addresses). All three are
+    # structural CI-fragility patterns gated against reintroduction.
+    if missing > 0 or timeout > 0 or flake > 0:
         sys.exit(1)
 
     sys.exit(0)
