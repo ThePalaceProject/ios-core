@@ -57,13 +57,15 @@ final class DownloadQueueOrchestratorTests: XCTestCase {
         bookRegistry.addBook(book, state: state)
     }
 
-    private func waitForAsync(timeout: TimeInterval = 1.0, _ predicate: @escaping () -> Bool) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if predicate() { return }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
-        }
+    /// Wraps the shared `awaitConditionAsync` helper. `file`/`line`
+    /// forwarded so timeout XCTFail blames the call site.
+    private func waitForAsync(
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line,
+        _ predicate: @escaping () -> Bool
+    ) async {
+        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
     }
 
     /// Marks `book` active in the coordinator so `activeCount` reflects an
@@ -95,13 +97,14 @@ final class DownloadQueueOrchestratorTests: XCTestCase {
 
         // The orchestrator hops onto a detached Task to enqueue; poll the
         // actor until the append lands so the assertion isn't racey.
-        var observedCount = 0
-        let deadline = Date().addingTimeInterval(1.0)
-        while Date() < deadline {
-            observedCount = await stateManager.downloadCoordinator.queueCount
-            if observedCount >= 1 { break }
-            try? await Task.sleep(nanoseconds: 20_000_000)
+        // Uses awaitConditionAsync's async-predicate overload to read the
+        // actor-isolated queueCount without leaking a hand-rolled silent
+        // while-deadline loop.
+        await awaitConditionAsync(timeout: 10.0) { [stateManager] in
+            let count = await stateManager?.downloadCoordinator.queueCount ?? 0
+            return count >= 1
         }
+        let observedCount = await stateManager.downloadCoordinator.queueCount
 
         XCTAssertEqual(observedCount, 1,
                        "enqueuePending must append the book onto the DownloadCoordinator pending queue")

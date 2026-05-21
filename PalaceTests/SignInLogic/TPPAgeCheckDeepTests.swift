@@ -151,7 +151,14 @@ final class TPPAgeCheckCompletionTests: XCTestCase {
         ageCheck.flushPendingForTests()
         ageCheck.didCompleteAgeCheck(birthYear)
 
-        wait(for: [verifyDone], timeout: 5.0)
+        // 30s budget — the serialQueue chain (verify append → flush →
+        // didCompleteAgeCheck enqueue → handler fanout) can race CI
+        // runner load. The previous 5s budget started timing out
+        // intermittently, surfacing as the *subsequent* line-205
+        // XCTAssertTrue failure (userPresentedAgeCheck never flipped to
+        // true because the didCompleteAgeCheck block hadn't run yet
+        // when the wait returned).
+        wait(for: [verifyDone], timeout: 30.0)
         return capturedAboveAgeLimit ?? false
     }
 

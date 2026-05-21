@@ -227,11 +227,8 @@ final class DownloadResumeAfterKillTests: XCTestCase {
         cancelHandler.cancelDownload(for: book.identifier)
 
         // Wait for the async cleanup task to settle.
-        let deadline = Date().addingTimeInterval(2.0)
-        while Date() < deadline {
-            if spy.scheduleCount > 0 { break }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
+        await awaitConditionAsync(timeout: 10.0) {
+            spy.scheduleCount > 0
         }
 
         XCTAssertEqual(stubTask.cancelByProducingResumeDataCount, 1,
