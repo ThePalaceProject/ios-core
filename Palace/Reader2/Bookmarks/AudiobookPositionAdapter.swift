@@ -42,7 +42,7 @@ final class AudiobookPositionAdapter: PositionNetworkAdapter, @unchecked Sendabl
                 selectorValue: selectorValue
             ) { response in
                 guard let serverID = response?.serverId, !serverID.isEmpty else {
-                    continuation.resume(throwing: PositionWriterError.serverError)
+                    continuation.resume(throwing: PositionWriterError.serverError(statusCode: -1, body: nil))
                     return
                 }
                 continuation.resume(returning: serverID)
