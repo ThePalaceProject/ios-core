@@ -2,9 +2,15 @@
   {
     "args" : {
       "resetCache" : "true",
-      "url" : "SQ007-BOOK",
+      "url" : "ITEM7-BOOK",
       "useToken" : "true"
     },
     "method" : "fetchBook"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "presentSignInModal"
   }
 ]

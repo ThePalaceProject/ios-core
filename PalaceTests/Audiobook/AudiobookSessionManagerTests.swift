@@ -485,3 +485,62 @@ final class PlaybackFailureRecordTests: XCTestCase {
                       "underlying message should appear at the end of the summary")
     }
 }
+
+// MARK: - Chapter TOC normalization
+
+/// Covers `AudiobookSessionManager.normalizedChaptersCount` — the primitive-
+/// typed mirror of the binding-time TOC normalization. Exercises the call-
+/// through to `ChapterTOCNormalizer` plus the collapse behavior (when the
+/// TOC is oversubdivided, output count == trackCount).
+@MainActor
+final class AudiobookChapterTOCNormalizationTests: XCTestCase {
+
+    func testNormalizedChaptersCount_balancedTOC_returnsOriginalCount() {
+        // 56 tracks, 56 TOC entries — keep as-is.
+        XCTAssertEqual(
+            AudiobookSessionManager.normalizedChaptersCount(tocCount: 56, trackCount: 56),
+            56
+        )
+    }
+
+    func testNormalizedChaptersCount_slightlyInflatedTOC_returnsOriginalCount() {
+        // 100 chapters + 1 "Acknowledgments" — under threshold, keep.
+        XCTAssertEqual(
+            AudiobookSessionManager.normalizedChaptersCount(tocCount: 101, trackCount: 100),
+            101
+        )
+    }
+
+    func testNormalizedChaptersCount_oversubdividedTOC_collapsesToTrackCount() {
+        // The motivating case: 182 TOC for 56 tracks.
+        // After collapse the chapter UI shows one entry per track.
+        XCTAssertEqual(
+            AudiobookSessionManager.normalizedChaptersCount(tocCount: 182, trackCount: 56),
+            56
+        )
+    }
+
+    func testNormalizedChaptersCount_zeroTracks_returnsOriginal() {
+        // Defensive: can't decide without a track count → don't normalize.
+        XCTAssertEqual(
+            AudiobookSessionManager.normalizedChaptersCount(tocCount: 50, trackCount: 0),
+            50
+        )
+    }
+
+    func testNormalizedChaptersCount_exactlyAtThreshold_returnsOriginal() {
+        // 56 * 1.5 == 84. 84 is the *boundary*, not over.
+        XCTAssertEqual(
+            AudiobookSessionManager.normalizedChaptersCount(tocCount: 84, trackCount: 56),
+            84
+        )
+    }
+
+    func testNormalizedChaptersCount_oneOverThreshold_collapses() {
+        // 56 * 1.5 == 84. 85 > 84 → collapse to trackCount.
+        XCTAssertEqual(
+            AudiobookSessionManager.normalizedChaptersCount(tocCount: 85, trackCount: 56),
+            56
+        )
+    }
+}

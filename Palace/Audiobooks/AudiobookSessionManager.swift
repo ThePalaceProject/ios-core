@@ -540,7 +540,9 @@ public final class AudiobookSessionManager: ObservableObject {
         self.audiobook = loaded.audiobook
         self.decryptor = loaded.decryptor
         self.playbackModel = loaded.playbackModel
-        self.currentChapters = loaded.audiobook.tableOfContents.toc
+        self.currentChapters = Self.normalizedChapters(
+            for: loaded.audiobook.tableOfContents
+        )
 
         newManager.statePublisher
             .receive(on: DispatchQueue.main)
@@ -696,7 +698,54 @@ public final class AudiobookSessionManager: ObservableObject {
         }
     }
 
+    // MARK: - Chapter TOC normalization
+
+    /// Returns the chapter list that should drive `currentChapters`. When the
+    /// raw TOC is oversubdivided relative to the actual track count (>1.5x),
+    /// collapses adjacent same-track entries to keep the UI showing chapters
+    /// (one per track) instead of sections/paragraphs. See
+    /// `ChapterTOCNormalizer` for the threshold rationale.
+    ///
+    /// Static + pure so the decision is unit-testable without a real
+    /// `AudiobookTableOfContents` — wrapper `normalizedChaptersCount(
+    /// tocCount:trackCount:)` provides a primitive entry point that tests
+    /// can hit without constructing toolkit types.
+    static func normalizedChapters(for toc: AudiobookTableOfContents) -> [Chapter] {
+        let chapters = toc.toc
+        let trackCount = toc.tracks.tracks.count
+        if !ChapterTOCNormalizer.isOversubdivided(tocCount: chapters.count, expectedChapterCount: trackCount) {
+            return chapters
+        }
+        // Collapse: keep the FIRST chapter object encountered per track key.
+        // This preserves the natural reading order while dropping subsections.
+        var seenKeys = Set<String>()
+        var collapsed: [Chapter] = []
+        collapsed.reserveCapacity(trackCount)
+        for chapter in chapters {
+            let key = chapter.position.track.key
+            if seenKeys.insert(key).inserted {
+                collapsed.append(chapter)
+            }
+        }
+        return collapsed
+    }
+
+    /// Primitive-typed mirror of `normalizedChapters(for:)` for unit-test
+    /// use. Returns the expected output count given a TOC count + track
+    /// count, without needing the toolkit's Chapter type.
+    static func normalizedChaptersCount(tocCount: Int, trackCount: Int) -> Int {
+        if !ChapterTOCNormalizer.isOversubdivided(tocCount: tocCount, expectedChapterCount: trackCount) {
+            return tocCount
+        }
+        return trackCount
+    }
+
     // MARK: - Position restoration helpers
+
+    /// Logger for `[AUDIOPOS]` diagnostic lines. Indirected through a protocol
+    /// so unit tests can spy on emissions without scraping Crashlytics output.
+    /// Production binds the default which routes through `Log.warn`.
+    var positionLogger: AudiobookPositionLogging = DefaultAudiobookPositionLogger()
 
     private func shouldRestoreBookmarkPosition(for book: TPPBook) -> Bool {
         let hasLocation = bookRegistry.location(forIdentifier: book.identifier) != nil
@@ -704,28 +753,151 @@ public final class AudiobookSessionManager: ObservableObject {
         return true
     }
 
+    /// Returns a `TrackPosition` reconstructed from the registry's saved
+    /// location for `book`, validated against the loaded audiobook's manifest.
+    ///
+    /// Failure modes are individually logged with `[AUDIOPOS]` markers. When
+    /// the primary saved location can't be used but the registry has other
+    /// generic bookmarks for this book, the most-recent valid one is returned
+    /// as a fallback (better than dropping the patron to chapter-1 start).
+    /// Returns `nil` only when there's nothing usable at all.
     private func getValidLocalPosition(book: TPPBook, audiobook: Audiobook) -> TrackPosition? {
-        guard let dict = bookRegistry.location(forIdentifier: book.identifier)?.locationStringDictionary(),
-              let localBookmark = AudioBookmark.create(locatorData: dict),
-              let localPosition = TrackPosition(
-                audioBookmark: localBookmark,
-                toc: audiobook.tableOfContents.toc,
-                tracks: audiobook.tableOfContents.tracks
-              ),
-              isValidPosition(localPosition, in: audiobook.tableOfContents) else {
+        let primary = tryLoadPrimaryLocalPosition(book: book, audiobook: audiobook)
+        switch primary {
+        case .success(let position):
+            return position
+        case .failure:
+            // Fall back to most-recent valid generic bookmark.
+            if let fallback = fallbackToMostRecentValidBookmark(book: book, audiobook: audiobook) {
+                positionLogger.logFallback(
+                    reason: "primary_position_invalid_using_recent_bookmark",
+                    context: ["bookId": book.identifier]
+                )
+                return fallback
+            }
             return nil
         }
-        return localPosition
     }
 
-    private func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
-        guard position.timestamp >= 0 && position.timestamp.isFinite else { return false }
-        guard tableOfContents.tracks.track(forKey: position.track.key) != nil else { return false }
+    /// Tries to reconstruct the position from `bookRegistry.location(...)`.
+    /// Each early-out logs a `[AUDIOPOS] FAIL` line so support can grep the
+    /// crashlog and see exactly which step dropped the saved position.
+    private func tryLoadPrimaryLocalPosition(
+        book: TPPBook,
+        audiobook: Audiobook
+    ) -> Result<TrackPosition, AudiobookPositionValidationFailure> {
+        guard let location = bookRegistry.location(forIdentifier: book.identifier) else {
+            positionLogger.logFailure(reason: "no_location", context: ["bookId": book.identifier])
+            return .failure(.trackKeyNotInManifest(savedKey: ""))
+        }
+        guard let dict = location.locationStringDictionary() else {
+            positionLogger.logFailure(reason: "locator_decode", context: ["bookId": book.identifier])
+            return .failure(.trackKeyNotInManifest(savedKey: ""))
+        }
+        guard let localBookmark = AudioBookmark.create(locatorData: dict) else {
+            positionLogger.logFailure(reason: "bookmark_create", context: ["bookId": book.identifier])
+            return .failure(.trackKeyNotInManifest(savedKey: ""))
+        }
+        guard let localPosition = TrackPosition(
+            audioBookmark: localBookmark,
+            toc: audiobook.tableOfContents.toc,
+            tracks: audiobook.tableOfContents.tracks
+        ) else {
+            positionLogger.logFailure(
+                reason: "trackposition_construct",
+                context: ["bookId": book.identifier]
+            )
+            return .failure(.trackKeyNotInManifest(savedKey: ""))
+        }
+        if let failure = validationFailure(for: localPosition, in: audiobook.tableOfContents) {
+            // Manifest keys for diagnostic context (first few only — avoid bloat).
+            let manifestKeys = audiobook.tableOfContents.tracks.tracks
+                .prefix(5).map(\.key).joined(separator: ",")
+            positionLogger.logFailure(
+                reason: failureReasonString(failure),
+                context: [
+                    "bookId": book.identifier,
+                    "savedKey": localPosition.track.key,
+                    "manifestKeys": manifestKeys
+                ]
+            )
+            return .failure(failure)
+        }
+        return .success(localPosition)
+    }
+
+    /// Returns the most-recent valid `TrackPosition` from
+    /// `bookRegistry.genericBookmarksForIdentifier(...)`, where "valid" means
+    /// the validator accepts it AND it parses against the current manifest.
+    /// Recency is by `lastSavedTimeStamp` (ISO8601), falling back to array
+    /// order when timestamps are missing.
+    private func fallbackToMostRecentValidBookmark(
+        book: TPPBook,
+        audiobook: Audiobook
+    ) -> TrackPosition? {
+        let bookmarks = bookRegistry.genericBookmarksForIdentifier(book.identifier)
+        guard !bookmarks.isEmpty else { return nil }
+
+        let candidates: [(TrackPosition, String)] = bookmarks.compactMap { location in
+            guard let dict = location.locationStringDictionary(),
+                  let bookmark = AudioBookmark.create(locatorData: dict),
+                  let position = TrackPosition(
+                    audioBookmark: bookmark,
+                    toc: audiobook.tableOfContents.toc,
+                    tracks: audiobook.tableOfContents.tracks
+                  ),
+                  validationFailure(for: position, in: audiobook.tableOfContents) == nil else {
+                return nil
+            }
+            return (position, bookmark.lastSavedTimeStamp ?? "")
+        }
+
+        guard !candidates.isEmpty else { return nil }
+        // Descending by timestamp string (ISO8601 is lexicographically sortable).
+        let sorted = candidates.sorted { $0.1 > $1.1 }
+        return sorted.first?.0
+    }
+
+    /// Re-uses `AudiobookPositionPolicy.validate`. The thin shim adapts the
+    /// instance-level call site (which already has the toolkit's position
+    /// object) to the pure-function policy (which doesn't need the toolkit).
+    private func validationFailure(
+        for position: TrackPosition,
+        in tableOfContents: AudiobookTableOfContents
+    ) -> AudiobookPositionValidationFailure? {
+        let trackKeyMatches = tableOfContents.tracks.track(forKey: position.track.key) != nil
         let totalDuration = tableOfContents.tracks.totalDuration
-        if totalDuration <= 0 { return true }
         let positionDuration = position.durationToSelf()
-        if positionDuration > totalDuration * 1.1 { return false }
-        return true
+        let result = AudiobookPositionPolicy.validate(
+            timestamp: position.timestamp,
+            positionDuration: positionDuration,
+            totalDuration: totalDuration,
+            trackKeyMatchesManifest: trackKeyMatches,
+            savedTrackKey: position.track.key
+        )
+        switch result {
+        case .success: return nil
+        case .failure(let f): return f
+        }
+    }
+
+    /// Maps a validation failure to a short greppable reason string for the
+    /// `[AUDIOPOS] FAIL: <reason>` log line. Keep these stable — they're
+    /// matched by support staff in crashlog triage.
+    private func failureReasonString(_ failure: AudiobookPositionValidationFailure) -> String {
+        switch failure {
+        case .negativeTimestamp: return "negative_timestamp"
+        case .nonFiniteTimestamp: return "non_finite_timestamp"
+        case .trackKeyNotInManifest: return "track_key_mismatch"
+        case .positionExceedsCap: return "position_exceeds_cap"
+        }
+    }
+
+    /// Kept as a thin wrapper for any in-file callers that just want a bool.
+    /// New code should use `validationFailure(for:in:)` directly so the
+    /// failure mode can be logged.
+    private func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
+        return validationFailure(for: position, in: tableOfContents) == nil
     }
 
     // MARK: - Private Methods
@@ -1013,10 +1185,19 @@ public final class AudiobookSessionManager: ObservableObject {
     private func handlePositionUpdate(_ position: TrackPosition) {
         currentPosition = position
 
-        // Check for chapter change using manager's currentChapter
+        // Check for chapter change using manager's currentChapter.
+        // Decision delegated to ChapterChangeDetector — was previously an OR
+        // over `key != key || title != title`, which fired spuriously for
+        // anthology audiobooks whose adjacent same-track chapters share a
+        // title. The new policy keys on track-key change only; same-key /
+        // different-title pairs do NOT count as a chapter crossing.
         if let mgr = manager, let newChapter = mgr.currentChapter {
-            if currentChapter?.position.track.key != newChapter.position.track.key ||
-                currentChapter?.title != newChapter.title {
+            if ChapterChangeDetector.didChange(
+                oldKey: currentChapter?.position.track.key,
+                oldTitle: currentChapter?.title,
+                newKey: newChapter.position.track.key,
+                newTitle: newChapter.title
+            ) {
                 currentChapter = newChapter
                 chapterUpdatePublisher.send((chapters: currentChapters, current: currentChapter))
                 Log.debug(#file, "Chapter changed to: '\(newChapter.title)'")

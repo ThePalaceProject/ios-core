@@ -64,13 +64,49 @@ class TPPLastReadPositionPoster {
         }
     }
 
-    /// Determines if a locator should be stored and posted. EPUB-specific:
-    /// requires non-zero progression OR a `cssSelector` to be a meaningful
-    /// position (avoids persisting the trivial "beginning of chapter"
-    /// every time a reader opens a book).
+    /// Determines if a locator should be stored and posted.
+    ///
+    /// Contract (P0 #1, swarm `swarm_f3b9b087`):
+    /// - **Reject** any locator with `totalProgression == nil`. Readium
+    ///   emits an initial locator-change *before* the WKWebView has
+    ///   laid out the document; `totalProgression` is nil at that point.
+    ///   Persisting that locator overwrites the patron's real saved
+    ///   position with pre-render junk and is the root cause of the
+    ///   "opens at chapter 1" regression.
+    /// - **Accept** any locator with `position` > 0 (PDF / fixed-layout
+    ///   EPUB page index — a legitimate anchor independent of
+    ///   continuous progression).
+    /// - **Accept** any locator with `totalProgression` > 0 (mid-book).
+    /// - **Accept** a locator with `totalProgression == 0.0` only when
+    ///   paired with a `cssSelector` — the selector pinpoints an
+    ///   in-chapter element (Readium-style CFI anchor), and the
+    ///   non-nil progression confirms the page has rendered.
+    /// - Otherwise reject.
     private func shouldStore(locator: Locator) -> Bool {
-        let progression = locator.locations.totalProgression ?? 0
-        return progression > 0 || locator.locations.otherLocations["cssSelector"] != nil
+        // Reject pre-render junk: nil totalProgression means the WKWebView
+        // hasn't reported layout metrics yet.
+        guard let totalProgression = locator.locations.totalProgression else {
+            return false
+        }
+
+        // Explicit positional anchor (PDF / fixed-layout EPUB page).
+        if let position = locator.locations.position, position > 0 {
+            return true
+        }
+
+        // Mid-book continuous progression.
+        if totalProgression > 0 {
+            return true
+        }
+
+        // First-paint cssSelector anchor — selector is meaningful only
+        // when the page has actually rendered (totalProgression non-nil,
+        // verified by the guard above).
+        if locator.locations.otherLocations["cssSelector"] != nil {
+            return true
+        }
+
+        return false
     }
 
     /// Serializes the Readium `Locator` into the wire-shaped DTO consumed

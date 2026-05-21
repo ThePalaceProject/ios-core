@@ -19,6 +19,7 @@
 //
 
 import XCTest
+import Combine
 @testable import Palace
 
 final class NotificationServiceStateMachineTests: XCTestCase {
@@ -144,5 +145,89 @@ final class NotificationServiceStateMachineTests: XCTestCase {
         let resolved = await outcomeTask
         XCTAssertEqual(resolved, .navigate,
                        "Hold navigation must block on .detailsLoading and resolve to .navigate once state transitions to .detailsLoaded(supports=true)")
+    }
+
+    // MARK: - Auth-state-change FCM-retry subscription (swarm_f3b9b087 item #6)
+    //
+    // When the user's auth state transitions from any non-`.loggedIn`
+    // state to `.loggedIn` AND `hasUpdatedToken == false`, the service
+    // must re-attempt FCM token registration. This closes the SAML-stale
+    // gap where `updateToken()`'s `getProfileDocument` returned nil and
+    // there was no retry trigger until app cold-launch / sign-out /
+    // library switch.
+    //
+    // The auth-state publisher is injected via `init(authStatePublisher:retry:)`
+    // so tests can drive a `PassthroughSubject` and a spy retry callback —
+    // NEVER real Firebase Messaging, NEVER `.shared`, NEVER real keychain.
+
+    func testAuthStateChange_staleToLoggedIn_triggersRetry() {
+        let subject = PassthroughSubject<TPPAccountAuthState, Never>()
+        var retryCallCount = 0
+        let service = NotificationService(
+            authStatePublisher: subject.eraseToAnyPublisher(),
+            onAuthStateRetryRequested: { retryCallCount += 1 }
+        )
+        defer { service.cancelAuthStateSubscription() }
+
+        // Seed prior state so the first emission is treated as "previous".
+        subject.send(.credentialsStale)
+        // Then transition to .loggedIn — the recovery edge.
+        subject.send(.loggedIn)
+
+        XCTAssertEqual(retryCallCount, 1,
+                       "Stale→LoggedIn must trigger exactly one retry — the SAML-recovery path")
+    }
+
+    func testAuthStateChange_loggedInToStale_doesNotTriggerRetry() {
+        let subject = PassthroughSubject<TPPAccountAuthState, Never>()
+        var retryCallCount = 0
+        let service = NotificationService(
+            authStatePublisher: subject.eraseToAnyPublisher(),
+            onAuthStateRetryRequested: { retryCallCount += 1 }
+        )
+        defer { service.cancelAuthStateSubscription() }
+
+        subject.send(.loggedIn)
+        subject.send(.credentialsStale)
+
+        XCTAssertEqual(retryCallCount, 0,
+                       "Wrong direction (LoggedIn→Stale) must NOT trigger a retry")
+    }
+
+    func testAuthStateChange_loggedOutToLoggedIn_triggersRetry() {
+        let subject = PassthroughSubject<TPPAccountAuthState, Never>()
+        var retryCallCount = 0
+        let service = NotificationService(
+            authStatePublisher: subject.eraseToAnyPublisher(),
+            onAuthStateRetryRequested: { retryCallCount += 1 }
+        )
+        defer { service.cancelAuthStateSubscription() }
+
+        subject.send(.loggedOut)
+        subject.send(.loggedIn)
+
+        XCTAssertEqual(retryCallCount, 1,
+                       "Fresh sign-in (LoggedOut→LoggedIn) must trigger a retry")
+    }
+
+    func testAuthStateChange_idempotentTransitions_doNotTriggerRetry() {
+        let subject = PassthroughSubject<TPPAccountAuthState, Never>()
+        var retryCallCount = 0
+        let service = NotificationService(
+            authStatePublisher: subject.eraseToAnyPublisher(),
+            onAuthStateRetryRequested: { retryCallCount += 1 }
+        )
+        defer { service.cancelAuthStateSubscription() }
+
+        // Duplicate consecutive emissions must not crash and must not
+        // trigger spurious retries. Hooks `removeDuplicates()` upstream
+        // would normally filter these, but we don't rely on that — the
+        // decision helper guards against same-state transitions.
+        subject.send(.loggedIn)
+        subject.send(.loggedIn)
+        subject.send(.loggedIn)
+
+        XCTAssertEqual(retryCallCount, 0,
+                       "Duplicate .loggedIn emissions are NOT recovery transitions — no retry")
     }
 }

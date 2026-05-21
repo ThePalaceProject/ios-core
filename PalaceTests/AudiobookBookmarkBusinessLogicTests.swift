@@ -526,4 +526,65 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
         let savedLocation = mockRegistry.location(forIdentifier: fakeBook.identifier)
         XCTAssertNotNil(savedLocation, "Location should be saved synchronously")
     }
+
+    // MARK: - isAtBeginning policy integration
+
+    /// The instance-level behavior is exhaustively tested at the
+    /// `BeginningPositionPolicy` boundary level in
+    /// `AudiobookPositionPolicyTests`. These integration tests pin the
+    /// *call-through* — they fail loudly if a refactor accidentally
+    /// reintroduces the legacy 30s grace at the call site.
+
+    func testSaveListeningPosition_track0_29s_track1AlreadySaved_doesNotOverwriteWithBeginning() {
+        // Patron paused at 0:29 of chapter 1 (track index 0, timestamp 29s).
+        // Under the old 30s rule this was treated as "at beginning" and
+        // would have been blocked from overwriting a stored track-1 position.
+        // Under the new strict-zero rule, 29s is real progress and the
+        // overwrite happens.
+        mockRegistry = TPPBookRegistryMock()
+        mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+        mockAnnotations = TPPAnnotationMock()
+        sut = AudiobookBookmarkBusinessLogic(
+            book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations
+        )
+        tracks = try! loadTracks(for: manifestJSON)
+
+        let position = TrackPosition(track: tracks.tracks[0], timestamp: 29.0, tracks: tracks)
+
+        let exp = XCTestExpectation(description: "Save track-0 29s")
+        sut.saveListeningPosition(at: position) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 3.0)
+
+        // The fact that we DON'T assert "blocked" here is the test — the
+        // policy boundary tests own that semantic. We do verify that the
+        // server received the position (i.e. it wasn't quietly dropped):
+        let serverBookmarks = mockAnnotations.savedLocations[fakeBook.identifier]
+        XCTAssertFalse(serverBookmarks?.isEmpty ?? true,
+                       "29s track-0 progress must be synced under strict-zero rule")
+    }
+
+    func testSaveListeningPosition_track0_time0_savesToServer() {
+        // Strict-zero boundary: even 0/0 still goes through the server
+        // postListeningPosition call (the in-memory mock always answers
+        // success, so the response path runs). We're verifying the call
+        // happened, not the suppression branch — that's the policy test.
+        mockRegistry = TPPBookRegistryMock()
+        mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
+        mockAnnotations = TPPAnnotationMock()
+        sut = AudiobookBookmarkBusinessLogic(
+            book: fakeBook, registry: mockRegistry, annotationsManager: mockAnnotations
+        )
+        tracks = try! loadTracks(for: manifestJSON)
+
+        let position = TrackPosition(track: tracks.tracks[0], timestamp: 0, tracks: tracks)
+        let exp = XCTestExpectation(description: "track-0 time-0 syncs")
+        sut.saveListeningPosition(at: position) { _ in exp.fulfill() }
+        wait(for: [exp], timeout: 3.0)
+
+        XCTAssertFalse(
+            mockAnnotations.savedLocations[fakeBook.identifier]?.isEmpty ?? true,
+            "track-0 time-0 still posts to server; suppression of the *response*"
+            + " is the policy concern, not the post itself"
+        )
+    }
 }
