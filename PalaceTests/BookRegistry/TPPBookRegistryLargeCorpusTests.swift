@@ -204,7 +204,7 @@ final class TPPBookRegistryLargeCorpusTests: XCTestCase {
         try writeCorpusJSON(records)
 
         let start = Date()
-        loadAndWait(timeout: 60.0)
+        loadAndWait(timeout: 60.0) // FLAKE-003-OK: large-corpus performance budget — loads 5000 book records from disk through TPPBook(dictionary:) parse + state-machine assignment; 60s is the explicit O(n²) regression guard asserted on the next line, not a sleep mask.
         let elapsed = Date().timeIntervalSince(start)
 
         XCTAssertLessThan(elapsed, 60.0,

@@ -18,9 +18,6 @@ private class MockBackgroundWorkOwner: NSObject, NYPLBackgroundWorkOwner {
     var setUpWorkItemCalled = false
     var performBackgroundWorkCallCount = 0
 
-    /// Simulated work duration
-    var workDuration: TimeInterval = 0
-
     /// Set to true to simulate returning nil from setUpWorkItem
     var returnNilWorkItem = false
 
@@ -45,10 +42,6 @@ private class MockBackgroundWorkOwner: NSObject, NYPLBackgroundWorkOwner {
         performBackgroundWorkCallCount += 1
         workPerformed = true
 
-        if workDuration > 0 {
-            Thread.sleep(forTimeInterval: workDuration)
-        }
-
         workExpectation?.fulfill()
     }
 }
@@ -61,16 +54,12 @@ final class TPPBackgroundExecutorTests: XCTestCase {
         let owner = MockBackgroundWorkOwner()
         let executor = TPPBackgroundExecutor(owner: owner, taskName: "TestTask")
 
-        let expectation = self.expectation(description: "Work dispatched")
-
-        // dispatchBackgroundWork runs on main, then dispatches to background
+        // dispatchBackgroundWork runs on main, then dispatches to background.
+        // Wait on the real signal — setUpWorkItem being called — rather than
+        // a fixed 1s wall-clock delay.
         executor.dispatchBackgroundWork()
+        awaitCondition(timeout: 5.0) { owner.setUpWorkItemCalled }
 
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 3.0)
         XCTAssertTrue(owner.setUpWorkItemCalled, "Executor should call setUpWorkItem on owner")
     }
 
@@ -79,37 +68,37 @@ final class TPPBackgroundExecutorTests: XCTestCase {
         owner.returnNilWorkItem = true
         let executor = TPPBackgroundExecutor(owner: owner, taskName: "NilWork")
 
-        // Should not crash when setUpWorkItem returns nil
+        // Should not crash when setUpWorkItem returns nil. Wait on the real
+        // signal — setUpWorkItem being called — rather than a fixed 1s delay.
         executor.dispatchBackgroundWork()
+        awaitCondition(timeout: 5.0) { owner.setUpWorkItemCalled }
 
-        let expectation = self.expectation(description: "Executor handled nil")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 3.0)
         XCTAssertTrue(owner.setUpWorkItemCalled)
         XCTAssertFalse(owner.workPerformed, "Work should not be performed when work item is nil")
     }
 
     func testExecutorDoesNotRetainOwner() {
-        var owner: MockBackgroundWorkOwner? = MockBackgroundWorkOwner()
-        weak var weakOwner = owner
-        let executor = TPPBackgroundExecutor(owner: owner!, taskName: "WeakRef")
-
-        // Release strong reference
-        owner = nil
+        // Construct the executor inside a do-block so the local `owner` is
+        // released as soon as we exit. Capture `weakOwner` from the same scope
+        // so the executor's weak reference is what holds the owner alive (or
+        // not — which is the assertion).
+        let executor: TPPBackgroundExecutor
+        weak var weakOwner: MockBackgroundWorkOwner?
+        do {
+            let owner = MockBackgroundWorkOwner()
+            weakOwner = owner
+            executor = TPPBackgroundExecutor(owner: owner, taskName: "WeakRef")
+            // owner goes out of scope at the end of this do-block
+        }
 
         XCTAssertNil(weakOwner, "Executor should hold a weak reference to owner")
 
-        // Should not crash when owner is deallocated
+        // Should not crash when owner is deallocated. dispatchBackgroundWork
+        // schedules the startBackground closure on .main; drain the main queue
+        // so the (no-owner) path fires before we exit the test. Reaching the
+        // next line without an exception IS the assertion.
         executor.dispatchBackgroundWork()
-
-        let expectation = self.expectation(description: "No crash")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
-        waitForExpectations(timeout: 2.0)
+        drainMainQueue()
     }
 
 }

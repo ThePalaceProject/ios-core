@@ -469,7 +469,7 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 15.0)
+        wait(for: [expectation], timeout: 5.0)
     }
 
     func testExecuteTokenRefresh_BothEmpty_FailsViaTokenRequestGuard() {
@@ -491,7 +491,7 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 15.0)
+        wait(for: [expectation], timeout: 5.0)
     }
 
     // MARK: executeTokenRefresh Success Path
@@ -529,7 +529,7 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 15.0)
+        wait(for: [expectation], timeout: 5.0)
     }
 
     func testExecuteTokenRefresh_ServerReturns401_ReturnsFailure() {
@@ -557,7 +557,7 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 15.0)
+        wait(for: [expectation], timeout: 5.0)
     }
 
     func testExecuteTokenRefresh_WithAccountId_Succeeds() {
@@ -592,7 +592,7 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 15.0)
+        wait(for: [expectation], timeout: 5.0)
     }
 }
 
@@ -982,7 +982,7 @@ final class TokenRefreshIntegrationTests: XCTestCase {
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 15.0)
+        wait(for: [expectation], timeout: 5.0)
 
         XCTAssertFalse(networkCallMade,
                        "Empty username must be caught before any network I/O")

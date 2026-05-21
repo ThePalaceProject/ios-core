@@ -26,9 +26,6 @@ class MockURLProtocol: URLProtocol {
     /// Track all requests made during tests
     static var capturedRequests: [URLRequest] = []
 
-    /// Delays before responding (to simulate network latency)
-    static var responseDelay: TimeInterval = 0
-
     override class func canInit(with request: URLRequest) -> Bool {
         // Intercept all requests in tests
         return true
@@ -45,11 +42,6 @@ class MockURLProtocol: URLProtocol {
             let error = NSError(domain: "MockURLProtocol", code: -1, userInfo: [NSLocalizedDescriptionKey: "No handler configured"])
             client?.urlProtocol(self, didFailWithError: error)
             return
-        }
-
-        // Simulate network delay if configured
-        if MockURLProtocol.responseDelay > 0 {
-            Thread.sleep(forTimeInterval: MockURLProtocol.responseDelay)
         }
 
         do {
@@ -75,7 +67,6 @@ class MockURLProtocol: URLProtocol {
     static func reset() {
         requestHandler = nil
         capturedRequests = []
-        responseDelay = 0
     }
 }
 

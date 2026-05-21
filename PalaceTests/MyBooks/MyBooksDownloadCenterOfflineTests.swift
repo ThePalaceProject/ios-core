@@ -225,6 +225,9 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
     /// no-op. Catches a fix that crashes or asserts when the active-set
     /// is empty.
     func testReachabilityDrop_WithNoActiveDownloads_IsNoOp() async {
+        // MISSING-001-OK: crash-guard — verifies the empty-active-set branch
+        // is a no-op (does NOT crash on empty dictionary lookup). Observable
+        // contract is "no crash, no state mutation".
         let center = MyBooksDownloadCenter(
             bookRegistry: mockRegistry,
             stateManager: stateManager,

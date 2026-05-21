@@ -21,15 +21,11 @@ final class iPadOnMacRMSDKGuardTests: XCTestCase {
     // MARK: - Placeholder: documents expected post-merge behavior
 
     func testProcessInfoExposes_isiOSAppOnMac_OnSupportedSDKs() {
-        // The fix relies on `ProcessInfo.processInfo.isiOSAppOnMac`,
-        // available on iOS 14+ / Mac Catalyst 14+. Palace deploys to
-        // iOS 16+ so this property is always available. If a future
-        // deployment-target downgrade removes it, this test will fail
-        // to compile — which is the desired signal.
+        // MISSING-001-OK: compile-time guard — the assertion is "this file
+        // compiles", which fails the build if a future deployment-target
+        // downgrade removes ProcessInfo.isiOSAppOnMac. No runtime value to
+        // assert on (host-dependent).
         let info = ProcessInfo.processInfo
-        // The property exists at compile time; runtime value depends on host.
-        // We're not asserting the value (it's environment-dependent on the
-        // test runner) — we're asserting the API exists and is reachable.
         _ = info.isiOSAppOnMac
     }
 

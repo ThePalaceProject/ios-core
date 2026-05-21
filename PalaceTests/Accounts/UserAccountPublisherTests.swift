@@ -99,7 +99,7 @@ final class UserAccountPublisherTests: XCTestCase {
         // Default 5s `awaitCondition` budget flaked under late-suite dispatch
         // saturation (100ms sleep + main-actor publish took >5s after ~3,700
         // prior tests). 15s gives enough headroom without masking real bugs.
-        awaitCondition(timeout: 15.0) { self.publisher.isSigningOut == false }
+        awaitCondition(timeout: 15.0) { self.publisher.isSigningOut == false } // FLAKE-003-OK: Task.sleep(100ms) + main-actor publish under late-suite contention legitimately needs >5s.
         XCTAssertFalse(publisher.isSigningOut)
     }
 

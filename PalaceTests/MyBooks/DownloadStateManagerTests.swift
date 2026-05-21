@@ -46,7 +46,7 @@ final class DownloadStateManagerTests: XCTestCase {
 
     func testDownloadInfoAsync_existingEntry_returnsInfo() async {
         let bookId = "test-book-123"
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
         let info = MyBooksDownloadInfo(downloadProgress: 0.5, downloadTask: task, rightsManagement: .none)
 
         await stateManager.bookIdentifierToDownloadInfo.set(bookId, value: info)
@@ -64,7 +64,7 @@ final class DownloadStateManagerTests: XCTestCase {
 
     func testDownloadInfoAsync_cachesInCoordinator() async {
         let bookId = "cache-test"
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
         let info = MyBooksDownloadInfo(downloadProgress: 0.3, downloadTask: task, rightsManagement: .lcp)
 
         await stateManager.bookIdentifierToDownloadInfo.set(bookId, value: info)
@@ -102,7 +102,7 @@ final class DownloadStateManagerTests: XCTestCase {
     func testCleanupDownload_removesAllTracking() async {
         let bookId = "cleanup-test"
         let taskId = 42
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
         let info = MyBooksDownloadInfo(downloadProgress: 0.8, downloadTask: task, rightsManagement: .none)
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
 
@@ -123,7 +123,7 @@ final class DownloadStateManagerTests: XCTestCase {
 
     func testCleanupDownload_withoutTaskId_stillCleansInfo() async {
         let bookId = "cleanup-no-task"
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
         let info = MyBooksDownloadInfo(downloadProgress: 1.0, downloadTask: task, rightsManagement: .none)
 
         await stateManager.bookIdentifierToDownloadInfo.set(bookId, value: info)
@@ -136,8 +136,8 @@ final class DownloadStateManagerTests: XCTestCase {
     // MARK: - Reset
 
     func testResetAll_clearsEverything() async {
-        let task1 = URLSession.shared.downloadTask(with: URL(string: "https://example.com/1")!)
-        let task2 = URLSession.shared.downloadTask(with: URL(string: "https://example.com/2")!)
+        let task1 = fakeDownloadTask()
+        let task2 = fakeDownloadTask()
         let info1 = MyBooksDownloadInfo(downloadProgress: 0.5, downloadTask: task1, rightsManagement: .none)
         let info2 = MyBooksDownloadInfo(downloadProgress: 0.7, downloadTask: task2, rightsManagement: .adobe)
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
@@ -158,7 +158,7 @@ final class DownloadStateManagerTests: XCTestCase {
     // MARK: - Thread-Safe Dictionaries
 
     func testBookIdentifierToDownloadTask_storesAndRetrieves() async {
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
         await stateManager.bookIdentifierToDownloadTask.set("book-abc", value: task)
 
         let retrieved = await stateManager.bookIdentifierToDownloadTask.get("book-abc")
@@ -241,7 +241,7 @@ final class DownloadStateManagerTests: XCTestCase {
         await stateManager.bookIdentifierToDownloadInfo.set(book.identifier,
             value: MyBooksDownloadInfo(
                 downloadProgress: 0.5,
-                downloadTask: URLSession.shared.downloadTask(with: URL(string: "https://example.com")!),
+                downloadTask: fakeDownloadTask(),
                 rightsManagement: .none))
 
         await stateManager.cleanupDownload(for: book.identifier, taskIdentifier: oldTaskId)
@@ -255,7 +255,7 @@ final class DownloadStateManagerTests: XCTestCase {
 
     func testConcurrentAccess_doesNotCrash() async {
         let bookId = "concurrent-test"
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
         let info = MyBooksDownloadInfo(downloadProgress: 0.0, downloadTask: task, rightsManagement: .none)
 
         // Run many concurrent reads and writes

@@ -90,16 +90,16 @@ final class TPPBookRegistryAtomicWriteTests: XCTestCase {
         )
     }
 
-    /// 30s rather than 5s — same defensive bump as the sibling
-    /// TPPBookRegistryPersistenceTests.loadAndWait. AccountsManager preload
-    /// of 1138 cached accounts during init can alone consume >5s on
-    /// memory-pressured CI before sync.load even starts.
+    /// 10s budget — atomic-write tests seed only a few hundred records;
+    /// load resolves in well under a second locally. If a CI run needs more
+    /// than 10s the production load path is degraded and the test should
+    /// fail loudly rather than mask the regression with a longer timeout.
     private func loadAndWait() {
         let exp = expectation(description: "load completes")
         sync.load(account: account, setState: { newState in
             if newState == .loaded { exp.fulfill() }
         }, completion: nil)
-        wait(for: [exp], timeout: 30.0)
+        wait(for: [exp], timeout: 10.0)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 
@@ -247,6 +247,14 @@ final class TPPBookRegistryAtomicWriteTests: XCTestCase {
         // (file exists & parses) or be ENOENT (transient — possible only if
         // a future mutant breaks atomic rename and exposes a delete window).
         // Atomic rename guarantees readers never see an empty/torn file.
+        //
+        // The previous implementation slept 2ms between reads as a
+        // "give the scheduler a chance" hint. That was a fixed-time delay,
+        // not synchronization — disk I/O latency already creates a natural
+        // interleaving window with writer bursts. Removing the fixed delay
+        // tightens the contention loop, making the test STRICTER on
+        // atomicity rather than weaker. The 60-read budget is bounded by
+        // I/O latency, not a sleep.
         var corruptReads = 0
         let readDone = expectation(description: "reader finished")
         DispatchQueue.global().async {
@@ -256,7 +264,6 @@ final class TPPBookRegistryAtomicWriteTests: XCTestCase {
                         corruptReads += 1
                     }
                 }
-                usleep(2_000) // 2ms
             }
             readDone.fulfill()
         }
@@ -272,7 +279,7 @@ final class TPPBookRegistryAtomicWriteTests: XCTestCase {
         let writeDone = expectation(description: "writers finished")
         group.notify(queue: .main) { writeDone.fulfill() }
 
-        wait(for: [writeDone, readDone], timeout: 15.0)
+        wait(for: [writeDone, readDone], timeout: 10.0)
 
         // Final tail-save: a blocking save bracketing all queued ones, after
         // which the file MUST be valid.

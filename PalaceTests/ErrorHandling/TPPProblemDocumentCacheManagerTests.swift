@@ -185,7 +185,7 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 30.0)
+        waitForExpectations(timeout: 10.0)
         // Cache should be in a consistent state after concurrent access — no crashes
         // implied by reaching this point, but verify nothing was corrupted by reading
         // all 5 keys without throwing.
@@ -213,7 +213,7 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 30.0)
+        waitForExpectations(timeout: 10.0)
         // Race-key state is either cached or cleared — either is fine;
         // what matters is the cache is still operational.
         let doc = TPPProblemDocument.fromDictionary(["title": "Post-race"])

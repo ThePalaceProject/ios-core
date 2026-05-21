@@ -128,12 +128,14 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
             "Foreground debounce must coalesce rapid updates — pre-fix behavior preserved."
         )
 
-        // Let the debounce flush.
-        let settled = XCTestExpectation(description: "Debounce settled")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            settled.fulfill()
+        // Production debounce schedules a `Task { try await Task.sleep(...) }`
+        // (NowPlayingCoordinator.swift L282-292). Tasks don't hop the main
+        // queue, so `drainMainQueue` would miss the resolution — poll the
+        // observable system signal instead.
+        awaitCondition(timeout: 5) {
+            let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+            return (info?[MPMediaItemPropertyTitle] as? String) == "Chapter C"
         }
-        wait(for: [settled], timeout: 2.0)
 
         // After waiting, Chapter C (the last one) should be live.
         let infoAfter = MPNowPlayingInfoCenter.default().nowPlayingInfo

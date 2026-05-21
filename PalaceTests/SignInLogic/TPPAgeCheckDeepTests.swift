@@ -158,7 +158,7 @@ final class TPPAgeCheckCompletionTests: XCTestCase {
         // XCTAssertTrue failure (userPresentedAgeCheck never flipped to
         // true because the didCompleteAgeCheck block hadn't run yet
         // when the wait returned).
-        wait(for: [verifyDone], timeout: 30.0)
+        wait(for: [verifyDone], timeout: 30.0) // FLAKE-003-OK: serial-queue chain (verify append → flush → didCompleteAgeCheck → handler fanout) under CI load.
         return capturedAboveAgeLimit ?? false
     }
 
