@@ -71,13 +71,17 @@ final class LibraryRegistryCrawler {
     private let fetcher: CrawlerNetworkFetching
     private let hash: String
     private let stateDirectory: URL
+    private let currentAppVersion: String?
+    private let nowProvider: () -> Date
 
     weak var delegate: LibraryRegistryCrawlerDelegate?
 
     init(
         fetcher: CrawlerNetworkFetching,
         hash: String,
-        stateDirectory: URL? = nil
+        stateDirectory: URL? = nil,
+        currentAppVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+        now: @escaping () -> Date = Date.init
     ) {
         self.fetcher = fetcher
         self.hash = hash
@@ -89,6 +93,8 @@ final class LibraryRegistryCrawler {
                 create: true
             )) ?? FileManager.default.temporaryDirectory
         }()
+        self.currentAppVersion = currentAppVersion
+        self.nowProvider = now
     }
 
     /// Main entry point. Determines crawl strategy and returns merged
@@ -102,8 +108,12 @@ final class LibraryRegistryCrawler {
         let crawlableURL = Self.crawlableURL(from: baseURL)
 
         // Determine starting URL: use stored facet URL for incremental,
-        // or the plain crawlable URL for full crawls
-        let canIncremental = !state.needsFullCrawl
+        // or the plain crawlable URL for full crawls. The version + 7-day
+        // periodic checks force a full crawl so deletions reconcile.
+        let canIncremental = !state.needsFullCrawl(
+            currentAppVersion: currentAppVersion,
+            now: nowProvider()
+        )
         let startURL = canIncremental ? (state.orderModifiedFacetURL ?? crawlableURL) : crawlableURL
 
         do {
@@ -134,8 +144,15 @@ final class LibraryRegistryCrawler {
                 isIncremental = false
             }
 
-            // Collect publications across pages
+            // Collect publications across pages.
+            // `allPublications` carries only entries that should propagate
+            // through the merge (newer-than-cutoff in incremental mode,
+            // every entry in full mode).
+            // `rawCatalogs` carries every entry we've seen so far. When an
+            // incremental walk reaches end-of-feed we promote that snapshot
+            // to a full crawl and reconcile deletions opportunistically.
             var allPublications = [OPDS2Publication]()
+            var rawCatalogs = [OPDS2Publication]()
             var currentPage = firstPage
             var pageCount = 0
             var reachedEnd = false
@@ -143,6 +160,7 @@ final class LibraryRegistryCrawler {
             while true {
                 pageCount += 1
                 let catalogs = currentPage.catalogs
+                rawCatalogs.append(contentsOf: catalogs)
 
                 if isIncremental, let lastCrawl = state.lastSuccessfulCrawlDate {
                     // Filter to only newer publications
@@ -188,18 +206,26 @@ final class LibraryRegistryCrawler {
                 currentPage = try OPDS2CatalogsFeed.fromData(nextData)
             }
 
-            // If incremental and no new publications, nothing changed
-            if isIncremental && allPublications.isEmpty {
-                state.lastSuccessfulCrawlDate = Date()
+            // Opportunistic deletion reconciliation: an incremental walk
+            // that reached end-of-feed has implicitly seen the entire
+            // current registry, so we treat it as a full crawl.
+            let endOfFeedFullCrawl = isIncremental && reachedEnd
+            let isFullCrawl = (!isIncremental && reachedEnd) || endOfFeedFullCrawl
+            let mergeUpdates = endOfFeedFullCrawl ? rawCatalogs : allPublications
+
+            // If incremental, did NOT reach end-of-feed, and saw no new
+            // publications, nothing changed.
+            if isIncremental && !reachedEnd && allPublications.isEmpty {
+                state.lastSuccessfulCrawlDate = nowProvider()
+                state.lastCrawlAppVersion = currentAppVersion
                 saveCrawlState(state)
                 return .noChanges
             }
 
             // Merge
-            let isFullCrawl = !isIncremental && reachedEnd
             let mergeResult = LibraryCatalogMerger.merge(
                 existing: existingPublications,
-                updates: allPublications,
+                updates: mergeUpdates,
                 isFullCrawl: isFullCrawl
             )
 
@@ -216,10 +242,12 @@ final class LibraryRegistryCrawler {
             }
 
             // Update state
-            state.lastSuccessfulCrawlDate = Date()
+            let completedAt = nowProvider()
+            state.lastSuccessfulCrawlDate = completedAt
             if isFullCrawl {
-                state.lastFullCrawlDate = Date()
+                state.lastFullCrawlDate = completedAt
             }
+            state.lastCrawlAppVersion = currentAppVersion
             saveCrawlState(state)
 
             return .success(serialized)
@@ -286,8 +314,10 @@ final class LibraryRegistryCrawler {
 
         guard let nextURL = firstPage.nextPageURL else {
             // Only one page — first page was the complete catalog
-            state.lastSuccessfulCrawlDate = Date()
-            state.lastFullCrawlDate = Date()
+            let completedAt = nowProvider()
+            state.lastSuccessfulCrawlDate = completedAt
+            state.lastFullCrawlDate = completedAt
+            state.lastCrawlAppVersion = currentAppVersion
             saveCrawlState(state)
 
             let meta = feedMetadata ?? OPDS2CatalogsFeed.Metadata(adobe_vendor_id: nil, title: "Palace Library Registry")
@@ -338,8 +368,10 @@ final class LibraryRegistryCrawler {
                 return .failure(CrawlerError.serializationFailed)
             }
 
-            state.lastSuccessfulCrawlDate = Date()
-            state.lastFullCrawlDate = Date()
+            let completedAt = nowProvider()
+            state.lastSuccessfulCrawlDate = completedAt
+            state.lastFullCrawlDate = completedAt
+            state.lastCrawlAppVersion = currentAppVersion
             saveCrawlState(state)
 
             return .success(serialized)

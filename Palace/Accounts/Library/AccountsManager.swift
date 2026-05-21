@@ -513,6 +513,20 @@ struct CatalogCacheMetadata: Codable {
             return
         }
 
+        // 2.5. No disk cache — try the build-time bundled snapshot for
+        // immediate library-picker display (PP-4258). The network fetch
+        // still runs to pick up anything that changed since the snapshot
+        // was cut, so this is purely a fast-path for cold first launch.
+        if let bundledData = BundledRegistrySnapshot.load() {
+            Log.info(#file, "First launch — loading bundled registry snapshot for hash \(hash), dataSize=\(bundledData.count)")
+            cacheAccountsCatalogData(bundledData, hash: hash)
+            loadAccountSetsAndAuthDoc(fromCatalogData: bundledData, key: hash) { _ in
+                NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+            }
+            // Fall through to the network fetch — the caller's completion
+            // fires when the fresh data arrives, not on the bundled load.
+        }
+
         // 3. No cache or expired - must fetch from network
         Log.debug(#file, "Loading catalogs from network for hash \(hash)…")
 
