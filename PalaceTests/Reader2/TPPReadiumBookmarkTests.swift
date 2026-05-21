@@ -358,6 +358,76 @@ final class TPPReadiumBookmarkTests: XCTestCase {
         XCTAssertNil(bookmark)
     }
 
+    // MARK: - Dictionary Init Priority Tests (P0 #2)
+    //
+    // Mixed-format bookmark dictionaries can carry BOTH
+    // `readingOrderItemOffsetMilliseconds` (audiobook-style offset, written
+    // by older app versions or cross-format sync) AND `progressWithinChapter`
+    // (the canonical EPUB key). The old init blindly applied both setters
+    // in sequence, leaving the field at whichever happened to be assigned
+    // last — a bug we've now fixed by giving `progressWithinChapter` a
+    // documented win.
+    //
+    // Contract: `progressWithinChapter` (chapterProgressKey) is the
+    // canonical EPUB-format key for in-chapter progression and wins when
+    // both are present. `readingOrderItemOffsetMilliseconds` is preserved
+    // for audiobook-style legacy data when it's the only signal available.
+
+    func testInit_dictionary_withBothOffsetAndChapterProgress_prefersExplicitChapterProgress() {
+        let dict: NSDictionary = [
+            "href": "/chapter.xhtml",
+            "location": "{}",
+            "time": "2024-01-15T10:30:00Z",
+            "readingOrderItemOffsetMilliseconds": NSNumber(value: 1500.0),
+            "progressWithinChapter": NSNumber(value: 0.42)
+        ]
+
+        let bookmark = TPPReadiumBookmark(dictionary: dict)
+
+        XCTAssertNotNil(bookmark)
+        XCTAssertEqual(Double(bookmark?.progressWithinChapter ?? 0), 0.42, accuracy: 0.001,
+                       "chapterProgressKey (canonical EPUB key) must win when both keys are present")
+        // The audiobook-style offset survives as its own field; the fix is
+        // just about which field gets to own `progressWithinChapter`.
+        XCTAssertEqual(Double(bookmark?.readingOrderItemOffsetMilliseconds ?? 0), 0,
+                       accuracy: 0.001,
+                       "readingOrderItemOffsetMilliseconds field on the bookmark is unaffected (it is populated only via the value-init path, not dictionary)")
+    }
+
+    func testInit_dictionary_withOnlyReadingOrderItemOffset_preservesValue() {
+        // Audiobook-style mixed dict (no chapter progress key). The offset
+        // is the only signal, so it must populate progressWithinChapter
+        // for back-compat — patrons restoring old persisted bookmarks
+        // shouldn't lose their position.
+        let dict: NSDictionary = [
+            "href": "/chapter.xhtml",
+            "location": "{}",
+            "time": "2024-01-15T10:30:00Z",
+            "readingOrderItemOffsetMilliseconds": NSNumber(value: 2500.0)
+        ]
+
+        let bookmark = TPPReadiumBookmark(dictionary: dict)
+
+        XCTAssertNotNil(bookmark)
+        XCTAssertEqual(Double(bookmark?.progressWithinChapter ?? 0), 2500.0, accuracy: 0.001,
+                       "When only the audiobook-style offset is present, fall back to it")
+    }
+
+    func testInit_dictionary_withOnlyChapterProgress_preservesValue() {
+        let dict: NSDictionary = [
+            "href": "/chapter.xhtml",
+            "location": "{}",
+            "time": "2024-01-15T10:30:00Z",
+            "progressWithinChapter": NSNumber(value: 0.73)
+        ]
+
+        let bookmark = TPPReadiumBookmark(dictionary: dict)
+
+        XCTAssertNotNil(bookmark)
+        XCTAssertEqual(Double(bookmark?.progressWithinChapter ?? 0), 0.73, accuracy: 0.001,
+                       "EPUB-canonical key alone must populate progressWithinChapter")
+    }
+
     func testInit_fromDictionary_withEmptyAnnotationId_setsNil() {
         let dict: NSDictionary = [
             "annotationId": "",
