@@ -89,17 +89,20 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         await fulfillment(of: [drained], timeout: timeout)
     }
 
-    /// Spin until the registry reflects the expected state, or timeout.
+    /// Wait until the registry reflects the expected state. Wraps the
+    /// shared `awaitConditionAsync` helper so timeout produces a loud
+    /// XCTFail attributed to the call site rather than a silent return
+    /// that lets downstream assertions read stale state.
     /// Production transition is async (Task in DownloadAlertPresenter).
     private func waitForState(
         _ expected: TPPBookState,
         on identifier: String,
-        timeout: TimeInterval = 2.0
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line
     ) async {
-        let deadline = Date(timeIntervalSinceNow: timeout)
-        while mockRegistry.state(for: identifier) != expected, Date() < deadline {
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: 20_000_000)  // 20ms
+        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [weak self] in
+            self?.mockRegistry.state(for: identifier) == expected
         }
     }
 

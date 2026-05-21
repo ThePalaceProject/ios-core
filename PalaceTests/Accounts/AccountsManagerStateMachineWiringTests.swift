@@ -236,6 +236,209 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         }
     }
 
+    // MARK: - Test 2b: loadCatalogs warm-path drives currentAccount past .basicInfoLoaded
+
+    /// Contract: when `loadCatalogs` short-circuits on the in-memory cache
+    /// (accounts already populated by `preloadAccountsFromDiskCacheSync`),
+    /// it MUST still drive the current account's auth-doc transition. The
+    /// cold path does this via `loadAccountSetsAndAuthDoc → fetchAuthDocumentWithStateMachine`;
+    /// before this fix the warm path returned `completion?(true)` without
+    /// touching the state machine, leaving the current account stuck at
+    /// `.basicInfoLoaded` forever and hanging every `awaitReady()` caller
+    /// in the audiobook-open / token-refresh / bookmark-sync paths for
+    /// already-signed-in cold-launch users.
+    ///
+    /// Exercise: prime the on-disk cache, run `preloadAccountsFromDiskCacheSync`
+    /// so the in-memory cache is hot, set `currentAccountId` to a fixture
+    /// UUID, then call `loadCatalogs(completion:)`. The completion fires
+    /// synchronously on the warm path; the auth-doc fetch runs in the
+    /// background. Within a bounded window the current account must have
+    /// transitioned to `.detailsLoading` or a terminal state — anything
+    /// staying at `.basicInfoLoaded` proves the driver gap is still open.
+    func testLoadCatalogs_warmPath_drivesCurrentAccountPastBasicInfoLoaded() throws {
+        let catalogs = try loadFeedCatalogs()
+        let currentUUID = catalogs[0].metadata.id
+
+        // Construct the manager FIRST. Its init fires a background
+        // loadCatalogs(nil); let it settle (no network → fails fast) so its
+        // writes don't race the rest of the test.
+        let manager = AccountsManager()
+        let backgroundSettled = expectation(description: "background loadCatalogs settled")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() }
+        wait(for: [backgroundSettled], timeout: 2.0)
+
+        // Seed disk cache against the manager's resolved hash so the warm
+        // path's `accountSets[hash]?.isEmpty == false` check holds when we
+        // re-run preload + loadCatalogs below.
+        let activeHash = TPPConfiguration.customUrlHash()
+            ?? (TPPSettings().useBetaLibraries
+                ? TPPConfiguration.betaUrlHash
+                : TPPConfiguration.prodUrlHash)
+        try seedDiskCache(for: activeHash, data: feedData)
+        defer { tearDownDiskCache(for: activeHash) }
+
+        // Set the current account BEFORE preload so manager.currentAccount
+        // resolves to a fixture UUID once accountSets is populated.
+        UserDefaults.standard.set(currentUUID, forKey: currentAccountIdentifierKey)
+        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+
+        // Reset state for known subjects so the assertion below isn't
+        // observing the background's leftovers.
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
+
+        // Populate accountSets via preload — this is the production cold-
+        // launch sequence: AppDelegate calls preload before loadCatalogs.
+        manager.preloadAccountsFromDiskCacheSync()
+
+        // Pre-state: every preloaded account is at .basicInfoLoaded. This
+        // pins the precondition the warm-path driver gap depended on.
+        switch AccountStateStore.shared.state(for: currentUUID) {
+        case .basicInfoLoaded:
+            break // expected pre-state
+        default:
+            XCTFail("Setup precondition: currentAccount must be .basicInfoLoaded immediately after preload; got \(label(AccountStateStore.shared.state(for: currentUUID)))")
+            return
+        }
+
+        // Act: invoke the public loadCatalogs entry point. Accounts are in
+        // memory, so the warm-path short-circuit fires. The completion
+        // returns immediately; the auth-doc fetch runs in the background.
+        let completionFired = expectation(description: "loadCatalogs completion fired")
+        manager.loadCatalogs { _ in completionFired.fulfill() }
+        wait(for: [completionFired], timeout: 1.0)
+
+        // Assert: within a bounded window the current account must have
+        // moved past .basicInfoLoaded. Staying at .basicInfoLoaded means
+        // the warm path returned without firing the auth-doc driver — the
+        // regression this test pins against.
+        //
+        // We accept any non-.basicInfoLoaded state (.detailsLoading,
+        // .detailsLoaded, .detailsFailed) — the test asserts the driver
+        // fired, not what the network returned. .notLoaded is also a fail
+        // (would mean the wiring blew the state away without re-driving).
+        let movedExpectation = expectation(description: "currentAccount moved past .basicInfoLoaded")
+        var observedFinalState: Account.LoadState = AccountStateStore.shared.state(for: currentUUID)
+        let pollQueue = DispatchQueue.global()
+        let deadline = Date().addingTimeInterval(3.0)
+        pollQueue.async {
+            while Date() < deadline {
+                let s = AccountStateStore.shared.state(for: currentUUID)
+                switch s {
+                case .detailsLoading, .detailsLoaded, .detailsFailed:
+                    observedFinalState = s
+                    movedExpectation.fulfill()
+                    return
+                default:
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+            }
+        }
+        wait(for: [movedExpectation], timeout: 4.0)
+
+        switch observedFinalState {
+        case .detailsLoading, .detailsLoaded, .detailsFailed:
+            break // wiring fired — fix is in
+        default:
+            XCTFail("loadCatalogs warm-path must drive currentAccount past .basicInfoLoaded; observed \(label(observedFinalState)) — driver gap is still open and awaitReady() callers will hang")
+        }
+    }
+
+    // MARK: - Test 2c: warm-path driver is idempotent on terminal state
+
+    /// Contract: `driveCurrentAccountAuthDocIfNeeded` must NOT regress a
+    /// terminal `.detailsLoaded` / `.detailsFailed` back to `.detailsLoading`.
+    /// `fetchAuthDocumentWithStateMachine` unconditionally calls
+    /// `_setState(.detailsLoading)` at entry — if the warm-path driver
+    /// fired without the terminal-state guard, every `loadCatalogs` invocation
+    /// (cold-launch, scene-connect, refreshInBackground re-entry) would
+    /// destabilize subscribers and burn an extra network round-trip.
+    ///
+    /// Kill case: removing `.detailsLoaded`/`.detailsFailed` from the helper's
+    /// switch would cause this test to observe a `.detailsLoading` transition
+    /// after `driveCurrentAccountAuthDocIfNeeded` and fail.
+    func testDriveCurrentAccountAuthDoc_terminalState_isNoOp() throws {
+        let catalogs = try loadFeedCatalogs()
+        let currentUUID = catalogs[0].metadata.id
+
+        let manager = AccountsManager()
+        let backgroundSettled = expectation(description: "background loadCatalogs settled")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() }
+        wait(for: [backgroundSettled], timeout: 2.0)
+
+        let activeHash = TPPConfiguration.customUrlHash()
+            ?? (TPPSettings().useBetaLibraries
+                ? TPPConfiguration.betaUrlHash
+                : TPPConfiguration.prodUrlHash)
+        try seedDiskCache(for: activeHash, data: feedData)
+        defer { tearDownDiskCache(for: activeHash) }
+
+        UserDefaults.standard.set(currentUUID, forKey: currentAccountIdentifierKey)
+        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
+
+        manager.preloadAccountsFromDiskCacheSync()
+
+        // Drive currentAccount to terminal .detailsLoaded directly. The
+        // production driver would normally do this via the auth-doc fetch
+        // succeeding, but we don't care HOW it got terminal — only that the
+        // helper respects terminal state once there.
+        guard let account = manager.currentAccount else {
+            XCTFail("Setup: currentAccount must resolve after preload"); return
+        }
+        account.authenticationDocument = authDoc
+        guard let details = account.details else {
+            XCTFail("Setup: authenticationDocument assignment must populate details"); return
+        }
+        account._setState(.detailsLoaded(details))
+
+        // Subscribe to the state stream to catch any unwanted regression.
+        // CurrentValueSubject emits the current value (.detailsLoaded)
+        // first; any subsequent emission means the helper fired.
+        var emissionsAfterSubscribe: [String] = []
+        let firstEmission = expectation(description: "stream emits initial terminal value")
+        let streamTask = Task {
+            var isFirst = true
+            for await state in account.stateStream {
+                if isFirst {
+                    isFirst = false
+                    firstEmission.fulfill()
+                    continue
+                }
+                emissionsAfterSubscribe.append(self.label(state))
+            }
+        }
+        wait(for: [firstEmission], timeout: 1.0)
+
+        // Act: call the warm-path driver. With the terminal-state guard
+        // in place this MUST be a no-op.
+        manager.driveCurrentAccountAuthDocIfNeeded()
+
+        // Drain stream a beat so any unwanted emission would land.
+        let drained = expectation(description: "stream drain window")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.15) { drained.fulfill() }
+        wait(for: [drained], timeout: 1.0)
+        streamTask.cancel()
+
+        // Assert: no transition fired after subscribe. The kill case is
+        // a `.detailsLoading` emission, but ANY emission would prove the
+        // helper unconditionally re-fired the fetch.
+        XCTAssertTrue(emissionsAfterSubscribe.isEmpty,
+                      "Terminal-state guard must produce zero subsequent stream emissions; observed: \(emissionsAfterSubscribe)")
+
+        // Final state must still be the terminal we set up with.
+        switch AccountStateStore.shared.state(for: currentUUID) {
+        case .detailsLoaded:
+            break
+        default:
+            XCTFail("Final state must remain .detailsLoaded after no-op driver; got \(label(AccountStateStore.shared.state(for: currentUUID)))")
+        }
+    }
+
     // MARK: - Test 3: fetchAuthDocumentWithStateMachine failure path
 
     /// Contract: when the auth-doc fetch returns failure (success=false),
