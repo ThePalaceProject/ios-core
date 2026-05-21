@@ -240,11 +240,15 @@ final class BorrowOperationContractTests: XCTestCase {
     // MARK: - Helpers
 
     /// Wait up to ~1s for the log to contain a record with the given method.
-    /// Wraps the shared `awaitConditionAsync` helper. The prior local
-    /// copy silently swallowed timeouts — see
-    /// PalaceTests/XCTestCase+drainMainQueue.swift for rationale.
-    private func waitForLog(containing method: String, timeout: TimeInterval = 10.0) async {
-        await awaitConditionAsync(timeout: timeout) { [log] in
+    /// Wraps the shared `awaitConditionAsync` helper.
+    /// `file`/`line` forwarded so timeout XCTFail blames the call site.
+    private func waitForLog(
+        containing method: String,
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line
+    ) async {
+        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [log] in
             log?.snapshot().contains(where: { $0.method == method }) ?? false
         }
     }

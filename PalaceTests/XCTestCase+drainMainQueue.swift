@@ -105,4 +105,34 @@ extension XCTestCase {
             line: line
         )
     }
+
+    /// Async-predicate sibling of `awaitConditionAsync` for waits that need
+    /// to read actor-isolated state inside the predicate (e.g. polling an
+    /// actor's queue count, awaiting a NotificationCenter publish on a
+    /// specific thread). Same loud-on-timeout semantics.
+    ///
+    /// Prefer the sync-predicate overload when the predicate doesn't
+    /// require `await`; this overload exists so callers can avoid
+    /// hand-rolling another silent while-deadline loop just because their
+    /// observable is `async`.
+    func awaitConditionAsync(
+        timeout: TimeInterval = 10.0,
+        pollInterval: TimeInterval = 0.025,
+        file: StaticString = #file,
+        line: UInt = #line,
+        _ predicate: @escaping () async -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if await predicate() { return }
+            try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+            await Task.yield()
+        }
+        XCTFail(
+            "awaitConditionAsync timed out after \(timeout)s without the async predicate becoming true. " +
+            "Bump timeout if CI is the issue, OR fix the production code that should have signalled.",
+            file: file,
+            line: line
+        )
+    }
 }

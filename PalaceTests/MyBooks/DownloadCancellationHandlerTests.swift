@@ -50,10 +50,14 @@ final class DownloadCancellationHandlerTests: XCTestCase {
     }
 
     /// Thin wrapper around the shared `awaitConditionAsync` helper.
-    /// See PalaceTests/XCTestCase+drainMainQueue.swift for rationale —
-    /// the prior local copy silently swallowed timeouts under CI load.
-    private func waitForAsync(timeout: TimeInterval = 10.0, _ predicate: @escaping () -> Bool) async {
-        await awaitConditionAsync(timeout: timeout, predicate)
+    /// `file`/`line` forwarded so timeout XCTFail blames the call site.
+    private func waitForAsync(
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line,
+        _ predicate: @escaping () -> Bool
+    ) async {
+        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
     }
 
     // MARK: - No task: nonsensical state

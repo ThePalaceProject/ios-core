@@ -115,11 +115,14 @@ final class OverdriveFulfillmentTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Wraps the shared `awaitConditionAsync` helper. The prior local
-    /// copy silently swallowed timeouts — see
-    /// PalaceTests/XCTestCase+drainMainQueue.swift for rationale.
-    private func waitForPublishedError(timeout: TimeInterval = 10.0) async {
-        await awaitConditionAsync(timeout: timeout) { [weak self] in
+    /// Wraps the shared `awaitConditionAsync` helper.
+    /// `file`/`line` forwarded so timeout XCTFail blames the call site.
+    private func waitForPublishedError(
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line
+    ) async {
+        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [weak self] in
             self?.capturedErrors.isEmpty == false
         }
     }

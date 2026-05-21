@@ -82,12 +82,16 @@ final class DownloadStartCoordinatorTests: XCTestCase {
     }
 
     /// Thin wrapper around the shared `awaitConditionAsync` helper.
-    /// Replaces the prior local copy that silently swallowed timeouts —
-    /// the post-timeout assertions read stale values and surfaced as
-    /// confusing assertion failures on CI. `awaitConditionAsync` fails
-    /// the test loudly when the predicate never converges.
-    private func waitForAsync(timeout: TimeInterval = 10.0, _ predicate: @escaping () -> Bool) async {
-        await awaitConditionAsync(timeout: timeout, predicate)
+    /// Replaces the prior local copy that silently swallowed timeouts.
+    /// `file`/`line` forwarded so a timeout XCTFail blames the call
+    /// site, not this wrapper.
+    private func waitForAsync(
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line,
+        _ predicate: @escaping () -> Bool
+    ) async {
+        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
     }
 
     // MARK: - startBorrow slot-release semantics
