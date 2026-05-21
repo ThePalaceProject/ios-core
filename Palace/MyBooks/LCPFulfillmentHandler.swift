@@ -131,9 +131,18 @@ final class LCPFulfillmentHandler {
                 // the Read/Listen affordance the second they went offline.
                 // Streaming still works off the license; offline playback
                 // just isn't ready until they retry.
+                //
+                // `.used` is included for future-proofing — audiobooks
+                // don't transition through `.used` today (only PDFs do, see
+                // TPPPDFDocumentMetadata), but mirroring the established
+                // `(.downloadSuccessful || .used)` pattern from
+                // BookReturnService keeps the guard correct if audiobook
+                // playback ever wires through the open-once → `.used`
+                // transition.
                 let currentState = self.bookRegistry.state(for: book.identifier)
-                if book.defaultBookContentType == .audiobook && currentState == .downloadSuccessful {
-                    Log.warn(#file, "LCP audiobook content download failed but streaming license intact — leaving '\(book.title)' (\(book.identifier)) as .downloadSuccessful")
+                let isStreamingReady = currentState == .downloadSuccessful || currentState == .used
+                if book.defaultBookContentType == .audiobook && isStreamingReady {
+                    Log.warn(#file, "LCP audiobook content download failed but streaming license intact — leaving '\(book.title)' (\(book.identifier)) as \(currentState)")
                     return
                 }
 
