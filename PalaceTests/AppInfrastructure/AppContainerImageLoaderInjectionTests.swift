@@ -95,7 +95,11 @@ final class AppContainerImageLoaderInjectionTests: XCTestCase {
             _ = await container.imageLoader.getAsync(for: key)
             waitForRead.fulfill()
         }
-        wait(for: [waitForRead], timeout: 5.0)
+        // 30s budget — local runs resolve in <0.1s, but CI runners under
+        // parallel-test contention have been observed exceeding 5s,
+        // blocking the suite. Same family as TokenRefresh/BookRegistry
+        // timeout bumps.
+        wait(for: [waitForRead], timeout: 30.0)
 
         // Clean up to keep test isolation
         container.imageLoader.remove(for: key)
