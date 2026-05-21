@@ -40,7 +40,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
         Log.info(#file, "🚗 CarPlay scene connected - setting up templates")
 
-        PlaybackBootstrapper.shared.ensureInitializedForCarPlay()
+        AppContainer.production().playbackBootstrapper.ensureInitializedForCarPlay()
 
         self.templateManager = CarPlayTemplateManager(interfaceController: interfaceController)
 

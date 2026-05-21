@@ -8,12 +8,14 @@
 
 import Foundation
 import PalaceLogging
+import PalaceReadingPosition
 @preconcurrency import PalaceAudiobookToolkit
 
 @objc public class AudiobookBookmarkBusinessLogic: NSObject {
     public var book: TPPBook
     private var registry: TPPBookRegistryProvider
     private var annotationsManager: AnnotationsManager
+    private let positionWriter: PositionWriter
     private var isSyncing: Bool = false
     private let queue = DispatchQueue(label: "com.palace.audiobookBookmarkBusinessLogic")
     private var debounceTimer: Timer?
@@ -23,13 +25,30 @@ import PalaceLogging
     private var deletedBookmarkIds = Set<String>()
 
     @objc convenience init(book: TPPBook) {
-        self.init(book: book, registry: AppContainer.production().bookRegistry, annotationsManager: TPPAnnotationsWrapper())
+        self.init(
+            book: book,
+            registry: AppContainer.production().bookRegistry,
+            annotationsManager: TPPAnnotationsWrapper(),
+            positionWriter: nil
+        )
     }
 
-    init(book: TPPBook, registry: TPPBookRegistryProvider, annotationsManager: AnnotationsManager) {
+    init(
+        book: TPPBook,
+        registry: TPPBookRegistryProvider,
+        annotationsManager: AnnotationsManager,
+        positionWriter: PositionWriter? = nil
+    ) {
         self.book = book
         self.registry = registry
         self.annotationsManager = annotationsManager
+        // Default: build a `RemotePositionWriter` from an adapter that
+        // wraps the same `AnnotationsManager` the rest of this class uses.
+        // This keeps the dependency injection seam in one place — tests
+        // and overrides can pass a spy via the `positionWriter:` argument.
+        self.positionWriter = positionWriter ?? RemotePositionWriter(
+            network: AudiobookPositionAdapter(annotations: annotationsManager)
+        )
     }
 
     // MARK: - Bookmark Management
@@ -38,35 +57,48 @@ import PalaceLogging
         let audioBookmark = position.toAudioBookmark()
         audioBookmark.lastSavedTimeStamp = Date().iso8601
 
-        // Save to local registry immediately - this is the user's safety net
-        if let tppLocation = audioBookmark.toTPPBookLocation() {
-            registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
-            Log.debug(#file, "💾 Immediately saved position locally: track=\(position.track.key), time=\(position.timestamp)")
-        }
-
-        // Debounce only the network sync, not the local save
-        debounce { [weak self] in
-            self?.syncListeningPositionToServer(at: position, completion: completion)
-        }
-    }
-
-    private func syncListeningPositionToServer(at position: TrackPosition, completion: ((String?) -> Void)?) {
-        let audioBookmark = position.toAudioBookmark()
-        audioBookmark.lastSavedTimeStamp = Date().iso8601
+        // Save to local registry immediately - this is the user's safety net.
+        // This MUST happen before any async work so a crash/background mid-flight
+        // never loses position state. (swarm_f3b9b087 P0 #4 invariant.)
         guard let tppLocation = audioBookmark.toTPPBookLocation() else {
             completion?(nil)
             return
         }
+        registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
+        Log.debug(#file, "💾 Immediately saved position locally: track=\(position.track.key), time=\(position.timestamp)")
 
+        // Delegate the network write to the unified PositionWriter. Throttling,
+        // queue management, and background-task lifetime now live in one place
+        // (RemotePositionWriter); this method retains audiobook-specific
+        // conflict resolution after the writer resolves.
         let sentTimestamp = audioBookmark.lastSavedTimeStamp ?? ""
         let sentTrackKey = position.track.key
         let sentTrackIndex = position.track.index
         let sentPlaybackTime = position.timestamp
 
-        // Sync to server (this can fail/be slow, but local data is already safe)
-        annotationsManager.postListeningPosition(forBook: self.book.identifier, selectorValue: tppLocation.locationString) { [weak self] response in
+        let snapshot = PositionSnapshot(
+            bookID: self.book.identifier,
+            format: .audiobook,
+            payload: Data(tppLocation.locationString.utf8),
+            timestamp: Date(),
+            device: AnnotationDevice.currentID()
+        )
+
+        Task { [weak self] in
             guard let self else { return }
-            if let response {
+            do {
+                guard let serverID = try await self.positionWriter.save(snapshot) else {
+                    // Throttled or queued — local position is already saved,
+                    // and the writer will flush later. Nothing else to do here.
+                    completion?(nil)
+                    return
+                }
+
+                // Conflict resolution against the current local state.
+                // Preserved verbatim from swarm_f3b9b087 P0 #4/#5: the
+                // timestamp-newer race check (5s window) and the strict-
+                // zero isAtBeginning guard protect a valid local position
+                // from being overwritten by a stale upload result.
                 if let currentLocal = self.registry.location(forIdentifier: self.book.identifier),
                    let currentDict = currentLocal.locationStringDictionary(),
                    let currentBookmark = AudioBookmark.create(locatorData: currentDict) {
@@ -78,7 +110,7 @@ import PalaceLogging
                         Log.warn(#file, "⚠️ Race condition detected: Local position is newer. Keeping local.")
                         Log.warn(#file, "  Sent: track=\(sentTrackKey), time=\(sentPlaybackTime), timestamp=\(sentTimestamp)")
                         Log.warn(#file, "  Current local: track=\(currentBookmark.chapter ?? "?"), timestamp=\(currentLocalTimestamp)")
-                        completion?(response.timeStamp)
+                        completion?(serverID)
                         return
                     }
 
@@ -98,20 +130,21 @@ import PalaceLogging
                             Log.warn(#file, "⚠️ Prevented 'beginning' position from overwriting progress!")
                             Log.warn(#file, "  Attempting to save: track 0, time \(sentPlaybackTime)")
                             Log.warn(#file, "  Current position: track \(currentTrackIndex)")
-                            completion?(response.timeStamp)
+                            completion?(serverID)
                             return
                         }
                     }
                 }
 
-                audioBookmark.lastSavedTimeStamp = response.timeStamp ?? ""
-                audioBookmark.annotationId = response.serverId ?? ""
+                // Commit the server-assigned annotationId to the local
+                // registry so subsequent reads carry the server linkage.
+                audioBookmark.annotationId = serverID
 
                 self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
                 Log.debug(#file, "☁️ Synced position to server: track=\(sentTrackKey), annotationId=\(audioBookmark.annotationId)")
-                completion?(response.timeStamp)
-            } else {
-                Log.warn(#file, "⚠️ Server sync failed, but local position was already saved")
+                completion?(serverID)
+            } catch {
+                Log.warn(#file, "⚠️ Server sync failed, but local position was already saved: \(error)")
                 completion?(nil)
             }
         }

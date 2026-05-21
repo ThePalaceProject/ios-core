@@ -1,8 +1,11 @@
 //
 //  CrossFormatMapping.swift
-//  Palace
+//  PalaceReadingPosition
 //
-//  Maps reading positions between EPUB and audiobook formats for the same title.
+//  Maps reading positions between EPUB and audiobook formats for the
+//  same title.
+//
+//  Migrated from Palace/Platform/ on 2026-05-21 (Swarm 2, Deviation 4).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -10,17 +13,17 @@
 import Foundation
 
 /// A mapping between an EPUB chapter and an audiobook chapter.
-struct ChapterMapping: Codable, Equatable, Sendable {
+public struct ChapterMapping: Codable, Equatable, Sendable {
     /// Zero-based EPUB chapter index.
-    let epubChapterIndex: Int
+    public let epubChapterIndex: Int
     /// Zero-based audiobook chapter index.
-    let audiobookChapterIndex: Int
+    public let audiobookChapterIndex: Int
     /// Optional scaling factor for progress within the chapter.
     /// A value of 2.0 means the EPUB chapter covers roughly twice the content
     /// of the audiobook chapter.
-    let progressScale: Double
+    public let progressScale: Double
 
-    init(epubChapterIndex: Int, audiobookChapterIndex: Int, progressScale: Double = 1.0) {
+    public init(epubChapterIndex: Int, audiobookChapterIndex: Int, progressScale: Double = 1.0) {
         self.epubChapterIndex = epubChapterIndex
         self.audiobookChapterIndex = audiobookChapterIndex
         self.progressScale = progressScale
@@ -28,23 +31,35 @@ struct ChapterMapping: Codable, Equatable, Sendable {
 }
 
 /// Maps positions between EPUB and audiobook formats for the same book.
-struct CrossFormatMapping: Codable, Equatable, Sendable {
+public struct CrossFormatMapping: Codable, Equatable, Sendable {
     /// The book identifier this mapping applies to.
-    let bookID: String
+    public let bookID: String
 
     /// Chapter-level mappings between EPUB and audiobook.
-    let chapterMappings: [ChapterMapping]
+    public let chapterMappings: [ChapterMapping]
 
     /// Total number of EPUB chapters.
-    let epubChapterCount: Int
+    public let epubChapterCount: Int
 
     /// Total number of audiobook chapters.
-    let audiobookChapterCount: Int
+    public let audiobookChapterCount: Int
+
+    public init(
+        bookID: String,
+        chapterMappings: [ChapterMapping],
+        epubChapterCount: Int,
+        audiobookChapterCount: Int
+    ) {
+        self.bookID = bookID
+        self.chapterMappings = chapterMappings
+        self.epubChapterCount = epubChapterCount
+        self.audiobookChapterCount = audiobookChapterCount
+    }
 
     // MARK: - Conversion
 
     /// Convert an EPUB position to an estimated audiobook position.
-    func toAudiobookPosition(from epubPosition: ReadingPosition) -> ReadingPosition? {
+    public func toAudiobookPosition(from epubPosition: ReadingPosition) -> ReadingPosition? {
         guard epubPosition.format == .epub,
               let epubChapter = epubPosition.chapterIndex else {
             return nil
@@ -65,7 +80,7 @@ struct CrossFormatMapping: Codable, Equatable, Sendable {
     }
 
     /// Convert an audiobook position to an estimated EPUB position.
-    func toEpubPosition(from audiobookPosition: ReadingPosition) -> ReadingPosition? {
+    public func toEpubPosition(from audiobookPosition: ReadingPosition) -> ReadingPosition? {
         guard audiobookPosition.format == .audiobook,
               let abChapter = audiobookPosition.audiobookChapterIndex else {
             return nil
@@ -88,7 +103,7 @@ struct CrossFormatMapping: Codable, Equatable, Sendable {
     // MARK: - Auto-Generation
 
     /// Create a simple 1:1 mapping when chapter counts are equal.
-    static func oneToOne(bookID: String, chapterCount: Int) -> CrossFormatMapping {
+    public static func oneToOne(bookID: String, chapterCount: Int) -> CrossFormatMapping {
         let mappings = (0..<chapterCount).map { i in
             ChapterMapping(epubChapterIndex: i, audiobookChapterIndex: i)
         }
@@ -101,7 +116,7 @@ struct CrossFormatMapping: Codable, Equatable, Sendable {
     }
 
     /// Create a proportional mapping when chapter counts differ.
-    static func proportional(bookID: String, epubChapterCount: Int, audiobookChapterCount: Int) -> CrossFormatMapping {
+    public static func proportional(bookID: String, epubChapterCount: Int, audiobookChapterCount: Int) -> CrossFormatMapping {
         guard epubChapterCount > 0, audiobookChapterCount > 0 else {
             return CrossFormatMapping(bookID: bookID, chapterMappings: [], epubChapterCount: epubChapterCount, audiobookChapterCount: audiobookChapterCount)
         }

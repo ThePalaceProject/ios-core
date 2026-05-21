@@ -1,8 +1,10 @@
 //
 //  PositionSyncRecord.swift
-//  Palace
+//  PalaceReadingPosition
 //
 //  A record of a reading position for sync purposes.
+//
+//  Migrated from Palace/Platform/ on 2026-05-21 (Swarm 2, Deviation 4).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -10,13 +12,13 @@
 import Foundation
 
 /// A sync record wrapping a reading position with metadata about its source.
-struct PositionSyncRecord: Codable, Equatable, Sendable, Identifiable {
-    let id: UUID
-    let position: ReadingPosition
-    let sourceDeviceID: String
-    let recordedAt: Date
+public struct PositionSyncRecord: Codable, Equatable, Sendable, Identifiable {
+    public let id: UUID
+    public let position: ReadingPosition
+    public let sourceDeviceID: String
+    public let recordedAt: Date
 
-    init(position: ReadingPosition, sourceDeviceID: String? = nil) {
+    public init(position: ReadingPosition, sourceDeviceID: String? = nil) {
         self.id = UUID()
         self.position = position
         self.sourceDeviceID = sourceDeviceID ?? position.deviceID
@@ -24,7 +26,7 @@ struct PositionSyncRecord: Codable, Equatable, Sendable, Identifiable {
     }
 
     /// Whether this record is from the current device.
-    var isFromCurrentDevice: Bool {
+    public var isFromCurrentDevice: Bool {
         sourceDeviceID == ReadingPosition.currentDeviceID
     }
 }

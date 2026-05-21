@@ -7,6 +7,7 @@
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
+import PalaceReadingPosition
 import SwiftUI
 
 /// A banner that appears when cross-format sync is available.
@@ -88,7 +89,7 @@ struct PositionSyncBanner: View {
         "You were at \(fromPosition.displayDescription)"
     }
 
-    private func formatIcon(_ format: ReadingFormat) -> String {
+    private func formatIcon(_ format: PalaceReadingPosition.ReadingFormat) -> String {
         switch format {
         case .epub: return "book.fill"
         case .audiobook: return "headphones"

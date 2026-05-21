@@ -2,14 +2,51 @@
 //  TPPLastReadPositionPosterTests.swift
 //  PalaceTests
 //
-//  Comprehensive tests for reading position posting logic.
-//  Tests the REAL TPPLastReadPositionPoster class with mock dependencies.
+//  Tests for `TPPLastReadPositionPoster`. As of the PalaceReadingPosition
+//  migration the poster's job is:
+//
+//  1. Reject locators with zero progression and no CSS selector
+//     (`shouldStore` guard).
+//  2. Save the locator locally via `bookRegistry.setLocation`.
+//  3. Build a `PositionSnapshot` and delegate to the injected
+//     `PositionWriter`.
+//
+//  Throttling/queuing now lives in `PositionWriter`; the writer is
+//  exercised in its own SPM tests. Here we verify the poster's
+//  delegation + the snapshot shape it produces.
 //
 
 import XCTest
 import ReadiumShared
 import PalaceCatalog
+import PalaceReadingPosition
 @testable import Palace
+
+// MARK: - Spy PositionWriter
+
+private actor SpyPositionWriter: PositionWriter {
+    private(set) var savedSnapshots: [PositionSnapshot] = []
+    private(set) var loadedBookIDs: [String] = []
+    private(set) var cancelledBookIDs: [String] = []
+    private var savedThrows: Error?
+
+    func setSaveError(_ error: Error?) { savedThrows = error }
+
+    func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
+        savedSnapshots.append(snapshot)
+        if let err = savedThrows { throw err }
+        return "spy-server-id"
+    }
+
+    func load(for bookID: String) async throws -> PositionSnapshot? {
+        loadedBookIDs.append(bookID)
+        return nil
+    }
+
+    func cancel(for bookID: String) async {
+        cancelledBookIDs.append(bookID)
+    }
+}
 
 final class TPPLastReadPositionPosterTests: XCTestCase {
 
@@ -18,6 +55,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
     private var bookRegistryMock: TPPBookRegistryMock!
     private var testBook: TPPBook!
     private var publication: Publication!
+    private var spyWriter: SpyPositionWriter!
     private var poster: TPPLastReadPositionPoster!
 
     // MARK: - Setup
@@ -28,6 +66,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         bookRegistryMock = TPPBookRegistryMock()
         testBook = createTestBook()
         publication = createTestPublication()
+        spyWriter = SpyPositionWriter()
 
         bookRegistryMock.addBook(
             testBook,
@@ -41,7 +80,8 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         poster = TPPLastReadPositionPoster(
             book: testBook,
             publication: publication,
-            bookRegistryProvider: bookRegistryMock
+            bookRegistryProvider: bookRegistryMock,
+            positionWriter: spyWriter
         )
     }
 
@@ -51,41 +91,47 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         testBook = nil
         bookRegistryMock?.registry = [:]
         bookRegistryMock = nil
+        spyWriter = nil
         try super.tearDownWithError()
     }
 
-    // MARK: - Throttling Interval Tests
+    // MARK: - Throttling Interval Sentinel
 
-    func testThrottlingInterval_hasReasonableValue() {
-        let interval = TPPLastReadPositionPoster.throttlingInterval
-
-        XCTAssertGreaterThan(interval, 0, "Throttling interval should be positive")
-        XCTAssertLessThanOrEqual(interval, 60, "Throttling interval should not exceed 1 minute")
+    /// `TPPLastReadPositionPoster.throttlingInterval` is the shared 15s
+    /// contract value pinned at `PalaceTests/Reader/EPUBPositionTests:114`.
+    /// If this constant drifts, the SPM-side `RemotePositionWriter` default
+    /// drifts with it — both are 15.0 by contract.
+    func testThrottlingInterval_isLockedAtFifteenSeconds() {
+        XCTAssertEqual(TPPLastReadPositionPoster.throttlingInterval, 15.0,
+                       "Throttle window is contract-locked at 15s")
     }
 
-    // MARK: - Store Read Position Tests
+    // MARK: - Store: shouldStore predicate
 
-    func testStoreReadPosition_validLocator_savesToRegistry() {
+    func testStoreReadPosition_zeroProgressionNoCssSelector_doesNotStore() async throws {
         let locator = createLocator(
             href: "/chapter1.xhtml",
-            progression: 0.5,
-            totalProgression: 0.25
+            progression: nil,
+            totalProgression: 0
         )
 
+        bookRegistryMock.setLocation(nil, forIdentifier: testBook.identifier)
         poster.storeReadPosition(locator: locator)
 
-        // Verify location was stored in registry
-        let storedLocation = bookRegistryMock.location(forIdentifier: testBook.identifier)
-        XCTAssertNotNil(storedLocation, "Location should be stored in registry")
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertNil(bookRegistryMock.location(forIdentifier: testBook.identifier),
+                     "Zero progression + no CSS selector must not persist locally")
+        let saved = await spyWriter.savedSnapshots
+        XCTAssertTrue(saved.isEmpty,
+                      "Zero progression + no CSS selector must not delegate to writer")
     }
 
-    func testStoreReadPosition_zeroProgression_withCssSelector_savesToRegistry() {
-        // Locator with 0 progression but with CSS selector should be stored
+    func testStoreReadPosition_zeroProgressionWithCssSelector_storesLocally_andDelegates() async throws {
         let locations = Locator.Locations(
             totalProgression: 0,
             otherLocations: ["cssSelector": "#heading"]
         )
-
         let locator = Locator(
             href: AnyURL(string: "/chapter1.xhtml")!,
             mediaType: .xhtml,
@@ -93,31 +139,43 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         )
 
         poster.storeReadPosition(locator: locator)
+        try await Task.sleep(nanoseconds: 50_000_000)
 
-        let storedLocation = bookRegistryMock.location(forIdentifier: testBook.identifier)
-        XCTAssertNotNil(storedLocation)
+        XCTAssertNotNil(bookRegistryMock.location(forIdentifier: testBook.identifier))
+        let saved = await spyWriter.savedSnapshots
+        XCTAssertEqual(saved.count, 1, "CSS-selector locator must reach the writer")
+        XCTAssertEqual(saved.first?.bookID, testBook.identifier)
+        XCTAssertEqual(saved.first?.format, .epubLocator)
     }
 
-    func testStoreReadPosition_zeroProgressionNoCssSelector_doesNotStore() {
+    // MARK: - Store: happy path
+
+    func testStoreReadPosition_validLocator_savesLocally_andDelegatesToWriter() async throws {
         let locator = createLocator(
             href: "/chapter1.xhtml",
-            progression: nil,
-            totalProgression: 0
+            progression: 0.5,
+            totalProgression: 0.25
         )
 
-        // Clear any existing location
-        bookRegistryMock.setLocation(nil, forIdentifier: testBook.identifier)
-
         poster.storeReadPosition(locator: locator)
+        try await Task.sleep(nanoseconds: 50_000_000)
 
-        // With 0 totalProgression and no CSS selector, the poster's shouldStore
-        // guard must reject the position — otherwise we'd persist a meaningless
-        // "beginning of chapter" every time the reader opens a book.
-        XCTAssertNil(bookRegistryMock.location(forIdentifier: testBook.identifier),
-                     "Zero progression + no CSS selector must not persist a position")
+        // Local registry write
+        XCTAssertNotNil(bookRegistryMock.location(forIdentifier: testBook.identifier))
+
+        // Writer delegation
+        let saved = await spyWriter.savedSnapshots
+        XCTAssertEqual(saved.count, 1)
+        let snapshot = try XCTUnwrap(saved.first)
+        XCTAssertEqual(snapshot.bookID, testBook.identifier)
+        XCTAssertEqual(snapshot.format, .epubLocator)
+        let payloadString = String(data: snapshot.payload, encoding: .utf8) ?? ""
+        XCTAssertTrue(payloadString.contains("/chapter1.xhtml"),
+                      "Payload must carry the Readium locator JSON; got \(payloadString)")
     }
 
-    func testStoreReadPosition_positiveProgression_stores() {
+    func testStoreReadPosition_writerThrows_doesNotCrash_localStateUnaffected() async throws {
+        await spyWriter.setSaveError(PositionWriterError.networkUnavailable)
         let locator = createLocator(
             href: "/chapter2.xhtml",
             progression: 0.75,
@@ -125,32 +183,26 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         )
 
         poster.storeReadPosition(locator: locator)
+        try await Task.sleep(nanoseconds: 50_000_000)
 
-        let storedLocation = bookRegistryMock.location(forIdentifier: testBook.identifier)
-        XCTAssertNotNil(storedLocation)
+        XCTAssertNotNil(bookRegistryMock.location(forIdentifier: testBook.identifier),
+                        "Writer failures must not roll back the local registry write")
     }
 
-    // MARK: - Multiple Store Calls Tests
+    // MARK: - Multiple calls
 
-    func testStoreReadPosition_multipleCalls_updatesLocation() {
-        let locator1 = createLocator(
-            href: "/chapter1.xhtml",
-            progression: 0.25,
-            totalProgression: 0.1
-        )
-
-        let locator2 = createLocator(
-            href: "/chapter2.xhtml",
-            progression: 0.5,
-            totalProgression: 0.3
-        )
+    func testStoreReadPosition_multipleCalls_eachDelegatesToWriter() async throws {
+        let locator1 = createLocator(href: "/chapter1.xhtml", progression: 0.25, totalProgression: 0.1)
+        let locator2 = createLocator(href: "/chapter2.xhtml", progression: 0.5, totalProgression: 0.3)
 
         poster.storeReadPosition(locator: locator1)
         poster.storeReadPosition(locator: locator2)
+        try await Task.sleep(nanoseconds: 100_000_000)
 
-        let storedLocation = bookRegistryMock.location(forIdentifier: testBook.identifier)
-        XCTAssertNotNil(storedLocation)
-        // The second location should have replaced the first
+        let saved = await spyWriter.savedSnapshots
+        XCTAssertEqual(saved.count, 2,
+                       "Poster always delegates to writer; throttling is the writer's job")
+        XCTAssertTrue(saved.allSatisfy { $0.bookID == testBook.identifier })
     }
 
     // MARK: - shouldStore Predicate Boundary Tests (P0 #1)
@@ -391,119 +443,5 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
                 totalProgression: totalProgression
             )
         )
-    }
-}
-
-// MARK: - Position Throttling Behavior Tests
-
-final class PositionThrottlingTests: XCTestCase {
-
-    private var bookRegistryMock: TPPBookRegistryMock!
-    private var testBook: TPPBook!
-    private var publication: Publication!
-
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        bookRegistryMock = TPPBookRegistryMock()
-        testBook = createTestBook()
-        publication = createTestPublication()
-
-        bookRegistryMock.addBook(
-            testBook,
-            location: nil,
-            state: .downloadSuccessful,
-            fulfillmentId: nil,
-            readiumBookmarks: nil,
-            genericBookmarks: nil
-        )
-    }
-
-    override func tearDownWithError() throws {
-        bookRegistryMock?.registry = [:]
-        bookRegistryMock = nil
-        testBook = nil
-        publication = nil
-        try super.tearDownWithError()
-    }
-
-    func testPoster_rapidPositionUpdates_throttlesUploads() {
-        let poster = TPPLastReadPositionPoster(
-            book: testBook,
-            publication: publication,
-            bookRegistryProvider: bookRegistryMock
-        )
-
-        // Rapidly update positions
-        for i in 1...5 {
-            let locator = Locator(
-                href: AnyURL(string: "/chapter1.xhtml")!,
-                mediaType: .xhtml,
-                locations: Locator.Locations(
-                    progression: Double(i) / 10.0,
-                    totalProgression: Double(i) / 20.0
-                )
-            )
-            poster.storeReadPosition(locator: locator)
-        }
-
-        // storeReadPosition saves locally (synchronous) then schedules server posting
-        // asynchronously on serialQueue. The local mock write is immediate — no wait needed.
-
-        // Local storage should be updated with the latest position
-        let storedLocation = bookRegistryMock.location(forIdentifier: testBook.identifier)
-        XCTAssertNotNil(storedLocation, "Latest position should be stored locally")
-
-        // Note: Server posting is throttled - this tests local storage behavior
-    }
-
-    // MARK: - Helper Methods
-
-    private func createTestBook() -> TPPBook {
-        let placeholderUrl = URL(string: "https://test.example.com/book")!
-        let acquisition = TPPOPDSAcquisition(
-            relation: .generic,
-            type: "application/epub+zip",
-            hrefURL: placeholderUrl,
-            indirectAcquisitions: [],
-            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
-        )
-
-        return TPPBook(
-            acquisitions: [acquisition],
-            authors: [],
-            categoryStrings: [],
-            distributor: "",
-            identifier: "throttle-test-book",
-            imageURL: nil,
-            imageThumbnailURL: nil,
-            published: Date(),
-            publisher: "",
-            subtitle: "",
-            summary: "",
-            title: "Throttle Test Book",
-            updated: Date(),
-            annotationsURL: nil,
-            analyticsURL: nil,
-            alternateURL: nil,
-            relatedWorksURL: nil,
-            previewLink: nil,
-            seriesURL: nil,
-            revokeURL: nil,
-            reportURL: nil,
-            timeTrackingURL: nil,
-            contributors: [:],
-            bookDuration: nil,
-            imageCache: MockImageCache()
-        )
-    }
-
-    private func createTestPublication() -> Publication {
-        let manifest = Manifest(
-            metadata: Metadata(title: "Throttle Test"),
-            readingOrder: [
-                Link(href: "/chapter1.xhtml", mediaType: .xhtml)
-            ]
-        )
-        return Publication(manifest: manifest)
     }
 }

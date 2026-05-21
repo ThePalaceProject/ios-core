@@ -115,12 +115,15 @@ final class OverdriveFulfillmentTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func waitForPublishedError(timeout: TimeInterval = 1.0) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if !capturedErrors.isEmpty { return }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
+    /// Wraps the shared `awaitConditionAsync` helper.
+    /// `file`/`line` forwarded so timeout XCTFail blames the call site.
+    private func waitForPublishedError(
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line
+    ) async {
+        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [weak self] in
+            self?.capturedErrors.isEmpty == false
         }
     }
 

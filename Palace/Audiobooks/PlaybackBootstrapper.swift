@@ -33,9 +33,9 @@ import PalaceLogging
 /// - `TPPAppDelegate.application(_:didFinishLaunchingWithOptions:)`
 /// - `CarPlaySceneDelegate.templateApplicationScene(_:didConnect:)`
 ///
-/// In production callers go through the `.shared` accessor; in tests
-/// construct a fresh `PlaybackBootstrapper(appContainer:)` with a mock
-/// `audiobookSessionProvider` to avoid hitting the global session.
+/// In production callers go through `AppContainer.production().playbackBootstrapper`;
+/// in tests construct a fresh `PlaybackBootstrapper(appContainer:audiobookSessionProvider:)`
+/// with a mock `audiobookSessionProvider` to avoid hitting the cached session.
 ///
 /// ## Regression Test Plan
 /// 1. Force-quit the Palace app on your phone
@@ -51,10 +51,6 @@ import PalaceLogging
 @MainActor
 public final class PlaybackBootstrapper {
 
-    // MARK: - Singleton
-
-    public static let shared = PlaybackBootstrapper()
-
     // MARK: - State
 
     private var isInitialized = false
@@ -63,10 +59,10 @@ public final class PlaybackBootstrapper {
     private let bookRegistry: TPPBookRegistryProvider
     /// Resolved-on-demand audiobook session. The bootstrapper is constructed
     /// at app launch — long before any audiobook is opened — and the session
-    /// manager itself is a singleton that participates in cold-launch init,
-    /// so taking the reference at construction time would risk an init-order
-    /// race. Closure form lets tests inject a mock and lets the production
-    /// closure resolve `AudiobookSessionManager.shared` lazily.
+    /// manager participates in cold-launch init, so taking the reference at
+    /// construction time would risk an init-order race. Closure form lets
+    /// tests inject a mock and lets the production closure resolve through
+    /// `AppContainer.production().audiobookSession` lazily.
     private let audiobookSessionProvider: () -> AudiobookSessionManaging
 
     // MARK: - Initialization
@@ -85,22 +81,13 @@ public final class PlaybackBootstrapper {
         Log.info(#file, "🚀 Launch context: \(launchReason)")
     }
 
-    /// Backwards-compatible convenience for the singleton accessor. Resolves
-    /// every dependency from `.shared` at first touch.
-    private convenience init() {
-        self.init(
-            bookRegistry: AppContainer.production().bookRegistry,
-            audiobookSessionProvider: { AudiobookSessionManager.shared }
-        )
-    }
-
     /// AppContainer-friendly initializer for future call sites that thread
     /// the container down. Defaults the audiobook session provider to the
     /// `.shared` accessor since AppContainer doesn't currently hold the
     /// audiobook session manager.
     convenience init(
         appContainer: AppContainer,
-        audiobookSessionProvider: @escaping () -> AudiobookSessionManaging = { AudiobookSessionManager.shared }
+        audiobookSessionProvider: @escaping () -> AudiobookSessionManaging
     ) {
         self.init(
             bookRegistry: appContainer.bookRegistry,

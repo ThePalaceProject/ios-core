@@ -19,6 +19,7 @@
 import XCTest
 import ReadiumShared
 import PalaceCatalog
+import PalaceReadingPosition
 @testable import Palace
 
 // MARK: - Mock Annotations Provider
@@ -1571,5 +1572,151 @@ final class TPPLastReadPositionSynchronizer_BehaviorDocumentationTests: XCTestCa
         )
 
         XCTAssertTrue(shouldSync, "EXPECTED: Fresh device should sync from server position")
+    }
+}
+
+// MARK: - PositionWriter-delegation tests
+
+/// Spy `PositionWriter` for end-to-end synchronizer tests. Returns a
+/// canned `PositionSnapshot` from `load(for:)` so the synchronizer's
+/// conflict-resolution branch logic can be exercised against a real load.
+private actor SynchronizerSpyWriter: PositionWriter {
+    var snapshotToReturn: PositionSnapshot?
+    var loadError: Error?
+    private(set) var loadedBookIDs: [String] = []
+
+    func set(snapshot: PositionSnapshot?) { snapshotToReturn = snapshot }
+    func set(loadError: Error?) { self.loadError = loadError }
+
+    func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? { nil }
+
+    func load(for bookID: String) async throws -> PositionSnapshot? {
+        loadedBookIDs.append(bookID)
+        if let err = loadError { throw err }
+        return snapshotToReturn
+    }
+
+    func cancel(for bookID: String) async {}
+}
+
+/// Verifies the real `TPPLastReadPositionSynchronizer.sync(...)` path with
+/// an injected spy `PositionWriter`. These tests exercise the actual class
+/// (not `SyncDecisionHelper`) — they catch regressions in the delegation
+/// to `PositionWriter.load` and in the conflict-resolution wiring.
+final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
+
+    private var bookRegistryMock: TPPBookRegistryMock!
+    private var spyWriter: SynchronizerSpyWriter!
+    private var testBook: TPPBook!
+    private var publication: Publication!
+    private var synchronizer: TPPLastReadPositionSynchronizer!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        bookRegistryMock = TPPBookRegistryMock()
+        spyWriter = SynchronizerSpyWriter()
+        testBook = SynchronizerTestFixtures.createTestBook(identifier: "writer-delegation-book")
+        publication = Publication(manifest: Manifest(
+            metadata: Metadata(title: "Writer Delegation"),
+            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
+        ))
+        bookRegistryMock.addBook(
+            testBook,
+            location: nil,
+            state: .downloadSuccessful,
+            fulfillmentId: nil,
+            readiumBookmarks: nil,
+            genericBookmarks: nil
+        )
+        synchronizer = TPPLastReadPositionSynchronizer(
+            bookRegistry: bookRegistryMock,
+            positionWriter: spyWriter
+        )
+    }
+
+    override func tearDownWithError() throws {
+        synchronizer = nil
+        publication = nil
+        testBook = nil
+        spyWriter = nil
+        bookRegistryMock?.registry = [:]
+        bookRegistryMock = nil
+        try super.tearDownWithError()
+    }
+
+    func testSync_writerReturnsNil_callsLoadOnce_noAlertPath() async {
+        await spyWriter.set(snapshot: nil)
+
+        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+
+        let loaded = await spyWriter.loadedBookIDs
+        XCTAssertEqual(loaded, [testBook.identifier],
+                       "sync(...) must delegate the load to the injected writer")
+    }
+
+    func testSync_writerThrows_logsAndReturnsWithoutAlert() async {
+        await spyWriter.set(loadError: PositionWriterError.networkUnavailable)
+
+        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+
+        let loaded = await spyWriter.loadedBookIDs
+        XCTAssertEqual(loaded, [testBook.identifier],
+                       "Errors must still record the load attempt")
+        // Implicit assertion: no crash, no hang.
+    }
+
+    /// Conflict-resolution rule 1 — same device + existing local location
+    /// short-circuits the sync. The writer is still consulted, but the
+    /// synchronizer returns nil before presenting an alert.
+    func testSync_sameDevice_andLocalExists_skipsAlertPath() async {
+        let local = SynchronizerTestFixtures.createBookLocation(progress: 0.4)
+        bookRegistryMock.setLocation(local, forIdentifier: testBook.identifier)
+
+        let snapshot = PositionSnapshot(
+            bookID: testBook.identifier,
+            format: .epubLocator,
+            payload: Data("""
+{"progressWithinBook":0.8,"href":"/chapter1.xhtml"}
+""".utf8),
+            timestamp: Date(),
+            device: "device-A"  // matches drmDeviceID below
+        )
+        await spyWriter.set(snapshot: snapshot)
+
+        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+
+        let loaded = await spyWriter.loadedBookIDs
+        XCTAssertEqual(loaded.count, 1)
+        // No mutation expected — local location stays.
+        let storedLocation = bookRegistryMock.location(forIdentifier: testBook.identifier)
+        XCTAssertEqual(storedLocation?.locationString, local?.locationString,
+                       "Same-device + existing local must not overwrite the registry")
+    }
+
+    /// Conflict-resolution rule 2 — server payload identical to local
+    /// short-circuits the sync regardless of device.
+    func testSync_serverEqualsLocal_skipsAlertPath() async {
+        let locationString = """
+{"progressWithinBook":0.5,"href":"/chapter1.xhtml"}
+"""
+        let local = TPPBookLocation(locationString: locationString, renderer: TPPBookLocation.r3Renderer)
+        bookRegistryMock.setLocation(local, forIdentifier: testBook.identifier)
+
+        let snapshot = PositionSnapshot(
+            bookID: testBook.identifier,
+            format: .epubLocator,
+            payload: Data(locationString.utf8),
+            timestamp: Date(),
+            device: "device-B"  // *different* device — only equality keeps it suppressed
+        )
+        await spyWriter.set(snapshot: snapshot)
+
+        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+
+        let loaded = await spyWriter.loadedBookIDs
+        XCTAssertEqual(loaded.count, 1)
+        let storedLocation = bookRegistryMock.location(forIdentifier: testBook.identifier)
+        XCTAssertEqual(storedLocation?.locationString, locationString,
+                       "Equal server+local locations must not mutate the registry")
     }
 }

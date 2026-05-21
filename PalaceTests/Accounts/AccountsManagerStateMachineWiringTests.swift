@@ -672,6 +672,92 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         }
     }
 
+    // MARK: - Test 5b: Library switch — NEW account gets auth-doc driver fired
+
+    /// Contract: when the user switches libraries, the NEW currentAccount's
+    /// LoadState must be driven past `.basicInfoLoaded` (or `.notLoaded`)
+    /// just like the cold-launch warm-path. Without this, every
+    /// `awaitReady()` caller (audiobook open, token refresh, bookmark
+    /// sync, CarPlay auth) blocks forever the first time the user opens
+    /// content on the newly-selected library — same disease class as
+    /// the cold-launch spinner fix (PR #975), different trigger.
+    func testLibrarySwitch_drivesNewCurrentAccountPastBasicInfoLoaded() throws {
+        let catalogs = try loadFeedCatalogs()
+        guard catalogs.count >= 2 else {
+            throw XCTSkip("Fixture needs at least 2 catalogs to test library switch")
+        }
+        let priorUUID = catalogs[0].metadata.id
+        let newUUID = catalogs[1].metadata.id
+
+        // Seed disk cache + populate accountSets via preload so the
+        // manager's currentAccount accessor can resolve UUIDs back to
+        // Account instances after the switch.
+        let manager = AccountsManager()
+        let backgroundSettled = expectation(description: "background loadCatalogs settled")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() }
+        wait(for: [backgroundSettled], timeout: 2.0)
+
+        let activeHash = TPPConfiguration.customUrlHash()
+            ?? (TPPSettings().useBetaLibraries
+                ? TPPConfiguration.betaUrlHash
+                : TPPConfiguration.prodUrlHash)
+        try seedDiskCache(for: activeHash, data: feedData)
+        defer { tearDownDiskCache(for: activeHash) }
+
+        UserDefaults.standard.set(priorUUID, forKey: currentAccountIdentifierKey)
+        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
+
+        manager.preloadAccountsFromDiskCacheSync()
+
+        // Pre-state: newUUID is at .basicInfoLoaded after preload.
+        switch AccountStateStore.shared.state(for: newUUID) {
+        case .basicInfoLoaded:
+            break // expected
+        default:
+            XCTFail("Setup: newUUID must be at .basicInfoLoaded after preload; got \(label(AccountStateStore.shared.state(for: newUUID)))")
+            return
+        }
+
+        // Act: switch to a different library.
+        guard let newAccount = manager.account(newUUID) else {
+            XCTFail("Setup: manager must resolve newUUID via account()"); return
+        }
+        manager.currentAccount = newAccount
+
+        // Assert: the new account's state moves past .basicInfoLoaded
+        // within a bounded window. The setter must fire the auth-doc
+        // driver — staying at .basicInfoLoaded means the regression is
+        // open and awaitReady() callers hang after every library switch.
+        let movedExpectation = expectation(description: "new account moved past .basicInfoLoaded")
+        var observedFinalState: Account.LoadState = AccountStateStore.shared.state(for: newUUID)
+        let deadline = Date().addingTimeInterval(3.0)
+        DispatchQueue.global().async {
+            while Date() < deadline {
+                let s = AccountStateStore.shared.state(for: newUUID)
+                switch s {
+                case .detailsLoading, .detailsLoaded, .detailsFailed:
+                    observedFinalState = s
+                    movedExpectation.fulfill()
+                    return
+                default:
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+            }
+        }
+        wait(for: [movedExpectation], timeout: 4.0)
+
+        switch observedFinalState {
+        case .detailsLoading, .detailsLoaded, .detailsFailed:
+            break // wiring fired
+        default:
+            XCTFail("Library-switch setter must drive new currentAccount past .basicInfoLoaded; observed \(label(observedFinalState))")
+        }
+    }
+
     // MARK: - Test 6: Re-entry after reselect resets state
 
     /// Contract: after a library reselect terminates the prior UUID at

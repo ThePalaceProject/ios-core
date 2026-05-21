@@ -1,0 +1,22 @@
+[
+  {
+    "args" : {
+      "page" : "7"
+    },
+    "method" : "pdf.setCurrentPage.begin"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-reader2-1",
+      "hasLocation" : "true",
+      "renderer" : "TPPPDFReader"
+    },
+    "method" : "registry.setLocation"
+  },
+  {
+    "args" : {
+      "page" : "7"
+    },
+    "method" : "pdf.setCurrentPage.end"
+  }
+]
