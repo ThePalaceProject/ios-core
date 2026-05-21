@@ -77,10 +77,11 @@ final class ColdStartResumeIntegrationTests: XCTestCase {
         sync.load(account: account, setState: { state in
             if state == .loaded { exp.fulfill() }
         }, completion: nil)
-        // 30s budget — load() races CI runner load and the 5s budget was
-        // timing out in ~25% of runs. Same pattern as TPPBookRegistryAtomicWriteTests
-        // (5s → 30s in develop) and OPDSFeedServiceStateMachineTests (5s → 15s).
-        wait(for: [exp], timeout: 30.0)
+        // 120s budget — the prior 30s bump (from 5s) wasn't enough under
+        // heavy CI-runner contention. Local runs resolve in <0.5s. Same
+        // family as TokenRefreshAndRetryQueue, BookRegistryMigration, and
+        // AppContainerImageLoaderInjection timeout bumps.
+        wait(for: [exp], timeout: 120.0)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 
