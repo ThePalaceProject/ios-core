@@ -1,7 +1,10 @@
 swarm_id: swarm_5c8ddbd5
 task: Audiobook Vendor Adapter Extraction (Phase 1 of audiobook systemic overhaul)
 created_at: 2026-05-21
-status: bundled
+status: complete
+pr: https://github.com/ThePalaceProject/ios-core/pull/979
+forgeos_changeset: cs_ff3b8638
+evidence_id: ev_adf65f58
 base_ref: origin/develop
 base_sha: ae1fb8aec
 forgeos_project: proj_87884c17
