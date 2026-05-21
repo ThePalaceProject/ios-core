@@ -341,7 +341,11 @@ struct AccountDetailView: View {
 
     private var barcodeInputCell: some View {
         let label = viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername
-        return TextField(label, text: $viewModel.usernameText)
+        // PP-4421: explicit prompt with `.secondary` foreground overrides the
+        // default `.placeholderText` (~30% gray) that patrons read as a
+        // disabled field. Entered text retains its own .foregroundColor
+        // below — only the empty-state hint is darkened.
+        return TextField(label, text: $viewModel.usernameText, prompt: Text(label).foregroundColor(.secondary))
             .textContentType(.username)
             .autocapitalization(.none)
             .autocorrectionDisabled()
@@ -362,9 +366,14 @@ struct AccountDetailView: View {
     }
 
     private var pinInputCell: some View {
+        // PP-4421: explicit prompt with `.secondary` foreground overrides
+        // the default `.placeholderText` (~30% gray) that patrons read as
+        // a disabled field. Both visible (TextField) and masked (SecureField)
+        // branches get the same prompt — empty-state hint is darker, entered
+        // text retains its own .foregroundColor below.
         HStack {
             if viewModel.isPINHidden {
-                SecureField(pinLabel, text: $viewModel.pinText)
+                SecureField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundColor(.secondary))
                     .textContentType(.password)
                     .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
                     .disabled(viewModel.isSignedIn)
@@ -375,7 +384,7 @@ struct AccountDetailView: View {
                     .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
                     .submitLabel(.go)
             } else {
-                TextField(pinLabel, text: $viewModel.pinText)
+                TextField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundColor(.secondary))
                     .textContentType(.password)
                     .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
                     .disabled(viewModel.isSignedIn)
