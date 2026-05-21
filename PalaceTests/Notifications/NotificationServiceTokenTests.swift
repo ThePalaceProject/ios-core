@@ -100,4 +100,95 @@ final class NotificationServiceTokenTests: XCTestCase {
         // Both accessors must not return a nil-like wrapper — they're non-optional
         XCTAssertTrue(fromShared === fromShared, "NotificationService.shared must satisfy reflexive identity")
     }
+
+    // MARK: - shouldRetryTokenRegistration (pure decision helper, swarm_f3b9b087 item #6)
+    //
+    // The auth-state-change retry path is driven by a pure decision
+    // helper so mutation testing can pin every branch without standing
+    // up a Combine subscription. The helper answers:
+    // "given an auth-state transition AND the current hasUpdatedToken
+    // flag, should the service re-attempt FCM token registration?"
+    //
+    // True iff the transition lands on `.loggedIn` from a non-`.loggedIn`
+    // state AND `hasUpdatedToken == false`. False otherwise.
+
+    func testShouldRetryTokenRegistration_staleToLoggedIn_withFlagFalse_retries() {
+        XCTAssertTrue(
+            NotificationService.shouldRetryTokenRegistration(
+                previous: .credentialsStale,
+                current: .loggedIn,
+                hasUpdatedToken: false
+            ),
+            "Stale→LoggedIn with hasUpdatedToken=false must retry (the SAML-stale recovery path)")
+    }
+
+    func testShouldRetryTokenRegistration_loggedOutToLoggedIn_withFlagFalse_retries() {
+        XCTAssertTrue(
+            NotificationService.shouldRetryTokenRegistration(
+                previous: .loggedOut,
+                current: .loggedIn,
+                hasUpdatedToken: false
+            ),
+            "LoggedOut→LoggedIn (fresh sign-in) with hasUpdatedToken=false must retry")
+    }
+
+    func testShouldRetryTokenRegistration_loggedInToLoggedIn_doesNotRetry() {
+        XCTAssertFalse(
+            NotificationService.shouldRetryTokenRegistration(
+                previous: .loggedIn,
+                current: .loggedIn,
+                hasUpdatedToken: false
+            ),
+            "Idempotency: LoggedIn→LoggedIn must NOT trigger a retry — there was no recovery transition")
+    }
+
+    func testShouldRetryTokenRegistration_loggedInToStale_doesNotRetry() {
+        XCTAssertFalse(
+            NotificationService.shouldRetryTokenRegistration(
+                previous: .loggedIn,
+                current: .credentialsStale,
+                hasUpdatedToken: false
+            ),
+            "Wrong direction: LoggedIn→Stale must NOT retry — credentials just went bad")
+    }
+
+    func testShouldRetryTokenRegistration_loggedInToLoggedOut_doesNotRetry() {
+        XCTAssertFalse(
+            NotificationService.shouldRetryTokenRegistration(
+                previous: .loggedIn,
+                current: .loggedOut,
+                hasUpdatedToken: false
+            ),
+            "Wrong direction: LoggedIn→LoggedOut must NOT retry — user signed out")
+    }
+
+    func testShouldRetryTokenRegistration_staleToLoggedIn_withFlagTrue_doesNotRetry() {
+        XCTAssertFalse(
+            NotificationService.shouldRetryTokenRegistration(
+                previous: .credentialsStale,
+                current: .loggedIn,
+                hasUpdatedToken: true
+            ),
+            "hasUpdatedToken=true must short-circuit — token is already registered, no need to retry")
+    }
+
+    func testShouldRetryTokenRegistration_staleToStale_doesNotRetry() {
+        XCTAssertFalse(
+            NotificationService.shouldRetryTokenRegistration(
+                previous: .credentialsStale,
+                current: .credentialsStale,
+                hasUpdatedToken: false
+            ),
+            "Stale→Stale is not a recovery transition — must NOT retry")
+    }
+
+    func testShouldRetryTokenRegistration_loggedOutToLoggedOut_doesNotRetry() {
+        XCTAssertFalse(
+            NotificationService.shouldRetryTokenRegistration(
+                previous: .loggedOut,
+                current: .loggedOut,
+                hasUpdatedToken: false
+            ),
+            "LoggedOut→LoggedOut: no transition, no retry")
+    }
 }
