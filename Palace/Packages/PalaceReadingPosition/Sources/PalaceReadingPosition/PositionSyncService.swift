@@ -1,8 +1,15 @@
 //
 //  PositionSyncService.swift
-//  Palace
+//  PalaceReadingPosition
 //
-//  Cross-format position sync service implementation.
+//  Cross-format position sync service. Records reading positions locally
+//  and offers cross-format sync between EPUB and audiobook formats.
+//
+//  This is the LOCAL-record sync layer. The network-write throttle layer
+//  lives in `RemotePositionWriter`. They are separate concerns and ship
+//  alongside each other in the same SPM.
+//
+//  Migrated from Palace/Platform/ on 2026-05-21 (Swarm 2, Deviation 4).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -12,11 +19,11 @@ import Foundation
 
 /// Actor-based cross-format position sync service.
 /// Records reading positions and offers to sync between EPUB and audiobook formats.
-actor PositionSyncService: PositionSyncServiceProtocol {
+public actor PositionSyncService: PositionSyncServiceProtocol {
 
     // MARK: - Singleton
 
-    static let shared = PositionSyncService()
+    public static let shared = PositionSyncService()
 
     // MARK: - Storage
 
@@ -34,13 +41,13 @@ actor PositionSyncService: PositionSyncServiceProtocol {
 
     private nonisolated(unsafe) let eventSubject = PassthroughSubject<PositionSyncEvent, Never>()
 
-    nonisolated var eventPublisher: AnyPublisher<PositionSyncEvent, Never> {
+    public nonisolated var eventPublisher: AnyPublisher<PositionSyncEvent, Never> {
         eventSubject.eraseToAnyPublisher()
     }
 
     // MARK: - Init
 
-    init(userDefaults: UserDefaults = .standard) {
+    public init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
         // Load from storage synchronously in init (actor-isolated)
         if let data = userDefaults.data(forKey: storageKey),
@@ -52,7 +59,7 @@ actor PositionSyncService: PositionSyncServiceProtocol {
 
     // MARK: - Position Recording
 
-    func recordPosition(_ position: ReadingPosition) async {
+    public func recordPosition(_ position: ReadingPosition) async {
         let bookID = position.bookID
         let formatKey = position.format.rawValue
 
@@ -67,18 +74,18 @@ actor PositionSyncService: PositionSyncServiceProtocol {
 
     // MARK: - Position Queries
 
-    func latestPosition(forBook bookID: String, format: ReadingFormat) async -> ReadingPosition? {
+    public func latestPosition(forBook bookID: String, format: ReadingFormat) async -> ReadingPosition? {
         positions[bookID]?[format.rawValue]
     }
 
-    func latestPositionAnyFormat(forBook bookID: String) async -> ReadingPosition? {
+    public func latestPositionAnyFormat(forBook bookID: String) async -> ReadingPosition? {
         guard let bookPositions = positions[bookID] else { return nil }
         return bookPositions.values.max(by: { $0.timestamp < $1.timestamp })
     }
 
     // MARK: - Cross-Format Sync
 
-    func checkForSyncOffer(bookID: String, openingFormat: ReadingFormat) async -> ReadingPosition? {
+    public func checkForSyncOffer(bookID: String, openingFormat: ReadingFormat) async -> ReadingPosition? {
         guard let bookPositions = positions[bookID] else { return nil }
 
         // Find the most recent position in a different format
@@ -121,24 +128,24 @@ actor PositionSyncService: PositionSyncServiceProtocol {
 
     // MARK: - Mappings
 
-    func setMapping(_ mapping: CrossFormatMapping) async {
+    public func setMapping(_ mapping: CrossFormatMapping) async {
         mappings[mapping.bookID] = mapping
         persist()
     }
 
-    func mapping(forBook bookID: String) async -> CrossFormatMapping? {
+    public func mapping(forBook bookID: String) async -> CrossFormatMapping? {
         mappings[bookID]
     }
 
     // MARK: - Cleanup
 
-    func clearPositions(forBook bookID: String) async {
+    public func clearPositions(forBook bookID: String) async {
         positions.removeValue(forKey: bookID)
         mappings.removeValue(forKey: bookID)
         persist()
     }
 
-    func clearAll() async {
+    public func clearAll() async {
         positions.removeAll()
         mappings.removeAll()
         persist()

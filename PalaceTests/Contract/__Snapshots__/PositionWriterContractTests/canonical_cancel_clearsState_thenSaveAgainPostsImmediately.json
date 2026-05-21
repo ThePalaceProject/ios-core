@@ -1,0 +1,33 @@
+[
+  {
+    "args" : {
+      "bookID" : "contract-book-1",
+      "format" : "epubLocator",
+      "payloadByteCount" : "8",
+      "returns" : "server-first"
+    },
+    "method" : "network.post"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-book-1"
+    },
+    "method" : "writer.cancel"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-book-1",
+      "format" : "epubLocator",
+      "payloadByteCount" : "8",
+      "returns" : "server-after-cancel"
+    },
+    "method" : "network.post"
+  },
+  {
+    "args" : {
+      "call" : "afterCancel",
+      "result" : "server-after-cancel"
+    },
+    "method" : "writer.save.return"
+  }
+]

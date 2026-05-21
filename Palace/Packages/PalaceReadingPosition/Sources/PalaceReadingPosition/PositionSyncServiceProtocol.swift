@@ -1,8 +1,8 @@
 //
 //  PositionSyncServiceProtocol.swift
-//  Palace
+//  PalaceReadingPosition
 //
-//  Protocol for cross-format position sync service.
+//  Migrated from Palace/Platform/ on 2026-05-21 (Swarm 2, Deviation 4).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -11,7 +11,7 @@ import Combine
 import Foundation
 
 /// Events published by the position sync service.
-enum PositionSyncEvent: Sendable {
+public enum PositionSyncEvent: Sendable {
     /// A new position was recorded.
     case positionRecorded(ReadingPosition)
     /// A cross-format sync opportunity was detected.
@@ -19,7 +19,7 @@ enum PositionSyncEvent: Sendable {
 }
 
 /// Protocol for the cross-format position sync service.
-protocol PositionSyncServiceProtocol: Sendable {
+public protocol PositionSyncServiceProtocol: Sendable {
     /// Publisher for position sync events.
     var eventPublisher: AnyPublisher<PositionSyncEvent, Never> { get }
 

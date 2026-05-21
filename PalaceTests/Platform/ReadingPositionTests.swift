@@ -8,6 +8,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceReadingPosition
 
 final class ReadingPositionTests: XCTestCase {
 
@@ -284,9 +285,12 @@ final class ReadingPositionTests: XCTestCase {
     // MARK: - ReadingFormat Codable
 
     func testReadingFormat_CodableRoundTrip() throws {
-        for format in [ReadingFormat.epub, .audiobook, .pdf] {
+        // Qualify with the SPM module since `Palace` also has an internal
+        // ReadingFormat (in Palace/Stats/Models/ReadingSession.swift) with
+        // identical cases. The two will be reconciled in a follow-up.
+        for format in [PalaceReadingPosition.ReadingFormat.epub, .audiobook, .pdf] {
             let data = try JSONEncoder().encode(format)
-            let decoded = try JSONDecoder().decode(ReadingFormat.self, from: data)
+            let decoded = try JSONDecoder().decode(PalaceReadingPosition.ReadingFormat.self, from: data)
             XCTAssertEqual(decoded, format)
         }
     }

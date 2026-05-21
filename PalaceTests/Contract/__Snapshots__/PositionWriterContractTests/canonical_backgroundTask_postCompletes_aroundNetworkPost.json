@@ -1,0 +1,25 @@
+[
+  {
+    "args" : {
+      "bookID" : "contract-book-1"
+    },
+    "method" : "writer.save.begin"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-book-1",
+      "format" : "epubLocator",
+      "payloadByteCount" : "8",
+      "returns" : "server-bg"
+    },
+    "method" : "network.post"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-book-1",
+      "postCount" : "1",
+      "result" : "server-bg"
+    },
+    "method" : "writer.save.end"
+  }
+]
