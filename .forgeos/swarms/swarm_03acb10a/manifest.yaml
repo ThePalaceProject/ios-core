@@ -1,0 +1,77 @@
+swarm_id: swarm_03acb10a
+task: Singleton Elimination + Async Sweep (Phase 3 of audiobook systemic overhaul)
+created_at: 2026-05-21
+status: triaged
+base_ref: swarm/swarm_f4fbef9c-scaffold
+base_sha: 52e99443f
+forgeos_project: proj_87884c17
+companion_adr: docs/architecture/audiobook-systemic-overhaul.md
+predecessor_swarms: [swarm_5c8ddbd5, swarm_f4fbef9c]
+
+modules:
+  - name: A-AppContainerWiring
+    files_scope:
+      - "Palace/AppInfrastructure/AppContainer.swift (modified — add audiobookSession per-account factory + playbackBootstrapper factory)"
+      - "PalaceTests/AppInfrastructure/AppContainerAudiobookFactoryTests.swift (new)"
+    contract_path: .forgeos/swarms/swarm_03acb10a/contracts/A-AppContainerWiring.md
+    blocks: [B-SingletonElimination, D-TestCleanup]
+    depends_on: []
+
+  - name: B-SingletonElimination
+    files_scope:
+      - "Palace/Audiobooks/AudiobookSessionManager.swift (modified — remove `static let shared`; constructor accepts dependencies)"
+      - "Palace/Audiobooks/PlaybackBootstrapper.swift (modified — remove `static let shared`)"
+      - "Palace/AppInfrastructure/TPPAppDelegate.swift (one-line edit at line 55 — use AppContainer.production().playbackBootstrapper)"
+      - "Palace/CarPlay/CarPlaySceneDelegate.swift (one-line edit at line 43 — use AppContainer.production().playbackBootstrapper)"
+      - "Palace/Book/UI/BookDetail/BookService.swift (one-line edit at line 75 — use AppContainer.production().audiobookSession)"
+      - "PalaceTests/Audiobook/AudiobookSessionManagerTests.swift (architect verifies; replace shared-state setUp with injection)"
+      - "PalaceTests/Audiobook/PlaybackBootstrapperTests.swift (architect verifies)"
+    contract_path: .forgeos/swarms/swarm_03acb10a/contracts/B-SingletonElimination.md
+    depends_on: [A-AppContainerWiring]
+
+  - name: C-AsyncAfterSweep
+    files_scope:
+      - "Palace/Audiobooks/NowPlayingCoordinator.swift (line 280 — DispatchQueue.main.asyncAfter → Task.sleep(for:) inside a Task on @MainActor)"
+      - "Palace/Audiobooks/Tracker/AudiobookDataManager.swift (UIApplication.beginBackgroundTask + syncQueue → Task.detached(priority:) + @MainActor; architect to verify the exact carve-out)"
+      - "PalaceTests/Audiobook/NowPlayingCoordinatorTests.swift (if exists — architect verifies)"
+      - "PalaceTests/Audiobook/AudiobookDataManagerSyncTests.swift (if exists — adapt syncQueue.sync drain pattern to async pattern)"
+    contract_path: .forgeos/swarms/swarm_03acb10a/contracts/C-AsyncAfterSweep.md
+    depends_on: []  # independent of A and B; can dispatch in parallel
+
+  - name: D-TestCleanup
+    files_scope:
+      - "PalaceTests/Audiobook/* (architect inventories `setUp resets shared mock` instances)"
+      - "PalaceTests/SignInLogic/* (architect inventories — SAML test flake-timeout bumps)"
+      - "(architect determines exact file list during triage)"
+    contract_path: .forgeos/swarms/swarm_03acb10a/contracts/D-TestCleanup.md
+    depends_on: [A-AppContainerWiring, B-SingletonElimination, C-AsyncAfterSweep]
+
+dont_touch:
+  - Palace/Audiobooks/Vendors/  # Swarm 1 PR #979
+  - Palace/Audiobooks/AudiobookLoader.swift  # Swarm 1 territory; architect may authorize residual edits but default is hands-off
+  - Palace/Audiobooks/LCP/LCPAudiobooks.swift  # Swarm 1
+  - Palace/Reader2/Bookmarks/AudiobookBookmarkBusinessLogic.swift  # Swarm 2 PR #980
+  - Palace/Reader2/Bookmarks/AudiobookPositionAdapter.swift  # Swarm 2
+  - Palace/Reader2/BusinessLogic/TPPLastReadPositionPoster.swift  # Swarm 2
+  - Palace/Reader2/BusinessLogic/TPPLastReadPositionSynchronizer.swift  # Swarm 2
+  - Palace/Reader2/BusinessLogic/EPUBPositionAdapter.swift  # Swarm 2
+  - Palace/PDF/Model/TPPPDFDocumentMetadata.swift  # Swarm 2
+  - Palace/Packages/PalaceReadingPosition/  # Swarm 2 SPM
+  - Palace/Audiobooks/AudiobookPositionPolicy.swift  # swarm_f3b9b087 P0 read-side restoration
+  - Palace/CarPlay/  # PR #968 settled (Module B edits ONLY CarPlaySceneDelegate.swift:43)
+  - ios-audiobooktoolkit/
+  - PalaceTests/Audiobook/AudiobookPositionPolicyTests.swift  # P0 regression gate
+  - PalaceTests/Contract/  # cross-swarm; Module D may touch only audiobook-side contract tests if architect authorizes
+
+acceptance_gates:
+  - "grep 'static let shared' Palace/Audiobooks/ --include='*.swift' returns 0"
+  - "grep 'AudiobookSessionManager.shared|PlaybackBootstrapper.shared' Palace --include='*.swift' returns 0 outside AppContainer.swift itself"
+  - "grep 'DispatchQueue.main.asyncAfter' Palace/Audiobooks/ --include='*.swift' (excluding comments) returns 0"
+  - "palace_mutate.py --diff-only kill rate >=100% on AudiobookSessionManager lifecycle methods"
+  - "AudiobookLoader.swift LOC unchanged or smaller than Swarm 1's 418-LOC tip (architect verifies any edit is justified)"
+  - "AppContainer audiobookSession factory <=80 LOC added"
+  - "All existing audiobook tests pass (AudiobookSessionManagerTests, PlaybackBootstrapperTests, AudiobookPositionPolicyTests, AudiobookLoaderPredicateTests)"
+  - "Net negative LOC on Module D test cleanup"
+  - "scripts/verify-pr.sh --quick passes"
+  - "mcp__forgeos__forge_check_gates: architect + qa_test gates satisfied"
+  - "No edits in don't_touch list"
