@@ -72,12 +72,17 @@ final class TPPBookRegistryMigrationTests: XCTestCase {
     }
 
     /// Drive a load and wait for the .loaded state callback.
+    /// 30s budget — disk-bound migration load through Codable + state-machine
+    /// transitions reliably resolves in <0.5s locally, but CI runners under
+    /// contention (especially during parallel test execution) have been
+    /// observed exceeding 5s, blocking the whole suite. Same family as the
+    /// TokenRefreshAndRetryQueue and ColdStartResume timeout bumps.
     private func loadAndWait() {
         let exp = expectation(description: "load completes")
         sync.load(account: account, setState: { newState in
             if newState == .loaded { exp.fulfill() }
         }, completion: nil)
-        wait(for: [exp], timeout: 5.0)
+        wait(for: [exp], timeout: 30.0)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 
