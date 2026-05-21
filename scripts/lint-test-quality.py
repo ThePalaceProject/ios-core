@@ -77,6 +77,17 @@ ASSERTION_EQUIVALENT_PATTERN = re.compile(
 FLAKE_PATTERNS = [
     # Raw sleep in test bodies. Thread.sleep / usleep / nanosleep / bare sleep().
     # Fixed-delay waits — first thing that breaks under CI contention.
+    #
+    # KNOWN GAP — Task.sleep(nanoseconds:) and Task.sleep(for:) are the
+    # Swift-Concurrency equivalent of Thread.sleep and ARE the same flake
+    # pattern, but detecting them without false-flagging the polling helper
+    # (XCTestCase+drainMainQueue.swift's `Task.sleep(nanoseconds:
+    # UInt64(pollInterval * 1e9))`) and the deliberate timing-simulation
+    # mocks under PalaceTests/Mocks/ (CatalogAPIMock, CatalogRepositoryMock,
+    # NetworkClientMock — `try await Task.sleep(nanoseconds: UInt64(delay
+    # * 1e9))`) requires a separate FLAKE-004 rule with file-scope allow-
+    # listing. Tracking as Phase 2 follow-up per cs_2e842c4e and cs_6afc8b96
+    # QA reviewer findings (rev_9cbd0540, rev_5acda1bf).
     (r'\b(Thread\.sleep|usleep|nanosleep)\b|(?<![\w.])sleep\(\s*\d',
      "FLAKE-001: Raw sleep in test. Use XCTestExpectation, drainMainQueue, or awaitCondition.",
      False),
@@ -88,8 +99,13 @@ FLAKE_PATTERNS = [
     # XCTestExpectation". XCTestCase+drainMainQueue.swift is the migration.
     # `.*?` (non-greedy) is needed because the deadline arg contains nested
     # parens — `.now() + 0.5` — and `[^)]+` chokes on the inner `.now()`.
+    # NOTE: per-line allow-list (FLAKE-002-OK) is NOT supported for this
+    # rule because the multi-line DOTALL match resolves to the opening
+    # `asyncAfter(` line where a comment is unreliable. Migration is
+    # mandatory for any FLAKE-002 hit — there is no legitimate sleep-as-
+    # expectation case (that's the whole point of the rule).
     (r'asyncAfter\(deadline:.*?\)\s*\{\s*\w+\.fulfill\(\s*\)\s*\}',
-     "FLAKE-002: asyncAfter used as sleep-disguised-as-expectation. Use drainMainQueue or awaitCondition.",
+     "FLAKE-002: asyncAfter used as sleep-disguised-as-expectation. Use drainMainQueue or awaitCondition. (No allow-list — migration is mandatory.)",
      True),
 
     # Timeouts >= 15s. Almost always symptomatic of FLAKE-002 or hidden

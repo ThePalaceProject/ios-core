@@ -27,11 +27,13 @@ extension XCTestCase {
     /// but if you accidentally do, the request will be blocked with
     /// `NSURLErrorNotConnectedToInternet` instead of leaking to real HTTP.
     ///
-    /// - Parameter url: A throwaway URL. Defaults to a non-routable file
-    ///   URL so identity comparisons are stable across runs without
-    ///   incurring a force-unwrap on the default value.
+    /// - Parameter url: A throwaway URL. Defaults to a hostname under the
+    ///   `palace-test.invalid` namespace (`.invalid` is an IANA-reserved
+    ///   non-resolvable TLD), so the safety net actually engages on accidental
+    ///   `.resume()` — `NoNetworkURLProtocol.canInit` filters on host, and a
+    ///   `file://` default would slip past with nil-host.
     func fakeDownloadTask(
-        url: URL = URL(filePath: "/dev/null/palace-fake-download-task")
+        url: URL = URL(string: "https://palace-test.invalid/fake-download") ?? URL(filePath: "/dev/null")
     ) -> URLSessionDownloadTask {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [NoNetworkURLProtocol.self]
