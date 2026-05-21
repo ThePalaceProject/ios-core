@@ -1,0 +1,76 @@
+swarm_id: swarm_f4fbef9c
+task: PositionWriter Unification (Phase 2 of audiobook systemic overhaul)
+created_at: 2026-05-21
+status: triaged
+base_ref: swarm/swarm_5c8ddbd5-scaffold
+base_sha: c4d476838
+forgeos_project: proj_87884c17
+companion_adr: docs/architecture/audiobook-systemic-overhaul.md
+predecessor_swarm: swarm_5c8ddbd5
+
+modules:
+  - name: A-PalaceReadingPositionSPM
+    files_scope:
+      - "Palace/Packages/PalaceReadingPosition/Package.swift (new)"
+      - "Palace/Packages/PalaceReadingPosition/Sources/PalaceReadingPosition/PositionWriter.swift (new)"
+      - "Palace/Packages/PalaceReadingPosition/Sources/PalaceReadingPosition/CanonicalPositionWriter.swift (new)"
+      - "Palace/Packages/PalaceReadingPosition/Sources/PalaceReadingPosition/PositionSnapshot.swift (new)"
+      - "Palace/Packages/PalaceReadingPosition/Sources/PalaceReadingPosition/PositionWriterError.swift (new)"
+      - "Palace/Packages/PalaceReadingPosition/Tests/PalaceReadingPositionTests/CanonicalPositionWriterTests.swift (new)"
+      - "Palace/Packages/PalaceReadingPosition/Tests/PalaceReadingPositionTests/PositionSnapshotTests.swift (new)"
+      - "Palace.xcodeproj/project.pbxproj (add SPM dependency)"
+    contract_path: .forgeos/swarms/swarm_f4fbef9c/contracts/A-PalaceReadingPositionSPM.md
+    blocks: [B-AudiobookMigration, C-Reader2Migration, D-ContractTests]
+    depends_on: []
+
+  - name: B-AudiobookMigration
+    files_scope:
+      - "Palace/Audiobooks/Tracker/AudiobookDataManager.swift (modified — delete network sync; delegate to PositionWriter)"
+      - "Palace/Audiobooks/Tracker/AudiobookTimeTracker.swift (modified — migrate position-write side; keep play-time tracking local)"
+      - "Palace/Audiobooks/LatestAudiobookLocation.swift (DELETE — fold model into PositionSnapshot)"
+      - "Palace/Audiobooks/AudiobookSessionManager.swift (READ-ONLY — verify delegate adapter unchanged or one-line edit only)"
+      - "PalaceTests/Audiobook/AudiobookDataManagerSyncTests.swift (modified — adapt to delegated path or new test for adapter)"
+      - "PalaceTests/Audiobooks/AudiobookEventsTests.swift (modified — syncQueue drain pattern adapted)"
+    contract_path: .forgeos/swarms/swarm_f4fbef9c/contracts/B-AudiobookMigration.md
+    depends_on: [A-PalaceReadingPositionSPM]
+
+  - name: C-Reader2Migration
+    files_scope:
+      - "Palace/Reader2/BusinessLogic/TPPLastReadPositionPoster.swift (modified — delegate to PositionWriter; preserve TPPBaseReaderViewController call sites)"
+      - "Palace/Reader2/BusinessLogic/TPPLastReadPositionSynchronizer.swift (modified — load path through PositionWriter)"
+      - "PalaceTests/Reader2/TPPLastReadPositionPosterTests.swift (modified — adapt to delegated path)"
+      - "PalaceTests/Reader2/TPPLastReadPositionSynchronizerTests.swift (modified — adapt to delegated path)"
+    contract_path: .forgeos/swarms/swarm_f4fbef9c/contracts/C-Reader2Migration.md
+    depends_on: [A-PalaceReadingPositionSPM]
+
+  - name: D-ContractTests
+    files_scope:
+      - "PalaceTests/Contract/PositionWriterContractTests.swift (new)"
+      - "PalaceTests/Contract/AudiobookPositionAdapterContractTests.swift (new)"
+      - "PalaceTests/Contract/Reader2PositionAdapterContractTests.swift (new)"
+      - "PalaceTests/Contract/__Snapshots__/PositionWriterContractTests/ (new directory)"
+      - "PalaceTests/Contract/__Snapshots__/AudiobookPositionAdapterContractTests/ (new directory)"
+      - "PalaceTests/Contract/__Snapshots__/Reader2PositionAdapterContractTests/ (new directory)"
+    contract_path: .forgeos/swarms/swarm_f4fbef9c/contracts/D-ContractTests.md
+    depends_on: [A-PalaceReadingPositionSPM, B-AudiobookMigration, C-Reader2Migration]
+
+dont_touch:
+  - Palace/Audiobooks/Vendors/
+  - Palace/Audiobooks/AudiobookLoader.swift
+  - Palace/Audiobooks/AudiobookSessionManager.swift  # Swarm 3 territory (B may need 1 delegate-conformance line; flag to integrator if so)
+  - Palace/Audiobooks/PlaybackBootstrapper.swift
+  - Palace/Audiobooks/Tracker/AudiobookTimeEntry.swift
+  - Palace/Audiobooks/AudiobookPositionPolicy.swift
+  - Palace/CarPlay/
+  - ios-audiobooktoolkit/
+  - PalaceTests/Audiobook/AudiobookPositionPolicyTests.swift  # read-side restoration tests
+
+acceptance_gates:
+  - "scripts/verify-pr.sh --quick passes"
+  - "palace_mutate.py --diff-only kill rate >=80% on CanonicalPositionWriter"
+  - "All 3 prior position writers either removed or delegate to PositionWriter"
+  - "Contract snapshots locked for save-throttle + load-cache-hit + load-cache-miss-fetch"
+  - "Existing TPPLastReadPositionPosterTests + TPPLastReadPositionSynchronizerTests + AudiobookDataManagerSyncTests + AudiobookEventsTests + ReadingPositionTests + PositionSyncServiceTests pass"
+  - "Day-1 consumer rule: B and C migrate in same PR as A"
+  - "mcp__forgeos__forge_check_gates: architect + qa_test gates satisfied"
+  - "No edits in don't_touch list"
