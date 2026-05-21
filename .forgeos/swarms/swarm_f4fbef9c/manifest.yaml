@@ -1,7 +1,10 @@
 swarm_id: swarm_f4fbef9c
 task: PositionWriter Unification (Phase 2 of audiobook systemic overhaul)
 created_at: 2026-05-21
-status: triaged
+status: complete
+pr: https://github.com/ThePalaceProject/ios-core/pull/980
+forgeos_initiative: init_05b6832a
+forgeos_changeset: cs_7fd83686
 base_ref: swarm/swarm_5c8ddbd5-scaffold
 base_sha: c4d476838
 forgeos_project: proj_87884c17
