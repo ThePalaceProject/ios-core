@@ -82,85 +82,97 @@ final class AudiobookPositionPolicyValidatorTests: XCTestCase {
         )
     }
 
+    // Result<Void, _> is not Equatable (Void isn't), so XCTAssertEqual on these
+    // results won't compile. Helpers below pattern-match instead.
+    private func assertValidationSuccess(
+        _ result: Result<Void, AudiobookPositionValidationFailure>,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        if case .failure(let failure) = result {
+            XCTFail("expected .success, got .failure(\(failure))", file: file, line: line)
+        }
+    }
+
+    private func assertValidationFailure(
+        _ result: Result<Void, AudiobookPositionValidationFailure>,
+        is expected: AudiobookPositionValidationFailure,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        switch result {
+        case .success:
+            XCTFail("expected .failure(\(expected)), got .success", file: file, line: line)
+        case .failure(let actual):
+            XCTAssertEqual(actual, expected, file: file, line: line)
+        }
+    }
+
     func testValidate_happyPath_succeeds() {
-        XCTAssertEqual(validate(), .success(()))
+        assertValidationSuccess(validate())
     }
 
     func testValidate_negativeTimestamp_fails() {
-        let result = validate(timestamp: -1)
-        XCTAssertEqual(result, .failure(.negativeTimestamp(-1)))
+        assertValidationFailure(validate(timestamp: -1), is: .negativeTimestamp(-1))
     }
 
     func testValidate_timestampZero_succeeds() {
         // Boundary: 0 is a valid position (top-of-track).
-        XCTAssertEqual(validate(timestamp: 0, positionDuration: 0), .success(()))
+        assertValidationSuccess(validate(timestamp: 0, positionDuration: 0))
     }
 
     func testValidate_timestampExactlyAtNegativeBoundary_fails() {
         // -0.0001 is finite but < 0 — must fail.
-        let result = validate(timestamp: -0.0001)
-        XCTAssertEqual(result, .failure(.negativeTimestamp(-0.0001)))
+        assertValidationFailure(validate(timestamp: -0.0001), is: .negativeTimestamp(-0.0001))
     }
 
     func testValidate_infiniteTimestamp_fails() {
-        XCTAssertEqual(validate(timestamp: .infinity), .failure(.nonFiniteTimestamp))
+        assertValidationFailure(validate(timestamp: .infinity), is: .nonFiniteTimestamp)
     }
 
     func testValidate_NaNTimestamp_fails() {
-        XCTAssertEqual(validate(timestamp: .nan), .failure(.nonFiniteTimestamp))
+        assertValidationFailure(validate(timestamp: .nan), is: .nonFiniteTimestamp)
     }
 
     func testValidate_trackKeyMismatch_fails() {
-        let result = validate(trackKeyMatchesManifest: false)
-        XCTAssertEqual(result, .failure(.trackKeyNotInManifest(savedKey: okTrackKey)))
+        assertValidationFailure(
+            validate(trackKeyMatchesManifest: false),
+            is: .trackKeyNotInManifest(savedKey: okTrackKey)
+        )
     }
 
     func testValidate_positionAtExactTotalDuration_succeeds() {
         // End-of-book marker — must accept.
-        XCTAssertEqual(
-            validate(positionDuration: 3600, totalDuration: 3600),
-            .success(())
-        )
+        assertValidationSuccess(validate(positionDuration: 3600, totalDuration: 3600))
     }
 
     func testValidate_positionAtExact110Percent_succeeds() {
         // Boundary: == cap is acceptable; only `>` cap fails.
-        XCTAssertEqual(
-            validate(positionDuration: 3960, totalDuration: 3600),
-            .success(())
-        )
+        assertValidationSuccess(validate(positionDuration: 3960, totalDuration: 3600))
     }
 
     func testValidate_positionExceeds110Percent_fails() {
-        let result = validate(positionDuration: 3961, totalDuration: 3600)
-        XCTAssertEqual(result, .failure(.positionExceedsCap(
-            positionDuration: 3961,
-            totalDuration: 3600
-        )))
+        assertValidationFailure(
+            validate(positionDuration: 3961, totalDuration: 3600),
+            is: .positionExceedsCap(positionDuration: 3961, totalDuration: 3600)
+        )
     }
 
     func testValidate_totalDurationZero_skipsCapCheck() {
         // When manifest doesn't report duration, we can't compare; accept.
-        XCTAssertEqual(
-            validate(positionDuration: 99_999, totalDuration: 0),
-            .success(())
-        )
+        assertValidationSuccess(validate(positionDuration: 99_999, totalDuration: 0))
     }
 
     func testValidate_totalDurationNegative_skipsCapCheck() {
         // Defensive: corrupt manifest data shouldn't reject every position.
-        XCTAssertEqual(
-            validate(positionDuration: 100, totalDuration: -1),
-            .success(())
-        )
+        assertValidationSuccess(validate(positionDuration: 100, totalDuration: -1))
     }
 
     func testValidate_finiteCheckRunsBeforeNegativeCheck() {
         // .infinity is also < 0 false; covered by ordering. NaN < 0 is false.
         // Pin the order: nonFinite is reported first because it's a corruption
         // signal independent of sign.
-        let result = validate(timestamp: -.infinity)
-        XCTAssertEqual(result, .failure(.nonFiniteTimestamp))
+        assertValidationFailure(validate(timestamp: -.infinity), is: .nonFiniteTimestamp)
     }
 
     func testValidate_capMultiplier_isExactly1Point1() {

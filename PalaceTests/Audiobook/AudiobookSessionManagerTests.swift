@@ -492,6 +492,7 @@ final class PlaybackFailureRecordTests: XCTestCase {
 /// typed mirror of the binding-time TOC normalization. Exercises the call-
 /// through to `ChapterTOCNormalizer` plus the collapse behavior (when the
 /// TOC is oversubdivided, output count == trackCount).
+@MainActor
 final class AudiobookChapterTOCNormalizationTests: XCTestCase {
 
     func testNormalizedChaptersCount_balancedTOC_returnsOriginalCount() {

@@ -261,8 +261,8 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         // the position-branch is the ONLY accepting path. This pins
         // the mutant `position > 0 → return true ⇒ return false`.
         let locations = Locator.Locations(
-            position: 7,
-            totalProgression: 0
+            totalProgression: 0,
+            position: 7
         )
         let locator = Locator(
             href: AnyURL(string: "/chapter1.xhtml")!,
@@ -283,8 +283,8 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         // must NOT persist — position 0 is the equivalent of "before
         // page 1".
         let locations = Locator.Locations(
-            position: 0,
-            totalProgression: 0
+            totalProgression: 0,
+            position: 0
         )
         let locator = Locator(
             href: AnyURL(string: "/chapter1.xhtml")!,
