@@ -382,14 +382,13 @@ final class TPPReadiumBookmarkTests: XCTestCase {
             "progressWithinChapter": NSNumber(value: 0.42)
         ]
 
-        let bookmark = TPPReadiumBookmark(dictionary: dict)
+        guard let bookmark = TPPReadiumBookmark(dictionary: dict) else {
+            return XCTFail("TPPReadiumBookmark(dictionary:) returned nil for valid dict")
+        }
 
-        XCTAssertNotNil(bookmark)
-        XCTAssertEqual(Double(bookmark?.progressWithinChapter ?? 0), 0.42, accuracy: 0.001,
+        XCTAssertEqual(Double(bookmark.progressWithinChapter), 0.42, accuracy: 0.001,
                        "chapterProgressKey (canonical EPUB key) must win when both keys are present")
-        // The audiobook-style offset survives as its own field; the fix is
-        // just about which field gets to own `progressWithinChapter`.
-        XCTAssertEqual(Double(bookmark?.readingOrderItemOffsetMilliseconds ?? 0), 0,
+        XCTAssertEqual(Double(bookmark.readingOrderItemOffsetMilliseconds), 0,
                        accuracy: 0.001,
                        "readingOrderItemOffsetMilliseconds field on the bookmark is unaffected (it is populated only via the value-init path, not dictionary)")
     }
@@ -406,10 +405,10 @@ final class TPPReadiumBookmarkTests: XCTestCase {
             "readingOrderItemOffsetMilliseconds": NSNumber(value: 2500.0)
         ]
 
-        let bookmark = TPPReadiumBookmark(dictionary: dict)
-
-        XCTAssertNotNil(bookmark)
-        XCTAssertEqual(Double(bookmark?.progressWithinChapter ?? 0), 2500.0, accuracy: 0.001,
+        guard let bookmark = TPPReadiumBookmark(dictionary: dict) else {
+            return XCTFail("TPPReadiumBookmark(dictionary:) returned nil for valid dict")
+        }
+        XCTAssertEqual(Double(bookmark.progressWithinChapter), 2500.0, accuracy: 0.001,
                        "When only the audiobook-style offset is present, fall back to it")
     }
 
@@ -421,10 +420,10 @@ final class TPPReadiumBookmarkTests: XCTestCase {
             "progressWithinChapter": NSNumber(value: 0.73)
         ]
 
-        let bookmark = TPPReadiumBookmark(dictionary: dict)
-
-        XCTAssertNotNil(bookmark)
-        XCTAssertEqual(Double(bookmark?.progressWithinChapter ?? 0), 0.73, accuracy: 0.001,
+        guard let bookmark = TPPReadiumBookmark(dictionary: dict) else {
+            return XCTFail("TPPReadiumBookmark(dictionary:) returned nil for valid dict")
+        }
+        XCTAssertEqual(Double(bookmark.progressWithinChapter), 0.73, accuracy: 0.001,
                        "EPUB-canonical key alone must populate progressWithinChapter")
     }
 

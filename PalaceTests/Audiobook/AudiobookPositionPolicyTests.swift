@@ -303,21 +303,9 @@ final class AudiobookPositionLoggerSpy: AudiobookPositionLogging {
     }
 }
 
-// MARK: - DefaultAudiobookPositionLogger formatting
-
-final class DefaultAudiobookPositionLoggerTests: XCTestCase {
-    // The default logger emits via Log.warn; we can't intercept that from a
-    // unit test without injecting a Crashlytics bridge. We CAN verify that
-    // calling it doesn't crash and that the formatter sorts context keys
-    // deterministically — that's the contract callers depend on.
-
-    func testDefaultLogger_doesNotCrashOnFailure() {
-        let logger = DefaultAudiobookPositionLogger()
-        logger.logFailure(reason: "x", context: ["a": "1", "b": "2"])
-    }
-
-    func testDefaultLogger_doesNotCrashOnFallback() {
-        let logger = DefaultAudiobookPositionLogger()
-        logger.logFallback(reason: "y", context: [:])
-    }
-}
+// DefaultAudiobookPositionLogger formats via Log.warn (Crashlytics-bridged).
+// We intentionally don't unit-test it without an injected sink — coverage-only
+// "doesn't crash" tests have no failure mode and were removed per CLAUDE.md
+// (Banned test patterns / Coverage-only tests are banned). If we ever need to
+// pin the formatter, add a sink protocol to DefaultAudiobookPositionLogger and
+// test that protocol directly.
