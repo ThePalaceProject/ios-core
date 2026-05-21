@@ -641,7 +641,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         #endif
 
-        case .librarySettings, .libraryRegistryDebugging, .featurePreviews, nil:
+        case .librarySettings, .libraryRegistryDebugging, nil:
             break
         }
     }
