@@ -68,38 +68,12 @@ final class NotificationServiceTokenTests: XCTestCase {
         XCTAssertEqual(decoded.device_token, longToken)
     }
 
-    // MARK: - Notification Classification (isHoldRelatedNotification)
-
-    // The isHoldRelatedNotification method is private, but we can test its behavior
-    // indirectly through the constants that drive classification.
-
-    func testHoldNotificationCategoryIdentifier_isCorrect() {
-        XCTAssertEqual(HoldNotificationCategoryIdentifier, "NYPLHoldToReserveNotificationCategory")
-        XCTAssertFalse(HoldNotificationCategoryIdentifier.isEmpty,
-                       "Hold notification category identifier must not be empty")
-    }
-
-    func testCheckOutActionIdentifier_isCorrect() {
-        XCTAssertEqual(CheckOutActionIdentifier, "NYPLCheckOutNotificationAction")
-        XCTAssertNotEqual(CheckOutActionIdentifier, HoldNotificationCategoryIdentifier,
-                          "CheckOut action identifier must be distinct from hold category identifier")
-    }
-
-    func testDefaultActionIdentifier_isCorrect() {
-        XCTAssertEqual(DefaultActionIdentifier, "UNNotificationDefaultActionIdentifier")
-        XCTAssertNotEqual(DefaultActionIdentifier, CheckOutActionIdentifier,
-                          "Default action identifier must be distinct from checkout action identifier")
-    }
-
-    // MARK: - Singleton
-
-    func testSharedService_returnsSameAsShared() {
-        let fromShared = NotificationService.shared
-        let fromMethod = NotificationService.sharedService()
-        XCTAssertTrue(fromShared === fromMethod)
-        // Both accessors must not return a nil-like wrapper — they're non-optional
-        XCTAssertTrue(fromShared === fromShared, "NotificationService.shared must satisfy reflexive identity")
-    }
+    // Constant-equals-literal-string tests for HoldNotificationCategoryIdentifier,
+    // CheckOutActionIdentifier, and DefaultActionIdentifier were removed per
+    // CLAUDE.md "Banned test patterns" — they test the compiler, not behavior.
+    // Same with testSharedService_returnsSameAsShared (reflexive identity tautology).
+    // Reviewers rev_8cd9d48c and rev_1d39b5c0 both flagged these in the swarm review.
+    // The substantive coverage lives in `shouldRetryTokenRegistration` below.
 
     // MARK: - shouldRetryTokenRegistration (pure decision helper, swarm_f3b9b087 item #6)
     //
