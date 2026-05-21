@@ -7,6 +7,7 @@
 //
 
 import UserNotifications
+import Combine
 import FirebaseCore
 import FirebaseMessaging
 import PalaceLogging
@@ -57,14 +58,83 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     private let networkExecutor: TPPNetworkExecutor
     private let bookRegistry: TPPBookRegistryProvider
 
+    /// Subscription to the auth-state-change publisher. Set in
+    /// `subscribeToAuthStateChanges(_:retry:)`. Held to keep the
+    /// subscription alive for the lifetime of the service.
+    private var authStateSubscription: AnyCancellable?
+    /// Last observed auth state — used to decide whether the next
+    /// emission is a recovery transition (i.e. landed on `.loggedIn`
+    /// from a non-`.loggedIn` state). Nil before any emission.
+    private var lastObservedAuthState: TPPAccountAuthState?
+    /// True when this instance was created with the test-only
+    /// `init(authStatePublisher:onAuthStateRetryRequested:)` so the
+    /// asynchronous production subscription hop is skipped.
+    private let skipsProductionAuthSubscription: Bool
+
     static let shared = NotificationService()
 
     override init() {
         self.accountsManager = AppContainer.production().accountsManager
         self.networkExecutor = AppContainer.production().networkExecutor
         self.bookRegistry = AppContainer.production().bookRegistry
+        self.skipsProductionAuthSubscription = false
         super.init()
 
+        installNotificationObservers()
+
+        // swarm_f3b9b087 item #6: subscribe to the existing
+        // `UserAccountPublisher.shared.authStateDidChangePublisher` (the
+        // same surface `HoldsViewModel` and `MyBooksViewModel` already
+        // consume) so that when stale credentials recover to `.loggedIn`,
+        // we re-attempt FCM token registration. Without this, a patron
+        // who briefly entered `.credentialsStale` (e.g. SAML cookie
+        // expired but bearer still fine, then re-auth) would never
+        // re-register their FCM token until app cold-launch / sign-out /
+        // library switch — and the Circulation Manager would never push
+        // hold-availability notifications.
+        //
+        // The hop into `MainActor` is required because
+        // `UserAccountPublisher.shared` is `@MainActor`-isolated and
+        // `NotificationService.init()` is not. The hop happens once at
+        // service construction; the resulting `AnyCancellable` is held
+        // for the service's lifetime.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard !self.skipsProductionAuthSubscription else { return }
+            self.subscribeToAuthStateChanges(
+                UserAccountPublisher.shared.authStateDidChangePublisher,
+                retry: { [weak self] in self?.updateToken() }
+            )
+        }
+    }
+
+    /// Test-only initializer that injects the auth-state publisher and
+    /// retry callback. Production code uses the no-arg `init()` which
+    /// wires `UserAccountPublisher.shared.authStateDidChangePublisher`
+    /// and `updateToken()`; tests inject a `PassthroughSubject` and a
+    /// spy closure to verify the retry decision logic without standing
+    /// up Firebase Messaging.
+    ///
+    /// `@nonobjc` because `AnyPublisher` is not Objective-C bridgeable
+    /// (the enclosing class is `@objcMembers`).
+    @nonobjc
+    init(
+        authStatePublisher: AnyPublisher<TPPAccountAuthState, Never>,
+        onAuthStateRetryRequested: @escaping () -> Void
+    ) {
+        self.accountsManager = AppContainer.production().accountsManager
+        self.networkExecutor = AppContainer.production().networkExecutor
+        self.bookRegistry = AppContainer.production().bookRegistry
+        self.skipsProductionAuthSubscription = true
+        super.init()
+
+        installNotificationObservers()
+        subscribeToAuthStateChanges(authStatePublisher, retry: onAuthStateRetryRequested)
+    }
+
+    /// Shared NSNotificationCenter observer wiring used by both the
+    /// no-arg production init and the test-only init.
+    private func installNotificationObservers() {
         // Update library token when the user changes library account.
         NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPCurrentAccountDidChange, object: nil, queue: .main) { [weak self] _ in
             self?.updateToken()
@@ -75,6 +145,58 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                 self?.updateToken()
             }
         }
+    }
+
+    /// Wires the auth-state-change subscription. Each emission consults
+    /// the pure `shouldRetryTokenRegistration` helper against the
+    /// previously-observed state; on a recovery transition the `retry`
+    /// closure is invoked.
+    private func subscribeToAuthStateChanges(
+        _ publisher: AnyPublisher<TPPAccountAuthState, Never>,
+        retry: @escaping () -> Void
+    ) {
+        authStateSubscription = publisher.sink { [weak self] newState in
+            guard let self else { return }
+            let previous = self.lastObservedAuthState
+            self.lastObservedAuthState = newState
+            // Without a prior state we have no transition to evaluate —
+            // just record the first emission as the new baseline.
+            guard let previous else { return }
+            let flag = self.accountsManager.currentAccount?.hasUpdatedToken ?? false
+            guard Self.shouldRetryTokenRegistration(
+                previous: previous,
+                current: newState,
+                hasUpdatedToken: flag
+            ) else { return }
+            Log.info(#file, "[FCM_REG] auth-state recovery detected: \(previous)→\(newState), hasUpdatedToken=\(flag) — re-attempting token registration")
+            retry()
+        }
+    }
+
+    /// Cancels the auth-state subscription. Used by tests to deflake
+    /// teardown; production code holds the subscription for the full
+    /// app lifetime.
+    func cancelAuthStateSubscription() {
+        authStateSubscription?.cancel()
+        authStateSubscription = nil
+        lastObservedAuthState = nil
+    }
+
+    /// Pure decision helper for the auth-state-change retry path.
+    /// Returns true iff the transition is a recovery edge — i.e. the
+    /// new state is `.loggedIn`, the previous state was something else,
+    /// and `hasUpdatedToken == false` (meaning the prior registration
+    /// attempt did not confirm with the Circulation Manager). Mutation
+    /// testing pins every branch via the `NotificationServiceTokenTests`
+    /// `testShouldRetryTokenRegistration_*` cases.
+    static func shouldRetryTokenRegistration(
+        previous: TPPAccountAuthState,
+        current: TPPAccountAuthState,
+        hasUpdatedToken: Bool
+    ) -> Bool {
+        guard current == .loggedIn else { return false }
+        guard previous != .loggedIn else { return false }
+        return !hasUpdatedToken
     }
 
     static func sharedService() -> NotificationService {
@@ -195,7 +317,21 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         accountsManager.currentAccount?.getProfileDocument { [weak self] profileDocument in
             guard let self else { return }
             guard let profileDocument else {
-                Log.warn(#file, "[FCM_REG] FAIL: profile_doc_missing — /patrons/me/ returned nil. Common causes: SAML-stale credentials, no credentials, network failure. authState=\(self.accountsManager.currentUserAccount.authState)")
+                let currentAuthState = self.accountsManager.currentUserAccount.authState
+                Log.warn(#file, "[FCM_REG] FAIL: profile_doc_missing — /patrons/me/ returned nil. Common causes: SAML-stale credentials, no credentials, network failure. authState=\(currentAuthState)")
+                // swarm_f3b9b087 item #6: emit a Crashlytics non-fatal so we
+                // can measure the gap server-side. The auth-state-change
+                // subscription installed in `init()` will retry once
+                // credentials recover; the non-fatal proves the deferral
+                // happened and lets support diff against the recovery edge.
+                TPPErrorLogger.logError(
+                    nil,
+                    summary: "[FCM_REG] token registration deferred: profile fetch returned nil",
+                    metadata: [
+                        "authState": String(describing: currentAuthState),
+                        "hasUpdatedToken": self.accountsManager.currentAccount?.hasUpdatedToken ?? false
+                    ]
+                )
                 return
             }
             guard let endpointHref = profileDocument.linksWith(.deviceRegistration).first?.href,
