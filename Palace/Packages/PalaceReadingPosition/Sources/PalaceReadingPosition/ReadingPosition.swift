@@ -1,63 +1,107 @@
 //
 //  ReadingPosition.swift
-//  Palace
+//  PalaceReadingPosition
 //
 //  Unified reading position across EPUB, audiobook, and PDF formats.
+//  Migrated from Palace/Platform/ on 2026-05-21 (Swarm 2, Deviation 4).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import Foundation
 
-/// A unified reading position that can represent a location in any supported format.
-struct ReadingPosition: Codable, Equatable, Sendable {
+/// The content format associated with a `ReadingPosition` or cross-format
+/// sync record.
+///
+/// Note: `Palace/Stats/Models/ReadingSession.swift` declares an
+/// `internal` enum named `ReadingFormat` with the same cases. That is
+/// intentional duplication during the post-Swarm-2 cutover — stats are
+/// not consumers of `PalaceReadingPosition`. The two enums will be
+/// reconciled in a future cleanup pass.
+public enum ReadingFormat: String, Codable, Sendable, CaseIterable {
+    case epub
+    case audiobook
+    case pdf
+}
+
+/// A unified reading position that can represent a location in any
+/// supported format.
+public struct ReadingPosition: Codable, Equatable, Sendable {
 
     // MARK: - Common Properties
 
     /// The book identifier this position belongs to.
-    let bookID: String
+    public let bookID: String
 
     /// The content format this position was recorded in.
-    let format: ReadingFormat
+    public let format: ReadingFormat
 
     /// When this position was recorded.
-    let timestamp: Date
+    public let timestamp: Date
 
     /// The device that recorded this position.
-    let deviceID: String
+    public let deviceID: String
 
     // MARK: - EPUB Properties
 
     /// Zero-based chapter index for EPUB.
-    var chapterIndex: Int?
+    public var chapterIndex: Int?
 
     /// Progress within the current chapter (0.0 to 1.0) for EPUB.
-    var chapterProgress: Double?
+    public var chapterProgress: Double?
 
     /// Canonical Fragment Identifier for precise EPUB location.
-    var cfi: String?
+    public var cfi: String?
 
     // MARK: - Audiobook Properties
 
     /// Zero-based chapter index for audiobook.
-    var audiobookChapterIndex: Int?
+    public var audiobookChapterIndex: Int?
 
     /// Time offset in seconds within the audiobook chapter.
-    var audiobookTimeOffset: TimeInterval?
+    public var audiobookTimeOffset: TimeInterval?
 
     // MARK: - PDF Properties
 
     /// One-based page number for PDF.
-    var pdfPageNumber: Int?
+    public var pdfPageNumber: Int?
 
     // MARK: - Overall Progress
 
     /// Overall progress through the entire book (0.0 to 1.0), if known.
-    var overallProgress: Double?
+    public var overallProgress: Double?
 
-    // MARK: - Initialization
+    // MARK: - Designated init
 
-    static func epub(
+    public init(
+        bookID: String,
+        format: ReadingFormat,
+        timestamp: Date,
+        deviceID: String,
+        chapterIndex: Int? = nil,
+        chapterProgress: Double? = nil,
+        cfi: String? = nil,
+        audiobookChapterIndex: Int? = nil,
+        audiobookTimeOffset: TimeInterval? = nil,
+        pdfPageNumber: Int? = nil,
+        overallProgress: Double? = nil
+    ) {
+        self.bookID = bookID
+        self.format = format
+        self.timestamp = timestamp
+        self.deviceID = deviceID
+        self.chapterIndex = chapterIndex
+        self.chapterProgress = chapterProgress
+        self.cfi = cfi
+        self.audiobookChapterIndex = audiobookChapterIndex
+        self.audiobookTimeOffset = audiobookTimeOffset
+        self.pdfPageNumber = pdfPageNumber
+        self.overallProgress = overallProgress
+    }
+
+    // MARK: - Convenience factories
+
+    public static func epub(
         bookID: String,
         chapterIndex: Int,
         chapterProgress: Double,
@@ -77,7 +121,7 @@ struct ReadingPosition: Codable, Equatable, Sendable {
         )
     }
 
-    static func audiobook(
+    public static func audiobook(
         bookID: String,
         chapterIndex: Int,
         timeOffset: TimeInterval,
@@ -95,7 +139,7 @@ struct ReadingPosition: Codable, Equatable, Sendable {
         )
     }
 
-    static func pdf(
+    public static func pdf(
         bookID: String,
         pageNumber: Int,
         overallProgress: Double? = nil,
@@ -113,7 +157,7 @@ struct ReadingPosition: Codable, Equatable, Sendable {
 
     // MARK: - Device ID
 
-    static var currentDeviceID: String {
+    public static var currentDeviceID: String {
         if let existing = UserDefaults.standard.string(forKey: "Palace.Platform.deviceID") {
             return existing
         }
@@ -125,7 +169,7 @@ struct ReadingPosition: Codable, Equatable, Sendable {
     // MARK: - Display
 
     /// A human-readable description of this position.
-    var displayDescription: String {
+    public var displayDescription: String {
         switch format {
         case .epub:
             if let chapter = chapterIndex, let progress = chapterProgress {

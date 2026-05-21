@@ -9,6 +9,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceReadingPosition
 
 final class CrossFormatMappingTests: XCTestCase {
 

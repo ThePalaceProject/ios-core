@@ -10,6 +10,7 @@
 import Combine
 import XCTest
 @testable import Palace
+import PalaceReadingPosition
 
 final class PositionSyncServiceTests: XCTestCase {
 

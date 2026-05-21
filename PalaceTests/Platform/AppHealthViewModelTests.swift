@@ -10,6 +10,7 @@
 import Combine
 import XCTest
 @testable import Palace
+import PalaceReadingPosition
 
 @MainActor
 final class AppHealthViewModelTests: XCTestCase {
