@@ -7536,7 +7536,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 88CBA74T8K;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				FRAMEWORK_SEARCH_PATHS = "$(inherited)";
@@ -7599,7 +7599,7 @@
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 88CBA74T8K;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				FRAMEWORK_SEARCH_PATHS = "$(inherited)";
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -7659,8 +7659,8 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 478;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = "";
 				CURRENT_PROJECT_VERSION = 478;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
@@ -7717,8 +7717,8 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CURRENT_PROJECT_VERSION = 478;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -7904,9 +7904,9 @@
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 478;
 				DEVELOPMENT_TEAM = "";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 478;
-				DEVELOPMENT_TEAM = 88CBA74T8K;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -7967,7 +7967,7 @@
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 478;
 				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = "";
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
