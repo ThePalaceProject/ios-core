@@ -31,6 +31,18 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        // Eliminate the suite-ordering race: every `AccountsManager()` we
+        // construct in this class would otherwise spawn a background
+        // `loadCatalogs` that outlives the test and writes through to
+        // `AccountStateStore.shared` / `accountSets` at unpredictable times.
+        // Flipping this flag tells `AccountsManager.init()` to skip the
+        // background dispatch — tests that need `loadCatalogs` semantics
+        // call `manager.loadCatalogs(...)` explicitly. See
+        // feedback_wiring_suite_test_isolation.md for the underlying race.
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+
         let bundle = Bundle(for: type(of: self))
         feedURL = bundle.url(forResource: "OPDS2CatalogsFeed", withExtension: "json")
         guard let feedURL else {
@@ -50,6 +62,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // OPDS2CatalogsFeed fixture reuses real library UUIDs).
         #if DEBUG
         AccountStateStore.shared._resetAllForTesting()
+        AccountsManager.deferInitialLoadCatalogsForTesting = false
         #endif
         super.tearDown()
     }
