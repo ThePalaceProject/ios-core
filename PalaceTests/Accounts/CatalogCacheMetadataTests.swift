@@ -190,4 +190,105 @@ final class CatalogCacheMetadataTests: XCTestCase {
         XCTAssertTrue(epoch.isStale)
         XCTAssertTrue(epoch.isExpired)
     }
+
+    // MARK: - isBundled sentinel (force-stale on build-time snapshot writes)
+
+    func testIsBundled_DefaultsFalse_ForBackCompat() {
+        // Convenience initializer omits isBundled so existing call sites
+        // and legacy decoded metadata continue to behave like network caches.
+        let metadata = CatalogCacheMetadata(timestamp: Date(), hash: "h")
+        XCTAssertFalse(metadata.isBundled)
+    }
+
+    func testIsBundled_True_ForcesStaleness_RegardlessOfFreshTimestamp() {
+        // A bundled-origin cache MUST always trip refresh, even when the
+        // timestamp says it was just written. The disk-cached bytes are
+        // usable for immediate display but not authoritative.
+        let justWritten = CatalogCacheMetadata(
+            timestamp: Date(),
+            hash: "h",
+            isBundled: true
+        )
+        XCTAssertTrue(justWritten.isStale)
+        XCTAssertTrue(justWritten.isStale(serverMaxAge: 43200))
+        XCTAssertTrue(justWritten.isStale(serverMaxAge: nil))
+    }
+
+    func testIsBundled_True_ForcesStaleness_AcrossAllServerMaxAges() {
+        // Sweep the bracketing values that affect the network-cache TTL
+        // (the floor at 5min, mid-range, and the ceiling at 12h) — none
+        // of them should override the bundled force-stale path.
+        let bundled = CatalogCacheMetadata(
+            timestamp: Date(),
+            hash: "h",
+            isBundled: true
+        )
+        for maxAge in [TimeInterval?.none, 60, 600, 3600, 43200, 86400] {
+            XCTAssertTrue(
+                bundled.isStale(serverMaxAge: maxAge),
+                "isBundled=true must force stale for serverMaxAge=\(String(describing: maxAge))"
+            )
+        }
+    }
+
+    func testIsBundled_False_PreservesExistingStalenessBehavior() {
+        // The opposite branch: a network-origin cache (isBundled=false)
+        // must still respect the timestamp + serverMaxAge logic that
+        // existed before the sentinel landed.
+        let freshNetwork = CatalogCacheMetadata(
+            timestamp: Date(),
+            hash: "h",
+            isBundled: false
+        )
+        let oldNetwork = CatalogCacheMetadata(
+            timestamp: Date().addingTimeInterval(-25200), // 7h
+            hash: "h",
+            isBundled: false
+        )
+        XCTAssertFalse(freshNetwork.isStale)
+        XCTAssertTrue(oldNetwork.isStale)
+    }
+
+    func testDecode_LegacyMetadataWithoutIsBundledField_DefaultsToFalse() throws {
+        // On-disk metadata written before this field existed must still
+        // decode cleanly and default to isBundled=false so legacy caches
+        // continue to behave like the network-origin caches they were.
+        let legacyJSON = #"""
+        {"timestamp": 750000000, "hash": "legacy-hash"}
+        """#.data(using: .utf8)!
+
+        let metadata = try JSONDecoder().decode(CatalogCacheMetadata.self, from: legacyJSON)
+        XCTAssertEqual(metadata.hash, "legacy-hash")
+        XCTAssertFalse(metadata.isBundled,
+                       "Legacy metadata without isBundled must default to false")
+    }
+
+    func testEncodeDecode_PreservesIsBundledTrue() throws {
+        let original = CatalogCacheMetadata(
+            timestamp: Date(),
+            hash: "bundled-hash",
+            isBundled: true
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(CatalogCacheMetadata.self, from: data)
+        XCTAssertTrue(decoded.isBundled)
+        XCTAssertEqual(decoded.hash, original.hash)
+        XCTAssertTrue(decoded.isStale,
+                      "Round-tripped bundled cache must still report stale")
+    }
+
+    func testEncodeDecode_PreservesIsBundledFalse_Explicitly() throws {
+        // Distinct from the legacy-decode case — when the field IS written
+        // with `false`, the round-trip must preserve `false` (not flip to
+        // some surprise default).
+        let original = CatalogCacheMetadata(
+            timestamp: Date(),
+            hash: "network-hash",
+            isBundled: false
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(CatalogCacheMetadata.self, from: data)
+        XCTAssertFalse(decoded.isBundled)
+        XCTAssertFalse(decoded.isStale)
+    }
 }
