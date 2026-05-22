@@ -428,7 +428,11 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         let chapter = currentChapters[index]
-        manager.audiobook.player.play(at: chapter.position, completion: nil)
+        // Toolkit T1 migration: player.play(at:) is now `async throws`.
+        // Fire-and-forget at the sync boundary; errors are logged downstream.
+        Task { @MainActor in
+            try? await manager.audiobook.player.play(at: chapter.position)
+        }
 
         Log.debug(#file, "Skipping to chapter: '\(chapter.title)'")
     }
@@ -625,12 +629,12 @@ public final class AudiobookSessionManager: ObservableObject {
         Task { @MainActor in
             loaded.playbackModel.currentLocation = initialPosition
             loaded.playbackModel.beginSaveSuppression(for: 3.0)
-            loaded.manager.audiobook.player.play(at: initialPosition) { error in
-                if let error = error {
-                    Log.error(#file, "Playback start error: \(error)")
-                } else {
-                    Log.info(#file, "🎵 Playback started at initial position")
-                }
+            // Toolkit T1 migration: player.play(at:) is now `async throws`.
+            do {
+                try await loaded.manager.audiobook.player.play(at: initialPosition)
+                Log.info(#file, "🎵 Playback started at initial position")
+            } catch {
+                Log.error(#file, "Playback start error: \(error)")
             }
         }
 
@@ -684,8 +688,11 @@ public final class AudiobookSessionManager: ObservableObject {
                     return
                 }
                 playbackModel?.currentLocation = remote
-                currentMgr.audiobook.player.play(at: remote) { error in
-                    if let error = error {
+                // Toolkit T1 migration: player.play(at:) is now `async throws`.
+                Task { @MainActor in
+                    do {
+                        try await currentMgr.audiobook.player.play(at: remote)
+                    } catch {
                         Log.error(#file, "Failed to seek to remote position: \(error)")
                     }
                 }
