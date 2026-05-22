@@ -631,8 +631,10 @@ final class HoldsSyncFailureTests: XCTestCase {
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
 
         // Drain the main queue so the notification observer's main-queue
-        // dispatch lands before we assert. FIFO guarantees ordering.
-        drainMainQueue()
+        // dispatch lands before we assert. FIFO guarantees ordering. Async
+        // variant required — sync `drainMainQueue()` deadlocks inside async
+        // test methods (CI on PR #989 surfaced this).
+        await drainMainQueueAsync()
 
         // Stale data still shows
         XCTAssertEqual(viewModel.reservedBookVMs.count, 1, "Stale data persists")
@@ -656,7 +658,7 @@ final class HoldsSyncFailureTests: XCTestCase {
 
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
 
-        drainMainQueue()
+        await drainMainQueueAsync()
 
         XCTAssertNil(viewModel.syncError, "Error banner must be suppressed for anonymous users")
         XCTAssertFalse(viewModel.isLoading, "Not stuck in loading state")
@@ -693,7 +695,7 @@ final class HoldsSyncFailureTests: XCTestCase {
 
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
 
-        drainMainQueue()
+        await drainMainQueueAsync()
 
         XCTAssertNil(viewModel.syncError,
                      "Error banner must be suppressed when the current library is anonymous, even when stale credentials are present (BUG-004)")

@@ -77,18 +77,6 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         return task
     }
 
-    /// Async-safe main-queue drain. The shared `drainMainQueue()` extension
-    /// calls synchronous `wait(for:)`, which deadlocks inside an
-    /// `@MainActor async` test (the main thread is already running the test;
-    /// blocking it via synchronous wait stalls the dispatch the test is
-    /// waiting on). Use `await fulfillment(of:)` instead — the async runtime
-    /// suspends correctly while the main queue drains.
-    private func drainMainQueueAsync(timeout: TimeInterval = 2.0) async {
-        let drained = expectation(description: "main queue drained (async)")
-        DispatchQueue.main.async { drained.fulfill() }
-        await fulfillment(of: [drained], timeout: timeout)
-    }
-
     /// Wait until the registry reflects the expected state. Wraps the
     /// shared `awaitConditionAsync` helper so timeout produces a loud
     /// XCTFail attributed to the call site rather than a silent return

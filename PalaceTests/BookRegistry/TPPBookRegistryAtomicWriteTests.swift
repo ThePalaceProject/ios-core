@@ -90,16 +90,20 @@ final class TPPBookRegistryAtomicWriteTests: XCTestCase {
         )
     }
 
-    /// 10s budget — atomic-write tests seed only a few hundred records;
-    /// load resolves in well under a second locally. If a CI run needs more
-    /// than 10s the production load path is degraded and the test should
-    /// fail loudly rather than mask the regression with a longer timeout.
+    /// 30s budget — atomic-write tests seed only a few hundred records,
+    /// but AccountsManager preload of 1138 cached accounts during init can
+    /// alone consume >5s on memory-pressured CI before sync.load even
+    /// starts. PR #989 attempted to drop this to 10s and CI surfaced
+    /// `testSave_AfterDirectoryDeleted_DoesNotLeaveCorruptedFile` timing
+    /// out — reverted. Proper fix is isolating AccountsManager preload
+    /// from BookRegistry test setUp (Phase 2 refactor), not bumping the
+    /// timeout.
     private func loadAndWait() {
         let exp = expectation(description: "load completes")
         sync.load(account: account, setState: { newState in
             if newState == .loaded { exp.fulfill() }
         }, completion: nil)
-        wait(for: [exp], timeout: 10.0)
+        wait(for: [exp], timeout: 30.0) // FLAKE-003-OK: covers AccountsManager 1138-account preload on memory-pressured CI; Phase 2 refactor will isolate the preload from this test.
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 
