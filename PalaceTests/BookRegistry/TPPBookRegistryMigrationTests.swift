@@ -72,17 +72,19 @@ final class TPPBookRegistryMigrationTests: XCTestCase {
     }
 
     /// Drive a load and wait for the .loaded state callback.
-    /// 30s budget — disk-bound migration load through Codable + state-machine
-    /// transitions reliably resolves in <0.5s locally, but CI runners under
-    /// contention (especially during parallel test execution) have been
-    /// observed exceeding 5s, blocking the whole suite. Same family as the
-    /// TokenRefreshAndRetryQueue and ColdStartResume timeout bumps.
+    /// 30s budget — migration tests plant a single-digit number of records
+    /// per case, but AccountsManager preload of 1138 cached accounts during
+    /// init can alone consume >5s on memory-pressured CI before sync.load
+    /// even starts. PR #989 attempted to drop this to 10s and CI surfaced
+    /// `testRecordMissingCategoriesField_DefaultsToEmptyArray` timing out
+    /// — reverted. Proper fix is isolating AccountsManager preload from
+    /// BookRegistry test setUp (Phase 2 refactor), not bumping the timeout.
     private func loadAndWait() {
         let exp = expectation(description: "load completes")
         sync.load(account: account, setState: { newState in
             if newState == .loaded { exp.fulfill() }
         }, completion: nil)
-        wait(for: [exp], timeout: 30.0)
+        wait(for: [exp], timeout: 30.0) // FLAKE-003-OK: covers AccountsManager 1138-account preload on memory-pressured CI; Phase 2 refactor will isolate the preload from this test.
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 

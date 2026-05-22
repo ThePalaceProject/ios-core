@@ -345,8 +345,10 @@ final class TPPAlertUtilsTests: XCTestCase {
             }
         )
 
-        // Dismiss the first alert after a brief delay, allowing retry to succeed
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        // Dismiss the first alert after a brief delay, allowing retry to succeed.
+        // FLAKE-002-OK: closure dismisses the alert (real production action), not a `.fulfill()` —
+        //               the linter regex spans across the unrelated dismissExpectation.fulfill below.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { // FLAKE-002-OK
             rootVC.dismiss(animated: false, completion: nil)
         }
 

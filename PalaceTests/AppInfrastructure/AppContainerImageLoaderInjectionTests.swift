@@ -81,12 +81,11 @@ final class AppContainerImageLoaderInjectionTests: XCTestCase {
         let img = UIImage(systemName: "tray")!
         let key = "prod-injection-test-\(UUID().uuidString)"
         container.imageLoader.set(img, for: key, expiresIn: 60)
-        // Wait briefly for the async memory store (ImageCache uses an OperationQueue).
-        let exp = expectation(description: "image set")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
+        // ImageCache.set schedules into an OperationQueue. drainMainQueue
+        // flushes any main-queue continuation that the cache may post; the
+        // subsequent getAsync independently waits for the actual read signal,
+        // so no fixed-delay sleep is needed here.
+        drainMainQueue()
 
         // get() may return nil from main if main-thread-disk-skip applies, so
         // pull via the async API which promotes from disk if needed.
@@ -95,11 +94,10 @@ final class AppContainerImageLoaderInjectionTests: XCTestCase {
             _ = await container.imageLoader.getAsync(for: key)
             waitForRead.fulfill()
         }
-        // 30s budget — local runs resolve in <0.1s, but CI runners under
-        // parallel-test contention have been observed exceeding 5s,
-        // blocking the suite. Same family as TokenRefresh/BookRegistry
-        // timeout bumps.
-        wait(for: [waitForRead], timeout: 30.0)
+        // 5s budget — getAsync resolves the moment the image cache returns
+        // (memory hit ≪10ms, disk-promote hit <100ms). With the asyncAfter
+        // sleep removed there is no padding to justify a longer wait.
+        wait(for: [waitForRead], timeout: 5.0)
 
         // Clean up to keep test isolation
         container.imageLoader.remove(for: key)

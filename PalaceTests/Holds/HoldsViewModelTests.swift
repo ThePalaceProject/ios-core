@@ -630,10 +630,11 @@ final class HoldsSyncFailureTests: XCTestCase {
         // to avoid alarming the user when stale data is still useful.
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
 
-        // Give the notification pipeline time to process
-        let exp = XCTestExpectation(description: "notification processed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        // Drain the main queue so the notification observer's main-queue
+        // dispatch lands before we assert. FIFO guarantees ordering. Async
+        // variant required — sync `drainMainQueue()` deadlocks inside async
+        // test methods (CI on PR #989 surfaced this).
+        await drainMainQueueAsync()
 
         // Stale data still shows
         XCTAssertEqual(viewModel.reservedBookVMs.count, 1, "Stale data persists")
@@ -657,9 +658,7 @@ final class HoldsSyncFailureTests: XCTestCase {
 
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
 
-        let exp = XCTestExpectation(description: "notification processed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await drainMainQueueAsync()
 
         XCTAssertNil(viewModel.syncError, "Error banner must be suppressed for anonymous users")
         XCTAssertFalse(viewModel.isLoading, "Not stuck in loading state")
@@ -696,9 +695,7 @@ final class HoldsSyncFailureTests: XCTestCase {
 
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
 
-        let exp = XCTestExpectation(description: "notification processed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await drainMainQueueAsync()
 
         XCTAssertNil(viewModel.syncError,
                      "Error banner must be suppressed when the current library is anonymous, even when stale credentials are present (BUG-004)")

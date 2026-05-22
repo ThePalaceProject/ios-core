@@ -110,13 +110,12 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // contributions mid-assertion. We then wait briefly for the
         // background to settle.
         let manager = AccountsManager()
-        // Give the init-fired background loadCatalogs a beat to complete or
-        // fail (no network in unit-test env → fast failure). 300ms is
-        // empirically sufficient on the iPhone 16 Pro simulator; longer
-        // tolerates slower CI without making the test flaky.
-        let backgroundSettled = expectation(description: "background loadCatalogs settled")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() }
-        wait(for: [backgroundSettled], timeout: 2.0)
+        // Drain the main queue so init's background loadCatalogs dispatch has
+        // landed any main-thread completion blocks. Without network the
+        // fetchFromNetwork Task fails fast without writing state, so the
+        // reset below is safe once the main queue has flushed.
+        drainMainQueue()
+        drainMainQueue()
 
         // Reset state for every known subject AFTER the background settles,
         // so the assertion below isn't observing the background's leftovers.
@@ -260,12 +259,12 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         let currentUUID = catalogs[0].metadata.id
 
         // Construct the manager FIRST. Its init fires a background
-        // loadCatalogs(nil); let it settle (no network → fails fast) so its
-        // writes don't race the rest of the test.
+        // loadCatalogs(nil); drain the main queue so any of its main-thread
+        // completion blocks land before our reset below. Without network the
+        // fetchFromNetwork Task fails fast without writing AccountStateStore.
         let manager = AccountsManager()
-        let backgroundSettled = expectation(description: "background loadCatalogs settled")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() }
-        wait(for: [backgroundSettled], timeout: 2.0)
+        drainMainQueue()
+        drainMainQueue()
 
         // Seed disk cache against the manager's resolved hash so the warm
         // path's `accountSets[hash]?.isEmpty == false` check holds when we
@@ -318,25 +317,16 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // .detailsLoaded, .detailsFailed) — the test asserts the driver
         // fired, not what the network returned. .notLoaded is also a fail
         // (would mean the wiring blew the state away without re-driving).
-        let movedExpectation = expectation(description: "currentAccount moved past .basicInfoLoaded")
-        var observedFinalState: Account.LoadState = AccountStateStore.shared.state(for: currentUUID)
-        let pollQueue = DispatchQueue.global()
-        let deadline = Date().addingTimeInterval(3.0)
-        pollQueue.async {
-            while Date() < deadline {
-                let s = AccountStateStore.shared.state(for: currentUUID)
-                switch s {
-                case .detailsLoading, .detailsLoaded, .detailsFailed:
-                    observedFinalState = s
-                    movedExpectation.fulfill()
-                    return
-                default:
-                    Thread.sleep(forTimeInterval: 0.05)
-                }
+        awaitCondition(timeout: 4.0) {
+            switch AccountStateStore.shared.state(for: currentUUID) {
+            case .detailsLoading, .detailsLoaded, .detailsFailed:
+                return true
+            default:
+                return false
             }
         }
-        wait(for: [movedExpectation], timeout: 4.0)
 
+        let observedFinalState = AccountStateStore.shared.state(for: currentUUID)
         switch observedFinalState {
         case .detailsLoading, .detailsLoaded, .detailsFailed:
             break // wiring fired — fix is in
@@ -363,9 +353,10 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         let currentUUID = catalogs[0].metadata.id
 
         let manager = AccountsManager()
-        let backgroundSettled = expectation(description: "background loadCatalogs settled")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() }
-        wait(for: [backgroundSettled], timeout: 2.0)
+        // Drain the main queue so init's background loadCatalogs has a chance
+        // to fail (no network → fast failure) before our reset below.
+        drainMainQueue()
+        drainMainQueue()
 
         let activeHash = TPPConfiguration.customUrlHash()
             ?? (TPPSettings().useBetaLibraries
@@ -418,10 +409,9 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // in place this MUST be a no-op.
         manager.driveCurrentAccountAuthDocIfNeeded()
 
-        // Drain stream a beat so any unwanted emission would land.
-        let drained = expectation(description: "stream drain window")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.15) { drained.fulfill() }
-        wait(for: [drained], timeout: 1.0)
+        // Drain the main queue so any unwanted Combine/notification emission
+        // dispatched by the driver lands before we assert silence below.
+        drainMainQueue()
         streamTask.cancel()
 
         // Assert: no transition fired after subscribe. The kill case is
@@ -490,10 +480,14 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // Stream observer should have seen detailsLoading then detailsFailed.
         // (The current state at subscription time was .notLoaded — the
         // CurrentValueSubject emits that as the first value.)
-        // Give the stream task a beat to absorb the terminal state.
-        let drained = expectation(description: "stream drains terminal")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { drained.fulfill() }
-        wait(for: [drained], timeout: 1.0)
+        // Poll the Task-based observer's accumulator until both expected
+        // transitions have landed. The streamTask itself breaks on the
+        // terminal `.detailsFailed`, so the writes have happened; the poll
+        // forces a fresh read on the main thread before assertion.
+        awaitCondition(timeout: 2.0) {
+            observed.contains("detailsLoading") &&
+                observed.contains("detailsFailed.authDocumentFetchFailed")
+        }
         streamTask.cancel()
 
         XCTAssertTrue(observed.contains("detailsLoading"),
@@ -598,10 +592,9 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
 
         wait(for: [exp1, exp2, observed], timeout: 3.0)
 
-        // Drain stream a beat to ensure detailsLoading count is settled.
-        let drained = expectation(description: "stream count settled")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { drained.fulfill() }
-        wait(for: [drained], timeout: 1.0)
+        // Drain the main queue to ensure any post-terminal Combine emissions
+        // from the stream task have landed before we read the count below.
+        drainMainQueue()
         streamTask.cancel()
 
         lock.lock()
@@ -693,9 +686,10 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // manager's currentAccount accessor can resolve UUIDs back to
         // Account instances after the switch.
         let manager = AccountsManager()
-        let backgroundSettled = expectation(description: "background loadCatalogs settled")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() }
-        wait(for: [backgroundSettled], timeout: 2.0)
+        // Drain the main queue so init's background loadCatalogs has a chance
+        // to fail (no network → fast failure) before our reset below.
+        drainMainQueue()
+        drainMainQueue()
 
         let activeHash = TPPConfiguration.customUrlHash()
             ?? (TPPSettings().useBetaLibraries
@@ -732,24 +726,16 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // within a bounded window. The setter must fire the auth-doc
         // driver — staying at .basicInfoLoaded means the regression is
         // open and awaitReady() callers hang after every library switch.
-        let movedExpectation = expectation(description: "new account moved past .basicInfoLoaded")
-        var observedFinalState: Account.LoadState = AccountStateStore.shared.state(for: newUUID)
-        let deadline = Date().addingTimeInterval(3.0)
-        DispatchQueue.global().async {
-            while Date() < deadline {
-                let s = AccountStateStore.shared.state(for: newUUID)
-                switch s {
-                case .detailsLoading, .detailsLoaded, .detailsFailed:
-                    observedFinalState = s
-                    movedExpectation.fulfill()
-                    return
-                default:
-                    Thread.sleep(forTimeInterval: 0.05)
-                }
+        awaitCondition(timeout: 4.0) {
+            switch AccountStateStore.shared.state(for: newUUID) {
+            case .detailsLoading, .detailsLoaded, .detailsFailed:
+                return true
+            default:
+                return false
             }
         }
-        wait(for: [movedExpectation], timeout: 4.0)
 
+        let observedFinalState = AccountStateStore.shared.state(for: newUUID)
         switch observedFinalState {
         case .detailsLoading, .detailsLoaded, .detailsFailed:
             break // wiring fired

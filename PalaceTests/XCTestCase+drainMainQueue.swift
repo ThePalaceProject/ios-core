@@ -27,6 +27,11 @@ extension XCTestCase {
     /// Does NOT wait for `Task { ... }`-based async work — Tasks don't
     /// hop through the main queue. Use `awaitCondition` for those.
     ///
+    /// **DO NOT call this from `async` test methods.** Synchronous
+    /// `wait(for:)` blocks the executor that the `DispatchQueue.main.async`
+    /// block is waiting to run on — deadlock under `@MainActor async`
+    /// tests. Use `await drainMainQueueAsync()` instead (below).
+    ///
     /// - Parameter timeout: Maximum seconds to wait for the no-op to flush.
     ///   Default 5s — generous under heavy suite load while still failing
     ///   visibly on a genuinely starved main thread.
@@ -34,6 +39,26 @@ extension XCTestCase {
         let drained = expectation(description: "main queue drained")
         DispatchQueue.main.async { drained.fulfill() }
         wait(for: [drained], timeout: timeout)
+    }
+
+    /// Async sibling of `drainMainQueue` for `async` test bodies.
+    ///
+    /// Synchronous `drainMainQueue()` deadlocks inside `@MainActor async`
+    /// tests because `wait(for:)` blocks the main executor while the
+    /// `.main.async` block is queued on the same executor. `await
+    /// fulfillment(of:)` suspends correctly, letting the main queue drain.
+    ///
+    /// Promoted to the shared helper from MyBooksDownloadCenterOfflineTests
+    /// after CI on PR #989 surfaced this gap in HoldsViewModelTests'
+    /// async-test migrations (HoldsSyncFailureTests×3 deadlocked when
+    /// `await fulfillment(...)` was naively replaced with sync
+    /// `drainMainQueue()`).
+    ///
+    /// - Parameter timeout: Maximum seconds to wait. Default 5s.
+    func drainMainQueueAsync(timeout: TimeInterval = 5.0) async {
+        let drained = expectation(description: "main queue drained (async)")
+        DispatchQueue.main.async { drained.fulfill() }
+        await fulfillment(of: [drained], timeout: timeout)
     }
 
     /// Polls a synchronous predicate until it returns true, or fails on timeout.

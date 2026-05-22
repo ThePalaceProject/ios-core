@@ -81,7 +81,7 @@ final class ColdStartResumeIntegrationTests: XCTestCase {
         // heavy CI-runner contention. Local runs resolve in <0.5s. Same
         // family as TokenRefreshAndRetryQueue, BookRegistryMigration, and
         // AppContainerImageLoaderInjection timeout bumps.
-        wait(for: [exp], timeout: 120.0)
+        wait(for: [exp], timeout: 120.0) // FLAKE-003-OK: cold-start integration test — exercises real BookRegistrySync.load() pipeline through disk I/O, JSON deserialization, per-record state-machine reconciliation, and main-queue publisher hops; 120s budget covers CI runners under memory pressure (AccountsManager preload alone has been seen >5s).
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 

@@ -308,15 +308,30 @@ final class NetworkRequestQueueTests: XCTestCase {
         var concurrentCount = 0
         var maxConcurrent = 0
         let lock = NSLock()
+        // Released once at least 2 requests have registered concurrent in-flight
+        // state. Each stub-handler waits on this gate (bounded by the 1s timeout
+        // baked into the semaphore wait) so we observe real concurrency on a
+        // real signal instead of a fixed-delay sleep.
+        let concurrencyReached = DispatchSemaphore(value: 0)
+        var gateOpened = false
 
         HTTPStubURLProtocol.register { _ in
             lock.lock()
             concurrentCount += 1
             maxConcurrent = max(maxConcurrent, concurrentCount)
+            let shouldOpenGate = concurrentCount >= 2 && !gateOpened
+            if shouldOpenGate { gateOpened = true }
             lock.unlock()
 
-            // Simulate some processing time
-            Thread.sleep(forTimeInterval: 0.05)
+            if shouldOpenGate {
+                // Wake every other stub-handler currently parked on the gate.
+                for _ in 0..<10 { concurrencyReached.signal() }
+            } else {
+                // Park until a sibling request has arrived. The 1s ceiling
+                // is a safety stop — under normal conditions this releases
+                // sub-millisecond once another request enters the stub.
+                _ = concurrencyReached.wait(timeout: .now() + 1.0)
+            }
 
             lock.lock()
             concurrentCount -= 1

@@ -91,18 +91,17 @@ final class TPPBookRegistryPersistenceTests: XCTestCase {
     /// emission onto the main thread; we wait on a `loaded` setState callback
     /// and then drain the main RunLoop.
     ///
-    /// Timeout: 30s rather than the dev-machine-tight 5s. On CI under memory
-    /// pressure (49 MB available log line on the GitHub-hosted runner)
-    /// AccountsManager preload of 1138 disk-cached accounts during init can
-    /// alone consume >5s of the test's budget before `sync.load` even starts.
-    /// 30s tolerates that warm-up while still failing fast on a wedged load.
+    /// Timeout: 10s. Persistence round-trip tests seed only a handful of
+    /// records so the load resolves in well under a second locally. If CI
+    /// needs more than 10s the production load path is degraded and the
+    /// test should fail loudly rather than mask the regression.
     private func loadAndWait(account: String) {
         let exp = expectation(description: "load(\(account)) completes")
         sync.load(account: account, setState: { newState in
             if newState == .loaded { exp.fulfill() }
         }, completion: nil)
         // Drain RunLoop so the publisher-on-main dispatch lands before assertions.
-        wait(for: [exp], timeout: 30.0)
+        wait(for: [exp], timeout: 10.0)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 
@@ -398,14 +397,12 @@ final class TPPBookRegistryPersistenceTests: XCTestCase {
         group.notify(queue: .main) { waitExp.fulfill() }
         wait(for: [waitExp], timeout: 10.0)
 
-        // Allow diskWriteQueue to drain any tail writes.
-        let drain = expectation(description: "diskWriteQueue drained")
-        // The diskWriteQueue is private but `save(for:)` enqueues async work
-        // on it. Enqueue a marker save after the bursts to bracket completion:
-        // when this final save lands, all previous writes have been observed.
-        sync.save(for: account)
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { drain.fulfill() }
-        wait(for: [drain], timeout: 5.0)
+        // Drain the diskWriteQueue deterministically. The async `save(for:)`
+        // enqueues onto a serial queue; calling `saveSync(for:)` blocks until
+        // its own enqueued write completes, which by FIFO semantics means all
+        // previously enqueued writes (including the 20 above) have flushed.
+        // No fixed-delay sleep needed.
+        sync.saveSync(for: account)
 
         // Reload from disk and validate.
         store = BookRegistryStore()

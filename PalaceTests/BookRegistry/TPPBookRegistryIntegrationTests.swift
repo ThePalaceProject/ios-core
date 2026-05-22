@@ -838,7 +838,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
             .store(in: &cancellables)
 
         for book in books { registry.addBook(book, state: .downloadNeeded) }
-        waitForExpectations(timeout: 20.0)
+        waitForExpectations(timeout: 20.0) // FLAKE-003-OK: concurrent-add stress test — burst of `count` books through addBook → publisher pipeline; 20s covers CI contention.
 
         // Verify the state we waited for.
         for book in books {
@@ -855,7 +855,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
             .store(in: &cancellables)
 
         for book in books { registry.removeBook(forIdentifier: book.identifier) }
-        waitForExpectations(timeout: 20.0)
+        waitForExpectations(timeout: 20.0) // FLAKE-003-OK: concurrent-remove stress test — burst of `count` removes through removeBook → publisher pipeline; 20s covers CI contention.
 
         for book in books {
             XCTAssertNil(registry.book(forIdentifier: book.identifier),

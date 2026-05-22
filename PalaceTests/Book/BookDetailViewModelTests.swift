@@ -1448,10 +1448,11 @@ final class BookDetailViewModelTests: XCTestCase {
             ]
         )
 
-        // Drain the main run loop so any (incorrect) delivery has a chance to fire.
-        let drain = expectation(description: "drain run loop")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { drain.fulfill() }
-        wait(for: [drain], timeout: 1.0)
+        // Drain the main run loop so any (incorrect) delivery has a chance to
+        // fire. Negative-assertion: we want to prove nothing happened, so FIFO
+        // ordering is sufficient — any registry-pipeline dispatch already
+        // enqueued ahead of this drain will run first.
+        drainMainQueue()
 
         XCTAssertFalse(
             vm.isBorrowProcessing,

@@ -385,17 +385,14 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         // both detached refreshes hit fetchFeed → callCount goes 1 → 2 or 3.
         // This decouples the "did the refresh fire" assertion (load-bearing
         // for the mutation kill) from the cache-write timing.
-        await awaitCondition(timeout: 30.0) {
+        await awaitCondition(timeout: 5.0) {
             self.api.fetchFeedCallCount >= 2
         }
 
-        // Then wait for the cache write to land. Bumped to 30s for the
-        // same reason — under pre-push targeted-test contention the
-        // Task.detached(.utility) refresh can be deeply deprioritized.
-        // The happy path completes in <0.3s; the 30s is only spent when
-        // truly broken (in which case the test fails with a clear message
-        // rather than hanging the suite).
-        await awaitCondition(timeout: 30.0) {
+        // Then wait for the cache write to land. The happy path completes in
+        // <0.3s; 5s is plenty of head-room and still fails loudly if the
+        // refresh is broken instead of hanging the suite.
+        await awaitCondition(timeout: 5.0) {
             sut.cachedFeed(for: self.testURL)?.title == "Refreshed-concurrent"
         }
 

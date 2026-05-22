@@ -103,7 +103,7 @@ final class SignInWebSheetIntegrationTests: XCTestCase {
         // cache due to low memory (49 MB available)") the JS-setTimeout + nav
         // IPC pipeline can stretch into 20s+. 30s tolerates that without making
         // a wedged delegate hide forever.
-        await fulfillment(of: [loginExpectation], timeout: 30.0)
+        await fulfillment(of: [loginExpectation], timeout: 30.0) // FLAKE-003-OK: real WKWebView cold-start (WebContent + GPU + Networking helpers) + JS-setTimeout + nav IPC under memory-pressured CI nodes.
         XCTAssertEqual(capturedURL?.absoluteString, "\(universalLinks.absoluteString)?token=test123")
     }
 
@@ -175,7 +175,7 @@ final class SignInWebSheetIntegrationTests: XCTestCase {
         webView.loadHTMLString("<html><body>OK</body></html>", baseURL: URL(string: "https://idp.test.local"))
 
         // ASSERT — 15s for the same WebKit cold-start reason as the test above.
-        await fulfillment(of: [exp], timeout: 15.0)
+        await fulfillment(of: [exp], timeout: 15.0) // FLAKE-003-OK: real WKWebView cold-start (WebContent + GPU + Networking helpers) under CI load.
         XCTAssertFalse(viewModel.isLoading, "Post-load: overlay must be hidden")
         cancellable.cancel()
     }

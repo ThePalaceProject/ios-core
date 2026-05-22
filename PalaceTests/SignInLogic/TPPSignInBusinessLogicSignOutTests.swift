@@ -302,11 +302,10 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
         // or another deauthorize.
         let countBefore = drmAuthorizer.deauthorizeCallCount
         businessLogic.performLogOut()
-        // Drain the runloop briefly to give a hypothetical second sign-out
-        // a chance to spin up.
-        let drain = expectation(description: "drain")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { drain.fulfill() }
-        wait(for: [drain], timeout: 1.0)
+        // Drain the runloop to give a hypothetical second sign-out a chance to
+        // spin up. drainMainQueue's FIFO guarantee means every earlier-queued
+        // block has run by the time the assertion below executes.
+        drainMainQueue()
 
         XCTAssertEqual(drmAuthorizer.deauthorizeCallCount, countBefore,
                        "Second performLogOut() while first is in-flight must coalesce — must not re-invoke deauthorize()")

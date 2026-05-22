@@ -298,12 +298,10 @@ final class LegacySAMLProblemDocumentPropagationTests: XCTestCase {
         // Should not crash, should not call the live delegate.
         throwawayHandler(problemDoc)
 
-        // Give any (incorrect) dispatch a chance to fire.
-        let settled = expectation(description: "settle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            settled.fulfill()
-        }
-        wait(for: [settled], timeout: 2.0)
+        // Give any (incorrect) dispatch a chance to fire. drainMainQueue's FIFO
+        // contract guarantees a leaked delegate call would have landed before
+        // the no-op block flushes.
+        drainMainQueue()
 
         XCTAssertEqual(uiDelegate.validationErrorCallCount, 0,
                        "released businessLogic must not invoke the delegate — " +

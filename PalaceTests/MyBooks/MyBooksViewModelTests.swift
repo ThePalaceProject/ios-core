@@ -424,12 +424,12 @@ final class MyBooksViewModelLoginStateTests: XCTestCase {
         // add a book, and fire the registry-change notification (debounced 300 ms)
         viewModel.isVisible = true
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "n1", title: "New Book")]
-        let expectation = XCTestExpectation(description: "books updated after notification")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            expectation.fulfill()
-        }
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-        wait(for: [expectation], timeout: 2.0)
+
+        // Poll the observable state directly — the debounced reload hops the
+        // main queue, so we wait on the published `books` array landing the
+        // newly registered book rather than a fixed-delay sleep.
+        awaitCondition(timeout: 5.0) { viewModel.books.count == 1 }
 
         // Assert: the viewModel now exposes the new book
         XCTAssertEqual(viewModel.books.count, 1,
@@ -1603,10 +1603,14 @@ final class MyBooksViewModelStateTransitionTests: XCTestCase {
         // Act: mark visible, add a book to the registry, and fire the change notification
         viewModel.isVisible = true
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "st2", title: "New Book")]
-        let exp = XCTestExpectation(description: "showInstructionsLabel transitions to false")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { exp.fulfill() }
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-        wait(for: [exp], timeout: 3.0)
+
+        // Wait on the production-observable transition rather than a fixed
+        // delay — the debounced loadData publishes the new `books` array on
+        // the main queue and clears `showInstructionsLabel` in the same pass.
+        awaitCondition(timeout: 5.0) {
+            viewModel.books.count == 1 && viewModel.showInstructionsLabel == false
+        }
 
         // Assert: label hidden, book present
         XCTAssertFalse(viewModel.showInstructionsLabel,

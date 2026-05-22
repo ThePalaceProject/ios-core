@@ -562,10 +562,10 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
 
         businessLogic.validateCredentials()
 
-        // Drain main queue (the executor's completion is dispatched async to .main)
-        let drain = expectation(description: "drain main queue")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { drain.fulfill() }
-        wait(for: [drain], timeout: 1.0)
+        // Drain main queue (the executor's completion is dispatched async to .main).
+        // DispatchQueue.main is FIFO — once our no-op block runs, every previously
+        // queued completion has already run. No fixed-delay padding.
+        drainMainQueue()
 
         XCTAssertFalse(uiDelegate.didCallDidReceiveCredentials,
                        "Failure path must NOT fire businessLogicDidReceiveCredentials — the UI must not show the DRM spinner")

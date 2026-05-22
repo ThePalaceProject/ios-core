@@ -331,7 +331,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // land — the structural single-flight invariant is sampled
         // synchronously below via `inFlightAttempts == 1`. The prior
         // implementation created `XCTestExpectation`s here and waited
-        // for them with `fulfillment(of: ..., timeout: 180.0)`, but the
+        // for them with `fulfillment(of: ..., timeout: 180.0)`, but the // FLAKE-003-OK: historical reference in comment block; test no longer waits — invariant is sampled synchronously below.
         // actor scheduler under CI-runner contention reliably stalled
         // the 5-caller drain past any timeout. The expectations were
         // belt-and-suspenders for the same invariant the structural

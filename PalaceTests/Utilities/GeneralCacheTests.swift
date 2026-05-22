@@ -232,12 +232,12 @@ final class GeneralCacheTests: XCTestCase {
         let firstURL = diskCache.fileURL(for: firstKey)
         let cacheDir = firstURL.deletingLastPathComponent()
 
-        // Give the async barrier write a moment to complete
-        let readExp = expectation(description: "seed written")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-            readExp.fulfill()
+        // Wait for the async barrier write to materialize the cache directory
+        // on disk. Poll the actual signal (directory existence) instead of
+        // sleeping for a fixed wall-clock delay.
+        awaitCondition(timeout: 5.0) {
+            FileManager.default.fileExists(atPath: cacheDir.path)
         }
-        wait(for: [readExp], timeout: 1.0)
         XCTAssertTrue(FileManager.default.fileExists(atPath: cacheDir.path),
                       "Precondition: cache directory exists after first write")
 
@@ -251,11 +251,13 @@ final class GeneralCacheTests: XCTestCase {
         diskCache.set(payload, for: "recovered")
 
         let recoveredURL = diskCache.fileURL(for: "recovered")
-        let writeExp = expectation(description: "recovered written")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) {
-            writeExp.fulfill()
+        // Wait for the recovered write to materialize: the cache directory
+        // must be recreated AND the recovered file must land. Poll both
+        // conditions instead of sleeping for a fixed delay.
+        awaitCondition(timeout: 5.0) {
+            FileManager.default.fileExists(atPath: cacheDir.path)
+                && FileManager.default.fileExists(atPath: recoveredURL.path)
         }
-        wait(for: [writeExp], timeout: 1.5)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: cacheDir.path),
                       "saveToDisk should recreate the cache directory")

@@ -246,22 +246,29 @@ fi
 fi
 
 # 3. Test quality lint
+# Diff-scoped: only fail when *changed* test files carry blocking rules
+# (FLAKE-* / FLUFF-* / MISSING-* / TIMEOUT-*). SHALLOW-001 is advisory —
+# pre-existing shallow tests in files the PR touches don't fail the gate.
+# `--per-file` emits one `<path>:<line>:<rule>` line per violation so we
+# can scope precisely with anchored grep.
 echo "--- Test Quality Lint ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
   record "test_quality" "pass" "Skipped (--mutation-only)"
 elif [ -f scripts/lint-test-quality.py ]; then
-  LINT_OUTPUT=$(python3 scripts/lint-test-quality.py 2>&1 || true)
-  # Check for violations in changed test files only
+  LINT_PER_FILE=$(python3 scripts/lint-test-quality.py --per-file 2>&1 || true)
   NEW_VIOLATIONS=0
   while IFS= read -r test_file; do
     [ -z "$test_file" ] && continue
-    FILE_VIOLATIONS=$(echo "$LINT_OUTPUT" | grep -c "$test_file" || true)
+    # Anchor grep to start-of-line so the path matches exactly the
+    # changed file and doesn't false-positive on substring overlap
+    # (e.g. `Foo.swift` vs `FooExtensionTests.swift`).
+    FILE_VIOLATIONS=$(echo "$LINT_PER_FILE" | grep -E "^$test_file:[0-9]+:(FLAKE|FLUFF|MISSING|TIMEOUT)-" | wc -l | tr -d ' ')
     NEW_VIOLATIONS=$((NEW_VIOLATIONS + FILE_VIOLATIONS))
   done <<< "$CHANGED_TEST_SWIFT"
   if [ "$NEW_VIOLATIONS" -eq 0 ]; then
-    record "test_quality" "pass" "0 violations in changed test files"
+    record "test_quality" "pass" "0 blocking violations in changed test files (SHALLOW advisory)"
   else
-    record "test_quality" "fail" "$NEW_VIOLATIONS violations in changed test files"
+    record "test_quality" "fail" "$NEW_VIOLATIONS blocking violations in changed test files"
   fi
 else
   record "test_quality" "pass" "Lint script not found (skipped)"

@@ -161,7 +161,7 @@ final class CodeReviewFixesTests: XCTestCase {
 
     func testDownloadStateManager_syncAccessor_returnsCachedData() async {
         let manager = DownloadStateManager()
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
         let info = MyBooksDownloadInfo(downloadProgress: 0.75, downloadTask: task, rightsManagement: .none)
 
         await manager.bookIdentifierToDownloadInfo.set("book-123", value: info)

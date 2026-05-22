@@ -157,7 +157,10 @@ final class TPPCredentialIsolationE2ETests: XCTestCase {
             }
         }
 
-        wait(for: [expectation], timeout: 30)
+        // 500 concurrent writes per account × 2 accounts = 1000 fulfillments. The
+        // writes are synchronous Keychain ops on a global queue; 5s is generous
+        // even on a heavily loaded CI runner. The legacy 30s was timeout-as-padding.
+        wait(for: [expectation], timeout: 5)
 
         let finalA = accountA.barcode ?? ""
         let finalB = accountB.barcode ?? ""

@@ -134,7 +134,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
     func testHandleDownloadFailure_noDelegateReturnsFalse() {
         interceptor.delegate = nil
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         let result = interceptor.handleDownloadFailureWithAuthCheck(
             for: book, task: task, problemDoc: nil, failureError: nil
@@ -145,7 +145,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
 
     func testHandleDownloadFailure_noCredentialsLoginRequired_triggersSignIn() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         // Setup: no credentials, login required (basic auth needs auth)
         mockUserAccount._credentials = nil
@@ -163,7 +163,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         mockRegistry.addBook(book, state: .downloading)
 
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         let problemDoc = TPPProblemDocument.fromDictionary([
             "type": TPPProblemDocument.TypeNoActiveLoan,
@@ -189,7 +189,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
 
     func testHandleDownloadFailure_nonAuthRelatedError_returnsFalse() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         // Has credentials, anonymous auth (needsAuth is false)
         mockUserAccount._credentials = .barcodeAndPin(barcode: "user", pin: "pin")
@@ -383,7 +383,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         mockRegistry.addBook(book, state: .downloading)
 
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         let problemDoc = TPPProblemDocument.fromDictionary([
             "type": TPPProblemDocument.TypeNoActiveLoan,
@@ -406,7 +406,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
 
     func testHandleDownloadFailure_hasCredentials_noLoginRequired_returnsFalse() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         mockUserAccount._credentials = .barcodeAndPin(barcode: "user", pin: "pin")
         // No auth definition at all
