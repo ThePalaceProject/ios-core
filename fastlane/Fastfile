@@ -32,9 +32,24 @@ platform :ios do
     )
   end
 
+  # PP-4258 — Refreshes Palace/Accounts/Library/bundled_registry.json by
+  # paginating the live registry's crawlable feed. Run manually before a
+  # release cut, or in CI prior to invoking `beta` / `appstore`.
+  #
+  # The snapshot ships inside the app bundle and is what cold first-launch
+  # loads to populate the library picker before the network is reached.
+  # Stale snapshots are recoverable (PP-4259 incremental refresh picks up
+  # additions/changes), but a missing one falls back to first-page-only
+  # network fetch — slower cold-start UX.
+  lane :refresh_registry_snapshot do
+    sh("../scripts/snapshot-library-registry.py")
+  end
+
   lane :beta do |options|
     ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "300"
     ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] = "4"
+
+    refresh_registry_snapshot
 
     build_app(
       project: "Palace.xcodeproj",
@@ -62,6 +77,8 @@ platform :ios do
 
     # NOTE: Reusing DerivedData from beta build for faster compilation
     # Only re-links with App Store provisioning profile
+
+    refresh_registry_snapshot
 
     build_app(
       project: "Palace.xcodeproj",
