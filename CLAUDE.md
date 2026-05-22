@@ -163,6 +163,16 @@ A test that doesn't kill any mutants should be rewritten to test the actual beha
 
 **Critical path tests must be air-tight.** For sign-in, borrow, download, DRM fulfillment, and payment flows: every branch must have a test, every error path must be exercised, and every test must kill at least one mutant. These paths handle user money and access — fluff is not acceptable here.
 
+**State-machine wiring tests must exercise round-trips, not just transitions.** Any code that drives a state machine (e.g. `_setState`, `setState`, reducer-action dispatches, accessor setters that write a terminal state) gets a test class that proves the **full lifecycle**, not just individual transitions. Required cycles:
+
+- **Write → reset → re-enter.** If a write can be undone (manually, via re-entry, or by a later setter call), a single test must drive the value through the cycle via the **production seam** (the public setter / driver function), not via direct `_setState` shortcuts. Direct shortcut writes prove the storage works; they don't prove the wiring works.
+- **Enum cases reused with two meanings get an explicit semantics test.** When a terminal case (e.g. `.detailsFailed(.accountNotFound)`) is written for both "real failure" and "eviction marker," there must be a test that pins each meaning and a third test that proves they're correctly disambiguated by downstream consumers. If you can't pin them separately, the enum needs to split.
+- **Consumer-side smoke test.** For every readiness gate (`awaitReady()`-style) that has ≥2 production consumers, write one test that drives the gate through a real consumer call site (audiobook open, token refresh, bookmark sync, CarPlay auth) after a non-trivial scenario (cold launch, library swap, sign-out/back-in). Unit-level transition tests are necessary but not sufficient — they prove the gate moves; the consumer test proves the gate is *useful*.
+
+Reviewer checklist: when a PR adds a `case .Foo:` to a state-machine switch, ask "where's the test that proves we can recover from being IN `.Foo`?" When a PR adds a setter that writes a terminal state, ask "where's the test that proves the round-trip A→B→A works through this setter, not through `_setState` directly?"
+
+Canonical reference for the round-trip pattern: `PalaceTests/Accounts/AccountsManagerStateMachineWiringTests.swift`, Test 7 (`testDriveCurrentAccountAuthDoc_staleAccountNotFoundMarker_redrives`).
+
 ## pbxproj
 
 Two build phases (two targets) — new source files need entries in both Sources sections.
