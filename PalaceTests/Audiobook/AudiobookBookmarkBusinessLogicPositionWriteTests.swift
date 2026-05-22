@@ -278,11 +278,19 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
 
     // MARK: - 5. isAtBeginning guard preserved (swarm_f3b9b087 #4)
 
-    /// Pin the swarm_f3b9b087 P0 #4 predicate: when a save is for track 0
-    /// at < 30s AND a later-track position already exists locally, the
-    /// post-save commit MUST NOT overwrite the later-track bookmark with
-    /// the "beginning" position. The annotationId update is suppressed,
-    /// preserving the local later-track state.
+    /// Pin the swarm_f3b9b087 P0 #4 predicate: when a save is at the
+    /// STRICT-ZERO beginning (track 0 AND playbackTime == 0) AND a
+    /// later-track position already exists locally, the post-save commit
+    /// MUST NOT overwrite the later-track bookmark with the "beginning"
+    /// position. The annotationId update is suppressed, preserving the
+    /// local later-track state.
+    ///
+    /// NOTE: this test was originally authored against the legacy `time
+    /// < 30s` predicate (PR #980). swarm_f3b9b087 P0 #4 tightened the
+    /// predicate to strict-zero (see `AudiobookBookmarkBusinessLogic.swift`
+    /// lines 117–125: "Strict zero is correct"). The input below uses
+    /// `time: 0` to match the strict-zero contract. A `time: 5.0` input
+    /// would (correctly) bypass the guard under the new predicate.
     func testIsAtBeginning_preservedAfterMigration_doesNotOverwriteValidPosition() throws {
         // Arrange: pre-seed a "later track" position in the registry that
         // a stale beginning-of-book save must NOT clobber. The chapter
@@ -322,8 +330,11 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         // that runs AFTER the writer returns.
         spyWriter.saveResult = .success("server-beginning-id")
 
-        // Act: try to save a beginning-of-book position (track 0, t<30s).
-        let beginningPosition = position(trackIndex: 0, time: 5.0)
+        // Act: try to save a strict-zero beginning-of-book position
+        // (track 0, time == 0). The legacy `< 30s` window was tightened
+        // to strict-zero by swarm_f3b9b087 P0 #4; any positive time
+        // bypasses the guard under the new predicate.
+        let beginningPosition = position(trackIndex: 0, time: 0)
         let returned = saveAndWait(position: beginningPosition)
 
         // Assert: writer was called (local-save-first ordering preserved),
