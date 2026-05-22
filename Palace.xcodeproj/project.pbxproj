@@ -6028,6 +6028,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 73EB0B7225821DF4006BC997 /* Build configuration list for PBXNativeTarget "Palace-noDRM" */;
 			buildPhases = (
+				5B51E4AE08FCC5573C9D3542 /* Check Registry Snapshot Freshness */,
 				73EB0A6425821DF4006BC997 /* Sources */,
 				73EB0B2C25821DF4006BC997 /* Frameworks */,
 				73EB0B5825821DF4006BC997 /* Resources */,
@@ -6071,6 +6072,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A823D839192BABA400B55DE2 /* Build configuration list for PBXNativeTarget "Palace" */;
 			buildPhases = (
+				3A3692EDBADAC0E5D5FEAC50 /* Check Registry Snapshot Freshness */,
 				A823D809192BABA400B55DE2 /* Sources */,
 				A823D80A192BABA400B55DE2 /* Frameworks */,
 				A823D80B192BABA400B55DE2 /* Resources */,
@@ -6387,6 +6389,48 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		3A3692EDBADAC0E5D5FEAC50 /* Check Registry Snapshot Freshness */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Palace/Accounts/Library/bundled_registry.json",
+			);
+			name = "Check Registry Snapshot Freshness";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Emits an Xcode-style warning when bundled_registry.json is stale.\n# Always exits 0; the warning is the signal.\nbash \"$SRCROOT/scripts/check_registry_snapshot_freshness.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		5B51E4AE08FCC5573C9D3542 /* Check Registry Snapshot Freshness */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Palace/Accounts/Library/bundled_registry.json",
+			);
+			name = "Check Registry Snapshot Freshness";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Emits an Xcode-style warning when bundled_registry.json is stale.\n# Always exits 0; the warning is the signal.\nbash \"$SRCROOT/scripts/check_registry_snapshot_freshness.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		73DA43AD2404CA9500985482 /* Crashlytics */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;

@@ -10,6 +10,32 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 struct CatalogCacheMetadata: Codable {
     let timestamp: Date
     let hash: String
+    /// `true` when this cache entry was populated from the build-time
+    /// bundled snapshot (`Palace/Accounts/Library/bundled_registry.json`),
+    /// `false` for entries written from a network response. Bundled-origin
+    /// caches return `true` from `isStale(serverMaxAge:now:)` regardless
+    /// of timestamp so the refresh trigger keeps firing on every
+    /// `loadCatalogs` call until a real network response overwrites the
+    /// metadata with `isBundled = false`. Decodes as `false` for legacy
+    /// metadata files written before this field existed.
+    let isBundled: Bool
+
+    init(timestamp: Date, hash: String, isBundled: Bool = false) {
+        self.timestamp = timestamp
+        self.hash = hash
+        self.isBundled = isBundled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case timestamp, hash, isBundled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.timestamp = try container.decode(Date.self, forKey: .timestamp)
+        self.hash = try container.decode(String.self, forKey: .hash)
+        self.isBundled = try container.decodeIfPresent(Bool.self, forKey: .isBundled) ?? false
+    }
 
     /// Default stale TTL: 6 hours (half the server's typical Cache-Control
     /// max-age of 12hr). Overridden dynamically by `staleTTL(serverMaxAge:)`.
@@ -35,7 +61,13 @@ struct CatalogCacheMetadata: Codable {
     }
 
     func isStale(serverMaxAge: TimeInterval?, now: Date) -> Bool {
-        now.timeIntervalSince(timestamp) > Self.staleTTL(serverMaxAge: serverMaxAge)
+        // Bundled-origin caches are always stale for refresh purposes
+        // regardless of timestamp. The bundled bytes are usable for
+        // immediate display but not authoritative, so refresh has to
+        // keep firing until a real network response overwrites with
+        // `isBundled = false`.
+        if isBundled { return true }
+        return now.timeIntervalSince(timestamp) > Self.staleTTL(serverMaxAge: serverMaxAge)
     }
 
     /// Returns true if cache is stale using the default TTL (no server hint).
@@ -519,7 +551,10 @@ struct CatalogCacheMetadata: Codable {
         // was cut, so this is purely a fast-path for cold first launch.
         if let bundledData = BundledRegistrySnapshot.load() {
             Log.info(#file, "First launch — loading bundled registry snapshot for hash \(hash), dataSize=\(bundledData.count)")
-            cacheAccountsCatalogData(bundledData, hash: hash)
+            // isBundled=true keeps the cache flagged as non-authoritative so
+            // every subsequent loadCatalogs call still triggers refresh until
+            // a real network response overwrites the metadata.
+            cacheAccountsCatalogData(bundledData, hash: hash, isBundled: true)
             loadAccountSetsAndAuthDoc(fromCatalogData: bundledData, key: hash) { _ in
                 NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
             }
@@ -728,13 +763,15 @@ struct CatalogCacheMetadata: Codable {
         return appSupport.appendingPathComponent("accounts_catalog_metadata_\(hash).json")
     }
 
-    private func cacheAccountsCatalogData(_ data: Data, hash: String) {
+    private func cacheAccountsCatalogData(_ data: Data, hash: String, isBundled: Bool = false) {
         // Save catalog data
         guard let url = accountsCatalogUrl(hash: hash) else { return }
         try? data.write(to: url)
 
-        // Save metadata with current timestamp
-        let metadata = CatalogCacheMetadata(timestamp: Date(), hash: hash)
+        // Save metadata with current timestamp. `isBundled` distinguishes
+        // build-time-snapshot writes from authoritative network writes so
+        // staleness logic can keep refresh alive on bundled-origin caches.
+        let metadata = CatalogCacheMetadata(timestamp: Date(), hash: hash, isBundled: isBundled)
         if let metadataUrl = cacheMetadataUrl(hash: hash),
            let metadataData = try? JSONEncoder().encode(metadata) {
             try? metadataData.write(to: metadataUrl)
