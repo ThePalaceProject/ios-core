@@ -15,11 +15,13 @@
 #      — Foo.swift -> Foo*Tests.swift, then first XCTestCase subclass
 #      declared in each candidate file.
 #   3. Build `-only-testing:PalaceTests/<Class>` args and run xcodebuild
-#      test with a hard 90s wall-clock cap.
+#      test with a wall-clock cap (default 180s, override via
+#      PRE_PUSH_TESTS_TIMEOUT_SECS=N).
 #   4. Failure exits 1 (blocks push). Success or no derived tests exits 0.
 #
 # Bypass:
-#   SKIP_PRE_PUSH_TESTS=1 git push ...     # explicit opt-out (logged)
+#   SKIP_PRE_PUSH_TESTS=1 git push ...                # full opt-out (logged)
+#   PRE_PUSH_TESTS_TIMEOUT_SECS=360 git push ...      # raise cap (cold builds)
 #
 # The harness's existing STANZA_THRESHOLD_LOC bypass for commit-msg is
 # independent of this hook.
@@ -140,8 +142,13 @@ if [[ ${#CLASSES[@]} -eq 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Run xcodebuild test with -only-testing args, hard 90s cap
+# 3. Run xcodebuild test with -only-testing args, configurable wall-clock cap
 # ---------------------------------------------------------------------------
+# Default 180s. Cold-build cycles on the iPhone 16 Pro sim need >90s for
+# multi-class -only-testing runs (xcodebuild rebuilds dependency tree + test
+# target even when product is warm). Override via env when targeting a faster
+# subset or a known-hot DerivedData state.
+TIMEOUT_SECS="${PRE_PUSH_TESTS_TIMEOUT_SECS:-180}"
 # Pick a booted iPhone sim if available; fall back to a stable name. We
 # deliberately do NOT use a hardcoded UDID — harness convention forbids it
 # (parallel agents would collide).
@@ -163,7 +170,7 @@ for cls in "${CLASSES[@]}"; do
   ONLY_TESTING_ARGS+=("-only-testing:PalaceTests/$cls")
 done
 
-echo "[pre-push-test-gate] Running targeted tests (${#CLASSES[@]} class(es), 90s cap):" >&2
+echo "[pre-push-test-gate] Running targeted tests (${#CLASSES[@]} class(es), ${TIMEOUT_SECS}s cap):" >&2
 printf '[pre-push-test-gate]   - %s\n' "${CLASSES[@]}" >&2
 
 # Wrap xcodebuild in `timeout 90` if available (coreutils). On macOS the
@@ -182,7 +189,7 @@ run_with_timeout() {
 }
 
 # Quiet xcodebuild — we only care about pass/fail at the gate.
-if run_with_timeout 90 xcodebuild \
+if run_with_timeout "$TIMEOUT_SECS" xcodebuild \
      -project Palace.xcodeproj \
      -scheme Palace \
      "${DEST_ARGS[@]}" \
