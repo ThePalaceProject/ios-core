@@ -400,8 +400,18 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         await executor.resetRefreshAttemptCount()
 
         let newToken = "fresh-bearer-after-refresh"
-        var capturedRetryAuth: String?
-        var retryHits = 0
+
+        // Cross-thread state — `retryHits` and `capturedRetryAuth` are
+        // written by the network-thread stub and read by the test
+        // thread's `waitForCondition`/assertions. Without explicit
+        // synchronization the test thread can observe `retryHits >= 1`
+        // before the prior `capturedRetryAuth` store is visible (no
+        // happens-before across plain `var`s in Swift). The CI flake
+        // was nil!=newToken precisely because of this gap. NSLock
+        // around every shared-state access closes it.
+        let lock = NSLock()
+        nonisolated(unsafe) var capturedRetryAuth: String? = nil
+        nonisolated(unsafe) var retryHits = 0
 
         HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
             if request.url == tokenURL {
@@ -410,8 +420,11 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
                              body: Self.tokenResponseJSON(accessToken: newToken))
             }
             if request.url == apiURL {
+                let authValue = request.value(forHTTPHeaderField: "Authorization")
+                lock.lock()
+                capturedRetryAuth = authValue
                 retryHits += 1
-                capturedRetryAuth = request.value(forHTTPHeaderField: "Authorization")
+                lock.unlock()
                 return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
             }
             return nil
@@ -423,13 +436,20 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         executor.refreshTokenAndResume(task: queuedTask, accountId: nil)
 
         // Wait until the retry request has been observed.
-        let retried = waitForCondition(timeout: 5.0) { retryHits >= 1 }
+        let retried = waitForCondition(timeout: 5.0) {
+            lock.lock(); defer { lock.unlock() }
+            return retryHits >= 1
+        }
         XCTAssertTrue(retried, "The queued task must be retried after the /token refresh succeeds")
 
-        XCTAssertEqual(capturedRetryAuth,
+        lock.lock()
+        let observedAuth = capturedRetryAuth
+        lock.unlock()
+
+        XCTAssertEqual(observedAuth,
                        "Bearer \(newToken)",
                        "The retried request must carry the NEW bearer (kills any mutation that reuses oldTask.originalRequest or the stale token)")
-        XCTAssertNotEqual(capturedRetryAuth,
+        XCTAssertNotEqual(observedAuth,
                           "Bearer stale-token",
                           "The retried request must NOT carry the stale token — kills mutation that resumes the original task instead of constructing a new one")
         XCTAssertEqual(userAccount.authToken, newToken,
