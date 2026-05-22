@@ -153,6 +153,23 @@ struct CatalogCacheMetadata: Codable {
     private var inflightAuthDocFetches = Set<String>()
     private let inflightAuthDocLock = NSLock()
 
+    #if DEBUG
+    /// Test-only opt-out from the post-init background `loadCatalogs` spawn.
+    /// When `true`, `AccountsManager.init()` skips the
+    /// `DispatchQueue.global(qos: .background).async { loadCatalogs(...) }`
+    /// dispatch — eliminating the cross-test race where lingering background
+    /// work from a previously-constructed AccountsManager instance writes
+    /// through to `accountSets` / `AccountStateStore.shared` mid-test.
+    ///
+    /// Production callers never set this. The suite-level `setUp` of any
+    /// XCTestCase that constructs multiple `AccountsManager()` instances
+    /// should set it to `true` in `setUp` and reset to `false` in `tearDown`
+    /// to keep the flag flip scoped. NOT compiled into release builds.
+    ///
+    /// See `feedback_wiring_suite_test_isolation.md` for the underlying race.
+    internal static var deferInitialLoadCatalogsForTesting: Bool = false
+    #endif
+
     /// Initializer is `internal` rather than `private` so `AppContainer` can
     /// construct the single live instance directly. Outside of `AppContainer`
     /// (and tests that need an isolated instance), do not call this directly
@@ -180,6 +197,18 @@ struct CatalogCacheMetadata: Codable {
         // an empty list. The async refresh below still runs to pick up any
         // server-side registry changes.
         preloadAccountsFromDiskCacheSync()
+
+        #if DEBUG
+        if Self.deferInitialLoadCatalogsForTesting {
+            // Test-only path: skip the background dispatch. The wiring suite
+            // (and any future XCTestCase constructing multiple instances)
+            // sets this flag to eliminate the cross-test race where lingering
+            // background work writes through state mid-test. Tests that need
+            // `loadCatalogs` semantics call `manager.loadCatalogs(...)`
+            // explicitly. Production never takes this branch.
+            return
+        }
+        #endif
 
         DispatchQueue.global(qos: .background).async { [weak self] in
             self?.loadCatalogs(completion: nil)
