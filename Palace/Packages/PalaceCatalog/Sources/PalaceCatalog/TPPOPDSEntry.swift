@@ -75,14 +75,14 @@ import PalaceLogging
     publisher = entryXML.firstChild(withName: "publisher")?.value
     summary = entryXML.firstChild(withName: "summary")?.value.stringByDecodingHTMLEntities
 
-    // PP-4046 — Audience is published as `<category scheme="schema.org/audience">`;
+    // Audience is published as `<category scheme="schema.org/audience">`
     // extract the label/term so the detail view can render it as its own row
     // independent from the genre category list.
     audience = categories.first(where: {
       $0.scheme?.absoluteString == "http://schema.org/audience"
     }).map { $0.label ?? $0.term }
 
-    // PP-4046 — `<dcterms:language>` is normally namespace-stripped to
+    // `<dcterms:language>` is normally namespace-stripped to
     // `language` (TPPXML sets shouldProcessNamespaces=true); legacy feeds
     // that omit the `xmlns:dcterms` declaration leave the literal prefix in
     // place. Read either, prefer the unprefixed form. Same defensive pattern
@@ -127,7 +127,7 @@ import PalaceLogging
     var contribs = [String: [String]]()
 
     for contributorNode in entryXML.childrenWithName("contributor") {
-      // PP-4230: Foundation's XMLParser with shouldProcessNamespaces=true
+      // Foundation's XMLParser with shouldProcessNamespaces=true
       // strips the `opf:` prefix from attribute names when the feed declares
       // `xmlns:opf` (real-world feeds do — A1QA, Bibliotheca, BiblioBoard,
       // ODL providers). The unprefixed `"role"` is the canonical key in that

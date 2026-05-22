@@ -456,7 +456,7 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
             // moment the user touched a book detail view, ensureAuthAndExecute
             // saw the stale state and prompted re-auth — even though the
             // user's bearer token was still good and nothing was broken.
-            // HelpSpot 17716 follow-up, hotfix-branch device test 2026-05-01.
+            // follow-up, hotfix-branch device test 2026-05-01.
             //
             // Narrow the rule: only mark stale on browser-auth 401s from
             // ACTION endpoints (borrow, fulfillment, loans). A 401 from the

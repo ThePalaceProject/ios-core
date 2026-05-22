@@ -110,7 +110,7 @@ final class TokenRefreshInterceptor {
             return true
         }
 
-        // Check for "no active loan" with browser-based auth — treat as session expiry (PP-3716)
+        // Check for "no active loan" with browser-based auth treat as session expiry
         // Browser-based auth (SAML/OIDC) can cause the server to return "no-active-loan"
         // instead of 401 when the session expires.
         if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
@@ -524,7 +524,7 @@ final class TokenRefreshInterceptor {
         }
 
         // Present the session — uses existing system browser cookies for silent SSO,
-        // EXCEPT when the patron just ran "Reset Account" (PP-4282 / HelpSpot 17716)
+        // EXCEPT when the patron just ran "Reset Account"
         // which sets a one-shot flag forcing ephemeral cookies for this single
         // session. Flag self-clears on consumption.
         session.presentationContextProvider = OIDCPresentationContextProvider.shared

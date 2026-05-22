@@ -263,7 +263,7 @@ class BookCellModel: ObservableObject {
             .sink { [weak self] newState in
                 guard let self else { return }
 
-                // PP-3811: Update book from registry so availability data (hold position,
+                // Update book from registry so availability data (hold position
                 // loan duration, etc.) is current. Without this, views like holdingInfoView
                 // read stale data from the pre-borrow catalog book.
                 if let updatedBook = self.bookRegistry.book(forIdentifier: self.book.identifier) {
@@ -374,7 +374,7 @@ class BookCellModel: ObservableObject {
             .assign(to: &$stableButtonState)
     }
 
-    /// PP-4114: react to mid-flight network drops. The pre-flight check on
+    /// react to mid-flight network drops. The pre-flight check on
     /// Download/Reserve handles the cold-offline tap; this subscription
     /// handles the case where reachability drops AFTER the user already
     /// kicked off a borrow/download (so isLoading is true and the spinner
@@ -465,7 +465,7 @@ class BookCellModel: ObservableObject {
 
 extension BookCellModel {
     func callDelegate(for action: BookButtonType) {
-        // PP-4114 pre-flight: Download/Retry/Get/Reserve all hit the network
+        // pre-flight: Download/Retry/Get/Reserve all hit the network
         // (borrow → fulfillment → download). If we're offline, surface the
         // retryable no-connection alert instead of setting isLoading=true and
         // waiting ~60s for URLSession to time out (the original "stale button"

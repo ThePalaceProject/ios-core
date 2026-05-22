@@ -462,7 +462,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         return alert
     }
 
-    // MARK: - Reset Account (PP-4282 / HelpSpot 17716)
+    // MARK: - Reset Account
 
     /// Entry point for the destructive "Reset This Library Account" button.
     /// Presents a confirmation alert before tearing down all local state.

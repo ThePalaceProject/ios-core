@@ -104,7 +104,7 @@ struct SignInWebView: UIViewRepresentable {
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
 
-        // PP-4289: suppress automatic content-inset adjustments that cause the
+        // suppress automatic content-inset adjustments that cause the
         // webview to shift/jitter on hover and click in iPad-on-Mac. Mirrors
         // TPPBaseReaderViewController.swift:172-174 which already does this for
         // the Readium WKWebView. Without this, the system repeatedly re-applies

@@ -43,7 +43,7 @@ struct CatalogLaneRowView: View {
                         .padding(.vertical)
                     })
                     .buttonStyle(.plain)
-                    // PP-4289: lift the cover when a pointer (iPad pencil/mouse,
+                    // lift the cover when a pointer (iPad pencil/mouse
                     // or iPad-on-Mac mouse) hovers it. No-op on touch-only iPhones.
                     .hoverEffect(.lift)
                     .accessibilityLabel(Self.accessibilityLabel(for: book))
@@ -53,12 +53,12 @@ struct CatalogLaneRowView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
-        .accessibilityAddTraits(.isHeader) // PP-3980: scroll container exposes title in heading rotor
+        .accessibilityAddTraits(.isHeader) // scroll container exposes title in heading rotor
         .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: books.count))
         .accessibilityHint(Strings.Generic.horizontalLaneHint)
     }
 
-    /// PP-3968: Single source of truth for the catalog cell VoiceOver label.
+    /// Single source of truth for the catalog cell VoiceOver label.
     /// Delegates to TPPBook.voiceOverLabel for the canonical Audible/Libby-style format.
     static func accessibilityLabel(for book: TPPBook) -> String {
         book.voiceOverLabel
@@ -77,7 +77,7 @@ struct CatalogLaneRowView: View {
                 .lineLimit(3)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader) // PP-3980: expose swimlane title in heading rotor
+                .accessibilityAddTraits(.isHeader) // expose swimlane title in heading rotor
             Spacer()
             if let more = moreURL, let onMoreTapped = onMoreTapped {
                 Button("More…") {

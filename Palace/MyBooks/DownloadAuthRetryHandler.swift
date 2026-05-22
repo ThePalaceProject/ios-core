@@ -125,7 +125,7 @@ final class DownloadAuthRetryHandler {
 
         // Check if the error is "No active loan" - attempt to re-borrow
         if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
-            // PP-3716: When browser-based auth expires, the server may return
+            // When browser-based auth expires, the server may return
             // "no-active-loan" (400) instead of 401. Treat as session expiry.
             if reauthStrategy == .browser && hasCredentials {
                 userAccount.markCredentialsStale()
@@ -180,7 +180,7 @@ final class DownloadAuthRetryHandler {
 
     // MARK: - No-active-loan as session expiry
 
-    /// PP-3716: same treatment as the browser-session-expired path but
+    /// same treatment as the browser-session-expired path but
     /// triggered by a `no-active-loan` problem document (which the
     /// server sometimes returns as 400 instead of 401 when the browser
     /// session has timed out).

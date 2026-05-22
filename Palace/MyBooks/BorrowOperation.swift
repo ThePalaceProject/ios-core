@@ -134,7 +134,7 @@ final class BorrowOperation {
     ///   downgraded to a hold. Surface the alert.
     ///
     /// Backward-compat: when `preBorrowBook` is nil, retains the original
-    /// PP-4178 behavior (treat `unavailable`/`reserved` as race losses) for
+    /// behavior (treat `unavailable`/`reserved` as race losses) for
     /// callers that don't have pre-borrow context.
     /// Race an async operation against a deadline. Whichever finishes first
     /// wins; the other is cancelled. On deadline expiry, throws
@@ -354,7 +354,7 @@ final class BorrowOperation {
             throw simulated.error
         }
 
-        // PP-3649: ensure Adobe DRM device activation before proceeding.
+        // ensure Adobe DRM device activation before proceeding.
         #if FEATURE_DRM_CONNECTOR
         if book.requiresAdobeDRM {
             Task { [errorActivityTracker] in await errorActivityTracker.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
@@ -398,7 +398,7 @@ final class BorrowOperation {
             await clearProcessingState()
 
             let location = self.bookRegistry.location(forIdentifier: borrowedBook.identifier)
-            // PP-4178 follow-up: pass `book` (pre-borrow) so the helper can
+            // follow-up: pass `book` (pre-borrow) so the helper can
             // tell Place Hold success apart from a CM Loan→Hold race loss.
             let mapping = Self.borrowResponseState(for: borrowedBook, preBorrowBook: book)
 
@@ -438,7 +438,7 @@ final class BorrowOperation {
                 }
             }
 
-            // PP-3811: trigger a sync after a short delay so hold position
+            // trigger a sync after a short delay so hold position
             // updates from the loans feed (immediate borrow response often
             // returns holdPosition=0).
             if mapping.state == .holding {
@@ -706,7 +706,7 @@ final class BorrowOperation {
             problemDocument: problemDoc
         )
 
-        // PP-3707: gate retry button on per-operation retry budget.
+        // gate retry button on per-operation retry budget.
         let operationId = "borrow-\(book.identifier)"
         let isRetryable = DownloadErrorRecovery.isRetryableForUser(error)
         let canRetry = isRetryable && self.userRetryTracker.canRetry(operationId: operationId)

@@ -552,7 +552,7 @@ extension PalaceError {
 
         let nsError = error as NSError
 
-        // PP-3716: OPDSFeedService wraps PalaceErrors in NSErrors to attach problem
+        // OPDSFeedService wraps PalaceErrors in NSErrors to attach problem
         // documents. When this happens, the domain is "Palace.PalaceError" and the code
         // maps to the enum case index. Reconstruct the PalaceError from the code.
         if nsError.domain == "Palace.PalaceError" {

@@ -367,7 +367,7 @@ public enum AccessibilityID {
         public static let getStartedButton = "tutorial.getStartedButton"
     }
 
-    // MARK: - Error Alerts (PP-3707)
+    // MARK: - Error Alerts
 
     /// Identifiers for error alerts with retry support
     public enum ErrorAlert {

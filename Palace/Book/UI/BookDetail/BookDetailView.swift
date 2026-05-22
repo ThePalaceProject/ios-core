@@ -540,7 +540,7 @@ struct BookDetailView: View {
     }
 
     @ViewBuilder private var informationView: some View {
-        // PP-4046: ordered by patron decision-making priority — Format/Audience/
+        // ordered by patron decision-making priority Format/Audience/
         // Category/Language up top ("what is this?"), Narrators/Duration next
         // ("what's the listening experience like?" — audiobooks only),
         // publication metadata last. Empty fields are omitted entirely

@@ -121,7 +121,7 @@ final class LCPFulfillmentHandler {
                     "localURL": localUrl?.absoluteString ?? "N/A"
                 ])
 
-                // PP-4114-adjacent: LCP audiobooks are marked
+                // adjacent: LCP audiobooks are marked
                 // `.downloadSuccessful` the moment the .lcpl license lands
                 // (streaming-ready). A phase-2 .lcpa content download
                 // failure — typically airplane mode mid-fetch from

@@ -136,7 +136,7 @@ final class DownloadAlertPresenter {
 
         let retryAction = makeRetryAction(for: book)
 
-        // Publish error and announce via VoiceOver (PP-3673)
+        // Publish error and announce via VoiceOver
         runOnMainAsync { [weak self] in
             self?.progressReporter.publishAndAnnounceError(
                 DownloadErrorInfo(bookId: book.identifier,
@@ -176,7 +176,7 @@ final class DownloadAlertPresenter {
         // Download failures are generally retryable unless it's a "no active loan" error
         let retryAction = isNoActiveLoan ? nil : makeRetryAction(for: book)
 
-        // Publish error and announce via VoiceOver (PP-3673)
+        // Publish error and announce via VoiceOver
         runOnMainAsync { [weak self] in
             self?.progressReporter.publishAndAnnounceError(
                 DownloadErrorInfo(bookId: book.identifier,

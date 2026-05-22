@@ -209,7 +209,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
     // Store original catalog books for restoration after returns
     storeOriginalCatalogBooks(lanes.flatMap { $0.books })
     
-    // Extract facets (including sort facets) from grouped feeds (PP-3629)
+    // Extract facets (including sort facets) from grouped feeds
     facetGroups = CatalogViewModel.extractFacets(from: feedObjc).0
   }
   
