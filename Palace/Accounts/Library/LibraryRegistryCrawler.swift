@@ -178,11 +178,17 @@ final class LibraryRegistryCrawler {
                         isIncremental: true
                     ))
 
-                    // Stop if we hit old content
+                    // Stop if we hit old content. If this page also has no
+                    // rel=next link, the walk has reached end-of-feed via
+                    // the early-stop path — mark it so the deletion-
+                    // reconciliation promotion below still fires.
                     if CrawlableFeedAnalysis.shouldStopIncrementalCrawl(
                         publications: catalogs,
                         lastCrawlDate: lastCrawl
                     ) {
+                        if currentPage.nextPageURL == nil {
+                            reachedEnd = true
+                        }
                         break
                     }
                 } else {
