@@ -47,6 +47,14 @@ final class DownloadStartDispatcher {
     weak var delegate: DownloadStartDispatcherDelegate?
 
     private let userAccountProvider: () -> TPPUserAccount
+    /// Applies the bearer token to an outbound URLRequest using the
+    /// download's CAPTURED accountId — never `currentUserAccount`. This is
+    /// the injection seam that lets Module A close the library-swap-mid-
+    /// download window without standing up the full network executor in
+    /// tests. Production wires this to
+    /// `networkExecutor.bearerAuthorized(request:accountId:)`; tests pass a
+    /// recorder closure to assert which accountId reached the request.
+    private let applyBearerAuth: (URLRequest, String) -> URLRequest
     private let settings: TPPSettings
     private let isOnWiFi: () -> Bool
     private let memoryPressureMonitor: MemoryPressureMonitor
@@ -65,28 +73,69 @@ final class DownloadStartDispatcher {
     #if FEATURE_OVERDRIVE
     init(
         userAccountProvider: @escaping () -> TPPUserAccount,
+        applyBearerAuth: @escaping (URLRequest, String) -> URLRequest,
         settings: TPPSettings,
         isOnWiFi: @escaping () -> Bool,
         memoryPressureMonitor: MemoryPressureMonitor,
         overdriveHandler: OverdriveDownloadHandler
     ) {
         self.userAccountProvider = userAccountProvider
+        self.applyBearerAuth = applyBearerAuth
         self.settings = settings
         self.isOnWiFi = isOnWiFi
         self.memoryPressureMonitor = memoryPressureMonitor
         self.overdriveHandler = overdriveHandler
     }
+    /// Legacy convenience init for pre-Module-A test call sites — defaults
+    /// `applyBearerAuth` to the legacy class-func bearer applier (the no-arg
+    /// resolver-fallback overload). Tests that assert routing-only behavior
+    /// don't exercise the captured-accountId semantics and don't care which
+    /// applier fires; tests that DO care override this seam explicitly.
+    convenience init(
+        userAccountProvider: @escaping () -> TPPUserAccount,
+        settings: TPPSettings,
+        isOnWiFi: @escaping () -> Bool,
+        memoryPressureMonitor: MemoryPressureMonitor,
+        overdriveHandler: OverdriveDownloadHandler
+    ) {
+        self.init(
+            userAccountProvider: userAccountProvider,
+            applyBearerAuth: { req, _ in TPPNetworkExecutor.bearerAuthorized(request: req) },
+            settings: settings,
+            isOnWiFi: isOnWiFi,
+            memoryPressureMonitor: memoryPressureMonitor,
+            overdriveHandler: overdriveHandler
+        )
+    }
     #else
     init(
         userAccountProvider: @escaping () -> TPPUserAccount,
+        applyBearerAuth: @escaping (URLRequest, String) -> URLRequest,
         settings: TPPSettings,
         isOnWiFi: @escaping () -> Bool,
         memoryPressureMonitor: MemoryPressureMonitor
     ) {
         self.userAccountProvider = userAccountProvider
+        self.applyBearerAuth = applyBearerAuth
         self.settings = settings
         self.isOnWiFi = isOnWiFi
         self.memoryPressureMonitor = memoryPressureMonitor
+    }
+    /// Legacy convenience init for pre-Module-A test call sites — defaults
+    /// `applyBearerAuth` to the legacy class-func bearer applier.
+    convenience init(
+        userAccountProvider: @escaping () -> TPPUserAccount,
+        settings: TPPSettings,
+        isOnWiFi: @escaping () -> Bool,
+        memoryPressureMonitor: MemoryPressureMonitor
+    ) {
+        self.init(
+            userAccountProvider: userAccountProvider,
+            applyBearerAuth: { req, _ in TPPNetworkExecutor.bearerAuthorized(request: req) },
+            settings: settings,
+            isOnWiFi: isOnWiFi,
+            memoryPressureMonitor: memoryPressureMonitor
+        )
     }
     #endif
 
@@ -112,10 +161,33 @@ final class DownloadStartDispatcher {
         return .unregistered
     }
 
+    /// Legacy 3-arg overload retained for pre-Module-A test call sites that
+    /// don't thread a captured accountId. Delegates to the 4-arg variant
+    /// using the sentinel — appropriate for routing-shape tests that don't
+    /// assert bearer-auth semantics.
     func processDownloadWithCredentials(
         for book: TPPBook,
         withState state: TPPBookState,
         andRequest initedRequest: URLRequest?
+    ) {
+        processDownloadWithCredentials(
+            for: book,
+            withState: state,
+            andRequest: initedRequest,
+            capturedAccountId: DownloadStartCoordinator.capturedNoAccountSentinelUUID
+        )
+    }
+
+    /// Captured-accountId variant — `capturedAccountId` is the library UUID
+    /// pinned by `DownloadStartCoordinator.startDownloadAsync` at the very
+    /// first line of the path. Threads through to the bearer-auth step so
+    /// the resulting URLRequest carries credentials for the originally-
+    /// selected library, even if the user library-swaps mid-flight.
+    func processDownloadWithCredentials(
+        for book: TPPBook,
+        withState state: TPPBookState,
+        andRequest initedRequest: URLRequest?,
+        capturedAccountId: String
     ) {
         guard let delegate else { return }
         if state == .unregistered || state == .holding {
@@ -132,7 +204,7 @@ final class DownloadStartDispatcher {
             return
         }
         #endif
-        processRegularDownload(for: book, withState: state, andRequest: initedRequest)
+        processRegularDownload(for: book, withState: state, andRequest: initedRequest, capturedAccountId: capturedAccountId)
     }
 
     // MARK: - Internal
@@ -140,7 +212,8 @@ final class DownloadStartDispatcher {
     func processRegularDownload(
         for book: TPPBook,
         withState state: TPPBookState,
-        andRequest initedRequest: URLRequest?
+        andRequest initedRequest: URLRequest?,
+        capturedAccountId: String
     ) {
         guard let delegate else { return }
 
@@ -179,7 +252,14 @@ final class DownloadStartDispatcher {
         if let initedRequest {
             request = initedRequest
         } else if let url = currentBook.defaultAcquisition?.hrefURL {
-            request = TPPNetworkExecutor.bearerAuthorized(request: URLRequest(url: url, applyingCustomUserAgent: true))
+            // Captured-accountId path: feed the pinned accountId into the
+            // bearer-auth applier so the resulting Authorization header
+            // matches the library selected at download START, not whatever
+            // `currentUserAccount` resolves to at request-build time.
+            request = applyBearerAuth(
+                URLRequest(url: url, applyingCustomUserAgent: true),
+                capturedAccountId
+            )
         } else {
             delegate.logInvalidURLRequest(for: currentBook, withState: state, url: nil, request: nil)
             return
