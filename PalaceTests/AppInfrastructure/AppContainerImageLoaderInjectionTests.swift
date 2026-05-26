@@ -94,10 +94,15 @@ final class AppContainerImageLoaderInjectionTests: XCTestCase {
             _ = await container.imageLoader.getAsync(for: key)
             waitForRead.fulfill()
         }
-        // 5s budget — getAsync resolves the moment the image cache returns
-        // (memory hit ≪10ms, disk-promote hit <100ms). With the asyncAfter
-        // sleep removed there is no padding to justify a longer wait.
-        wait(for: [waitForRead], timeout: 5.0)
+        // 30s budget — local runs resolve in <0.1s, but the ImageCache
+        // OperationQueue under CI runner contention has been observed
+        // exceeding 5s on the disk-promote path. Two prior tightenings
+        // (#969 → 5s, #989 → 5s "no padding needed") flaked back to the
+        // same failure mode within days of landing; restoring the
+        // proven-stable 30s from commit d64058558. The assertion still
+        // fails loud if `getAsync` truly hangs — 30s is "is the prod loader
+        // wired up at all," not "is it fast."
+        wait(for: [waitForRead], timeout: 30.0)
 
         // Clean up to keep test isolation
         container.imageLoader.remove(for: key)
