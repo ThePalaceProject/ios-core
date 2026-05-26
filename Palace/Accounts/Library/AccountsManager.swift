@@ -953,8 +953,19 @@ struct CatalogCacheMetadata: Codable {
     internal func driveCurrentAccountAuthDocIfNeeded() {
         guard let account = currentAccount else { return }
         switch AccountStateStore.shared.state(for: account.uuid) {
-        case .detailsLoaded, .detailsFailed:
-            return // terminal — `awaitReady()` awaiters will resolve
+        case .detailsLoaded:
+            return // terminal — `awaitReady()` awaiters resolve via the loaded details
+        case .detailsFailed(.accountNotFound):
+            // The `.accountNotFound` terminal is the eviction marker the
+            // `currentAccount` setter writes against the PRIOR uuid when the
+            // user switches libraries. If this account is back to being the
+            // current account, that marker is stale — re-drive the auth-doc
+            // fetch so awaitReady() callers (audiobook open, token refresh,
+            // bookmark sync, CarPlay auth) don't throw `.accountNotFound`
+            // forever after a swap-away/swap-back.
+            break
+        case .detailsFailed:
+            return // genuine load failure — caller must retry explicitly
         case .notLoaded, .basicInfoLoaded, .detailsLoading:
             break
         }
@@ -1111,3 +1122,16 @@ struct CatalogCacheMetadata: Codable {
         }
     }
 }
+
+#if DEBUG
+extension AccountsManager {
+    /// Test-only seam: populate an accountSets bucket without going through
+    /// OPDS2 parsing. Routes through `performWrite` so concurrent-access
+    /// invariants are preserved. Used by mutation-killing tests for
+    /// `account(_ uuid:)` — multi-bucket scenarios are not otherwise
+    /// reachable from outside the class.
+    func _testSetAccountSet(_ accounts: [Account], forKey key: String) {
+        performWrite { self.accountSets[key] = accounts }
+    }
+}
+#endif

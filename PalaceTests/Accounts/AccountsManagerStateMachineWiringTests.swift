@@ -833,6 +833,118 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
                       "Stream must emit .basicInfoLoaded on re-entry; observed: \(observed)")
     }
 
+    // MARK: - Test 7: driveCurrentAccountAuthDocIfNeeded re-drives stale eviction marker
+
+    /// Contract: when the user switches libraries away from A and then back to A
+    /// (A → B → A), the helper must NOT short-circuit on the `.detailsFailed(
+    /// .accountNotFound)` terminal that the setter wrote during the A → B step.
+    /// That marker is an eviction signal for awaiters on the PRIOR account; once
+    /// A is the current account again, the marker is stale.
+    ///
+    /// Without the redrive: awaitReady() callers (audiobook open, token refresh,
+    /// bookmark sync, CarPlay auth) hit the `.detailsFailed` fast-path and throw
+    /// `.accountNotFound` forever on the swap-back — exactly the audiobook-open
+    /// "Please sign in" regression observed in field reports.
+    ///
+    /// Kill case: removing the `.detailsFailed(.accountNotFound)` branch from the
+    /// helper's switch makes this test observe the stale terminal instead of a
+    /// drive transition.
+    func testDriveCurrentAccountAuthDoc_staleAccountNotFoundMarker_redrives() throws {
+        let catalogs = try loadFeedCatalogs()
+        guard catalogs.count >= 1 else {
+            throw XCTSkip("Fixture needs at least 1 catalog")
+        }
+        let currentUUID = catalogs[0].metadata.id
+
+        let manager = AccountsManager()
+        let backgroundSettled = expectation(description: "background loadCatalogs settled")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() }
+        wait(for: [backgroundSettled], timeout: 2.0)
+
+        let activeHash = TPPConfiguration.customUrlHash()
+            ?? (TPPSettings().useBetaLibraries
+                ? TPPConfiguration.betaUrlHash
+                : TPPConfiguration.prodUrlHash)
+        try seedDiskCache(for: activeHash, data: feedData)
+        defer { tearDownDiskCache(for: activeHash) }
+
+        UserDefaults.standard.set(currentUUID, forKey: currentAccountIdentifierKey)
+        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
+
+        manager.preloadAccountsFromDiskCacheSync()
+
+        guard let account = manager.currentAccount else {
+            XCTFail("Setup: currentAccount must resolve after preload"); return
+        }
+        XCTAssertEqual(account.uuid, currentUUID,
+                       "Setup precondition: currentAccount must resolve to the seeded UUID")
+
+        // Stage the stale eviction marker — what the setter would have written
+        // against this UUID during a prior A → B switch.
+        account._setState(.detailsFailed(.accountNotFound(uuid: currentUUID)))
+        if case .detailsFailed(.accountNotFound) = AccountStateStore.shared.state(for: currentUUID) {
+            // OK
+        } else {
+            XCTFail("Setup precondition: state must be .detailsFailed(.accountNotFound)")
+            return
+        }
+
+        // Act: drive. With the fix, the helper recognizes the eviction marker as
+        // stale-for-the-current-account and re-fires the fetch — which moves
+        // state through .detailsLoading. Without the fix, the helper short-
+        // circuits and state stays at .detailsFailed(.accountNotFound).
+        manager.driveCurrentAccountAuthDocIfNeeded()
+
+        // Assert: state moved past the stale terminal within a bounded window.
+        // `.detailsLoading` is the immediate observable transition (the fetch
+        // wrapper writes it synchronously); `.detailsLoaded` or
+        // `.detailsFailed(.authDocumentFetchFailed)` are acceptable downstream
+        // terminals depending on the network availability of the test env. The
+        // kill condition is the marker staying put.
+        let moved = expectation(description: "state moved off stale .accountNotFound")
+        var observedFinalState: Account.LoadState = AccountStateStore.shared.state(for: currentUUID)
+        let deadline = Date().addingTimeInterval(3.0)
+        DispatchQueue.global().async {
+            while Date() < deadline {
+                let s = AccountStateStore.shared.state(for: currentUUID)
+                switch s {
+                case .detailsLoading, .detailsLoaded:
+                    observedFinalState = s
+                    moved.fulfill()
+                    return
+                case .detailsFailed(let err):
+                    if case .accountNotFound = err {
+                        Thread.sleep(forTimeInterval: 0.05)
+                        continue
+                    }
+                    observedFinalState = s
+                    moved.fulfill()
+                    return
+                default:
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+            }
+        }
+        wait(for: [moved], timeout: 4.0)
+
+        switch observedFinalState {
+        case .detailsLoading, .detailsLoaded:
+            break // fix is in — drive fired and state moved through .detailsLoading
+        case .detailsFailed(let err):
+            if case .accountNotFound = err {
+                XCTFail("driveCurrentAccountAuthDocIfNeeded must redrive past a stale .accountNotFound marker for the current account; observed terminal stayed at \(label(observedFinalState))")
+            }
+            // .detailsFailed(.authDocumentFetchFailed) is also acceptable — proves
+            // the fetch was re-fired (it just failed in the test env without network).
+        default:
+            XCTFail("Helper must drive past stale .accountNotFound marker; observed \(label(observedFinalState))")
+        }
+    }
+
     // MARK: - Cache seeding helpers
 
     /// Cache file URL for the given hash. Mirrors AccountsManager's private
