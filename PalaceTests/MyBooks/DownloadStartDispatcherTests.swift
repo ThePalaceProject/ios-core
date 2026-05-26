@@ -186,6 +186,67 @@ final class DownloadStartDispatcherTests: XCTestCase {
 
         XCTAssertEqual(spyDelegate.startBorrowCalls.count, 1)
         XCTAssertEqual(spyDelegate.startBorrowCalls.first?.book.identifier, book.identifier)
+        // Pin the negative side too — the borrow branch must NOT also call addDownloadTask.
+        // Without this assertion, a mutant that flipped `||` to `&&` (making the predicate
+        // always false) would still leave startBorrowCalls.count == 1 if some other path
+        // added the download task. Closes NT-4 gap noted in the audit for the `.holding`
+        // test (the `.unregistered` test already pins addDownloadTaskCalls.isEmpty).
+        XCTAssertTrue(spyDelegate.addDownloadTaskCalls.isEmpty)
+    }
+
+    /// Parameterized negative case for the `processDownloadWithCredentials` borrow-routing
+    /// branch at `DownloadStartDispatcher.swift:121`.
+    ///
+    /// The production guard is `state == .unregistered || state == .holding` → startBorrow.
+    /// The two affirmative cases are pinned by the two tests above. This test asserts that
+    /// every OTHER `TPPBookState` case routes elsewhere (it does NOT silently call
+    /// startBorrow). This is the "exhaustive switch substitute" referenced in CLAUDE.md
+    /// TDD section — without it, a regression that added an extra state to the routing
+    /// condition (or that flipped `||` to `&&` in just the right way) could leave 8 of 10
+    /// states unconstrained.
+    ///
+    /// Uses an open-access book (no borrow link) so the auto-borrow branch at L159
+    /// (`state == .downloadNeeded && currentBook.defaultAcquisitionIfBorrow != nil`) does
+    /// NOT trigger for `.downloadNeeded`; that path is exercised separately by
+    /// `testProcessRegularDownload_downloadNeededWithBorrowLink_triggersAutoBorrow`.
+    func testProcessDownloadWithCredentials_nonBorrowStates_doNotCallStartBorrow() {
+        let nonBorrowStates = TPPBookState.allCases.filter { ![.unregistered, .holding].contains($0) }
+
+        // Sanity: the filter should yield all 10 enum cases except the two routing cases.
+        // If `TPPBookState` gains a new case and the production routing condition is
+        // updated to include it, the developer MUST decide here whether the new state
+        // belongs in the borrow branch or in this negative-case list.
+        XCTAssertEqual(
+            nonBorrowStates.count,
+            TPPBookState.allCases.count - 2,
+            "TPPBookState added a case — decide if the new case routes to startBorrow at DownloadStartDispatcher.swift:121"
+        )
+
+        for state in nonBorrowStates {
+            // Fresh fixture per iteration so that state-specific routing (e.g. SAML)
+            // doesn't bleed into the next iteration's spy assertions. We re-instantiate
+            // the spy delegate; the dispatcher itself is stateless w.r.t. iterations.
+            registry.reset("test-library")
+            spyDelegate = SpyDispatcherDelegate(registry: registry)
+            dispatcher.delegate = spyDelegate
+
+            let book = openAccessBook()
+            registry.addBook(
+                book,
+                location: nil,
+                state: state,
+                fulfillmentId: nil,
+                readiumBookmarks: nil,
+                genericBookmarks: nil
+            )
+
+            dispatcher.processDownloadWithCredentials(for: book, withState: state, andRequest: nil)
+
+            XCTAssertTrue(
+                spyDelegate.startBorrowCalls.isEmpty,
+                "State \(state): must NOT call startBorrow (only .unregistered and .holding route to borrow)"
+            )
+        }
     }
 
     // MARK: - processRegularDownload branches
@@ -252,6 +313,60 @@ final class DownloadStartDispatcherTests: XCTestCase {
 
         XCTAssertEqual(spyDelegate.startBorrowCalls.count, 1, "downloadNeeded + borrow link must auto-borrow")
         XCTAssertTrue(spyDelegate.addDownloadTaskCalls.isEmpty, "Auto-borrow branch must NOT addDownloadTask itself")
+        // NT-5: the auto-borrow branch at L161 resets the registry to `.unregistered`
+        // before kicking off `startBorrow`. The next sync depends on this state being
+        // observable. Without this assertion, a mutant that drops the `setState` call
+        // (or rewrites it to a no-op self-write like `.downloadNeeded`) would survive.
+        XCTAssertEqual(
+            registry.state(for: book.identifier),
+            .unregistered,
+            "Auto-borrow must reset registry state to .unregistered before borrowing"
+        )
+    }
+
+    // MARK: - SAML branch coverage (NT-6)
+
+    /// `.SAMLStarted` state with no cookies must NOT enter the SAML handler — it falls
+    /// through to the normal addDownloadTask path (the `if` at L200 requires BOTH the
+    /// state AND `userAccount.cookies`). Without this test, a mutant that flipped
+    /// `state == .SAMLStarted` to `!= .SAMLStarted` would still satisfy the existing
+    /// happy-path test because the cookies guard short-circuits non-SAML calls.
+    func testProcessRegularDownload_samlStateWithoutCookies_fallsThroughToAddDownloadTask() {
+        let book = openAccessBook()
+        registry.addBook(book, location: nil, state: .SAMLStarted, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        // Explicitly no cookies set on userAccount — the mock returns nil by default.
+
+        dispatcher.processRegularDownload(for: book, withState: .SAMLStarted, andRequest: nil)
+
+        XCTAssertTrue(
+            spyDelegate.samlHandlerCalls.isEmpty,
+            "SAMLStarted without cookies must NOT enter SAML handler"
+        )
+        XCTAssertEqual(
+            spyDelegate.addDownloadTaskCalls.count,
+            1,
+            "Falls through to the regular addDownloadTask path when cookies are absent"
+        )
+    }
+
+    /// A non-SAML state with cookies present must NOT route to the SAML handler.
+    /// This pins the `state == .SAMLStarted` half of the L200 guard. Without it, a
+    /// mutant that drops the state check (leaving only the cookies guard) would
+    /// route every cookied download through the SAML handler.
+    func testProcessRegularDownload_nonSamlStateWithCookies_doesNotRouteToSAMLHandler() {
+        let book = openAccessBook()
+        registry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        userAccount.setCookies([
+            HTTPCookie(properties: [.name: "S", .value: "x", .domain: "example.com", .path: "/"])!
+        ])
+
+        dispatcher.processRegularDownload(for: book, withState: .downloadSuccessful, andRequest: nil)
+
+        XCTAssertTrue(
+            spyDelegate.samlHandlerCalls.isEmpty,
+            "Non-SAML state must NOT enter SAML handler even when cookies are present"
+        )
+        XCTAssertEqual(spyDelegate.addDownloadTaskCalls.count, 1)
     }
 }
 
