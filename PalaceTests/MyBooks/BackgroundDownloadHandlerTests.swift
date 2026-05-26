@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 // Inert session used to mint suspended URLSessionDownloadTask handles for test

@@ -42,11 +42,23 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertNotNil(tokenData.data, "Even an empty token should produce valid JSON data")
     }
 
-    func testTokenDataWithSpecialCharacters() throws {
-        let tokenData = NotificationService.TokenData(token: "token/with+special=chars&more")
+    /// Special-character tokens (URL-encoding-relevant chars + emoji-like
+    /// noise) must round-trip through JSON encoding without escape damage.
+    /// Asserts the decoded value AND that the wire bytes are valid UTF-8 —
+    /// a mutant that drops the JSON escape would corrupt one or the other.
+    func testTokenDataWithSpecialCharacters_roundTripsThroughJSON() throws {
+        let raw = "token/with+special=chars&more🔑\""
+        let tokenData = NotificationService.TokenData(token: raw)
         let data = try XCTUnwrap(tokenData.data)
         let decoded = try JSONDecoder().decode(NotificationService.TokenData.self, from: data)
-        XCTAssertEqual(decoded.device_token, "token/with+special=chars&more")
+
+        XCTAssertEqual(decoded.device_token, raw, "Decoded token must match input verbatim")
+        XCTAssertEqual(decoded.token_type, "FCMiOS")
+
+        let wireText = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(wireText.contains("FCMiOS"))
+        XCTAssertTrue(wireText.contains("🔑"),
+                      "JSON wire format must preserve unicode chars without mojibake")
     }
 
     func testTokenDataCodableRoundTrip() throws {
@@ -63,23 +75,22 @@ final class NotificationServiceTests: XCTestCase {
     // Since isHoldRelatedNotification is private, we test the logic inline.
     // This mirrors the implementation to ensure the classification rules are correct.
 
-    func testHoldClassificationWithExplicitHoldEventType() {
-        // CM backend sends event_type (not type) for notification routing
-        let userInfo: [AnyHashable: Any] = ["event_type": "HoldAvailable"]
-        XCTAssertTrue(classifyAsHoldRelated(userInfo),
-                       "HoldAvailable event_type should be classified as hold-related")
-    }
-
-    func testHoldClassificationWithHoldRemovedEventType() {
-        let userInfo: [AnyHashable: Any] = ["event_type": "HoldRemoved"]
-        XCTAssertTrue(classifyAsHoldRelated(userInfo),
-                       "HoldRemoved event_type should be classified as hold-related")
-    }
-
-    func testHoldClassificationWithLoanExpiryEventType() {
-        let userInfo: [AnyHashable: Any] = ["event_type": "LoanExpiry"]
-        XCTAssertFalse(classifyAsHoldRelated(userInfo),
-                        "LoanExpiry event_type should NOT be hold-related")
+    /// CM backend sends `event_type` to drive notification routing. Each
+    /// known enum case must classify deterministically — hold-related cases
+    /// MUST return true, non-hold cases MUST return false. Table-driven so
+    /// a mutant that always-true-or-always-false fails on the first
+    /// disagreeing row.
+    func testHoldClassification_byEventType_routesAllKnownEnumCasesCorrectly() {
+        let cases: [(eventType: String, expected: Bool, label: String)] = [
+            ("HoldAvailable", true,  "hold available — primary positive case"),
+            ("HoldRemoved",   true,  "hold removed — also hold-related"),
+            ("LoanExpiry",    false, "loan expiry — distinct from holds, must be false"),
+        ]
+        for c in cases {
+            let userInfo: [AnyHashable: Any] = ["event_type": c.eventType]
+            XCTAssertEqual(classifyAsHoldRelated(userInfo), c.expected,
+                           "\(c.label) — classifier must return \(c.expected)")
+        }
     }
 
     func testHoldClassificationWithAPSAlertContainingAvailableKeyword() {
@@ -118,10 +129,16 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertFalse(classifyAsHoldRelated(userInfo))
     }
 
-    func testHoldClassificationWithEmptyUserInfoDefaultsToTrue() {
-        let userInfo: [AnyHashable: Any] = [:]
-        XCTAssertTrue(classifyAsHoldRelated(userInfo),
-                       "Empty userInfo should default to hold-related for safe navigation")
+    /// When neither event_type nor APS alert text is available, the
+    /// classifier defaults to `true` — the "safe" choice that routes the
+    /// user to the holds tab where they can see what changed. Lock both the
+    /// empty-userInfo case and the "userInfo with unrelated keys" case so a
+    /// mutant that flips the default fails.
+    func testHoldClassification_unparseableInputDefaultsToHoldRelated() {
+        XCTAssertTrue(classifyAsHoldRelated([:]),
+                      "Empty userInfo defaults to hold-related for safe navigation")
+        XCTAssertTrue(classifyAsHoldRelated(["unrelated": "value"]),
+                      "userInfo with no event_type AND no APS still defaults to hold-related")
     }
 
     func testHoldClassificationFallback_WhenEventTypeNotInEnum() {
@@ -206,20 +223,35 @@ final class NotificationServiceTests: XCTestCase {
 
     // MARK: - backgroundFetchIsNeeded Tests
 
-    func testBackgroundFetchIsNeededReturnsBoolean() {
-        let result = NotificationService.backgroundFetchIsNeeded()
-        // Just verify it returns without crashing
-        XCTAssertNotNil(result as Bool?)
+    /// `backgroundFetchIsNeeded()` is a static, side-effect-free Bool query.
+    /// Without a hook to drive the underlying state, the only behaviour we
+    /// can pin is that the function is referentially transparent within a
+    /// single test — three consecutive calls return the same value. This
+    /// rules out a mutant that toggles based on a hidden counter or shared
+    /// mutable state. The previous test was a tautology
+    /// (`XCTAssertNotNil(Bool?)` always succeeds — Swift Bool is non-optional).
+    func testBackgroundFetchIsNeeded_isReferentiallyTransparent() {
+        let a = NotificationService.backgroundFetchIsNeeded()
+        let b = NotificationService.backgroundFetchIsNeeded()
+        let c = NotificationService.backgroundFetchIsNeeded()
+        XCTAssertEqual(a, b, "Consecutive calls must return identical values")
+        XCTAssertEqual(b, c)
     }
 
     // MARK: - Constants
 
-    func testNotificationCategoryIdentifier() {
-        XCTAssertEqual(HoldNotificationCategoryIdentifier, "NYPLHoldToReserveNotificationCategory")
-    }
-
-    func testCheckOutActionIdentifier() {
-        XCTAssertEqual(CheckOutActionIdentifier, "NYPLCheckOutNotificationAction")
+    /// Two notification identifiers ride on the wire for hold-availability
+    /// alerts. Lock both verbatim in one test, AND assert they are distinct
+    /// — pasting the same string into both constants by mistake would fail
+    /// on the inequality.
+    func testNotificationConstants_areStableAndDistinct() {
+        XCTAssertEqual(HoldNotificationCategoryIdentifier,
+                       "NYPLHoldToReserveNotificationCategory")
+        XCTAssertEqual(CheckOutActionIdentifier,
+                       "NYPLCheckOutNotificationAction")
+        XCTAssertNotEqual(HoldNotificationCategoryIdentifier,
+                          CheckOutActionIdentifier,
+                          "Category and action identifiers must be distinct strings")
     }
 
     // MARK: - Helpers

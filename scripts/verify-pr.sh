@@ -7,6 +7,18 @@
 #   scripts/verify-pr.sh                     # Run all checks
 #   scripts/verify-pr.sh --quick             # Skip mutation testing (faster)
 #   scripts/verify-pr.sh --report <file>     # Write JSON report to file
+#   scripts/verify-pr.sh --enforce-mutations # Fail if ANY changed file has <50%
+#                                            # kill rate (default: only critical
+#                                            # paths Audiobooks/SignInLogic/
+#                                            # MyBooks/Download* enforce strictly)
+#   scripts/verify-pr.sh --simdrive          # Also replay .simdrive/journeys/*.yaml
+#                                            # via simdrive. MAINTAINER-INTERNAL:
+#                                            # simdrive is not yet publicly
+#                                            # distributed; `pip3 install --pre
+#                                            # simdrive` requires private access.
+#                                            # CI (chaos-replay-on-pr.yml) replays
+#                                            # the corpus server-side for every PR
+#                                            # regardless of this flag.
 #
 # Designed to be called by:
 #   - Claude Code agents before PR creation
@@ -21,12 +33,25 @@ cd "$REPO_ROOT"
 
 QUICK=false
 REPORT_FILE=""
-SIM_ID="DF4A2A27-9888-429D-A749-2E157A049A37"
+SIMDRIVE=false
+ENFORCE_MUTATIONS=false
+
+# Critical paths: every changed file matching one of these prefixes is held to
+# a strict 50% mutation kill rate, regardless of --enforce-mutations.
+# These are the user-money / access-bearing paths memory flagged as air-tight.
+CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks|SignInLogic|MyBooks/Download)'
+# Sim selection. Honors the harness allocator's per-session UDID so parallel
+# agents on the same machine don't collide on one device. Falls back to the
+# pool default when the harness isn't claiming. CLAUDE.md: "NEVER hardcode a
+# sim UDID" — this default is the documented fallback, not a hardcode.
+SIM_ID="${HARNESS_SESSION_SIM_UDID:-DF4A2A27-9888-429D-A749-2E157A049A37}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --quick) QUICK=true; shift ;;
     --report) REPORT_FILE="$2"; shift 2 ;;
+    --simdrive) SIMDRIVE=true; shift ;;
+    --enforce-mutations) ENFORCE_MUTATIONS=true; shift ;;
     *) shift ;;
   esac
 done
@@ -46,6 +71,29 @@ BASE=$(detect_base_branch)
 CHANGED_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep -v 'Tests/' || true)
 CHANGED_TEST_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep 'Tests/' || true)
 CHANGED_UI=$(echo "$CHANGED_SWIFT" | grep -E 'UI/|View|Cell|Controller' || true)
+ALL_CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null || true)
+
+# Docs-only fast-path. If every changed file matches a documentation or
+# repo-meta pattern, skip the build/test/lint/coverage/mutation/a11y battery.
+# The battery exists to gate behavioral risk; pure documentation cannot
+# regress runtime behavior, so running 15-30 min of xcodebuild for it is
+# policy without substance. Honest evidence in seconds beats expensive
+# evidence that asserts the same thing.
+#
+# Allowlist (any other path triggers the full battery):
+#   docs/**           — generated and hand-written docs
+#   *.md, *.txt       — markdown / plain text anywhere in the tree
+#   README*           — readmes
+#   LICENSE*, NOTICE  — legal/attribution files
+#   CHANGELOG*        — release notes
+#   .gitignore, .gitattributes — repo metadata
+DOCS_ONLY=false
+if [ -n "$ALL_CHANGED" ]; then
+  NON_DOCS=$(echo "$ALL_CHANGED" | grep -vE '^docs/|\.md$|\.txt$|(^|/)README|(^|/)LICENSE|(^|/)NOTICE|(^|/)CHANGELOG|(^|/)\.gitignore$|(^|/)\.gitattributes$' || true)
+  if [ -z "$NON_DOCS" ]; then
+    DOCS_ONLY=true
+  fi
+fi
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -68,13 +116,59 @@ echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
 echo "Changed files: $(echo "$CHANGED_SWIFT" | wc -l | tr -d ' ') production, $(echo "$CHANGED_TEST_SWIFT" | wc -l | tr -d ' ') test"
 echo ""
 
+# Docs-only fast-path: skip build/test/lint/coverage/mutation/a11y when no
+# source files changed. Honest pass records, written to JSON report and stdout
+# the same as the full battery would emit, just with explicit "skipped" detail.
+if [ "$DOCS_ONLY" = "true" ]; then
+  echo "--- Docs-only fast-path ---"
+  echo "All changed files match the docs/meta allowlist. Skipping the full battery."
+  echo "Changed files:"
+  echo "$ALL_CHANGED" | sed 's/^/  /'
+  echo ""
+  record "build" "pass" "Skipped — docs-only PR (no source files changed)"
+  record "unit_tests" "pass" "Skipped — docs-only PR (no source files changed)"
+  record "test_quality" "pass" "Skipped — docs-only PR (no test files changed)"
+  record "coverage_floors" "pass" "Skipped — docs-only PR (no source files changed)"
+  record "mutation" "pass" "Skipped — docs-only PR (no production Swift changed)"
+  record "accessibility" "pass" "Skipped — docs-only PR (no UI files changed)"
+  TEST_PASS=0
+  TEST_FAIL=0
+
+  echo ""
+  echo "=== Summary ==="
+  echo "  Passed: $PASS_COUNT"
+  echo "  Failed: $FAIL_COUNT"
+
+  if [ -n "$REPORT_FILE" ]; then
+    RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
+    cat > "$REPORT_FILE" <<JSONEOF
+{
+  "branch": "$(git rev-parse --abbrev-ref HEAD)",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "fast_path": "docs-only",
+  "pass_count": $PASS_COUNT,
+  "fail_count": $FAIL_COUNT,
+  "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
+  "checks": [$RESULTS_JSON]
+}
+JSONEOF
+    echo "  Report written to: $REPORT_FILE"
+  fi
+
+  echo ""
+  echo "CLEAR: docs-only fast-path — full battery skipped (no behavioral risk)."
+  exit 0
+fi
+
 # 1. Build check
 echo "--- Build ---"
 BUILD_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination "id=$SIM_ID" build 2>&1)
 if echo "$BUILD_OUTPUT" | grep -q "BUILD SUCCEEDED\|BUILD FAILED"; then
-  SWIFT_ERRORS=$(echo "$BUILD_OUTPUT" | grep -c "error:.*\.swift:" || echo "0")
-  if [ "$SWIFT_ERRORS" -eq 0 ]; then
+  # `|| true` (not `|| echo "0"`): grep -c already prints "0" on no match, so
+  # the fallback was producing "0\n0" and breaking the integer test below.
+  SWIFT_ERRORS=$(echo "$BUILD_OUTPUT" | grep -c "error:.*\.swift:" || true)
+  if [ "${SWIFT_ERRORS:-0}" -eq 0 ]; then
     record "build" "pass" "No Swift compilation errors"
   else
     record "build" "fail" "$SWIFT_ERRORS Swift compilation errors"
@@ -87,8 +181,17 @@ fi
 echo "--- Unit Tests ---"
 TEST_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination "id=$SIM_ID" test 2>&1 || true)
-TEST_PASS=$(echo "$TEST_OUTPUT" | grep -o 'Executed [0-9]* test' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
-TEST_FAIL=$(echo "$TEST_OUTPUT" | grep -o 'with [0-9]* failure' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+# Count only the top-level "All tests" rollups (one per .xctest bundle).
+# Each XCTestCase suite ALSO emits "Executed N" + each bundle emits its own
+# "Selected tests" wrapper, so the prior `grep -o ... | awk '{s+=$1}'` summed
+# the same tests 4-5× and inflated the headline by ~3.5× (e.g. 5,867 unique
+# tests reported as 17,640). The `-A1` after "Test Suite 'All tests' (passed|failed)"
+# captures the bundle-rollup `Executed N tests` line per bundle.
+ROLLUP_LINES=$(echo "$TEST_OUTPUT" | grep -A1 "Test Suite '\(All tests\|Selected tests\)' \(passed\|failed\)")
+TEST_PASS=$(echo "$ROLLUP_LINES" | grep -o 'Executed [0-9]* tests\?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+# Failed-bundle rollups say "and 3 failures" (no "with" prefix); passed
+# bundles say "with 0 failures". Match on the trailing " failure" word.
+TEST_FAIL=$(echo "$ROLLUP_LINES" | grep -oE '[0-9]+ failures? \(' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
 if [ "$TEST_FAIL" -eq 0 ] && [ "$TEST_PASS" -gt 0 ]; then
   record "unit_tests" "pass" "$TEST_PASS tests, 0 failures"
 else
@@ -103,7 +206,7 @@ if [ -f scripts/lint-test-quality.py ]; then
   NEW_VIOLATIONS=0
   while IFS= read -r test_file; do
     [ -z "$test_file" ] && continue
-    FILE_VIOLATIONS=$(echo "$LINT_OUTPUT" | grep -c "$test_file" || echo "0")
+    FILE_VIOLATIONS=$(echo "$LINT_OUTPUT" | grep -c "$test_file" || true)
     NEW_VIOLATIONS=$((NEW_VIOLATIONS + FILE_VIOLATIONS))
   done <<< "$CHANGED_TEST_SWIFT"
   if [ "$NEW_VIOLATIONS" -eq 0 ]; then
@@ -135,18 +238,33 @@ else
 fi
 
 # 5. Mutation testing (skip in --quick mode)
+# Policy:
+#   --quick                       → skipped
+#   default                       → critical paths strict (50%), others warn-only
+#   --enforce-mutations           → ALL changed files strict (50%)
+#   palace_mutate.py uses .forgeos/mutation-cache by default → repeat verify
+#   runs on the same files are near-instant (cache hit).
 echo "--- Mutation Testing ---"
 if [ "$QUICK" = "true" ]; then
   record "mutation" "pass" "Skipped (--quick mode)"
 elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
   TOTAL_KILLED=0
   TOTAL_MUTATIONS=0
-  MUTATION_FAIL=false
+  STRICT_FAIL_FILES=()  # files where strict policy applies AND kill rate <50%
+  WARN_FILES=()         # files where kill rate <50% but not strictly enforced
 
   while IFS= read -r swift_file; do
     [ -z "$swift_file" ] && continue
     # Skip non-production files
     echo "$swift_file" | grep -qE 'Tests/|Mocks/|Config/' && continue
+
+    # Per-file strictness: critical path OR --enforce-mutations
+    IS_STRICT=false
+    if [ "$ENFORCE_MUTATIONS" = "true" ]; then
+      IS_STRICT=true
+    elif echo "$swift_file" | grep -qE "$CRITICAL_MUTATION_PATHS_REGEX"; then
+      IS_STRICT=true
+    fi
 
     # Find corresponding test directory
     MODULE=$(echo "$swift_file" | sed 's|Palace/||' | cut -d/ -f1)
@@ -157,22 +275,41 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
       --file "$swift_file" --tests "$TEST_DIR" \
       --max-mutations 10 2>&1 || true)
 
-    KILLED=$(echo "$MUT_OUTPUT" | grep -o 'killed: [0-9]*' | grep -o '[0-9]*' || echo "0")
-    TOTAL=$(echo "$MUT_OUTPUT" | grep -o 'total: [0-9]*' | grep -o '[0-9]*' || echo "0")
+    # palace_mutate.py emits "killed: N  survived: N  errored: N  kill rate: P%"
+    # in both fresh-run and CACHED branches. Parse from that line.
+    KILLED=$(echo "$MUT_OUTPUT" | grep -oE 'killed: [0-9]+' | head -1 | grep -oE '[0-9]+' || echo "0")
+    SURVIVED=$(echo "$MUT_OUTPUT" | grep -oE 'survived: [0-9]+' | head -1 | grep -oE '[0-9]+' || echo "0")
+    FILE_TOTAL=$((KILLED + SURVIVED))
     TOTAL_KILLED=$((TOTAL_KILLED + KILLED))
-    TOTAL_MUTATIONS=$((TOTAL_MUTATIONS + TOTAL))
+    TOTAL_MUTATIONS=$((TOTAL_MUTATIONS + FILE_TOTAL))
+
+    # Per-file policy evaluation
+    if [ "$FILE_TOTAL" -gt 0 ]; then
+      FILE_RATE=$((KILLED * 100 / FILE_TOTAL))
+      if [ "$FILE_RATE" -lt 50 ]; then
+        if [ "$IS_STRICT" = "true" ]; then
+          STRICT_FAIL_FILES+=("$swift_file (${FILE_RATE}%)")
+        else
+          WARN_FILES+=("$swift_file (${FILE_RATE}%)")
+        fi
+      fi
+    fi
   done <<< "$CHANGED_SWIFT"
 
-  if [ "$TOTAL_MUTATIONS" -gt 0 ]; then
-    KILL_RATE=$((TOTAL_KILLED * 100 / TOTAL_MUTATIONS))
-    if [ "$KILL_RATE" -ge 50 ]; then
-      record "mutation" "pass" "$TOTAL_KILLED/$TOTAL_MUTATIONS killed (${KILL_RATE}%)"
-    else
-      record "mutation" "fail" "$TOTAL_KILLED/$TOTAL_MUTATIONS killed (${KILL_RATE}%) — below 50% threshold"
-      MUTATION_FAIL=true
-    fi
-  else
+  if [ "$TOTAL_MUTATIONS" -eq 0 ]; then
     record "mutation" "pass" "No mutations generated for changed files"
+  elif [ ${#STRICT_FAIL_FILES[@]} -gt 0 ]; then
+    KILL_RATE=$((TOTAL_KILLED * 100 / TOTAL_MUTATIONS))
+    DETAIL="${KILL_RATE}% aggregate; ${#STRICT_FAIL_FILES[@]} strict-path file(s) below 50%: ${STRICT_FAIL_FILES[*]}"
+    record "mutation" "fail" "$DETAIL"
+  else
+    KILL_RATE=$((TOTAL_KILLED * 100 / TOTAL_MUTATIONS))
+    if [ ${#WARN_FILES[@]} -gt 0 ]; then
+      DETAIL="${TOTAL_KILLED}/${TOTAL_MUTATIONS} killed (${KILL_RATE}%); warn-only files <50%: ${WARN_FILES[*]}"
+    else
+      DETAIL="${TOTAL_KILLED}/${TOTAL_MUTATIONS} killed (${KILL_RATE}%)"
+    fi
+    record "mutation" "pass" "$DETAIL"
   fi
 else
   record "mutation" "pass" "No production Swift files changed (skipped)"
@@ -187,9 +324,9 @@ if [ -n "$CHANGED_UI" ]; then
     [ -z "$ui_file" ] && continue
     [ ! -f "$ui_file" ] && continue
     # Check for Button/Image without accessibilityIdentifier or accessibilityLabel
-    HAS_BUTTON=$(grep -c 'UIButton\|Button(' "$ui_file" 2>/dev/null || echo "0")
-    HAS_A11Y=$(grep -c 'accessibilityIdentifier\|accessibilityLabel\|isAccessibilityElement' "$ui_file" 2>/dev/null || echo "0")
-    if [ "$HAS_BUTTON" -gt 0 ] && [ "$HAS_A11Y" -eq 0 ]; then
+    HAS_BUTTON=$(grep -c 'UIButton\|Button(' "$ui_file" 2>/dev/null || true)
+    HAS_A11Y=$(grep -c 'accessibilityIdentifier\|accessibilityLabel\|isAccessibilityElement' "$ui_file" 2>/dev/null || true)
+    if [ "${HAS_BUTTON:-0}" -gt 0 ] && [ "${HAS_A11Y:-0}" -eq 0 ]; then
       A11Y_ISSUES=$((A11Y_ISSUES + 1))
     fi
   done <<< "$CHANGED_UI"
@@ -200,6 +337,81 @@ if [ -n "$CHANGED_UI" ]; then
   fi
 else
   record "accessibility" "pass" "No UI files changed (skipped)"
+fi
+
+# 6b. Ledger PR-drift check — flags contracts whose source files changed
+#     in this PR but whose contract markdown was not updated. Catches
+#     "you edited the code, you should reflect it in the contract."
+#     Strict on critical-path contracts (Audiobooks / SignInLogic /
+#     MyBooks/Download* / DNA-marked), warns elsewhere. Honors
+#     [skip-ledger-check] in commit messages for typo/refactor PRs.
+echo "--- Ledger PR Drift ---"
+if [ ! -x scripts/ledger-pr-check.py ] || [ ! -d docs/ledger ]; then
+  record "ledger_pr_drift" "pass" "Ledger PR-drift check not available (skipped)"
+else
+  LEDGER_PR_OUT=$(scripts/ledger-pr-check.py "$BASE" 2>&1 || true)
+  if echo "$LEDGER_PR_OUT" | grep -q "^✓ ledger pr-drift clean"; then
+    record "ledger_pr_drift" "pass" "No contract drift in this PR"
+  elif echo "$LEDGER_PR_OUT" | grep -q "^\[STRICT\]"; then
+    # Strict drift on a critical-path contract — record as fail.
+    STRICT_COUNT=$(echo "$LEDGER_PR_OUT" | grep -oE '\[STRICT\] [0-9]+' | grep -oE '[0-9]+' || echo "?")
+    record "ledger_pr_drift" "fail" "${STRICT_COUNT} critical-path contract(s) drifted — see scripts/ledger-pr-check.py output"
+  else
+    # Non-critical drift — warn but pass.
+    WARN_COUNT=$(echo "$LEDGER_PR_OUT" | grep -oE '\[WARN\] [0-9]+' | grep -oE '[0-9]+' || echo "?")
+    record "ledger_pr_drift" "pass" "${WARN_COUNT} non-critical contract drift finding(s) (warning)"
+  fi
+fi
+
+# 7. simdrive replay (opt-in via --simdrive). Delegates to scripts/simdrive-regress.sh
+#    which enforces the two-tier gate (stateless = blocking on drift, stateful = smoke).
+echo "--- simdrive Replay ---"
+if [ "$SIMDRIVE" != "true" ]; then
+  record "simdrive" "pass" "Skipped (pass --simdrive to enable)"
+elif [ ! -x scripts/simdrive-regress.sh ]; then
+  record "simdrive" "fail" "scripts/simdrive-regress.sh missing or not executable"
+elif ! python3 -c 'import simdrive' >/dev/null 2>&1; then
+  record "simdrive" "fail" "simdrive package not installed (pip3 install --pre simdrive)"
+else
+  SIMDRIVE_REPORT=$(mktemp)
+  if SIMDRIVE_SIM_ID="$SIM_ID" scripts/simdrive-regress.sh --tier stateless --report "$SIMDRIVE_REPORT" >/dev/null 2>&1; then
+    SD_PASS=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('pass_count', 0))" 2>/dev/null || echo 0)
+    record "simdrive" "pass" "${SD_PASS} stateless journey(s) clean"
+  else
+    SD_FAIL=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('fail_count', 0))" 2>/dev/null || echo "?")
+    SD_PASS=$(python3 -c "import json; print(json.load(open('$SIMDRIVE_REPORT')).get('pass_count', 0))" 2>/dev/null || echo 0)
+    record "simdrive" "fail" "${SD_FAIL} stateless journey(s) drifted (${SD_PASS} clean) — see ${SIMDRIVE_REPORT}"
+  fi
+fi
+
+# 8. FR↔Tests coverage matrix integrity (skipped if harness not installed —
+#    the matrix is maintained by the optional harness governance layer; outside
+#    contributors aren't blocked by its absence).
+#
+# Presence-probe: `harness srd --help` lists subcommands (exit 0 always,
+# regardless of matrix state). Don't probe with `srd coverage --json` exit
+# code — that returns 1 when the matrix is dirty (the case this step is
+# meant to catch), which would falsely route to "skipped".
+echo "--- Coverage by FR ---"
+HARNESS_BIN="$HOME/harness/bin/harness"
+if [ ! -x "$HARNESS_BIN" ]; then
+  record "coverage_by_fr" "pass" "harness not installed (skipped)"
+elif ! "$HARNESS_BIN" srd --help 2>&1 | grep -q '\bcoverage\b'; then
+  record "coverage_by_fr" "pass" "harness srd coverage subcommand not available (skipped)"
+else
+  COV_JSON=$("$HARNESS_BIN" srd coverage --json 2>/dev/null)
+  COV_GAPS=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('fr_gaps', [])))" 2>/dev/null || echo "?")
+  COV_MISSING=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('missing_test_areas', [])))" 2>/dev/null || echo "?")
+  COV_STALE=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('fr_stale',[]))+len(d.get('nfr_stale',[])))" 2>/dev/null || echo "?")
+  if [ "$COV_GAPS" = "0" ] && [ "$COV_MISSING" = "0" ] && [ "$COV_STALE" = "0" ]; then
+    if "$HARNESS_BIN" srd diff --code-vs-narrative --strict >/dev/null 2>&1; then
+      record "coverage_by_fr" "pass" "FR↔Tests matrix clean (0 gaps, 0 missing, 0 stale, 0 drift)"
+    else
+      record "coverage_by_fr" "fail" "FR↔Tests matrix has code-vs-narrative drift > 10% — run: harness srd diff --code-vs-narrative"
+    fi
+  else
+    record "coverage_by_fr" "fail" "FR↔Tests matrix issues — gaps=$COV_GAPS missing=$COV_MISSING stale=$COV_STALE — run: harness srd coverage"
+  fi
 fi
 
 # Summary

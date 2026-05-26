@@ -1,5 +1,7 @@
 import Foundation
 import PalaceAudiobookToolkit
+import PalaceLogging
+import PalaceKeychain
 
 @objcMembers final class TPPKeychainManager: NSObject {
 
@@ -11,7 +13,7 @@ import PalaceAudiobookToolkit
         kSecClassIdentity as String
     ]
 
-    static func validateKeychain(settings: TPPSettings = .shared) {
+    static func validateKeychain(settings: TPPSettings = AppContainer.production().settings) {
         if settings.appVersion == nil {
             Log.info(#file, "Fresh install detected. Cleaning up all keychain items...")
             cleanupAllKeychainItems()

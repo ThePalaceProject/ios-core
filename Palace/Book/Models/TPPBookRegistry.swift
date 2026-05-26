@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UIKit
+import PalaceLogging
 
 protocol TPPBookRegistryProvider {
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }
@@ -43,6 +44,7 @@ protocol TPPBookRegistryProvider {
     // Image loading methods
     func cachedThumbnailImage(for book: TPPBook) -> UIImage?
     func thumbnailImage(for book: TPPBook?, handler: @escaping (_ image: UIImage?) -> Void)
+    func thumbnailImages(forBooks books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void)
 }
 
 // TPPBookRegistryData and TPPBookRegistryKey defined in TPPBookRegistryRecord.swift
@@ -110,7 +112,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     // MARK: - External dependencies
 
     private let accountsManager: AccountsManager
-    private lazy var downloadCenter: MyBooksDownloadCenter = .shared
     private var coverRegistry = TPPBookCoverRegistry.shared
 
     private var accountDidChangeCancellable: AnyCancellable?
@@ -143,10 +144,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
                 }
             }
     }
-
-    // MARK: - Shared singleton
-
-    static let shared = TPPBookRegistry()
 
     // MARK: - State + publishers
 
@@ -192,10 +189,25 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
     // MARK: - Init
 
-    private override init() {
-        self.accountsManager = .shared
+    /// Construct the app-scoped registry. `accountsManager` is the only
+    /// external dependency the registry needs at init time — every other
+    /// collaborator (download center, OPDS feed service) is lazily resolved
+    /// via the AppContainer providers below.
+    ///
+    /// AppContainer is the sole production caller (see
+    /// `AppContainer._cached`); pass the explicitly-constructed
+    /// AccountsManager so we never re-enter `AppContainer.production()`'s
+    /// dispatch_once during app launch (the failure mode that motivated
+    /// killing the `static let shared` singleton in Phase 6.6).
+    init(accountsManager: AccountsManager) {
+        self.accountsManager = accountsManager
         let store = BookRegistryStore()
-        let sync = BookRegistrySync(store: store)
+        let sync = BookRegistrySync(
+            store: store,
+            accountsManager: accountsManager,
+            downloadCenterProvider: { AppContainer.production().downloadCenter },
+            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+        )
         self.store = store
         self.syncEngine = sync
         // The save / saveSync closures always persist to the account the CALLER
@@ -212,10 +224,19 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
         setupAccountDidChangeObserver()
     }
 
-    fileprivate init(account: String, accountsManager: AccountsManager = .shared) {
+    /// Account-scoped temporary instance used by `with(account:perform:)` to
+    /// run a block against a *different* registry file than the current one.
+    /// Inherits `accountsManager` from the calling facade — no default arg, no
+    /// AppContainer lookup, so the cycle that motivated 6.6 can't sneak back.
+    fileprivate init(account: String, accountsManager: AccountsManager) {
         self.accountsManager = accountsManager
         let store = BookRegistryStore()
-        let sync = BookRegistrySync(store: store)
+        let sync = BookRegistrySync(
+            store: store,
+            accountsManager: accountsManager,
+            downloadCenterProvider: { AppContainer.production().downloadCenter },
+            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+        )
         self.store = store
         self.syncEngine = sync
         self.bookmarks = BookmarkManager(
@@ -228,7 +249,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void) {
-        block(TPPBookRegistry(account: account))
+        block(TPPBookRegistry(account: account, accountsManager: accountsManager))
     }
 
     // MARK: - Load / sync / save / reset (delegate to BookRegistrySync)
@@ -246,6 +267,58 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     func load() { load(account: nil, completion: nil) }
 
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
+        // `BookRegistrySync.sync` bails when state is `.unloaded`/`.loading`
+        // to protect against the feed-only reconciliation path overwriting
+        // on-disk records — but post-sign-in (and any other caller hitting
+        // a not-yet-loaded registry) legitimately wants a sync.
+        //
+        // Two races land us here in production for SAML re-auth:
+        //   (a) state == .unloaded — sign-out cleared the in-memory store
+        //       and nothing has triggered a re-load yet.
+        //   (b) state == .loading — a load is already in flight; calling
+        //       `load()` again returns its completion immediately via the
+        //       duplicate-skip guard inside BookRegistrySync, so chaining
+        //       sync off `load()`'s completion misses the in-flight load
+        //       and runs sync against still-unloaded state.
+        //
+        // Both cases: subscribe to `TPPBookRegistryStateDidChange` and run
+        // sync once state reaches `.loaded`/`.synced`. Then kick off a
+        // load (no-op if one is already in flight). Either path drives
+        // the observer to the .loaded transition.
+        if state == .unloaded || state == .loading {
+            waitForLoadThenRunSync(completion: completion)
+            if state == .unloaded {
+                load()
+            }
+            return
+        }
+        runSync(completion: completion)
+    }
+
+    func sync() { sync(completion: nil) }
+
+    /// Subscribes to the registry state-change notification and runs sync
+    /// the first time state reaches `.loaded`/`.synced`. The observer
+    /// removes itself on first match so it's a one-shot.
+    private func waitForLoadThenRunSync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {
+        var token: NSObjectProtocol?
+        token = NotificationCenter.default.addObserver(
+            forName: .TPPBookRegistryStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else {
+                if let token { NotificationCenter.default.removeObserver(token) }
+                return
+            }
+            if self.state == .loaded || self.state == .synced {
+                if let token { NotificationCenter.default.removeObserver(token) }
+                self.runSync(completion: completion)
+            }
+        }
+    }
+
+    private func runSync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {
         let priorState = state
         syncEngine.sync(currentState: priorState, setState: { [weak self] newState in
             self?.state = newState
@@ -256,8 +329,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             completion?(errorDocument, newBooks)
         })
     }
-
-    func sync() { sync(completion: nil) }
 
     func validateDownloadedContent() {
         syncEngine.validateDownloadedContent()

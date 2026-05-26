@@ -51,18 +51,6 @@ final class DRMAdversarialTests: XCTestCase {
         #endif
     }
 
-    func testAdobe_tamperedContent_verificationFails() throws {
-        #if FEATURE_DRM_CONNECTOR
-        // SECURITY-GAP: needs an injectable AdobeDRMContainer seam that accepts
-        // pre-decrypted bytes + an HMAC/signature so we can flip a byte and assert
-        // that the verification path raises. The current AdobeDRMContainer.mm does
-        // its own file-system handling and crypto inside the Objective-C++ layer.
-        throw XCTSkip("SECURITY-GAP: needs AdobeDRMContainer content-verification seam exposing tamper detection.")
-        #else
-        throw XCTSkip("FEATURE_DRM_CONNECTOR disabled — Adobe DRM not linkable in this build.")
-        #endif
-    }
-
     // MARK: - LCP: passphrase / expiry / wrong-passphrase
 
     func testLCP_publicationWithoutPassphrase_returnsAuthRequired() throws {
@@ -80,44 +68,6 @@ final class DRMAdversarialTests: XCTestCase {
         )
         #else
         throw XCTSkip("LCP feature flag disabled — LCPLibraryService not linkable.")
-        #endif
-    }
-
-    func testLCP_licenseWithExpiredDate_returnsLicenseExpiredError() throws {
-        #if LCP
-        // SECURITY-GAP: needs a constructor seam on LicensesService / TPPLCPLicense
-        // that accepts a fake LicenseDocument with `rights.end` in the past so we
-        // can deterministically assert the expired branch without contacting a
-        // real LSD. The Readium LCPService does not currently expose such a seam.
-        throw XCTSkip("SECURITY-GAP: needs injectable LicenseDocument seam to validate expired-license rejection.")
-        #else
-        throw XCTSkip("LCP feature flag disabled.")
-        #endif
-    }
-
-    func testLCP_wrongPassphrase_returnsAuthError() throws {
-        #if LCP
-        // SECURITY-GAP: TPPLCPClient + LCPPassphraseAuthenticationService own the
-        // passphrase callback flow. There is no public seam to feed a known-bad
-        // passphrase against a known LCP license without bundling a real .lcpl
-        // fixture and a Readium passphrase repository. Tracked as a follow-up.
-        throw XCTSkip("SECURITY-GAP: needs LCPPassphraseAuthenticationService injectable to assert wrong-passphrase rejection.")
-        #else
-        throw XCTSkip("LCP feature flag disabled.")
-        #endif
-    }
-
-    // MARK: - No-DRM build path
-
-    func testNoDRMBuild_drmAcquisitionRefused() throws {
-        #if !FEATURE_DRM_CONNECTOR && !LCP
-        // In the open-source / Palace-noDRM build, attempting to download a DRM
-        // protected acquisition must be refused at the acquisition path.
-        // SECURITY-GAP: needs a single-entry acquisition router we can hand a
-        // fake OPDS entry with an Adobe/LCP indirectAcquisition and assert refusal.
-        throw XCTSkip("SECURITY-GAP: needs acquisition-router seam to assert DRM refusal in noDRM build.")
-        #else
-        throw XCTSkip("DRM build — noDRM refusal path not exercised here.")
         #endif
     }
 
@@ -173,7 +123,7 @@ final class DRMAdversarialTests: XCTestCase {
         // should NOT trigger reauthenticator (which showed a sign-in modal).
         // Instead it should just log a warning, because activation is now
         // handled before fulfillment.
-        let downloadCenter = MyBooksDownloadCenter.shared
+        let downloadCenter = AppContainer.production().downloadCenter
         // This should not present any UI — just log
         downloadCenter.didIgnoreFulfillmentWithNoAuthorizationPresent()
         // If we got here without a crash or modal presentation, the test passes.

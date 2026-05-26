@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import PalaceAuth
 @testable import Palace
 
 /// SRS: REL-003 — Token refresh retry limit prevents loops
@@ -124,6 +125,68 @@ class TokenRequestTests: XCTestCase {
         _ = await tokenRequest.execute(session: session)
 
         XCTAssertEqual(capturedMethod, "POST")
+    }
+
+    // MARK: - Problem document surfacing
+
+    func testExecute403WithProblemDocument_EmbedsProblemDocInError() async {
+        let tokenURL = URL(string: "https://auth.example.com/token")!
+        let problemJSON = """
+        {
+            "type": "http://librarysimplified.org/terms/problem/expired-credentials",
+            "title": "Expired Card",
+            "detail": "Your library card has expired.",
+            "status": 403
+        }
+        """
+
+        HTTPStubURLProtocol.register { request in
+            guard request.url == tokenURL else { return nil }
+            return .init(statusCode: 403,
+                         headers: ["Content-Type": "application/problem+json"],
+                         body: Data(problemJSON.utf8))
+        }
+
+        let session = URLSession.stubbedSession()
+        let tokenRequest = TokenRequest(url: tokenURL, username: "user", password: "pass")
+        let result = await tokenRequest.execute(session: session)
+
+        switch result {
+        case .success:
+            XCTFail("Expected failure for 403 response")
+        case .failure(let error):
+            let nsError = error as NSError
+            XCTAssertEqual(nsError.code, 403)
+            XCTAssertEqual(nsError.problemDocument?.title, "Expired Card",
+                           "Server-supplied title should be surfaced so the UI can show it instead of 'Invalid Credentials'")
+            XCTAssertEqual(nsError.problemDocument?.detail, "Your library card has expired.",
+                           "Server-supplied detail should be surfaced for the user")
+        }
+    }
+
+    func testExecute403WithNonJSONBody_FallsBackToGenericError() async {
+        let tokenURL = URL(string: "https://auth.example.com/token")!
+
+        HTTPStubURLProtocol.register { request in
+            guard request.url == tokenURL else { return nil }
+            return .init(statusCode: 403,
+                         headers: ["Content-Type": "text/plain"],
+                         body: Data("Forbidden".utf8))
+        }
+
+        let session = URLSession.stubbedSession()
+        let tokenRequest = TokenRequest(url: tokenURL, username: "user", password: "pass")
+        let result = await tokenRequest.execute(session: session)
+
+        switch result {
+        case .success:
+            XCTFail("Expected failure for 403 response")
+        case .failure(let error):
+            let nsError = error as NSError
+            XCTAssertEqual(nsError.code, 403)
+            XCTAssertNil(nsError.problemDocument,
+                         "Non-JSON body should not produce a problem document; generic error is the correct fallback")
+        }
     }
 
     func testExecuteNon200StatusReturnsFailure() async {

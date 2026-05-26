@@ -24,10 +24,13 @@ struct AccountDetailView: View {
     private let forceReauthMode: Bool
     private let settings: TPPSettings
 
-    init(libraryAccountID: String, forceReauthMode: Bool = false, settings: TPPSettings = TPPSettings.shared) {
-        _viewModel = StateObject(wrappedValue: AccountDetailViewModel(libraryAccountID: libraryAccountID))
+    init(libraryAccountID: String, appContainer: AppContainer, forceReauthMode: Bool = false) {
+        _viewModel = StateObject(wrappedValue: AccountDetailViewModel(
+            libraryAccountID: libraryAccountID,
+            appContainer: appContainer
+        ))
         self.forceReauthMode = forceReauthMode
-        self.settings = settings
+        self.settings = appContainer.settings
     }
 
     var body: some View {
@@ -280,6 +283,8 @@ struct AccountDetailView: View {
             pinInputCell
         case .logInSignOut:
             logInSignOutCell
+        case .resetAccount:
+            resetAccountCell
         case .ageCheck:
             ageCheckCell
         case .syncButton:
@@ -398,7 +403,7 @@ struct AccountDetailView: View {
     private var logInSignOutCell: some View {
         Button(action: {
             if viewModel.isSignedIn {
-                viewModel.signOut()
+                viewModel.confirmSignOut()
             } else {
                 viewModel.signIn()
             }
@@ -428,6 +433,26 @@ struct AccountDetailView: View {
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .accessibilityIdentifier(AccessibilityID.SignIn.signInButton)
         .accessibilityLabel(viewModel.isSignedIn ? DisplayStrings.signOut : Strings.Generic.signin)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityRemoveTraits(.isStaticText)
+    }
+
+    /// PP-4282 / HelpSpot 17716: destructive "Reset This Library Account"
+    /// button. Patron-self-service recovery for stuck-state cases that
+    /// Sign Out alone can't fix (CM DELETE hangs, broken-state-survives-
+    /// reinstall, etc.). See `TPPSignInBusinessLogic+ForceReset.swift`.
+    private var resetAccountCell: some View {
+        Button(action: {
+            viewModel.confirmResetAccount()
+        }, label: {
+            Text(NSLocalizedString("Reset This Library Account", comment: "Destructive reset-account button label"))
+                .foregroundColor(.red)
+                .horizontallyCentered()
+        })
+        .buttonStyle(.plain)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+        .accessibilityLabel(NSLocalizedString("Reset This Library Account", comment: "Accessibility label for the destructive reset-account button"))
+        .accessibilityHint(NSLocalizedString("Deletes downloads, bookmarks, and sign-in for this library so you can start fresh", comment: "Accessibility hint for the reset-account button"))
         .accessibilityAddTraits(.isButton)
         .accessibilityRemoveTraits(.isStaticText)
     }
@@ -501,32 +526,69 @@ struct AccountDetailView: View {
 
     @ViewBuilder
     private var privacyPolicyView: some View {
-        if let url = viewModel.selectedAccount?.details?.getLicenseURL(.privacyPolicy) {
-            UIViewControllerWrapper(
-                RemoteHTMLViewController(
-                    URL: url,
-                    title: DisplayStrings.privacyPolicy,
-                    failureMessage: Strings.Error.pageLoadFailedError
-                ),
-                updater: { _ in }
-            )
-            .navigationBarTitle(Text(DisplayStrings.privacyPolicy))
+        // BUG-005 hardening: anchor `.navigationBarTitle` outside the
+        // `if let` to prevent SwiftUI from leaking the previous push's
+        // title when the URL is unavailable. Same fix as the
+        // contentLicenseView / reportIssueWebView destinations.
+        // `@ViewBuilder` is required so the if/else is wrapped in
+        // `_ConditionalContent` before `SwiftUI.Group` sees it — without
+        // it Xcode 26's type-checker can't pick `Group.init(content:)`
+        // and cascades to a CodingKey overload.
+        SwiftUI.Group {
+            if let url = viewModel.selectedAccount?.details?.getLicenseURL(.privacyPolicy) {
+                UIViewControllerWrapper(
+                    RemoteHTMLViewController(
+                        URL: url,
+                        title: DisplayStrings.privacyPolicy,
+                        failureMessage: Strings.Error.pageLoadFailedError
+                    ),
+                    updater: { _ in }
+                )
+            } else {
+                unavailableInfoView
+            }
         }
+        .navigationBarTitle(Text(DisplayStrings.privacyPolicy))
     }
 
     @ViewBuilder
     private var contentLicenseView: some View {
-        if let url = viewModel.selectedAccount?.details?.getLicenseURL(.contentLicenses) {
-            UIViewControllerWrapper(
-                RemoteHTMLViewController(
-                    URL: url,
-                    title: DisplayStrings.contentLicenses,
-                    failureMessage: Strings.Error.pageLoadFailedError
-                ),
-                updater: { _ in }
-            )
-            .navigationBarTitle(Text(DisplayStrings.contentLicenses))
+        // BUG-005: `.navigationBarTitle` must live *outside* the `if let`.
+        // When the destination body is empty SwiftUI silently falls back to
+        // the previous push's title, so a nil URL would render the
+        // "Report an Issue" title here. Anchoring the title on the outer
+        // view (and providing a non-empty unavailable-state body) prevents
+        // both the title leak and the blank-screen symptoms.
+        // See `privacyPolicyView` for the SwiftUI.Group + @ViewBuilder
+        // typecheck-disambiguation rationale.
+        SwiftUI.Group {
+            if let url = viewModel.selectedAccount?.details?.getLicenseURL(.contentLicenses) {
+                UIViewControllerWrapper(
+                    RemoteHTMLViewController(
+                        URL: url,
+                        title: DisplayStrings.contentLicenses,
+                        failureMessage: Strings.Error.pageLoadFailedError
+                    ),
+                    updater: { _ in }
+                )
+            } else {
+                unavailableInfoView
+            }
         }
+        .navigationBarTitle(Text(DisplayStrings.contentLicenses))
+    }
+
+    private var unavailableInfoView: some View {
+        VStack {
+            Spacer()
+            Text(Strings.Error.pageLoadFailedError)
+                .palaceFont(.body)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Layout.horizontalPadding)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
@@ -546,16 +608,30 @@ struct AccountDetailView: View {
 
     @ViewBuilder
     private var reportIssueWebView: some View {
-        if let url = viewModel.selectedAccount?.supportURL {
-            UIViewControllerWrapper(
-                BundledHTMLViewController(
-                    fileURL: url,
-                    title: viewModel.selectedAccount?.name ?? ""
-                ),
-                updater: { _ in }
-            )
-            .navigationBarTitle(Text(DisplayStrings.reportIssue))
+        // BUG-001 + BUG-005: anchor `.navigationBarTitle` outside the
+        // optional binding so the title is committed even when the URL is
+        // unavailable. Use `RemoteHTMLViewController` (designed for http
+        // URLs with activity indicator + failure alert) rather than
+        // `BundledHTMLViewController` (designed for bundled file:// URLs)
+        // — `supportURL` is always a remote http URL fetched from the
+        // library's auth document.
+        // See `privacyPolicyView` for the SwiftUI.Group + @ViewBuilder
+        // typecheck-disambiguation rationale.
+        SwiftUI.Group {
+            if let url = viewModel.selectedAccount?.supportURL {
+                UIViewControllerWrapper(
+                    RemoteHTMLViewController(
+                        URL: url,
+                        title: DisplayStrings.reportIssue,
+                        failureMessage: Strings.Error.pageLoadFailedError
+                    ),
+                    updater: { _ in }
+                )
+            } else {
+                unavailableInfoView
+            }
         }
+        .navigationBarTitle(Text(DisplayStrings.reportIssue))
     }
 
     private var passwordResetCell: some View {

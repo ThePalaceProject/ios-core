@@ -12,6 +12,7 @@ import Combine
 import MediaPlayer
 import PalaceAudiobookToolkit
 import UIKit
+import PalaceLogging
 
 // MARK: - CarPlayPlaybackError
 
@@ -42,7 +43,7 @@ enum CarPlayPlaybackError: Error {
 /// Shared authentication helper for CarPlay components.
 enum CarPlayAuthHelper {
     /// Checks if the user is authenticated with the current library.
-    static func isAuthenticated(accountsManager: AccountsManager = AccountsManager.shared) -> Bool {
+    static func isAuthenticated(accountsManager: AccountsManager = AppContainer.production().accountsManager) -> Bool {
         guard let account = accountsManager.currentAccount else {
             return false
         }
@@ -56,7 +57,7 @@ enum CarPlayAuthHelper {
             return true
         }
 
-        return AccountsManager.shared.currentUserAccount.hasCredentials()
+        return accountsManager.currentUserAccount.hasCredentials()
     }
 }
 
@@ -173,7 +174,7 @@ final class CarPlayAudiobookBridge: ObservableObject {
     /// Dismisses the audiobook view on the phone
     func dismissBookOnPhone() {
         Task {
-            if let coordinator = NavigationCoordinatorHub.shared.coordinator,
+            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator,
                let bookId = currentBook?.identifier {
                 Log.info(#file, "CarPlay: Dismissing book view on phone")
                 coordinator.removeAudioModel(forBookId: bookId)

@@ -1,0 +1,36 @@
+{
+  "module": "Fonts",
+  "generated_at": "2026-05-12T16:15:16+00:00",
+  "file_count": 2,
+  "shared_singleton_reads": 0,
+  "public_types": [
+    {
+      "name": "PalaceFontModifier",
+      "kind": "struct",
+      "file": "Font+PalaceUIKit.swift",
+      "line": 11
+    }
+  ],
+  "objc_surface": [
+    {
+      "name": "boldPalaceFont",
+      "kind": "func",
+      "file": "UIFont+Extensions.swift",
+      "line": 12
+    },
+    {
+      "name": "palaceFont",
+      "kind": "func",
+      "file": "UIFont+Extensions.swift",
+      "line": 4
+    },
+    {
+      "name": "semiBoldPalaceFont",
+      "kind": "func",
+      "file": "UIFont+Extensions.swift",
+      "line": 8
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": []
+}

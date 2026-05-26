@@ -10,6 +10,8 @@ import FirebaseCore
 #endif
 #if canImport(FirebaseCrashlytics)
 import FirebaseCrashlytics
+import PalaceLogging
+import PalaceCatalog
 #endif
 
 private let nullString = "null"
@@ -783,7 +785,7 @@ private let nullString = "null"
      account info to our crash reports.
      - parameter metadata: report metadata dictionary
      */
-    private class func addAccountInfoToMetadata(_ metadata: inout [String: Any], accountsManager: AccountsManager = .shared) {
+    private class func addAccountInfoToMetadata(_ metadata: inout [String: Any], accountsManager: AccountsManager = AppContainer.production().accountsManager) {
         let currentLibrary = accountsManager.currentAccount
         metadata["currentAccountName"] = currentLibrary?.name ?? nullString
         metadata["currentAccountUUID"] = currentLibrary?.uuid ?? nullString

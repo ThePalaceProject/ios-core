@@ -1,4 +1,5 @@
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 final class LibraryCatalogMergerTests: XCTestCase {
@@ -95,49 +96,56 @@ final class LibraryCatalogMergerTests: XCTestCase {
 
     // MARK: - Logo Change Detection
 
-    func testMerge_DetectsChangedLogoURL_ReturnsChangedUUIDs() {
-        let existing = [makePub(id: "a", thumbnailHref: "https://old.com/logo.png")]
-        let updates = [makePub(id: "a", thumbnailHref: "https://new.com/logo.png")]
+    /// `uuidsWithChangedLogos` is the cache-invalidation signal that drives
+    /// logo image refetch. It must include a UUID iff the logo URL
+    /// (thumbnailHref) actually changed: URL→different URL, nil→URL,
+    /// URL→nil, and brand-new publication. It must NOT include a UUID
+    /// when the URL is unchanged. Lock all five transitions in one body
+    /// — a mutant that flips ANY single transition's classification fails
+    /// here on a different row.
+    func testMerge_uuidsWithChangedLogos_includesAllTransitionsAndExcludesUnchangedURL() {
+        struct Transition {
+            let label: String
+            let existing: [OPDS2Publication]
+            let updates: [OPDS2Publication]
+            let uuid: String
+            let expected: Bool
+        }
 
-        let result = LibraryCatalogMerger.merge(existing: existing, updates: updates, isFullCrawl: false)
+        let transitions: [Transition] = [
+            // Positive cases — logo signal MUST fire
+            .init(label: "URL changed",
+                  existing: [makePub(id: "a", thumbnailHref: "https://old.com/logo.png")],
+                  updates:  [makePub(id: "a", thumbnailHref: "https://new.com/logo.png")],
+                  uuid: "a", expected: true),
+            .init(label: "nil → URL (logo added)",
+                  existing: [makePub(id: "a", thumbnailHref: nil)],
+                  updates:  [makePub(id: "a", thumbnailHref: "https://new.com/logo.png")],
+                  uuid: "a", expected: true),
+            .init(label: "URL → nil (logo removed)",
+                  existing: [makePub(id: "a", thumbnailHref: "https://old.com/logo.png")],
+                  updates:  [makePub(id: "a", thumbnailHref: nil)],
+                  uuid: "a", expected: true),
+            .init(label: "new publication",
+                  existing: [],
+                  updates:  [makePub(id: "new-lib", thumbnailHref: "https://new.com/logo.png")],
+                  uuid: "new-lib", expected: true),
 
-        XCTAssertTrue(result.uuidsWithChangedLogos.contains("a"))
-    }
+            // Negative case — must NOT fire when URL unchanged
+            .init(label: "URL unchanged",
+                  existing: [makePub(id: "a", thumbnailHref: "https://same.com/logo.png")],
+                  updates:  [makePub(id: "a", thumbnailHref: "https://same.com/logo.png")],
+                  uuid: "a", expected: false),
+        ]
 
-    func testMerge_UnchangedLogoURL_NotInChangedSet() {
-        let existing = [makePub(id: "a", thumbnailHref: "https://same.com/logo.png")]
-        let updates = [makePub(id: "a", thumbnailHref: "https://same.com/logo.png")]
-
-        let result = LibraryCatalogMerger.merge(existing: existing, updates: updates, isFullCrawl: false)
-
-        XCTAssertFalse(result.uuidsWithChangedLogos.contains("a"))
-    }
-
-    func testMerge_NewPublication_InChangedSet() {
-        let existing: [OPDS2Publication] = []
-        let updates = [makePub(id: "new-lib", thumbnailHref: "https://new.com/logo.png")]
-
-        let result = LibraryCatalogMerger.merge(existing: existing, updates: updates, isFullCrawl: false)
-
-        XCTAssertTrue(result.uuidsWithChangedLogos.contains("new-lib"))
-    }
-
-    func testMerge_LogoAddedWhereNoneBefore_InChangedSet() {
-        let existing = [makePub(id: "a", thumbnailHref: nil)]
-        let updates = [makePub(id: "a", thumbnailHref: "https://new.com/logo.png")]
-
-        let result = LibraryCatalogMerger.merge(existing: existing, updates: updates, isFullCrawl: false)
-
-        XCTAssertTrue(result.uuidsWithChangedLogos.contains("a"))
-    }
-
-    func testMerge_LogoRemovedFromExisting_InChangedSet() {
-        let existing = [makePub(id: "a", thumbnailHref: "https://old.com/logo.png")]
-        let updates = [makePub(id: "a", thumbnailHref: nil)]
-
-        let result = LibraryCatalogMerger.merge(existing: existing, updates: updates, isFullCrawl: false)
-
-        XCTAssertTrue(result.uuidsWithChangedLogos.contains("a"))
+        for t in transitions {
+            let result = LibraryCatalogMerger.merge(
+                existing: t.existing, updates: t.updates, isFullCrawl: false)
+            XCTAssertEqual(
+                result.uuidsWithChangedLogos.contains(t.uuid),
+                t.expected,
+                "\(t.label): expected uuidsWithChangedLogos.contains('\(t.uuid)') == \(t.expected)")
+        }
     }
 
     // MARK: - Serialization

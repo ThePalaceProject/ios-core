@@ -42,41 +42,50 @@ final class StringHTMLEntitiesTests: XCTestCase {
     XCTAssertEqual("&#X41;".stringByDecodingHTMLEntities, "A") // uppercase X
   }
 
-  /// SRS: EXT-HTML-005 — String without entities passes through unchanged
-  func testDecode_NoEntities_ReturnsSameString() {
-    let input = "Hello World"
-    XCTAssertEqual(input.stringByDecodingHTMLEntities, "Hello World")
+  /// Pass-through and edge cases: empty string, plain text, mixed content
+  /// with multiple entity types interleaved with plain characters. Pin the
+  /// full mixed-content roundtrip so a mutant that only handles one entity
+  /// type at a time fails on the multi-entity input.
+  func testDecode_passThroughAndMixedContentEdgeCases() {
+    XCTAssertEqual("".stringByDecodingHTMLEntities, "",
+                   "Empty string must pass through unchanged")
+    XCTAssertEqual("Hello World".stringByDecodingHTMLEntities, "Hello World",
+                   "Plain text without entities must pass through verbatim")
+    // Mixed content: gt, amp twice, lt — one entity type miss would break this.
+    XCTAssertEqual("5 &gt; 3 &amp;&amp; 2 &lt; 4".stringByDecodingHTMLEntities,
+                   "5 > 3 && 2 < 4",
+                   "Mixed content must decode every entity, not just the first")
   }
 
-  /// SRS: EXT-HTML-006 — Empty string returns empty
-  func testDecode_EmptyString_ReturnsEmpty() {
-    XCTAssertEqual("".stringByDecodingHTMLEntities, "")
-  }
-
-  /// SRS: EXT-HTML-007 — Mixed content with entities and plain text
-  func testDecode_MixedContent_DecodesCorrectly() {
-    let input = "5 &gt; 3 &amp;&amp; 2 &lt; 4"
-    XCTAssertEqual(input.stringByDecodingHTMLEntities, "5 > 3 && 2 < 4")
-  }
-
-  /// SRS: EXT-HTML-008 — Invalid entity is preserved verbatim
-  func testDecode_InvalidEntity_PreservedVerbatim() {
-    let input = "&foo;"
-    XCTAssertEqual(input.stringByDecodingHTMLEntities, "&foo;")
-  }
-
-  /// SRS: EXT-HTML-009 — Ampersand without semicolon preserved
-  func testDecode_AmpersandWithoutSemicolon_Preserved() {
-    let input = "Tom & Jerry"
-    XCTAssertEqual(input.stringByDecodingHTMLEntities, "Tom & Jerry")
+  /// Malformed-input safety: invalid entities and lone ampersands MUST
+  /// pass through verbatim, never crash, never replace with garbage.
+  /// Pin both shapes (invalid `&foo;` and bare `&`) plus a mid-string
+  /// invalid entity adjacent to a valid one — guards against a mutant
+  /// that drops invalid entities entirely or eats trailing text.
+  func testDecode_malformedInputPreservedVerbatim() {
+    XCTAssertEqual("&foo;".stringByDecodingHTMLEntities, "&foo;",
+                   "Unknown named entity must be preserved verbatim")
+    XCTAssertEqual("Tom & Jerry".stringByDecodingHTMLEntities, "Tom & Jerry",
+                   "Bare ampersand (no semicolon) must be preserved")
+    // Adjacency: invalid + valid in one string. The valid one should still
+    // decode; the invalid one should still pass through.
+    XCTAssertEqual("&unknown; and &lt;here&gt;".stringByDecodingHTMLEntities,
+                   "&unknown; and <here>",
+                   "Invalid entity must not eat or skip a subsequent valid one")
   }
 
   // MARK: - NSString bridge
 
-  /// SRS: EXT-HTML-010 — NSString bridge decodes entities
-  func testNSStringBridge_DecodesEntities() {
-    let nsString = "&lt;tag&gt;" as NSString
-    let result = nsString.stringByDecodingHTMLEntities()
-    XCTAssertEqual(result as String, "<tag>")
+  /// NSString bridge mirrors the Swift extension. Lock the bridge for both
+  /// a simple decode AND a mixed-content decode so a mutant that only
+  /// implements the bridge as a no-op fails on the second case.
+  func testNSStringBridge_decodesEntitiesAndMixedContent() {
+    let simple = ("&lt;tag&gt;" as NSString).stringByDecodingHTMLEntities()
+    XCTAssertEqual(simple as String, "<tag>",
+                   "NSString bridge must decode named entities like the Swift extension")
+
+    let mixed = ("5 &amp; 6 &gt; 4" as NSString).stringByDecodingHTMLEntities()
+    XCTAssertEqual(mixed as String, "5 & 6 > 4",
+                   "NSString bridge must handle mixed content, not just single-entity inputs")
   }
 }

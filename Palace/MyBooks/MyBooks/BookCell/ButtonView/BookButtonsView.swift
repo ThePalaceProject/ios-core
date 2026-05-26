@@ -57,7 +57,7 @@ struct ActionButton<T: BookButtonProvider>: View {
     var size: ButtonSize = .large
     var onButtonTapped: ((BookButtonType) -> Void)?
 
-    @ObservedObject private var previewManager = SamplePreviewManager.shared
+    @ObservedObject private var previewManager = AppContainer.production().samplePreviewManager
 
     private var buttonTitle: String {
         type.title(for: provider.book)

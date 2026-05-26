@@ -10,6 +10,7 @@
 
 import Combine
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 @MainActor
@@ -457,7 +458,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(initialBook, location: nil, state: .downloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: initialBook, registry: mockRegistry)
+        let viewModel = BookDetailViewModel(book: initialBook, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
         XCTAssertEqual(viewModel.book.identifier, initialBook.identifier)
 
         let borrowedBook = createBookWithLoanExpiration(from: initialBook)
@@ -484,7 +485,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         // Wait for bookState to reach .downloading via Combine's receive(on: RunLoop.main)
         let reachedDownloading = XCTestExpectation(description: "bookState reaches .downloading")
@@ -511,7 +512,7 @@ final class BookDetailViewModelTests: XCTestCase {
         // Add original book
         mockRegistry.addBook(originalBook, location: nil, state: .downloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: originalBook, registry: mockRegistry)
+        let viewModel = BookDetailViewModel(book: originalBook, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
         let originalTitle = viewModel.book.title
 
         let updatedBook = createBookWithUpdatedTitle(from: originalBook, newTitle: "Updated Title")
@@ -574,7 +575,7 @@ final class BookDetailViewModelTests: XCTestCase {
 
         mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         // Simulate pressing download button (adds to processing)
         viewModel.handleAction(for: .download)
@@ -785,7 +786,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         // Simulate that related books have already been fetched
         let relatedBook1 = createTestBook()
@@ -818,7 +819,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book1, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book1, registry: mockRegistry)
+        let viewModel = BookDetailViewModel(book: book1, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         // Populate related books for book1
         let relatedBook = createTestBook()
@@ -841,7 +842,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
         // Populate existing related books
         let relatedBook = createTestBook()
@@ -869,8 +870,9 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
-        let publisher = MyBooksDownloadCenter.shared.downloadProgressPublisher
+        let downloadCenter = AppContainer.production().downloadCenter
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
+        let publisher = downloadCenter.downloadProgressPublisher
 
         // Collect all progress values the view model receives
         var receivedValues: [Double] = []
@@ -912,8 +914,9 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
-        let publisher = MyBooksDownloadCenter.shared.downloadProgressPublisher
+        let downloadCenter = AppContainer.production().downloadCenter
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
+        let publisher = downloadCenter.downloadProgressPublisher
 
         // mockRegistry.addBook emits bookStatePublisher via receive(on: RunLoop.main).
         // Drain one main-queue cycle so that pending event is delivered and any
@@ -977,7 +980,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let book = createTestBook()
         let registry = TPPBookRegistryMock()
         registry.addBook(book, location: nil, state: state, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
-        let vm = BookDetailViewModel(book: book, registry: registry)
+        let vm = BookDetailViewModel(book: book, registry: registry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
         return (vm, registry, book)
     }
 
@@ -1014,11 +1017,27 @@ final class BookDetailViewModelTests: XCTestCase {
         let (vm, registry, book) = makeVM(state: .downloadSuccessful)
         vm.bookState = .returning
 
-        // Override should prevent state changing back to .downloadSuccessful from registry event
-        let exp = expectation(description: "registry emission processed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exp.fulfill() }
+        // The override should prevent bookState reverting to .downloadSuccessful
+        // when the registry emits. The pre-fix version of this test "synced"
+        // with the registry pipeline by `DispatchQueue.main.asyncAfter(0.1)
+        // { exp.fulfill() }` — but that fulfills regardless of whether the
+        // production sink (which routes via .receive(on: RunLoop.main)) has
+        // actually run. Under CI scheduling pressure the run-loop hop can take
+        // longer than 100 ms, so on slow runners the assertion fired before
+        // the override path was even exercised. Worse, on really backed-up
+        // runners the asyncAfter itself didn't fire within the 1 s wait,
+        // tripping the timeout — that's the recurring flake on develop.
+        //
+        // Real fix: drain the main queue with a sentinel. DispatchQueue.main
+        // .async runs after currently-pending main events (incl. Combine's
+        // .receive(on: RunLoop.main) deliveries), so when this fulfills, the
+        // production sink has been called and bookState has settled. Same
+        // pattern is used at line 923-925 in this file.
         registry.setState(.downloadSuccessful, for: book.identifier)
-        wait(for: [exp], timeout: 1.0)
+        let drain = expectation(description: "main-queue events drained")
+        DispatchQueue.main.async { drain.fulfill() }
+        wait(for: [drain], timeout: 5.0)
+
         XCTAssertEqual(vm.bookState, .returning,
                        "While override=.returning, non-unregistered registry state should be ignored")
     }
@@ -1321,5 +1340,122 @@ final class BookDetailViewModelTests: XCTestCase {
             // On iPad simulators the property depends on orientation; just assert it is a Bool
             XCTAssertTrue(vm.isFullSize == true || vm.isFullSize == false)
         }
+    }
+
+    // MARK: - Borrow-in-progress UI cue
+    // Regression: borrow request was in-flight for 30+s on slow distributors
+    // (Overdrive) with no UI signal — Borrow button hid, only a static Cancel
+    // button appeared, no spinner / no "Borrowing…" text. BorrowOperation
+    // already sets bookRegistry.setProcessing(true,for:) at the start of the
+    // borrow request and clears it on completion; the detail VM just wasn't
+    // surfacing that signal so the half-sheet had no indeterminate progress
+    // indicator. These tests pin the wiring.
+
+    func testIsBorrowProcessing_DefaultsToRegistryProcessingFlagAtInit() {
+        let book = createTestBook()
+        let registry = TPPBookRegistryMock()
+        registry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        registry.setProcessing(true, for: book.identifier)
+
+        let vm = BookDetailViewModel(
+            book: book,
+            registry: registry,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            opdsFeedService: AppContainer.production().opdsFeedService,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
+        )
+
+        XCTAssertTrue(
+            vm.isBorrowProcessing,
+            "VM must seed isBorrowProcessing from registry.processing(forIdentifier:) at init — otherwise a borrow already in flight when the detail view opens shows no spinner."
+        )
+    }
+
+    func testIsBorrowProcessing_FlipsOnProcessingNotification_ForSameBook() {
+        let (vm, _, book) = makeVM()
+        XCTAssertFalse(vm.isBorrowProcessing, "Pre-condition: VM starts idle")
+
+        let exp = expectation(description: "isBorrowProcessing flips true")
+        var cancellables = Set<AnyCancellable>()
+        vm.$isBorrowProcessing.filter { $0 }.first()
+            .sink { _ in exp.fulfill() }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.post(
+            name: .TPPBookProcessingDidChange,
+            object: nil,
+            userInfo: [
+                TPPNotificationKeys.bookProcessingBookIDKey: book.identifier,
+                TPPNotificationKeys.bookProcessingValueKey: true
+            ]
+        )
+
+        wait(for: [exp], timeout: 2.0)
+        XCTAssertTrue(vm.isBorrowProcessing)
+    }
+
+    func testIsBorrowProcessing_FlipsBackToFalseOnCompletionNotification() {
+        let book = createTestBook()
+        let registry = TPPBookRegistryMock()
+        registry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        registry.setProcessing(true, for: book.identifier)
+
+        let vm = BookDetailViewModel(
+            book: book,
+            registry: registry,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            opdsFeedService: AppContainer.production().opdsFeedService,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
+        )
+        XCTAssertTrue(vm.isBorrowProcessing, "Pre-condition: VM seeded true")
+
+        let exp = expectation(description: "flips false")
+        var cancellables = Set<AnyCancellable>()
+        vm.$isBorrowProcessing.dropFirst().filter { !$0 }.first()
+            .sink { _ in exp.fulfill() }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.post(
+            name: .TPPBookProcessingDidChange,
+            object: nil,
+            userInfo: [
+                TPPNotificationKeys.bookProcessingBookIDKey: book.identifier,
+                TPPNotificationKeys.bookProcessingValueKey: false
+            ]
+        )
+
+        wait(for: [exp], timeout: 2.0)
+        XCTAssertFalse(vm.isBorrowProcessing)
+    }
+
+    func testIsBorrowProcessing_IgnoresNotificationsForDifferentBook() {
+        let (vm, _, _) = makeVM()
+        XCTAssertFalse(vm.isBorrowProcessing)
+
+        // Notification for a *different* book ID — must NOT affect this VM.
+        NotificationCenter.default.post(
+            name: .TPPBookProcessingDidChange,
+            object: nil,
+            userInfo: [
+                TPPNotificationKeys.bookProcessingBookIDKey: "some-other-book-id",
+                TPPNotificationKeys.bookProcessingValueKey: true
+            ]
+        )
+
+        // Drain the main run loop so any (incorrect) delivery has a chance to fire.
+        let drain = expectation(description: "drain run loop")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { drain.fulfill() }
+        wait(for: [drain], timeout: 1.0)
+
+        XCTAssertFalse(
+            vm.isBorrowProcessing,
+            "Processing notifications must be filtered by book identifier — otherwise an unrelated book's borrow puts every detail view into a spinning state."
+        )
     }
 }

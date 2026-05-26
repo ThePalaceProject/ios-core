@@ -72,8 +72,8 @@ NONE_PATTERNS = [
 ]
 
 E2E_PATTERNS = [
-    (r".*/CarPlay/.*\.swift$", "e2e", "CarPlay templates need a connected car / external display — SpecterQA"),
-    (r".*/AppInfrastructure/.*Coordinator\.swift$", "e2e", "Navigation coordinator drives flows — SpecterQA"),
+    (r".*/CarPlay/.*\.swift$", "e2e", "CarPlay templates need a connected car / external display — simdrive"),
+    (r".*/AppInfrastructure/.*Coordinator\.swift$", "e2e", "Navigation coordinator drives flows — simdrive"),
 ]
 
 SNAPSHOT_PATTERNS = [

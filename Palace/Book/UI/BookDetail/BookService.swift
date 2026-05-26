@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Combine
 import PalaceAudiobookToolkit
+import PalaceLogging
 
 /// Dispatches book-open requests to the right reader/player. Owns only the
 /// EPUB and PDF paths directly; audiobook opens delegate to
@@ -22,7 +23,7 @@ enum BookService {
     /// lock from latching permanently and silently swallowing every retry.
     private static let openLockSafetyRelease: TimeInterval = 30
 
-    static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, onFinish: (() -> Void)? = nil) {
+    static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry, onFinish: (() -> Void)? = nil) {
         guard !openingBooks.contains(book.identifier) else {
             Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
             onFinish?()
@@ -52,7 +53,7 @@ enum BookService {
                     openingBooks.remove(book.identifier)
                     onFinish?()
                 }
-                ReaderService.shared.openEPUB(book)
+                AppContainer.production().readerService.openEPUB(book)
             }
         case .pdf:
             Task { @MainActor in
@@ -80,10 +81,10 @@ enum BookService {
     }
 
     @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
-        guard let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else { completion?(); return }
+        guard let url = AppContainer.production().downloadCenter.fileUrl(for: book.identifier) else { completion?(); return }
         let metadata = TPPPDFDocumentMetadata(with: book)
         let document = TPPPDFDocument(url: url)
-        if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+        if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
             coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
             coordinator.push(.pdf(BookRoute(id: book.identifier)))
         }

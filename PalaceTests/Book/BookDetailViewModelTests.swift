@@ -50,7 +50,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
 
   private func createViewModel(with book: TPPBook, state: TPPBookState = .unregistered) -> BookDetailViewModel {
     mockRegistry.addBook(book, location: nil, state: state, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
-    return BookDetailViewModel(book: book, registry: mockRegistry)
+    return BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
   }
 
   // MARK: - Initialization Tests
@@ -98,7 +98,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
     mockRegistry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
     // Act
-    let viewModel = BookDetailViewModel(book: book, registry: mockRegistry)
+    let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
 
     // Assert
     XCTAssertEqual(viewModel.bookState, .downloadSuccessful, "Should get state from registry")
@@ -415,7 +415,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
     mockRegistry.addBook(book1, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
     mockRegistry.addBook(book2, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-    let viewModel = BookDetailViewModel(book: book1, registry: mockRegistry)
+    let viewModel = BookDetailViewModel(book: book1, registry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), opdsFeedService: AppContainer.production().opdsFeedService, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
     let relatedBook = createTestBook()
     let lane = BookLane(title: "Similar", books: [relatedBook], subsectionURL: nil)
     viewModel.relatedBooksByLane = ["Similar": lane]
@@ -522,11 +522,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
     mockRegistry.setState(.downloadSuccessful, for: book.identifier)
 
     // Allow Combine to process
-    let expectation = XCTestExpectation(description: "State change processed")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
+    drainMainQueue()
 
     // Assert - Half sheet should remain open
     XCTAssertTrue(viewModel.showHalfSheet, "Half sheet should stay open on download success")
@@ -543,11 +539,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
     mockRegistry.setState(.unregistered, for: book.identifier)
 
     // Allow Combine to process
-    let expectation = XCTestExpectation(description: "State change processed")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
+    drainMainQueue()
 
     // Assert
     XCTAssertFalse(viewModel.showHalfSheet, "Half sheet should be dismissed when unregistered")
@@ -566,11 +558,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
     mockRegistry.setState(.unregistered, for: book.identifier)
 
     // Allow Combine to process
-    let expectation = XCTestExpectation(description: "State change processed")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
+    drainMainQueue()
 
     // Assert
     XCTAssertFalse(viewModel.isManagingHold)
@@ -620,11 +608,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
     mockRegistry.addBook(updatedBook, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
     // Allow Combine to process
-    let expectation = XCTestExpectation(description: "Book update processed")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
+    drainMainQueue()
 
     // Assert
     XCTAssertEqual(viewModel.book.title, "Updated Title")
@@ -676,11 +660,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
     mockRegistry.setState(.downloading, for: book.identifier)
 
     // Allow Combine to process
-    let expectation = XCTestExpectation(description: "State change processed")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
+    drainMainQueue()
 
     // Assert - Processing should be cleared
     XCTAssertFalse(viewModel.isProcessing(for: .get))
@@ -764,11 +744,7 @@ final class BookDetailViewModelUnitTests: XCTestCase {
     mockRegistry.setState(.downloadSuccessful, for: book.identifier)
 
     // Allow Combine to process
-    let expectation = XCTestExpectation(description: "All state changes processed")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 2.0)
+    drainMainQueue()
 
     // Assert - Should end up in final state
     XCTAssertEqual(viewModel.bookState, .downloadSuccessful)
@@ -779,17 +755,17 @@ final class BookDetailViewModelUnitTests: XCTestCase {
 //
 // PP-2979 (commit 384b6aef9) added SFSafariViewController routing because
 // third-party preview readers (e.g. Cantook) need Web APIs that the embedded
-// WKWebView doesn't expose. The routing was dropped when BookActionHandler
-// was extracted from BookDetailViewModel — these tests pin the invariant so
-// the next refactor can't silently regress it.
+// WKWebView doesn't expose. The routing was dropped when the inline-vs-
+// extracted helper rewrote BookDetailViewModel.presentWebView — these
+// tests pin the invariant so the next refactor can't silently regress it.
 
 @MainActor
-final class BookActionHandlerPreviewRoutingTests: XCTestCase {
+final class PreviewControllerFactoryRoutingTests: XCTestCase {
 
   func testPreviewController_ForHTTPSURL_ReturnsSafariViewController() {
     let url = URL(string: "https://marketplace.example.com/preview/abc")!
 
-    let controller = BookActionHandler.previewController(for: url, title: "Lib")
+    let controller = PreviewControllerFactory.makePreviewController(for: url, title: "Lib")
 
     XCTAssertTrue(
       controller is SFSafariViewController,
@@ -800,7 +776,7 @@ final class BookActionHandlerPreviewRoutingTests: XCTestCase {
   func testPreviewController_ForHTTPURL_ReturnsSafariViewController() {
     let url = URL(string: "http://marketplace.example.com/preview/abc")!
 
-    let controller = BookActionHandler.previewController(for: url, title: "Lib")
+    let controller = PreviewControllerFactory.makePreviewController(for: url, title: "Lib")
 
     XCTAssertTrue(controller is SFSafariViewController)
   }
@@ -808,7 +784,7 @@ final class BookActionHandlerPreviewRoutingTests: XCTestCase {
   func testPreviewController_ForFileURL_ReturnsBundledHTMLViewController() {
     let url = URL(fileURLWithPath: "/tmp/sample.html")
 
-    let controller = BookActionHandler.previewController(for: url, title: "Lib")
+    let controller = PreviewControllerFactory.makePreviewController(for: url, title: "Lib")
 
     XCTAssertTrue(
       controller is BundledHTMLViewController,

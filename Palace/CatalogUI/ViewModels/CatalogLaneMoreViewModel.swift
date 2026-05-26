@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 import Combine
+import PalaceLogging
+import PalaceNetwork
+import PalaceCatalog
 
 /// ViewModel for CatalogLaneMoreView that manages catalog feed loading, filtering, and sorting
 @MainActor
@@ -40,7 +43,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
   let url: URL
   private let filterService = CatalogFilterService.self
   private let api: DefaultCatalogAPI
-  private let bookRegistry: TPPBookRegistry
+  private let bookRegistry: TPPBookRegistryProvider
   private let bookCellModelCache: BookCellModelCache
 
   private var cancellables = Set<AnyCancellable>()
@@ -70,9 +73,9 @@ class CatalogLaneMoreViewModel: ObservableObject {
   init(
     title: String,
     url: URL,
-    api: DefaultCatalogAPI? = nil,
-    bookRegistry: TPPBookRegistry = .shared,
-    bookCellModelCache: BookCellModelCache = .shared
+    bookRegistry: TPPBookRegistryProvider,
+    bookCellModelCache: BookCellModelCache,
+    api: DefaultCatalogAPI? = nil
   ) {
     self.title = title
     self.url = url
@@ -80,7 +83,8 @@ class CatalogLaneMoreViewModel: ObservableObject {
     self.bookCellModelCache = bookCellModelCache
     self.api = api ?? DefaultCatalogAPI(
       client: URLSessionNetworkClient(),
-      parser: OPDSParser()
+      parser: OPDSParser(),
+      featureFlags: RemoteFeatureFlags.shared
     )
     
     setupObservers()
@@ -191,7 +195,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
     for entry in entries {
       guard let group = entry.groupAttributes else { continue }
       let groupTitle = group.title ?? ""
-      if let book = CatalogViewModel.makeBook(from: entry) {
+      if let book = CatalogViewModel.makeBook(from: entry, bookRegistry: bookRegistry) {
         if titleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
         titleToBooks[groupTitle, default: []].append(book)
         if titleToMoreURL[groupTitle] == nil { titleToMoreURL[groupTitle] = group.href }
@@ -210,7 +214,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
   }
   
   private func processUngroupedFeed(entries: [TPPOPDSEntry], feedObjc: TPPOPDSFeed) {
-    ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+    ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: self.bookRegistry) }
     
     // Store original catalog books for restoration after returns
     storeOriginalCatalogBooks(ungroupedBooks)
@@ -283,7 +287,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
           extractNextPageURL(from: feedObjc)
 
           if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-            let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+            let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: self.bookRegistry) }
             ungroupedBooks.append(contentsOf: newBooks)
           }
         }
@@ -415,7 +419,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
               currentFacetGroups = CatalogViewModel.extractOPDS2Facets(from: opds2, currentURL: filterURL).0
             } else {
               if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
-                ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0) }
+                ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: self.bookRegistry) }
               }
               if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
                 currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0

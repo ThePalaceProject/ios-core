@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 extension TPPSignInBusinessLogic {
     // ----------------------------------------------------------------------------
@@ -187,7 +188,7 @@ extension TPPSignInBusinessLogic {
             Log.info(#file, "🔐 [REDIRECT]   Patron name: \(patronName)")
         }
 
-        self.authToken = authToken
+        self.dispatch(.bearerTokenReceived(token: authToken, expiration: nil))
         self.patron = parsedPatron
         Log.info(#file, "🔐 [REDIRECT] Stored authToken and patron in businessLogic")
         Log.info(#file, "🔐 [REDIRECT] Calling validateCredentials()...")

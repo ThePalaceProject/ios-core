@@ -11,7 +11,7 @@ struct CatalogContentView: View {
     let onEntryPointSelected: (CatalogFilter) -> Void
     let onFacetSelected: (CatalogFilter) -> Void
     let onRefresh: () async -> Void
-    var bookRegistry: TPPBookRegistry = .shared
+    var bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

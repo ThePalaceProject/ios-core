@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 final class OPDS2FeedParsingTests: XCTestCase {

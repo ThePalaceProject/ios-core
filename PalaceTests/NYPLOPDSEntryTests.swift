@@ -1,4 +1,5 @@
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 class TPPOPDSEntryTests: XCTestCase {
@@ -20,10 +21,18 @@ class TPPOPDSEntryTests: XCTestCase {
     super.tearDown()
   }
 
-  func testHandlesInvalidXML() {
-    // Create a minimal XML that won't have a valid 'id' element, causing init to return nil
-    let invalidXML = TPPXML(data: "<entry></entry>".data(using: .utf8)!)!
-    XCTAssertNil(TPPOPDSEntry(xml: invalidXML))
+  /// Init contract: XML missing the required `id` element must yield nil
+  /// (init? short-circuits the partial parse). Pair both an empty <entry/>
+  /// AND an entry with everything-but-id so a mutant that only checks
+  /// "is empty" but not "has id" fails on the second case.
+  func testInit_returnsNilWhenRequiredIdElementIsMissing() {
+    let empty = TPPXML(data: "<entry></entry>".data(using: .utf8)!)!
+    XCTAssertNil(TPPOPDSEntry(xml: empty),
+                 "Empty <entry/> must yield nil — required 'id' is missing")
+
+    let titleButNoId = TPPXML(data: "<entry><title>Has Title</title></entry>".data(using: .utf8)!)!
+    XCTAssertNil(TPPOPDSEntry(xml: titleButNoId),
+                 "Entry with title but no id must still yield nil — id is the load-bearing requirement")
   }
 
   func testAuthorStrings() {
@@ -41,16 +50,20 @@ class TPPOPDSEntryTests: XCTestCase {
     XCTAssertEqual(attributes?.title, "Nonfiction")
   }
 
-  func testIdentifier() {
-    XCTAssertEqual(entry.identifier, "http://localhost/works/4c87a3af9d312c5fd2d44403efc57e2b")
-  }
-
-  func testLinksPresent() {
-    XCTAssertNotNil(entry.links)
-  }
-
-  func testTitle() {
-    XCTAssertEqual(entry.title, "The American")
+  /// `single_entry.xml` is a known-shape fixture. Lock the parsed entry's
+  /// scalar fields (identifier, title, links non-empty) in one body so a
+  /// mutant that breaks any single field's parse fails here on a single
+  /// test instead of three near-identical tests.
+  func testEntryFromSingleEntryFixture_parsesAllScalarFields() {
+    XCTAssertEqual(entry.identifier,
+                   "http://localhost/works/4c87a3af9d312c5fd2d44403efc57e2b",
+                   "Identifier must come from <id> element verbatim")
+    XCTAssertEqual(entry.title, "The American",
+                   "Title must come from <title> element verbatim")
+    XCTAssertNotNil(entry.links,
+                    "Links array must be present after parse")
+    XCTAssertGreaterThan(entry.links.count, 0,
+                         "single_entry.xml has multiple <link> elements; entry must surface them")
   }
 
   func testUpdated() {

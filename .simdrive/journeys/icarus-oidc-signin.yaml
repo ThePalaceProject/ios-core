@@ -1,0 +1,91 @@
+scenario:
+  id: icarus-oidc-signin
+  name: "Icarus Test Library — OIDC sign-in handoff"
+  description: >
+    First OIDC sign-in recording in the simdrive corpus. Closes the OIDC
+    coverage gap surfaced by the 2026-05-11 regression analysis. Captures
+    the full out-of-process auth handoff: tap Sign in → iOS
+    SFAuthenticationSession alert → Google OAuth picker → Microsoft
+    IdP form via Lyrasis federation → password entry → response.
+
+    The recording's smoke value is the Palace-specific surface:
+    SFAuthenticationSession presentation, OIDC config producing a valid
+    Google handoff URL, and the IdP form rendering in the SwiftUI sheet
+    (PR #907 SAML/OIDC web-view → SwiftUI conversion). IdP credential
+    validation itself is downstream of Palace's responsibility.
+  tags: [tier1, ios, auth, oidc, icarus, token-based, sso]
+  tier: stateful
+  blocking: false
+
+  preconditions:
+    - "Icarus Test Library added under Settings → Libraries"
+    - "Signed OUT of Icarus (Account view shows Sign in button + 'To download books, please sign in to Icarus Test Library.')"
+    - "Account view in the foreground"
+
+  state_reset:
+    - "Before each replay, sign out of Icarus (if currently signed in) and return to Account view"
+    - "Replay-time auth result will depend on IdP session state; the recording's value is UI handoff smoke regardless of auth result"
+
+  recording:
+    path: "~/.simdrive/recordings/icarus-oidc-signin/recording.yaml"
+    steps: 11
+    captured_with: "simdrive 1.0.0a9"
+    captured_on: "2026-05-12"
+
+  steps:
+    - id: tap_sign_in
+      description: "Tap Sign in — should present iOS SFAuthenticationSession alert"
+    - id: confirm_sf_auth
+      description: "Tap Continue on the system SFAuthenticationSession alert"
+    - id: type_email_google
+      description: "Type email into Google OAuth picker field"
+    - id: next_google
+      description: "Tap Next on Google sign-in"
+    - id: type_email_microsoft
+      description: "Retype email on Microsoft sign-in (post-federation redirect)"
+    - id: next_microsoft
+      description: "Tap Next on Microsoft sign-in"
+    - id: type_password
+      description: "Type password into Microsoft password field"
+    - id: tap_sign_in_microsoft
+      description: "Tap Sign in to submit credentials"
+    - id: dismiss_keychain
+      description: "Tap Not Now on the iCloud Keychain prompt"
+    - id: retype_password
+      description: "Retry password type"
+    - id: tap_sign_in_retry
+      description: "Tap Sign in on retry"
+
+  expected_invariants:
+    - "Tap on Sign in surfaces the iOS SFAuthenticationSession alert"
+    - "Continue dismisses the alert and presents the SwiftUI Safari sheet (PR #907 OIDC web-view → SwiftUI conversion)"
+    - "Sheet header shows Cancel + URL chrome"
+    - "OIDC URL composition routes correctly to the Google OAuth picker"
+    - "Lyrasis-domain email triggers federation redirect to the configured Microsoft IdP"
+    - "type_text into email + password fields lands the typed value"
+    - "IdP rejection surfaces an error message in the sheet body on invalid credentials"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn
+
+  rationale: |
+    OIDC is the third major auth surface (after basic-auth via A1QA and
+    SAML via Danny Test Library). It uses iOS SFAuthenticationSession,
+    which is invisible to XCTest. This recording captures the
+    SFAuthenticationSession presentation + Google OAuth picker + MS
+    federation redirect — all surfaces XCTest UI tests cannot reach.
+
+    The Palace-specific failure modes this recording catches:
+      - OIDC URL composition regression (auth doc parse → handoff URL)
+      - SwiftUI Safari sheet presentation regression (PR #907)
+      - SFAuthenticationSession config (callback URL scheme, client ID)
+      - IdP form rendering inside the sheet
+
+    Two-step credential entry (Google → Microsoft) reflects the Palace
+    OIDC config's federation redirect, not user behavior. The smoke
+    value is in the handoff structure, not credential validation.
+
+  known_issues:
+    - "Google + Microsoft IdP pages have anti-replay tokens and dynamic chrome. SSIM gating is on_drift=warn past the SFAuthenticationSession alert; the IdP pages will drift."
+    - "When simdrive adds a `type_secret` action (memory: feedback_simdrive_credential_typing_gap.md), this recording should be rewritten to reference vault slugs instead of embedded values."

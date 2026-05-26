@@ -19,7 +19,7 @@ import Foundation
 /// class MyClass {
 ///     private let settings: TPPSettingsProviding
 ///
-///     init(settings: TPPSettingsProviding = TPPSettings.shared) {
+///     init(settings: TPPSettingsProviding = AppContainer.production().settings) {
 ///         self.settings = settings
 ///     }
 /// }

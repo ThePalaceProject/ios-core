@@ -8,6 +8,7 @@
 
 import Foundation
 import WebKit
+import PalaceLogging
 
 extension TPPSignInBusinessLogic {
 
@@ -221,8 +222,9 @@ extension TPPSignInBusinessLogic {
         userAccount.removeAll()
         selectedIDP = nil
         samlHelper.clearState()
+        dispatch(.signOutCompleted)
 
-        TPPNetworkExecutor.shared.clearCache()
+        AppContainer.production().networkExecutor.clearCache()
         URLCache.shared.removeAllCachedResponses()
 
         // Clear the IdP session before notifying the UI that sign-out is complete.

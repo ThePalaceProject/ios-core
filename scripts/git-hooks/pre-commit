@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# pre-commit
+#
+# Purpose:
+#   Block accidental secret leaks before they enter history. This hook is
+#   intentionally fast (<1s) — it does NOT run linters or tests. Run
+#   `scripts/verify-pr.sh --quick` for the full battery before pushing.
+#
+# Install:
+#   git config core.hooksPath scripts/git-hooks
+#   (run from the repo root; one-time)
+
+set -euo pipefail
+
+# Files that should never be committed. Match by basename so paths anywhere
+# under the repo are caught.
+SECRET_BASENAMES=(
+  "APIKeys.swift"
+  "TPPSecrets.swift"
+  "GoogleService-Info.plist"
+  ".env"
+)
+
+STAGED=$(git diff --cached --name-only --diff-filter=AM || true)
+if [[ -z "$STAGED" ]]; then
+  exit 0
+fi
+
+LEAKED=()
+while IFS= read -r path; do
+  base=$(basename "$path")
+  for bad in "${SECRET_BASENAMES[@]}"; do
+    if [[ "$base" == "$bad" ]]; then
+      LEAKED+=("$path")
+    fi
+  done
+done <<< "$STAGED"
+
+if (( ${#LEAKED[@]} > 0 )); then
+  cat >&2 <<EOF
+ERROR: pre-commit hook — refusing to commit secret-shaped files
+
+The following staged files match the project's secret-basename blocklist:
+EOF
+  for p in "${LEAKED[@]}"; do echo "  - $p" >&2; done
+  cat >&2 <<EOF
+
+These files (APIKeys.swift, TPPSecrets.swift, GoogleService-Info.plist, .env)
+must never enter git history. If you genuinely need to commit one of them,
+unstage it (\`git restore --staged <path>\`) and rename it, or talk to a
+maintainer about adding it to the project's encrypted secrets pipeline.
+EOF
+  exit 1
+fi
+
+# Friendly nudge — non-blocking. Only print if anything is staged at all.
+echo "pre-commit: ok. Tip — run 'scripts/verify-pr.sh --quick' before pushing."
+exit 0

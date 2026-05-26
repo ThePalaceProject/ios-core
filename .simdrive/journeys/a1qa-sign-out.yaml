@@ -1,0 +1,59 @@
+scenario:
+  id: a1qa-sign-out
+  name: "A1QA basic-auth sign-out"
+  description: >
+    Sign-out flow from a basic-auth-signed-in Account view. Closes the
+    sign-out coverage gap flagged by the 2026-05-11 regression analysis —
+    until now zero sign-out recordings existed. The sign-out path is a
+    critical-path UX flow (PR #900 restored the confirmation dialog
+    after PP-4229; without coverage a future PR could silently
+    re-regress it).
+  tags: [tier1, ios, auth, sign-out, a1qa]
+  tier: stateful
+  blocking: false
+
+  preconditions:
+    - "Signed IN to A1QA Test Library (Account view shows Sign out button + Sync Bookmarks toggle + barcode populated)"
+    - "Account view is the foreground"
+
+  state_reset:
+    - "Before each replay, sign in to A1QA first: invoke a1qa-basic-signin or sign in manually"
+
+  recording:
+    path: "~/.simdrive/recordings/a1qa-sign-out/recording.yaml"
+    steps: 2
+    captured_with: "simdrive 1.0.0a9"
+    captured_on: "2026-05-12"
+
+  steps:
+    - id: tap_sign_out_button
+      description: "Tap Sign out — opens confirmation dialog"
+      tap_target: { stable_id: "23a3f454fdee" }
+    - id: confirm_sign_out
+      description: "Tap red Sign out in dialog — performs the sign-out + Adobe deactivation"
+      tap_target: { stable_id: "209df254455e" }
+
+  expected_invariants:
+    - "Sign out tap surfaces a confirmation dialog with Cancel + Sign out buttons (PR #900 PP-4229)"
+    - "Confirm tap clears credentials + Adobe activation"
+    - "Post-state shows the signed-out Account view (Library Card placeholder + Password placeholder + Sign in button visible)"
+    - "Sync Bookmarks toggle disappears from the view (only visible when signed in)"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn
+
+  rationale: |
+    Pairs with a1qa-basic-signin. The sign-out flow is its own regression
+    surface — PR #900 specifically restored the confirmation dialog after
+    PP-4229 (Fix Sign Out confirmation dialog). Without a sign-out
+    recording, a future change that silently dropped that dialog or
+    broke the credential clearing would only surface as a user report.
+
+    This recording's invariants ensure: (1) confirmation dialog appears,
+    (2) confirming clears credentials and DRM state, (3) the form view
+    re-renders correctly. Replay halts at step 0 with a clear error if
+    the pre-state isn't signed-in.
+
+  known_issues:
+    - "Replay requires running a1qa-basic-signin (or manual sign-in) first to put the sim in the right pre-state. The state contract halts cleanly if the sim is already signed out."

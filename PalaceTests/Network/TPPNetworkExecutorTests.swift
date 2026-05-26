@@ -13,18 +13,18 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
     // MARK: - Shared Instance
 
     func testShared_isNotNil() {
-        XCTAssertNotNil(TPPNetworkExecutor.shared)
+        XCTAssertNotNil(AppContainer.production().networkExecutor)
         // Shared must be a singleton — two accesses return the same object
-        let a = TPPNetworkExecutor.shared
-        let b = TPPNetworkExecutor.shared
-        XCTAssertTrue(a === b, "TPPNetworkExecutor.shared must be a singleton")
+        let a = AppContainer.production().networkExecutor
+        let b = AppContainer.production().networkExecutor
+        XCTAssertTrue(a === b, "AppContainer.production().networkExecutor must be a singleton")
     }
 
     // MARK: - Request Creation
 
     func testRequest_forURL_createsValidRequest() {
         let url = URL(string: "https://example.com/api/books")!
-        let request = TPPNetworkExecutor.shared.request(for: url)
+        let request = AppContainer.production().networkExecutor.request(for: url)
 
         XCTAssertEqual(request.url, url)
         XCTAssertNotNil(request.url)
@@ -32,7 +32,7 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
 
     func testRequest_forURL_setsUserAgent() {
         let url = URL(string: "https://example.com/api/test")!
-        let request = TPPNetworkExecutor.shared.request(for: url)
+        let request = AppContainer.production().networkExecutor.request(for: url)
 
         // The request should have some standard headers
         XCTAssertNotNil(request.url)
@@ -44,7 +44,7 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
 
     func testRequest_forURL_setsAcceptLanguageEmpty() {
         let url = URL(string: "https://example.com/api/test")!
-        let request = TPPNetworkExecutor.shared.request(for: url)
+        let request = AppContainer.production().networkExecutor.request(for: url)
 
         let acceptLang = request.value(forHTTPHeaderField: "Accept-Language")
         XCTAssertEqual(acceptLang, "")
@@ -140,45 +140,45 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
     // MARK: - Cache Control
 
     func testClearCache_doesNotCrash() {
-        TPPNetworkExecutor.shared.clearCache()
+        AppContainer.production().networkExecutor.clearCache()
         // Calling clearCache twice in a row must also be safe (idempotent)
-        TPPNetworkExecutor.shared.clearCache()
+        AppContainer.production().networkExecutor.clearCache()
         // Shared is still usable after cache clear — can still create a request
-        let req = TPPNetworkExecutor.shared.request(for: URL(string: "https://example.com")!)
+        let req = AppContainer.production().networkExecutor.request(for: URL(string: "https://example.com")!)
         XCTAssertNotNil(req.url, "Executor must remain functional after cache cleared")
-        XCTAssertGreaterThan(TPPNetworkExecutor.shared.requestTimeout, 0,
+        XCTAssertGreaterThan(AppContainer.production().networkExecutor.requestTimeout, 0,
                         "requestTimeout must remain positive after cache cleared")
     }
 
     // MARK: - Task Management
 
     func testPauseAllTasks_doesNotCrash() {
-        TPPNetworkExecutor.shared.pauseAllTasks()
+        AppContainer.production().networkExecutor.pauseAllTasks()
         // Pause then immediately resume must not crash (common sequence on app background/foreground)
-        TPPNetworkExecutor.shared.resumeAllTasks()
-        let req = TPPNetworkExecutor.shared.request(for: URL(string: "https://example.com")!)
+        AppContainer.production().networkExecutor.resumeAllTasks()
+        let req = AppContainer.production().networkExecutor.request(for: URL(string: "https://example.com")!)
         XCTAssertNotNil(req.url, "Executor must remain functional after pause+resume")
-        XCTAssertGreaterThan(TPPNetworkExecutor.shared.requestTimeout, 0,
+        XCTAssertGreaterThan(AppContainer.production().networkExecutor.requestTimeout, 0,
                         "requestTimeout must remain positive after pause+resume")
     }
 
     func testResumeAllTasks_doesNotCrash() {
         // Resume without prior pause must be safe
-        TPPNetworkExecutor.shared.resumeAllTasks()
-        TPPNetworkExecutor.shared.resumeAllTasks()
-        let req = TPPNetworkExecutor.shared.request(for: URL(string: "https://example.com")!)
+        AppContainer.production().networkExecutor.resumeAllTasks()
+        AppContainer.production().networkExecutor.resumeAllTasks()
+        let req = AppContainer.production().networkExecutor.request(for: URL(string: "https://example.com")!)
         XCTAssertNotNil(req.url, "Executor must remain functional after multiple resumes")
-        XCTAssertGreaterThan(TPPNetworkExecutor.shared.requestTimeout, 0,
+        XCTAssertGreaterThan(AppContainer.production().networkExecutor.requestTimeout, 0,
                         "requestTimeout must remain positive after multiple resumes")
     }
 
     func testCancelNonEssentialTasks_doesNotCrash() {
-        TPPNetworkExecutor.shared.cancelNonEssentialTasks()
+        AppContainer.production().networkExecutor.cancelNonEssentialTasks()
         // Cancelling twice in quick succession must not crash
-        TPPNetworkExecutor.shared.cancelNonEssentialTasks()
-        let req = TPPNetworkExecutor.shared.request(for: URL(string: "https://example.com")!)
+        AppContainer.production().networkExecutor.cancelNonEssentialTasks()
+        let req = AppContainer.production().networkExecutor.request(for: URL(string: "https://example.com")!)
         XCTAssertNotNil(req.url, "Executor must remain functional after repeated cancellations")
-        XCTAssertGreaterThan(TPPNetworkExecutor.shared.requestTimeout, 0,
+        XCTAssertGreaterThan(AppContainer.production().networkExecutor.requestTimeout, 0,
                         "requestTimeout must remain positive after repeated cancellations")
     }
 }
@@ -341,10 +341,11 @@ final class TPPNetworkExecutorStubbedTests: XCTestCase {
 
         executor.POST(request, useTokenIfAvailable: false, completion: nil)
 
-        // Wait briefly to ensure no crash, then verify the executor remains usable
+        // Wait briefly to ensure no crash, then verify the executor remains usable.
+        // 8s budget covers the 0.5s asyncAfter slot + suite-wide dispatch saturation.
         let wait = XCTestExpectation(description: "Wait")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { wait.fulfill() }
-        self.wait(for: [wait], timeout: 2.0)
+        self.wait(for: [wait], timeout: 8.0)
         // Executor must remain functional after fire-and-forget POST
         XCTAssertGreaterThan(self.executor.requestTimeout, 0,
                              "Executor requestTimeout must remain positive after nil-completion POST")

@@ -8,6 +8,7 @@
 
 import UIKit
 import Dispatch
+import PalaceLogging
 
 /**
  Protocol that should be implemented by a class that wants to schedule work

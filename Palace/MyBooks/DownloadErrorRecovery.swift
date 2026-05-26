@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 /// Provides error recovery strategies for download failures
 actor DownloadErrorRecovery {

@@ -1,4 +1,5 @@
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 final class CrawlableFeedAnalysisTests: XCTestCase {
@@ -72,9 +73,14 @@ final class CrawlableFeedAnalysisTests: XCTestCase {
         XCTAssertNil(CrawlableFeedAnalysis.orderModifiedFacetURL(from: feed))
     }
 
-    func testOrderModifiedFacetURL_WhenNoFacets_ReturnsNil() {
-        let feed = makeFeed(facets: nil)
-        XCTAssertNil(CrawlableFeedAnalysis.orderModifiedFacetURL(from: feed))
+    /// `orderModifiedFacetURL` short-circuits to nil when there are no
+    /// facets to inspect AND when there is an empty facets array (distinct
+    /// branch in production: nil-vs-empty). Pin both shapes.
+    func testOrderModifiedFacetURL_returnsNilForNilOrEmptyFacets() {
+        XCTAssertNil(CrawlableFeedAnalysis.orderModifiedFacetURL(from: makeFeed(facets: nil)),
+                     "nil facets must short-circuit to nil")
+        XCTAssertNil(CrawlableFeedAnalysis.orderModifiedFacetURL(from: makeFeed(facets: [])),
+                     "Empty facets array must also yield nil — distinct branch from nil")
     }
 
     func testOrderModifiedFacetURL_WhenSortGroupHasNoModifiedLink_ReturnsNil() {
@@ -121,9 +127,13 @@ final class CrawlableFeedAnalysisTests: XCTestCase {
         XCTAssertFalse(CrawlableFeedAnalysis.isOrderModifiedActive(in: feed))
     }
 
-    func testIsOrderModifiedActive_WhenNoFacets_ReturnsFalse() {
-        let feed = makeFeed(facets: nil)
-        XCTAssertFalse(CrawlableFeedAnalysis.isOrderModifiedActive(in: feed))
+    /// `isOrderModifiedActive` defaults to false when there's nothing to
+    /// inspect. Pin both nil-facets and empty-facets branches.
+    func testIsOrderModifiedActive_returnsFalseForNilOrEmptyFacets() {
+        XCTAssertFalse(CrawlableFeedAnalysis.isOrderModifiedActive(in: makeFeed(facets: nil)),
+                       "nil facets must default to false — caller falls back to a full crawl")
+        XCTAssertFalse(CrawlableFeedAnalysis.isOrderModifiedActive(in: makeFeed(facets: [])),
+                       "Empty facets array must also yield false — distinct branch from nil")
     }
 
     // MARK: - isFullCrawlComplete
@@ -146,9 +156,15 @@ final class CrawlableFeedAnalysisTests: XCTestCase {
         XCTAssertFalse(CrawlableFeedAnalysis.isFullCrawlComplete(feed))
     }
 
-    func testIsFullCrawlComplete_WhenNoLinks_ReturnsTrue() {
-        let feed = makeFeed(links: nil)
-        XCTAssertTrue(CrawlableFeedAnalysis.isFullCrawlComplete(feed))
+    /// `isFullCrawlComplete` defaults to true when there's nothing left to
+    /// crawl. Pin both nil-links and empty-links shapes (no `next` rel
+    /// → done). Catches a mutant that defaults to false (which would
+    /// loop the crawler forever on an empty feed).
+    func testIsFullCrawlComplete_returnsTrueForNilOrEmptyLinks() {
+        XCTAssertTrue(CrawlableFeedAnalysis.isFullCrawlComplete(makeFeed(links: nil)),
+                      "nil links must yield true — there's no 'next' to follow")
+        XCTAssertTrue(CrawlableFeedAnalysis.isFullCrawlComplete(makeFeed(links: [])),
+                      "Empty links array must also yield true — distinct branch from nil")
     }
 
     // MARK: - shouldStopIncrementalCrawl

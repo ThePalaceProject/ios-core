@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 /// This class encapsulates analytic events sent to the server
 /// and keeps a local queue of failed attempts to retry them
@@ -43,9 +44,9 @@ import Foundation
         }
     }
 
-    private static func addToOfflineAnalyticsQueue(_ event: String, _ bookURL: URL, accountsManager: AccountsManager = AccountsManager.shared, networkExecutor: TPPNetworkExecutor = .shared) {
+    private static func addToOfflineAnalyticsQueue(_ event: String, _ bookURL: URL, accountsManager: AccountsManager = AppContainer.production().accountsManager, networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor) {
         let libraryID = accountsManager.currentAccount?.uuid ?? ""
         let headers = networkExecutor.request(for: bookURL).allHTTPHeaderFields
-        NetworkQueue.shared().addRequest(libraryID, nil, bookURL, .GET, nil, headers)
+        AppContainer.production().networkQueue.addRequest(libraryID, nil, bookURL, .GET, nil, headers)
     }
 }

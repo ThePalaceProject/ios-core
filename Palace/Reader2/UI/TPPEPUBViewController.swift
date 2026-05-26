@@ -31,7 +31,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
          resourcesServer: HTTPServer,
          preferences: EPUBPreferences = TPPReaderPreferencesLoad(),
          forSample: Bool = false,
-         navigationHub: NavigationCoordinatorHub = .shared) throws {
+         navigationHub: NavigationCoordinatorHub = AppContainer.production().navigationCoordinatorHub) throws {
 
         self.systemUserInterfaceStyle = UITraitCollection.current.userInterfaceStyle
         self.preferences = preferences

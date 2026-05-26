@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 @testable import Palace
 
 final class MockCredentialsProvider: NSObject, NYPLBasicAuthCredentialsProvider {

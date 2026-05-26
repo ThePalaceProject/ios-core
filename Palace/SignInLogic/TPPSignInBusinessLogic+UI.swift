@@ -37,11 +37,6 @@ extension TPPSignInBusinessLogic {
             let barcode = self.capturedBarcode ?? self.uiDelegate?.username
             let pin = self.capturedPin ?? self.uiDelegate?.pin
 
-            // Clear captured credentials immediately after reading — they're now
-            // in local variables and will be written to the keychain below.
-            self.capturedBarcode = nil
-            self.capturedPin = nil
-
             self.updateUserAccount(forDRMAuthorization: drmSuccess,
                                    withBarcode: barcode,
                                    pin: pin,
@@ -63,8 +58,8 @@ extension TPPSignInBusinessLogic {
             }
             #endif
 
-            self.ignoreSignedInState = false
-            // Phase 4: Restore auth state after successful credential refresh
+            // ignoreSignedInState is cleared by `.userAccountUpdated` dispatch
+            // inside `updateUserAccount`. Restore the persisted auth state too.
             self.userAccount.markLoggedIn()
 
             let completionHandler = self.refreshAuthCompletion

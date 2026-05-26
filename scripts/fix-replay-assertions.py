@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trim expect_elements in SpecterQA replay YAMLs to stable, screen-appropriate elements only.
+"""Trim expect_elements in simdrive replay YAMLs to stable, screen-appropriate elements only.
 
 Two-pass approach:
 1. Filter to stable elements only (remove dynamic content like book titles, version numbers)
@@ -146,7 +146,7 @@ def fix_replay(filepath: str) -> tuple[str, int, int, int]:
 
 
 def main():
-    replay_dir = os.path.join(os.path.dirname(__file__), "..", ".specterqa", "replays")
+    replay_dir = os.path.join(os.path.dirname(__file__), "..", ".simdrive", "_archive", "replays")
     files = sorted(glob.glob(os.path.join(replay_dir, "*.yaml")))
 
     print(f"Processing {len(files)} replay files...\n")

@@ -1,4 +1,5 @@
 import Foundation
+import PalaceCatalog
 
 /// Utilities for analyzing crawlable OPDS 2.0 feeds to determine
 /// crawl strategy (incremental vs full) and pagination stop conditions.

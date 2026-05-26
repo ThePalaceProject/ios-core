@@ -25,6 +25,7 @@
 //
 
 import XCTest
+import PalaceKeychain
 @testable import Palace
 
 final class TPPCredentialSnapshotCoherenceTests: XCTestCase {
@@ -35,11 +36,10 @@ final class TPPCredentialSnapshotCoherenceTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        // CI iOS Simulator runners have no keychain entitlement, so every
-        // setBarcode/setAuthToken silently no-ops and these cache-coherence
-        // assertions all fail with `nil != "test-barcode"`. Skip rather
-        // than report false negatives — the regression these tests guard
-        // against can only happen on a host with a real keychain.
+        // Whole suite exercises keychain round-tripping between peer
+        // TPPUserAccount instances. Skip in CI where SecItem calls return
+        // -34018 (missing entitlement) — same env-gate as
+        // TPPKeychainTests + TPPKeychainSwiftTests.
         try KeychainAvailability.skipIfUnavailable()
         writer = TPPUserAccount(libraryUUID: testLibraryUUID)
         reader = TPPUserAccount(libraryUUID: testLibraryUUID)

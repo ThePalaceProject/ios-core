@@ -12,7 +12,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
-API_URL="https://forgeos-api.synctek.io"
+API_URL="${FORGEOS_API_URL:?FORGEOS_API_URL must be set in your environment (see scripts/README.md)}"
 PROJECT_ID="proj_87884c17"
 
 # Read API key
@@ -31,18 +31,26 @@ fi
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 
-# Find the most recent changeset for this branch
-CHANGESET_ID=$(curl -s \
+# Server's ?branch= query is currently ignored — paginate and filter client-side.
+# This was a real bug 2026-04-27 when this hook was resolving to whatever
+# changeset happened to be at the top of the unfiltered list (a stale
+# changeset on a different branch), letting the gate-check fail against the
+# wrong record.
+CHANGESET_ID=$(curl -s --max-time 5 \
   -H "X-ForgeOS-API-Key: $FORGEOS_API_KEY" \
-  "${API_URL}/api/projects/${PROJECT_ID}/changesets?branch=${BRANCH}&limit=1" 2>/dev/null | \
-  python3 -c "
-import sys, json
+  "${API_URL}/api/projects/${PROJECT_ID}/changesets?branch=${BRANCH}&limit=100" 2>/dev/null | \
+  BRANCH="$BRANCH" python3 -c "
+import sys, json, os
+target = os.environ.get('BRANCH', '')
 try:
     data = json.load(sys.stdin)
     items = data if isinstance(data, list) else data.get('items', data.get('changesets', []))
-    if items:
-        print(items[0]['id'])
-except:
+    matches = [i for i in items if i.get('branch') == target and i.get('status') != 'merged']
+    if not matches:
+        matches = [i for i in items if i.get('branch') == target]
+    if matches:
+        print(matches[0]['id'])
+except Exception:
     pass
 " 2>/dev/null)
 

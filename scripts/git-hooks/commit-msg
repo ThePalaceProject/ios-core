@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# commit-msg
+#
+# Purpose:
+#   For commits that touch ≥50 lines of production Swift/Obj-C code, require
+#   the commit body to acknowledge what was deferred or out-of-scope. This
+#   nudges authors to be honest about scope rather than burying loose ends in
+#   a one-line subject. Outside contributors and small commits pass through
+#   unchanged.
+#
+#   If the maintainer's local agent harness is installed
+#   (~/harness/core/hooks/commit-msg-stanza.sh), exec to it — that version
+#   has richer behavior tied to ForgeOS changesets.
+#
+# Install:
+#   git config core.hooksPath scripts/git-hooks
+#   (run from the repo root; one-time)
+#
+# Argument:
+#   $1 — path to the commit message file (provided by git).
+
+set -euo pipefail
+
+MSG_FILE="${1:-}"
+if [[ -z "$MSG_FILE" || ! -f "$MSG_FILE" ]]; then
+  exit 0
+fi
+
+HARNESS_HOOK="$HOME/harness/core/hooks/commit-msg-stanza.sh"
+if [[ -x "$HARNESS_HOOK" ]]; then
+  exec "$HARNESS_HOOK" "$MSG_FILE"
+fi
+
+# --- Plain-bash fallback (no harness installed) --------------------------------
+
+# Sum insertions+deletions across staged production sources.
+# `git diff --cached --stat` last line looks like:
+#   " 3 files changed, 42 insertions(+), 7 deletions(-)"
+STATS=$(git diff --cached --stat -- 'Palace/**/*.swift' 'Palace/**/*.m' 2>/dev/null | tail -1 || true)
+INS=$(echo "$STATS" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo 0)
+DEL=$(echo "$STATS" | grep -oE '[0-9]+ deletion'  | grep -oE '[0-9]+' || echo 0)
+DELTA=$(( ${INS:-0} + ${DEL:-0} ))
+
+THRESHOLD=50
+if (( DELTA < THRESHOLD )); then
+  exit 0
+fi
+
+# Strip git comment lines before checking for the stanza.
+BODY=$(grep -v '^#' "$MSG_FILE" || true)
+if echo "$BODY" | grep -qE '\*\*(Not done|Scope|Deferred):\*\*'; then
+  exit 0
+fi
+
+cat >&2 <<EOF
+ERROR: commit-msg hook
+
+This commit changes ${DELTA} lines of production code (>= ${THRESHOLD} threshold)
+but the commit body does not include a scope/deferral stanza.
+
+Add ONE of the following to the commit body so reviewers know what was
+intentionally left out:
+
+  **Not done:**  <list anything you punted on>
+  **Scope:**     <what this commit is and is not>
+  **Deferred:**  <follow-up tickets or branches>
+
+Re-edit your message and commit again. To bypass on a one-off, you can use
+\`git commit --no-verify\` — but please don't make a habit of it.
+EOF
+exit 1

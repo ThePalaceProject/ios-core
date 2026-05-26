@@ -134,7 +134,7 @@ def fix_replay(filepath: str) -> tuple[str, int, int]:
 
 
 def main():
-    replay_dir = os.path.join(os.path.dirname(__file__), "..", ".specterqa", "replays")
+    replay_dir = os.path.join(os.path.dirname(__file__), "..", ".simdrive", "_archive", "replays")
     files = sorted(glob.glob(os.path.join(replay_dir, "*.yaml")))
 
     print(f"Fixing timing-sensitive assertions in {len(files)} replay files...\n")

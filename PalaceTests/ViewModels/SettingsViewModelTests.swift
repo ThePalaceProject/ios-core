@@ -22,7 +22,7 @@ final class SettingsViewModelTests: XCTestCase {
     override func setUp() {
         super.setUp()
         mockSettings = TPPSettingsMock()
-        sut = SettingsViewModel(settings: mockSettings)
+        sut = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
         cancellables = []
     }
 
@@ -50,7 +50,7 @@ final class SettingsViewModelTests: XCTestCase {
         )
 
         // Act
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
 
         // Assert
         XCTAssertEqual(viewModel.customMainFeedURL, expectedURL)
@@ -64,7 +64,7 @@ final class SettingsViewModelTests: XCTestCase {
 
     func testSettingsViewModel_Init_DefaultsAreCorrect() async {
         // Arrange & Act - mockSettings has default values
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
 
         // Assert
         XCTAssertFalse(viewModel.useBetaLibraries)
@@ -507,7 +507,7 @@ final class SettingsViewModelTests: XCTestCase {
     func testSettingsViewModel_SetSameValue_DoesNotWriteToSettings() async {
         // Arrange
         mockSettings.useBetaLibraries = true
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
 
         // Act - set same value
         viewModel.useBetaLibraries = true
@@ -528,7 +528,7 @@ final class SettingsViewModelEdgeCaseTests: XCTestCase {
     override func setUp() {
         super.setUp()
         mockSettings = TPPSettingsMock()
-        sut = SettingsViewModel(settings: mockSettings)
+        sut = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
     }
 
     override func tearDown() {
@@ -631,7 +631,7 @@ final class SettingsViewModelEdgeCaseTests: XCTestCase {
         )
 
         // Act
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
 
         // Assert - set values are loaded, others are defaults
         XCTAssertTrue(viewModel.useBetaLibraries)
@@ -652,7 +652,7 @@ final class SettingsViewModelSyncTests: XCTestCase {
     override func setUp() {
         super.setUp()
         mockSettings = TPPSettingsMock()
-        sut = SettingsViewModel(settings: mockSettings)
+        sut = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
     }
 
     override func tearDown() {

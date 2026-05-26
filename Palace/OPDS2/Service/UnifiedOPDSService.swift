@@ -7,41 +7,11 @@
 //
 
 import Foundation
+import PalaceLogging
+import PalaceCatalog
 
 // MARK: - Feed Format
 
-enum OPDSFormat: String, Sendable {
-    case opds2 = "application/opds+json"
-    case opds1 = "application/atom+xml"
-    case unknown
-
-    public static func detect(from contentType: String?) -> OPDSFormat {
-        guard let contentType = contentType?.lowercased() else { return .unknown }
-
-        if contentType.contains("json") || contentType.contains("opds+json") {
-            return .opds2
-        } else if contentType.contains("xml") || contentType.contains("atom") {
-            return .opds1
-        }
-
-        return .unknown
-    }
-
-    public static func detect(from data: Data) -> OPDSFormat {
-        // Check first bytes for JSON vs XML
-        guard let firstChar = String(data: data.prefix(1), encoding: .utf8) else {
-            return .unknown
-        }
-
-        if firstChar == "{" || firstChar == "[" {
-            return .opds2
-        } else if firstChar == "<" {
-            return .opds1
-        }
-
-        return .unknown
-    }
-}
 
 // MARK: - Unified Feed Result
 
@@ -107,7 +77,7 @@ actor UnifiedOPDSService {
         opds2Cache: OPDS2FeedCache = .shared,
         opds1Cache: OPDS1FeedCache = .shared,
         urlSession: URLSession = .shared,
-        opds1FeedService: OPDSFeedService = .shared
+        opds1FeedService: OPDSFeedService = OPDSFeedService()
     ) {
         self.opds2Cache = opds2Cache
         self.opds1Cache = opds1Cache
@@ -310,7 +280,7 @@ actor UnifiedOPDSService {
     private func addAuthHeaders(to request: inout URLRequest, useToken: Bool) {
         guard useToken else { return }
 
-        let userAccount = AccountsManager.shared.currentUserAccount
+        let userAccount = AppContainer.production().accountsManager.currentUserAccount
 
         if let authToken = userAccount.authToken {
             request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
@@ -354,7 +324,7 @@ extension UnifiedOPDSService {
 
     /// Fetches catalog root with caching
     public func fetchCatalogRoot() async throws -> UnifiedOPDSFeed {
-        guard let catalogURLString = AccountsManager.shared.currentAccount?.catalogUrl,
+        guard let catalogURLString = AppContainer.production().accountsManager.currentAccount?.catalogUrl,
               let catalogURL = URL(string: catalogURLString) else {
             throw PalaceError.authentication(.accountNotFound)
         }
@@ -364,7 +334,7 @@ extension UnifiedOPDSService {
 
     /// Fetches user's loans feed
     public func fetchLoans() async throws -> UnifiedOPDSFeed {
-        guard let loansURL = AccountsManager.shared.currentAccount?.loansUrl else {
+        guard let loansURL = AppContainer.production().accountsManager.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
 

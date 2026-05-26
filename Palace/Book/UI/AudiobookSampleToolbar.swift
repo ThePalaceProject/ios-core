@@ -22,7 +22,7 @@ struct AudiobookSampleToolbar: View {
     private let playbackButtonLength: CGFloat = 35
     private let buttonViewSpacing: CGFloat = 10
 
-    init?(book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    init?(book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         self.bookRegistry = bookRegistry
         self.book = book
         guard let sample = book.sample as? AudiobookSample else { return nil }

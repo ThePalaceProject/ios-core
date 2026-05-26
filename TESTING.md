@@ -1,18 +1,32 @@
-# Palace iOS Testing Standards
+# Palace iOS Testing
 
-> **For the full testing migration plan and TDD requirements, see [UNIT_TESTING_PLAN.md](./UNIT_TESTING_PLAN.md)**
+Quick-start for running and writing tests. Deeper references live in
+[`docs/Testing/`](./docs/Testing/) and the agent-facing TDD rules live in
+[`CLAUDE.md`](./CLAUDE.md) under "TDD & Test Quality — MANDATORY".
 
-## Required Tests
+## Running tests
 
-All code changes require corresponding tests:
+Use `Palace.xcodeproj`. The legacy `PalaceR2.xcworkspace` was removed (it hit
+Firebase SPM xcframework resolution issues); `Palace.xcodeproj` is the only
+supported entry point. Pick a simulator by name, not by UDID, so this works
+on any machine.
 
-| Change Type | Required Tests |
-|-------------|----------------|
-| **New Feature** | Unit tests (80% coverage), snapshot tests for UI, integration tests for flows |
-| **Bug Fix** | Regression test that fails before fix, passes after (include ticket # in comments) |
-| **Modified Code** | Update existing tests, add tests for any coverage gaps |
+```bash
+# Build
+xcodebuild -project Palace.xcodeproj -scheme Palace \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
 
-## Test Organization
+# Run all tests
+xcodebuild -project Palace.xcodeproj -scheme Palace \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test
+
+# Run a single test class
+xcodebuild -project Palace.xcodeproj -scheme Palace \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+  -only-testing:PalaceTests/MyTestClass test
+```
+
+## Test organization
 
 ```
 PalaceTests/
@@ -27,125 +41,68 @@ PalaceTests/
 └── OPDS2/               # OPDS2 feed tests
 ```
 
-## What Makes a Valid Test
+## Required tests for each change type
 
-### ✅ DO Test:
-- **Real production classes** (ViewModels, Models, Services, Extensions)
-- Real encoding/decoding behavior
-- Real business logic and state transitions
-- Error handling paths
-- Edge cases with real data
+| Change Type    | Required Tests                                                                                |
+| -------------- | --------------------------------------------------------------------------------------------- |
+| New Feature    | Unit tests for the new behavior, snapshot tests for UI, integration tests for end-to-end flow |
+| Bug Fix        | Regression test that fails before the fix and passes after; reference the ticket in comments  |
+| Modified Code  | Update existing tests; add tests for any coverage gap the change exposes                      |
 
-### ❌ DON'T Test:
-- Mock implementations themselves
-- Basic Swift operations (Set.insert, Array.filter, Bool assignment)
-- Arithmetic operations
-- Inline mock structs instead of production types
-- String trimming or empty checks without real class involvement
+## Test quality
 
-## Mock Usage Rules
+Every test should exercise real production code via injected dependencies and
+assert observable behavior, not implementation details. The deep references:
 
-**Mocks are for DEPENDENCY INJECTION, not for testing.**
+- [`docs/Testing/TESTING_POSTURE.md`](./docs/Testing/TESTING_POSTURE.md) —
+  posture, confidence matrix, current gaps. Read before writing tests for an
+  unfamiliar area.
+- [`docs/Testing/Test_Patterns.md`](./docs/Testing/Test_Patterns.md) —
+  reusable patterns (Combine + spy, closure DI, `FakeDownloadTask`, async
+  helpers).
+- [`docs/Testing/REGRESSION_TEST_MATRIX.md`](./docs/Testing/REGRESSION_TEST_MATRIX.md) —
+  regression coverage by feature area and ticket.
+- [`docs/Testing/Coverage_Roadmap.md`](./docs/Testing/Coverage_Roadmap.md) —
+  coverage trajectory and floors.
+- [`CLAUDE.md`](./CLAUDE.md) "TDD & Test Quality — MANDATORY" — test-first
+  workflow, fluff/tautology rules, and mutation-survival expectation.
 
-```swift
-// ✅ CORRECT: Mock isolates the real class under test
-func testBookDetailViewModel_LoadsBook() {
-  let mockRegistry = TPPBookRegistryMock()
-  let viewModel = BookDetailViewModel(registry: mockRegistry)  // Real class
-  
-  XCTAssertNotNil(viewModel.book)
-}
+## Mutation testing
 
-// ❌ WRONG: Testing the mock itself
-func testMockRegistry_StoresState() {
-  let mockRegistry = TPPBookRegistryMock()
-  mockRegistry.setState(.downloading, for: "id")
-  
-  XCTAssertEqual(mockRegistry.state(for: "id"), .downloading)  // Tests nothing!
-}
+Every test should kill at least one mutant in the production code it covers.
+Run on changed files before opening a PR:
+
+```bash
+python3 scripts/palace_mutate.py --file Palace/Path/Changed.swift \
+  --tests PalaceTests/Path/ --dry-run
+# Re-run without --dry-run to verify the test catches the mutants.
 ```
 
-## Available Mocks
+A test that survives no mutants is fluff regardless of how many assertions it
+has. See `CLAUDE.md` for the mutation-verification rule in full.
 
-Use existing infrastructure in `PalaceTests/Mocks/`:
-- `TPPBookRegistryMock` - Book registry operations
-- `MockImageCache` - Image caching with TenPrint cover generation
-- `CatalogRepositoryMock` - Catalog API operations
-- `MockPDFDocument` - PDF document operations
-- `TPPBookMocker` - Deterministic test books
+## Snapshot tests
 
-## Snapshot Test Standards
+Use the `SnapshotTesting` library with the `.image` strategy and a fixed
+frame size so output is device-independent. Use `TPPBookMocker` for
+deterministic book fixtures and pre-load TenPrint covers via
+`MockImageCache.generateTenPrintCover()` so the rendered image is stable
+across runs. Snapshots live alongside the tests in `__Snapshots__/`
+directories. Test real views, never placeholder views built only for the
+snapshot.
 
-```swift
-func testBookCell_Downloaded() {
-  // 1. Create deterministic data
-  let book = TPPBookMocker.snapshotEPUB()
-  XCTAssertNotNil(book.coverImage)  // Verify TenPrint cover loaded
-  
-  // 2. Use real view
-  let view = BookCell(book: book)
-    .frame(width: 390, height: 120)
-  
-  // 3. Snapshot with fixed size
-  assertSnapshot(of: view, as: .image)
-}
-```
-
-### Snapshot Requirements:
-- Use `SnapshotTesting` library with `.image` strategy
-- Pre-load TenPrint covers via `MockImageCache.generateTenPrintCover()`
-- Use fixed frame sizes for device-independent snapshots
-- Store in `__Snapshots__/` directories
-- **Test real views only**, never placeholder/fake views
-
-## Example: Bug Fix Test
+## Bug-fix test example
 
 ```swift
-/// Regression test for PP-1234: Book returns don't update UI
-/// This test verifies the fix by ensuring state updates propagate.
+/// Regression test for PP-1234: Book returns don't update UI.
 func testBookReturn_UpdatesUIState() {
-  // Arrange: Book in downloaded state
   let mockRegistry = TPPBookRegistryMock()
   let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
   mockRegistry.addBook(book, state: .downloadSuccessful)
-  
+
   let viewModel = MyBooksViewModel(registry: mockRegistry)
-  
-  // Act: Return the book
   viewModel.returnBook(book)
-  
-  // Assert: UI state reflects the change
-  XCTAssertFalse(viewModel.downloadedBooks.contains(where: { $0.identifier == book.identifier }))
+
+  XCTAssertFalse(viewModel.downloadedBooks.contains { $0.identifier == book.identifier })
 }
 ```
-
-## TDD Requirements (Mandatory)
-
-### For Bug Fixes
-```
-1. FIRST: Write a failing test that reproduces the bug (include ticket #)
-2. THEN: Implement the fix
-3. FINALLY: Verify the test passes
-4. COMMIT: Test and fix together in same PR
-```
-
-### For New Features
-```
-1. FIRST: Write tests defining expected behavior
-2. THEN: Implement feature to make tests pass  
-3. FINALLY: Refactor while keeping tests green
-4. COMMIT: Tests and feature together
-```
-
-## Quick Checklist
-
-Before submitting a PR:
-
-- [ ] All new code has corresponding tests
-- [ ] Tests use real production classes (not mocks as subjects)
-- [ ] No tests of basic Swift operations
-- [ ] Snapshot tests use real views with deterministic data
-- [ ] Bug fixes include regression tests with ticket reference
-- [ ] Tests are organized in appropriate subdirectories
-- [ ] TDD workflow was followed (test first, then code)
-

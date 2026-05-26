@@ -12,6 +12,7 @@
 
 import Foundation
 import Combine
+import PalaceLogging
 
 final class MockBackendService: ObservableObject {
 
@@ -67,7 +68,7 @@ final class MockBackendService: ObservableObject {
 
         // Scope mock interception to the current library's host so other
         // libraries aren't affected when the user switches accounts.
-        if let catalogUrlString = AccountsManager.shared.currentAccount?.catalogUrl,
+        if let catalogUrlString = AppContainer.production().accountsManager.currentAccount?.catalogUrl,
            let catalogURL = URL(string: catalogUrlString) {
             MockBackendURLProtocol.scopedHost = catalogURL.host
             Log.info(#file, "MockBackend: scoped to host '\(catalogURL.host ?? "unknown")'")
@@ -80,8 +81,8 @@ final class MockBackendService: ObservableObject {
         URLSessionConfiguration.mockBackend_swizzleProtocolClasses()
 
         // Recreate sessions so they pick up the mock protocol
-        TPPNetworkExecutor.shared.recreateSession()
-        MyBooksDownloadCenter.shared.recreateSessionForMockBackend()
+        AppContainer.production().networkExecutor.recreateSession()
+        AppContainer.production().downloadCenter.recreateSessionForMockBackend()
 
         currentScenario = scenario
         isActive = true
@@ -100,8 +101,8 @@ final class MockBackendService: ObservableObject {
         URLSessionConfiguration.mockBackend_unswizzleProtocolClasses()
 
         // Recreate sessions to remove the mock protocol
-        TPPNetworkExecutor.shared.recreateSession()
-        MyBooksDownloadCenter.shared.recreateSessionForMockBackend()
+        AppContainer.production().networkExecutor.recreateSession()
+        AppContainer.production().downloadCenter.recreateSessionForMockBackend()
 
         currentScenario = nil
         isActive = false

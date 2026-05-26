@@ -15,6 +15,8 @@
 //
 
 import XCTest
+import PalaceAuth
+import PalaceNetwork
 @testable import Palace
 
 // MARK: - TokenRequest Empty Credential Guards
@@ -392,7 +394,12 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        // 10s: refreshTokenAndResume spawns a Task and calls completion
+        // from inside it, so wait depends on Swift-concurrency scheduling.
+        // macos-26 CI under load occasionally exceeds the 5s window even
+        // though local Macs complete in ~30ms (flaked in PR #893 CI).
+        // 10s is generous but still surfaces true completion-not-fired bugs.
+        wait(for: [expectation], timeout: 10.0)
     }
 
     func testRefreshTokenAndResume_NilTask_NilAccountId_DoesNotCrash() {
@@ -405,7 +412,12 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        // 10s: refreshTokenAndResume spawns a Task and calls completion
+        // from inside it, so wait depends on Swift-concurrency scheduling.
+        // macos-26 CI under load occasionally exceeds the 5s window even
+        // though local Macs complete in ~30ms (flaked in PR #893 CI).
+        // 10s is generous but still surfaces true completion-not-fired bugs.
+        wait(for: [expectation], timeout: 10.0)
         XCTAssertTrue(gotResult,
                       "Completion must be invoked (success or failure) even with nil task and nil accountId")
     }
@@ -420,7 +432,12 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
             expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        // 10s: refreshTokenAndResume spawns a Task and calls completion
+        // from inside it, so wait depends on Swift-concurrency scheduling.
+        // macos-26 CI under load occasionally exceeds the 5s window even
+        // though local Macs complete in ~30ms (flaked in PR #893 CI).
+        // 10s is generous but still surfaces true completion-not-fired bugs.
+        wait(for: [expectation], timeout: 10.0)
         XCTAssertTrue(gotResult,
                       "Backward-compat overload (no accountId) must still deliver a completion")
     }
@@ -646,7 +663,12 @@ final class ConcurrentTokenRefreshTests: XCTestCase {
             }
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        // 10s: refreshTokenAndResume spawns a Task and calls completion
+        // from inside it, so wait depends on Swift-concurrency scheduling.
+        // macos-26 CI under load occasionally exceeds the 5s window even
+        // though local Macs complete in ~30ms (flaked in PR #893 CI).
+        // 10s is generous but still surfaces true completion-not-fired bugs.
+        wait(for: [expectation], timeout: 10.0)
         XCTAssertTrue(wasFailure,
                       "refreshTokenAndResume without credentials must fail immediately, not succeed")
     }
@@ -673,7 +695,7 @@ final class URLSessionCredentialStorageTests: XCTestCase {
         )
 
         XCTAssertNil(config.urlCredentialStorage,
-                     "Fallback config must set urlCredentialStorage=nil -- this is the config used by TPPNetworkExecutor.shared")
+                     "Fallback config must set urlCredentialStorage=nil -- this is the config used by AppContainer.production().networkExecutor")
     }
 
     func testMakeURLSessionConfiguration_Ephemeral_ReturnsEphemeralConfig() {

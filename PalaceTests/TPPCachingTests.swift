@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import PalaceNetwork
 @testable import Palace
 
 class TPPCachingTests: XCTestCase {

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 @testable import Palace
 
 enum DistributorType: String {

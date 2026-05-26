@@ -11,6 +11,7 @@
 //
 
 import XCTest
+import PalaceKeychain
 @testable import Palace
 
 enum KeychainAvailability {

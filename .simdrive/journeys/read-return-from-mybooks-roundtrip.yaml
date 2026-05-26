@@ -1,0 +1,111 @@
+scenario:
+  id: read-return-from-mybooks-roundtrip
+  name: "Read → return roundtrip from MyBooks (money-flow happy path)"
+  description: >
+    First end-to-end happy-path recording covering the read + return
+    halves of the borrow→read→return money flow. Pre-state assumes a
+    previously-borrowed downloaded EPUB in MyBooks; the recording
+    drives Read → Reader2 chrome → exit → inline Return → confirm →
+    book disappears from MyBooks.
+
+    Documented as 'read-return' rather than 'borrow-read-return'
+    because two parallel borrow attempts surfaced product bugs that
+    prevented the full roundtrip starting from a fresh catalog book
+    (see related: borrow-download-failed-cinema-beyond-human +
+    borrow-stuck-overdrive-up-and-running). The 'borrow' half is
+    deferred until the test-fixture issues are triaged or a known-
+    good catalog book is identified.
+
+  tags: [tier1, ios, money-flow, read, return, critical-path]
+  tier: stateful
+  blocking: false   # smoke-only — Reader2 WKWebView state is
+                    # non-deterministic across replays; load-bearing
+                    # invariant is the post-step-5 OCR-absence on
+                    # 'Mathematics Test Book' from MyBooks.
+
+  preconditions:
+    - "A1QA Test Library is the active library"
+    - "A1QA is signed in (patron 'al/qa' visible top-left)"
+    - "Mathematics Test Book is in MyBooks, fully downloaded, Read button visible"
+    - "MyBooks tab is in the foreground"
+    - "Book has a cached last-read position (recording opens directly to that page; Reader2 sync dialog is NOT exercised here)"
+
+  state_reset:
+    - "Before each replay, ensure Mathematics Test Book is re-borrowed via Catalog → tap book → tap Borrow on A1QA Test Library."
+    - "Replays of this recording WILL return the book — re-borrow before each run."
+    - "If Mathematics Test Book borrow fails (test-fixture issue), use a different downloaded EPUB and update step 1's stable_id."
+
+  recording:
+    path: "~/.simdrive/recordings/read-return-from-mybooks-roundtrip/recording.yaml"
+    steps: 5
+    captured_with: "simdrive 1.0.0a9"
+    captured_on: "2026-05-12"
+
+  steps:
+    - id: tap_read
+      description: "Tap Read on Mathematics Test Book row in MyBooks — Reader2 opens at cached page"
+      tap_target: { stable_id: "2e7a5a3230f1" }
+    - id: toggle_chrome
+      description: "Tap reader content center to reveal Reader2 chrome (auto-hides after ~5s)"
+      tap_target: { x: 603, y: 1300 }
+    - id: tap_back_chrome
+      description: "Tap top-left back chevron to exit Reader2 back to MyBooks"
+      tap_target: { x: 60, y: 230 }
+    - id: tap_inline_return
+      description: "Tap Return button inline on the Mathematics Test Book row in MyBooks"
+      tap_target: { stable_id: "33ca6e504516" }
+    - id: confirm_return
+      description: "Tap Return on the confirmation dialog ('Are you sure you want to return Advanced Accessibility Tests: Mathematics?')"
+      tap_target: { stable_id: "0eca748d03b0" }
+
+  expected_invariants:
+    - "Read tap launches Reader2 directly (no sync dialog if book has cached position)"
+    - "Reader2 renders cached page content (OCR sees WKWebView text matching the cached chapter)"
+    - "Chrome-toggle reveals top toolbar; back chevron exits Reader2 to MyBooks"
+    - "Inline Return tap renders a UIAlertController-style confirm dialog"
+    - "Confirm Return tap dismisses dialog AND removes the book row from MyBooks (post-OCR shows no 'Mathematics Test Book' or 'DIAGRAM CENTER')"
+    - "Post-state MyBooks rows shift up: Animal Farm + Don't Read This! + Four Women + Fundamental Accessibility Tests visible"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn   # Reader2 WKWebView content varies across runs;
+                     # MyBooks row order shifts. OCR-absence on the
+                     # returned title is the regression detector.
+
+  rationale: |
+    Covers the read + return halves of the money-flow critical path
+    end-to-end. Pairs with book-return-from-mybooks (which covers
+    just the Return half from a non-downloaded audiobook). This
+    recording specifically exercises:
+
+    1. **Reader2 launch from MyBooks Read tap** — the EPUB + Readium
+       3.x integration point.
+    2. **WKWebView content render** — OCR-readable lipsum confirms
+       the EPUB's HTML actually rendered.
+    3. **Reader2 → MyBooks back navigation** — the chrome auto-hide
+       timing race that we documented in reader2-back-button.
+    4. **Inline Return UX** — confirm dialog rendering + content.
+    5. **OPDS revoke + DRM unbind + BookRegistry sync** — the three
+       failure modes in book-return, exercised in sequence with a
+       previously-opened book (cache invalidation on revoke).
+
+    A fresh borrow + read + return roundtrip is the IDEAL test but is
+    currently blocked by A1QA test-fixture issues — see the
+    'borrow-*' recordings flagged as bugs.
+
+  known_issues:
+    - "Replays of this recording mutate state — the borrowed book is returned. Re-borrow Mathematics Test Book before each replay or this recording will fail at step 1 (no Read button visible)."
+    - "Reader2 chrome auto-hide timing varies; step 3 (back chevron) may not navigate on the first attempt if chrome auto-hid between steps 2 and 3. Replays may need to retry the chrome+back sequence."
+    - "Mathematics Test Book is a DAISY accessibility EPUB. The Reader2 chapter shown depends on cached position; replays starting from cover page (page 1) vs Introduction (page 3) vs MathML Tests (page 4) will OCR different content."
+
+  related:
+    - "book-return-from-mybooks.yaml — Return half alone (no read)"
+    - "borrow-download-failed-cinema-beyond-human (RECORDING ONLY, NO YAML) — product bug evidence; 'No error message' alert text + failed download UX"
+    - "borrow-stuck-overdrive-up-and-running (RECORDING ONLY, NO YAML) — product bug evidence; borrow attempt stuck with Cancel-only UI for 30+ seconds, no progress indicator"
+    - "reader2-back-button.yaml — back chevron exit (subset of this recording)"
+    - "Memory: handoff_regression_posture_next_2026_05_12.md — task 6 borrow critical path"
+
+  related_bugs_surfaced:
+    - "Bug 1: Borrow on 'Cinema beyond the human' produces 'Download Failed - No error message' alert. The body text literally reads 'No error message' which is a UX bug regardless of underlying cause. The loan IS registered (book detail screen subsequently shows Download/Return buttons) but the file download silently fails."
+    - "Bug 2: Borrow on 'Up and Running' (O'Reilly Vagrant, Overdrive distributor) gets stuck with Cancel-only UI for 30+ seconds with no progress indicator, no error, no success. The borrow does NOT complete (book is not in MyBooks afterward). Tab bar is hidden during the borrow operation, leaving the user with only Back/Cancel as navigation options."
+    - "Both bugs surfaced on the iPhone 16 Pro simulator with iOS 18.4 against A1QA Test Library. Reproducible — both attempts failed. Recommend triage before tagging 3.1.0 as RC."

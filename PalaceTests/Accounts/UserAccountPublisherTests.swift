@@ -91,12 +91,15 @@ final class UserAccountPublisherTests: XCTestCase {
         XCTAssertTrue(publisher.isSigningOut)
     }
 
-    func testSignOut_resetsIsSigningOutAfterDelay() async {
+    func testSignOut_resetsIsSigningOutAfterDelay() {
         publisher.signOut()
         XCTAssertTrue(publisher.isSigningOut)
 
-        // Wait for the Task inside signOut to reset the flag
-        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        // The reset runs inside `Task { Task.sleep(100ms); isSigningOut = false }`.
+        // Default 5s `awaitCondition` budget flaked under late-suite dispatch
+        // saturation (100ms sleep + main-actor publish took >5s after ~3,700
+        // prior tests). 15s gives enough headroom without masking real bugs.
+        awaitCondition(timeout: 15.0) { self.publisher.isSigningOut == false }
         XCTAssertFalse(publisher.isSigningOut)
     }
 

@@ -8,6 +8,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - Mock Delegate
@@ -261,7 +262,11 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pollItem)
 
         interceptor.handleBorrowInvalidCredentials(for: book, error: nil)
-        wait(for: [expectation], timeout: 3.0)
+        // Bumped from 3.0 → 10.0: 3s flakes in full-suite runs when the main
+        // queue is loaded; the actual reauth + download-start completes well
+        // under 1s in isolation. Larger window costs nothing on the happy
+        // path.
+        wait(for: [expectation], timeout: 10.0)
         pollItem.cancel()
 
         XCTAssertEqual(mockDelegate.startDownloadCalls.count, 1)

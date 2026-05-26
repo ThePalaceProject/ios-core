@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 final class AccountsManagerCacheTests: XCTestCase {
@@ -274,7 +275,7 @@ final class AccountsManagerCacheTests: XCTestCase {
         // The accountMainFeedURL from a previous session (stored in UserDefaults)
         // must not be overwritten with nil.
 
-        let settings = TPPSettings.shared
+        let settings = TPPSettings()
         let previousURL = URL(string: "https://example.com/previous-library/")!
 
         // Save a known good URL

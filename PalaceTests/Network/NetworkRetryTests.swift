@@ -239,12 +239,12 @@ final class NetworkOfflineDetectionTests: XCTestCase {
 
     func testNetworkReachability_hasSharedInstance() {
         // Verify the reachability service exists and is a singleton
-        let reachability = Reachability.shared
+        let reachability = AppContainer.production().reachability
         XCTAssertNotNil(reachability)
         // Two accesses must return the same object
-        let second = Reachability.shared
+        let second = AppContainer.production().reachability
         XCTAssertTrue(reachability === second,
-                      "Reachability.shared must be a singleton")
+                      "AppContainer.production().reachability must be a singleton")
     }
 
     func testURLError_offlineErrorCodes() {

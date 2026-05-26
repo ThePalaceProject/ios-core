@@ -8,6 +8,8 @@
 import Foundation
 import Combine
 import UIKit
+import PalaceLogging
+import PalaceCatalog
 
 /// Modern async/await extensions for TPPBookRegistry.
 /// These provide actor-like async access to registry state, bridging
@@ -35,14 +37,14 @@ extension TPPBookRegistry {
     /// Asynchronously syncs the registry with the server
     /// - Returns: Tuple of (errorDocument, hasNewBooks)
     /// - Throws: PalaceError if sync fails
-    func syncAsync(accountsManager: AccountsManager = AccountsManager.shared) async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
+    func syncAsync(accountsManager: AccountsManager = AppContainer.production().accountsManager) async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
         // Use OPDSFeedService for modern async approach
         guard let loansURL = accountsManager.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
 
         do {
-            let feed = try await OPDSFeedService.shared.fetchFeed(
+            let feed = try await AppContainer.production().opdsFeedService.fetchFeed(
                 from: loansURL,
                 resetCache: true,
                 useToken: true
@@ -94,7 +96,7 @@ extension TPPBookRegistry {
         for identifier in removedIds {
             let state = self.state(for: identifier)
             if state == .downloadSuccessful || state == .used {
-                MyBooksDownloadCenter.shared.deleteLocalContent(for: identifier)
+                AppContainer.production().downloadCenter.deleteLocalContent(for: identifier)
             }
             self.setState(.unregistered, for: identifier)
             self.removeBook(forIdentifier: identifier)

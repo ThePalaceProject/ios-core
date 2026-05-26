@@ -1,5 +1,6 @@
 import UIKit
 import ReadiumShared
+import PalaceLogging
 
 public struct AnnotationResponse {
     var serverId: String?
@@ -17,11 +18,26 @@ public struct AnnotationResponse {
 ///   string, which made cross-device sync prompts impossible because
 ///   both devices appeared to be the same device.
 enum AnnotationDevice {
+    /// Test-only seam mirroring `TPPAnnotations.accountsManagerOverride`.
+    /// When non-nil, `currentID()` reads `currentUserAccount.deviceID`
+    /// from this provider instead of the AppContainer instance. Typed as
+    /// the `TPPUserAccountResolving` protocol so tests can inject mock
+    /// providers without subclassing the final `AccountsManager`.
+    /// Always `nil` in production. Reset in `tearDown`.
+    nonisolated(unsafe) static var accountsManagerOverride: TPPUserAccountResolving?
+
+    /// Test-only seam for the Firebase-managed device UUID. When non-nil,
+    /// `currentID()` uses this string instead of `FirebaseManager.shared.deviceID`.
+    /// Always `nil` in production. Reset in `tearDown`.
+    nonisolated(unsafe) static var firebaseDeviceIDOverride: String?
+
     static func currentID() -> String {
-        if let adobeID = AccountsManager.shared.currentUserAccount.deviceID, !adobeID.isEmpty {
+        let accountsManager: TPPUserAccountResolving = accountsManagerOverride ?? AppContainer.production().accountsManager
+        if let adobeID = accountsManager.currentUserAccount.deviceID, !adobeID.isEmpty {
             return adobeID
         }
-        return "urn:uuid:\(FirebaseManager.shared.deviceID)"
+        let firebaseDeviceID = firebaseDeviceIDOverride ?? FirebaseManager.shared.deviceID
+        return "urn:uuid:\(firebaseDeviceID)"
     }
 }
 
@@ -63,26 +79,44 @@ protocol AnnotationsManager {
 
 @objcMembers final class TPPAnnotations: NSObject {
 
-    // MARK: - Test seam
+    // MARK: - Test seams
     //
-    // TPPAnnotations historically reached `TPPNetworkExecutor.shared` directly
-    // from its static methods, making it impossible to drive failure paths in
-    // unit tests. `executorOverride` is a test-only seam: when non-nil, all
-    // network calls in this file route through it instead of `.shared`. The
-    // override defaults to `nil` so production behavior is unchanged.
+    // TPPAnnotations is a static-class API, so we cannot inject deps via init.
+    // Instead, each `.shared` reach is gated by an override property that
+    // defaults to `nil`; production keeps `.shared`, tests inject a mock.
+    // This mirrors the architectural-triad refactor for instance classes
+    // that take an `AppContainer`, but adapted for the static-class shape.
+    //
+    // The accountsManager seam is typed as `TPPLibraryAccountsProvider`
+    // (the protocol) rather than `AccountsManager` (the final concrete
+    // class) so that tests can substitute lightweight mocks.
     //
     // Test usage:
-    //   override func setUp() { TPPAnnotations.executorOverride = mockExecutor }
-    //   override func tearDown() { TPPAnnotations.executorOverride = nil }
+    //   override func setUp() {
+    //     TPPAnnotations.executorOverride = mockExecutor
+    //     TPPAnnotations.accountsManagerOverride = mockAccountsManager
+    //   }
+    //   override func tearDown() {
+    //     TPPAnnotations.executorOverride = nil
+    //     TPPAnnotations.accountsManagerOverride = nil
+    //   }
     //
-    // Never set this from production code.
+    // Never set these from production code.
     nonisolated(unsafe) static var executorOverride: TPPNetworkExecutor?
+    nonisolated(unsafe) static var accountsManagerOverride: TPPLibraryAccountsProvider?
 
     /// Returns the executor TPPAnnotations should use for the current call.
     /// In production this is always `.shared`. In tests, setting
     /// `executorOverride` lets the test inject a stubbed executor.
     fileprivate static var currentExecutor: TPPNetworkExecutor {
-        return executorOverride ?? TPPNetworkExecutor.shared
+        return executorOverride ?? AppContainer.production().networkExecutor
+    }
+
+    /// Returns the accounts provider TPPAnnotations should use for the
+    /// current call. In production this is always `.shared`. In tests,
+    /// setting `accountsManagerOverride` lets the test inject a mock.
+    fileprivate static var currentAccountsManager: TPPLibraryAccountsProvider {
+        return accountsManagerOverride ?? AppContainer.production().accountsManager
     }
 
     // MARK: - Reading Position
@@ -150,7 +184,7 @@ protocol AnnotationsManager {
 
         // Format bookmark for submission to server according to spec
         let bookmark = TPPBookmarkSpec(time: NSDate(),
-                                       device: AccountsManager.shared.currentUserAccount.deviceID ?? "",
+                                       device: Self.currentAccountsManager.currentUserAccount.deviceID ?? "",
                                        motivation: motivation,
                                        bookID: bookID,
                                        selectorValue: selectorValue)
@@ -194,7 +228,7 @@ protocol AnnotationsManager {
 
         let spec = TPPBookmarkSpec(
             time: NSDate(),
-            device: AccountsManager.shared.currentUserAccount.deviceID ?? "",
+            device: Self.currentAccountsManager.currentUserAccount.deviceID ?? "",
             motivation: .bookmark,
             bookID: bookID,
             selectorValue: selectorValue
@@ -547,14 +581,21 @@ protocol AnnotationsManager {
 
     /// Annotation-syncing is possible only if the given `account` is signed-in
     /// and if the currently selected library supports it.
-    static func syncIsPossible(_ account: TPPUserAccount, accountsManager: AccountsManager = .shared) -> Bool {
-        let library = accountsManager.currentAccount
+    ///
+    /// `accountsManager` defaults to the test-aware
+    /// `currentAccountsManager` accessor, so tests that set
+    /// `accountsManagerOverride` are honored without needing to pass an
+    /// argument from every call site.
+    static func syncIsPossible(_ account: TPPUserAccount, accountsManager: TPPLibraryAccountsProvider? = nil) -> Bool {
+        let manager = accountsManager ?? Self.currentAccountsManager
+        let library = manager.currentAccount
         return account.hasCredentials() && library?.details?.supportsSimplyESync == true
     }
 
-    static func syncIsPossibleAndPermitted(accountsManager: AccountsManager = .shared) -> Bool {
-        let account = AccountsManager.shared.currentUserAccount
-        let acct = accountsManager.currentAccount
+    static func syncIsPossibleAndPermitted(accountsManager: TPPLibraryAccountsProvider? = nil) -> Bool {
+        let manager = accountsManager ?? Self.currentAccountsManager
+        let account = manager.currentUserAccount
+        let acct = manager.currentAccount
         let hasCreds = account.hasCredentials()
         let supportsSync = acct?.details?.supportsSimplyESync == true
         let permissionGranted = acct?.details?.syncPermissionGranted == true
@@ -571,10 +612,12 @@ protocol AnnotationsManager {
         return TPPConfiguration.mainFeedURL()?.appendingPathComponent("annotations/")
     }
 
-    private static func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any], accountsManager: AccountsManager = .shared, networkExecutor: TPPNetworkExecutor = .shared) {
-        let libraryID = accountsManager.currentAccount?.uuid ?? ""
+    private static func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any], accountsManager: TPPLibraryAccountsProvider? = nil, networkExecutor: TPPNetworkExecutor? = nil) {
+        let manager = accountsManager ?? Self.currentAccountsManager
+        let executor = networkExecutor ?? Self.currentExecutor
+        let libraryID = manager.currentAccount?.uuid ?? ""
         let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
-        let headers = networkExecutor.request(for: url).allHTTPHeaderFields
-        NetworkQueue.shared().addRequest(libraryID, bookID, url, .POST, parameterData, headers)
+        let headers = executor.request(for: url).allHTTPHeaderFields
+        AppContainer.production().networkQueue.addRequest(libraryID, bookID, url, .POST, parameterData, headers)
     }
 }

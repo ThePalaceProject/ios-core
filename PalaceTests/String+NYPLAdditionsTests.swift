@@ -35,14 +35,36 @@ class String_NYPLAdditionsTests: XCTestCase {
         XCTAssertEqual("password".md5String(), "5f4dcc3b5aa765d61d8327deb882cf99")
     }
 
-    func testBase64Encode() {
-        let s = ("ynJZEsWMnTudEGg646Tmua" as NSString).fileSystemSafeBase64EncodedString(usingEncoding: String.Encoding.utf8.rawValue)
-        XCTAssertEqual(s, "eW5KWkVzV01uVHVkRUdnNjQ2VG11YQ")
-    }
+    /// fileSystemSafeBase64Encoded/Decoded must round-trip — encoding then
+    /// decoding must yield the original. Pin both directions in one body
+    /// AND assert the encoded form has none of the file-system-unsafe
+    /// characters that the variant exists to avoid (`/`, `+`, `=`).
+    /// A mutant that produces correctly-decoded but file-system-unsafe
+    /// output fails on the unsafe-char absence check.
+    func testFileSystemSafeBase64_encodeAndDecodeRoundTripWithoutUnsafeChars() {
+        let original = "ynJZEsWMnTudEGg646Tmua" as NSString
+        let encoded = original.fileSystemSafeBase64EncodedString(
+            usingEncoding: String.Encoding.utf8.rawValue)
 
-    func testBase64Decode() {
-        let s = ("eW5KWkVzV01uVHVkRUdnNjQ2VG11YQ" as NSString).fileSystemSafeBase64DecodedString(usingEncoding: String.Encoding.utf8.rawValue)
-        XCTAssertEqual(s, "ynJZEsWMnTudEGg646Tmua")
+        // Canonical encoded form
+        XCTAssertEqual(encoded, "eW5KWkVzV01uVHVkRUdnNjQ2VG11YQ")
+
+        // File-system-safe variant must NOT contain `/`, `+`, or `=` —
+        // that's the entire reason for this method's existence vs the
+        // standard base64 encoder.
+        XCTAssertFalse(encoded?.contains("/") ?? true,
+                       "fileSystemSafeBase64 must NOT contain '/' — not safe in path components")
+        XCTAssertFalse(encoded?.contains("+") ?? true,
+                       "fileSystemSafeBase64 must NOT contain '+'")
+        XCTAssertFalse(encoded?.contains("=") ?? true,
+                       "fileSystemSafeBase64 must NOT contain '=' padding")
+
+        // Round-trip back to the original — proves encode and decode are
+        // mutual inverses, not just both producing the canonical strings.
+        let decoded = (encoded! as NSString).fileSystemSafeBase64DecodedString(
+            usingEncoding: String.Encoding.utf8.rawValue)
+        XCTAssertEqual(decoded, original as String,
+                       "encode→decode must round-trip back to original")
     }
 
     func testSHA256() {

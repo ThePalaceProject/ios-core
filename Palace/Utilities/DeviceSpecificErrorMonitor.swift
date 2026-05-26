@@ -10,6 +10,7 @@ import Foundation
 import FirebaseCore
 import FirebaseAnalytics
 import FirebaseCrashlytics
+import PalaceLogging
 
 /// Lightweight error monitor that can be remotely enabled for specific devices.
 /// Zero overhead when disabled, comprehensive logging when enabled.

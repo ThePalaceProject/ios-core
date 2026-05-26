@@ -9,6 +9,8 @@
 //
 
 import XCTest
+import PalaceNetwork
+import PalaceCatalog
 @testable import Palace
 
 final class DefaultCatalogAPITests: XCTestCase {
@@ -25,7 +27,7 @@ final class DefaultCatalogAPITests: XCTestCase {
         super.setUp()
         networkClientMock = NetworkClientMock()
         parser = OPDSParser()
-        sut = DefaultCatalogAPI(client: networkClientMock, parser: parser)
+        sut = DefaultCatalogAPI(client: networkClientMock, parser: parser, featureFlags: MockFeatureFlagProvider())
     }
 
     override func tearDown() {

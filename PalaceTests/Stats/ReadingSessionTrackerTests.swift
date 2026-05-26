@@ -91,12 +91,8 @@ final class ReadingSessionTrackerTests: XCTestCase {
     tracker.endSession()
 
     // Give the async Task time to run
-    let expectation = XCTestExpectation(description: "No session recorded")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+    drainMainQueue()
       XCTAssertTrue(self.mockStatsService.recordedSessions.isEmpty)
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
   }
 
   // MARK: - Zero-duration sessions filtered
@@ -106,13 +102,9 @@ final class ReadingSessionTrackerTests: XCTestCase {
     tracker.startSession(bookID: "book-1", bookTitle: "Quick", format: .epub)
     tracker.endSession()
 
-    let expectation = XCTestExpectation(description: "Brief session filtered")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+    drainMainQueue()
       // Session with < 10s duration should be filtered out
       XCTAssertTrue(self.mockStatsService.recordedSessions.isEmpty)
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
   }
 
   // MARK: - Multiple start/end cycles
@@ -160,14 +152,10 @@ final class ReadingSessionTrackerTests: XCTestCase {
       genres: ["Fiction"]
     )
 
-    let expectation = XCTestExpectation(description: "Completion recorded")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-      XCTAssertEqual(self.mockStatsService.recordedCompletions.count, 1)
-      XCTAssertEqual(self.mockStatsService.recordedCompletions.first?.bookID, "book-1")
-      XCTAssertEqual(self.mockStatsService.recordedCompletions.first?.bookTitle, "Finished Book")
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
+    awaitCondition { self.mockStatsService.recordedCompletions.count == 1 }
+    XCTAssertEqual(mockStatsService.recordedCompletions.count, 1)
+    XCTAssertEqual(mockStatsService.recordedCompletions.first?.bookID, "book-1")
+    XCTAssertEqual(mockStatsService.recordedCompletions.first?.bookTitle, "Finished Book")
   }
 
   func testRecordBookFinished_TriggersBadgeRefresh() {
@@ -177,12 +165,8 @@ final class ReadingSessionTrackerTests: XCTestCase {
       format: .epub
     )
 
-    let expectation = XCTestExpectation(description: "Badge refresh triggered")
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-      XCTAssertGreaterThanOrEqual(self.mockBadgeService.refreshCallCount, 1)
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 1.0)
+    awaitCondition { self.mockBadgeService.refreshCallCount >= 1 }
+    XCTAssertGreaterThanOrEqual(mockBadgeService.refreshCallCount, 1)
   }
 
   // MARK: - isTracking and activeBookID

@@ -28,7 +28,11 @@ final class BookCellModelCacheTests: XCTestCase {
                 observeRegistryChanges: false
             ),
             imageCache: mockImageCache,
-            bookRegistry: mockBookRegistry
+            bookRegistry: mockBookRegistry,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
     }
 
@@ -50,14 +54,22 @@ final class BookCellModelCacheTests: XCTestCase {
         XCTAssertEqual(model.book.title, "Test Book")
     }
 
-    func testModelReuse() throws {
+    func testModelReuse_returnsSameInstanceAndDoesNotGrowCacheCount() throws {
         let book = makeTestBook(identifier: "book1", title: "Test Book")
 
         let model1 = sut.model(for: book)
+        let countAfterFirst = sut.count
         let model2 = sut.model(for: book)
+        let countAfterSecond = sut.count
 
-        // Should be the same instance
+        // Identity — second lookup must reuse the cached instance.
         XCTAssertTrue(model1 === model2, "Cache should return same model instance")
+
+        // Count must NOT grow on the second lookup — guards a mutant that
+        // produces same-identity-but-double-stored entries (would silently
+        // bloat memory under heavy scrolling).
+        XCTAssertEqual(countAfterFirst, 1, "First lookup creates exactly one entry")
+        XCTAssertEqual(countAfterSecond, 1, "Re-lookup must NOT add a second entry")
     }
 
     func testDifferentBooksGetDifferentModels() throws {
@@ -194,7 +206,11 @@ final class BookCellModelCacheTests: XCTestCase {
                 observeRegistryChanges: false
             ),
             imageCache: mockImageCache,
-            bookRegistry: mockBookRegistry
+            bookRegistry: mockBookRegistry,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
 
         let book = makeTestBook(identifier: "downloadingBook", title: "Test Book")
@@ -231,7 +247,11 @@ final class BookCellModelCacheTests: XCTestCase {
                 observeRegistryChanges: false
             ),
             imageCache: mockImageCache,
-            bookRegistry: mockBookRegistry
+            bookRegistry: mockBookRegistry,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
 
         let book = makeTestBook(identifier: "activeDownload", title: "Active Download")
@@ -267,7 +287,11 @@ final class BookCellModelCacheTests: XCTestCase {
                 observeRegistryChanges: false
             ),
             imageCache: mockImageCache,
-            bookRegistry: mockBookRegistry
+            bookRegistry: mockBookRegistry,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
 
         let book = makeTestBook(identifier: "holdBook", title: "Hold Book")
@@ -330,39 +354,37 @@ final class BookCellModelCacheTests: XCTestCase {
         XCTAssertLessThanOrEqual(sut.count, 20)
     }
 
-    func testInvalidateNonExistentKey_DoesNotCrash() throws {
-        // Invalidating a key that doesn't exist should not crash
+    /// Empty-cache safety net: every public mutator must be a no-op (or
+    /// safe operation) when the cache is empty — never crash, never
+    /// invent entries. Lock all five entry points in one body. After every
+    /// call the count must remain 0. A mutant that adds a placeholder
+    /// entry on any of these paths fails on the count check; a mutant
+    /// that crashes (e.g. force-unwraps a missing key) trips XCTest's
+    /// signal handling.
+    func testEmptyCache_survivesAllPublicMutatorsWithoutCrashOrSpuriousEntries() throws {
+        XCTAssertEqual(sut.count, 0, "Pre-condition: cache starts empty")
+
         sut.invalidate(for: "non-existent-key")
+        XCTAssertEqual(sut.count, 0, "invalidate(for:) on missing key must not insert")
 
-        XCTAssertEqual(sut.count, 0)
-    }
+        sut.invalidate(for: ["a", "b", "c"])
+        XCTAssertEqual(sut.count, 0, "invalidate(for: [Set]) on missing keys must not insert")
 
-    func testClearEmptyCache_DoesNotCrash() throws {
-        // Clearing an empty cache should not crash
         sut.clear()
+        XCTAssertEqual(sut.count, 0, "clear() on empty cache must remain at 0")
 
-        XCTAssertEqual(sut.count, 0)
-    }
-
-    func testMemoryWarningOnEmptyCache_DoesNotCrash() throws {
         sut.handleMemoryWarning()
+        XCTAssertEqual(sut.count, 0, "memory warning on empty cache must remain at 0")
 
-        XCTAssertEqual(sut.count, 0)
-    }
-
-    func testPreloadEmptyArray_DoesNotCrash() throws {
         sut.preload(books: [])
+        XCTAssertEqual(sut.count, 0, "preload([]) must not insert anything")
 
-        XCTAssertEqual(sut.count, 0)
-    }
-
-    func testPrefetchWithEmptyRange_DoesNotCrash() throws {
+        // prefetch with empty visible range across a non-empty array — buffer 0
+        // means no preload window, so nothing gets cached.
         let books = [makeTestBook(identifier: "book1", title: "Book")]
-
         sut.prefetch(books: books, visibleRange: 0..<0, buffer: 0)
-
-        // Should not crash
-        XCTAssertTrue(true)
+        XCTAssertEqual(sut.count, 0,
+                       "prefetch with empty visible range + zero buffer must NOT insert any entries")
     }
 
     // MARK: - Configuration Tests
@@ -424,40 +446,45 @@ final class BookCellModelCacheTests: XCTestCase {
         XCTAssertEqual(model1.book.identifier, originalBook.identifier)
     }
 
-    /// Cache update semantics: identity beats timestamp.
-    ///
-    /// Historical note: the cache used to gate updates on
-    /// `book.updated >= cached.book.updated`, but that left MyBooks cells
-    /// rendering stale metadata when a fresh registry fetch produced a
-    /// TPPBook with a slightly-older `updated` (sub-second disk round-trip
-    /// drift between the catalog feed and the loans feed). The fix:
-    /// trust identity — if the registry hands us a different TPPBook
-    /// instance for the same identifier, that's the authoritative one,
-    /// regardless of timestamp. See BookCellModelCache.swift:135-147.
-    /// This test pins the new contract.
-    func testModelUpdate_DifferentBookInstance_UpdatesRegardlessOfTimestamp() async throws {
+    /// The cache swaps in any new TPPBook instance regardless of `updated`
+    /// timestamp. Historically this was guarded by `fresh.updated >= cached.updated`
+    /// but sub-second disk round-trip drift and catalog-vs-loans merge order
+    /// made that guard drop legitimate registry updates — leaving cells with
+    /// stale author lines until a library reselect wiped the cache. The guard
+    /// is gone; identity alone is authoritative. See BookCellModelCache.model(for:).
+    func testModelUpdate_SwapsInstance_IgnoringTimestamp() async throws {
         let newerDate = Date(timeIntervalSince1970: 2000)
         let olderDate = Date(timeIntervalSince1970: 1000)
 
-        let firstBook = makeTestBook(identifier: "older-test", title: "First Title", updated: newerDate)
-        let secondBook = makeTestBook(identifier: "older-test", title: "Second Title", updated: olderDate)
-
+        let firstBook = makeTestBook(identifier: "identity-swap", title: "First", updated: newerDate)
         let model = sut.model(for: firstBook)
-        XCTAssertEqual(model.book.title, "First Title")
+        XCTAssertEqual(model.book.title, "First")
+        XCTAssertEqual(model.book.updated, newerDate)
 
-        // Different instance for the same identifier — must update the
-        // cached model even though `updated` is older.
+        // A different instance with an OLDER timestamp — registry says this is
+        // now the authoritative record. The cache must accept the swap.
+        let secondBook = makeTestBook(identifier: "identity-swap", title: "Second", updated: olderDate)
         let sameModel = sut.model(for: secondBook)
-        XCTAssertTrue(model === sameModel,
-                      "Same identifier must return the same cached model instance")
+        XCTAssertTrue(model === sameModel, "cache returns the same BookCellModel; only `book` is swapped")
 
-        // Update is dispatched to MainActor; yield to drain it.
+        // Drain the deferred Task { @MainActor } that actually applies the swap.
         await Task.yield(); await Task.yield(); await Task.yield()
 
-        XCTAssertEqual(model.book.title, "Second Title",
-                       "Identity-over-timestamp: different TPPBook instance must overwrite the cached book")
-        XCTAssertEqual(model.book.updated, olderDate,
-                       "Updated timestamp must mirror the new instance, even if older")
+        XCTAssertEqual(model.book.title, "Second", "older-timestamp registry instance must still replace the cached book")
+        XCTAssertEqual(model.book.updated, olderDate)
+    }
+
+    /// Passing the identical TPPBook instance must not trigger the swap path —
+    /// that would churn @Published updates and cause needless re-renders.
+    func testModelUpdate_SameInstance_DoesNotMutateBook() async throws {
+        let book = makeTestBook(identifier: "identity-nop", title: "Only", updated: Date(timeIntervalSince1970: 1000))
+        let model = sut.model(for: book)
+        XCTAssertTrue(model.book === book)
+
+        _ = sut.model(for: book)
+        await Task.yield(); await Task.yield(); await Task.yield()
+
+        XCTAssertTrue(model.book === book, "same-instance lookup must not swap the book pointer")
     }
 
     // MARK: - Helpers

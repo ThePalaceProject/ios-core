@@ -1,0 +1,325 @@
+{
+  "module": "Accounts",
+  "generated_at": "2026-05-12T16:15:16+00:00",
+  "file_count": 21,
+  "shared_singleton_reads": 13,
+  "public_types": [
+    {
+      "name": "DRMObject",
+      "kind": "class",
+      "file": "User/UserProfileDocument.swift",
+      "line": 8
+    },
+    {
+      "name": "Link",
+      "kind": "class",
+      "file": "User/UserProfileDocument.swift",
+      "line": 29
+    },
+    {
+      "name": "Settings",
+      "kind": "class",
+      "file": "User/UserProfileDocument.swift",
+      "line": 36
+    },
+    {
+      "name": "UserProfileDocument",
+      "kind": "class",
+      "file": "User/UserProfileDocument.swift",
+      "line": 3
+    }
+  ],
+  "objc_surface": [
+    {
+      "name": "Account",
+      "kind": "class",
+      "file": "Library/Account.swift",
+      "line": 505
+    },
+    {
+      "name": "AccountDetails",
+      "kind": "class",
+      "file": "Library/Account.swift",
+      "line": 37
+    },
+    {
+      "name": "AccountsManager",
+      "kind": "class",
+      "file": "Library/AccountsManager.swift",
+      "line": 68
+    },
+    {
+      "name": "Authentication",
+      "kind": "class",
+      "file": "Library/Account.swift",
+      "line": 67
+    },
+    {
+      "name": "DRMObject",
+      "kind": "class",
+      "file": "User/UserProfileDocument.swift",
+      "line": 8
+    },
+    {
+      "name": "Link",
+      "kind": "class",
+      "file": "User/UserProfileDocument.swift",
+      "line": 29
+    },
+    {
+      "name": "LoginKeyboard",
+      "kind": "enum",
+      "file": "Library/Account.swift",
+      "line": 720
+    },
+    {
+      "name": "OPDS2SamlIDP",
+      "kind": "class",
+      "file": "Library/Account.swift",
+      "line": 8
+    },
+    {
+      "name": "Settings",
+      "kind": "class",
+      "file": "User/UserProfileDocument.swift",
+      "line": 36
+    },
+    {
+      "name": "TPPAccountAuthState",
+      "kind": "enum",
+      "file": "User/TPPAccountAuthState.swift",
+      "line": 29
+    },
+    {
+      "name": "TPPAgeCheck",
+      "kind": "class",
+      "file": "AgeCheck/TPPAgeCheck.swift",
+      "line": 25
+    },
+    {
+      "name": "TPPAgeCheckChoiceStorage",
+      "kind": "protocol",
+      "file": "AgeCheck/TPPAgeCheck.swift",
+      "line": 21
+    },
+    {
+      "name": "TPPAgeCheckVerifying",
+      "kind": "protocol",
+      "file": "AgeCheck/TPPAgeCheck.swift",
+      "line": 15
+    },
+    {
+      "name": "TPPCurrentLibraryAccountProvider",
+      "kind": "protocol",
+      "file": "Library/AccountsManager.swift",
+      "line": 48
+    },
+    {
+      "name": "TPPLibraryAccountsProvider",
+      "kind": "protocol",
+      "file": "Library/AccountsManager.swift",
+      "line": 61
+    },
+    {
+      "name": "TPPSignedInStateProvider",
+      "kind": "protocol",
+      "file": "Library/Account.swift",
+      "line": 27
+    },
+    {
+      "name": "TPPUserAccount",
+      "kind": "class",
+      "file": "User/TPPUserAccount.swift",
+      "line": 51
+    },
+    {
+      "name": "TPPUserAccountProvider",
+      "kind": "protocol",
+      "file": "User/TPPUserAccount.swift",
+      "line": 47
+    },
+    {
+      "name": "TPPUserAccountResolving",
+      "kind": "protocol",
+      "file": "Library/AccountsManager.swift",
+      "line": 56
+    },
+    {
+      "name": "URLType",
+      "kind": "enum",
+      "file": "Library/Account.swift",
+      "line": 711
+    },
+    {
+      "name": "UserAccountAuthHelper",
+      "kind": "class",
+      "file": "User/UserAccountAuthState.swift",
+      "line": 18
+    },
+    {
+      "name": "UserProfileDocument",
+      "kind": "class",
+      "file": "User/UserProfileDocument.swift",
+      "line": 3
+    },
+    {
+      "name": "completeAgeCheck",
+      "kind": "func",
+      "file": "AgeCheck/TPPAgeCheckViewController.swift",
+      "line": 43
+    },
+    {
+      "name": "hidePickerView",
+      "kind": "func",
+      "file": "AgeCheck/TPPAgeCheckViewController.swift",
+      "line": 59
+    },
+    {
+      "name": "loadAuthenticationDocument",
+      "kind": "func",
+      "file": "Library/Account.swift",
+      "line": 562
+    },
+    {
+      "name": "setAdobeToken",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 346
+    },
+    {
+      "name": "setAdobeToken",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 361
+    },
+    {
+      "name": "setAdobeVendor",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 355
+    },
+    {
+      "name": "setAuthToken",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 383
+    },
+    {
+      "name": "setAuthorizationIdentifier",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 372
+    },
+    {
+      "name": "setBarcode",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 341
+    },
+    {
+      "name": "setCookies",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 395
+    },
+    {
+      "name": "setDeviceID",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 413
+    },
+    {
+      "name": "setLicensor",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 367
+    },
+    {
+      "name": "setPatron",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 377
+    },
+    {
+      "name": "setProvider",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 401
+    },
+    {
+      "name": "setUserID",
+      "kind": "func",
+      "file": "User/TPPUserAccount.swift",
+      "line": 407
+    },
+    {
+      "name": "updateAccountSetFromNotification",
+      "kind": "func",
+      "file": "Library/AccountsManager.swift",
+      "line": 741
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "AccountLogoDelegate",
+      "file": "Library/Account.swift",
+      "line": 31
+    },
+    {
+      "name": "CatalogFeedPreloading",
+      "file": "Library/CatalogPreloader.swift",
+      "line": 6
+    },
+    {
+      "name": "CrawlerNetworkFetching",
+      "file": "Library/LibraryRegistryCrawler.swift",
+      "line": 21
+    },
+    {
+      "name": "LibraryRegistryCrawlerDelegate",
+      "file": "Library/LibraryRegistryCrawler.swift",
+      "line": 38
+    },
+    {
+      "name": "TPPAgeCheckChoiceStorage",
+      "file": "AgeCheck/TPPAgeCheck.swift",
+      "line": 21
+    },
+    {
+      "name": "TPPAgeCheckValidationDelegate",
+      "file": "AgeCheck/TPPAgeCheck.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPAgeCheckVerifying",
+      "file": "AgeCheck/TPPAgeCheck.swift",
+      "line": 15
+    },
+    {
+      "name": "TPPCurrentLibraryAccountProvider",
+      "file": "Library/AccountsManager.swift",
+      "line": 48
+    },
+    {
+      "name": "TPPLibraryAccountsProvider",
+      "file": "Library/AccountsManager.swift",
+      "line": 61
+    },
+    {
+      "name": "TPPSignedInStateProvider",
+      "file": "Library/Account.swift",
+      "line": 27
+    },
+    {
+      "name": "TPPUserAccountProvider",
+      "file": "User/TPPUserAccount.swift",
+      "line": 47
+    },
+    {
+      "name": "TPPUserAccountResolving",
+      "file": "Library/AccountsManager.swift",
+      "line": 56
+    }
+  ]
+}

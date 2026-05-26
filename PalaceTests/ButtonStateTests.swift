@@ -33,116 +33,93 @@ final class ButtonStateTests: XCTestCase {
 
     // MARK: - Borrowing Tests
 
-    func testCanBorrowEpubWithPreview() {
-        let testState = BookButtonState.canBorrow
-        let expectedButtons = [BookButtonType.get, .sample]
+    /// Borrow state: when previewEnabled and the book has a preview link, the
+    /// sample button appears alongside Get; when previewEnabled is false,
+    /// only Get remains. Paired across content types so a mutant that flips
+    /// the previewEnabled check fails on either epub or audiobook.
+    func testCanBorrow_epubButtonsRespectPreviewToggle() {
         let testEpub = testEpub
         testEpub.previewLink = TPPFake.genericSample
-        let resultButtons = testState.buttonTypes(book: testEpub, previewEnabled: true)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
+
+        let withPreview = BookButtonState.canBorrow.buttonTypes(book: testEpub, previewEnabled: true)
+        let withoutPreview = BookButtonState.canBorrow.buttonTypes(book: testEpub, previewEnabled: false)
+
+        XCTAssertEqual(Set(withPreview),    Set([.get, .sample]),
+                       "Preview enabled + epub previewLink → Get + Sample")
+        XCTAssertEqual(Set(withoutPreview), Set([.get]),
+                       "Preview disabled → only Get; sample button must not leak through")
     }
 
-    func testCanBorrowEpubWithoutPreview() {
-        let testState = BookButtonState.canBorrow
-        let expectedButtons = [BookButtonType.get]
-        let resultButtons = testState.buttonTypes(book: testEpub, previewEnabled: false)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
-    }
-
-    func testCanBorrowAudiobookWithPreview() {
-        let testState = BookButtonState.canBorrow
-        let expectedButtons = [BookButtonType.get, .audiobookSample]
+    func testCanBorrow_audiobookButtonsRespectPreviewToggle() {
         let testAudiobook = testAudiobook
         testAudiobook.previewLink = TPPFake.genericAudiobookSample
-        let resultButtons = testState.buttonTypes(book: testAudiobook, previewEnabled: true)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
-    }
 
-    func testCanBorrowAudiobookWithoutPreview() {
-        let testState = BookButtonState.canBorrow
-        let expectedButtons = [BookButtonType.get]
-        let resultButtons = testState.buttonTypes(book: testAudiobook, previewEnabled: false)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
+        let withPreview = BookButtonState.canBorrow.buttonTypes(book: testAudiobook, previewEnabled: true)
+        let withoutPreview = BookButtonState.canBorrow.buttonTypes(book: testAudiobook, previewEnabled: false)
+
+        XCTAssertEqual(Set(withPreview),    Set([.get, .audiobookSample]),
+                       "Audiobooks must surface .audiobookSample, not .sample — wrong button → wrong player")
+        XCTAssertEqual(Set(withoutPreview), Set([.get]))
     }
 
     // MARK: - Holding Tests
 
-    func testCanHoldEpubWithPreview() {
-        let testState = BookButtonState.canHold
-        let expectedButtons = [BookButtonType.reserve, .sample]
+    /// canHold mirrors canBorrow with reserve in place of get.
+    func testCanHold_epubButtonsRespectPreviewToggle() {
         let testEpub = testEpub
         testEpub.previewLink = TPPFake.genericSample
 
-        let resultButtons = testState.buttonTypes(book: testEpub, previewEnabled: true)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
+        let withPreview = BookButtonState.canHold.buttonTypes(book: testEpub, previewEnabled: true)
+        let withoutPreview = BookButtonState.canHold.buttonTypes(book: testEpub, previewEnabled: false)
+
+        XCTAssertEqual(Set(withPreview),    Set([.reserve, .sample]))
+        XCTAssertEqual(Set(withoutPreview), Set([.reserve]))
     }
 
-    func testCanHoldEpubWithoutPreview() {
-        let testState = BookButtonState.canHold
-        let expectedButtons = [BookButtonType.reserve]
-        let resultButtons = testState.buttonTypes(book: testEpub, previewEnabled: false)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
-    }
-
-    func testCanHoldAudiobookWithPreview() {
-        let testState = BookButtonState.canHold
-        let expectedButtons = [BookButtonType.reserve, .audiobookSample]
+    func testCanHold_audiobookButtonsRespectPreviewToggle() {
         let testAudiobook = testAudiobook
         testAudiobook.previewLink = TPPFake.genericAudiobookSample
-        let resultButtons = testState.buttonTypes(book: testAudiobook, previewEnabled: true)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
+
+        let withPreview = BookButtonState.canHold.buttonTypes(book: testAudiobook, previewEnabled: true)
+        let withoutPreview = BookButtonState.canHold.buttonTypes(book: testAudiobook, previewEnabled: false)
+
+        XCTAssertEqual(Set(withPreview),    Set([.reserve, .audiobookSample]))
+        XCTAssertEqual(Set(withoutPreview), Set([.reserve]))
     }
 
-    func testCanHoldAudiobookWithoutPreview() {
-        let testState = BookButtonState.canHold
-        let expectedButtons = [BookButtonType.reserve]
-        let resultButtons = testState.buttonTypes(book: testAudiobook, previewEnabled: false)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
-    }
-
-    func testHoldingEpubWithPreview() {
-        let testState = BookButtonState.holding
-        // Implementation returns manageHold + sample when holding (not ready)
-        let expectedButtons = [BookButtonType.manageHold, .sample]
+    /// holding (not yet ready) state: manageHold replaces reserve.
+    func testHolding_epubButtonsRespectPreviewToggle() {
         let testEpub = testEpub
         testEpub.previewLink = TPPFake.genericSample
-        let resultButtons = testState.buttonTypes(book: testEpub, previewEnabled: true)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
+
+        let withPreview = BookButtonState.holding.buttonTypes(book: testEpub, previewEnabled: true)
+        let withoutPreview = BookButtonState.holding.buttonTypes(book: testEpub, previewEnabled: false)
+
+        XCTAssertEqual(Set(withPreview),    Set([.manageHold, .sample]))
+        XCTAssertEqual(Set(withoutPreview), Set([.manageHold]))
     }
 
-    func testHoldingEpubWithoutPreview() {
-        let testState = BookButtonState.holding
-        // Implementation returns manageHold when holding without preview
-        let expectedButtons = [BookButtonType.manageHold]
-        let resultButtons = testState.buttonTypes(book: testEpub, previewEnabled: false)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
-    }
-
-    func testHoldingAudiobookWithPreview() {
-        let testState = BookButtonState.holding
-        // Implementation returns manageHold + audiobookSample when holding
-        let expectedButtons = [BookButtonType.manageHold, .audiobookSample]
+    func testHolding_audiobookButtonsRespectPreviewToggle() {
         let testAudiobook = testAudiobook
         testAudiobook.previewLink = TPPFake.genericAudiobookSample
 
-        let resultButtons = testState.buttonTypes(book: testAudiobook, previewEnabled: true)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
+        let withPreview = BookButtonState.holding.buttonTypes(book: testAudiobook, previewEnabled: true)
+        let withoutPreview = BookButtonState.holding.buttonTypes(book: testAudiobook, previewEnabled: false)
+
+        XCTAssertEqual(Set(withPreview),    Set([.manageHold, .audiobookSample]))
+        XCTAssertEqual(Set(withoutPreview), Set([.manageHold]))
     }
 
-    func testHoldingAudiobookWithoutPreview() {
-        let testState = BookButtonState.holding
-        // Implementation returns manageHold when holding without preview
-        let expectedButtons = [BookButtonType.manageHold]
-        let resultButtons = testState.buttonTypes(book: testAudiobook, previewEnabled: false)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
-    }
-
-    func testHoldingFrontOfQueue() {
-        let testState = BookButtonState.holdingFrontOfQueue
-        // Implementation returns manageHold when holdingFrontOfQueue (isHoldReady returns false without proper availability)
-        let expectedButtons = [BookButtonType.manageHold]
-        let resultButtons = testState.buttonTypes(book: testEpub)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
+    /// holdingFrontOfQueue without an isHoldReady availability falls back to
+    /// manageHold. Assert exact set AND the absence of the get/reserve buttons
+    /// that the next state up adds — guards against a mutant that
+    /// prematurely surfaces the borrow path before hold-ready is true.
+    func testHoldingFrontOfQueue_withoutHoldReady_returnsManageHoldOnly() {
+        let result = BookButtonState.holdingFrontOfQueue.buttonTypes(book: testEpub)
+        XCTAssertEqual(Set(result), Set([.manageHold]))
+        XCTAssertFalse(result.contains(.get),
+                       "holdingFrontOfQueue must NOT prematurely surface .get without isHoldReady")
+        XCTAssertFalse(result.contains(.reserve))
     }
 
     // MARK: - Downloading Tests
@@ -167,18 +144,26 @@ final class ButtonStateTests: XCTestCase {
         XCTAssertEqual(resultButtons.count, 2)
     }
 
-    func testDownloadInProgress() {
-        let testState = BookButtonState.downloadInProgress
-        let expectedButtons = [BookButtonType.cancel]
-        let resultButtons = testState.buttonTypes(book: testEpub)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
+    /// downloadInProgress surfaces only Cancel — no read/listen/retry leakage
+    /// while bytes are still in flight. Lock the absence assertions so a
+    /// mutant that bleeds .read into the in-progress branch fails here.
+    func testDownloadInProgress_yieldsOnlyCancelButton() {
+        let result = BookButtonState.downloadInProgress.buttonTypes(book: testEpub)
+        XCTAssertEqual(Set(result), Set([.cancel]))
+        XCTAssertFalse(result.contains(.retry),  "Retry only appears after a failure, never mid-download")
+        XCTAssertFalse(result.contains(.read),   "Read must not appear until downloadSuccessful")
+        XCTAssertFalse(result.contains(.listen))
     }
 
-    func testDownloadFailed() {
-        let testState = BookButtonState.downloadFailed
-        let expectedButtons = [BookButtonType.cancel, .retry]
-        let resultButtons = testState.buttonTypes(book: testEpub)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
+    /// downloadFailed surfaces Cancel + Retry (matched pair). A mutant that
+    /// drops Retry would silently strand the user with no way to recover.
+    func testDownloadFailed_yieldsCancelAndRetry() {
+        let result = BookButtonState.downloadFailed.buttonTypes(book: testEpub)
+        XCTAssertEqual(Set(result), Set([.cancel, .retry]))
+        XCTAssertTrue(result.contains(.retry),
+                      "Retry MUST be present on failure or the user has no recovery path")
+        XCTAssertFalse(result.contains(.read),
+                       "Read must not appear until a successful download")
     }
 
     // MARK: - Post-Download & Unsupported Tests
@@ -203,11 +188,16 @@ final class ButtonStateTests: XCTestCase {
         XCTAssertEqual(resultButtons.count, 2)
     }
 
-    func testUnsupported() {
-        let testState = BookButtonState.unsupported
-        let expectedButtons = [BookButtonType]()
-        let resultButtons = testState.buttonTypes(book: testEpub)
-        XCTAssertEqual(Set(expectedButtons), Set(resultButtons))
+    /// unsupported state must yield zero buttons — no fallback get/read/cancel.
+    /// Pin the specific buttons that the OTHER states surface so a mutant
+    /// flipping unsupported's branch into any neighbour state's buttons fails.
+    func testUnsupported_yieldsEmptyButtonSetAndNoLeakageFromOtherStates() {
+        let result = BookButtonState.unsupported.buttonTypes(book: testEpub)
+        XCTAssertTrue(result.isEmpty, "unsupported books must surface no actionable buttons")
+        XCTAssertFalse(result.contains(.get),     "must not borrow an unsupported book")
+        XCTAssertFalse(result.contains(.read),    "must not read an unsupported book")
+        XCTAssertFalse(result.contains(.cancel),  "nothing to cancel")
+        XCTAssertFalse(result.contains(.retry),   "nothing to retry")
     }
 
     // MARK: - Additional content-type coverage (audiobook & PDF)

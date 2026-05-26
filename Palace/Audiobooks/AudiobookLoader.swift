@@ -16,6 +16,8 @@
 //
 
 import Foundation
+import PalaceCatalog
+import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 
 /// Errors produced by AudiobookLoader during audiobook preparation.
@@ -96,7 +98,6 @@ final class AudiobookLoader {
         indirect.flatMap { entry in [entry.type] + flattenIndirectTypes(entry.indirectAcquisitions) }
     }
 
-    #if LCP
     /// Returns a URL whose `pathExtension` is `lcpa`, regardless of the input
     /// extension. If the input already has `.lcpa` extension, returns it
     /// unchanged. Otherwise creates a sibling symlink with `.lcpa` extension
@@ -132,12 +133,12 @@ final class AudiobookLoader {
             return url
         }
     }
-    #endif
 
     // MARK: - Token refresh
 
     private func refreshTokenIfNeeded(for book: TPPBook, completion: @escaping (Result<Void, AudiobookLoadError>) -> Void) {
-        let userAccount = AccountsManager.shared.currentUserAccount
+        let accountsManager = AppContainer.production().accountsManager
+        let userAccount = accountsManager.currentUserAccount
         guard userAccount.authTokenHasExpired else {
             completion(.success(()))
             return
@@ -155,7 +156,7 @@ final class AudiobookLoader {
         }
         _ = username // guard-bound but unused beyond the predicate check
 
-        TPPNetworkExecutor.shared.refreshTokenAndResume(task: nil, accountId: AccountsManager.shared.currentAccount?.uuid) { result in
+        AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil, accountId: accountsManager.currentAccount?.uuid) { result in
             switch result {
             case .success:
                 Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
@@ -208,7 +209,7 @@ final class AudiobookLoader {
         #endif
 
         Log.debug(#file, "  Checking for local audiobook manifest...")
-        if let url = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+        if let url = AppContainer.production().downloadCenter.fileUrl(for: book.identifier),
            FileManager.default.fileExists(atPath: url.path) {
             Log.debug(#file, "  Local file exists at: \(url.path)")
 
@@ -221,11 +222,11 @@ final class AudiobookLoader {
             guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
                 Log.error(#file, "  ❌ Failed to parse local file as JSON")
 
-                // Diagnostic dump so support has enough context from a single
-                // failing log: 3.0.2's audiobook-open regression is rooted in
-                // Marketplace audiobooks getting saved with `.epub` extension
-                // because the OPDS feed wraps the LCP MIME inside the indirect
-                // chain and `canOpenBook` misses it.
+                // Diagnostic dump so we can root-cause the 3.0.2+ Marketplace
+                // audiobook regression. The on-disk file fails JSON parse but
+                // a binary container at this path is unexpected — either the
+                // borrow path saved LCP-fulfilled bytes under the wrong path
+                // extension, or the OPDS feed for this distributor changed.
                 let prefix = data.prefix(16).map { String(format: "%02x", $0) }.joined(separator: " ")
                 Log.error(#file, "    diag: bytes=\(data.count), first16=\(prefix), ext=\(url.pathExtension)")
                 let topLevelTypes = book.acquisitions.map { $0.type }.joined(separator: " | ")
@@ -250,19 +251,20 @@ final class AudiobookLoader {
                 // bytes ARE the LCP audiobook .lcpa ZIP container, but
                 // ReadiumStreamer's parser dispatch is extension-based —
                 // `.epub` routes to the EPUB parser which then fails on
-                // missing META-INF/container.xml.
+                // missing META-INF/container.xml (LCP audiobook ZIPs have
+                // manifest.json at the root, not container.xml).
                 //
                 // Recovery: create a `.lcpa` symlink alongside the `.epub`
-                // file pointing at the same data, pass the symlink URL to
-                // LCPAudiobooks so the extension-based dispatch picks the
-                // audiobook parser. The underlying `.epub` file is left
-                // alone so any other reader code that already knows the
-                // path keeps working.
+                // file pointing at the same data, and pass the symlink URL
+                // to LCPAudiobooks so the extension-based dispatch picks
+                // the audiobook parser. The underlying `.epub` file is
+                // left alone so any other reader code that already knows
+                // the path keeps working.
                 //
-                // Going forward, `MyBooksDownloadCenter.pathExtension(for:)`
-                // uses `hasLCPAcquisition` so new downloads save with
-                // `.lcpa` directly. This recovery only fires for legacy
-                // downloads saved under the old logic.
+                // Going forward, `BookFileManager.pathExtension` uses
+                // `hasLCPAcquisition` so new downloads save with `.lcpa`
+                // directly. This recovery only fires for legacy downloads
+                // saved under the old logic.
                 if LCPAudiobooks.hasLCPAcquisition(book) {
                     Log.info(#file, "  🔁 Local file failed JSON parse but book has an LCP acquisition — retrying via LCP path")
                     let lcpSourceURL = Self.ensureLCPExtensionLink(for: url)
@@ -315,7 +317,7 @@ final class AudiobookLoader {
         for book: TPPBook,
         completion: @escaping (Result<URL, AudiobookLoadError>) -> Void
     ) {
-        if let localURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier),
+        if let localURL = AppContainer.production().downloadCenter.fileUrl(for: book.identifier),
            FileManager.default.fileExists(atPath: localURL.path) {
             Log.debug(#file, "  → Using LOCAL LCP file: \(localURL.path)")
             completion(.success(localURL))
@@ -383,7 +385,7 @@ final class AudiobookLoader {
             return
         }
 
-        guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: book.identifier) else {
+        guard let contentURL = AppContainer.production().downloadCenter.fileUrl(for: book.identifier) else {
             Log.error(#file, "  ❌ Cannot determine content directory for LCP license")
             completion(.failure(.missingContentDirectory))
             return
@@ -392,7 +394,7 @@ final class AudiobookLoader {
         let licenseFileURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         Log.info(#file, "  📡 Fetching LCP license from: \(fulfillURL.host ?? "unknown")")
 
-        _ = TPPNetworkExecutor.shared.GET(fulfillURL) { data, response, error in
+        _ = AppContainer.production().networkExecutor.GET(fulfillURL) { data, response, error in
             if let error = error {
                 Log.error(#file, "  ❌ Network error re-downloading LCP license: \(error.localizedDescription)")
                 completion(.failure(.licenseDownloadFailed(underlying: error)))
@@ -427,7 +429,7 @@ final class AudiobookLoader {
     }
 
     private func licenseURL(forBookIdentifier identifier: String) -> URL? {
-        guard let contentURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else { return nil }
+        guard let contentURL = AppContainer.production().downloadCenter.fileUrl(for: identifier) else { return nil }
         let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         return FileManager.default.fileExists(atPath: license.path) ? license : nil
     }
@@ -444,7 +446,7 @@ final class AudiobookLoader {
 
         Log.debug(#file, "  📡 Fetching manifest from URL: \(url.absoluteString)")
 
-        _ = TPPNetworkExecutor.shared.GET(url) { [weak self] data, response, error in
+        _ = AppContainer.production().networkExecutor.GET(url) { [weak self] data, response, error in
             guard let self else { completion(nil); return }
             if let error = error {
                 Log.error(#file, "  ❌ Network error fetching manifest: \(error.localizedDescription)")
@@ -471,10 +473,10 @@ final class AudiobookLoader {
                 }
                 // Diagnostic dump: the manifest fetch path (Marketplace audiobook
                 // route via `opds-publication+json` borrow URL) is one of the
-                // failure modes that's hard to root-cause from logs alone.
-                // Capture the response shape so we can decide between array-vs-dict
-                // JSON, OPDS Publication doc that contains an LCP indirect chain
-                // we should follow, or some other server-side surprise.
+                // failure modes we don't yet root-cause from logs alone. Capture
+                // the response shape so we can decide between (a) array-vs-dict
+                // JSON, (b) OPDS Publication doc that contains an LCP indirect
+                // chain we should follow, or (c) some other server-side surprise.
                 let prefix = data.prefix(64).map { String(format: "%02x", $0) }.joined(separator: " ")
                 Log.error(#file, "    diag: bytes=\(data.count), first64=\(prefix)")
                 if let preview = String(data: data.prefix(256), encoding: .utf8) {
@@ -537,7 +539,24 @@ final class AudiobookLoader {
             return
         }
 
-        AudioBookVendorsHelper.updateVendorKey(book: jsonDict) { [weak self] error in
+        // Resolve the DRM vendor synchronously so the [String: Any] dictionary
+        // never crosses an async boundary. Crashlytics 7bf923ee shows
+        // block_destroy_helper EXC_BREAKPOINT crashes on cantook DRM books even
+        // after the jsonData pre-serialization above; passing `jsonDict` to the
+        // @objc round-trip in `updateVendorKey` was a second existential-capture
+        // path. For non-DRM books we now skip the async hop entirely.
+        let drmVendor = AudioBookVendorsHelper.feedbookVendor(for: jsonDict)
+
+        guard let drmVendor else {
+            if isCancelled {
+                completion(.failure(.cancelled))
+                return
+            }
+            finalizeBuild(book: book, jsonData: jsonData, decryptor: decryptor, completion: completion)
+            return
+        }
+
+        AudioBookVendorsHelper.updateDrmCertificate(for: drmVendor) { [weak self] error in
             Task { @MainActor in
                 guard let self else { completion(.failure(.cancelled)); return }
                 if self.isCancelled {
@@ -596,7 +615,7 @@ final class AudiobookLoader {
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
         var timeTracker: AudiobookTimeTracker?
         if
-            let libraryId = AccountsManager.shared.currentAccount?.uuid,
+            let libraryId = AppContainer.production().accountsManager.currentAccount?.uuid,
             let url = book.timeTrackingURL {
             timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: url)
         }
@@ -605,7 +624,7 @@ final class AudiobookLoader {
             tracks: audiobook.tableOfContents.allTracks,
             decryptor: decryptor
         )
-        networkService.downloadOnlyOnWiFi = TPPSettings.shared.downloadOnlyOnWiFi
+        networkService.downloadOnlyOnWiFi = AppContainer.production().settings.downloadOnlyOnWiFi
 
         let manager = DefaultAudiobookManager(
             metadata: metadata,
@@ -627,7 +646,7 @@ final class AudiobookLoader {
                 )
                 manager.saveLocation(beginningPosition)
             }
-            BookDetailViewModel.presentEndOfBookAlert(for: book)
+            BookDetailViewModel.presentEndOfBookAlert(for: book, downloadCenter: AppContainer.production().downloadCenter)
         }
 
         let playbackModel = AudiobookPlaybackModel(audiobookManager: manager)

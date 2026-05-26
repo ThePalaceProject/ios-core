@@ -21,7 +21,7 @@ import Foundation
 
     private var accountsLoadingLogos = Set<String>()
 
-    @objc required init(completion: @escaping (Account) -> Void, accountsManager: AccountsManager = .shared) {
+    @objc required init(completion: @escaping (Account) -> Void, accountsManager: AccountsManager = AppContainer.production().accountsManager) {
         self.completion = completion
         self.accountsManager = accountsManager
         super.init(nibName: nil, bundle: nil)

@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - OPDS2Link Computed Properties Tests
@@ -338,6 +339,104 @@ final class OPDS2PublicationImageTests: XCTestCase {
             ]
         )
         XCTAssertEqual(pub.coverURL?.absoluteString, "https://example.com/cover.png")
+    }
+}
+
+// MARK: - PP-4230: Narrator survives lightweight OPDS2Publication.toBook()
+//
+// The full-metadata path (OPDS2FullPublication) already maps narrator into
+// the TPPBook contributors dict; the lightweight OPDS2Publication path was
+// silently dropping it, so audiobooks served via the lightweight feed have
+// no narrator row in the book details view (PP-4230).
+
+final class OPDS2PublicationNarratorTests: XCTestCase {
+
+    /// Behavioral: an OPDS2 publication JSON that includes `narrator` must
+    /// surface that name through TPPBook's `narrators` computed property.
+    /// Before PP-4230, OPDS2Publication.toBook() hardcoded `contributors: nil`,
+    /// so this assertion failed even when the feed contained the data.
+    func testToBook_WithNarratorInJSON_ExposesNarratorOnBook() throws {
+        let json = """
+        {
+          "metadata": {
+            "@id": "urn:test:animal-farm",
+            "title": "Animal Farm",
+            "author": [{"name": "George Orwell"}],
+            "narrator": [{"name": "Ralph Cosham"}]
+          },
+          "links": [
+            {
+              "href": "https://example.com/borrow/animal-farm",
+              "rel": "http://opds-spec.org/acquisition/borrow",
+              "type": "application/audiobook+json"
+            }
+          ]
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let publication = try OPDS2Feed.makeDecoder().decode(OPDS2Publication.self, from: data)
+        let book = publication.toBook()
+
+        XCTAssertNotNil(book, "Audiobook publication with valid borrow link must convert to TPPBook")
+        XCTAssertEqual(book?.narrators, "Ralph Cosham",
+                       "PP-4230: narrator from OPDS2 feed must reach TPPBook.narrators")
+    }
+
+    /// Structural: multiple narrators must concatenate the way the book detail
+    /// view renders them (semicolon-joined, matching TPPBook.narrators).
+    func testToBook_WithMultipleNarrators_JoinsWithSemicolons() throws {
+        let json = """
+        {
+          "metadata": {
+            "@id": "urn:test:multi",
+            "title": "Multi-Narrator Book",
+            "narrator": [{"name": "Alice"}, {"name": "Bob"}]
+          },
+          "links": [
+            {
+              "href": "https://example.com/borrow/multi",
+              "rel": "http://opds-spec.org/acquisition/borrow",
+              "type": "application/audiobook+json"
+            }
+          ]
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let publication = try OPDS2Feed.makeDecoder().decode(OPDS2Publication.self, from: data)
+        let book = publication.toBook()
+
+        XCTAssertEqual(book?.narrators, "Alice; Bob",
+                       "Multiple narrators must join with '; ' the way TPPBook.narrators expects")
+    }
+
+    /// Negative: a publication with no narrator must NOT invent one. Catches
+    /// mutations that hardcode a fallback narrator string.
+    func testToBook_WithoutNarrator_BookHasNilNarrators() throws {
+        let json = """
+        {
+          "metadata": {
+            "@id": "urn:test:no-narrator",
+            "title": "Ebook"
+          },
+          "links": [
+            {
+              "href": "https://example.com/borrow/no-narrator",
+              "rel": "http://opds-spec.org/acquisition/borrow",
+              "type": "application/audiobook+json"
+            }
+          ]
+        }
+        """
+
+        let data = json.data(using: .utf8)!
+        let publication = try OPDS2Feed.makeDecoder().decode(OPDS2Publication.self, from: data)
+        let book = publication.toBook()
+
+        XCTAssertNotNil(book)
+        XCTAssertNil(book?.narrators,
+                     "A publication with no narrator field must not synthesise one")
     }
 }
 

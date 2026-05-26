@@ -1,0 +1,35 @@
+{
+  "fixture": "anonymous-borrow/05-after-borrow",
+  "version": "3.0.1",
+  "build": "468",
+  "device": "iPhone 16 Pro",
+  "os": "iOS 18.4",
+  "udid": "DF4A2A27-9888-429D-A749-2E157A049A37",
+  "captured_at": "2026-04-29T17:16:59Z",
+  "screen_size": [1206, 2622],
+  "screenshot_relpath": "05-after-borrow.png",
+  "marks": [
+    {"id": 2, "bbox": [45, 203, 187, 64], "center": [138, 235], "text": "< Back", "confidence": 1.0},
+    {"id": 3, "bbox": [353, 487, 494, 46], "center": [600, 510], "text": "The Impeachment Papers II", "confidence": 1.0},
+    {"id": 7, "bbox": [49, 1295, 407, 45], "center": [252, 1317], "text": "Palace Bookshelf", "confidence": 1.0},
+    {"id": 13, "bbox": [273, 1725, 810, 42], "center": [678, 1746], "text": "Majority Staff Of The House Committee", "confidence": 1.0},
+    {"id": 15, "bbox": [95, 2263, 102, 34], "center": [146, 2280], "text": "Read", "confidence": 1.0},
+    {"id": 16, "bbox": [346, 2263, 163, 38], "center": [427, 2282], "text": "Remove", "confidence": 1.0}
+  ],
+  "asserts": {
+    "title_visible": "The Impeachment Papers II",
+    "post_borrow_actions": ["Read", "Remove"],
+    "post_borrow_action_y_range": [2260, 2300],
+    "no_text": ["Borrow", "Sign In"],
+    "library_attribution_visible": "Palace Bookshelf"
+  },
+  "diffs_from_baseline": {
+    "post_borrow_action_y": "candidate=2280 vs baseline=2221 (Δ=+59px). Same content-driven layout shift as step 04 — longer title pushes Read/Remove down. Action buttons are still at the bottom of the modal/sheet, just at a different absolute y.",
+    "comment": "Borrow→Read+Remove transition matches baseline behavior. The TPPBookRegistry.shared kill (Phase 6.6) and the BorrowReducer state machine both work correctly on candidate. This is the strongest mutation-killing assertion in the flow."
+  },
+  "kills_mutants": [
+    {"file": "Palace/MyBooks/MyBooksDownloadCenter.swift", "rationale": "borrow flow completion writes to registry → if registry write is mutated, no Read button appears (asserted absent: 'Borrow', present: 'Read', 'Remove')"},
+    {"file": "Palace/Book/UI/BookDetail/BookActionHandler.swift", "rationale": "action button state machine — flipping the borrow→loaned transition leaves Borrow visible, asserted absent"},
+    {"file": "Palace/Book/UI/BookDetail/BorrowReducer.swift", "rationale": "BorrowReducer state transitions; failure to emit .loaned action leaves stale Borrow CTA"}
+  ]
+}

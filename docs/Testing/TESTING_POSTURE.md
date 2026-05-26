@@ -9,8 +9,10 @@ Last updated: 2026-04-16
                     │ Manual  │  Device testing, SAML IdP flows,
                     │ Device  │  audiobook playback, DRM fulfillment
                     ├─────────┤
-                 ┌──┤ E2E     │  SpecterQA journeys (26 flows),
-                 │  │ (Specter│  replays (43), accessibility audit
+                 ┌──┤ E2E     │  simdrive (canonical, vision-first) drives
+                 │  │ (sim    │  iOS sim. Active: .simdrive/fixtures/flows/,
+                 │  │  drive) │  .simdrive/journeys/, .simdrive/replays/chaos/.
+                 │  │         │  Legacy: .simdrive/_archive/ (do not extend)
                  │  ├─────────┤
               ┌──┤  │ Integra-│  6 integration tests, contract tests,
               │  │  │ tion    │  mock backend scenarios
@@ -26,7 +28,7 @@ Last updated: 2026-04-16
 | Integration | 6 test files | Fully automated | Yes (in unit suite) |
 | Contract/API | 1 suite + 35 fixtures | Fully automated | Yes (in unit suite) |
 | Snapshot | 11 test files | Automated capture | Artifact only |
-| E2E (SpecterQA) | 26 journeys / 43 replays | MCP-driven replay | Manual trigger |
+| E2E (simdrive) | Active: `.simdrive/fixtures/flows/` + `.simdrive/journeys/` + `.simdrive/replays/chaos/`; legacy SpecterQA corpus (26/43) archived under `.simdrive/_archive/` | MCP-driven replay (SSIM- + structural-gated) + chaos-replay CI workflow | Manual trigger; chaos-replay runs in CI |
 | Security | 3 test files | Fully automated | Yes (in unit suite) |
 | Chaos | 2 test files | Fully automated | Yes (in unit suite) |
 | Fuzz | 3 test files + 9 corpus | Fully automated | Yes (in unit suite) |
@@ -37,7 +39,7 @@ Last updated: 2026-04-16
 ## Tool Inventory
 
 ### Unit Testing
-- **Framework**: XCTest (Xcode 16.1+, iOS 16.0+ deployment target)
+- **Framework**: XCTest (Xcode 26, iOS 16.0+ deployment target)
 - **Simulator**: iPhone 16 Pro (iOS 18.4, id: DF4A2A27-9888-429D-A749-2E157A049A37)
 - **Mock infrastructure**: 23 shared mocks in `PalaceTests/Mocks/`
 - **HTTP hermetic**: `NoNetworkURLProtocol` blocks real network in all unit tests
@@ -50,13 +52,30 @@ Last updated: 2026-04-16
 - **Coverage floors**: `scripts/enforce_coverage_floors.py` + `scripts/coverage-floors.json` — per-module thresholds (46% overall, 30-50% per module)
 - **Rule**: Every test must kill at least one mutant. Tautology and coverage-only tests are banned.
 
-### SpecterQA E2E Testing
+### Credibility criterion (applies to ALL tests, including E2E and simdrive replays)
+
+A test counts as a regression test only when it can answer four questions with cited evidence. If any answer is "I didn't check," the result is a smoke test of the *runner*, not a regression test of the *product* — label it accordingly.
+
+1. **Pre-state controlled.** The system was reset to a starting state matching the test's preconditions. For simdrive replays this means the live screen matches the recording's `pre_screenshot` for step 1 (or the journey's documented `preconditions`). A step-1 SSIM <0.85 with `on_drift=warn` means the engine ran the recorded coords against a *different* screen — recorded stable_ids no longer point at the intended elements.
+2. **Each step verified.** For every action, observe afterward and confirm the *intended* effect. `executed: true` proves the input event dispatched; it does not prove the right element was hit. Verify with a follow-up observe + invariant check (expected text appeared, screen transitioned, mark count changed in the expected direction).
+3. **Post-state asserted.** End with a structural check (`required_text`, `required_chrome` stable_ids, `min_marks`) — not a step count. "Ran 23/23 steps without crashing" is a runner-uptime metric, not a sign-in success. For sign-in: assert "Sign out" button visible. For borrow: assert the book is in My Books. For tab nav: assert the tab indicator moved.
+4. **Evidence cited.** Pass-claims must point to the artifact (screenshot path, observed marks list, log line) that supports them. "It worked" without a pointer is a confidence score, not evidence.
+
+For unit/integration tests this criterion is enforced by mutation testing + the test-quality linter. For simdrive E2E tests this criterion is enforced by `structural_checks` blocks in `.simdrive/journeys/*.yaml`; replay-only runs (the MCP `replay` tool against a `recording.yaml`) do not execute those blocks and therefore count as smoke tests until paired with a structural assertion pass.
+
+### E2E sim-driving — simdrive (canonical)
+- **Package**: `simdrive` (PyPI, alpha track) — see `~/harness/bin/harness simdrive status`
+- **Backend**: real CoreSimulator HID input + vision-first OCR (no XCTest runner, no accessibility-tree dependency)
+- **Capabilities**: `observe` (annotated PNG + marks JSON), `tap` / `swipe` / `type_text` / `press_key`, `record_start` / `record_stop` / `replay` (SSIM-gated), `logs` (NSPredicate filter), `session_start` / `session_end`
+- **Why this replaces SpecterQA**: Reader2 (Readium 3.x WKWebView), out-of-process auth Safari sheets, OS alerts, and iOS-26 UITextField focus all worked partially or not at all under SpecterQA. simdrive sees pixels, not the AX tree.
+- **Tool rules**: see project CLAUDE.md "E2E / UI sim driving — simdrive". Cardinal rules: `observe(annotate=true)` before `tap text=` / `tap mark=`; re-observe after every navigation; pre-grant permissions before `session_start`.
+- **Journeys**: new work goes in `.simdrive/journeys/`. Replays in `.simdrive/replays/`.
+
+### SpecterQA E2E Testing — ARCHIVE
+- **Status**: Deprecated 2026-04-29. Do not extend. Kept on disk to support reproduction of historical regressions only.
 - **Version**: specterqa-ios 7.0.0
-- **Simulator**: iPhone 12 (iOS 26, id: 31CF5C43-DD55-4889-B3B2-9A6810B4E98F)
-- **Journeys**: 26 YAML scenarios in `.specterqa/journeys/`
-- **Replays**: 43 recorded sessions in `.specterqa/replays/`
-- **Capabilities**: Screenshot (via elements), tap, swipe, type, wait, accessibility audit, dark/light mode, console logs, crash detection, network monitoring, performance baselines
-- **Limitations**: `ios_screenshot` exceeds MCP size (use `ios_elements`); `ios_press_key("return")` crashes session; EPUB reader nav controls invisible to XCTest
+- **Corpus**: 26 journey YAMLs + 43 replays in `.simdrive/`
+- **Known limitations** (one of the reasons it was retired): `ios_screenshot` exceeds MCP size; `ios_press_key("return")` crashes session; EPUB reader nav controls invisible to XCTest; iOS-26 cliclick path broke text-field focus.
 
 ### Contract Testing
 - **File**: `PalaceTests/Network/APIContractTests.swift`
@@ -88,53 +107,43 @@ Last updated: 2026-04-16
 - `ui-testing.yml` — E2E test runner (manual trigger)
 - `ledger.yml` — Ledger + QAAtlas + AccessLint (non-blocking)
 
-## Governance Pipeline
+## Pre-PR Verification
 
-Every code change follows this pipeline (enforced by hooks):
+Anyone can self-check their work before opening a PR:
 
-```
-forge_init ─→ forge_propose_changeset ─→ evidence collection ─→ gate promotion ─→ PR
-                                              │
-                    ┌─────────────────────────┴───────────────────────────┐
-                    │ unit_test: XCTest pass/fail counts                  │
-                    │ lint: build errors + test-quality violations         │
-                    │ coverage: line coverage % vs floors                  │
-                    │ mutation: kill rate on changed files (threshold 50%) │
-                    │ a11y_audit: accessibility annotations on UI files    │
-                    └─────────────────────────────────────────────────────┘
+```bash
+scripts/verify-pr.sh --quick    # build + tests + lint + coverage + a11y
+scripts/verify-pr.sh            # adds mutation testing on changed files
 ```
 
-**Enforcement hooks** (`.claude/settings.json`):
-- `git commit` blocked without ForgeOS changeset
-- `git push` blocked without passing gates
-- `gh pr create` blocked without passing gates
+Each check is recorded against the changed files only — pass/fail summary at the end. JSON report optional via `--report /tmp/v.json` for CI consumption.
 
-**Evidence collection**: `scripts/forgeos-session.sh evidence <cs_id>` runs the full battery automatically.
+The mutation pass invokes `python3 scripts/palace_mutate.py` per changed Swift file, looking for ≥50% mutant kill rate (or ≥40% on legacy code with no characterization tests). Critical-path files (sign-in, borrow, download, DRM) require 100% kill rate.
 
-**Pre-PR verification**: `scripts/verify-pr.sh` runs build + tests + lint + coverage + mutation + a11y and produces a JSON report.
+Maintainers additionally run through ForgeOS governance gates that hook into `git commit` / `git push` / `gh pr create` — that pipeline is local-only and outside contributors don't need it.
 
 ## Confidence Matrix
 
 | Feature Area | Unit | Integration | E2E | Manual | Confidence |
 |-------------|------|-------------|-----|--------|------------|
-| Basic auth (barcode/PIN) | High | Medium | Yes (SpecterQA) | Verified | **High** |
-| OAuth/Clever auth | High | Low | Yes (SpecterQA) | Verified | **Medium** |
+| Basic auth (barcode/PIN) | High | Medium | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
+| OAuth/Clever auth | High | Low | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **Medium** |
 | SAML auth | High (29 new tests) | None | Manual only | Pending | **Medium** |
-| OIDC auth | High | Low | Yes (SpecterQA) | Verified | **Medium** |
-| Catalog browsing | High | Yes | Yes (SpecterQA) | Verified | **High** |
-| Search | Medium | Yes | Yes (SpecterQA) | Verified | **High** |
+| OIDC auth | High | Low | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **Medium** |
+| Catalog browsing | High | Yes | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
+| Search | Medium | Yes | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
 | EPUB reading | Low | None | Partial (reader invisible) | Required | **Low** |
 | PDF reading | Low | None | None | Required | **Low** |
 | Audiobook playback | Medium | None | Manual only | Required | **Low** |
-| Book borrowing | High | Yes | Yes (SpecterQA) | Verified | **High** |
-| Holds/Reservations | Medium | None | Yes (SpecterQA) | Verified | **Medium** |
+| Book borrowing | High | Yes | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
+| Holds/Reservations | Medium | None | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **Medium** |
 | Downloads | Medium | None | Manual only | Required | **Low** |
 | DRM (Adobe/LCP) | Low (adversarial only) | None | None | Required | **Very Low** |
 | Push notifications | Medium | None | Partial (tooling) | Required | **Low** |
-| Account switching | High | Yes | Yes (SpecterQA) | Verified | **High** |
-| Credential isolation | High | Yes | Yes (SpecterQA) | Verified | **High** |
+| Account switching | High | Yes | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
+| Credential isolation | High | Yes | Yes (simdrive; SpecterQA-era coverage retained as archive — re-verify under simdrive) | Verified | **High** |
 | CarPlay | Low | None | None | Required | **Very Low** |
-| Accessibility (VoiceOver) | Medium | None | SpecterQA audit | Required | **Medium** |
+| Accessibility (VoiceOver) | Medium | None | simdrive (OCR vs AX-tree diff) — see CLAUDE.md | Required | **Medium** |
 | Offline mode | Low | None | Manual only | Required | **Very Low** |
 
 ## Known Gaps
@@ -148,7 +157,7 @@ forge_init ─→ forge_propose_changeset ─→ evidence collection ─→ gate
 6. **Push notification delivery** — APNs requires real device + server
 
 ### Can Automate But Not Yet Done
-1. **SpecterQA in CI** — 26 journeys exist but not wired into GitHub Actions
+1. **More CI gates beyond `chaos-replay-on-pr.yml`** — `verify-pr.sh --simdrive` is opt-in locally; could extend chaos-replay to also run journey-tier replays from `.simdrive/journeys/`. Legacy SpecterQA's 26 journeys are archived at `.simdrive/_archive/journeys/`, not the path forward.
 2. **Snapshot regression gating** — Captures exist but no automated comparison gate
 3. **Performance regression gating** — Scripts exist but not CI-integrated
 4. **CM contract drift blocking** — Monitor exists but non-blocking
@@ -196,36 +205,17 @@ Use this for releases and for areas where automation gaps exist:
 
 ## Process Integration
 
-### Every Session
-```bash
-# 1. Init governance
-forge_init  # project: proj_87884c17
-
-# 2. Propose changeset BEFORE coding (read required evidence)
-forge_propose_changeset  # with planned files + modules
-
-# 3. Implement with TDD (tests first, then production code)
-
-# 4. Collect evidence
-scripts/forgeos-session.sh evidence <changeset_id>
-# Collects: unit_test, lint, coverage, mutation, a11y
-
-# 5. Promote gates
-scripts/forgeos-session.sh promote <changeset_id>
-
-# 6. Verify
-scripts/verify-pr.sh --report /tmp/verify.json
-
-# 7. Release check
-forge_release_check  # must return can_release: true
-
-# 8. Create PR (hooks enforce governance)
-gh pr create --base develop
-```
+### Per-change cycle
+1. **Plan tests first.** What edge cases, what error paths, what state transitions need to be pinned?
+2. **Write the failing test.** TDD — never write production code without a failing test driving it.
+3. **Make it pass.** Minimum production code, then refactor both sides.
+4. **Verify with `scripts/verify-pr.sh --quick`.** Build, tests, lint, coverage, accessibility — all green before pushing.
+5. **For critical-path changes** (sign-in, borrow, download, DRM, payment): also run `scripts/palace_mutate.py` against changed files and confirm 100% kill rate.
+6. **Open the PR against `develop`** (never `main`). Hooks enforce additional internal governance for maintainers; outside contributors follow standard GitHub PR flow.
 
 ### Every Release
 ```bash
-# Run SpecterQA regression suite
+# Run regression suite (simdrive-driven; legacy SpecterQA paths still wired in scripts/regression-report.sh for archive replay)
 scripts/regression-report.sh --baseline <old-tag> --candidate <new-tag>
 
 # Manual testing checklist (above)
@@ -239,5 +229,5 @@ python3 scripts/generate-regression-report.py --csv findings.csv \
 - [Coverage Roadmap](Coverage_Roadmap.md) — per-module coverage targets
 - [Test Patterns](Test_Patterns.md) — mock patterns, stubbing, fixtures
 - [Traceability Matrix](Traceability_Matrix.md) — requirements → tests mapping
-- [SpecterQA Regression Plan](../../.specterqa/REGRESSION_PLAN.md) — E2E journey execution order
-- [SpecterQA Gap Analysis](../../.specterqa/journeys/_GAP_ANALYSIS.md) — what's automatable vs manual
+- [Legacy SpecterQA Regression Plan](../../.simdrive/_archive/REGRESSION_PLAN.md) — archive, kept for reference
+- [Active simdrive Gap Analysis](../../.simdrive/journeys/_GAP_ANALYSIS.md) — current coverage gaps + tier breakdown

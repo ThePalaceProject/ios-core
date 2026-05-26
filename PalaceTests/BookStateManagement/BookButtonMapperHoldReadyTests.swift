@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 final class BookButtonMapperHoldReadyTests: XCTestCase {
@@ -144,27 +145,28 @@ final class BookButtonMapperHoldReadyTests: XCTestCase {
 
     // MARK: - stateForAvailability Direct Tests
 
-    func testStateForAvailability_Ready_ReturnsCanBorrow() {
-        let ready: TPPOPDSAcquisitionAvailability =
-            TPPOPDSAcquisitionAvailabilityReady(since: Date(), until: nil)
+    /// `stateForAvailability` is the cache-friendly availability→button-state
+    /// mapper. Lock all three branches (Ready, Reserved, nil) in one body
+    /// so a mutant that swaps two branches' return values fails on a
+    /// distinct row, AND assert that distinct availability inputs yield
+    /// distinct button states (kills constant-return mutants).
+    func testStateForAvailability_dispatchesEachAvailabilityToItsExpectedButtonState() {
+        let ready = BookButtonMapper.stateForAvailability(
+            TPPOPDSAcquisitionAvailabilityReady(since: Date(), until: nil))
+        let reserved = BookButtonMapper.stateForAvailability(
+            TPPOPDSAcquisitionAvailabilityReserved(holdPosition: 1, copiesTotal: 5, since: nil, until: nil))
+        let nilResult = BookButtonMapper.stateForAvailability(nil)
 
-        let result = BookButtonMapper.stateForAvailability(ready)
+        XCTAssertEqual(ready, .canBorrow,
+                       "Ready (loan reserved + ready to borrow) → canBorrow")
+        XCTAssertEqual(reserved, .holdingFrontOfQueue,
+                       "Reserved with hold position → holdingFrontOfQueue")
+        XCTAssertNil(nilResult,
+                     "nil availability → nil state (caller falls back to default rendering)")
 
-        XCTAssertEqual(result, .canBorrow)
-    }
-
-    func testStateForAvailability_Reserved_ReturnsHoldingFrontOfQueue() {
-        let reserved: TPPOPDSAcquisitionAvailability =
-            TPPOPDSAcquisitionAvailabilityReserved(holdPosition: 1, copiesTotal: 5, since: nil, until: nil)
-
-        let result = BookButtonMapper.stateForAvailability(reserved)
-
-        XCTAssertEqual(result, .holdingFrontOfQueue)
-    }
-
-    func testStateForAvailability_Nil_ReturnsNil() {
-        let result = BookButtonMapper.stateForAvailability(nil)
-
-        XCTAssertNil(result)
+        // Distinct inputs must yield distinct results — guards a
+        // constant-return mutant the per-branch tests can't catch alone.
+        XCTAssertNotEqual(ready, reserved,
+                          "Ready and Reserved must dispatch to distinct button states")
     }
 }

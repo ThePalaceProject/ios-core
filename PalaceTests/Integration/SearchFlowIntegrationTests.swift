@@ -11,6 +11,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 // SRS: REQ-SEARCH-001 — Search flow integration

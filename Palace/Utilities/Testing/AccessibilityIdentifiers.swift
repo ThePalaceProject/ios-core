@@ -116,6 +116,11 @@ public enum AccessibilityID {
 
         // Progress
         public static let downloadProgress = "bookDetail.downloadProgress"
+        /// Indeterminate spinner + "Borrowing…" label shown during the borrow
+        /// phase (network round-trip to the borrow URL is in flight). Distinct
+        /// from `downloadProgress` (linear bar that appears once the download
+        /// itself begins).
+        public static let borrowingProgress = "bookDetail.borrowingProgress"
 
         // Half sheet
         public static let halfSheet = "bookDetail.halfSheet"
@@ -125,8 +130,14 @@ public enum AccessibilityID {
 
         // Metadata sections
         public static let informationSection = "bookDetail.informationSection"
-        public static let publisherLabel = "bookDetail.publisherLabel"
+        public static let formatLabel = "bookDetail.formatLabel"
+        public static let audienceLabel = "bookDetail.audienceLabel"
         public static let categoriesLabel = "bookDetail.categoriesLabel"
+        public static let languageLabel = "bookDetail.languageLabel"
+        public static let narratorsLabel = "bookDetail.narratorsLabel"
+        public static let durationLabel = "bookDetail.durationLabel"
+        public static let publishedLabel = "bookDetail.publishedLabel"
+        public static let publisherLabel = "bookDetail.publisherLabel"
         public static let distributorLabel = "bookDetail.distributorLabel"
         public static let relatedBooksSection = "bookDetail.relatedBooksSection"
     }

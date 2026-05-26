@@ -7,6 +7,7 @@
 
 import Foundation
 import UIKit
+import PalaceCatalog
 
 /// Captures full context about an error occurrence for the "View Error Details" feature.
 ///
@@ -66,7 +67,7 @@ struct ErrorDetail {
         bookIdentifier: String? = nil,
         bookTitle: String? = nil,
         activityTracker: ErrorActivityTracker = .shared,
-        accountsManager: AccountsManager = .shared
+        accountsManager: AccountsManager = AppContainer.production().accountsManager
     ) async -> ErrorDetail {
         let trail = await activityTracker.recentActivities(seconds: 300)
 
@@ -87,7 +88,7 @@ struct ErrorDetail {
     }
 
     /// Captures current device/app context synchronously.
-    private static func captureDeviceContext(accountsManager: AccountsManager = .shared) -> DeviceContext {
+    private static func captureDeviceContext(accountsManager: AccountsManager = AppContainer.production().accountsManager) -> DeviceContext {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
         let iosVersion = UIDevice.current.systemVersion

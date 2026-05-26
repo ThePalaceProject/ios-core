@@ -33,27 +33,28 @@ final class NotificationSyncThrottleTests: XCTestCase {
 
     // MARK: - Normal Throttle Behavior
 
-    func testThrottle_recentSync_blocksNormalSync() {
-        let now = Date().timeIntervalSince1970
-        let lastSync = now - 10 // 10 seconds ago
-
-        let result = shouldSync(forceSync: false, lastSyncTimestamp: lastSync, now: now)
-        XCTAssertFalse(result, "Normal sync should be throttled if synced < 30s ago")
-    }
-
-    func testThrottle_oldSync_allowsNormalSync() {
-        let now = Date().timeIntervalSince1970
-        let lastSync = now - 60 // 60 seconds ago
-
-        let result = shouldSync(forceSync: false, lastSyncTimestamp: lastSync, now: now)
-        XCTAssertTrue(result, "Normal sync should proceed if synced > 30s ago")
-    }
-
-    func testThrottle_noLastSync_allowsSync() {
+    /// Throttle decision matrix for forceSync=false: synced too recently
+    /// → blocked; synced past the threshold → allowed; never synced → also
+    /// allowed. Plus boundary cases on either side of the 30s threshold so
+    /// a mutant that flips `>` to `>=` (or shifts the constant) fails.
+    func testThrottle_normalSync_blocksRecentAndAllowsAgedAndFirstSync() {
         let now = Date().timeIntervalSince1970
 
-        let result = shouldSync(forceSync: false, lastSyncTimestamp: 0, now: now)
-        XCTAssertTrue(result, "First sync should always proceed")
+        // Within the 30s throttle window — must block.
+        XCTAssertFalse(shouldSync(forceSync: false, lastSyncTimestamp: now - 10, now: now),
+                       "Synced 10s ago — must be throttled")
+        XCTAssertFalse(shouldSync(forceSync: false, lastSyncTimestamp: now - 30, now: now),
+                       "Synced exactly 30s ago — strict-greater check must throttle (boundary case)")
+
+        // Past the throttle — must allow.
+        XCTAssertTrue(shouldSync(forceSync: false, lastSyncTimestamp: now - 30.01, now: now),
+                      "Synced just past 30s — must allow (boundary case for `>` mutant)")
+        XCTAssertTrue(shouldSync(forceSync: false, lastSyncTimestamp: now - 60, now: now),
+                      "Synced 60s ago — must allow")
+
+        // First sync: lastSync=0, so (now - 0) >> 30 trivially → allowed.
+        XCTAssertTrue(shouldSync(forceSync: false, lastSyncTimestamp: 0, now: now),
+                      "First sync (no history) must always proceed")
     }
 
     // MARK: - Force Sync Bypass (Hold Notification Tap)
@@ -76,11 +77,19 @@ final class NotificationSyncThrottleTests: XCTestCase {
                       "Force sync should bypass even at exact throttle boundary")
     }
 
-    func testForceSync_withZeroLastSync_proceeds() {
+    /// `forceSync=true` must bypass the throttle in every history shape:
+    /// no prior sync (zero), recent sync, AND a sync from "the future"
+    /// (clock skew). Pin all three so a mutant that conditions force-sync
+    /// on history fails on every row.
+    func testForceSync_proceedsRegardlessOfHistoryShape() {
         let now = Date().timeIntervalSince1970
 
-        let result = shouldSync(forceSync: true, lastSyncTimestamp: 0, now: now)
-        XCTAssertTrue(result, "Force sync should proceed regardless of history")
+        XCTAssertTrue(shouldSync(forceSync: true, lastSyncTimestamp: 0, now: now),
+                      "Force sync with no history must proceed")
+        XCTAssertTrue(shouldSync(forceSync: true, lastSyncTimestamp: now - 1, now: now),
+                      "Force sync 1s after the last sync must still proceed")
+        XCTAssertTrue(shouldSync(forceSync: true, lastSyncTimestamp: now + 60, now: now),
+                      "Force sync with future-dated history (clock skew) must still proceed — never crash")
     }
 
     // MARK: - Hold vs Non-Hold Notification Behavior
@@ -114,15 +123,23 @@ final class HoldNotificationClassificationTests: XCTestCase {
         XCTAssertTrue(isHold)
     }
 
-    func testIsHoldRelated_withTypeReservation_returnsTrue() {
-        let type = "reservation_available"
-        let isHold = type.lowercased().contains("hold") || type.lowercased().contains("reservation")
-        XCTAssertTrue(isHold)
-    }
-
-    func testIsHoldRelated_withGenericType_returnsFalse() {
-        let type = "general_notification"
-        let isHold = type.lowercased().contains("hold") || type.lowercased().contains("reservation")
-        XCTAssertFalse(isHold)
+    /// Hold-classification rule: a `type` field is hold-related iff its
+    /// lowercased form contains "hold" OR "reservation". Lock both
+    /// keywords + the negative case in one body so a mutant that drops
+    /// either keyword fails on the missing-keyword input.
+    func testIsHoldRelated_returnsTrueForHoldOrReservationKeywords_falseOtherwise() {
+        let cases: [(input: String, expected: Bool, label: String)] = [
+            ("hold_ready",            true,  "exact 'hold' keyword"),
+            ("Hold_Ready",            true,  "case-insensitive 'Hold' must still match"),
+            ("reservation_available", true,  "exact 'reservation' keyword"),
+            ("RESERVATION_READY",     true,  "case-insensitive 'RESERVATION' must still match"),
+            ("general_notification",  false, "no keyword — must NOT classify as hold"),
+            ("",                      false, "empty type — must NOT classify"),
+        ]
+        for c in cases {
+            let isHold = c.input.lowercased().contains("hold")
+                      || c.input.lowercased().contains("reservation")
+            XCTAssertEqual(isHold, c.expected, "\(c.label): \(c.input)")
+        }
     }
 }

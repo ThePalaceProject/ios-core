@@ -7,13 +7,13 @@
 //
 
 import Foundation
+import PalaceLogging
+import PalaceCatalog
 
 /// Manages debug/testing settings for error scenarios and QA tools.
 /// Available in DEBUG and TestFlight builds; gated behind Developer Settings UI
 /// which requires a hidden gesture to access.
 final class DebugSettings {
-
-    static let shared = DebugSettings()
 
     private let defaults = UserDefaults.standard
 
@@ -392,5 +392,5 @@ final class DebugSettings {
         isIncrementalSpeedSliderEnabled = false
     }
 
-    private init() {}
+    init() {}
 }

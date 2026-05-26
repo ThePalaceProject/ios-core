@@ -1,0 +1,30 @@
+{
+  "fixture": "anonymous-borrow/04-book-detail",
+  "version": "3.0.0",
+  "build": "470",
+  "device": "iPhone 16 Pro",
+  "os": "iOS 18.4",
+  "udid": "F3CB599D-B154-4D40-B2C4-52F821EABAD7",
+  "captured_at": "2026-04-29T17:00:18Z",
+  "screen_size": [1206, 2622],
+  "screenshot_relpath": "04-book-detail.png",
+  "marks": [
+    {"id": 3, "bbox": [48, 206, 184, 62], "center": [140, 237], "text": "< Back", "confidence": 1.0},
+    {"id": 4, "bbox": [391, 1043, 422, 42], "center": [602, 1064], "text": "The Souls of Black Folk", "confidence": 1.0},
+    {"id": 5, "bbox": [479, 1135, 247, 42], "center": [602, 1156], "text": "W.E. B. Du Bois", "confidence": 1.0},
+    {"id": 6, "bbox": [296, 1330, 623, 53], "center": [607, 1356], "text": "The Souls of Black Folk", "confidence": 1.0},
+    {"id": 7, "bbox": [289, 1421, 627, 41], "center": [602, 1441], "text": "William Edward Burghardt Du Bois", "confidence": 1.0},
+    {"id": 8, "bbox": [521, 1585, 156, 38], "center": [599, 1604], "text": "Borrow", "confidence": 1.0},
+    {"id": 9, "bbox": [91, 1741, 342, 45], "center": [262, 1763], "text": "DESCRIPTION", "confidence": 1.0}
+  ],
+  "asserts": {
+    "has_back_button": true,
+    "title_visible": "The Souls of Black Folk",
+    "author_visible": "W. E. B. Du Bois",
+    "primary_action_button": "Borrow",
+    "primary_action_y_range": [1580, 1620],
+    "no_text": ["Read", "Remove", "Sign In"],
+    "comment": "Pre-borrow detail view: title + author + Borrow CTA. The 'no_text' list is the post-borrow assertion baseline — fixture 05 should NOT contain Borrow but SHOULD contain Read+Remove."
+  },
+  "notes": "Used 'The Souls of Black Folk' instead of 'A Night in Acadie' from earlier sessions because the Fiction lane carousel showed different books on this run (catalog ordering is not deterministic between cold launches). Future fixtures should pick a stable book or assert by lane position rather than title."
+}

@@ -1,0 +1,35 @@
+{
+  "fixture": "anonymous-borrow/06-my-books",
+  "version": "3.0.1",
+  "build": "468",
+  "device": "iPhone 16 Pro",
+  "os": "iOS 18.4",
+  "udid": "DF4A2A27-9888-429D-A749-2E157A049A37",
+  "captured_at": "2026-04-29T17:18:47Z",
+  "screen_size": [1206, 2622],
+  "screenshot_relpath": "06-my-books.png",
+  "marks": [
+    {"id": 2, "bbox": [441, 217, 422, 42], "center": [652, 238], "text": "Palace Bookshelf", "confidence": 1.0},
+    {"id": 3, "bbox": [1019, 335, 148, 42], "center": [1093, 356], "text": "T Title", "confidence": 1.0},
+    {"id": 5, "bbox": [498, 514, 608, 54], "center": [802, 541], "text": "The Impeachment Papers", "confidence": 1.0},
+    {"id": 10, "bbox": [498, 643, 464, 41], "center": [730, 663], "text": "Majority Staff Of The House", "confidence": 1.0},
+    {"id": 12, "bbox": [539, 860, 99, 39], "center": [588, 879], "text": "Read", "confidence": 1.0},
+    {"id": 13, "bbox": [764, 864, 156, 36], "center": [842, 882], "text": "Remove", "confidence": 1.0},
+    {"id": 16, "bbox": [369, 2476, 163, 42], "center": [450, 2497], "text": "My Books", "confidence": 1.0}
+  ],
+  "asserts": {
+    "title": "Palace Bookshelf",
+    "sort_indicator_visible": "Title",
+    "borrowed_book_visible": "The Impeachment Papers",
+    "borrowed_book_actions": ["Read", "Remove"],
+    "no_text": ["Borrow", "Sign In", "Empty"]
+  },
+  "diffs_from_baseline": {
+    "comment": "C3 My Books reflects the borrow on candidate. Sort indicator + library title + Read/Remove actions all match baseline structure (just for a different book — Impeachment Papers vs Souls of Black Folk, due to non-deterministic carousel scroll). The TPPBookRegistry.shared kill (Phase 6.6) is verified working: registry write from BorrowReducer reaches My Books via the new DI path."
+  },
+  "kills_mutants": [
+    {"file": "Palace/MyBooks/MyBooksView.swift", "rationale": "list rendering — empty filter or wrong sort would show no books"},
+    {"file": "Palace/MyBooks/MyBooksViewModel.swift", "rationale": "registry observation — broken subscription would leave stale empty state"},
+    {"file": "Palace/Book/BookRegistry/TPPBookRegistry.swift", "rationale": "the singleton kill itself — failure to deliver state through new DI path lands here"}
+  ]
+}

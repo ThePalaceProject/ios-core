@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 
 /// A protocol describing an error that MAY offer user friendly
 /// messaging to the user.
@@ -62,5 +63,27 @@ extension NSError: TPPUserFriendlyError {
         var userInfo = userInfo ?? [String: Any]()
         userInfo[NSError.problemDocumentKey] = problemDoc
         return NSError(domain: domain, code: code, userInfo: userInfo)
+    }
+
+    /// Builds an NSError from a non-2xx HTTP response, embedding any RFC 7807
+    /// problem document found in the body so downstream UI layers (e.g.
+    /// `userFacingSignInError`) can surface the server-supplied title/detail
+    /// instead of a generic fallback like "Invalid Credentials".
+    ///
+    /// Use this anywhere you would otherwise call
+    /// `NSError(domain:code:userInfo:)` for an HTTP error response — calling
+    /// it consistently is what keeps token-auth, basic-auth, and SAML flows
+    /// honoring the same contract toward `userFacingSignInError`.
+    static func makeFromHTTPResponse(data: Data,
+                                     statusCode: Int,
+                                     domain: String,
+                                     userInfo: [String: Any]? = nil) -> NSError {
+        if let problemDoc = TPPProblemDocument.fromProblemResponseData(data) {
+            return makeFromProblemDocument(problemDoc,
+                                           domain: domain,
+                                           code: statusCode,
+                                           userInfo: userInfo)
+        }
+        return NSError(domain: domain, code: statusCode, userInfo: userInfo)
     }
 }

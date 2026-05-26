@@ -1,4 +1,5 @@
 import Foundation
+import PalaceLogging
 
 /**
  Manages data migrations as they are needed throughout the app's life
@@ -13,7 +14,7 @@ import Foundation
 class TPPMigrationManager: NSObject {
     private static let lastLaunchBuildKey = "TPPMigrationManager.lastLaunchBuild"
 
-    @objc static func migrate(settings: TPPSettings = .shared) {
+    @objc static func migrate(settings: TPPSettings = AppContainer.production().settings) {
         // Fetch target version
         guard let infoDictionary = Bundle.main.infoDictionary,
               let targetVersion = infoDictionary["CFBundleShortVersionString"] as? String else {
@@ -21,7 +22,7 @@ class TPPMigrationManager: NSObject {
             return
         }
 
-        runMigrations()
+        runMigrations(settings: settings)
         performPostUpdateTasksIfNeeded()
 
         // Update app version
@@ -46,15 +47,15 @@ class TPPMigrationManager: NSObject {
 
         // Refresh auth tokens proactively so users don't see "credentials invalid"
         // after an update that changed nothing about their account
-        let userAccount = AccountsManager.shared.currentUserAccount
+        let userAccount = AppContainer.production().accountsManager.currentUserAccount
         if userAccount.hasCredentials(), userAccount.authTokenNearExpiry || userAccount.authTokenHasExpired {
             Log.info(#file, "Post-update: auth token expired/near-expiry — triggering refresh")
-            TPPNetworkExecutor.shared.refreshTokenAndResume(task: nil)
+            AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil)
         }
 
         // Validate downloaded content is still accessible
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3.0) {
-            TPPBookRegistry.shared.validateDownloadedContent()
+            (AppContainer.production().bookRegistry as? TPPBookRegistry)?.validateDownloadedContent()
         }
     }
 

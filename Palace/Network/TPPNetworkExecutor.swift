@@ -7,6 +7,9 @@
 //
 
 import Foundation
+import PalaceLogging
+import PalaceNetwork
+import PalaceAuth
 
 enum NYPLResult<SuccessInfo> {
     case success(SuccessInfo, URLResponse?)
@@ -56,84 +59,14 @@ private actor TokenRefreshCoordinator {
     }
 }
 
-/// Lock-protected store for the active tasks list.
-///
-/// Intentionally NOT an actor: the `@objc` methods that drive this
-/// (`pauseAllTasks`, `resumeAllTasks`, `cancelNonEssentialTasks`) are
-/// invoked from synchronous call sites — most importantly during account
-/// switches, where we *must* finish cancelling before the caller proceeds,
-/// otherwise in-flight requests can complete against the wrong account's
-/// credentials. A fire-and-forget `Task { await actor.… }` would silently
-/// break that invariant.
-private final class ActiveTasksStore {
-    private var tasks: [URLSessionTask] = []
-    private let lock = NSLock()
-
-    func add(_ task: URLSessionTask) {
-        lock.lock(); defer { lock.unlock() }
-        tasks.append(task)
-    }
-
-    func remove(_ task: URLSessionTask) {
-        lock.lock(); defer { lock.unlock() }
-        if let index = tasks.firstIndex(of: task) {
-            tasks.remove(at: index)
-        }
-    }
-
-    func pauseNonAudioTasks() {
-        lock.lock(); defer { lock.unlock() }
-        for task in tasks {
-            if let url = task.originalRequest?.url,
-               Self.isAudiobookRelated(url: url) {
-                Log.info(#function, "Preserving audiobook network task: \(url.absoluteString)")
-                continue
-            }
-            task.suspend()
-        }
-    }
-
-    func resumeAll() {
-        lock.lock(); defer { lock.unlock() }
-        tasks.forEach { $0.resume() }
-    }
-
-    @discardableResult
-    func cancelNonEssential() -> Int {
-        lock.lock(); defer { lock.unlock() }
-        let toCancel = tasks.filter { task in
-            guard let url = task.originalRequest?.url else { return true }
-            return !Self.isAudiobookRelated(url: url)
-        }
-        toCancel.forEach { $0.cancel() }
-        tasks.removeAll { toCancel.contains($0) }
-        return toCancel.count
-    }
-
-    private static func isAudiobookRelated(url: URL) -> Bool {
-        let s = url.absoluteString
-        return s.contains("audiobook") ||
-            s.contains(".mp3") ||
-            s.contains(".m4a") ||
-            s.contains("audio") ||
-            s.contains("readium") ||
-            s.contains("lcp")
-    }
-}
-
 @objc class TPPNetworkExecutor: NSObject {
-    #if DEBUG
-    private var urlSession: URLSession
-    #else
-    private let urlSession: URLSession
-    #endif
+    let transport: NetworkTransport
     private let tokenCoordinator = TokenRefreshCoordinator()
-    private let activeTasksStore = ActiveTasksStore()
 
     private let responder: TPPNetworkResponder
     private var _accountsManager: TPPLibraryAccountsProvider?
     private var accountsManager: TPPLibraryAccountsProvider {
-        _accountsManager ?? AccountsManager.shared
+        _accountsManager ?? AppContainer.production().accountsManager
     }
 
     @objc init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
@@ -141,13 +74,10 @@ private final class ActiveTasksStore {
                delegateQueue: OperationQueue? = nil) {
         self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
                                              useFallbackCaching: cachingStrategy == .fallback)
-
-        let config = TPPCaching.makeURLSessionConfiguration(
-            caching: cachingStrategy,
-            requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
-        self.urlSession = URLSession(configuration: config,
-                                     delegate: self.responder,
-                                     delegateQueue: delegateQueue)
+        self.transport = NetworkTransport(delegate: self.responder,
+                                          cachingStrategy: cachingStrategy,
+                                          requestTimeout: TPPNetworkExecutor.defaultRequestTimeout,
+                                          delegateQueue: delegateQueue)
         // accountsManager is lazy — accessed on first use, not during init
         // This avoids circular singleton deadlock: TPPNetworkExecutor ↔ AccountsManager
         super.init()
@@ -160,9 +90,11 @@ private final class ActiveTasksStore {
                delegateQueue: OperationQueue? = nil) {
         self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
                                              useFallbackCaching: cachingStrategy == .fallback)
-        self.urlSession = URLSession(configuration: sessionConfiguration,
-                                     delegate: self.responder,
-                                     delegateQueue: delegateQueue)
+        self.transport = NetworkTransport(delegate: self.responder,
+                                          sessionConfiguration: sessionConfiguration,
+                                          delegateQueue: delegateQueue,
+                                          cachingStrategy: cachingStrategy,
+                                          requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
         // accountsManager is lazy — avoids circular init deadlock
         super.init()
     }
@@ -170,41 +102,27 @@ private final class ActiveTasksStore {
     /// DI-friendly initializer for testing
     init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
          cachingStrategy: NYPLCachingStrategy,
-         accountsManager: TPPLibraryAccountsProvider = AccountsManager.shared,
+         accountsManager: TPPLibraryAccountsProvider = AppContainer.production().accountsManager,
          delegateQueue: OperationQueue? = nil) {
         self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
                                              useFallbackCaching: cachingStrategy == .fallback)
-        let config = TPPCaching.makeURLSessionConfiguration(
-            caching: cachingStrategy,
-            requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
-        self.urlSession = URLSession(configuration: config,
-                                     delegate: self.responder,
-                                     delegateQueue: delegateQueue)
+        self.transport = NetworkTransport(delegate: self.responder,
+                                          cachingStrategy: cachingStrategy,
+                                          requestTimeout: TPPNetworkExecutor.defaultRequestTimeout,
+                                          delegateQueue: delegateQueue)
         self._accountsManager = accountsManager
         super.init()
     }
 
-    deinit {
-        urlSession.finishTasksAndInvalidate()
-    }
-
     #if DEBUG
-    /// Recreate the internal URLSession so it picks up any newly registered
-    /// URLProtocol classes (e.g., MockBackendURLProtocol). Called by
-    /// MockBackendService when activating/deactivating the mock backend.
+    /// Recreate the underlying URLSession so it picks up any newly-registered
+    /// URLProtocol classes (e.g. MockBackendURLProtocol). Delegates to the
+    /// transport.
     func recreateSession() {
-        urlSession.finishTasksAndInvalidate()
-        let config = TPPCaching.makeURLSessionConfiguration(
-            caching: .fallback,
-            requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
-        urlSession = URLSession(configuration: config,
-                                delegate: responder,
-                                delegateQueue: nil)
+        transport.recreateSession()
         Log.info(#file, "TPPNetworkExecutor: session recreated for mock backend")
     }
     #endif
-
-    @objc static let shared = TPPNetworkExecutor(cachingStrategy: .fallback)
 
     /// Number of underlying token-refresh attempts that have taken the
     /// single-flight slot since process start (or last reset). Concurrent
@@ -224,19 +142,15 @@ private final class ActiveTasksStore {
              useTokenIfAvailable: Bool = true,
              completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
         let req = request(for: reqURL, useTokenIfAvailable: useTokenIfAvailable)
-        let task = executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
-
-        if let task = task {
-            activeTasksStore.add(task)
-        }
+        _ = executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
     }
 
     @objc func pauseAllTasks() {
-        activeTasksStore.pauseNonAudioTasks()
+        transport.pauseAllTasks()
     }
 
     @objc func resumeAllTasks() {
-        activeTasksStore.resumeAll()
+        transport.resumeAllTasks()
     }
 
     /// Cancels all active tasks that are not related to audiobook streaming.
@@ -244,8 +158,7 @@ private final class ActiveTasksStore {
     /// the wrong account's credentials. Synchronous on purpose — see
     /// `ActiveTasksStore` doc-comment.
     @objc func cancelNonEssentialTasks() {
-        let count = activeTasksStore.cancelNonEssential()
-        Log.info(#file, "Cancelled \(count) non-essential tasks during account switch")
+        transport.cancelNonEssentialTasks()
     }
 }
 
@@ -253,7 +166,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     @discardableResult
     func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
         let accountId = accountsManager.currentAccountId
-        let userAccount = accountId.flatMap { AccountsManager.shared.userAccount(for: $0) } ?? AccountsManager.shared.currentUserAccount
+        let userAccount = accountId.flatMap { accountsManager.userAccount(for: $0) } ?? accountsManager.currentUserAccount
 
         // SAML auth uses cookies, not tokens - proceed directly
         if let authDefinition = userAccount.authDefinition, authDefinition.isSaml {
@@ -278,8 +191,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
 
     private func performDataTask(with request: URLRequest,
                                  completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-        let task = urlSession.dataTask(with: request)
+        let task = transport.urlSession.dataTask(with: request)
         responder.addCompletion(completion, taskID: task.taskIdentifier)
+        transport.activeTasksStore.add(task)
         task.resume()
         return task
     }
@@ -302,7 +216,7 @@ extension TPPNetworkExecutor {
 
     func request(for url: URL, useTokenIfAvailable: Bool = true, accountId: String?) -> URLRequest {
         var urlRequest = URLRequest(url: url,
-                                    cachePolicy: urlSession.configuration.requestCachePolicy)
+                                    cachePolicy: transport.requestCachePolicy)
         // Don't optimistically try HTTP/3 (QUIC) on first contact with each host.
         // Some library servers advertise h3 but have broken QUIC — iOS retries
         // twice (~260ms wasted) before falling back to h2. With this flag off,
@@ -315,7 +229,7 @@ extension TPPNetworkExecutor {
         // sharedAccount() and the property reads, causing cross-account
         // credential leaks.
         let resolvedId = accountId ?? accountsManager.currentAccountId ?? ""
-        let snapshot = AccountsManager.shared.userAccount(for: resolvedId).credentialSnapshot()
+        let snapshot = accountsManager.userAccount(for: resolvedId).credentialSnapshot()
 
         // SAML auth uses cookies, not tokens — make sure they are installed in
         // the shared cookie storage before the request goes out. Removing this
@@ -334,14 +248,14 @@ extension TPPNetworkExecutor {
     }
 
     @objc func clearCache() {
-        urlSession.configuration.urlCache?.removeAllCachedResponses()
+        transport.clearCache()
     }
 }
 
 extension TPPNetworkExecutor {
     @objc class func bearerAuthorized(request: URLRequest) -> URLRequest {
         var request = request
-        let snapshot = AccountsManager.shared.currentUserAccount.credentialSnapshot()
+        let snapshot = AppContainer.production().accountsManager.currentUserAccount.credentialSnapshot()
 
         if let authToken = snapshot.authToken, !authToken.isEmpty {
             let tokenPrefix = String(authToken.prefix(8))
@@ -364,7 +278,7 @@ extension TPPNetworkExecutor {
             }
         }
 
-        let task = urlSession.downloadTask(with: req)
+        let task = transport.urlSession.downloadTask(with: req)
         responder.addCompletion(completionWrapper, taskID: task.taskIdentifier)
         task.resume()
 
@@ -506,7 +420,7 @@ extension TPPNetworkExecutor {
             // another thread could switch libraryUUID between sharedAccount()
             // and the .username/.pin reads, sending Account B's credentials
             // to Account A's token endpoint.
-            let snapshot = AccountsManager.shared.userAccount(for: capturedAccountId ?? AccountsManager.shared.currentAccountId ?? "").credentialSnapshot()
+            let snapshot = self.accountsManager.userAccount(for: capturedAccountId ?? self.accountsManager.currentAccountId ?? "").credentialSnapshot()
             guard let username = snapshot.barcode, !username.isEmpty,
                   let password = snapshot.pin,
                   let tokenURL = snapshot.authDefinition?.tokenURL else {
@@ -545,7 +459,7 @@ extension TPPNetworkExecutor {
                             }
 
                             let mutableRequest = self.request(for: originalURL)
-                            let newTask = self.urlSession.dataTask(with: mutableRequest)
+                            let newTask = self.transport.urlSession.dataTask(with: mutableRequest)
                             self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
                             newTasks.append(newTask)
                             oldTask.cancel()
@@ -571,16 +485,32 @@ extension TPPNetworkExecutor {
                         if let nsError = error as? NSError, nsError.code == 401 {
                             Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? "current")")
                             await MainActor.run {
-                                AccountsManager.shared.userAccount(for: capturedAccountId ?? AccountsManager.shared.currentAccountId ?? "").markCredentialsStale()
+                                self.accountsManager.userAccount(for: capturedAccountId ?? self.accountsManager.currentAccountId ?? "").markCredentialsStale()
                                 if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
                                     SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
                                 }
                             }
                         }
 
-                        let nsError = NSError(domain: TPPErrorLogger.clientDomain,
+                        // Preserve any RFC 7807 problem document that TokenRequest
+                        // already embedded (e.g. "Expired Card") so the sign-in UI
+                        // can show the server-supplied reason instead of falling
+                        // back to "Invalid Credentials" on token refresh failure.
+                        let userInfo: [String: Any] = [
+                            NSLocalizedDescriptionKey: "Token refresh failed: \(error.localizedDescription)"
+                        ]
+                        let nsError: NSError
+                        if let upstreamProblemDoc = (error as NSError).problemDocument {
+                            nsError = NSError.makeFromProblemDocument(
+                                upstreamProblemDoc,
+                                domain: TPPErrorLogger.clientDomain,
+                                code: TPPErrorCode.invalidCredentials.rawValue,
+                                userInfo: userInfo)
+                        } else {
+                            nsError = NSError(domain: TPPErrorLogger.clientDomain,
                                               code: TPPErrorCode.invalidCredentials.rawValue,
-                                              userInfo: [NSLocalizedDescriptionKey: "Token refresh failed: \(error.localizedDescription)"])
+                                              userInfo: userInfo)
+                        }
                         completion?(NYPLResult.failure(nsError, nil))
                     }
                 }
@@ -599,14 +529,14 @@ extension TPPNetworkExecutor {
             return
         }
 
-        let session = self.urlSession
+        let session = self.transport.urlSession
         Task {
             let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
             let result = await tokenRequest.execute(session: session)
 
             switch result {
             case .success(let tokenResponse):
-                let targetAccount = AccountsManager.shared.userAccount(for: accountId ?? AccountsManager.shared.currentAccountId ?? "")
+                let targetAccount = self.accountsManager.userAccount(for: accountId ?? self.accountsManager.currentAccountId ?? "")
                 targetAccount.setAuthToken(
                     tokenResponse.accessToken,
                     barcode: username,

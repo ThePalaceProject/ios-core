@@ -74,7 +74,20 @@ def normalize_fraction(value: float) -> float:
     return value
 
 
-def get_overall(coverage: Dict) -> float:
+def get_overall(coverage: Dict, metric: str = "testable") -> float:
+    """Return the headline coverage fraction for gating.
+
+    metric="testable" (default) gates on coverage of files that are actually
+    unit-testable — i.e. with SwiftUI views, UIKit VCs, and lifecycle code
+    removed from the denominator per scripts/coverage-exclude.json. This is
+    the honest number: raising it means 'more testable logic is tested',
+    not 'we wrote less UI this release'.
+
+    metric="total" gates on every executable line (legacy behavior). Pass
+    --metric total to enforce_coverage_floors.py to keep the old semantics.
+    """
+    if metric == "testable" and "testable_coverage" in coverage:
+        return normalize_fraction(float(coverage.get("testable_coverage") or 0.0))
     raw = coverage.get("total_coverage", coverage.get("line_coverage", 0.0))
     return normalize_fraction(float(raw or 0.0))
 
@@ -100,10 +113,10 @@ def find_module_coverage(coverage: Dict, name: str) -> Optional[float]:
     return None
 
 
-def build_baseline(coverage: Dict, modules: Dict[str, float]) -> Dict[str, Any]:
+def build_baseline(coverage: Dict, modules: Dict[str, float], metric: str = "testable") -> Dict[str, Any]:
     """Capture current coverage as the new floor (no-regression baseline)."""
     baseline = {
-        "overall": round(get_overall(coverage), 4),
+        "overall": round(get_overall(coverage, metric), 4),
         "modules": {},
         "_comment": "Auto-generated baseline (no regression). Ratchet upward as coverage improves.",
     }
@@ -122,12 +135,12 @@ def format_pct(v: Optional[float]) -> str:
     return f"{v * 100:5.1f}%"
 
 
-def evaluate(coverage: Dict, floors: Dict, baseline_only: bool) -> Tuple[List[Dict], bool]:
+def evaluate(coverage: Dict, floors: Dict, baseline_only: bool, metric: str = "testable") -> Tuple[List[Dict], bool]:
     rows: List[Dict] = []
     all_pass = True
 
     overall_floor = float(floors.get("overall", 0.0))
-    overall_actual = get_overall(coverage)
+    overall_actual = get_overall(coverage, metric)
 
     if baseline_only:
         overall_floor = overall_actual
@@ -197,6 +210,10 @@ def main() -> int:
                         help="Use current actual as floor (no-regression mode).")
     parser.add_argument("--write-baseline", action="store_true",
                         help="Write current coverage to the floors file and exit 0.")
+    parser.add_argument("--metric", choices=["testable", "total"], default="testable",
+                        help="Which headline metric to gate on. 'testable' (default) "
+                             "excludes UI/lifecycle files per coverage-exclude.json. "
+                             "'total' gates on every executable line (legacy).")
     args = parser.parse_args()
 
     coverage = load_json(args.coverage_json)
@@ -209,12 +226,12 @@ def main() -> int:
         floors = {"overall": 0.0, "modules": {}}
 
     if args.write_baseline:
-        baseline = build_baseline(coverage, floors.get("modules", {}))
+        baseline = build_baseline(coverage, floors.get("modules", {}), args.metric)
         with open(args.floors, "w") as f:
             json.dump(baseline, f, indent=2)
             f.write("\n")
-        log(f"Wrote baseline floors to {args.floors}")
-        print_table(evaluate(coverage, baseline, baseline_only=False)[0])
+        log(f"Wrote baseline floors to {args.floors} (metric={args.metric})")
+        print_table(evaluate(coverage, baseline, baseline_only=False, metric=args.metric)[0])
         return 0
 
     has_modules = bool(coverage.get("targets")) or bool(coverage.get("files"))
@@ -223,7 +240,8 @@ def main() -> int:
             "falling back to overall project coverage only.")
         floors = {"overall": floors.get("overall", 0.0), "modules": {}}
 
-    rows, all_pass = evaluate(coverage, floors, args.baseline_only)
+    log(f"Gating on '{args.metric}' coverage metric.")
+    rows, all_pass = evaluate(coverage, floors, args.baseline_only, args.metric)
     print_table(rows)
 
     missing = [r["module"] for r in rows if r.get("missing")]

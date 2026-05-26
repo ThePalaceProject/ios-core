@@ -1,0 +1,310 @@
+{
+  "module": "MyBooks",
+  "generated_at": "2026-05-12T16:15:16+00:00",
+  "file_count": 54,
+  "shared_singleton_reads": 12,
+  "public_types": [
+    {
+      "name": "Configuration",
+      "kind": "struct",
+      "file": "MyBooks/BookCell/BookCellModelCache.swift",
+      "line": 23
+    }
+  ],
+  "objc_surface": [
+    {
+      "name": "MyBooksDownloadCenter",
+      "kind": "class",
+      "file": "MyBooksDownloadCenter.swift",
+      "line": 23
+    },
+    {
+      "name": "MyBooksDownloadInfo",
+      "kind": "class",
+      "file": "MyBooksDownloadInfo.swift",
+      "line": 12
+    },
+    {
+      "name": "MyBooksDownloadRightsManagement",
+      "kind": "enum",
+      "file": "MyBooksDownloadInfo.swift",
+      "line": 14
+    },
+    {
+      "name": "MyBooksViewModel",
+      "kind": "class",
+      "file": "MyBooks/MyBooksViewModel.swift",
+      "line": 17
+    },
+    {
+      "name": "TPPMyBooksDownloadInfo",
+      "kind": "class",
+      "file": "TPPMyBooksDownloadInfo.swift",
+      "line": 12
+    },
+    {
+      "name": "TPPMyBooksDownloadRightsManagement",
+      "kind": "enum",
+      "file": "TPPMyBooksDownloadInfo.swift",
+      "line": 3
+    },
+    {
+      "name": "TPPMyBooksSimplifiedBearerToken",
+      "kind": "class",
+      "file": "TPPMyBooksSimplifiedBearerToken.swift",
+      "line": 3
+    },
+    {
+      "name": "authenticateAndLoad",
+      "kind": "func",
+      "file": "MyBooks/MyBooksViewModel.swift",
+      "line": 241
+    },
+    {
+      "name": "canCompleteDownload",
+      "kind": "func",
+      "file": "TPPBook+DistributorChecks.swift",
+      "line": 22
+    },
+    {
+      "name": "cancelDownload",
+      "kind": "func",
+      "file": "MyBooksDownloadCenter.swift",
+      "line": 1044
+    },
+    {
+      "name": "downloadInfo",
+      "kind": "func",
+      "file": "MyBooksDownloadCenter.swift",
+      "line": 1257
+    },
+    {
+      "name": "downloadProgress",
+      "kind": "func",
+      "file": "MyBooksDownloadCenter.swift",
+      "line": 1494
+    },
+    {
+      "name": "enforceContentDiskBudgetIfNeeded",
+      "kind": "func",
+      "file": "MyBooksDownloadCenter.swift",
+      "line": 1369
+    },
+    {
+      "name": "fileUrl",
+      "kind": "func",
+      "file": "MyBooksDownloadCenter.swift",
+      "line": 1443
+    },
+    {
+      "name": "limitActiveDownloads",
+      "kind": "func",
+      "file": "MyBooksDownloadCenter.swift",
+      "line": 1390
+    },
+    {
+      "name": "pauseAllDownloads",
+      "kind": "func",
+      "file": "MyBooksDownloadCenter.swift",
+      "line": 1394
+    },
+    {
+      "name": "resumeIntelligentDownloads",
+      "kind": "func",
+      "file": "MyBooksDownloadCenter.swift",
+      "line": 1398
+    },
+    {
+      "name": "returnBook",
+      "kind": "func",
+      "file": "MyBooksDownloadCenter.swift",
+      "line": 1066
+    },
+    {
+      "name": "rightsManagement",
+      "kind": "var",
+      "file": "MyBooksDownloadInfo.swift",
+      "line": 25
+    },
+    {
+      "name": "rightsManagementString",
+      "kind": "var",
+      "file": "TPPMyBooksDownloadInfo.swift",
+      "line": 53
+    },
+    {
+      "name": "simplifiedBearerToken",
+      "kind": "func",
+      "file": "TPPMyBooksSimplifiedBearerToken.swift",
+      "line": 16
+    },
+    {
+      "name": "startDownload",
+      "kind": "func",
+      "file": "MyBooksDownloadCenter.swift",
+      "line": 911
+    },
+    {
+      "name": "updateAccount",
+      "kind": "func",
+      "file": "MyBooks/FacetViewModel.swift",
+      "line": 56
+    },
+    {
+      "name": "updateButtons",
+      "kind": "func",
+      "file": "MyBooks/BookCell/BookCellModel.swift",
+      "line": 440
+    },
+    {
+      "name": "withDownloadProgress",
+      "kind": "func",
+      "file": "TPPMyBooksDownloadInfo.swift",
+      "line": 35
+    },
+    {
+      "name": "withRightsManagement",
+      "kind": "func",
+      "file": "TPPMyBooksDownloadInfo.swift",
+      "line": 44
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "AdobeDRMHandlerDelegate",
+      "file": "AdobeDRMHandler.swift",
+      "line": 18
+    },
+    {
+      "name": "BackgroundDownloadFileOps",
+      "file": "RightsManagementDispatcher.swift",
+      "line": 34
+    },
+    {
+      "name": "BackgroundDownloadHandlerDelegate",
+      "file": "BackgroundDownloadHandler.swift",
+      "line": 17
+    },
+    {
+      "name": "BookButtonProvider",
+      "file": "MyBooks/BookCell/ButtonView/BookButtonsView.swift",
+      "line": 5
+    },
+    {
+      "name": "BookReturnServiceDelegate",
+      "file": "BookReturnService.swift",
+      "line": 28
+    },
+    {
+      "name": "BookSignInRedirectHandlerDelegate",
+      "file": "BookSignInRedirectHandler.swift",
+      "line": 30
+    },
+    {
+      "name": "BorrowErrorPresenterDelegate",
+      "file": "BorrowErrorPresenter.swift",
+      "line": 41
+    },
+    {
+      "name": "BorrowOperationDelegate",
+      "file": "BorrowOperation.swift",
+      "line": 45
+    },
+    {
+      "name": "CredentialPromptCoordinatorDelegate",
+      "file": "CredentialPromptCoordinator.swift",
+      "line": 24
+    },
+    {
+      "name": "DownloadAlertPresenterDelegate",
+      "file": "DownloadAlertPresenter.swift",
+      "line": 35
+    },
+    {
+      "name": "DownloadAuthRetryHandlerDelegate",
+      "file": "DownloadAuthRetryHandler.swift",
+      "line": 32
+    },
+    {
+      "name": "DownloadCancellationHandlerDelegate",
+      "file": "DownloadCancellationHandler.swift",
+      "line": 32
+    },
+    {
+      "name": "DownloadCompletionRouting",
+      "file": "DownloadCompletionParser.swift",
+      "line": 28
+    },
+    {
+      "name": "DownloadLifecycleAnnouncing",
+      "file": "DownloadAnnouncementService.swift",
+      "line": 18
+    },
+    {
+      "name": "DownloadProgressPublishing",
+      "file": "DownloadProgressPublisher.swift",
+      "line": 15
+    },
+    {
+      "name": "DownloadQueueCoordinating",
+      "file": "MyBooksDownloadQueue.swift",
+      "line": 18
+    },
+    {
+      "name": "DownloadQueueOrchestratorDelegate",
+      "file": "DownloadQueueOrchestrator.swift",
+      "line": 37
+    },
+    {
+      "name": "DownloadStartCoordinatorDelegate",
+      "file": "DownloadStartCoordinator.swift",
+      "line": 45
+    },
+    {
+      "name": "DownloadStartDispatcherDelegate",
+      "file": "DownloadStartDispatcher.swift",
+      "line": 33
+    },
+    {
+      "name": "DownloadStateManaging",
+      "file": "DownloadStateManager.swift",
+      "line": 15
+    },
+    {
+      "name": "DownloadTaskLifecycleServiceDelegate",
+      "file": "DownloadTaskLifecycleService.swift",
+      "line": 32
+    },
+    {
+      "name": "DownloadThrottlingServiceDelegate",
+      "file": "DownloadThrottlingService.swift",
+      "line": 32
+    },
+    {
+      "name": "LCPFulfillmentHandlerDelegate",
+      "file": "LCPFulfillmentHandler.swift",
+      "line": 29
+    },
+    {
+      "name": "MyBooksDownloadCenterProviding",
+      "file": "MyBooksDownloadCenterProtocol.swift",
+      "line": 16
+    },
+    {
+      "name": "OverdriveDownloadHandlerDelegate",
+      "file": "OverdriveDownloadHandler.swift",
+      "line": 31
+    },
+    {
+      "name": "RightsManagementDispatcherDelegate",
+      "file": "RightsManagementDispatcher.swift",
+      "line": 45
+    },
+    {
+      "name": "TokenRefreshInterceptorDelegate",
+      "file": "TokenRefreshInterceptor.swift",
+      "line": 18
+    }
+  ]
+}

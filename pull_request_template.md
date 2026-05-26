@@ -1,26 +1,31 @@
-**Summary for JIRA** _(paste this into the ticket / release notes; see [.github/COMMIT_AND_PR_FOR_JIRA.md](.github/COMMIT_AND_PR_FOR_JIRA.md))_
-- **JIRA:** 
-- **Root cause:** 
-- **Solution:** 
-- **How to verify:** 
+## Summary for JIRA
+_(paste this into the ticket / release notes; see [.github/COMMIT_AND_PR_FOR_JIRA.md](.github/COMMIT_AND_PR_FOR_JIRA.md))_
+- **JIRA:**
+- **Root cause:**
+- **Solution:**
+- **How to verify:**
 
----
+## What changed
+<!-- Short description of the change. -->
 
-**What's this do?**
-[Description of what this PR does goes here]
+## Why
+<!-- Business / user reason. Notion link if applicable. -->
 
-**Why are we doing this? (w/ Notion link if applicable)**
-[Quick blurb about why the code is needed and Notion link goes here / Do these changes meet the business requirements of the story?]
+## Verification
+- [ ] Tests added (TDD — written before the fix/feature)
+- [ ] `scripts/verify-pr.sh --quick` passed locally
+- [ ] For changed Swift files, mutation testing run via `scripts/palace_mutate.py` (see [TESTING.md](./TESTING.md))
+- [ ] Before/after screenshots attached for UI changes
+- [ ] Both `Palace` and `Palace-noDRM` targets build (if cross-cutting)
+- [ ] Tested on iOS 16 minimum target (if UI/runtime change)
 
-**How should this be tested? / Do these changes have associated tests?**
-[Description of any tests that need to be performed once merged goes here]
+## Internal-only checklist (maintainers)
+<!-- Outside contributors: leave this section blank. -->
+- [ ] ForgeOS changeset id linked:
+- [ ] All ForgeOS gates promoted (`forge_release_check` returns `can_release: true`)
 
-**Dependencies for merging? Releasing to production?**
-[Description of any watchouts, dependencies, or issues we should be aware of goes here]
+## Target branch
+- [ ] PR targets `develop` (not `main`)
 
-**Does this include changes that require a new Palace build for QA?**
-[Bump the Palace build number to generate a new build on ThePalaceProject/ios-binaries]
-
-**Has the application documentation been updated for these changes?**
-
-**Did someone actually run this code to verify it works?**
+## Build for QA
+- [ ] Bumped Palace build number? _(only if QA needs a new TestFlight)_

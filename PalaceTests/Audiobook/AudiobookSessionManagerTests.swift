@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - AudiobookSessionState Tests
@@ -276,58 +277,56 @@ final class AudiobookNetworkValidationTests: XCTestCase {
                      ".used state (already-opened downloaded book) must also play offline")
     }
 
-    func testFullyDownloaded_onCellularWithWifiOnly_isAllowed() {
-        XCTAssertNil(validate(.downloadSuccessful, connected: true, onWiFi: false, wifiOnly: true),
-                     "Downloaded audiobook must play on cellular even with Wi-Fi-only on — no bytes going over the wire")
+    /// Fully-downloaded books bypass network rules entirely — they must
+    /// play under every (connected × onWiFi × wifiOnly) combination,
+    /// including offline-with-Wi-Fi-only-on. Pin every cell of the matrix
+    /// across both downloaded states (.downloadSuccessful and .used) so a
+    /// mutant that adds a network gate to the downloaded path fails on
+    /// the offline-with-Wi-Fi-only row.
+    func testFullyDownloaded_bypassesNetworkRulesAcrossAllConnectivityCombinations() {
+        for state in [TPPBookState.downloadSuccessful, .used] {
+            XCTAssertNil(validate(state, connected: false, onWiFi: false, wifiOnly: true),
+                         "\(state): offline + Wi-Fi-only on must NOT block — bytes are local")
+            XCTAssertNil(validate(state, connected: true,  onWiFi: false, wifiOnly: true),
+                         "\(state): cellular + Wi-Fi-only on must NOT block — bytes are local")
+            XCTAssertNil(validate(state, connected: true,  onWiFi: true,  wifiOnly: true),
+                         "\(state): on Wi-Fi must obviously not block")
+            XCTAssertNil(validate(state, connected: true,  onWiFi: false, wifiOnly: false),
+                         "\(state): cellular + Wi-Fi-only off — no gate")
+        }
     }
 
     // MARK: Streaming books — the bug this fix addresses
 
-    func testStreaming_onCellularWithWifiOnly_returnsWifiRequired() {
-        XCTAssertEqual(validate(.downloading, connected: true, onWiFi: false, wifiOnly: true),
+    /// Streaming-state full validation matrix. The bug PP-XXXX exposed was
+    /// that the open path skipped the Wi-Fi-only gate; the fix restored it.
+    /// Lock every cell in one body so a mutant that flips ANY cell fails.
+    /// Additionally pins the offline-preempt-wifi rule (offline must report
+    /// .networkUnavailable, not .wifiRequired — that wording would mislead
+    /// users into thinking Wi-Fi could solve a no-network situation).
+    func testStreaming_networkValidationCoversAllConnectivityCombinations() {
+        // On-Wi-Fi → always allowed (regardless of wifiOnly setting)
+        XCTAssertNil(validate(.downloading, connected: true, onWiFi: true, wifiOnly: true))
+        XCTAssertNil(validate(.downloading, connected: true, onWiFi: true, wifiOnly: false))
+
+        // Cellular + wifiOnly OFF → user's choice, no gate
+        XCTAssertNil(validate(.downloading, connected: true, onWiFi: false, wifiOnly: false))
+
+        // Cellular + wifiOnly ON → .wifiRequired (the primary bug fix).
+        // Pin both .downloading and .downloadFailed states.
+        XCTAssertEqual(validate(.downloading,    connected: true, onWiFi: false, wifiOnly: true),
                        .wifiRequired,
-                       "Streaming on cellular with Wi-Fi-only ON must surface .wifiRequired — the exact alert the open path was silently skipping before this fix")
+                       "Cellular streaming with Wi-Fi-only ON must surface .wifiRequired")
         XCTAssertEqual(validate(.downloadFailed, connected: true, onWiFi: false, wifiOnly: true),
                        .wifiRequired,
-                       ".downloadFailed is also a non-downloaded state — Wi-Fi-only gate must still fire")
-    }
+                       ".downloadFailed (no local bytes) is treated as streaming — same gate")
 
-    func testStreaming_onWifi_isAllowed() {
-        XCTAssertNil(validate(.downloading, connected: true, onWiFi: true, wifiOnly: true),
-                     "Streaming on Wi-Fi must be allowed — the setting name is 'download only on Wi-Fi', not 'block streaming'")
-    }
-
-    func testStreaming_onCellularWithoutWifiOnly_isAllowed() {
-        XCTAssertNil(validate(.downloading, connected: true, onWiFi: false, wifiOnly: false),
-                     "Without the Wi-Fi-only preference, cellular streaming is the user's choice — no gate")
-    }
-
-    func testStreaming_offline_returnsNetworkUnavailable() {
+        // Offline → .networkUnavailable (preempts wifiRequired, both wifiOnly values).
         XCTAssertEqual(validate(.downloading, connected: false, onWiFi: false, wifiOnly: false),
-                       .networkUnavailable,
-                       "No network + streaming content must return the generic offline error, not the Wi-Fi-specific one")
-    }
-
-    func testStreaming_offline_preemptsWifiOnlyCheck() {
-        // If the device is fully offline, .networkUnavailable is more accurate
-        // than .wifiRequired — the user can't solve it by toggling a setting.
+                       .networkUnavailable)
         XCTAssertEqual(validate(.downloading, connected: false, onWiFi: false, wifiOnly: true),
                        .networkUnavailable,
                        "Offline must report .networkUnavailable even with Wi-Fi-only on — connect-to-Wi-Fi wording would be misleading")
-    }
-
-    // MARK: Boundary / sanity
-
-    func testRulesAreIndependentOfAuthAndRegistration() {
-        // networkValidationError is a pure function — it doesn't touch auth or
-        // registration state, because validateRequirements already gated those
-        // separately. A mutation that added an auth check here would silently
-        // break the downloaded-offline path (fully-downloaded books must play
-        // without reaching out to the auth stack).
-        for state in [TPPBookState.downloadSuccessful, .used] {
-            XCTAssertNil(validate(state, connected: false, onWiFi: false, wifiOnly: true),
-                         "Downloaded state \(state) must return nil regardless of network/wifi state")
-        }
     }
 }
 
@@ -386,5 +385,103 @@ final class AudiobookPhoneAlertContentTests: XCTestCase {
             XCTAssertNil(AudiobookSessionManager.phoneAlertContent(for: error),
                          "\(error) must return nil so the subscriber does not double-alert with existing paths")
         }
+    }
+}
+
+// MARK: - PlaybackFailure Crashlytics Record Tests
+
+/// Covers `AudiobookSessionManager.buildPlaybackFailureRecord` — the pure
+/// builder behind the Crashlytics non-fatal recorded on every playback
+/// failure. Background: BiblioBoard 403 responses on A1QA Test Library's
+/// "Animal Farm" surfaced as a generic "A Problem Has Occurred" toast and
+/// produced **zero** Crashlytics records, so the issue was invisible to ops.
+/// These tests pin the userInfo shape so future regressions don't drop the
+/// HTTP status / track URL / book id keys.
+final class PlaybackFailureRecordTests: XCTestCase {
+
+    private let kPalaceAudiobookDomain = "org.thepalaceproject.palace.audiobookPlayback"
+    private let kOpenAccessDomain = "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer"
+
+    func testRecord_NilError_RecordsBookIdAndDefaultCode() {
+        let record = AudiobookSessionManager.buildPlaybackFailureRecord(
+            error: nil, position: nil, bookId: "book-42"
+        )
+        XCTAssertEqual(record.domain, kPalaceAudiobookDomain)
+        XCTAssertEqual(record.code, -1, "nil underlying error → record.code = -1 sentinel")
+        XCTAssertEqual(record.userInfo["bookId"] as? String, "book-42")
+        XCTAssertEqual(record.userInfo["trackTitle"] as? String, "unknown")
+        XCTAssertEqual(record.userInfo["trackPosition"] as? String, "unknown")
+        XCTAssertNil(record.userInfo["underlyingDomain"], "no underlying error → no underlyingDomain key")
+    }
+
+    func testRecord_NilBookId_FallsBackToUnknown() {
+        let record = AudiobookSessionManager.buildPlaybackFailureRecord(
+            error: nil, position: nil, bookId: nil
+        )
+        XCTAssertEqual(record.userInfo["bookId"] as? String, "unknown",
+                       "missing bookId must not fail the record — fall back to 'unknown'")
+    }
+
+    func testRecord_OpenAccess403_PreservesHttpStatusAndUrl() {
+        // Mirrors what OpenAccessDownloadTask now publishes on 403.
+        let underlying = NSError(
+            domain: kOpenAccessDomain,
+            code: 6, // OpenAccessPlayerError.contentForbidden.rawValue
+            userInfo: [
+                NSLocalizedDescriptionKey: "Title Unavailable",
+                "httpStatusCode": 403,
+                "trackKey": "https://library.biblioboard.com/ext/api/media/abc/assets/content/SID-1_0001_64k.mp3",
+                "url": "https://library.biblioboard.com/ext/api/media/abc/assets/content/SID-1_0001_64k.mp3",
+            ]
+        )
+        let record = AudiobookSessionManager.buildPlaybackFailureRecord(
+            error: underlying, position: nil, bookId: "loan-book-7"
+        )
+        // Record propagates the underlying code so Crashlytics groups by
+        // contentForbidden rather than collapsing every audiobook error.
+        XCTAssertEqual(record.code, 6, "underlying error code surfaces on the non-fatal")
+        XCTAssertEqual(record.userInfo["underlyingDomain"] as? String, kOpenAccessDomain)
+        XCTAssertEqual(record.userInfo["underlyingCode"] as? Int, 6)
+        XCTAssertEqual(record.userInfo["httpStatusCode"] as? Int, 403,
+                       "status code must round-trip — that's the whole point of this fix")
+        XCTAssertEqual(
+            record.userInfo["trackKey"] as? String,
+            "https://library.biblioboard.com/ext/api/media/abc/assets/content/SID-1_0001_64k.mp3"
+        )
+        XCTAssertEqual(record.userInfo["bookId"] as? String, "loan-book-7")
+    }
+
+    func testRecord_OnlyAllowedSubKeysPropagate_BlocksAccidentalLeakage() {
+        // The userInfo whitelist is "httpStatusCode | trackKey | url" — anything
+        // else from underlying.userInfo (e.g. an internal session token) must
+        // NOT leak into the Crashlytics record. Verify by including a junk key.
+        let underlying = NSError(
+            domain: kOpenAccessDomain,
+            code: 5,
+            userInfo: [
+                "httpStatusCode": 401,
+                "sessionToken": "DO-NOT-LOG-THIS-SECRET",
+                "url": "https://example.com/track.mp3",
+            ]
+        )
+        let record = AudiobookSessionManager.buildPlaybackFailureRecord(
+            error: underlying, position: nil, bookId: "b"
+        )
+        XCTAssertEqual(record.userInfo["httpStatusCode"] as? Int, 401)
+        XCTAssertEqual(record.userInfo["url"] as? String, "https://example.com/track.mp3")
+        XCTAssertNil(record.userInfo["sessionToken"],
+                     "sessionToken must NOT propagate — only the allow-listed keys leak through")
+    }
+
+    func testRecord_LocalizedDescriptionPrefixed() {
+        let underlying = NSError(domain: "x", code: 1, userInfo: [NSLocalizedDescriptionKey: "boom"])
+        let record = AudiobookSessionManager.buildPlaybackFailureRecord(
+            error: underlying, position: nil, bookId: nil
+        )
+        let desc = record.userInfo[NSLocalizedDescriptionKey] as? String ?? ""
+        XCTAssertTrue(desc.hasPrefix("Audiobook playback failed: "),
+                      "operator-readable summary prefix should be present")
+        XCTAssertTrue(desc.hasSuffix("boom"),
+                      "underlying message should appear at the end of the summary")
     }
 }

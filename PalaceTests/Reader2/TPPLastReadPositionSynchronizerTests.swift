@@ -18,6 +18,7 @@
 
 import XCTest
 import ReadiumShared
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - Mock Annotations Provider

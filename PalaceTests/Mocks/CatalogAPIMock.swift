@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 @testable import Palace
 
 /// Mock implementation of CatalogAPI for testing CatalogRepository

@@ -7,51 +7,51 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 final class OPDS2BookBridgeTests: XCTestCase {
 
     // MARK: - Basic Metadata Mapping
 
-    func testToBook_mapsIdentifier() {
-        let pub = makePublication(id: "urn:isbn:9780316769174", title: "The Catcher in the Rye")
-        let book = pub.toBook()
-
-        XCTAssertNotNil(book)
-        XCTAssertEqual(book?.identifier, "urn:isbn:9780316769174")
-    }
-
-    func testToBook_mapsTitle() {
-        let pub = makePublication(id: "book1", title: "Moby-Dick")
-        let book = pub.toBook()
-
-        XCTAssertEqual(book?.title, "Moby-Dick")
-    }
-
-    func testToBook_mapsUpdatedDate() {
+    /// Basic metadata pass-through: identifier, title, updated, and the
+    /// description→summary mapping in both populated and nil shapes.
+    /// Lock all four fields in one body so a mutant that breaks any
+    /// single-field copy fails on a distinct assertion. The two-instance
+    /// pattern (populated vs lean publication) catches a mutant that
+    /// returns a hard-coded constant from any of these getters.
+    func testToBook_passesThroughIdentifierTitleUpdatedAndDescription() {
         let date = Date(timeIntervalSince1970: 1700000000)
-        let pub = makePublication(id: "book1", title: "Test", updated: date)
-        let book = pub.toBook()
-
-        XCTAssertEqual(book?.updated, date)
-    }
-
-    func testToBook_mapsDescription() {
-        let pub = makePublication(
-            id: "book1",
-            title: "Test",
-            description: "A great novel about whales."
+        let populated = makePublication(
+            id: "urn:isbn:9780316769174",
+            title: "The Catcher in the Rye",
+            updated: date,
+            description: "A great novel about teenage angst."
         )
-        let book = pub.toBook()
+        let leanNoSummary = makePublication(
+            id: "urn:isbn:9780000000001",
+            title: "Moby-Dick",
+            description: nil
+        )
 
-        XCTAssertEqual(book?.summary, "A great novel about whales.")
-    }
+        guard let populatedBook = populated.toBook(),
+              let leanBook = leanNoSummary.toBook() else {
+            XCTFail("Both publications must produce books — they have valid acquisition links")
+            return
+        }
 
-    func testToBook_nilDescriptionMapsToNilSummary() {
-        let pub = makePublication(id: "book1", title: "Test", description: nil)
-        let book = pub.toBook()
+        XCTAssertEqual(populatedBook.identifier, "urn:isbn:9780316769174")
+        XCTAssertEqual(populatedBook.title, "The Catcher in the Rye")
+        XCTAssertEqual(populatedBook.updated, date)
+        XCTAssertEqual(populatedBook.summary, "A great novel about teenage angst.")
 
-        XCTAssertNil(book?.summary)
+        // Distinct identifiers/titles → different books (catches constant-return).
+        XCTAssertNotEqual(populatedBook.identifier, leanBook.identifier)
+        XCTAssertNotEqual(populatedBook.title, leanBook.title)
+
+        // nil description → nil summary (must not invent text).
+        XCTAssertNil(leanBook.summary,
+                     "nil description must map to nil summary, never a default placeholder")
     }
 
     // Catalog swim lanes use the lean OPDS2Publication path; without an
@@ -601,11 +601,33 @@ final class OPDS2BookBridgeTests: XCTestCase {
 
     // MARK: - Edge Cases
 
-    func testToBook_handlesEmptyLinksArray() {
-        let pub = makePublication(id: "book1", title: "Test", links: [])
-        let book = pub.toBook()
+    /// `toBook()` returns nil when there's no path to render the book.
+    /// Lock three distinct "no acquisition" shapes in one body: empty
+    /// links array, only non-acquisition links (alternate/self), and
+    /// links with empty hrefs. A mutant that fixes one shape but leaves
+    /// another producing a button-less ghost book fails on a distinct
+    /// assertion.
+    func testToBook_returnsNilWhenNoUsableAcquisitionPath() {
+        // Empty links array
+        XCTAssertNil(
+            makePublication(id: "a", title: "A", links: []).toBook(),
+            "Empty links array must yield nil — there's nothing to acquire")
 
-        XCTAssertNil(book, "Should return nil when there are no links at all")
+        // Only a self link (non-acquisition)
+        let selfOnly = makePublication(
+            id: "b", title: "B",
+            links: [OPDS2Link(href: "https://example.com/self",
+                              type: "application/opds+json", rel: "self")])
+        XCTAssertNil(selfOnly.toBook(),
+                     "Self-only link must yield nil — alternate/self/related are not acquisition rels")
+
+        // Only an alternate link
+        let alternateOnly = makePublication(
+            id: "c", title: "C",
+            links: [OPDS2Link(href: "https://example.com/alt",
+                              type: "text/html", rel: "alternate")])
+        XCTAssertNil(alternateOnly.toBook(),
+                     "Alternate-only link must yield nil")
     }
 
     func testToBook_handlesInvalidHrefURL() {

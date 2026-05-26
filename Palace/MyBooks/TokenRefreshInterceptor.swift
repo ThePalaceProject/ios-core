@@ -8,6 +8,8 @@
 
 import AuthenticationServices
 import Foundation
+import PalaceLogging
+import PalaceCatalog
 
 // MARK: - TokenRefreshInterceptorDelegate
 
@@ -521,9 +523,13 @@ final class TokenRefreshInterceptor {
             }
         }
 
-        // Present the session — uses existing system browser cookies for silent SSO
+        // Present the session — uses existing system browser cookies for silent SSO,
+        // EXCEPT when the patron just ran "Reset Account" (PP-4282 / HelpSpot 17716)
+        // which sets a one-shot flag forcing ephemeral cookies for this single
+        // session. Flag self-clears on consumption.
         session.presentationContextProvider = OIDCPresentationContextProvider.shared
-        session.prefersEphemeralWebBrowserSession = false
+        session.prefersEphemeralWebBrowserSession =
+            TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag()
         session.start()
     }
 

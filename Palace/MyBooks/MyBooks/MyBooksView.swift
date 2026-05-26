@@ -10,15 +10,19 @@ struct MyBooksView: View {
     @StateObject private var logoObserver = CatalogLogoObserver()
     @State private var currentAccountUUID: String = ""
     @FocusState private var isSearchFocused: Bool
+    private let appContainer: AppContainer
     let accountsManager: AccountsManager
     let settings: TPPSettings
     let bookRegistry: TPPBookRegistryProvider
+    let samplePreviewManager: SamplePreviewManager
 
-    init(model: MyBooksViewModel, accountsManager: AccountsManager = AccountsManager.shared, settings: TPPSettings = TPPSettings.shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    init(model: MyBooksViewModel, appContainer: AppContainer) {
         self.model = model
-        self.accountsManager = accountsManager
-        self.settings = settings
-        self.bookRegistry = bookRegistry
+        self.appContainer = appContainer
+        self.accountsManager = appContainer.accountsManager
+        self.settings = appContainer.settings
+        self.bookRegistry = appContainer.bookRegistry
+        self.samplePreviewManager = appContainer.samplePreviewManager
     }
     // Centralized sample preview manager overlay
 
@@ -91,11 +95,11 @@ struct MyBooksView: View {
             guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
             let action = (info["action"] as? String) ?? "toggle"
             if action == "close" {
-                SamplePreviewManager.shared.close()
+                samplePreviewManager.close()
                 return
             }
             if let book = bookRegistry.book(forIdentifier: identifier) ?? model.books.first(where: { $0.identifier == identifier }) {
-                SamplePreviewManager.shared.toggle(for: book)
+                samplePreviewManager.toggle(for: book)
             }
         }
     }

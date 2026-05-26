@@ -6,18 +6,33 @@
 //
 
 import Foundation
+import PalaceLogging
+import PalaceCatalog
+
+/// Narrow protocol that BookReturnService and similar callers depend on so
+/// tests can substitute a fixture / failing fetcher without standing up the
+/// full actor + URL stack. Production code passes an OPDSFeedService instance
+/// that satisfies this protocol via the conformance below.
+protocol OPDSFeedFetching: Sendable {
+    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed
+}
 
 /// Modern async/await service for OPDS feed operations
 /// Wraps legacy Objective-C TPPOPDSFeed with type-safe async API
-actor OPDSFeedService {
-
-    static let shared = OPDSFeedService()
+actor OPDSFeedService: OPDSFeedFetching {
 
     private var inflightRequests: [URL: Task<TPPOPDSFeed, Error>] = [:]
 
-    private init() {}
+    init() {}
 
     // MARK: - Feed Fetching
+
+    /// `OPDSFeedFetching` conformance — single-arg form so callers can
+    /// depend on the narrow protocol instead of the full actor surface.
+    /// Delegates to the canonical 3-arg method with production defaults.
+    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
+        try await fetchFeed(from: url, resetCache: false, useToken: true)
+    }
 
     /// Fetches an OPDS feed from the given URL
     /// - Parameters:
@@ -237,16 +252,32 @@ actor OPDSFeedService {
             return .bookRegistry(.invalidState)
         case TPPProblemDocument.TypeCannotRender:
             return .parsing(.contentNotSupported)
+        case TPPProblemDocument.TypePatronLoanLimit,
+             TPPProblemDocument.TypePatronHoldLimit:
+            // Patron quota errors. NOT auth — re-signing in won't help. Surface as
+            // an invalid-state book registry error so the caller shows the server's
+            // title/detail rather than spuriously triggering a re-auth modal.
+            return .bookRegistry(.invalidState)
+        case TPPProblemDocument.TypeCredentialsSuspended:
+            return .authentication(.invalidCredentials)
         default:
             // Unknown problem document type - log it for future support
             let message = problemDoc.title ?? problemDoc.detail ?? "Unknown error"
             Log.warn(#file, "⚠️ Unknown problem document type '\(type)': \(message)")
 
-            // Determine appropriate error category based on HTTP status if available
+            // Determine appropriate error category based on HTTP status if available.
+            // CAUTION: do NOT auto-classify 401/403 as `.authentication` here — many
+            // non-auth problem docs (e.g. loan-limit-reached, hold-limit-reached)
+            // arrive with status 403 and used to be misclassified as auth failures,
+            // which flipped authState to `.credentialsStale` and triggered a
+            // spurious re-auth modal on every borrow attempt. The dedicated cases
+            // above (and `isRecoverableAuthError` / `isUnrecoverableAuthError` checks
+            // earlier in this method) already cover auth — anything reaching this
+            // default with 401/403 is an unrecognized server condition, not auth.
             if let status = problemDoc.status {
                 switch status {
                 case 401, 403:
-                    return .authentication(.invalidCredentials)
+                    return .network(.forbidden)
                 case 404:
                     return .network(.notFound)
                 case 429:
@@ -282,7 +313,7 @@ actor OPDSFeedService {
 
 extension OPDSFeedService {
     /// Fetches the user's loans feed
-    func fetchLoans(accountsManager: AccountsManager = AccountsManager.shared) async throws -> TPPOPDSFeed {
+    func fetchLoans(accountsManager: AccountsManager = AppContainer.production().accountsManager) async throws -> TPPOPDSFeed {
         guard let loansURL = accountsManager.currentAccount?.loansUrl else {
             throw PalaceError.authentication(.accountNotFound)
         }
@@ -291,7 +322,7 @@ extension OPDSFeedService {
     }
 
     /// Fetches the catalog root
-    func fetchCatalogRoot(accountsManager: AccountsManager = AccountsManager.shared) async throws -> TPPOPDSFeed {
+    func fetchCatalogRoot(accountsManager: AccountsManager = AppContainer.production().accountsManager) async throws -> TPPOPDSFeed {
         guard let catalogURLString = accountsManager.currentAccount?.catalogUrl,
               let catalogURL = URL(string: catalogURLString) else {
             throw PalaceError.authentication(.accountNotFound)

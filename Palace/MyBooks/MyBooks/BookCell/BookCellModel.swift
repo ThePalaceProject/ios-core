@@ -11,6 +11,8 @@ import Combine
 import SwiftUI
 import SafariServices
 import PalaceAudiobookToolkit
+import PalaceLogging
+import PalaceNetwork
 
 enum BookCellState {
     case normal(BookButtonState)
@@ -66,6 +68,9 @@ class BookCellModel: ObservableObject {
     let bookRegistry: TPPBookRegistryProvider
     let downloadCenter: MyBooksDownloadCenter
     private let accountsManager: AccountsManager
+    private let samplePreviewManager: SamplePreviewManager
+    private let readerService: ReaderService
+    private let reachability: Reachability
     private var isFetchingImage = false
     #if LCP
     private var didPrefetchLCPStreaming = false
@@ -113,16 +118,39 @@ class BookCellModel: ObservableObject {
 
     // MARK: - Initializer
 
-    /// Creates a BookCellModel with injectable dependencies for testability
-    /// - Parameters:
-    ///   - book: The book to display
-    ///   - imageCache: Cache for book cover images
-    ///   - bookRegistry: Registry for book state (defaults to shared instance)
-    init(book: TPPBook, imageCache: ImageCacheType, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared, accountsManager: AccountsManager = .shared) {
+    /// Convenience: builds a BookCellModel from the standard AppContainer graph.
+    convenience init(book: TPPBook, appContainer: AppContainer) {
+        self.init(
+            book: book,
+            imageCache: appContainer.imageCache,
+            bookRegistry: appContainer.bookRegistry,
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService,
+            reachability: appContainer.reachability
+        )
+    }
+
+    /// Creates a BookCellModel with explicit injectable dependencies for tests.
+    /// Production code should prefer `init(book:appContainer:)`.
+    init(
+        book: TPPBook,
+        imageCache: ImageCacheType,
+        bookRegistry: TPPBookRegistryProvider,
+        downloadCenter: MyBooksDownloadCenter,
+        accountsManager: AccountsManager,
+        samplePreviewManager: SamplePreviewManager,
+        readerService: ReaderService,
+        reachability: Reachability = AppContainer.production().reachability
+    ) {
         self.book = book
         self.bookRegistry = bookRegistry
         self.downloadCenter = downloadCenter
         self.accountsManager = accountsManager
+        self.samplePreviewManager = samplePreviewManager
+        self.readerService = readerService
+        self.reachability = reachability
         self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
         self.currentBookIdentifier = book.identifier
         self.imageCache = imageCache
@@ -136,6 +164,7 @@ class BookCellModel: ObservableObject {
             book: book,
             registryState: currentRegistryState,
             isManagingHold: false,
+            override: nil,
             bookRegistry: bookRegistry
         )
         self.stableButtonState = initialButtonState
@@ -146,6 +175,7 @@ class BookCellModel: ObservableObject {
         registerForNotifications()
         loadBookCoverImage()
         bindRegistryState()
+        bindReachability()
         setupStableButtonState()
         #if LCP
         prefetchLCPStreamingIfPossible()
@@ -297,12 +327,21 @@ class BookCellModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    private func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool) -> BookButtonState {
-        return Self.computeButtonState(book: book, registryState: registryState, isManagingHold: isManagingHold, bookRegistry: bookRegistry)
+    private func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool, override: TPPBookState?) -> BookButtonState {
+        return Self.computeButtonState(book: book, registryState: registryState, isManagingHold: isManagingHold, override: override, bookRegistry: bookRegistry)
     }
 
     /// Static version for use during initialization
-    private static func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool, bookRegistry: TPPBookRegistryProvider) -> BookButtonState {
+    private static func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool, override: TPPBookState?, bookRegistry: TPPBookRegistryProvider) -> BookButtonState {
+        // Honor the in-flight UI override (currently used for .returning so the
+        // cell shows "Returning…" between the user confirming the return and the
+        // registry transitioning to .unregistered after the network round-trip
+        // + bookmark deletion + post-return sync). Without this the button keeps
+        // showing the pre-return state (Read/Return) until the registry finally
+        // flips, which the user perceives as "tap did nothing" (F-017).
+        if override == .returning {
+            return .returning
+        }
         let availability = book.defaultAcquisition?.availability
         // Only reflect actual download state from registry; do not treat UI image loading as download-in-progress
         let isProcessingDownload = registryState == .downloading
@@ -315,15 +354,54 @@ class BookCellModel: ObservableObject {
     }
 
     private func setupStableButtonState() {
-        Publishers.CombineLatest3($book, $registryState, $isManagingHold)
-            .map { [weak self] book, state, isManaging in
-                self?.computeButtonState(book: book, registryState: state, isManagingHold: isManaging) ?? .unsupported
+        Publishers.CombineLatest4($book, $registryState, $isManagingHold, $localBookStateOverride)
+            .map { [weak self] book, state, isManaging, override in
+                self?.computeButtonState(book: book, registryState: state, isManagingHold: isManaging, override: override) ?? .unsupported
             }
             .removeDuplicates()
             // Use throttle instead of debounce - throttle emits immediately on first value,
             // then emits the latest value after the interval. Debounce waits for silence.
             .throttle(for: .milliseconds(50), scheduler: RunLoop.main, latest: true)
             .assign(to: &$stableButtonState)
+    }
+
+    /// PP-4114: react to mid-flight network drops. The pre-flight check on
+    /// Download/Reserve handles the cold-offline tap; this subscription
+    /// handles the case where reachability drops AFTER the user already
+    /// kicked off a borrow/download (so isLoading is true and the spinner
+    /// would otherwise sit there for ~60s waiting on URLSession's timeout).
+    /// `dropFirst()` skips the CurrentValueSubject's replay so we only act
+    /// on actual transitions.
+    private func bindReachability() {
+        reachability.connectivityPublisher
+            .dropFirst()
+            .filter { !$0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, self.isLoading else { return }
+                self.isLoading = false
+                self.presentOfflineAlert()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func presentOfflineAlert() {
+        // The retry routes back through `callDelegate(for: .download)` (not
+        // straight into `didSelectDownload`) so the pre-flight reachability
+        // check fires again. If the user taps Retry while still offline, the
+        // alert reappears — same UX as a fresh tap, no spinner-of-death.
+        let alert = AlertModel.retryable(
+            title: Strings.MyDownloadCenter.noConnectionTitle,
+            message: Strings.MyDownloadCenter.noConnectionMessage,
+            retryAction: { [weak self] in self?.callDelegate(for: .download) }
+        )
+        if showHalfSheet {
+            downloadErrorAlert = alert
+            showAlert = nil
+        } else {
+            showAlert = alert
+            downloadErrorAlert = nil
+        }
     }
 
     // MARK: - State Consistency Validation
@@ -335,7 +413,7 @@ class BookCellModel: ObservableObject {
     @discardableResult
     func validateStateConsistency() -> Bool {
         let currentRegistryState = bookRegistry.state(for: book.identifier)
-        let expectedButtonState = computeButtonState(book: book, registryState: currentRegistryState, isManagingHold: isManagingHold)
+        let expectedButtonState = computeButtonState(book: book, registryState: currentRegistryState, isManagingHold: isManagingHold, override: localBookStateOverride)
 
         let isConsistent = stableButtonState == expectedButtonState && registryState == currentRegistryState
 
@@ -378,6 +456,23 @@ class BookCellModel: ObservableObject {
 
 extension BookCellModel {
     func callDelegate(for action: BookButtonType) {
+        // PP-4114 pre-flight: Download/Retry/Get/Reserve all hit the network
+        // (borrow → fulfillment → download). If we're offline, surface the
+        // retryable no-connection alert instead of setting isLoading=true and
+        // waiting ~60s for URLSession to time out (the original "stale button"
+        // bug). Other actions (Read, Listen, Cancel, Return, Remove) are
+        // either local or have their own confirmation paths and don't need
+        // a connection to begin.
+        switch action {
+        case .download, .retry, .get, .reserve:
+            if !reachability.isConnectedToNetwork() {
+                presentOfflineAlert()
+                return
+            }
+        default:
+            break
+        }
+
         // Set loading state for actions that need it.
         // .return and .cancelHold are excluded here because they show a
         // confirmation alert first; loading starts only after the patron confirms.
@@ -453,13 +548,13 @@ extension BookCellModel {
         isLoading = true
         switch book.defaultBookContentType {
         case .epub:
-            ReaderService.shared.openEPUB(book)
+            readerService.openEPUB(book)
             self.isLoading = false
         case .pdf:
             guard let url = downloadCenter.fileUrl(for: book.identifier) else { self.isLoading = false; return }
             let metadata = TPPPDFDocumentMetadata(with: book)
             let document = TPPPDFDocument(url: url)
-            if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                 coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
                 coordinator.push(.pdf(BookRoute(id: book.identifier)))
             }
@@ -528,12 +623,12 @@ extension BookCellModel {
     }
 
     func didSelectDownload() {
-        let account = AccountsManager.shared.currentUserAccount
+        let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
+            SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: accountsManager) { [weak self] in
                 guard let self else { return }
                 // Only proceed if user successfully logged in, not if they cancelled
-                guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+                guard accountsManager.currentUserAccount.hasCredentials() else {
                     Log.info(#file, "Sign-in cancelled or failed, not starting download")
                     return
                 }
@@ -553,12 +648,12 @@ extension BookCellModel {
 
     func didSelectReserve() {
         isLoading = true
-        let account = AccountsManager.shared.currentUserAccount
+        let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
+            SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: accountsManager) { [weak self] in
                 guard let self else { return }
                 // Only proceed if user successfully logged in, not if they cancelled
-                guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+                guard accountsManager.currentUserAccount.hasCredentials() else {
                     Log.info(#file, "Sign-in cancelled or failed, not proceeding with reservation")
                     self.isLoading = false
                     return
@@ -590,19 +685,19 @@ extension BookCellModel {
         isLoading = true
         if book.defaultBookContentType == .audiobook {
             if book.sampleAcquisition?.type == "text/html" {
-                SamplePreviewManager.shared.close()
+                samplePreviewManager.close()
                 if let url = book.sampleAcquisition?.hrefURL,
                    let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
                     let safari = SFSafariViewController(url: url)
                     top.present(safari, animated: true)
                 }
             } else {
-                SamplePreviewManager.shared.toggle(for: book)
+                samplePreviewManager.toggle(for: book)
             }
             self.isLoading = false
             return
         }
-        SamplePreviewManager.shared.close()
+        samplePreviewManager.close()
         EpubSampleFactory.createSample(book: book) { sampleURL, error in
             self.isLoading = false
             if let error = error {
@@ -622,7 +717,7 @@ extension BookCellModel {
 
                 if isEpubSample {
                     // Use Readium EPUB reader for EPUB samples
-                    ReaderService.shared.openSample(self.book, url: url)
+                    self.readerService.openSample(self.book, url: url)
                 } else {
                     // Use WebKit for HTML/web samples
                     let web = BundledHTMLViewController(fileURL: url, title: self.book.title)

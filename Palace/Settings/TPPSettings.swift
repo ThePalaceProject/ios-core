@@ -14,11 +14,6 @@ import Combine
 }
 
 @objcMembers class TPPSettings: NSObject, NYPLFeedURLProvider, TPPAgeCheckChoiceStorage {
-    static let shared = TPPSettings()
-
-    class func sharedSettings() -> TPPSettings {
-        return TPPSettings.shared
-    }
 
     // MARK: - Combine Publishers
 

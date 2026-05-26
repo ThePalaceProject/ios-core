@@ -93,15 +93,28 @@ final class CodeReviewFixesTests: XCTestCase {
 
     // MARK: - LockedDictionary (SafeDictionary sync mirror infrastructure)
 
-    func testLockedDictionary_getAfterReplace_returnsValue() {
+    /// `LockedDictionary` provides thread-safe storage with replace/get
+    /// semantics. Lock the basic contract in one body: empty dictionary
+    /// returns nil for any key, replace makes keys queryable, and the
+    /// queried value matches what was inserted. Catches a mutant that
+    /// drops the lookup or returns a constant.
+    func testLockedDictionary_getReturnsNilOnMissingAndStoredValueAfterReplace() {
         let locked = LockedDictionary<String, Int>()
-        locked.replace(with: ["key": 42])
-        XCTAssertEqual(locked.get("key"), 42)
-    }
 
-    func testLockedDictionary_missingKey_returnsNil() {
-        let locked = LockedDictionary<String, Int>()
-        XCTAssertNil(locked.get("nonexistent"))
+        // Empty: any key yields nil.
+        XCTAssertNil(locked.get("nonexistent"),
+                     "Empty dictionary must return nil for any key")
+        XCTAssertNil(locked.get(""),
+                     "Empty key on empty dictionary must also yield nil")
+
+        // After replace: stored value is queryable; unknown keys still nil.
+        locked.replace(with: ["key": 42, "other": 99])
+        XCTAssertEqual(locked.get("key"), 42,
+                       "Stored value must be retrievable verbatim")
+        XCTAssertEqual(locked.get("other"), 99,
+                       "All keys from replace must be retrievable")
+        XCTAssertNil(locked.get("missing-after-replace"),
+                     "Keys not in the replace set must still yield nil — no phantom default")
     }
 
     func testLockedDictionary_replaceOverwritesPrevious() {
@@ -130,10 +143,20 @@ final class CodeReviewFixesTests: XCTestCase {
 
     // MARK: - DownloadStateManager sync accessor (Finding #2)
 
-    func testDownloadStateManager_syncAccessor_returnsNilWhenEmpty() {
+    /// Sync accessor must safely return nil for unknown identifiers
+    /// (never crash, never invent state). Pin three input shapes — empty
+    /// id, unknown id, multi-call sequence — so a mutant that returns a
+    /// default DownloadInfo on missing keys fails on a distinct row.
+    func testDownloadStateManager_syncAccessor_returnsNilForUnknownAndEmptyIdentifiers() {
         let manager = DownloadStateManager()
-        let result = manager.downloadInfo(forBookIdentifier: "nonexistent")
-        XCTAssertNil(result, "Sync accessor must return nil for unknown book, not crash")
+
+        XCTAssertNil(manager.downloadInfo(forBookIdentifier: "nonexistent"),
+                     "Unknown book id must yield nil — no phantom DownloadInfo")
+        XCTAssertNil(manager.downloadInfo(forBookIdentifier: ""),
+                     "Empty book id must also yield nil — no fallback to a default entry")
+        // Repeat call for the same id remains nil (no side-effect lookup).
+        XCTAssertNil(manager.downloadInfo(forBookIdentifier: "nonexistent"),
+                     "Repeated lookup for unknown id must remain nil — guards against an `inserted on lookup` mutant")
     }
 
     func testDownloadStateManager_syncAccessor_returnsCachedData() async {

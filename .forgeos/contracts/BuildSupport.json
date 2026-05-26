@@ -1,0 +1,10 @@
+{
+  "module": "BuildSupport",
+  "generated_at": "2026-05-12T16:15:16+00:00",
+  "file_count": 0,
+  "shared_singleton_reads": 0,
+  "public_types": [],
+  "objc_surface": [],
+  "public_functions": [],
+  "internal_protocols": []
+}

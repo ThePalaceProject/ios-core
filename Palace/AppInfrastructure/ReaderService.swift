@@ -3,11 +3,11 @@ import Combine
 import ReadiumShared
 #if LCP
 import ReadiumLCP
+import PalaceLogging
 #endif
 
 final class ReaderService {
-    static let shared = ReaderService()
-    private init() {}
+    init() {}
 
     private lazy var r3Owner: TPPR3Owner = TPPR3Owner()
 
@@ -37,7 +37,7 @@ final class ReaderService {
         r3Owner.libraryService.openBook(book, sender: presenter) { result in
             switch result {
             case .success(let publication):
-                if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+                if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                     coordinator.store(book: book)
                     coordinator.storeEPUBPublication(publication, forBookId: book.identifier, forSample: false)
                     coordinator.push(.epub(BookRoute(id: book.identifier)))
@@ -58,7 +58,7 @@ final class ReaderService {
         r3Owner.libraryService.openSample(book, sampleURL: url, sender: presenter) { result in
             switch result {
             case .success(let publication):
-                if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+                if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                     coordinator.store(book: book)
                     coordinator.presentEPUBSample(publication, forBookId: book.identifier)
                 } else {
@@ -128,8 +128,8 @@ final class ReaderService {
     /// download fails or takes longer than 120 seconds.
     @MainActor
     private func attemptRedownloadAndReopen(book: TPPBook, originalError: LibraryServiceError) {
-        MyBooksDownloadCenter.shared.deleteLocalContent(for: book.identifier)
-        TPPBookRegistry.shared.setState(.downloadNeeded, for: book.identifier)
+        AppContainer.production().downloadCenter.deleteLocalContent(for: book.identifier)
+        AppContainer.production().bookRegistry.setState(.downloadNeeded, for: book.identifier)
 
         let showFallback = { [weak self] in
             self?.cancelRedownload(for: book.identifier)
@@ -144,7 +144,7 @@ final class ReaderService {
             await MainActor.run { showFallback() }
         }
 
-        redownloadObservers[book.identifier] = TPPBookRegistry.shared.bookStatePublisher
+        redownloadObservers[book.identifier] = AppContainer.production().bookRegistry.bookStatePublisher
             .filter { identifier, _ in identifier == book.identifier }
             .sink { [weak self] _, state in
                 guard let self else { return }
@@ -161,7 +161,7 @@ final class ReaderService {
                 }
             }
 
-        MyBooksDownloadCenter.shared.startDownload(for: book)
+        AppContainer.production().downloadCenter.startDownload(for: book)
     }
 
     @MainActor
@@ -181,7 +181,7 @@ final class ReaderService {
 
     /// Creates an EPUB view controller from a publication (used by EPUBReaderView)
     @MainActor
-    func makeEPUBViewController(for publication: Publication, book: TPPBook, forSample: Bool, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) async throws -> UIViewController {
+    func makeEPUBViewController(for publication: Publication, book: TPPBook, forSample: Bool, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) async throws -> UIViewController {
         let bookRegistry = bookRegistry
 
         // Sync reading position with server before opening (shows "Stay or Move"
@@ -189,7 +189,7 @@ final class ReaderService {
         // Samples don't need sync since they have no persisted position.
         if !forSample {
             let synchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
-            let deviceID = AccountsManager.shared.currentUserAccount.deviceID
+            let deviceID = AppContainer.production().accountsManager.currentUserAccount.deviceID
             await synchronizer.sync(for: publication, book: book, drmDeviceID: deviceID)
         }
 
