@@ -220,4 +220,4 @@ to `PalaceTests/Mocks/`.
 - Branch: `swarm/swarm_eefef87a-module-D`
 - Prefix: `[swarm_eefef87a/module-D]`
 - Changeset: `cs_34366ad3`
-- SHA: TBD
+- SHA: dab39c45fb49d276806c8743a15178ef069b041b
