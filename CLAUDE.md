@@ -12,6 +12,23 @@ Library reading app supporting EPUB, PDF, and audiobooks with multiple DRM syste
 
 **Architecture decisions:** see [`docs/architecture/`](./docs/architecture/) for the rationale behind major refactors (the post-modernization triad work, the parallel-agent rebase pattern, post-PR retros).
 
+## Release & hotfix merge policy
+
+**Merges into `main` use regular merge commits (`--no-ff`), never squash.** Applies to:
+- `release/X.Y.Z` → `main` (full release cycle)
+- `hotfix/X.Y.Z-*` → `main` (point hotfix)
+- Forward-port merges of those hotfix branches into `develop` (so the next release branch absorbs them with original SHAs)
+
+`gh pr merge <num> --merge` — NOT `--squash`.
+
+**Why:** squash-merge replaces a branch's commits with a single new commit that has no SHA-level relationship to the original work. When the next release branch tries to merge into main, git treats the squashed commits as different history from the original commits the release branch absorbed via forward-port — even though the content is logically identical. The result is a conflict storm that's pure squash-merge identity loss, not real divergence.
+
+This is what happened to 3.1.0: PR #953 (3.0.2 hotfix) and PR #972 (3.0.3 hotfix) were squash-merged into main, then `release/3.1.0 → main` produced **296 conflicts** that all had to be resolved manually before the release could ship. PR #998 ultimately landed via a custom merge commit built with `git commit-tree`. See [`docs/architecture/release-merge-policy.md`](./docs/architecture/release-merge-policy.md) for the full forensic + the recovery recipe.
+
+**Squash-merge is fine for feature PRs into `develop`** (or any branch that doesn't feed back into main). The damage is specifically squash on commits that later need to be reconciled by another branch — that's a release-branch-to-main scenario, not a feature-to-develop one.
+
+**Branch protection:** `main` should be configured to allow only "Create a merge commit" — disable both "Squash and merge" and "Rebase and merge" in repo settings → branch protection rules. UI change; verify periodically.
+
 ## Build & Test
 
 ```bash
