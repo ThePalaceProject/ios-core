@@ -14,6 +14,7 @@
 //
 
 import XCTest
+import Combine
 import PalaceCatalog
 @testable import Palace
 
@@ -24,10 +25,12 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
     private var stateManager: DownloadStateManager!
     private var reauthenticator: TPPReauthenticatorMock!
     private var alertPresenter: DownloadAlertPresenter!
+    private var progressReporter: DownloadProgressReporter!
     private var spyDelegate: SpyDelegate!
     private var userAccount: TPPUserAccountMock!
     private var handler: DownloadAuthRetryHandler!
     private var book: TPPBook!
+    private var cancellables: Set<AnyCancellable> = []
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -39,16 +42,16 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
 
         // The handler depends on DownloadAlertPresenter only for the
         // auto-borrow callback (alertForProblemDocument on borrow
-        // failure). A real instance with a real progress reporter is
-        // fine; we don't assert on its output here.
-        let reporter = DownloadProgressReporter(
+        // failure). A real reporter is fine; tests that need to assert
+        // the alert fired subscribe to its `downloadErrorPublisher`.
+        progressReporter = DownloadProgressReporter(
             accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter(),
             downloadAnnouncementService: DownloadAnnouncementService()
         )
         alertPresenter = DownloadAlertPresenter(
             bookRegistry: registry,
             stateManager: stateManager,
-            progressReporter: reporter,
+            progressReporter: progressReporter,
             downloadAnnouncementService: DownloadAnnouncementService()
         )
 
@@ -65,12 +68,14 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        cancellables.removeAll()
         registry = nil
         stateManager = nil
         reauthenticator = nil
         userAccount = nil
         spyDelegate = nil
         alertPresenter = nil
+        progressReporter = nil
         handler = nil
         book = nil
         try super.tearDownWithError()
@@ -283,7 +288,7 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
 
     // MARK: - Branch 6b: no-active-loan (other) → auto-borrow
 
-    func testHandle_noActiveLoan_basicAuth_triggersAutoBorrowAndAlertsOnBorrowFailure() async throws {
+    func testHandle_noActiveLoan_basicAuth_triggersAutoBorrowWithAttemptDownloadTrue() async throws {
         userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
         userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
 
@@ -291,9 +296,10 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
                          fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
         // Auto-borrow callback runs; spy records the call. The completion
-        // callback inside handler.triggerAutoBorrow checks the new state
-        // and alerts on failure — we leave borrowCompletion uncalled so
-        // we focus on the dispatch contract.
+        // callback inside handler.triggerAutoBorrow is exercised in
+        // dedicated `testAutoBorrowCompletion_*` tests below — here we
+        // pin the dispatch contract: state flip, identifier, and
+        // attemptDownload=true (the F-014-shape gap NEEDS-TEST-1).
         let task = makeFakeTask(statusCode: 400)
         let problemDoc = try makeProblemDoc(type: TPPProblemDocument.TypeNoActiveLoan)
 
@@ -303,6 +309,116 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
         XCTAssertEqual(registry.state(for: book.identifier), .unregistered,
                        "Auto-borrow path flips state to .unregistered so borrow logic runs")
         XCTAssertEqual(spyDelegate.startBorrowCalls.map { $0.identifier }, [book.identifier])
+        // F-014-shape pin: auto-borrow MUST request attemptDownload=true so
+        // BorrowOperation auto-starts the download after the loan is
+        // reissued. Flipping true→false here silently degrades UX to
+        // "borrow succeeded, manual re-tap required".
+        XCTAssertEqual(spyDelegate.startBorrowCalls.map { $0.attemptDownload }, [true],
+                       "Auto-borrow must request attemptDownload=true so BorrowOperation auto-starts download")
+    }
+
+    // MARK: - Branch 6b auto-borrow completion-callback predicate
+
+    /// Drives the borrow-completion closure with the registry already
+    /// flipped to `.downloading` — proves the success arm at :240 of
+    /// `DownloadAuthRetryHandler.swift` swallows the failure without
+    /// publishing a download-error alert.
+    func testAutoBorrowCompletion_whenBorrowSucceedsAndDownloadStarts_doesNotPublishAlert() async throws {
+        userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+
+        registry.addBook(book, location: nil, state: .downloading,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        var publishedErrors: [DownloadErrorInfo] = []
+        progressReporter.downloadErrorPublisher
+            .sink { publishedErrors.append($0) }
+            .store(in: &cancellables)
+
+        let task = makeFakeTask(statusCode: 400)
+        let problemDoc = try makeProblemDoc(type: TPPProblemDocument.TypeNoActiveLoan)
+        _ = handler.handleAuthFailureIfApplicable(book: book, task: task, problemDoc: problemDoc, failureError: nil)
+
+        // BorrowOperation would flip the registry to .downloading on
+        // success — simulate that here, then drive the completion.
+        registry.setState(.downloading, for: book.identifier)
+        let completion = try XCTUnwrap(spyDelegate.startBorrowCalls.first?.completion,
+                                       "Handler must pass a borrowCompletion closure for the post-borrow predicate to run")
+        completion()
+        await waitForAsyncCleanup()
+
+        XCTAssertTrue(publishedErrors.isEmpty,
+                      "Borrow success + .downloading state must NOT publish a download-error alert")
+        // alertForProblemDocument removes no-active-loan books from the
+        // registry as a side effect; book must still be present.
+        XCTAssertNotNil(registry.book(forIdentifier: book.identifier),
+                        "Book must remain in registry on borrow-success path")
+    }
+
+    /// Drives the borrow-completion closure with the registry left in
+    /// `.unregistered` — proves the failure arm at :235-238 fires the
+    /// alert and removes the book from the registry.
+    func testAutoBorrowCompletion_whenBorrowFails_publishesAlertAndRemovesBook() async throws {
+        userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+
+        registry.addBook(book, location: nil, state: .downloading,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        var publishedErrors: [DownloadErrorInfo] = []
+        progressReporter.downloadErrorPublisher
+            .sink { publishedErrors.append($0) }
+            .store(in: &cancellables)
+
+        let task = makeFakeTask(statusCode: 400)
+        let problemDoc = try makeProblemDoc(type: TPPProblemDocument.TypeNoActiveLoan)
+        _ = handler.handleAuthFailureIfApplicable(book: book, task: task, problemDoc: problemDoc, failureError: nil)
+
+        // State stays .unregistered (handler flipped it there before
+        // dispatching the borrow) — the borrow "failed" or returned a
+        // non-download outcome. Drive completion.
+        XCTAssertEqual(registry.state(for: book.identifier), .unregistered)
+        let completion = try XCTUnwrap(spyDelegate.startBorrowCalls.first?.completion,
+                                       "Handler must pass a borrowCompletion closure for the post-borrow predicate to run")
+        completion()
+        await waitForAsyncCleanup()
+
+        XCTAssertEqual(publishedErrors.map { $0.bookId }, [book.identifier],
+                       "Borrow failure (state stayed .unregistered) must publish a download-error alert")
+        // alertForProblemDocument removes no-active-loan books from
+        // registry — confirms the alert path executed end-to-end.
+        XCTAssertNil(registry.book(forIdentifier: book.identifier),
+                     "alertForProblemDocument on no-active-loan must remove book from registry")
+    }
+
+    /// Pins the `.downloadSuccessful` branch of the post-borrow
+    /// predicate: borrow succeeds and the download has already finished
+    /// (e.g. cached) by the time the completion fires. Same swallow
+    /// behavior as `.downloading`.
+    func testAutoBorrowCompletion_whenBorrowSucceedsAndDownloadAlreadyFinished_doesNotPublishAlert() async throws {
+        userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+
+        registry.addBook(book, location: nil, state: .downloading,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        var publishedErrors: [DownloadErrorInfo] = []
+        progressReporter.downloadErrorPublisher
+            .sink { publishedErrors.append($0) }
+            .store(in: &cancellables)
+
+        let task = makeFakeTask(statusCode: 400)
+        let problemDoc = try makeProblemDoc(type: TPPProblemDocument.TypeNoActiveLoan)
+        _ = handler.handleAuthFailureIfApplicable(book: book, task: task, problemDoc: problemDoc, failureError: nil)
+
+        registry.setState(.downloadSuccessful, for: book.identifier)
+        let completion = try XCTUnwrap(spyDelegate.startBorrowCalls.first?.completion)
+        completion()
+        await waitForAsyncCleanup()
+
+        XCTAssertTrue(publishedErrors.isEmpty,
+                      ".downloadSuccessful post-borrow state must also swallow the alert (&& clause)")
+        XCTAssertNotNil(registry.book(forIdentifier: book.identifier))
     }
 
     // MARK: - Fall-through: nothing matches → returns false
@@ -327,13 +443,16 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
 
 private final class SpyDelegate: DownloadAuthRetryHandlerDelegate {
     private(set) var startDownloadCalls: [(book: TPPBook, identifier: String)] = []
-    private(set) var startBorrowCalls: [(book: TPPBook, identifier: String)] = []
+    // Captures the `attemptDownload` parameter (F-014-shape pin) and the
+    // `borrowCompletion` closure so tests can drive the post-borrow
+    // predicate at DownloadAuthRetryHandler.swift:235.
+    private(set) var startBorrowCalls: [(book: TPPBook, identifier: String, attemptDownload: Bool, completion: (() -> Void)?)] = []
 
     func startDownload(for book: TPPBook, withRequest request: URLRequest?) {
         startDownloadCalls.append((book, book.identifier))
     }
 
     func startBorrow(for book: TPPBook, attemptDownload: Bool, borrowCompletion: (() -> Void)?) {
-        startBorrowCalls.append((book, book.identifier))
+        startBorrowCalls.append((book, book.identifier, attemptDownload, borrowCompletion))
     }
 }
