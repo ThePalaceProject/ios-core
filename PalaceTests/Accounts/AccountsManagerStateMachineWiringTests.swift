@@ -858,7 +858,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
 
         let manager = AccountsManager()
         let backgroundSettled = expectation(description: "background loadCatalogs settled")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() } // FLAKE-002-OK: background loadCatalogs settle window — see feedback_wiring_suite_test_isolation
         wait(for: [backgroundSettled], timeout: 2.0)
 
         let activeHash = TPPConfiguration.customUrlHash()
@@ -918,14 +918,14 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
                     return
                 case .detailsFailed(let err):
                     if case .accountNotFound = err {
-                        Thread.sleep(forTimeInterval: 0.05)
+                        Thread.sleep(forTimeInterval: 0.05) // FLAKE-001-OK: redrive yield, intentional
                         continue
                     }
                     observedFinalState = s
                     moved.fulfill()
                     return
                 default:
-                    Thread.sleep(forTimeInterval: 0.05)
+                    Thread.sleep(forTimeInterval: 0.05) // FLAKE-001-OK: .detailsLoading transition poll
                 }
             }
         }

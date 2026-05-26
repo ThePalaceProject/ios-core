@@ -209,6 +209,22 @@ final class DownloadStartDispatcher {
 
     // MARK: - Internal
 
+    /// Legacy 3-arg overload — delegates to the captured-accountId variant
+    /// with the noAccountSentinelUUID. Preserves call-site compatibility for
+    /// tests + ObjC bridges written before Module A's accountId threading.
+    func processRegularDownload(
+        for book: TPPBook,
+        withState state: TPPBookState,
+        andRequest initedRequest: URLRequest?
+    ) {
+        processRegularDownload(
+            for: book,
+            withState: state,
+            andRequest: initedRequest,
+            capturedAccountId: DownloadStartCoordinator.capturedNoAccountSentinelUUID
+        )
+    }
+
     func processRegularDownload(
         for book: TPPBook,
         withState state: TPPBookState,

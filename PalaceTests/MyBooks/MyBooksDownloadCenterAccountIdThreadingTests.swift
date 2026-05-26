@@ -76,6 +76,7 @@ final class MyBooksDownloadCenterAccountIdThreadingTests: XCTestCase {
         // are filled in meaningfully. Unused fields return safe defaults.
         var currentAccountId: String? { mockedCurrentAccountId }
         var currentAccount: Account? { nil }
+        var tppAccountUUID: String { AccountsManager.TPPAccountUUIDs[0] }
         func account(_ uuid: String) -> Account? { nil }
         func userAccount(for libraryUUID: String) -> TPPUserAccount {
             userAccountForCalls.append(libraryUUID)

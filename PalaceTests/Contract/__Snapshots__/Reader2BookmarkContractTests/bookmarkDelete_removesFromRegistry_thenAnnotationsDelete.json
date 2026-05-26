@@ -10,7 +10,7 @@
     "args" : {
       "bookID" : "contract-reader2-bookmark-1",
       "hasAnnotationID" : "false",
-      "href" : "/chapter1.xhtml"
+      "href" : "\/chapter1.xhtml"
     },
     "method" : "registry.delete(bookmark)"
   },
